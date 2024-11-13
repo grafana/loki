@@ -132,3 +132,46 @@ The organized format enables several potential query optimizations (to be implem
 - The format maintains backwards compatibility with existing unordered head blocks
 - Each section is independently compressed, allowing for section-specific optimization
 - The symbol table approach in structured metadata reduces memory usage for repeated labels
+
+-----------------
+
+# Iteration 1: Initial Benchmark Results and Analysis
+
+## Key Findings thus far
+1. **Positive Results**
+   - Significant in total decompressed bytes
+   - Successful selective decompression (no lines decompressed for sample queries)
+
+2. **Areas for Improvement**
+   - V5 is 12% slower execution time in Chunk V5
+   - Higher memory usage (~1.6GB increase)
+   - Increased allocation count (possibly due to use of multiple buffers for TS, line and metadata)
+
+## Next Steps
+
+1. **Performance Optimization**
+   - Profile + compare memory usage to identify causes of increased allocation
+   - Optimize metadata section compression/decompression
+   - Investigate potential buffer reuse strategies
+   - Consider adding memory pools for common operations
+
+2. **Query Path Enhancements**
+   - Implement selective reading for time-based queries
+   - Add optimization for label-only queries
+   - Develop adaptive query strategies based on access patterns
+   - Implement query cost estimation based on required sections
+
+3. **Format Refinements**
+   - Consider adding section-level indexing for faster access
+   - Evaluate compression algorithms per section type
+   - Add statistics for section sizes and access patterns
+   - Optimize metadata storage format
+
+4. **Testing**
+   - Verify if st.stats are reported properly 
+   - Add more comprehensive benchmark scenarios
+   - Test with various query patterns and load on dev environment
+   - Measure impact of different compression settings
+
+
+The initial results show promise in terms of data organization and selective access, but a lot of further optimization is needed to address performance overhead.
