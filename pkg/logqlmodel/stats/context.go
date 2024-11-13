@@ -333,6 +333,10 @@ func (r Result) TotalDecompressedLines() int64 {
 	return r.Querier.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.DecompressedLines
 }
 
+func (r Result) TotalDecompressedStructuredMetadataBytes() int64 {
+	return r.Querier.Store.Chunk.DecompressedStructuredMetadataBytes + r.Ingester.Store.Chunk.DecompressedStructuredMetadataBytes
+}
+
 func (r Result) QueryReferencedStructuredMetadata() bool {
 	return r.Querier.Store.QueryReferencedStructured || r.Ingester.Store.QueryReferencedStructured
 }
