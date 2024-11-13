@@ -50,7 +50,7 @@ func (s *SplitKeyspaceStrategy) Plan(
 	ownershipRanges := SplitFingerprintKeyspaceByFactor(splitFactor)
 
 	logger := log.With(s.logger, "table", table.Addr(), "tenant", tenant)
-	level.Debug(s.logger).Log("msg", "loading work for tenant", "splitFactor", splitFactor)
+	level.Debug(logger).Log("msg", "loading work for tenant", "splitFactor", splitFactor)
 
 	var tasks []*protos.Task
 	for _, ownershipRange := range ownershipRanges {
