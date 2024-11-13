@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -596,6 +597,36 @@ func Test_deleteOutdatedMetas(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMinMaxTables(t *testing.T) {
+	logger := log.NewNopLogger()
+	//logger := log.NewLogfmtLogger(os.Stdout)
+
+	cfg := Config{
+		PlanningInterval: 1 * time.Hour,
+		Queue: queue.Config{
+			MaxQueuedTasksPerTenant: 10000,
+		},
+		// From today till day before tomorrow
+		MinTableOffset: 0,
+		MaxTableOffset: 2,
+	}
+	planner := createPlanner(t, cfg, &fakeLimits{}, logger)
+
+	tables := planner.tables(time.Now())
+	require.Equal(t, 3, tables.TotalDays())
+
+	dayTables, err := iter.Collect(tables)
+	require.NoError(t, err)
+
+	todayTable := config.NewDayTable(config.NewDayTime(model.Now()), "index_")
+	yesterdayTable := config.NewDayTable(config.NewDayTime(model.Now().Add(-24*time.Hour)), "index_")
+	dayBeforeYesterdayTable := config.NewDayTable(config.NewDayTime(model.Now().Add(-48*time.Hour)), "index_")
+
+	require.Equal(t, dayBeforeYesterdayTable.Addr(), dayTables[0].Addr())
+	require.Equal(t, yesterdayTable.Addr(), dayTables[1].Addr())
+	require.Equal(t, todayTable.Addr(), dayTables[2].Addr())
 }
 
 type fakeBuilder struct {
