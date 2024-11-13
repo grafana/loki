@@ -1216,7 +1216,7 @@ planner:
   # CLI flag: -bloom-build.planner.min-table-offset
   [min_table_offset: <int> | default = 0]
 
-  # Oldest day-table offset (from today, inclusive) to compact. 1 till
+  # Oldest day-table offset (from today, inclusive) to build blooms for. 1 till
   # yesterday, 2 till day before yesterday and so on. This can be used to lower
   # cost by not trying to compact older data which doesn't change. This can be
   # optimized by aligning it with the maximum `reject_old_samples_max_age`
