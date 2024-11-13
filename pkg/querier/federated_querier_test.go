@@ -45,7 +45,7 @@ func Test_FederatedQuerier(t *testing.T) {
 					}),
 				}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.SelectLogs(ctx, logql.SelectLogParams{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -78,7 +78,7 @@ func Test_FederatedQuerier(t *testing.T) {
 						Samples: []logproto.Sample{{Value: 2., Timestamp: 1}},
 					})})}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.SelectSample(ctx, logql.SelectSampleParams{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -102,7 +102,7 @@ func Test_FederatedQuerier(t *testing.T) {
 				mockQuerier1.On("Label", mock.Anything, mock.Anything).Return([][]string{{"test1"}}, nil)
 				mockQuerier2.On("Label", mock.Anything, mock.Anything).Return([][]string{{"test2"}}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.Label(ctx, &logproto.LabelRequest{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -125,7 +125,7 @@ func Test_FederatedQuerier(t *testing.T) {
 				mockQuerier2.On("Tail", mock.Anything, mock.Anything, mock.Anything).Return(
 					map[string]logproto.Querier_TailClient{"client2": tailClient}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.Tail(ctx, &logproto.TailRequest{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -143,7 +143,7 @@ func Test_FederatedQuerier(t *testing.T) {
 					{{Labels: logproto.MustNewSeriesEntries("a", "2", "b", "2")}},
 				}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.Series(ctx, &logproto.SeriesRequest{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -162,7 +162,7 @@ func Test_FederatedQuerier(t *testing.T) {
 				mockQuerier1.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return([]uint32{1}, nil)
 				mockQuerier2.On("TailersCount", mock.Anything, mock.Anything, mock.Anything).Return([]uint32{1}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.TailersCount(ctx)
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -176,7 +176,7 @@ func Test_FederatedQuerier(t *testing.T) {
 				mockQuerier2.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"chunkId2"}, nil)
 				mockQuerier1.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"chunkId1"}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.GetChunkIDs(ctx, model.Time(0), model.Time(0), &labels.Matcher{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -201,7 +201,7 @@ func Test_FederatedQuerier(t *testing.T) {
 						{Name: `{foo="bar"}`, Volume: 20},
 					}, Limit: 10}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.Volume(ctx, "test-user", model.Time(0), model.Time(0), 100, []string{"foo"}, "bar", &labels.Matcher{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -220,7 +220,7 @@ func Test_FederatedQuerier(t *testing.T) {
 					Labels: map[string]*logproto.UniqueLabelValues{"host": {Values: []string{"host1"}}},
 				}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.DetectedLabel(ctx, &logproto.DetectedLabelsRequest{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
@@ -236,7 +236,7 @@ func Test_FederatedQuerier(t *testing.T) {
 				mockQuerier2.On("Stats", mock.Anything, "test-user", mock.Anything, mock.Anything, mock.Anything).Return(
 					&stats.Stats{Chunks: 20}, nil)
 			},
-			fn: func(params ...interface{}) (interface{}, error) {
+			fn: func(_ ...interface{}) (interface{}, error) {
 				return fq.Stats(ctx, "test-user", model.Time(0), model.Time(0), &labels.Matcher{})
 			},
 			expect: func(t *testing.T, resp interface{}) {
