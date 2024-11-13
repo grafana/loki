@@ -66,10 +66,10 @@ func TestTSDBSeriesIter(t *testing.T) {
 	itr, err := NewTSDBSeriesIter(context.Background(), "", forSeriesTestImpl(input), v1.NewBounds(0, math.MaxUint64))
 	require.NoError(t, err)
 
-	v1.CompareIterators(
+	v1.EqualIterators(
 		t,
-		func(t *testing.T, a model.Fingerprint, b *v1.Series) {
-			require.Equal(t, a, b.Fingerprint)
+		func(a, b *v1.Series) {
+			require.Equal(t, a, b)
 		},
 		itr,
 		srcItr,

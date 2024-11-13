@@ -17,16 +17,15 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/queue"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
-	"github.com/grafana/loki/v3/pkg/queue"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
-	"github.com/grafana/loki/v3/pkg/util"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
@@ -50,10 +49,7 @@ type Planner struct {
 	tsdbStore  common.TSDBStore
 	bloomStore bloomshipper.StoreBase
 
-	tasksQueue  *queue.RequestQueue
-	activeUsers *util.ActiveUsersCleanupService
-
-	pendingTasks sync.Map
+	tasksQueue *queue.Queue
 
 	metrics *Metrics
 	logger  log.Logger
@@ -83,23 +79,21 @@ func New(
 
 	// Queue to manage tasks
 	queueMetrics := queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
-	tasksQueue := queue.NewRequestQueue(cfg.MaxQueuedTasksPerTenant, 0, NewQueueLimits(limits), queueMetrics)
-
-	// Clean metrics for inactive users: do not have added tasks to the queue in the last 1 hour
-	activeUsers := util.NewActiveUsersCleanupService(5*time.Minute, 1*time.Hour, func(user string) {
-		queueMetrics.Cleanup(user)
-	})
+	queueLimits := NewQueueLimits(limits)
+	tasksQueue, err := queue.NewQueue(logger, cfg.Queue, queueLimits, queueMetrics)
+	if err != nil {
+		return nil, fmt.Errorf("error creating tasks queue: %w", err)
+	}
 
 	p := &Planner{
-		cfg:         cfg,
-		limits:      limits,
-		schemaCfg:   schemaCfg,
-		tsdbStore:   tsdbStore,
-		bloomStore:  bloomStore,
-		tasksQueue:  tasksQueue,
-		activeUsers: activeUsers,
-		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
-		logger:      logger,
+		cfg:        cfg,
+		limits:     limits,
+		schemaCfg:  schemaCfg,
+		tsdbStore:  tsdbStore,
+		bloomStore: bloomStore,
+		tasksQueue: tasksQueue,
+		metrics:    NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
+		logger:     logger,
 	}
 
 	p.retentionManager = NewRetentionManager(
@@ -110,7 +104,7 @@ func New(
 		p.logger,
 	)
 
-	svcs := []services.Service{p.tasksQueue, p.activeUsers}
+	svcs := []services.Service{p.tasksQueue}
 
 	if rm != nil {
 		p.ringWatcher = common.NewRingWatcher(rm.RingLifecycler.GetInstanceID(), rm.Ring, time.Minute, logger)
@@ -204,7 +198,7 @@ func (p *Planner) trackInflightRequests(ctx context.Context) {
 			return
 
 		case <-inflightTasksTicker.C:
-			inflight := p.totalPendingTasks()
+			inflight := p.tasksQueue.TotalPending()
 			p.metrics.inflightRequests.Observe(float64(inflight))
 		}
 	}
@@ -227,10 +221,9 @@ func (p *Planner) runOne(ctx context.Context) error {
 	}
 
 	var (
-		wg        sync.WaitGroup
-		start     = time.Now()
-		status    = statusFailure
-		openTSDBs strategies.TSDBSet
+		wg     sync.WaitGroup
+		start  = time.Now()
+		status = statusFailure
 	)
 	defer func() {
 		p.metrics.buildCompleted.WithLabelValues(status).Inc()
@@ -238,15 +231,6 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 		if status == statusSuccess {
 			p.metrics.buildLastSuccess.SetToCurrentTime()
-		}
-
-		// Close all open TSDBs.
-		// These are used to get the chunkrefs for the series in the gaps.
-		// We populate the chunkrefs when we send the task to the builder.
-		for idx, reader := range openTSDBs {
-			if err := reader.Close(); err != nil {
-				level.Error(p.logger).Log("msg", "failed to close tsdb", "tsdb", idx.Name(), "err", err)
-			}
 		}
 	}()
 
@@ -285,19 +269,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 				table:  table,
 			}
 
-			tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to resolve tsdbs", "err", err)
-				continue
-			}
-
-			openTSDBs, err = openAllTSDBs(ctx, table, tenant, p.tsdbStore, tsdbs, openTSDBs)
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to open all tsdbs", "err", err)
-				continue
-			}
-
-			tasks, existingMetas, err := p.computeTasks(ctx, table, tenant, openTSDBs)
+			tasks, existingMetas, err := p.computeTasks(ctx, table, tenant)
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to compute tasks", "err", err)
 				continue
@@ -308,7 +280,7 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 			now := time.Now()
 			for _, task := range tasks {
-				queueTask := NewQueueTask(ctx, now, task, openTSDBs[task.TSDB], resultsCh)
+				queueTask := NewQueueTask(ctx, now, task, resultsCh)
 				if err := p.enqueueTask(queueTask); err != nil {
 					level.Error(logger).Log("msg", "error enqueuing task", "err", err)
 					continue
@@ -396,8 +368,7 @@ func (p *Planner) computeTasks(
 	ctx context.Context,
 	table config.DayTable,
 	tenant string,
-	tsdbs strategies.TSDBSet,
-) ([]*strategies.Task, []bloomshipper.Meta, error) {
+) ([]*protos.Task, []bloomshipper.Meta, error) {
 	strategy, err := strategies.NewStrategy(tenant, p.limits, p.logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating strategy: %w", err)
@@ -425,11 +396,29 @@ func (p *Planner) computeTasks(
 		return nil, nil, fmt.Errorf("failed to delete outdated metas during planning: %w", err)
 	}
 
+	// Resolve TSDBs
+	tsdbs, err := p.tsdbStore.ResolveTSDBs(ctx, table, tenant)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to resolve tsdbs: %w", err)
+	}
+
 	if len(tsdbs) == 0 {
 		return nil, metas, nil
 	}
 
-	tasks, err := strategy.Plan(ctx, table, tenant, tsdbs, metas)
+	openTSDBs, err := openAllTSDBs(ctx, table, tenant, p.tsdbStore, tsdbs)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open all tsdbs: %w", err)
+	}
+	defer func() {
+		for idx, reader := range openTSDBs {
+			if err := reader.Close(); err != nil {
+				level.Error(logger).Log("msg", "failed to close index", "err", err, "tsdb", idx.Name())
+			}
+		}
+	}()
+
+	tasks, err := strategy.Plan(ctx, table, tenant, openTSDBs, metas)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to plan tasks: %w", err)
 	}
@@ -511,26 +500,18 @@ func openAllTSDBs(
 	tenant string,
 	store common.TSDBStore,
 	tsdbs []tsdb.SingleTenantTSDBIdentifier,
-	alreadyOpen strategies.TSDBSet,
-) (strategies.TSDBSet, error) {
-	if len(alreadyOpen) == 0 {
-		alreadyOpen = make(strategies.TSDBSet, len(tsdbs))
-	}
-
+) (map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, error) {
+	openTSDBs := make(map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries, len(tsdbs))
 	for _, idx := range tsdbs {
-		if _, ok := alreadyOpen[idx]; ok {
-			continue
-		}
-
-		reader, err := store.LoadTSDB(ctx, table, tenant, idx)
+		tsdb, err := store.LoadTSDB(ctx, table, tenant, idx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load tsdb: %w", err)
 		}
 
-		alreadyOpen[idx] = reader
+		openTSDBs[idx] = tsdb
 	}
 
-	return alreadyOpen, nil
+	return openTSDBs, nil
 }
 
 // deleteOutdatedMetasAndBlocks filters out the outdated metas from the `metas` argument and deletes them from the store.
@@ -721,27 +702,9 @@ func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.Sli
 	return iter.NewSliceIter(tenants), nil
 }
 
-func (p *Planner) addPendingTask(task *QueueTask) {
-	p.pendingTasks.Store(task.ID, task)
-}
-
-func (p *Planner) removePendingTask(task *QueueTask) {
-	p.pendingTasks.Delete(task.ID)
-}
-
-func (p *Planner) totalPendingTasks() (total int) {
-	p.pendingTasks.Range(func(_, _ interface{}) bool {
-		total++
-		return true
-	})
-	return total
-}
-
 func (p *Planner) enqueueTask(task *QueueTask) error {
-	p.activeUsers.UpdateUserTimestamp(task.Tenant, time.Now())
-	return p.tasksQueue.Enqueue(task.Tenant, nil, task, func() {
+	return p.tasksQueue.Enqueue(task.Tenant(), task, func() {
 		task.timesEnqueued.Add(1)
-		p.addPendingTask(task)
 	})
 }
 
@@ -786,11 +749,11 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		lastIndex = idx
 
 		if item == nil {
-
 			return fmt.Errorf("dequeue() call resulted in nil response. builder: %s", builderID)
 		}
+
 		task := item.(*QueueTask)
-		logger := log.With(logger, "task", task.ID)
+		logger := log.With(logger, "task", task.ID())
 
 		queueTime := time.Since(task.queueTime)
 		p.metrics.queueDuration.Observe(queueTime.Seconds())
@@ -798,15 +761,15 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		if task.ctx.Err() != nil {
 			level.Warn(logger).Log("msg", "task context done after dequeue", "err", task.ctx.Err())
 			lastIndex = lastIndex.ReuseLastIndex()
-			p.removePendingTask(task)
+			p.tasksQueue.Release(task)
 			continue
 		}
 
 		result, err := p.forwardTaskToBuilder(builder, builderID, task)
 		if err != nil {
-			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
+			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant())
 			if maxRetries > 0 && int(task.timesEnqueued.Load()) >= maxRetries {
-				p.removePendingTask(task)
+				p.tasksQueue.Release(task)
 				level.Error(logger).Log(
 					"msg", "task failed after max retries",
 					"retries", task.timesEnqueued.Load(),
@@ -814,7 +777,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 					"err", err,
 				)
 				task.resultsChannel <- &protos.TaskResult{
-					TaskID: task.ID,
+					TaskID: task.ID(),
 					Error:  fmt.Errorf("task failed after max retries (%d): %w", maxRetries, err),
 				}
 				continue
@@ -823,10 +786,10 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			// Re-queue the task if the builder is failing to process the tasks
 			if err := p.enqueueTask(task); err != nil {
 				p.metrics.taskLost.Inc()
-				p.removePendingTask(task)
+				p.tasksQueue.Release(task)
 				level.Error(logger).Log("msg", "error re-enqueuing task. this task will be lost", "err", err)
 				task.resultsChannel <- &protos.TaskResult{
-					TaskID: task.ID,
+					TaskID: task.ID(),
 					Error:  fmt.Errorf("error re-enqueuing task: %w", err),
 				}
 				continue
@@ -846,7 +809,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			"duration", time.Since(task.queueTime).Seconds(),
 			"retries", task.timesEnqueued.Load()-1, // -1 because the first enqueue is not a retry
 		)
-		p.removePendingTask(task)
+		p.tasksQueue.Release(task)
 
 		// Send the result back to the task. The channel is buffered, so this should not block.
 		task.resultsChannel <- result
@@ -860,13 +823,8 @@ func (p *Planner) forwardTaskToBuilder(
 	builderID string,
 	task *QueueTask,
 ) (*protos.TaskResult, error) {
-	protoTask, err := task.ToProtoTask(builder.Context())
-	if err != nil {
-		return nil, fmt.Errorf("error converting task to proto task: %w", err)
-	}
-
 	msg := &protos.PlannerToBuilder{
-		Task: protoTask,
+		Task: task.ToProtoTask(),
 	}
 
 	if err := builder.Send(msg); err != nil {
@@ -888,7 +846,7 @@ func (p *Planner) forwardTaskToBuilder(
 	}()
 
 	timeout := make(<-chan time.Time)
-	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant)
+	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant())
 	if taskTimeout != 0 {
 		// If the timeout is not 0 (disabled), configure it
 		timeout = time.After(taskTimeout)
@@ -928,8 +886,8 @@ func (p *Planner) receiveResultFromBuilder(
 	if err != nil {
 		return nil, fmt.Errorf("error processing task result in builder (%s): %w", builderID, err)
 	}
-	if result.TaskID != task.ID {
-		return nil, fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID)
+	if result.TaskID != task.ID() {
+		return nil, fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID())
 	}
 
 	return result, nil
