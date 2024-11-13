@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -231,4 +232,112 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 	}
 	// We expect to have processed all the records, including initial + one per iteration.
 	assert.Equal(t, iterations+1, recordsCount)
+}
+
+func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
+	kaf, kafkaCfg := testkafka.CreateCluster(t, 1, "test")
+	consumer := newMockConsumer()
+
+	kaf.CurrentNode()
+	consumerFactory := func(_ Committer) (Consumer, error) {
+		return consumer, nil
+	}
+
+	// Produce some records
+	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	stream := logproto.Stream{
+		Labels: labels.FromStrings("foo", "bar").String(),
+	}
+	for i := 0; i < 5; i++ {
+		stream.Entries = []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("test-%d", i)}}
+		records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+
+		producer.ProduceSync(context.Background(), records...)
+	}
+
+	// Set our offset part way through the records we just produced
+	offset := int64(1)
+	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	require.NoError(t, err)
+	admClient := kadm.NewClient(kafkaClient)
+	toCommit := kadm.Offsets{}
+	toCommit.AddOffset(kafkaCfg.Topic, 0, offset, -1)
+	resp, err := admClient.CommitOffsets(context.Background(), "test-consumer-group", toCommit)
+	require.NoError(t, err)
+	require.NoError(t, resp.Error())
+
+	// Start reading
+	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
+	require.NoError(t, err)
+
+	// Wait for records to be processed
+	require.Eventually(t, func() bool {
+		return len(consumer.recordsChan) == 1 // All pending messages will be received in one batch
+	}, 10*time.Second, 10*time.Millisecond)
+
+	// Check we only received records from the last commit onwards, and the last committed offset is not reprocessed.
+	receivedRecords := <-consumer.recordsChan
+	require.Len(t, receivedRecords, 3) // Offsets are 0 based, so we should read offsets 2,3,4
+	for _, record := range receivedRecords {
+		assert.NotContainsf(t, record.Content, "test-0", "record %q should not contain test-0", record.Content)
+		assert.NotContainsf(t, record.Content, "test-1", "record %q should not contain test-1", record.Content)
+	}
+
+	err = services.StopAndAwaitTerminated(context.Background(), partitionReader)
+	require.NoError(t, err)
+}
+
+func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
+	kaf, kafkaCfg := testkafka.CreateCluster(t, 1, "test")
+	consumer := newMockConsumer()
+
+	kaf.CurrentNode()
+	consumerFactory := func(_ Committer) (Consumer, error) {
+		return consumer, nil
+	}
+
+	// Produce some records
+	producer, err := client.NewWriterClient(kafkaCfg, 100, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	stream := logproto.Stream{
+		Labels: labels.FromStrings("foo", "bar").String(),
+	}
+	for i := 0; i < 5; i++ {
+		stream.Entries = []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("test-%d", i)}}
+		records, err := kafka.Encode(0, "test-tenant", stream, 10<<20)
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+
+		producer.ProduceSync(context.Background(), records...)
+	}
+
+	// Set our offset to the last record produced
+	offset := int64(4)
+	kafkaClient, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
+	require.NoError(t, err)
+	admClient := kadm.NewClient(kafkaClient)
+	toCommit := kadm.Offsets{}
+	toCommit.AddOffset(kafkaCfg.Topic, 0, offset, -1)
+	resp, err := admClient.CommitOffsets(context.Background(), "test-consumer-group", toCommit)
+	require.NoError(t, err)
+	require.NoError(t, resp.Error())
+
+	// Start reading
+	partitionReader, err := NewReader(kafkaCfg, 0, "test-consumer-group", consumerFactory, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = services.StartAndAwaitRunning(ctx, partitionReader)
+	require.NoError(t, err)
+
+	// Check we didn't receive any records: This is a sanity check. We shouldn't get this far if we deadlock during startup.
+	require.Len(t, consumer.recordsChan, 0)
+
+	err = services.StopAndAwaitTerminated(context.Background(), partitionReader)
+	require.NoError(t, err)
 }

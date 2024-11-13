@@ -10,6 +10,9 @@ jobs:
     with:
       org: redhat-openshift-ecosystem
       repo: community-operators-prod
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
 
   operator-hub-community-release:
     if: startsWith(github.event.release.tag_name, 'operator/')
@@ -17,3 +20,6 @@ jobs:
     with:
       org: k8s-operatorhub
       repo: community-operators
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

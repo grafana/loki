@@ -15,6 +15,7 @@ func NewBucketClient(ctx context.Context, cfg Config, name string, logger log.Lo
 	bucketConfig.Bucket = cfg.BucketName
 	bucketConfig.ServiceAccount = cfg.ServiceAccount.String()
 	bucketConfig.ChunkSizeBytes = cfg.ChunkBufferSize
+	bucketConfig.MaxRetries = cfg.MaxRetries
 	bucketConfig.HTTPConfig.Transport = cfg.Transport
 
 	return gcs.NewBucketWithConfig(ctx, logger, bucketConfig, name, nil)

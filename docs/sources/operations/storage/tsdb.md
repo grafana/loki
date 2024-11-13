@@ -69,7 +69,7 @@ querier:
 
 ### Limits
 
-We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `limits_config`. This functions the same as the prior `max_query_parallelism` configuration but applies to tsdb queries instead. Since the TSDB index will create many more smaller queries compared to the other index types before it, we've added a separate configuration so they can coexist. This is helpful when transitioning between index types. The default parallelism is `512` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
+We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `limits_config`. This functions the same as the prior `max_query_parallelism` configuration but applies to tsdb queries instead. Since the TSDB index will create many more smaller queries compared to the other index types before it, we've added a separate configuration so they can coexist. This is helpful when transitioning between index types. The default parallelism is `128` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
 
 ### Dynamic Query Sharding
 
