@@ -6,168 +6,129 @@ The organized chunk format (represented by the format version V5/ChunkFormatV5) 
 ## Block Structure Diagram
 
 ```
-┌─────────────────────────────────────────────┐
-│               Chunk Format V5               │
-├─────────────────────────────────────────────┤
-│ Magic Number (4 bytes)                      │
-│ Format Version (1 byte)                     │
-│ Encoding Type (1 byte)                      │
-├─────────────────────────────────────────────┤
-│                                             │
-│ Structured Metadata Section                 │
-│ ┌─────────────────────────────────────┐    │
-│ │ Length                              │    │
-│ │ Compressed Metadata Symbols         │    │
-│ │ Checksum                           │    │
-│ └─────────────────────────────────────┘    │
-│                                             │
-│ Log Lines Section                          │
-│ ┌─────────────────────────────────────┐    │
-│ │ Length                              │    │
-│ │ Compressed Log Lines                │    │
-│ │ Checksum                           │    │
-│ └─────────────────────────────────────┘    │
-│                                             │
-│ Timestamps Section                         │
-│ ┌─────────────────────────────────────┐    │
-│ │ Length                              │    │
-│ │ Compressed Timestamps               │    │
-│ │ Checksum                           │    │
-│ └─────────────────────────────────────┘    │
-│                                             │
-│ Block Metadata Section                      │
-│ ┌─────────────────────────────────────┐    │
-│ │ Number of Blocks                    │    │
-│ │ Block Entry Count                   │    │
-│ │ Min/Max Timestamps                  │    │
-│ │ Offsets & Sizes                    │    │
-│ │ Checksum                           │    │
-│ └─────────────────────────────────────┘    │
-│                                             │
-│ Section Offsets & Lengths                  │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│    Compresssed Block (for Chunk V5)     │
+├─────────────────────────────────────────┤
+│           Log Lines Section             │
+│ ┌─────────────────────────────────────┐ │
+│ │ Length                              │ │
+│ │ Compressed Log Lines                │ │
+│ │ Checksum                            │ │
+│ └─────────────────────────────────────┘ │
+│       Structured Metadata Section       │
+│ ┌─────────────────────────────────────┐ │
+│ │ Length                              │ │
+│ │ Compressed Metadata Symbols         │ │
+│ │ Checksum                            │ │
+│ └─────────────────────────────────────┘ │
+│        Timestamps Section               │
+│ ┌─────────────────────────────────────┐ │
+│ │ Length                              │ │
+│ │ Compressed Timestamps               │ │
+│ │ Checksum                            │ │
+│ └─────────────────────────────────────┘ │
+│                                         │
+│ Block Metadata Section                  │
+│ ┌─────────────────────────────────────┐ │
+│ │ Number of Blocks                    │ │
+│ │ Block Entry Count                   │ │
+│ │ Min/Max Timestamps                  │ │
+│ │ Offsets & Sizes                     │ │
+│ │ Checksum                            │ │
+│ └─────────────────────────────────────┘ │
+│                                         │
+│ Section Offsets & Lengths               │
+└─────────────────────────────────────────┘
 ```
 
 ## Section Details
 
-1. **Header**
-   - Magic Number (4 bytes): Identifies the chunk format
-   - Format Version (1 byte): Version 5 for organized format
-   - Encoding Type (1 byte): Compression type used
+1. **Log Lines Section**
+   - Contains the actual log message content
+   - Each entry prefixed with its length (varint encoded)
+   - Compressed using the configured compression algorithm
+   - Format: `len(line1) | line1 | len(line2) | line2 | ...`
 
 2. **Structured Metadata Section**
-   - Contains label key-value pairs for each log entry
-   - Compressed using the specified encoding
-   - Includes length and checksum
-   - Uses symbol table for efficient storage of repeated strings
+   - Stores label key-value pairs using a symbol table
+   - Each entry contains the count of symbol pairs followed by the pairs
+   - Symbol pairs are stored as integer references to the symbol table
+   - Format: `section_len | num_symbols | (symbol_ref_name, symbol_ref_value)*`
 
-3. **Log Lines Section**
-   - Contains the actual log message content
-   - Compressed independently
-   - Includes length and checksum
+3. **Timestamps Section**
+   - Contains entry timestamps in chronological order
+   - Timestamps are varint encoded
+   - Compressed independently of other sections
+   - Format: `timestamp1 | timestamp2 | ...`
 
-4. **Timestamps Section**
-   - Contains entry timestamps
-   - Compressed independently
-   - Includes length and checksum
+## Implementation Components
 
-5. **Block Metadata Section**
-   - Number of blocks in the chunk
-   - Entry counts per block
-   - Min/Max timestamps per block
-   - Offsets and sizes for each block
-   - Checksum for integrity verification
+### Key Structures
 
-6. **Section Offsets & Lengths**
-   - End of chunk contains offsets and lengths for each major section
-   - Enables quick navigation to specific sections
+```go
+type organisedHeadBlock struct {
+    unorderedHeadBlock
+}
+```
 
-## Query Plan
+Extends the unordered head block with organized storage capabilities.
 
-The organized format enables optimized query patterns:
+### Main Methods
 
-1. **Label Queries**
-   - Can decompress only the structured metadata section
+1. **Serialization Methods**
+```go
+// Serializes log lines section
+func (b *organisedHeadBlock) Serialise(pool compression.WriterPool) ([]byte, error)
+
+// Serializes structured metadata section
+func (b *organisedHeadBlock) serialiseStructuredMetadata(pool compression.WriterPool) ([]byte, error)
+
+// Serializes timestamps section
+func (b *organisedHeadBlock) serialiseTimestamps(pool compression.WriterPool) ([]byte, error)
+```
+
+2. **Iterator Implementation**
+```go
+type organizedBufferedIterator struct {
+    // Separate readers for each section
+    reader     io.Reader    // for log lines
+    smReader   io.Reader    // for structured metadata
+    tsReader   io.Reader    // for timestamps
+    // ... other fields
+}
+```
+
+## Query Plan Considerations
+
+The organized format enables several potential query optimizations (to be implemented):
+
+1. **Label-Only Queries**
+   - Can read only the structured metadata section
    - Avoids decompressing log lines and timestamps
-   - Efficient for label-based filtering
 
-2. **Timestamp-Based Queries**
-   - Can read only timestamps section first
-   - Enables efficient time range filtering before accessing log content
-   - Reduces unnecessary decompression of log lines
+2. **Time-Range Queries**
+   - Can read only the timestamps section first
+   - Enables efficient time filtering before accessing log content
 
 3. **Content Queries**
-   - For full text search or parsing
-   - Decompresses log lines section
+   - Requires reading log lines section
    - Can correlate with timestamps and metadata as needed
 
-### Query Optimization Flow
+## Current Limitations
 
-```
-┌──────────────────┐
-│  Query Request   │
-└────────┬─────────┘
-         │
-         v
-┌──────────────────┐
-│  Analyze Query   │
-│    Components    │
-└────────┬─────────┘
-         │
-         v
-┌──────────────────┐   Yes   ┌─────────────────┐
-│ Label Filtering? ├────────>│ Read Metadata   │
-└────────┬─────────┘        └────────┬────────┘
-         │ No                        │
-         v                           v
-┌──────────────────┐         ┌─────────────────┐
-│  Time Filtering? │         │  Apply Label    │
-└────────┬─────────┘         │   Filters       │
-         │                   └────────┬────────┘
-         v                           │
-┌──────────────────┐                │
-│   Read Lines     │                │
-└────────┬─────────┘                │
-         │                          │
-         v                          v
-┌──────────────────────────────────────────┐
-│            Combine Results               │
-└──────────────────────────────────────────┘
-```
+1. Query optimizations are not yet implemented - this is just the format definition
+2. Performance characteristics need to be benchmarked
+3. The impact on memory usage during writes needs to be evaluated
+
+## Future Enhancements
+
+1. Implementation of selective section reading based on query type
+2. Addition of query optimization logic
+3. Performance benchmarking and tuning
+4. Potential addition of indexes within sections
 
 ## Implementation Notes
 
-The implementation is handled through several key components:
-
-1. **Block Organization**
-   - `organisedHeadBlock` struct manages the organization of data during writes
-   - Maintains separate buffers for lines, timestamps, and metadata
-
-2. **Iterator Implementation**
-   - `organizedBufferedIterator` provides efficient access to the organized format
-   - Can selectively decompress only needed sections
-   - Maintains separate readers for each section
-
-3. **Compression**
-   - Each section can be compressed independently
-   - Enables optimal compression for different types of data
-   - Supports various compression algorithms through the `compression.Codec` interface
-
-## Benefits
-
-1. **Reduced I/O**
-   - Selective decompression of only needed sections
-   - More efficient use of memory and CPU
-
-2. **Better Compression Ratios**
-   - Similar data types grouped together
-   - More effective compression within sections
-
-3. **Query Flexibility**
-   - Optimized access patterns for different query types
-   - Better performance for label and time-based queries
-
-4. **Maintainability**
-   - Clear separation of concerns
-   - Easier to extend and modify individual sections
-
+- The format maintains backwards compatibility with existing unordered head blocks
+- Each section is independently compressed, allowing for section-specific optimization
+- The symbol table approach in structured metadata reduces memory usage for repeated labels
