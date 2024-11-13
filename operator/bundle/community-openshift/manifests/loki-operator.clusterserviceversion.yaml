@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:0.7.0
-    createdAt: "2024-11-07T12:42:51Z"
+    containerImage: docker.io/grafana/loki-operator:0.7.1
+    createdAt: "2024-11-08T17:18:30Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -159,7 +159,7 @@ metadata:
     features.operators.openshift.io/tls-profiles: "true"
     features.operators.openshift.io/token-auth-aws: "true"
     features.operators.openshift.io/token-auth-azure: "true"
-    features.operators.openshift.io/token-auth-gcp: "false"
+    features.operators.openshift.io/token-auth-gcp: "true"
     operators.operatorframework.io/builder: operator-sdk-unknown
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     repository: https://github.com/grafana/loki/tree/main/operator
@@ -167,7 +167,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.7.0
+  name: loki-operator.v0.7.1
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -1821,11 +1821,11 @@ spec:
         serviceAccountName: loki-operator-controller-manager
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.7.0
+          app.kubernetes.io/instance: loki-operator-v0.7.1
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.7.0
+          app.kubernetes.io/version: 0.7.1
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1859,7 +1859,7 @@ spec:
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: docker.io/grafana/loki-operator:0.7.0
+                image: docker.io/grafana/loki-operator:0.7.1
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1990,8 +1990,8 @@ spec:
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  replaces: loki-operator.v0.6.2
-  version: 0.7.0
+  replaces: loki-operator.v0.7.0
+  version: 0.7.1
   webhookdefinitions:
   - admissionReviewVersions:
     - v1

@@ -4,13 +4,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
+	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
@@ -135,7 +139,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: plannertest.TsdbID(0),
-					gaps: []Gap{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
 							Series: plannertest.GenSeries(v1.NewBounds(0, 10)),
@@ -154,7 +158,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: plannertest.TsdbID(0),
-					gaps: []Gap{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
 							Series: plannertest.GenSeries(v1.NewBounds(0, 10)),
@@ -178,7 +182,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: plannertest.TsdbID(0),
-					gaps: []Gap{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 8),
 							Series: plannertest.GenSeries(v1.NewBounds(0, 8)),
@@ -198,7 +202,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: plannertest.TsdbID(0),
-					gaps: []Gap{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 8),
 							Series: plannertest.GenSeries(v1.NewBounds(0, 8)),
@@ -225,7 +229,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: plannertest.TsdbID(0),
-					gaps: []Gap{
+					gaps: []protos.Gap{
 						// tsdb (id=0) can source chunks from the blocks built from tsdb (id=1)
 						{
 							Bounds: v1.NewBounds(3, 5),
@@ -242,7 +246,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 				// tsdb (id=1) can source chunks from the blocks built from tsdb (id=0)
 				{
 					tsdb: plannertest.TsdbID(1),
-					gaps: []Gap{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 2),
 							Series: plannertest.GenSeries(v1.NewBounds(0, 2)),
@@ -277,7 +281,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			exp: []blockPlan{
 				{
 					tsdb: plannertest.TsdbID(0),
-					gaps: []Gap{
+					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
 							Series: plannertest.GenSeries(v1.NewBounds(0, 10)),
@@ -296,7 +300,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			// We add series spanning the whole FP ownership range
 			tsdbs := make(map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries)
 			for _, id := range tc.tsdbs {
-				tsdbs[id] = plannertest.NewFakeForSeries(plannertest.GenV1Series(tc.ownershipRange))
+				tsdbs[id] = newFakeForSeries(plannertest.GenSeries(tc.ownershipRange))
 			}
 
 			// we reuse the gapsBetweenTSDBsAndMetas function to generate the gaps as this function is tested
@@ -317,4 +321,44 @@ func Test_blockPlansForGaps(t *testing.T) {
 			require.ElementsMatch(t, tc.exp, plans)
 		})
 	}
+}
+
+type fakeForSeries struct {
+	series []*v1.Series
+}
+
+func newFakeForSeries(series []*v1.Series) *fakeForSeries {
+	return &fakeForSeries{
+		series: series,
+	}
+}
+
+func (f fakeForSeries) ForSeries(_ context.Context, _ string, ff index.FingerprintFilter, _ model.Time, _ model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
+	overlapping := make([]*v1.Series, 0, len(f.series))
+	for _, s := range f.series {
+		if ff.Match(s.Fingerprint) {
+			overlapping = append(overlapping, s)
+		}
+	}
+
+	for _, s := range overlapping {
+		chunks := make([]index.ChunkMeta, 0, len(s.Chunks))
+		for _, c := range s.Chunks {
+			chunks = append(chunks, index.ChunkMeta{
+				MinTime:  int64(c.From),
+				MaxTime:  int64(c.Through),
+				Checksum: c.Checksum,
+				KB:       100,
+			})
+		}
+
+		if fn(labels.EmptyLabels(), s.Fingerprint, chunks) {
+			break
+		}
+	}
+	return nil
+}
+
+func (f fakeForSeries) Close() error {
+	return nil
 }

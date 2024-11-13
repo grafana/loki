@@ -840,27 +840,35 @@ kafka_config:
 
 The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `common`
-- `ruler`
+- `common.storage`
+- `ruler.storage`
 
 &nbsp;
 
 ```yaml
 # Name of OSS bucket.
-# CLI flag: -<prefix>.storage.oss.bucketname
+# CLI flag: -<prefix>.oss.bucketname
 [bucket: <string> | default = ""]
 
 # oss Endpoint to connect to.
-# CLI flag: -<prefix>.storage.oss.endpoint
+# CLI flag: -<prefix>.oss.endpoint
 [endpoint: <string> | default = ""]
 
 # alibabacloud Access Key ID
-# CLI flag: -<prefix>.storage.oss.access-key-id
+# CLI flag: -<prefix>.oss.access-key-id
 [access_key_id: <string> | default = ""]
 
 # alibabacloud Secret Access Key
-# CLI flag: -<prefix>.storage.oss.secret-access-key
+# CLI flag: -<prefix>.oss.secret-access-key
 [secret_access_key: <string> | default = ""]
+
+# Connection timeout in seconds
+# CLI flag: -<prefix>.oss.conn-timeout-sec
+[conn_timeout_sec: <int> | default = 30]
+
+# Read/Write timeout in seconds
+# CLI flag: -<prefix>.oss.read-write-timeout-sec
+[read_write_timeout_sec: <int> | default = 60]
 ```
 
 ### analytics
@@ -1201,28 +1209,42 @@ planner:
   # CLI flag: -bloom-build.planner.interval
   [planning_interval: <duration> | default = 8h]
 
-  # Newest day-table offset (from today, inclusive) to build blooms for.
-  # Increase to lower cost by not re-writing data to object storage too
-  # frequently since recent data changes more often at the cost of not having
-  # blooms available as quickly.
+  # Newest day-table offset (from today, inclusive) to build blooms for. 0 start
+  # building from today, 1 from yesterday and so on. Increase to lower cost by
+  # not re-writing data to object storage too frequently since recent data
+  # changes more often at the cost of not having blooms available as quickly.
   # CLI flag: -bloom-build.planner.min-table-offset
-  [min_table_offset: <int> | default = 1]
+  [min_table_offset: <int> | default = 0]
 
-  # Oldest day-table offset (from today, inclusive) to compact. This can be used
-  # to lower cost by not trying to compact older data which doesn't change. This
+  # Oldest day-table offset (from today, inclusive) to build blooms for. 1 till
+  # yesterday, 2 till day before yesterday and so on. This can be used to lower
+  # cost by not trying to build blooms for older data which doesn't change. This
   # can be optimized by aligning it with the maximum
   # `reject_old_samples_max_age` setting of any tenant.
   # CLI flag: -bloom-build.planner.max-table-offset
-  [max_table_offset: <int> | default = 2]
-
-  # Maximum number of tasks to queue per tenant.
-  # CLI flag: -bloom-build.planner.max-tasks-per-tenant
-  [max_queued_tasks_per_tenant: <int> | default = 30000]
+  [max_table_offset: <int> | default = 1]
 
   retention:
     # Enable bloom retention.
     # CLI flag: -bloom-build.planner.retention.enabled
     [enabled: <boolean> | default = false]
+
+  queue:
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.queue.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
+
+    # Whether to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.store-tasks-on-disk
+    [store_tasks_on_disk: <boolean> | default = false]
+
+    # Directory to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.tasks-disk-directory
+    [tasks_disk_directory: <string> | default = "/tmp/bloom-planner-queue"]
+
+    # Whether to clean the tasks directory on startup.
+    # CLI flag: -bloom-build.planner.queue.clean-tasks-directory
+    [clean_tasks_directory: <boolean> | default = false]
 
 builder:
   # The grpc_client block configures the gRPC client used to communicate between
@@ -1620,6 +1642,8 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 Common configuration to be shared between multiple modules. If a more specific configuration is given in other sections, the related configuration within this section will be ignored.
 
 ```yaml
+# prefix for the path
+# CLI flag: -common.path-prefix
 [path_prefix: <string> | default = ""]
 
 storage:
@@ -1640,6 +1664,7 @@ storage:
 
   # The alibabacloud_storage_config block configures the connection to Alibaba
   # Cloud Storage object storage backend.
+  # The CLI flags prefix for this block configuration is: common.storage
   [alibabacloud: <alibabacloud_storage_config>]
 
   # The bos_storage_config block configures the connection to Baidu Object
@@ -4540,7 +4565,7 @@ storage:
   [azure: <azure_storage_config>]
 
   # Configures backend rule storage for AlibabaCloud Object Storage (OSS).
-  # The CLI flags prefix for this block configuration is: ruler
+  # The CLI flags prefix for this block configuration is: ruler.storage
   [alibabacloud: <alibabacloud_storage_config>]
 
   # Configures backend rule storage for GCS.
@@ -5347,7 +5372,6 @@ The `storage_config` block configures one of many possible stores for both the i
 ```yaml
 # The alibabacloud_storage_config block configures the connection to Alibaba
 # Cloud Storage object storage backend.
-# The CLI flags prefix for this block configuration is: common
 [alibabacloud: <alibabacloud_storage_config>]
 
 # The aws_storage_config block configures the connection to dynamoDB and S3

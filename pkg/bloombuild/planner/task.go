@@ -6,17 +6,10 @@ import (
 
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/bloombuild/common"
-	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
-type QueueTask struct {
-	*strategies.Task
-
-	// We use forSeries in ToProtoTask to get the chunks for the series in the gaps.
-	forSeries common.ForSeries
-
+type TaskMeta struct {
 	resultsChannel chan *protos.TaskResult
 
 	// Tracking
@@ -25,24 +18,23 @@ type QueueTask struct {
 	ctx           context.Context
 }
 
+type QueueTask struct {
+	*protos.ProtoTask
+	*TaskMeta
+}
+
 func NewQueueTask(
 	ctx context.Context,
 	queueTime time.Time,
-	task *strategies.Task,
-	forSeries common.ForSeries,
+	task *protos.ProtoTask,
 	resultsChannel chan *protos.TaskResult,
 ) *QueueTask {
 	return &QueueTask{
-		Task:           task,
-		resultsChannel: resultsChannel,
-		ctx:            ctx,
-		queueTime:      queueTime,
-		forSeries:      forSeries,
+		ProtoTask: task,
+		TaskMeta: &TaskMeta{
+			resultsChannel: resultsChannel,
+			ctx:            ctx,
+			queueTime:      queueTime,
+		},
 	}
-}
-
-// ToProtoTask converts a Task to a ProtoTask.
-// It will use the opened TSDB to get the chunks for the series in the gaps.
-func (t *QueueTask) ToProtoTask(ctx context.Context) (*protos.ProtoTask, error) {
-	return t.Task.ToProtoTask(ctx, t.forSeries)
 }
