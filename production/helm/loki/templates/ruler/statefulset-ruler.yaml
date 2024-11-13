@@ -62,9 +62,8 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=ruler
-            {{- with .Values.ruler.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.ruler.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: 3100
@@ -75,14 +74,12 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.ruler.extraEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.ruler.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.ruler.extraEnv }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.ruler.extraEnvFrom }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:

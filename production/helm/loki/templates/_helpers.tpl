@@ -47,6 +47,134 @@ Params:
 {{- end -}}
 
 {{/*
+loki.componentSectionFromName returns the sections from the user .Values in YAML
+that corresponds to the requested component. loki.componentSectionFromName takes two arguments
+  .ctx = the root context of the chart
+  .component = the name of the component. loki.componentSectionFromName uses an internal mapping to know
+                which component lives where in the values.yaml
+Examples:
+  $componentSection := include "loki.componentSectionFromName" (dict "ctx" . "component" "ingester") | fromYaml
+  $componentSection.podLabels ...
+*/}}
+{{- define "loki.componentSectionFromName" -}}
+{{- $componentsMap := dict
+  "admin-api" "adminApi"
+  "backend" "backend"
+  "bloom-compactor" "bloomCompactor"
+  "bloom-gateway" "bloomGateway"
+  "chunks-cache" "chunksCache"
+  "compactor" "compactor"
+  "distributor" "distributor"
+  "gateway" "gateway"
+  "index-gateway" "indexGateway"
+  "ingester" "ingester"
+  "memcached" "memcached"
+  "pattern-ingester" "patternIngester"
+  "querier" "querier"
+  "query-frontend" "queryFrontend"
+  "query-scheduler" "queryScheduler"
+  "read" "read"
+  "results-cache" "resultsCache"
+  "ruler" "ruler"
+  "single-binary" "singleBinary"
+  "write" "write"
+-}}
+{{- $componentSection := index $componentsMap .component -}}
+{{- if not $componentSection -}}{{- printf "No component section mapping for %s not found in values; submit a bug report if you are a user, edit loki.componentSectionFromName if you are a contributor" .component | fail -}}{{- end -}}
+{{- $section := .ctx.Values -}}
+{{- range regexSplit "\\." $componentSection -1 -}}
+  {{- $section = index $section . -}}
+  {{- if not $section -}}{{- printf "Component section %s not found in values; values: %s" . ($.ctx.Values | toJson | abbrev 100) | fail -}}{{- end -}}
+{{- end -}}
+{{- $section | toYaml -}}
+{{- end -}}
+
+{{/*
+Creates dict for zone-aware replication configuration
+Params:
+  ctx = . context
+  component = component name
+Return value:
+  {
+    zoneName: {
+      affinity: <affinity>,
+      nodeSelector: <nodeSelector>,
+      replicas: <N>,
+      storageClass: <S>
+    },
+    ...
+  }
+During migration there is a special case where an extra "zone" is generated with zonaName == "" empty string.
+The empty string evaluates to false in boolean expressions so it is treated as the default (non zone-aware) zone,
+which allows us to keep generating everything for the default zone.
+*/}}
+{{- define "loki.zoneAwareReplicationMap" -}}
+{{- $zonesMap := (dict) -}}
+{{- $componentSection := include "loki.componentSectionFromName" . | fromYaml -}}
+{{- $defaultZone := (dict "affinity" $componentSection.affinity "nodeSelector" $componentSection.nodeSelector "replicas" $componentSection.replicas "storageClass" $componentSection.storageClass) -}}
+
+{{- if $componentSection.zoneAwareReplication.enabled -}}
+{{- $numberOfZones := len $componentSection.zoneAwareReplication.zones -}}
+{{- if lt $numberOfZones 3 -}}
+{{- fail "When zone-awareness is enabled, you must have at least 3 zones defined." -}}
+{{- end -}}
+
+{{- $requestedReplicas := $componentSection.replicas -}}
+{{- if and (has .component (list "ingester" )) $componentSection.zoneAwareReplication.migration.enabled (not $componentSection.zoneAwareReplication.migration.writePath) -}}
+{{- $requestedReplicas = $componentSection.zoneAwareReplication.migration.replicas }}
+{{- end -}}
+{{- $replicaPerZone := div (add $requestedReplicas $numberOfZones -1) $numberOfZones -}}
+
+{{- range $idx, $rolloutZone := $componentSection.zoneAwareReplication.zones -}}
+{{- $_ := set $zonesMap $rolloutZone.name (dict
+  "affinity" (($rolloutZone.extraAffinity | default (dict)) | mergeOverwrite (include "loki.zoneAntiAffinity" (dict "component" $.component "rolloutZoneName" $rolloutZone.name "topologyKey" $componentSection.zoneAwareReplication.topologyKey ) | fromYaml ) )
+  "nodeSelector" ($rolloutZone.nodeSelector | default (dict) )
+  "replicas" $replicaPerZone
+  "storageClass" $rolloutZone.storageClass
+  ) -}}
+{{- end -}}
+{{- if $componentSection.zoneAwareReplication.migration.enabled -}}
+{{- if $componentSection.zoneAwareReplication.migration.scaleDownDefaultZone -}}
+{{- $_ := set $defaultZone "replicas" 0 -}}
+{{- end -}}
+{{- $_ := set $zonesMap "" $defaultZone -}}
+{{- end -}}
+
+{{- else -}}
+{{- $_ := set $zonesMap "" $defaultZone -}}
+{{- end -}}
+{{- $zonesMap | toYaml }}
+
+{{- end -}}
+
+{{/*
+Calculate anti-affinity for a zone
+Params:
+  component = component name
+  rolloutZoneName = name of the rollout zone
+  topologyKey = topology key
+*/}}
+{{- define "loki.zoneAntiAffinity" -}}
+{{- if .topologyKey -}}
+podAntiAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+          - key: rollout-group
+            operator: In
+            values:
+              - {{ .component }}
+          - key: zone
+            operator: NotIn
+            values:
+              - {{ .rolloutZoneName }}
+      topologyKey: {{ .topologyKey | quote }}
+{{- else -}}
+{}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return if deployment mode is simple scalable
 */}}
 {{- define "loki.deployment.isScalable" -}}
@@ -1120,4 +1248,34 @@ Return the appropriate apiVersion for HorizontalPodAutoscaler.
   {{- else -}}
     {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
+{{- end -}}
+
+{{/*
+Return the templated list for extraEnv and extraEnvFrom
+Params:
+  . = extraEnv/extraEnvFrom list
+*/}}
+{{- define "loki.templateEnv" -}}
+{{- $extraEnv := . }}
+{{- with $extraEnv }}
+{{- toYaml . | nindent 12 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Return the templated dict/list for extraArgs
+Params:
+  . = extraArgs dict/list
+*/}}
+{{- define "loki.templateArgs" -}}
+{{- $extraArgs := . }}
+{{- if and $extraArgs (kindIs "slice" $extraArgs) }}
+  {{- with $extraArgs }}
+  {{- toYaml . | nindent 12 }}
+  {{- end }}
+{{- else if and $extraArgs (kindIs "map" $extraArgs) -}}
+  {{- range $key, $value := $extraArgs }}
+  - "-{{ $key }}={{ $value }}"
+  {{- end -}}
+{{- end -}}
 {{- end -}}

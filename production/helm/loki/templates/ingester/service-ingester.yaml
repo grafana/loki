@@ -1,9 +1,12 @@
-{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed (or (not .Values.ingester.zoneAwareReplication.enabled) .Values.ingester.zoneAwareReplication.migration.enabled) }}
+{{- $args := dict "ctx" . "component" "ingester" "memberlist" true -}}
+{{- $zonesMap := include "loki.zoneAwareReplicationMap" $args | fromYaml -}}
+{{- range $zoneName, $rolloutZone := $zonesMap }}
+{{- with $ -}}
+{{- $_ := set $args "rolloutZoneName" $zoneName -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.ingesterFullname" . }}
+  name: {{ include "loki.resourceName" $args }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
@@ -33,4 +36,7 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
-{{- end -}}
+    name: {{ include "loki.resourceName" $args }}
+---
+{{ end }}
+{{ end }}

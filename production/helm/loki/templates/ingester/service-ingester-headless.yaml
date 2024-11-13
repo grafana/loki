@@ -1,9 +1,7 @@
-{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed (or (not .Values.ingester.zoneAwareReplication.enabled) .Values.ingester.zoneAwareReplication.migration.enabled) }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.ingesterFullname" . }}-headless
+  name: {{ include "loki.resourceName" (dict "ctx" . "component" "ingester") }}-headless
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
@@ -31,5 +29,4 @@ spec:
       appProtocol: {{ .Values.ingester.appProtocol.grpc }}
       {{- end }}
   selector:
-    {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
-{{- end -}}
+    {{- include "loki.ingesterSelectorLabels" .  | nindent 4 }}
