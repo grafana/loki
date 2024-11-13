@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -48,6 +49,7 @@ type Config struct {
 	parsedEncoding    compression.Codec `yaml:"-"` // placeholder for validated encoding
 	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
 	Interval          time.Duration     `yaml:"interval"`
+	Backoff           backoff.Config    `yaml:"backoff_config"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -60,6 +62,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ChunkEncoding, prefix+"chunk-encoding", compression.Snappy.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.Interval, prefix+"interval", 10*time.Minute, "The interval at which to run.")
+	cfg.Backoff.RegisterFlagsWithPrefix(prefix+"backoff.", f)
 }
 
 // RegisterFlags registers flags.
@@ -274,7 +277,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 					}
 					if _, err := withBackoff(
 						ctx,
-						defaultBackoffConfig, // retry forever
+						i.cfg.Backoff, // retry forever
 						func() (res struct{}, err error) {
 							err = i.store.PutOne(ctx, chk.From, chk.Through, *chk)
 							if err != nil {

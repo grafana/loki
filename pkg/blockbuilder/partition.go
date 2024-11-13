@@ -26,17 +26,12 @@ const (
 	kafkaEndOffset   = -1
 )
 
-var defaultBackoffConfig = backoff.Config{
-	MinBackoff: 100 * time.Millisecond,
-	MaxBackoff: time.Second,
-	MaxRetries: 0, // Retry forever (unless context is canceled / deadline exceeded).
-}
-
 type partitionReader struct {
 	topic       string
 	group       string
 	partitionID int32
 	decoder     *kafka.Decoder
+	backoff     backoff.Config
 
 	readerMetrics *partition.ReaderMetrics
 	writerMetrics *partition.CommitterMetrics
@@ -47,6 +42,7 @@ type partitionReader struct {
 
 func NewPartitionReader(
 	kafkaCfg kafka.Config,
+	backoff backoff.Config,
 	partitionID int32,
 	instanceID string,
 	logger log.Logger,
@@ -72,6 +68,7 @@ func NewPartitionReader(
 		topic:         kafkaCfg.Topic,
 		group:         group,
 		partitionID:   partitionID,
+		backoff:       backoff,
 		readerMetrics: readerMetrics,
 		writerMetrics: writerMetrics,
 		logger:        logger,
@@ -209,7 +206,7 @@ func (r *partitionReader) updateReaderOffset(offset int64) {
 func (r *partitionReader) HighestCommittedOffset(ctx context.Context) (int64, error) {
 	return withBackoff(
 		ctx,
-		defaultBackoffConfig,
+		r.backoff,
 		func() (int64, error) {
 			return r.fetchLastCommittedOffset(ctx), nil
 		},
@@ -219,7 +216,7 @@ func (r *partitionReader) HighestCommittedOffset(ctx context.Context) (int64, er
 func (r *partitionReader) HighestPartitionOffset(ctx context.Context) (int64, error) {
 	return withBackoff(
 		ctx,
-		defaultBackoffConfig,
+		r.backoff,
 		func() (int64, error) {
 			return r.fetchPartitionOffset(ctx, kafkaEndOffset)
 		},
@@ -310,7 +307,7 @@ func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<
 
 	var (
 		lastOffset = offsets.Min - 1
-		boff       = backoff.New(ctx, defaultBackoffConfig)
+		boff       = backoff.New(ctx, r.backoff)
 		err        error
 	)
 
