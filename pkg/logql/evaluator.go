@@ -328,8 +328,16 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+			evalMode := ModeDefault
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
+
+			if rangExpr.Operation == syntax.OpRangeTypeCount {
+				// if the expr is sum by() count_over_time(), the evaluator doesn't need to read log lines.
+				// this operation can be later removed to suit other range exprs that don't need to read log lines
+				// after getting confidence in the implementation. This is only enabled for Chunk V5 at the moment.
+				evalMode = ModeMetricsOnly
+			}
 			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
@@ -345,7 +353,7 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 						},
 						StoreChunks: q.GetStoreChunks(),
 					},
-					ModeMetricsOnly,
+					EvaluatorMode(evalMode),
 				})
 				if err != nil {
 					return nil, err

@@ -228,10 +228,7 @@ func canSkipLogLines(expr syntax.SampleExpr) bool {
 
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
 	var err error
-	expr, err := params.Expr()
-	if canSkipLogLines(expr) {
-		params.EvaluatorMode = logql.ModeMetricsOnly
-	}
+
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
 		return nil, err
