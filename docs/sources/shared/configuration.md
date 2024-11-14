@@ -1287,6 +1287,18 @@ planner:
     # CLI flag: -bloom-build.planner.queue.max-tasks-per-tenant
     [max_queued_tasks_per_tenant: <int> | default = 30000]
 
+    # Whether to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.store-tasks-on-disk
+    [store_tasks_on_disk: <boolean> | default = false]
+
+    # Directory to store tasks on disk.
+    # CLI flag: -bloom-build.planner.queue.tasks-disk-directory
+    [tasks_disk_directory: <string> | default = "/tmp/bloom-planner-queue"]
+
+    # Whether to clean the tasks directory on startup.
+    # CLI flag: -bloom-build.planner.queue.clean-tasks-directory
+    [clean_tasks_directory: <boolean> | default = false]
+
 builder:
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
