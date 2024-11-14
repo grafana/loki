@@ -150,7 +150,12 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			_, err := i.runOne(ctx)
+			skipped, err := i.runOne(ctx)
+			level.Info(i.logger).Log(
+				"msg", "completed block builder run", "skipped",
+				"skipped", skipped,
+				"err", err,
+			)
 			if err != nil {
 				return err
 			}
@@ -171,13 +176,20 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		return true, nil
 	}
 
+	logger := log.With(
+		i.logger,
+		"partition", job.Partition,
+		"job_min_offset", job.Offsets.Min,
+		"job_max_offset", job.Offsets.Max,
+	)
+
 	indexer := newTsdbCreator()
 	appender := newAppender(i.id,
 		i.cfg,
 		i.periodicConfigs,
 		i.store,
 		i.objStore,
-		i.logger,
+		logger,
 		i.metrics,
 	)
 
@@ -195,7 +207,11 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 			lastOffset, err = i.jobController.part.Process(ctx, job.Offsets, inputCh)
 			return err
 		},
-		func(_ context.Context) error {
+		func(ctx context.Context) error {
+			level.Debug(logger).Log(
+				"msg", "finished loading records",
+				"ctx_error", ctx.Err(),
+			)
 			close(inputCh)
 			return nil
 		},
@@ -224,7 +240,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 					for _, input := range inputs {
 						cut, err := appender.Append(ctx, input)
 						if err != nil {
-							level.Error(i.logger).Log("msg", "failed to append records", "err", err)
+							level.Error(logger).Log("msg", "failed to append records", "err", err)
 							return err
 						}
 
@@ -239,7 +255,14 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 				}
 			}
 		},
-		func(ctx context.Context) error {
+		func(ctx context.Context) (err error) {
+			defer func() {
+				level.Debug(logger).Log(
+					"msg", "finished appender",
+					"err", err,
+					"ctx_error", ctx.Err(),
+				)
+			}()
 			defer close(flush)
 
 			// once we're done appending, cut all remaining chunks.
@@ -306,6 +329,10 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 	)
 
 	err = p.Run()
+	level.Debug(logger).Log(
+		"msg", "finished chunk creation",
+		"err", err,
+	)
 	if err != nil {
 		return false, err
 	}
@@ -330,11 +357,27 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 
 			return false, err
 		}
+
+		level.Debug(logger).Log(
+			"msg", "uploaded tsdb",
+			"name", db.id.Name(),
+		)
 	}
 
 	if err = i.jobController.part.Commit(ctx, lastOffset); err != nil {
+		level.Error(logger).Log(
+			"msg", "failed to commit offset",
+			"last_offset", lastOffset,
+			"err", err,
+		)
 		return false, err
 	}
+
+	// log success
+	level.Info(logger).Log(
+		"msg", "successfully processed and committed batch",
+		"last_offset", lastOffset,
+	)
 
 	return false, nil
 }

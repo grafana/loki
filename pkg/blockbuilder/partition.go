@@ -52,6 +52,7 @@ func NewPartitionReader(
 	writerMetrics := partition.NewCommitterMetrics(r, partitionID)
 	group := kafkaCfg.GetConsumerGroup(instanceID, partitionID)
 
+	logger = log.With(logger, "component", "partition_reader")
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		return nil, err
@@ -110,6 +111,14 @@ func (r *partitionReader) fetchPartitionOffset(ctx context.Context, position int
 
 	// Ensure no error occurred.
 	res := resps[0]
+
+	level.Debug(r.logger).Log(
+		"msg", "fetched partition offset",
+		"partition", r.partitionID,
+		"position", position,
+		"topic", r.topic,
+		"err", res.Err,
+	)
 	if res.Err != nil {
 		return 0, res.Err
 	}
@@ -194,7 +203,18 @@ func (r *partitionReader) fetchLastCommittedOffset(ctx context.Context) int64 {
 		return kafkaStartOffset
 	}
 
-	return fetchRes.Groups[0].Topics[0].Partitions[0].Offset
+	position := fetchRes.Groups[0].Topics[0].Partitions[0].Offset
+
+	level.Debug(r.logger).Log(
+		"msg", "fetched last committed offset",
+		"partition", r.partitionID,
+		"position", position,
+		"topic", r.topic,
+		"group", r.group,
+		"err", res.Err,
+	)
+
+	return position
 }
 
 func (r *partitionReader) updateReaderOffset(offset int64) {
@@ -313,6 +333,12 @@ func (r *partitionReader) Process(ctx context.Context, offsets Offsets, ch chan<
 
 	for boff.Ongoing() {
 		fetches, done := r.poll(ctx, offsets.Max)
+		level.Debug(r.logger).Log(
+			"msg", "polling kafka",
+			"records", len(fetches),
+			"done", done,
+			"max_offset", offsets.Max,
+		)
 		if len(fetches) > 0 {
 			lastOffset = fetches[len(fetches)-1].Offset
 			converted := make([]AppendInput, 0, len(fetches))
