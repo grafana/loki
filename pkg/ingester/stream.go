@@ -649,10 +649,6 @@ func (s *stream) addTailer(t *tailer) {
 	s.tailers[t.getID()] = t
 }
 
-func (s *stream) resetCounter() {
-	s.entryCt = 0
-}
-
 func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
 	if unorderedWrites {
 		if chunkfmt >= chunkenc.ChunkFormatV3 {

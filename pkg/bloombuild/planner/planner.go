@@ -80,7 +80,7 @@ func New(
 	// Queue to manage tasks
 	queueMetrics := queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
 	queueLimits := NewQueueLimits(limits)
-	tasksQueue, err := queue.NewQueue(logger, cfg.Queue, queueLimits, queueMetrics)
+	tasksQueue, err := queue.NewQueue(logger, cfg.Queue, queueLimits, queueMetrics, storageMetrics)
 	if err != nil {
 		return nil, fmt.Errorf("error creating tasks queue: %w", err)
 	}
@@ -280,7 +280,8 @@ func (p *Planner) runOne(ctx context.Context) error {
 
 			now := time.Now()
 			for _, task := range tasks {
-				queueTask := NewQueueTask(ctx, now, task, resultsCh)
+				protoTask := task.ToProtoTask()
+				queueTask := NewQueueTask(ctx, now, protoTask, resultsCh)
 				if err := p.enqueueTask(queueTask); err != nil {
 					level.Error(logger).Log("msg", "error enqueuing task", "err", err)
 					continue
@@ -653,7 +654,7 @@ func (p *Planner) loadTenantTables(
 
 		// If this is the first this we see this table, initialize the map
 		if tenantTables[table] == nil {
-			tenantTables[table] = make([]string, tenants.Remaining())
+			tenantTables[table] = make([]string, 0, tenants.Remaining())
 		}
 
 		for tenants.Next() && tenants.Err() == nil && ctx.Err() == nil {
@@ -703,7 +704,7 @@ func (p *Planner) tenants(ctx context.Context, table config.DayTable) (*iter.Sli
 }
 
 func (p *Planner) enqueueTask(task *QueueTask) error {
-	return p.tasksQueue.Enqueue(task.Tenant(), task, func() {
+	return p.tasksQueue.Enqueue(task.ProtoTask, task.TaskMeta, func() {
 		task.timesEnqueued.Add(1)
 	})
 }
@@ -738,7 +739,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 
 	lastIndex := queue.StartIndex
 	for p.isRunningOrStopping() {
-		item, idx, err := p.tasksQueue.Dequeue(builder.Context(), lastIndex, builderID)
+		protoTask, meta, idx, err := p.tasksQueue.Dequeue(builder.Context(), lastIndex, builderID)
 		if err != nil {
 			if errors.Is(err, queue.ErrStopped) {
 				// Planner is stopping, break the loop and return
@@ -748,12 +749,16 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		}
 		lastIndex = idx
 
-		if item == nil {
+		if protoTask == nil {
 			return fmt.Errorf("dequeue() call resulted in nil response. builder: %s", builderID)
 		}
 
-		task := item.(*QueueTask)
-		logger := log.With(logger, "task", task.ID())
+		task := &QueueTask{
+			ProtoTask: protoTask,
+			TaskMeta:  meta.(*TaskMeta),
+		}
+
+		logger := log.With(logger, "task", task.Id)
 
 		queueTime := time.Since(task.queueTime)
 		p.metrics.queueDuration.Observe(queueTime.Seconds())
@@ -761,15 +766,15 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 		if task.ctx.Err() != nil {
 			level.Warn(logger).Log("msg", "task context done after dequeue", "err", task.ctx.Err())
 			lastIndex = lastIndex.ReuseLastIndex()
-			p.tasksQueue.Release(task)
+			p.tasksQueue.Release(task.ProtoTask)
 			continue
 		}
 
 		result, err := p.forwardTaskToBuilder(builder, builderID, task)
 		if err != nil {
-			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant())
+			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
 			if maxRetries > 0 && int(task.timesEnqueued.Load()) >= maxRetries {
-				p.tasksQueue.Release(task)
+				p.tasksQueue.Release(task.ProtoTask)
 				level.Error(logger).Log(
 					"msg", "task failed after max retries",
 					"retries", task.timesEnqueued.Load(),
@@ -777,7 +782,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 					"err", err,
 				)
 				task.resultsChannel <- &protos.TaskResult{
-					TaskID: task.ID(),
+					TaskID: task.Id,
 					Error:  fmt.Errorf("task failed after max retries (%d): %w", maxRetries, err),
 				}
 				continue
@@ -786,10 +791,10 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			// Re-queue the task if the builder is failing to process the tasks
 			if err := p.enqueueTask(task); err != nil {
 				p.metrics.taskLost.Inc()
-				p.tasksQueue.Release(task)
+				p.tasksQueue.Release(task.ProtoTask)
 				level.Error(logger).Log("msg", "error re-enqueuing task. this task will be lost", "err", err)
 				task.resultsChannel <- &protos.TaskResult{
-					TaskID: task.ID(),
+					TaskID: task.Id,
 					Error:  fmt.Errorf("error re-enqueuing task: %w", err),
 				}
 				continue
@@ -809,7 +814,7 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			"duration", time.Since(task.queueTime).Seconds(),
 			"retries", task.timesEnqueued.Load()-1, // -1 because the first enqueue is not a retry
 		)
-		p.tasksQueue.Release(task)
+		p.tasksQueue.Release(task.ProtoTask)
 
 		// Send the result back to the task. The channel is buffered, so this should not block.
 		task.resultsChannel <- result
@@ -824,7 +829,7 @@ func (p *Planner) forwardTaskToBuilder(
 	task *QueueTask,
 ) (*protos.TaskResult, error) {
 	msg := &protos.PlannerToBuilder{
-		Task: task.ToProtoTask(),
+		Task: task.ProtoTask,
 	}
 
 	if err := builder.Send(msg); err != nil {
@@ -846,7 +851,7 @@ func (p *Planner) forwardTaskToBuilder(
 	}()
 
 	timeout := make(<-chan time.Time)
-	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant())
+	taskTimeout := p.limits.BuilderResponseTimeout(task.Tenant)
 	if taskTimeout != 0 {
 		// If the timeout is not 0 (disabled), configure it
 		timeout = time.After(taskTimeout)
@@ -886,8 +891,8 @@ func (p *Planner) receiveResultFromBuilder(
 	if err != nil {
 		return nil, fmt.Errorf("error processing task result in builder (%s): %w", builderID, err)
 	}
-	if result.TaskID != task.ID() {
-		return nil, fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.ID())
+	if result.TaskID != task.Id {
+		return nil, fmt.Errorf("unexpected task ID (%s) in response from builder (%s). Expected task ID is %s", result.TaskID, builderID, task.Id)
 	}
 
 	return result, nil
