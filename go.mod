@@ -98,9 +98,9 @@ require (
 	go.etcd.io/bbolt v1.3.11
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.28.0
+	golang.org/x/crypto v0.29.0
 	golang.org/x/net v0.30.0
-	golang.org/x/sync v0.8.0
+	golang.org/x/sync v0.9.0
 	golang.org/x/sys v0.27.0
 	golang.org/x/time v0.7.0
 	google.golang.org/api v0.203.0
@@ -138,19 +138,19 @@ require (
 	github.com/schollz/progressbar/v3 v3.17.1
 	github.com/shirou/gopsutil/v4 v4.24.10
 	github.com/thanos-io/objstore v0.0.0-20241111205755-d1dd89d41f97
-	github.com/twmb/franz-go v1.17.1
-	github.com/twmb/franz-go/pkg/kadm v1.13.0
+	github.com/twmb/franz-go v1.18.0
+	github.com/twmb/franz-go/pkg/kadm v1.14.0
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
-	github.com/twmb/franz-go/pkg/kmsg v1.8.0
+	github.com/twmb/franz-go/pkg/kmsg v1.9.0
 	github.com/twmb/franz-go/plugin/kotel v1.5.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/willf/bloom v2.0.3+incompatible
-	go.opentelemetry.io/collector/pdata v1.12.0
+	go.opentelemetry.io/collector/pdata v1.19.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
-	golang.org/x/oauth2 v0.23.0
-	golang.org/x/text v0.19.0
-	google.golang.org/protobuf v1.35.1
+	golang.org/x/oauth2 v0.24.0
+	golang.org/x/text v0.20.0
+	google.golang.org/protobuf v1.35.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.29.3
 	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3

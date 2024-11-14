@@ -1601,7 +1601,7 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.6.1
 ## explicit; go 1.13
 github.com/tklauser/numcpus
-# github.com/twmb/franz-go v1.17.1
+# github.com/twmb/franz-go v1.18.0
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kbin
 github.com/twmb/franz-go/pkg/kerr
@@ -1610,14 +1610,14 @@ github.com/twmb/franz-go/pkg/kgo/internal/sticky
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
-# github.com/twmb/franz-go/pkg/kadm v1.13.0
+# github.com/twmb/franz-go/pkg/kadm v1.14.0
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kfake
-# github.com/twmb/franz-go/pkg/kmsg v1.8.0
-## explicit; go 1.19
+# github.com/twmb/franz-go/pkg/kmsg v1.9.0
+## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kmsg
 github.com/twmb/franz-go/pkg/kmsg/internal/kbin
 # github.com/twmb/franz-go/plugin/kotel v1.5.0
@@ -1730,8 +1730,8 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go.opentelemetry.io/collector/pdata v1.12.0
-## explicit; go 1.21.0
+# go.opentelemetry.io/collector/pdata v1.19.0
+## explicit; go 1.22.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data
 go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1
@@ -1829,7 +1829,7 @@ go.uber.org/zap/zapgrpc
 # go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 ## explicit; go 1.18
 go4.org/netipx
-# golang.org/x/crypto v0.28.0
+# golang.org/x/crypto v0.29.0
 ## explicit; go 1.20
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -1878,7 +1878,7 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.23.0
+# golang.org/x/oauth2 v0.24.0
 ## explicit; go 1.18
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
@@ -1891,7 +1891,7 @@ golang.org/x/oauth2/google/internal/stsexchange
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.8.0
+# golang.org/x/sync v0.9.0
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
@@ -1907,7 +1907,7 @@ golang.org/x/sys/windows/svc/eventlog
 # golang.org/x/term v0.26.0
 ## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.19.0
+# golang.org/x/text v0.20.0
 ## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/encoding
@@ -2132,7 +2132,7 @@ google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
 ## explicit; go 1.21
 google.golang.org/grpc/stats/opentelemetry
 google.golang.org/grpc/stats/opentelemetry/internal
-# google.golang.org/protobuf v1.35.1
+# google.golang.org/protobuf v1.35.2
 ## explicit; go 1.21
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
