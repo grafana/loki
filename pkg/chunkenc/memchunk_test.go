@@ -950,6 +950,37 @@ func BenchmarkRead(b *testing.B) {
 	}
 }
 
+func BenchmarkReadWithStructuredMetadata(b *testing.B) {
+	b.Run("v5", func(b *testing.B) {
+		c := NewMemChunk(ChunkFormatV5, compression.Snappy, UnorderedWithOrganizedStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+		fillChunk(c)
+		b.ResetTimer()
+		ctx := context.Background()
+		for n := 0; n < b.N; n++ {
+			iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor, true)
+			for iterator.Next() {
+			}
+			if err := iterator.Close(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	// b.Run("v5", func(b *testing.B) {
+	// 	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	// 	fillChunk(c)
+	// 	b.ResetTimer()
+	// 	ctx := context.Background()
+	// 	for n := 0; n < b.N; n++ {
+	// 		iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor, true)
+	// 		for iterator.Next() {
+	// 		}
+	// 		if err := iterator.Close(); err != nil {
+	// 			b.Fatal(err)
+	// 		}
+	// 	}
+	// })
+}
+
 type noopTestPipeline struct{}
 
 func (noopTestPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
