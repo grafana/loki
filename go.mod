@@ -148,7 +148,7 @@ require (
 	go.opentelemetry.io/collector/pdata v1.19.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
-	golang.org/x/oauth2 v0.23.0
+	golang.org/x/oauth2 v0.24.0
 	golang.org/x/text v0.20.0
 	google.golang.org/protobuf v1.35.2
 	gotest.tools v2.2.0+incompatible
