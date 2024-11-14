@@ -150,7 +150,7 @@ require (
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
 	golang.org/x/oauth2 v0.23.0
 	golang.org/x/text v0.19.0
-	google.golang.org/protobuf v1.35.1
+	google.golang.org/protobuf v1.35.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.29.3
 	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3
