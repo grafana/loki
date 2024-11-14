@@ -1,3 +1,5 @@
+version: "3.3"
+
 networks:
   loki:
 
@@ -23,6 +25,7 @@ services:
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_FEATURE_TOGGLES_ENABLE=alertingSimplifiedRouting,alertingQueryAndExpressionsStepMode
     entrypoint:
       - sh
       - -euc

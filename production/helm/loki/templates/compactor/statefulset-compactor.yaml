@@ -48,7 +48,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.compactor.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- tpl . $ | nindent 8 }}
