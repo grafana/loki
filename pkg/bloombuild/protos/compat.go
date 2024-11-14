@@ -260,3 +260,7 @@ func (r *TaskResult) ToProtoTaskResult() *ProtoTaskResult {
 		CreatedMetas: protoMetas,
 	}
 }
+
+func FromProtoDayTableToDayTable(proto DayTable) config.DayTable {
+	return config.NewDayTable(config.NewDayTime(model.Time(proto.DayTimestampMS)), proto.Prefix)
+}

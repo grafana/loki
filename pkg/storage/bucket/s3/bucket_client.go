@@ -82,5 +82,6 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			Enable: cfg.TraceConfig.Enabled,
 		},
 		STSEndpoint: cfg.STSEndpoint,
+		MaxRetries:  cfg.MaxRetries,
 	}, nil
 }

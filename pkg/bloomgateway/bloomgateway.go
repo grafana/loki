@@ -82,6 +82,7 @@ func New(cfg Config, store bloomshipper.Store, logger log.Logger, reg prometheus
 		workerConfig: workerConfig{
 			maxItems:         cfg.NumMultiplexItems,
 			queryConcurrency: cfg.BlockQueryConcurrency,
+			async:            cfg.FetchBlocksAsync,
 		},
 		pendingTasks: &atomic.Int64{},
 

@@ -6,10 +6,12 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/storage/bucket/filesystem"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 func TestObjectClientAdapter_List(t *testing.T) {
@@ -95,8 +97,12 @@ func TestObjectClientAdapter_List(t *testing.T) {
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/b", buff))
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/c", buff))
 
-		client := NewObjectClientAdapter(newBucket, nil, nil)
-		client.bucket = newBucket
+		client, err := NewObjectClient(context.Background(), "filesystem", Config{
+			StorageBackendConfig: StorageBackendConfig{
+				Filesystem: config,
+			},
+		}, "test", hedging.Config{}, false, log.NewNopLogger())
+		require.NoError(t, err)
 
 		storageObj, storageCommonPref, err := client.List(context.Background(), tt.prefix, tt.delimiter)
 		if tt.wantErr != nil {
