@@ -70,6 +70,9 @@ cloud.google.com/go/storage/experimental
 cloud.google.com/go/storage/internal
 cloud.google.com/go/storage/internal/apiv2
 cloud.google.com/go/storage/internal/apiv2/storagepb
+# dario.cat/mergo v1.0.1
+## explicit; go 1.13
+dario.cat/mergo
 # github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24
 ## explicit; go 1.20
 # github.com/Azure/azure-pipeline-go v0.2.3
@@ -268,11 +271,11 @@ github.com/IBM/sarama
 # github.com/Masterminds/goutils v1.1.1
 ## explicit
 github.com/Masterminds/goutils
-# github.com/Masterminds/semver/v3 v3.2.0
-## explicit; go 1.18
+# github.com/Masterminds/semver/v3 v3.3.0
+## explicit; go 1.21
 github.com/Masterminds/semver/v3
-# github.com/Masterminds/sprig/v3 v3.2.3
-## explicit; go 1.13
+# github.com/Masterminds/sprig/v3 v3.3.0
+## explicit; go 1.21
 github.com/Masterminds/sprig/v3
 # github.com/Microsoft/go-winio v0.6.2
 ## explicit; go 1.21
@@ -1126,10 +1129,10 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.10.1
 ## explicit; go 1.12
 github.com/hashicorp/serf/coordinate
-# github.com/heroku/x v0.0.61
-## explicit; go 1.17
+# github.com/heroku/x v0.4.0
+## explicit; go 1.21
 github.com/heroku/x/logplex/encoding
-# github.com/huandu/xstrings v1.3.3
+# github.com/huandu/xstrings v1.5.0
 ## explicit; go 1.12
 github.com/huandu/xstrings
 # github.com/imdario/mergo v0.3.16
@@ -1345,8 +1348,8 @@ github.com/opencontainers/go-digest
 ## explicit; go 1.18
 github.com/opencontainers/image-spec/specs-go
 github.com/opencontainers/image-spec/specs-go/v1
-# github.com/opentracing-contrib/go-grpc v0.0.0-20210225150812-73cb765af46e
-## explicit; go 1.11
+# github.com/opentracing-contrib/go-grpc v0.1.0
+## explicit; go 1.22.7
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v1.0.0
 ## explicit; go 1.14
@@ -1542,8 +1545,8 @@ github.com/shirou/gopsutil/v4/internal/common
 github.com/shirou/gopsutil/v4/mem
 github.com/shirou/gopsutil/v4/net
 github.com/shirou/gopsutil/v4/process
-# github.com/shopspring/decimal v1.3.1
-## explicit; go 1.13
+# github.com/shopspring/decimal v1.4.0
+## explicit; go 1.10
 github.com/shopspring/decimal
 # github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 ## explicit; go 1.19
@@ -1567,8 +1570,8 @@ github.com/spaolacci/murmur3
 github.com/spf13/afero
 github.com/spf13/afero/internal/common
 github.com/spf13/afero/mem
-# github.com/spf13/cast v1.5.0
-## explicit; go 1.18
+# github.com/spf13/cast v1.7.0
+## explicit; go 1.19
 github.com/spf13/cast
 # github.com/spf13/pflag v1.0.5
 ## explicit; go 1.12
@@ -1598,7 +1601,7 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.6.1
 ## explicit; go 1.13
 github.com/tklauser/numcpus
-# github.com/twmb/franz-go v1.17.1
+# github.com/twmb/franz-go v1.18.0
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kbin
 github.com/twmb/franz-go/pkg/kerr
@@ -1607,14 +1610,14 @@ github.com/twmb/franz-go/pkg/kgo/internal/sticky
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
-# github.com/twmb/franz-go/pkg/kadm v1.13.0
+# github.com/twmb/franz-go/pkg/kadm v1.14.0
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kfake
-# github.com/twmb/franz-go/pkg/kmsg v1.8.0
-## explicit; go 1.19
+# github.com/twmb/franz-go/pkg/kmsg v1.9.0
+## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kmsg
 github.com/twmb/franz-go/pkg/kmsg/internal/kbin
 # github.com/twmb/franz-go/plugin/kotel v1.5.0
@@ -1727,8 +1730,8 @@ go.opencensus.io/trace
 go.opencensus.io/trace/internal
 go.opencensus.io/trace/propagation
 go.opencensus.io/trace/tracestate
-# go.opentelemetry.io/collector/pdata v1.12.0
-## explicit; go 1.21.0
+# go.opentelemetry.io/collector/pdata v1.19.0
+## explicit; go 1.22.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data
 go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1
@@ -1826,7 +1829,7 @@ go.uber.org/zap/zapgrpc
 # go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 ## explicit; go 1.18
 go4.org/netipx
-# golang.org/x/crypto v0.28.0
+# golang.org/x/crypto v0.29.0
 ## explicit; go 1.20
 golang.org/x/crypto/argon2
 golang.org/x/crypto/bcrypt
@@ -1875,7 +1878,7 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.23.0
+# golang.org/x/oauth2 v0.24.0
 ## explicit; go 1.18
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
@@ -1888,7 +1891,7 @@ golang.org/x/oauth2/google/internal/stsexchange
 golang.org/x/oauth2/internal
 golang.org/x/oauth2/jws
 golang.org/x/oauth2/jwt
-# golang.org/x/sync v0.8.0
+# golang.org/x/sync v0.9.0
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
@@ -1904,7 +1907,7 @@ golang.org/x/sys/windows/svc/eventlog
 # golang.org/x/term v0.26.0
 ## explicit; go 1.18
 golang.org/x/term
-# golang.org/x/text v0.19.0
+# golang.org/x/text v0.20.0
 ## explicit; go 1.18
 golang.org/x/text/cases
 golang.org/x/text/encoding
@@ -1990,8 +1993,8 @@ google.golang.org/genproto/googleapis/api/monitoredres
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.67.1
-## explicit; go 1.21
+# google.golang.org/grpc v1.68.0
+## explicit; go 1.22.7
 google.golang.org/grpc
 google.golang.org/grpc/attributes
 google.golang.org/grpc/authz/audit
@@ -2004,6 +2007,8 @@ google.golang.org/grpc/balancer/grpclb/grpc_lb_v1
 google.golang.org/grpc/balancer/grpclb/state
 google.golang.org/grpc/balancer/leastrequest
 google.golang.org/grpc/balancer/pickfirst
+google.golang.org/grpc/balancer/pickfirst/internal
+google.golang.org/grpc/balancer/pickfirst/pickfirstleaf
 google.golang.org/grpc/balancer/rls
 google.golang.org/grpc/balancer/rls/internal/adaptive
 google.golang.org/grpc/balancer/rls/internal/keys
@@ -2127,7 +2132,7 @@ google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
 ## explicit; go 1.21
 google.golang.org/grpc/stats/opentelemetry
 google.golang.org/grpc/stats/opentelemetry/internal
-# google.golang.org/protobuf v1.35.1
+# google.golang.org/protobuf v1.35.2
 ## explicit; go 1.21
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
