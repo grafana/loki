@@ -114,6 +114,7 @@ func (c *clientImpl) newAuthorityLocked(config *bootstrap.ServerConfig) (_ *auth
 		serializer:         c.serializer,
 		resourceTypeGetter: c.resourceTypes.get,
 		watchExpiryTimeout: c.watchExpiryTimeout,
+		backoff:            c.backoff,
 		logger:             grpclog.NewPrefixLogger(logger, authorityPrefix(c, config.ServerURI())),
 	})
 	if err != nil {
