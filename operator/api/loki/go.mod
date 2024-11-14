@@ -3,7 +3,7 @@ module github.com/grafana/loki/operator/api/loki
 go 1.19
 
 require (
-	github.com/stretchr/testify v1.8.2
+	github.com/stretchr/testify v1.9.0
 	k8s.io/api v0.26.9
 	k8s.io/apimachinery v0.26.9
 	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3
