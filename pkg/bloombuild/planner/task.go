@@ -33,3 +33,15 @@ func NewQueueTask(
 		queueTime:      queueTime,
 	}
 }
+
+func (t QueueTask) Tenant() string {
+	return t.Task.Tenant
+}
+
+func (t QueueTask) Table() string {
+	return t.Task.Table.String()
+}
+
+func (t QueueTask) ID() string {
+	return t.Task.ID
+}

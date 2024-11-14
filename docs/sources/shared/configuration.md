@@ -1277,14 +1277,15 @@ planner:
   # CLI flag: -bloom-build.planner.max-table-offset
   [max_table_offset: <int> | default = 2]
 
-  # Maximum number of tasks to queue per tenant.
-  # CLI flag: -bloom-build.planner.max-tasks-per-tenant
-  [max_queued_tasks_per_tenant: <int> | default = 30000]
-
   retention:
     # Enable bloom retention.
     # CLI flag: -bloom-build.planner.retention.enabled
     [enabled: <boolean> | default = false]
+
+  queue:
+    # Maximum number of tasks to queue per tenant.
+    # CLI flag: -bloom-build.planner.queue.max-tasks-per-tenant
+    [max_queued_tasks_per_tenant: <int> | default = 30000]
 
 builder:
   # The grpc_client block configures the gRPC client used to communicate between
