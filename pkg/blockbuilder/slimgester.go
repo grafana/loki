@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
@@ -101,7 +100,7 @@ type BlockBuilder struct {
 	logger  log.Logger
 
 	store         stores.ChunkWriter
-	objStore      *objstore.Multi
+	objStore      *MultiStore
 	jobController *PartitionJobController
 }
 
@@ -110,7 +109,7 @@ func NewBlockBuilder(
 	cfg Config,
 	periodicConfigs []config.PeriodConfig,
 	store stores.ChunkWriter,
-	objStore *objstore.Multi,
+	objStore *MultiStore,
 	logger log.Logger,
 	reg prometheus.Registerer,
 	jobController *PartitionJobController,
@@ -352,7 +351,7 @@ type Appender struct {
 	instancesMtx sync.RWMutex
 
 	store    stores.ChunkWriter
-	objStore *objstore.Multi
+	objStore *MultiStore
 }
 
 // Writer is a single use construct for building chunks
@@ -363,7 +362,7 @@ func newAppender(
 	cfg Config,
 	periodicConfigs []config.PeriodConfig,
 	store stores.ChunkWriter,
-	objStore *objstore.Multi,
+	objStore *MultiStore,
 	logger log.Logger,
 	metrics *SlimgesterMetrics,
 ) *Appender {

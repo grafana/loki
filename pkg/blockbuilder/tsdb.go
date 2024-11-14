@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/ingester-rf1/objstore"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -292,10 +291,10 @@ func (h *Head) forAll(fn func(ls labels.Labels, fp uint64, chks index.ChunkMetas
 }
 
 type uploader struct {
-	store *objstore.Multi
+	store *MultiStore
 }
 
-func newUploader(store *objstore.Multi) *uploader {
+func newUploader(store *MultiStore) *uploader {
 	return &uploader{store: store}
 }
 

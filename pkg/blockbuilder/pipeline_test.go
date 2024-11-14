@@ -12,7 +12,7 @@ import (
 type testStage struct {
 	parallelism int
 	fn          func(context.Context) error
-	cleanup     func() error
+	cleanup     func(context.Context) error
 }
 
 func TestPipeline(t *testing.T) {
