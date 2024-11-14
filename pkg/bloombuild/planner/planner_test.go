@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
@@ -604,10 +605,8 @@ func TestMinMaxTables(t *testing.T) {
 	//logger := log.NewLogfmtLogger(os.Stdout)
 
 	cfg := Config{
-		PlanningInterval: 1 * time.Hour,
-		Queue: queue.Config{
-			MaxQueuedTasksPerTenant: 10000,
-		},
+		PlanningInterval:        1 * time.Hour,
+		MaxQueuedTasksPerTenant: 10000,
 		// From today till day before tomorrow
 		MinTableOffset: 0,
 		MaxTableOffset: 2,
