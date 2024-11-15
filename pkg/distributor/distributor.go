@@ -490,7 +490,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		if streamSampleSize > 100 {
 			streamSampleSize = 100
 		}
-		streamLblSample := make([]string, 0, streamSampleSize)
+		streamLblSample := make(map[string]interface{}, streamSampleSize)
 
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
@@ -512,9 +512,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-
 			if len(streamLblSample) < streamSampleSize {
-				streamLblSample = append(streamLblSample, stream.Labels)
+				if _, ok := streamLblSample[stream.Labels]; !ok {
+					streamLblSample[stream.Labels] = struct{}{}
+				}
 			}
 
 			n := 0
@@ -566,8 +567,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			maybeShardStreams(stream, lbs, pushSize)
 		}
 
-		sp.LogKV(fmt.Sprintf("number of streams pushed to distributor (limited to %d)", streamSampleSize), len(streams))
-		sp.LogKV("stream labels", strings.Join(streamLblSample, ","))
+		sp.LogKV(fmt.Sprintf("number of streams pushed to distributor (limited to %d)", streamSampleSize), len(streamLblSample))
+		streamLblsSampleSlice := make([]string, 0, len(streamLblSample))
+		for k := range streamLblSample {
+			streamLblsSampleSlice = append(streamLblsSampleSlice, k)
+		}
+		sp.LogKV("stream labels", strings.Join(streamLblsSampleSlice, ","))
 	}()
 
 	var validationErr error
