@@ -515,7 +515,6 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			return client.NewClientWithMaxParallel(c, nil, 1, schemaCfg), nil
 		}
 
-	case cfg.UseThanosObjstore:
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
