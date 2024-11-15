@@ -5842,22 +5842,6 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 &nbsp;
 
 ```yaml
-# Set this to true to use the internal OpenStack Swift endpoint URL
-# CLI flag: -<prefix>.swift.internal
-[internal: <boolean> | default = false]
-
-# OpenStack Swift application credential id
-# CLI flag: -<prefix>.swift.application-credential-id
-[application_credential_id: <string> | default = ""]
-
-# OpenStack Swift application credential name
-# CLI flag: -<prefix>.swift.application-credential-name
-[application_credential_name: <string> | default = ""]
-
-# OpenStack Swift application credential secret
-# CLI flag: -<prefix>.swift.application-credential-secret
-[application_credential_secret: <string> | default = ""]
-
 # OpenStack Swift authentication API version. 0 to autodetect.
 # CLI flag: -<prefix>.swift.auth-version
 [auth_version: <int> | default = 0]
@@ -5865,6 +5849,10 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # OpenStack Swift authentication URL
 # CLI flag: -<prefix>.swift.auth-url
 [auth_url: <string> | default = ""]
+
+# Set this to true to use the internal OpenStack Swift endpoint URL
+# CLI flag: -<prefix>.swift.internal
+[internal: <boolean> | default = false]
 
 # OpenStack Swift username.
 # CLI flag: -<prefix>.swift.username
@@ -5935,61 +5923,10 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 [request_timeout: <duration> | default = 5s]
 
 http:
-  # The time an idle connection will remain idle before closing.
-  # CLI flag: -<prefix>.swift.idle-conn-timeout
-  [idle_conn_timeout: <duration> | default = 1m30s]
-
-  # The amount of time the client will wait for a servers response headers.
-  # CLI flag: -<prefix>.swift.response-header-timeout
-  [response_header_timeout: <duration> | default = 2m]
-
-  # If the client connects via HTTPS and this option is enabled, the client will
-  # accept any certificate and hostname.
-  # CLI flag: -<prefix>.swift.insecure-skip-verify
-  [insecure_skip_verify: <boolean> | default = false]
-
-  # Maximum time to wait for a TLS handshake. 0 means no limit.
-  # CLI flag: -<prefix>.swift.tls-handshake-timeout
-  [tls_handshake_timeout: <duration> | default = 10s]
-
-  # The time to wait for a server's first response headers after fully writing
-  # the request headers if the request has an Expect header. 0 to send the
-  # request body immediately.
-  # CLI flag: -<prefix>.swift.expect-continue-timeout
-  [expect_continue_timeout: <duration> | default = 1s]
-
-  # Maximum number of idle (keep-alive) connections across all hosts. 0 means no
-  # limit.
-  # CLI flag: -<prefix>.swift.max-idle-connections
-  [max_idle_connections: <int> | default = 100]
-
-  # Maximum number of idle (keep-alive) connections to keep per-host. If 0, a
-  # built-in default value is used.
-  # CLI flag: -<prefix>.swift.max-idle-connections-per-host
-  [max_idle_connections_per_host: <int> | default = 100]
-
-  # Maximum number of connections per host. 0 means no limit.
-  # CLI flag: -<prefix>.swift.max-connections-per-host
-  [max_connections_per_host: <int> | default = 0]
-
   # Path to the CA certificates to validate server certificate against. If not
   # set, the host's root CA certificates are used.
   # CLI flag: -<prefix>.swift.http.tls-ca-path
   [tls_ca_path: <string> | default = ""]
-
-  # Path to the client certificate, which will be used for authenticating with
-  # the server. Also requires the key path to be configured.
-  # CLI flag: -<prefix>.swift.http.tls-cert-path
-  [tls_cert_path: <string> | default = ""]
-
-  # Path to the key for the client certificate. Also requires the client
-  # certificate to be configured.
-  # CLI flag: -<prefix>.swift.http.tls-key-path
-  [tls_key_path: <string> | default = ""]
-
-  # Override the expected name on the server certificate.
-  # CLI flag: -<prefix>.swift.http.tls-server-name
-  [tls_server_name: <string> | default = ""]
 ```
 
 ### table_manager
