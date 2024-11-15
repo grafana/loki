@@ -47,7 +47,8 @@ func processEventBridgeEvent(ctx context.Context, ev *events.CloudWatchEvent, pc
 				AWSRegion: ev.Region,
 				S3: events.S3Entity{
 					Bucket: events.S3Bucket{
-						Name: eventDetail.Bucket.Name,
+						Name:          eventDetail.Bucket.Name,
+						OwnerIdentity: events.S3UserIdentity{PrincipalID: ev.AccountID},
 					},
 					Object: events.S3Object{
 						Key: eventDetail.Object.Key,
