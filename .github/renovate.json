@@ -22,16 +22,6 @@
       ]
     },
     {
-      "matchFileNames": [
-        "operator/go.mod"
-      ],
-      "matchPackageNames": [
-        "github.com/grafana/loki",
-        "github.com/grafana/loki/operator/api/loki"
-      ],
-      "enabled": false
-    },
-    {
       "matchManagers": ["gomod"],
       "matchPackageNames": ["go"],
       "enabled": false
@@ -40,6 +30,36 @@
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["golang", "grafana/loki-build-image"],
       "enabled": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "enabled": true,
+      "autoApprove": false,
+      "automerge": false
+    },
+    {
+      "matchManagers": ["helm-requirements", "helm-values", "helmv3"],
+      "groupName": "helm-{{packageName}}",
+      "autoApprove": false,
+      "automerge": false
+    },
+    {
+      "matchFileNames": ["tools/lambda-promtail/go.mod"],
+      "groupName": "lambdapromtail-{{packageName}}",
+      "enabled": true,
+      "autoApprove": false,
+      "automerge": false
+    },
+    {
+      "matchFileNames": ["operator/go.mod"],
+      "enabled": false,
+      "autoApprove": false,
+      "automerge": false
+    },
+    {
+      "matchFileNames": ["!tools/lambda-promtail/go.mod", "!operator/go.mod"],
+      "groupName": "{{packageName}}",
+      "enabled": true
     }
   ],
   "digest": {
