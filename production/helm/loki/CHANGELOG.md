@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
 - [ENHANCEMENT] Expose Topology Spread Constraints in Helm chart templates and default values.
+- [BUGFIX] Fix Helm chart for gateway to be able to use custom file configuration without first line being a comment. https://github.com/grafana/loki/pull/14575
 
 ## 6.19.0
 
