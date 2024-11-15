@@ -567,7 +567,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			maybeShardStreams(stream, lbs, pushSize)
 		}
 
-		sp.LogKV(fmt.Sprintf("number of streams pushed to distributor (limited to %d)", streamSampleSize), len(streamLblSample))
+		sp.LogKV(fmt.Sprintf("number of stream labels sampled in distributor (limited to %d)", streamSampleSize), len(streamLblSample))
 		streamLblsSampleSlice := make([]string, 0, len(streamLblSample))
 		for k := range streamLblSample {
 			streamLblsSampleSlice = append(streamLblsSampleSlice, k)
