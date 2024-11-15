@@ -472,6 +472,32 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var storeType = name
 
+	if cfg.UseThanosObjstore {
+		// Check if this is a named store and get its type
+		if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); ok {
+			storeType = st
+		}
+
+		var (
+			c   client.ObjectClient
+			err error
+		)
+		c, err = NewObjectClient(name, component, cfg, clientMetrics)
+		if err != nil {
+			return nil, err
+		}
+
+		var encoder client.KeyEncoder
+		if storeType == bucket.Filesystem {
+			encoder = client.FSEncoder
+		} else if cfg.CongestionControl.Enabled {
+			// Apply congestion control wrapper for non-filesystem storage
+			c = cc.Wrap(c)
+		}
+
+		return client.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+	}
+
 	// lookup storeType for named stores
 	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
 		storeType = nsType
@@ -489,6 +515,7 @@ func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaC
 			return client.NewClientWithMaxParallel(c, nil, 1, schemaCfg), nil
 		}
 
+	case cfg.UseThanosObjstore:
 	case util.StringsContain(types.SupportedStorageTypes, storeType):
 		switch storeType {
 		case types.StorageTypeFileSystem:
@@ -616,10 +643,10 @@ func (c *ClientMetrics) Unregister() {
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	if cfg.UseThanosObjstore {
-		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, cfg.CongestionControl.Enabled, util_log.Logger)
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
 	}
 
-	actual, err := internalNewObjectClient(name, component, cfg, clientMetrics)
+	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +660,7 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 }
 
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
-func internalNewObjectClient(storeName, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
 		storeType  = storeName
