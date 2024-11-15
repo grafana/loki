@@ -26,7 +26,7 @@ func TestPipeline(t *testing.T) {
 			stages: []testStage{
 				{
 					parallelism: 1,
-					fn: func(ctx context.Context) error {
+					fn: func(_ context.Context) error {
 						return nil
 					},
 				},
@@ -37,13 +37,13 @@ func TestPipeline(t *testing.T) {
 			stages: []testStage{
 				{
 					parallelism: 2,
-					fn: func(ctx context.Context) error {
+					fn: func(_ context.Context) error {
 						return nil
 					},
 				},
 				{
 					parallelism: 1,
-					fn: func(ctx context.Context) error {
+					fn: func(_ context.Context) error {
 						return nil
 					},
 				},
@@ -54,7 +54,7 @@ func TestPipeline(t *testing.T) {
 			stages: []testStage{
 				{
 					parallelism: 1,
-					fn: func(ctx context.Context) error {
+					fn: func(_ context.Context) error {
 						return errors.New("stage error")
 					},
 				},
