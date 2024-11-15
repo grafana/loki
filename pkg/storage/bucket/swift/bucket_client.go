@@ -53,9 +53,7 @@ func NewBucketClient(cfg Config, _ string, logger log.Logger) (objstore.Bucket, 
 		// Hard-coded defaults.
 		ChunkSize:              swift.DefaultConfig.ChunkSize,
 		UseDynamicLargeObjects: false,
-		HTTPConfig:             exthttp.DefaultHTTPConfig,
 	}
-	bucketConfig.HTTPConfig.Transport = cfg.Transport
 
 	return swift.NewContainerFromConfig(logger, &bucketConfig, false, nil)
 }

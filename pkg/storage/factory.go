@@ -714,9 +714,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 			}
 			swiftCfg = (openstack.SwiftConfig)(nsCfg)
 		}
-		if cfg.UseThanosObjstore {
-			return openstack.NewSwiftThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
-		}
 		return openstack.NewSwiftObjectClient(swiftCfg, cfg.Hedging)
 
 	case types.StorageTypeFileSystem:

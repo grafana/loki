@@ -47,7 +47,7 @@ func defaultTransport(config bucket_http.Config) (http.RoundTripper, error) {
 		MaxIdleConns:          200,
 		MaxIdleConnsPerHost:   200,
 		ExpectContinueTimeout: 5 * time.Second,
-		TLSClientConfig: tlsConfig,
+		TLSClientConfig:       tlsConfig,
 	}, nil
 }
 

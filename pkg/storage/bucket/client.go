@@ -156,7 +156,7 @@ func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) erro
 	case Azure:
 		cfg.Azure.Transport = rt
 	case Swift:
-		cfg.Swift.Transport = rt
+		cfg.Swift.HTTP.Transport = rt
 	case Filesystem:
 		// do nothing
 	default:
