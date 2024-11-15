@@ -8,6 +8,7 @@ package internal
 import (
 	"crypto/tls"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -62,6 +63,7 @@ type DialSettings struct {
 	AllowNonDefaultServiceAccount bool
 	DefaultUniverseDomain         string
 	UniverseDomain                string
+	Logger                        *slog.Logger
 	// Google API system parameters. For more information please read:
 	// https://cloud.google.com/apis/docs/system-parameters
 	QuotaProject  string
