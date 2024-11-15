@@ -61,16 +61,17 @@
     },
     {
       // Disable operator updates
-      "matchFileNames": ["operator/go.mod"],
+      "matchFileNames": ["operator/go.mod", "operator/api/loki/go.mod"],
       "enabled": false,
       "autoApprove": false,
       "automerge": false
     },
     {
       // Enable all other updates
-      "matchFileNames": ["!tools/lambda-promtail/go.mod", "!operator/go.mod"],
+      "matchFileNames": ["!tools/lambda-promtail/go.mod", "!operator/go.mod", "!operator/api/loki/go.mod"],
       "groupName": "{{packageName}}",
       "enabled": true,
+      "matchUpdateTypes": ["major", "minor", "patch"],
       // After we have tested the above configuration, we can enable the following
       "automerge": false,
       "autoApprove": false
