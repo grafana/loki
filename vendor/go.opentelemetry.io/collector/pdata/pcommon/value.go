@@ -148,6 +148,7 @@ func (v Value) FromRaw(iv any) error {
 	case int64:
 		v.SetInt(tv)
 	case uint:
+		// nolint:gosec
 		v.SetInt(int64(tv))
 	case uint8:
 		v.SetInt(int64(tv))
@@ -156,6 +157,7 @@ func (v Value) FromRaw(iv any) error {
 	case uint32:
 		v.SetInt(int64(tv))
 	case uint64:
+		// nolint:gosec
 		v.SetInt(int64(tv))
 	case float32:
 		v.SetDouble(float64(tv))

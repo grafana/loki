@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
+	"net/http"
 	"regexp"
 
 	"github.com/go-kit/log"
@@ -124,6 +126,44 @@ func (cfg *Config) Validate() error {
 	}
 
 	return cfg.StorageBackendConfig.Validate()
+}
+
+func (cfg *Config) disableRetries(backend string) error {
+	switch backend {
+	case S3:
+		cfg.S3.MaxRetries = 1
+	case GCS:
+		cfg.GCS.MaxRetries = 1
+	case Azure:
+		cfg.Azure.MaxRetries = 1
+	case Swift:
+		cfg.Swift.MaxRetries = 1
+	case Filesystem:
+		// do nothing
+	default:
+		return fmt.Errorf("cannot disable retries for backend: %s", backend)
+	}
+
+	return nil
+}
+
+func (cfg *Config) configureTransport(backend string, rt http.RoundTripper) error {
+	switch backend {
+	case S3:
+		cfg.S3.HTTP.Transport = rt
+	case GCS:
+		cfg.GCS.Transport = rt
+	case Azure:
+		cfg.Azure.Transport = rt
+	case Swift:
+		cfg.Swift.Transport = rt
+	case Filesystem:
+		// do nothing
+	default:
+		return fmt.Errorf("cannot configure transport for backend: %s", backend)
+	}
+
+	return nil
 }
 
 // NewClient creates a new bucket client based on the configured backend
