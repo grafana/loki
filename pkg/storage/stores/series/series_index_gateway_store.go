@@ -60,8 +60,7 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, fr
 	}
 
 	statsCtx := statscontext.FromContext(ctx)
-	statsCtx.AddIndexTotalChunkRefs(response.Stats.TotalChunks)
-	statsCtx.AddIndexPostFilterChunkRefs(response.Stats.PostFilterChunks)
+	statsCtx.MergeIndex(response.Stats)
 
 	return result, nil
 }
@@ -131,23 +130,13 @@ func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, th
 	})
 }
 
-func (c *IndexGatewayClientStore) GetShards(
-	ctx context.Context,
-	_ string,
-	from, through model.Time,
-	targetBytesPerShard uint64,
-	predicate chunk.Predicate,
-) (*logproto.ShardsResponse, error) {
-	resp, err := c.client.GetShards(ctx, &logproto.ShardsRequest{
+func (c *IndexGatewayClientStore) GetShards(ctx context.Context, _ string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
+	return c.client.GetShards(ctx, &logproto.ShardsRequest{
 		From:                from,
 		Through:             through,
 		Query:               predicate.Plan().AST.String(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return resp, nil
 }
 
 func (c *IndexGatewayClientStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
