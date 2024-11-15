@@ -10,7 +10,7 @@ cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/pubsub
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
-# cloud.google.com/go/auth v0.10.0
+# cloud.google.com/go/auth v0.10.2
 ## explicit; go 1.21
 cloud.google.com/go/auth
 cloud.google.com/go/auth/credentials
@@ -63,7 +63,7 @@ cloud.google.com/go/pubsub/apiv1/pubsubpb
 cloud.google.com/go/pubsub/internal
 cloud.google.com/go/pubsub/internal/distribution
 cloud.google.com/go/pubsub/internal/scheduler
-# cloud.google.com/go/storage v1.46.0
+# cloud.google.com/go/storage v1.47.0
 ## explicit; go 1.21
 cloud.google.com/go/storage
 cloud.google.com/go/storage/experimental
