@@ -484,6 +484,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("auth-header", "The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.").Default("Authorization").Envar("LOKI_AUTH_HEADER").StringVar(&client.AuthHeader)
 	app.Flag("proxy-url", "The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.").Default("").Envar("LOKI_HTTP_PROXY_URL").StringVar(&client.ProxyURL)
 	app.Flag("compress", "Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.").Default("false").Envar("LOKI_HTTP_COMPRESSION").BoolVar(&client.Compression)
+	app.Flag("envproxy", "Use ProxyFromEnvironment to use net/http ProxyFromEnvironment configuration, eg HTTP_PROXY").Default("false").Envar("LOKI_ENV_PROXY").BoolVar(&client.EnvironmentProxy)
 
 	return client
 }
