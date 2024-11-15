@@ -131,7 +131,7 @@ outer2:
 
 	require.LessOrEqualf(t, singleMissing, 2, "more than acceptable misses: %d > %d", singleMissing, 2)
 	// this condition is never actually true
-	//require.LessOrEqualf(t, mergedMissing, singleMissing, "merged sketch should be at least as accurate as a single sketch")
+	// require.LessOrEqualf(t, mergedMissing, singleMissing, "merged sketch should be at least as accurate as a single sketch")
 }
 
 // compare the accuracy of cms topk and hk to the real topk
@@ -142,7 +142,7 @@ func TestRealTopK(t *testing.T) {
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 
-	m := make(map[string]uint32)
+	m := make(map[string]float64)
 	h := MinHeap{}
 	hll := hyperloglog.New16()
 
@@ -170,7 +170,7 @@ func TestRealTopK(t *testing.T) {
 
 	res := make(TopKResult, 0, len(h))
 	for i := 0; i < len(h); i++ {
-		res = append(res, element{h[i].event, int64(h[i].count)})
+		res = append(res, element{h[i].event, h[i].count})
 	}
 	sort.Sort(res)
 
@@ -219,7 +219,7 @@ func TestRealTop_Merge(t *testing.T) {
 
 	scanner := bufio.NewScanner(combined)
 
-	m := make(map[string]uint32)
+	m := make(map[string]float64)
 	h := MinHeap{}
 	hll := hyperloglog.New16()
 	// HK gets more inaccurate with merging the more shards we have
@@ -251,7 +251,7 @@ func TestRealTop_Merge(t *testing.T) {
 
 	res := make(TopKResult, 0, len(h))
 	for i := 0; i < len(h); i++ {
-		res = append(res, element{h[i].event, int64(h[i].count)})
+		res = append(res, element{h[i].event, h[i].count})
 	}
 	sort.Sort(res)
 
@@ -265,7 +265,7 @@ func TestRealTop_Merge(t *testing.T) {
 
 	scanner = bufio.NewScanner(combined)
 	scanner.Split(bufio.ScanWords)
-	var cms = make([]*Topk, shards)
+	cms := make([]*Topk, shards)
 	for i := range cms {
 		cms[i], _ = newCMSTopK(k, 2048, 5)
 	}

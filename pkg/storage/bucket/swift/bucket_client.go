@@ -6,7 +6,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
 	"github.com/thanos-io/objstore/providers/swift"
-	yaml "gopkg.in/yaml.v2"
 )
 
 // NewBucketClient creates a new Swift bucket client
@@ -54,14 +53,9 @@ func NewBucketClient(cfg Config, _ string, logger log.Logger) (objstore.Bucket, 
 		// Hard-coded defaults.
 		ChunkSize:              swift.DefaultConfig.ChunkSize,
 		UseDynamicLargeObjects: false,
+		HTTPConfig:             exthttp.DefaultHTTPConfig,
 	}
+	bucketConfig.HTTPConfig.Transport = cfg.Transport
 
-	// Thanos currently doesn't support passing the config as is, but expects a YAML,
-	// so we're going to serialize it.
-	serialized, err := yaml.Marshal(bucketConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return swift.NewContainer(logger, serialized, nil)
+	return swift.NewContainerFromConfig(logger, &bucketConfig, false, nil)
 }

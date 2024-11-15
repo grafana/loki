@@ -129,9 +129,9 @@ The performance losses against the current approach includes:
 
 Loki regularly combines multiple blocks into a chunk and "flushes" it to storage. In order to ensure that reads over flushed chunks remain as performant as possible, we will re-order a possibly-overlapping set of blocks into a set of blocks that maintain monotonically increasing order between them. From the perspective of the rest of Loki’s components (queriers/rulers fetching chunks from storage), nothing has changed.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 **In the case that data for a stream is ingested in order, this is effectively a no-op, making it well optimized for in-order writes (which is both the requirement and default in Loki currently). Thus, this should have little performance impact on ordered data while enabling Loki to ingest unordered data.**
-{{% /admonition %}}
+{{< /admonition >}}
 
 
 #### Chunk Durations
@@ -153,9 +153,9 @@ The second is simple to implement and an effective way to ensure Loki can ingest
 
 We also cut chunks according to the `sync_period`. The first timestamp ingested past this bound will trigger a cut. This process aids in increasing chunk determinism and therefore our deduplication ratio in object storage because chunks are [content addressed](https://en.wikipedia.org/wiki/Content-addressable_storage). With the removal of our ordering constraint, it's possible that in some cases the synchronization method will not be as effective, such as during concurrent writes to the same stream across this bound.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 **It's important to mention that this is possible today with the current ordering constraint, but we'll be increasing the likelihood by removing it.**
-{{% /admonition %}}
+{{< /admonition >}}
 
 ```
 Figure 5

@@ -14,7 +14,7 @@ func TestStructuredMetadataTokenizer(t *testing.T) {
 	tokenizer := NewStructuredMetadataTokenizer("chunk")
 
 	metadata := push.LabelAdapter{Name: "pod", Value: "loki-1"}
-	expected := []string{"pod", "chunkpod", "loki-1", "chunkloki-1", "pod=loki-1", "chunkpod=loki-1"}
+	expected := []string{"pod", "chunkpod", "pod=loki-1", "chunkpod=loki-1"}
 
 	tokenIter := tokenizer.Tokens(metadata)
 	got, err := v2.Collect(tokenIter)

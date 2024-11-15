@@ -553,11 +553,11 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.Sc
 	defer cancel()
 
 	ok, err := oc.ObjectExists(ctx, name)
-	if !ok {
-		return nil, errNotExists
-	}
 	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, errNotExists
 	}
 
 	rdr, _, err := oc.GetObject(ctx, name)

@@ -146,7 +146,7 @@ type Bucket struct {
 }
 
 // NewBucket returns a new Bucket using the provided Azure config.
-func NewBucket(logger log.Logger, azureConfig []byte, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucket(logger log.Logger, azureConfig []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	level.Debug(logger).Log("msg", "creating new Azure bucket connection", "component", component)
 	conf, err := parseConfig(azureConfig)
 	if err != nil {
@@ -155,19 +155,16 @@ func NewBucket(logger log.Logger, azureConfig []byte, component string, rt http.
 	if conf.MSIResource != "" {
 		level.Warn(logger).Log("msg", "The field msi_resource has been deprecated and should no longer be set")
 	}
-	return NewBucketWithConfig(logger, conf, component, rt)
+	return NewBucketWithConfig(logger, conf, component, wrapRoundtripper)
 }
 
 // NewBucketWithConfig returns a new Bucket using the provided Azure config struct.
-func NewBucketWithConfig(logger log.Logger, conf Config, component string, rt http.RoundTripper) (*Bucket, error) {
-	if rt != nil {
-		conf.HTTPConfig.Transport = rt
-	}
+func NewBucketWithConfig(logger log.Logger, conf Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	if err := conf.validate(); err != nil {
 		return nil, err
 	}
 
-	containerClient, err := getContainerClient(conf)
+	containerClient, err := getContainerClient(conf, wrapRoundtripper)
 	if err != nil {
 		return nil, err
 	}
@@ -196,9 +193,15 @@ func NewBucketWithConfig(logger log.Logger, conf Config, component string, rt ht
 	return bkt, nil
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	prefix := dir
 	if prefix != "" && !strings.HasSuffix(prefix, DirDelim) {
 		prefix += DirDelim
@@ -214,7 +217,13 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 				return err
 			}
 			for _, blob := range resp.Segment.BlobItems {
-				if err := f(*blob.Name); err != nil {
+				attrs := objstore.IterObjectAttributes{
+					Name: *blob.Name,
+				}
+				if params.LastModified {
+					attrs.SetLastModified(*blob.Properties.LastModified)
+				}
+				if err := f(attrs); err != nil {
 					return err
 				}
 			}
@@ -230,17 +239,40 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 			return err
 		}
 		for _, blobItem := range resp.Segment.BlobItems {
-			if err := f(*blobItem.Name); err != nil {
+			attrs := objstore.IterObjectAttributes{
+				Name: *blobItem.Name,
+			}
+			if params.LastModified {
+				attrs.SetLastModified(*blobItem.Properties.LastModified)
+			}
+			if err := f(attrs); err != nil {
 				return err
 			}
 		}
 		for _, blobPrefix := range resp.Segment.BlobPrefixes {
-			if err := f(*blobPrefix.Name); err != nil {
+			if err := f(objstore.IterObjectAttributes{Name: *blobPrefix.Name}); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
 }
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.

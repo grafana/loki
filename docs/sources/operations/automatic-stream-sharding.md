@@ -30,9 +30,9 @@ per-stream rate limit.
    ```
 
 1. Optionally enable `logging_enabled` for debugging stream sharding.
-  {{% admonition type="note" %}}
+  {{< admonition type="note" >}}
   This may affect the ingestion performance of Loki.
-  {{% /admonition %}}
+  {{< /admonition >}}
 
    ```yaml
    limits_config:

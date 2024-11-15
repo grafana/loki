@@ -2695,7 +2695,8 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -3012,6 +3013,15 @@ null
 			<td>distributor.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for distributor pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3658,6 +3668,7 @@ false
   },
   "terminationGracePeriodSeconds": 60,
   "tolerations": [],
+  "topologySpreadConstraints": [],
   "useDefaultProxyURLs": true
 }
 </pre>
@@ -3855,6 +3866,15 @@ false
 			<td>enterpriseGateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for gateway Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for enterprise-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4658,6 +4678,7 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
+  "topologySpreadConstraints": [],
   "updateStrategy": {
     "type": "RollingUpdate"
   }
@@ -4941,6 +4962,15 @@ null
 			<td>indexGateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for index-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -6772,7 +6802,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.14.2"
+"v0.15.0"
 </pre>
 </td>
 		</tr>
@@ -7686,7 +7716,8 @@ false
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -8012,6 +8043,15 @@ null
 			<td>patternIngester.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for pattern ingester pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -8541,7 +8581,8 @@ Defaults to allow skew no more then 1 node
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -8855,6 +8896,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler</td>
 			<td>object</td>
 			<td>Configuration for the query-scheduler</td>
@@ -8899,7 +8949,8 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -9108,6 +9159,15 @@ null
 			<td>queryScheduler.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for query-scheduler pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -10008,7 +10068,8 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -10298,6 +10359,15 @@ null
 			<td>ruler.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for ruler pods</td>
 			<td><pre lang="json">
 []
 </pre>

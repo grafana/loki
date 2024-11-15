@@ -2,7 +2,6 @@ package bloomshipper
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"github.com/dolthub/swiss"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/utils/keymutex"
@@ -189,6 +189,8 @@ func (f *Fetcher) processMetasCacheResponse(_ context.Context, refs []MetaRef, k
 
 	var lastErr error
 	var size int64
+
+	json := jsoniter.ConfigFastest
 	for i, ref := range refs {
 		if raw, ok := found[f.client.Meta(ref).Addr()]; ok {
 			meta := Meta{
@@ -209,6 +211,8 @@ func (f *Fetcher) writeBackMetas(ctx context.Context, metas []Meta) error {
 	var err error
 	keys := make([]string, len(metas))
 	data := make([][]byte, len(metas))
+
+	json := jsoniter.ConfigFastest
 	for i := range metas {
 		keys[i] = f.client.Meta(metas[i].MetaRef).Addr()
 		data[i], err = json.Marshal(metas[i])

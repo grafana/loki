@@ -311,6 +311,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.AlibabaStorageConfig.RegisterFlags(f)
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.BOSStorageConfig.RegisterFlags(f)
@@ -367,6 +368,9 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.ObjectStore.Validate(); err != nil {
 		return errors.Wrap(err, "invalid object store config")
+	}
+	if err := cfg.AlibabaStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Alibaba Storage config")
 	}
 
 	return cfg.NamedStores.Validate()
@@ -611,12 +615,16 @@ func (c *ClientMetrics) Unregister() {
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+	if cfg.UseThanosObjstore {
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, cfg.CongestionControl.Enabled, util_log.Logger)
+	}
+
 	actual, err := internalNewObjectClient(name, component, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.UseThanosObjstore || cfg.ObjectPrefix == "" {
+	if cfg.ObjectPrefix == "" {
 		return actual, nil
 	} else {
 		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
@@ -655,9 +663,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 			s3Cfg.BackoffConfig.MaxRetries = 1
 		}
 
-		if cfg.UseThanosObjstore {
-			return aws.NewS3ThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
-		}
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
 	case types.StorageTypeAlibabaCloud:
@@ -687,9 +692,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		if cfg.CongestionControl.Enabled {
 			gcsCfg.EnableRetries = false
 		}
-		if cfg.UseThanosObjstore {
-			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
-		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 
 	case types.StorageTypeAzure:
@@ -700,9 +702,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 				return nil, fmt.Errorf("Unrecognized named azure storage config %s", storeName)
 			}
 			azureCfg = (azure.BlobStorageConfig)(nsCfg)
-		}
-		if cfg.UseThanosObjstore {
-			return azure.NewBlobStorageThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)
 
@@ -756,10 +755,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		if cfg.UseThanosObjstore {
-			return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %s", storeName, strings.Join(cfg.ObjectStore.SupportedBackends(), ", "))
-		}
-
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
 	}
 }

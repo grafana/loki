@@ -277,6 +277,8 @@ func TestGCSExtract(t *testing.T) {
 	type test struct {
 		name               string
 		secret             *corev1.Secret
+		tokenAuth          *corev1.Secret
+		featureGates       configv1.FeatureGates
 		wantError          string
 		wantCredentialMode lokiv1.CredentialMode
 	}
@@ -343,6 +345,45 @@ func TestGCSExtract(t *testing.T) {
 			},
 			wantCredentialMode: lokiv1.CredentialModeToken,
 		},
+		{
+			name: "invalid for token CCO",
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:         true,
+					TokenCCOAuthEnv: true,
+				},
+			},
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"audience\": \"\", \"service_account_id\": \"\"}"),
+				},
+			},
+			wantError: "gcp credentials file contains invalid fields: key.json must not be set for CredentialModeTokenCCO",
+		},
+		{
+			name: "valid for token CCO",
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:         true,
+					TokenCCOAuthEnv: true,
+				},
+			},
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+				},
+			},
+			tokenAuth: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "token-auth-config"},
+				Data: map[string][]byte{
+					"service_account.json": []byte("{\"type\": \"external_account\", \"audience\": \"test\", \"service_account_id\": \"\"}"),
+				},
+			},
+			wantCredentialMode: lokiv1.CredentialModeTokenCCO,
+		},
 	}
 	for _, tst := range table {
 		t.Run(tst.name, func(t *testing.T) {
@@ -352,7 +393,7 @@ func TestGCSExtract(t *testing.T) {
 				Type: lokiv1.ObjectStorageSecretGCS,
 			}
 
-			opts, err := extractSecrets(spec, tst.secret, nil, configv1.FeatureGates{})
+			opts, err := extractSecrets(spec, tst.secret, tst.tokenAuth, tst.featureGates)
 			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.Equal(t, tst.wantCredentialMode, opts.CredentialMode)

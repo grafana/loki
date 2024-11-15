@@ -86,6 +86,7 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	DiscoverServiceName         []string         `yaml:"discover_service_name" json:"discover_service_name"`
 	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
+	LogLevelFields              []string         `yaml:"log_level_fields" json:"log_level_fields"`
 
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
@@ -228,9 +229,12 @@ type Limits struct {
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
+	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
+
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append" json:"pattern_ingester_tokenizable_json_fields_append" doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete" json:"pattern_ingester_tokenizable_json_fields_delete" doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
+	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -271,6 +275,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"service",
 		"app",
 		"application",
+		"app_name",
 		"name",
 		"app_kubernetes_io_name",
 		"container",
@@ -283,6 +288,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
+	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl"}
+	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -437,6 +444,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDefault, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the pattern ingester.")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsAppend, "limits.pattern-ingester-tokenizable-json-fields-append", "List of JSON fields that should be appended to the default list of tokenizable fields in the pattern ingester.")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDelete, "limits.pattern-ingester-tokenizable-json-fields-delete", "List of JSON fields that should be deleted from the (default U append) list of tokenizable fields in the pattern ingester.")
+
+	f.BoolVar(
+		&l.MetricAggregationEnabled,
+		"limits.metric-aggregation-enabled",
+		false,
+		"Enable metric aggregation. When enabled, pushed streams will be sampled for bytes and count, and these metric will be written back into Loki as a special __aggregated_metric__ stream, which can be queried for faster histogram queries.",
+	)
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -988,6 +1002,10 @@ func (o *Overrides) DiscoverLogLevels(userID string) bool {
 	return o.getOverridesForUser(userID).DiscoverLogLevels
 }
 
+func (o *Overrides) LogLevelFields(userID string) []string {
+	return o.getOverridesForUser(userID).LogLevelFields
+}
+
 // VolumeEnabled returns whether volume endpoints are enabled for a user.
 func (o *Overrides) VolumeEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).VolumeEnabled
@@ -1077,6 +1095,10 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
 }
 
+func (o *Overrides) ShardAggregations(userID string) []string {
+	return o.getOverridesForUser(userID).ShardAggregations
+}
+
 func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {
 	defaultFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDefault
 	appendFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsAppend
@@ -1110,6 +1132,10 @@ func (o *Overrides) PatternIngesterTokenizableJSONFieldsAppend(userID string) []
 
 func (o *Overrides) PatternIngesterTokenizableJSONFieldsDelete(userID string) []string {
 	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDelete
+}
+
+func (o *Overrides) MetricAggregationEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).MetricAggregationEnabled
 }
 
 // S3SSEType returns the per-tenant S3 SSE type.

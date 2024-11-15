@@ -9,15 +9,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket/http"
 )
 
-// NOTE some of the fields are hidden in the documentation due to this struct
-// being by the old Swift storage backend. The hidden fields can be unhidden
-// when we deprecate the old clients.
-
 // Config holds the config options for Swift backend
 type Config struct {
-	ApplicationCredentialID     string         `yaml:"application_credential_id" doc:"hidden"`
-	ApplicationCredentialName   string         `yaml:"application_credential_name" doc:"hidden"`
-	ApplicationCredentialSecret flagext.Secret `yaml:"application_credential_secret" doc:"hidden"`
+	ApplicationCredentialID     string         `yaml:"application_credential_id"`
+	ApplicationCredentialName   string         `yaml:"application_credential_name"`
+	ApplicationCredentialSecret flagext.Secret `yaml:"application_credential_secret"`
 	AuthVersion                 int            `yaml:"auth_version"`
 	AuthURL                     string         `yaml:"auth_url"`
 	Username                    string         `yaml:"username"`
@@ -36,7 +32,7 @@ type Config struct {
 	MaxRetries                  int            `yaml:"max_retries" category:"advanced"`
 	ConnectTimeout              time.Duration  `yaml:"connect_timeout" category:"advanced"`
 	RequestTimeout              time.Duration  `yaml:"request_timeout" category:"advanced"`
-	HTTP                        http.Config    `yaml:"http_config"`
+	HTTP                        http.Config    `yaml:"http"`
 }
 
 // RegisterFlags registers the flags for Swift storage
