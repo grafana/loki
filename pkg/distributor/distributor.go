@@ -485,6 +485,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}()
 		}
 
+		// This is used to sample the labels that were pushed to the distributor to log as a trace event.
+		streamSampleSize := len(req.Streams)
+		if streamSampleSize > 100 {
+			streamSampleSize = 100
+		}
+		streamLblSample := make([]string, 0, streamSampleSize)
+
 		for _, stream := range req.Streams {
 			// Return early if stream does not contain any entries
 			if len(stream.Entries) == 0 {
@@ -503,6 +510,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
 				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(discardedBytes))
 				continue
+			}
+
+
+			if len(streamLblSample) < streamSampleSize {
+				streamLblSample = append(streamLblSample, stream.Labels)
 			}
 
 			n := 0
@@ -553,6 +565,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			maybeShardStreams(stream, lbs, pushSize)
 		}
+
+		sp.LogKV(fmt.Sprintf("number of streams pushed to distributor (limited to %d)", streamSampleSize), len(streams))
+		sp.LogKV("stream labels", strings.Join(streamLblSample, ","))
 	}()
 
 	var validationErr error
