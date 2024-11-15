@@ -102,7 +102,8 @@ func (p *retryPolicy) Do(req *policy.Request) (resp *http.Response, err error) {
 	try := int32(1)
 	for {
 		resp = nil // reset
-		log.Writef(log.EventRetryPolicy, "=====> Try=%d", try)
+		// unfortunately we don't have access to the custom allow-list of query params, so we'll redact everything but the default allowed QPs
+		log.Writef(log.EventRetryPolicy, "=====> Try=%d for %s %s", try, req.Raw().Method, getSanitizedURL(*req.Raw().URL, getAllowedQueryParams(nil)))
 
 		// For each try, seek to the beginning of the Body stream. We do this even for the 1st try because
 		// the stream may not be at offset 0 when we first get it and we want the same behavior for the

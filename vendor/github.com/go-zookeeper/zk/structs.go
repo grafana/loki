@@ -166,8 +166,6 @@ type CreateRequest struct {
 	Flags int32
 }
 
-type CreateContainerRequest CreateRequest
-
 type CreateTTLRequest struct {
 	Path  string
 	Data  []byte
@@ -598,10 +596,8 @@ func requestStructForOp(op int32) interface{} {
 	switch op {
 	case opClose:
 		return &closeRequest{}
-	case opCreate:
+	case opCreate, opCreateContainer:
 		return &CreateRequest{}
-	case opCreateContainer:
-		return &CreateContainerRequest{}
 	case opCreateTTL:
 		return &CreateTTLRequest{}
 	case opDelete:

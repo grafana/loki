@@ -80,6 +80,8 @@ type AppLogs struct {
 // AppUpdateRequest represents a request to update an app.
 type AppUpdateRequest struct {
 	Spec *AppSpec `json:"spec"`
+	// Whether or not to update the source versions (for example fetching a new commit or image digest) of all components. By default (when this is false) only newly added sources will be updated to avoid changes like updating the scale of a component from also updating the respective code.
+	UpdateAllSourceVersions bool `json:"update_all_source_versions"`
 }
 
 // DeploymentCreateRequest represents a request to create a deployment.
@@ -382,6 +384,9 @@ func (s *AppsServiceOp) ListRegions(ctx context.Context) ([]*AppRegion, *Respons
 }
 
 // ListTiers lists available app tiers.
+//
+// Deprecated: The '/v2/apps/tiers' endpoint has been deprecated as app tiers
+// are no longer tied to instance sizes. The concept of tiers is being retired.
 func (s *AppsServiceOp) ListTiers(ctx context.Context) ([]*AppTier, *Response, error) {
 	path := fmt.Sprintf("%s/tiers", appsBasePath)
 	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
@@ -397,6 +402,9 @@ func (s *AppsServiceOp) ListTiers(ctx context.Context) ([]*AppTier, *Response, e
 }
 
 // GetTier retrieves information about a specific app tier.
+//
+// Deprecated: The '/v2/apps/tiers/{slug}' endpoints have been deprecated as app
+// tiers are no longer tied to instance sizes. The concept of tiers is being retired.
 func (s *AppsServiceOp) GetTier(ctx context.Context, slug string) (*AppTier, *Response, error) {
 	path := fmt.Sprintf("%s/tiers/%s", appsBasePath, slug)
 	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)

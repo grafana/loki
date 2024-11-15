@@ -1,5 +1,47 @@
 # Change Log
 
+## [v1.126.0] - 2024-09-25
+
+- #732 - @gottwald - DOKS: add custom CIDR fields
+- #727 - @loosla - [databases]: add support for Kafka advanced configuration
+
+## [v1.125.0] - 2024-09-17
+
+- #726 - @loosla - [databases]: add support for MongoDB advanced configuration
+- #724 - @andrewsomething - Bump go version to 1.22
+- #723 - @jauderho - Update Go dependencies and remove replace statements
+
+## [v1.124.0] - 2024-09-10
+
+- #721 - @vsharma6855 - [DBAAS] | Add API endpoint for applying cluster patches
+
+## [v1.123.0] - 2024-09-06
+
+- #719 - @andrewsomething - apps: mark ListTiers and GetTier as deprecated
+
+## [v1.122.0] - 2024-09-04
+
+- #717 - @danaelhe - DB: Fix Logsink Attribute Types
+- #716 - @bhardwajRahul - Databases: Add support for OpenSearch ACL
+
+## [v1.121.0] - 2024-08-20
+
+- #715 - @danaelhe - Databases: Bring back Logsink Support
+- #710 - @bhardwajRahul - Update GODO to include new Openseach index crud changes
+- #712 - @danaelhe - Database: Namespace logsink
+- #711 - @danaelhe - Databases: Add Logsinks CRUD support
+
+## [v1.120.0] - 2024-08-08
+
+- #708 - @markusthoemmes - APPS-9201 Add `UpdateAllSourceVersions` parameter to update app calls
+- #706 - @andrewsomething - database: Add Size to DatabaseReplica struct
+
+## [v1.119.0] - 2024-07-24
+
+- #704 - @ElanHasson - APPS-9133 - Add support for OPENSEARCH as a database engine option
+- #703 - @dependabot[bot] - Bump github.com/hashicorp/go-retryablehttp from 0.7.4 to 0.7.7
+- #699 - @ElanHasson - APPS-8790 Add support to App Platform Log Forwarding for an OpenSearch DBaaS cluster destination.
+
 ## [v1.118.0] - 2024-06-04
 
 **Note**: This release contains features in closed beta (#700).

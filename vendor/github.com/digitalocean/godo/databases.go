@@ -3,6 +3,7 @@ package godo
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ const (
 	databaseResizePath                  = databaseBasePath + "/%s/resize"
 	databaseMigratePath                 = databaseBasePath + "/%s/migrate"
 	databaseMaintenancePath             = databaseBasePath + "/%s/maintenance"
+	databaseUpdateInstallationPath      = databaseBasePath + "/%s/install_update"
 	databaseBackupsPath                 = databaseBasePath + "/%s/backups"
 	databaseUsersPath                   = databaseBasePath + "/%s/users"
 	databaseUserPath                    = databaseBasePath + "/%s/users/%s"
@@ -36,6 +38,10 @@ const (
 	databaseTopicsPath                  = databaseBasePath + "/%s/topics"
 	databaseMetricsCredentialsPath      = databaseBasePath + "/metrics/credentials"
 	databaseEvents                      = databaseBasePath + "/%s/events"
+	databaseIndexesPath                 = databaseBasePath + "/%s/indexes"
+	databaseIndexPath                   = databaseBasePath + "/%s/indexes/%s"
+	databaseLogsinkPath                 = databaseBasePath + "/%s/logsink/%s"
+	databaseLogsinksPath                = databaseBasePath + "/%s/logsink"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -116,6 +122,7 @@ type DatabasesService interface {
 	Resize(context.Context, string, *DatabaseResizeRequest) (*Response, error)
 	Migrate(context.Context, string, *DatabaseMigrateRequest) (*Response, error)
 	UpdateMaintenance(context.Context, string, *DatabaseUpdateMaintenanceRequest) (*Response, error)
+	InstallUpdate(context.Context, string) (*Response, error)
 	ListBackups(context.Context, string, *ListOptions) ([]DatabaseBackup, *Response, error)
 	GetUser(context.Context, string, string) (*DatabaseUser, *Response, error)
 	ListUsers(context.Context, string, *ListOptions) ([]DatabaseUser, *Response, error)
@@ -146,9 +153,13 @@ type DatabasesService interface {
 	GetPostgreSQLConfig(context.Context, string) (*PostgreSQLConfig, *Response, error)
 	GetRedisConfig(context.Context, string) (*RedisConfig, *Response, error)
 	GetMySQLConfig(context.Context, string) (*MySQLConfig, *Response, error)
+	GetMongoDBConfig(context.Context, string) (*MongoDBConfig, *Response, error)
+	GetKafkaConfig(context.Context, string) (*KafkaConfig, *Response, error)
 	UpdatePostgreSQLConfig(context.Context, string, *PostgreSQLConfig) (*Response, error)
 	UpdateRedisConfig(context.Context, string, *RedisConfig) (*Response, error)
 	UpdateMySQLConfig(context.Context, string, *MySQLConfig) (*Response, error)
+	UpdateMongoDBConfig(context.Context, string, *MongoDBConfig) (*Response, error)
+	UpdateKafkaConfig(context.Context, string, *KafkaConfig) (*Response, error)
 	ListOptions(todo context.Context) (*DatabaseOptions, *Response, error)
 	UpgradeMajorVersion(context.Context, string, *UpgradeVersionRequest) (*Response, error)
 	ListTopics(context.Context, string, *ListOptions) ([]DatabaseTopic, *Response, error)
@@ -159,6 +170,13 @@ type DatabasesService interface {
 	GetMetricsCredentials(context.Context) (*DatabaseMetricsCredentials, *Response, error)
 	UpdateMetricsCredentials(context.Context, *DatabaseUpdateMetricsCredentialsRequest) (*Response, error)
 	ListDatabaseEvents(context.Context, string, *ListOptions) ([]DatabaseEvent, *Response, error)
+	ListIndexes(context.Context, string, *ListOptions) ([]DatabaseIndex, *Response, error)
+	DeleteIndex(context.Context, string, string) (*Response, error)
+	CreateLogsink(ctx context.Context, databaseID string, createLogsink *DatabaseCreateLogsinkRequest) (*DatabaseLogsink, *Response, error)
+	GetLogsink(ctx context.Context, databaseID string, logsinkID string) (*DatabaseLogsink, *Response, error)
+	ListLogsinks(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseLogsink, *Response, error)
+	UpdateLogsink(ctx context.Context, databaseID string, logsinkID string, updateLogsink *DatabaseUpdateLogsinkRequest) (*Response, error)
+	DeleteLogsink(ctx context.Context, databaseID, logsinkID string) (*Response, error)
 }
 
 // DatabasesServiceOp handles communication with the Databases related methods
@@ -241,9 +259,16 @@ type KafkaACL struct {
 	Topic      string `json:"topic,omitempty"`
 }
 
-// DatabaseUserSettings contains Kafka-specific user settings
+// OpenSearchACL contains OpenSearch specific user access control information
+type OpenSearchACL struct {
+	Permission string `json:"permission,omitempty"`
+	Index      string `json:"index,omitempty"`
+}
+
+// DatabaseUserSettings contains user settings
 type DatabaseUserSettings struct {
-	ACL []*KafkaACL `json:"acl,omitempty"`
+	ACL           []*KafkaACL      `json:"acl,omitempty"`
+	OpenSearchACL []*OpenSearchACL `json:"opensearch_acl,omitempty"`
 }
 
 // DatabaseMySQLUserSettings contains MySQL-specific user settings
@@ -323,6 +348,14 @@ type DatabaseTopic struct {
 	Config            *TopicConfig      `json:"config,omitempty"`
 }
 
+// DatabaseLogsink represents a logsink
+type DatabaseLogsink struct {
+	ID     string                 `json:"sink_id"`
+	Name   string                 `json:"sink_name,omitempty"`
+	Type   string                 `json:"sink_type,omitempty"`
+	Config *DatabaseLogsinkConfig `json:"config,omitempty"`
+}
+
 // TopicPartition represents the state of a Kafka topic partition
 type TopicPartition struct {
 	EarliestOffset uint64                `json:"earliest_offset,omitempty"`
@@ -392,6 +425,7 @@ type DatabaseReplica struct {
 	PrivateNetworkUUID string              `json:"private_network_uuid,omitempty"`
 	Tags               []string            `json:"tags,omitempty"`
 	StorageSizeMib     uint64              `json:"storage_size_mib,omitempty"`
+	Size               string              `json:"size"`
 }
 
 // DatabasePool represents a database connection pool
@@ -469,6 +503,35 @@ type DatabaseFirewallRule struct {
 	Type        string    `json:"type"`
 	Value       string    `json:"value"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// DatabaseCreateLogsinkRequest is used to create logsink for a database cluster
+type DatabaseCreateLogsinkRequest struct {
+	Name   string                 `json:"sink_name"`
+	Type   string                 `json:"sink_type"`
+	Config *DatabaseLogsinkConfig `json:"config"`
+}
+
+// DatabaseUpdateLogsinkRequest is used to update logsink for a database cluster
+type DatabaseUpdateLogsinkRequest struct {
+	Config *DatabaseLogsinkConfig `json:"config"`
+}
+
+// DatabaseLogsinkConfig represents one of the configurable options (rsyslog_logsink, elasticsearch_logsink, or opensearch_logsink) for a logsink.
+type DatabaseLogsinkConfig struct {
+	URL          string  `json:"url,omitempty"`
+	IndexPrefix  string  `json:"index_prefix,omitempty"`
+	IndexDaysMax int     `json:"index_days_max,omitempty"`
+	Timeout      float32 `json:"timeout,omitempty"`
+	Server       string  `json:"server,omitempty"`
+	Port         int     `json:"port,omitempty"`
+	TLS          bool    `json:"tls,omitempty"`
+	Format       string  `json:"format,omitempty"`
+	Logline      string  `json:"logline,omitempty"`
+	SD           string  `json:"sd,omitempty"`
+	CA           string  `json:"ca,omitempty"`
+	Key          string  `json:"key,omitempty"`
+	Cert         string  `json:"cert,omitempty"`
 }
 
 // PostgreSQLConfig holds advanced configurations for PostgreSQL database clusters.
@@ -590,6 +653,36 @@ type MySQLConfig struct {
 	BinlogRetentionPeriod        *int     `json:"binlog_retention_period,omitempty"`
 }
 
+// MongoDBConfig holds advanced configurations for MongoDB database clusters.
+type MongoDBConfig struct {
+	DefaultReadConcern              *string `json:"default_read_concern,omitempty"`
+	DefaultWriteConcern             *string `json:"default_write_concern,omitempty"`
+	TransactionLifetimeLimitSeconds *int    `json:"transaction_lifetime_limit_seconds,omitempty"`
+	SlowOpThresholdMs               *int    `json:"slow_op_threshold_ms,omitempty"`
+	Verbosity                       *int    `json:"verbosity,omitempty"`
+}
+
+// KafkaConfig holds advanced configurations for Kafka database clusters.
+type KafkaConfig struct {
+	GroupInitialRebalanceDelayMs       *int     `json:"group_initial_rebalance_delay_ms,omitempty"`
+	GroupMinSessionTimeoutMs           *int     `json:"group_min_session_timeout_ms,omitempty"`
+	GroupMaxSessionTimeoutMs           *int     `json:"group_max_session_timeout_ms,omitempty"`
+	MessageMaxBytes                    *int     `json:"message_max_bytes,omitempty"`
+	LogCleanerDeleteRetentionMs        *int64   `json:"log_cleaner_delete_retention_ms,omitempty"`
+	LogCleanerMinCompactionLagMs       *uint64  `json:"log_cleaner_min_compaction_lag_ms,omitempty"`
+	LogFlushIntervalMs                 *uint64  `json:"log_flush_interval_ms,omitempty"`
+	LogIndexIntervalBytes              *int     `json:"log_index_interval_bytes,omitempty"`
+	LogMessageDownconversionEnable     *bool    `json:"log_message_downconversion_enable,omitempty"`
+	LogMessageTimestampDifferenceMaxMs *uint64  `json:"log_message_timestamp_difference_max_ms,omitempty"`
+	LogPreallocate                     *bool    `json:"log_preallocate,omitempty"`
+	LogRetentionBytes                  *big.Int `json:"log_retention_bytes,omitempty"`
+	LogRetentionHours                  *int     `json:"log_retention_hours,omitempty"`
+	LogRetentionMs                     *big.Int `json:"log_retention_ms,omitempty"`
+	LogRollJitterMs                    *uint64  `json:"log_roll_jitter_ms,omitempty"`
+	LogSegmentDeleteDelayMs            *int     `json:"log_segment_delete_delay_ms,omitempty"`
+	AutoCreateTopicsEnable             *bool    `json:"auto_create_topics_enable,omitempty"`
+}
+
 type databaseUserRoot struct {
 	User *DatabaseUser `json:"user"`
 }
@@ -628,6 +721,14 @@ type databaseRedisConfigRoot struct {
 
 type databaseMySQLConfigRoot struct {
 	Config *MySQLConfig `json:"config"`
+}
+
+type databaseMongoDBConfigRoot struct {
+	Config *MongoDBConfig `json:"config"`
+}
+
+type databaseKafkaConfigRoot struct {
+	Config *KafkaConfig `json:"config"`
 }
 
 type databaseBackupsRoot struct {
@@ -677,6 +778,10 @@ type databaseTopicRoot struct {
 
 type databaseTopicsRoot struct {
 	Topics []DatabaseTopic `json:"topics"`
+}
+
+type databaseLogsinksRoot struct {
+	Sinks []DatabaseLogsink `json:"sinks"`
 }
 
 type databaseMetricsCredentialsRoot struct {
@@ -730,6 +835,28 @@ type DatabaseEvent struct {
 
 type ListDatabaseEventsRoot struct {
 	Events []DatabaseEvent `json:"events"`
+}
+
+type DatabaseIndex struct {
+	IndexName        string            `json:"index_name"`
+	NumberofShards   uint64            `json:"number_of_shards"`
+	NumberofReplicas uint64            `json:"number_of_replicas"`
+	Size             int64             `json:"size,omitempty"`
+	Health           string            `json:"health,omitempty"`
+	Status           string            `json:"status,omitempty"`
+	Docs             int64             `json:"docs,omitempty"`
+	CreateTime       string            `json:"create_time"`
+	Replication      *IndexReplication `json:"replication,omitempty"`
+}
+
+type IndexReplication struct {
+	LeaderIndex   string `json:"leader_index,omitempty"`
+	LeaderProject string `json:"leader_project,omitempty"`
+	LeaderService string `json:"leader_service,omitempty"`
+}
+
+type databaseIndexesRoot struct {
+	Indexes []DatabaseIndex `json:"indexes"`
 }
 
 // URN returns a URN identifier for the database
@@ -848,6 +975,20 @@ func (svc *DatabasesServiceOp) Migrate(ctx context.Context, databaseID string, m
 func (svc *DatabasesServiceOp) UpdateMaintenance(ctx context.Context, databaseID string, maintenance *DatabaseUpdateMaintenanceRequest) (*Response, error) {
 	path := fmt.Sprintf(databaseMaintenancePath, databaseID)
 	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, maintenance)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// InstallUpdate starts installation of updates
+func (svc *DatabasesServiceOp) InstallUpdate(ctx context.Context, databaseID string) (*Response, error) {
+	path := fmt.Sprintf(databaseUpdateInstallationPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1401,6 +1542,70 @@ func (svc *DatabasesServiceOp) UpdateMySQLConfig(ctx context.Context, databaseID
 	return resp, nil
 }
 
+// GetMongoDBConfig retrieves the config for a MongoDB database cluster.
+func (svc *DatabasesServiceOp) GetMongoDBConfig(ctx context.Context, databaseID string) (*MongoDBConfig, *Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseMongoDBConfigRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Config, resp, nil
+}
+
+// UpdateMongoDBConfig updates the config for a MongoDB database cluster.
+func (svc *DatabasesServiceOp) UpdateMongoDBConfig(ctx context.Context, databaseID string, config *MongoDBConfig) (*Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	root := &databaseMongoDBConfigRoot{
+		Config: config,
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// GetKafkaConfig retrieves the config for a Kafka database cluster.
+func (svc *DatabasesServiceOp) GetKafkaConfig(ctx context.Context, databaseID string) (*KafkaConfig, *Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseKafkaConfigRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Config, resp, nil
+}
+
+// UpdateKafkaConfig updates the config for a Kafka database cluster.
+func (svc *DatabasesServiceOp) UpdateKafkaConfig(ctx context.Context, databaseID string, config *KafkaConfig) (*Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	root := &databaseKafkaConfigRoot{
+		Config: config,
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
 // ListOptions gets the database options available.
 func (svc *DatabasesServiceOp) ListOptions(ctx context.Context) (*DatabaseOptions, *Response, error) {
 	root := new(databaseOptionsRoot)
@@ -1558,4 +1763,117 @@ func (svc *DatabasesServiceOp) ListDatabaseEvents(ctx context.Context, databaseI
 	}
 
 	return root.Events, resp, nil
+}
+
+// ListIndexes returns all indexes for a given opensearch cluster
+func (svc *DatabasesServiceOp) ListIndexes(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseIndex, *Response, error) {
+	path := fmt.Sprintf(databaseIndexesPath, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseIndexesRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Indexes, resp, nil
+}
+
+// DeleteIndex will delete an existing opensearch index
+func (svc *DatabasesServiceOp) DeleteIndex(ctx context.Context, databaseID, name string) (*Response, error) {
+	path := fmt.Sprintf(databaseIndexPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// CreateLogsink creates a new logsink for a database
+func (svc *DatabasesServiceOp) CreateLogsink(ctx context.Context, databaseID string, createLogsink *DatabaseCreateLogsinkRequest) (*DatabaseLogsink, *Response, error) {
+	path := fmt.Sprintf(databaseLogsinksPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, createLogsink)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseLogsink)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetLogsink gets a logsink for a database
+func (svc *DatabasesServiceOp) GetLogsink(ctx context.Context, databaseID string, logsinkID string) (*DatabaseLogsink, *Response, error) {
+	path := fmt.Sprintf(databaseLogsinkPath, databaseID, logsinkID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseLogsink)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// ListTopics returns all topics for a given kafka cluster
+func (svc *DatabasesServiceOp) ListLogsinks(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseLogsink, *Response, error) {
+	path := fmt.Sprintf(databaseLogsinksPath, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseLogsinksRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Sinks, resp, nil
+}
+
+// UpdateLogsink updates a logsink for a database cluster
+func (svc *DatabasesServiceOp) UpdateLogsink(ctx context.Context, databaseID string, logsinkID string, updateLogsink *DatabaseUpdateLogsinkRequest) (*Response, error) {
+	path := fmt.Sprintf(databaseLogsinkPath, databaseID, logsinkID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updateLogsink)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// DeleteLogsink deletes a logsink for a database cluster
+func (svc *DatabasesServiceOp) DeleteLogsink(ctx context.Context, databaseID, logsinkID string) (*Response, error) {
+	path := fmt.Sprintf(databaseLogsinkPath, databaseID, logsinkID)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
 }
