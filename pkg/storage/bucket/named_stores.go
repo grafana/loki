@@ -109,7 +109,7 @@ func (ns *NamedStores) OverrideConfig(storeCfg *Config, namedStore string) error
 	case GCS:
 		nsCfg, ok := ns.GCS[namedStore]
 		if !ok {
-			return fmt.Errorf("Unrecognized named s3 storage config %s", namedStore)
+			return fmt.Errorf("Unrecognized named gcs storage config %s", namedStore)
 		}
 
 		storeCfg.GCS = (gcs.Config)(nsCfg)
