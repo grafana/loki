@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,8 +47,23 @@ var (
 	ErrUnsupportedStorageBackend        = errors.New("unsupported storage backend")
 	ErrInvalidCharactersInStoragePrefix = errors.New("storage prefix contains invalid characters, it may only contain digits and English alphabet letters")
 
-	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
+	metrics *objstore.Metrics
+
+	// added to track the status codes by method
+	bucketRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "objstore_bucket_transport_requests_total",
+			Help:      "Total number of HTTP transport requests made to the bucket backend by status code and method.",
+		},
+		[]string{"status_code", "method"},
+	)
 )
+
+func init() {
+	prometheus.MustRegister(bucketRequestsTotal)
+	metrics = objstore.BucketMetrics(prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), "")
+}
 
 // StorageBackendConfig holds configuration for accessing long-term storage.
 type StorageBackendConfig struct {
@@ -176,13 +192,13 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 	// TODO: add support for other backends that loki already supports
 	switch backend {
 	case S3:
-		client, err = s3.NewBucketClient(cfg.S3, name, logger)
+		client, err = s3.NewBucketClient(cfg.S3, name, logger, instrumentTransport())
 	case GCS:
-		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger)
+		client, err = gcs.NewBucketClient(ctx, cfg.GCS, name, logger, instrumentTransport())
 	case Azure:
-		client, err = azure.NewBucketClient(cfg.Azure, name, logger)
+		client, err = azure.NewBucketClient(cfg.Azure, name, logger, instrumentTransport())
 	case Swift:
-		client, err = swift.NewBucketClient(cfg.Swift, name, logger)
+		client, err = swift.NewBucketClient(cfg.Swift, name, logger, instrumentTransport())
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	default:
@@ -208,4 +224,25 @@ func NewClient(ctx context.Context, backend string, cfg Config, name string, log
 	}
 
 	return instrumentedClient, nil
+}
+
+type instrumentedRoundTripper struct {
+	next http.RoundTripper
+}
+
+func instrumentTransport() func(http.RoundTripper) http.RoundTripper {
+	return func(rt http.RoundTripper) http.RoundTripper {
+		return &instrumentedRoundTripper{next: rt}
+	}
+}
+
+func (i *instrumentedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := i.next.RoundTrip(req)
+	if err != nil {
+		return resp, err
+	}
+
+	// Record status code and method metrics
+	bucketRequestsTotal.WithLabelValues(strconv.Itoa(resp.StatusCode), req.Method).Inc()
+	return resp, nil
 }
