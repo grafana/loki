@@ -37,6 +37,7 @@
       // Don't automatically merge GitHub Actions updates
       "matchManagers": ["github-actions"],
       "enabled": true,
+      "matchUpdateTypes": ["major", "minor", "patch"],
       "autoApprove": false,
       "automerge": false
     },
@@ -46,6 +47,7 @@
       // Updates to this require the docs to be updated
       "matchManagers": ["helm-requirements", "helm-values", "helmv3"],
       "groupName": "helm-{{packageName}}",
+      "matchUpdateTypes": ["major", "minor", "patch"],
       "autoApprove": false,
       "automerge": false
     },
@@ -56,6 +58,7 @@
       "matchFileNames": ["tools/lambda-promtail/go.mod"],
       "groupName": "lambdapromtail-{{packageName}}",
       "enabled": true,
+      "matchUpdateTypes": ["major", "minor", "patch"],
       "autoApprove": false,
       "automerge": false
     },
