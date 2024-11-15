@@ -72,10 +72,16 @@ func NewPartitionReader(
 		backoff:       backoff,
 		readerMetrics: readerMetrics,
 		writerMetrics: writerMetrics,
-		logger:        logger,
-		decoder:       decoder,
-		client:        client,
-		aClient:       aClient,
+		logger: log.With(
+			logger,
+			"component", "partitionReader",
+			"topic", kafkaCfg.Topic,
+			"partition_id", partitionID,
+			"group", group,
+		),
+		decoder: decoder,
+		client:  client,
+		aClient: aClient,
 	}, nil
 }
 
@@ -386,11 +392,17 @@ func (r *partitionReader) Commit(ctx context.Context, offset int64) (err error) 
 	startTime := time.Now()
 	r.writerMetrics.CommitRequestsTotal.Inc()
 
+	logger := log.With(
+		r.logger,
+		"offset", offset,
+		"phase", "committer",
+	)
+
 	defer func() {
 		r.writerMetrics.CommitRequestsLatency.Observe(time.Since(startTime).Seconds())
 
 		if err != nil {
-			level.Error(r.logger).Log("msg", "failed to commit last consumed offset to Kafka", "err", err, "offset", offset)
+			level.Error(logger).Log("msg", "failed to commit last consumed offset to Kafka", "err", err, "offset", offset)
 			r.writerMetrics.CommitFailuresTotal.Inc()
 		}
 	}()
@@ -406,7 +418,7 @@ func (r *partitionReader) Commit(ctx context.Context, offset int64) (err error) 
 	}
 
 	committedOffset, _ := committed.Lookup(r.topic, r.partitionID)
-	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
+	level.Debug(logger).Log("msg", "last commit offset successfully committed to Kafka", "committed", committedOffset.At)
 	r.writerMetrics.LastCommittedOffset.Set(float64(committedOffset.At))
 	return nil
 }

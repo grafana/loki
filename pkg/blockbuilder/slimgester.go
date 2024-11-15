@@ -183,6 +183,8 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		"job_max_offset", job.Offsets.Max,
 	)
 
+	level.Debug(logger).Log("msg", "beginning job")
+
 	indexer := newTsdbCreator()
 	appender := newAppender(i.id,
 		i.cfg,
