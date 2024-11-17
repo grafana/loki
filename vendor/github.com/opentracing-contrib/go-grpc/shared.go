@@ -8,10 +8,8 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-var (
-	// Morally a const:
-	gRPCComponentTag = opentracing.Tag{string(ext.Component), "gRPC"}
-)
+// Morally a const:.
+var gRPCComponentTag = opentracing.Tag{Key: string(ext.Component), Value: "gRPC"}
 
 // metadataReaderWriter satisfies both the opentracing.TextMapReader and
 // opentracing.TextMapWriter interfaces.

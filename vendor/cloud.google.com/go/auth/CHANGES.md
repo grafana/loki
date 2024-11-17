@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.1...auth/v0.10.2) (2024-11-12)
+
+
+### Bug Fixes
+
+* **auth:** Restore use of grpc.Dial ([#11118](https://github.com/googleapis/google-cloud-go/issues/11118)) ([2456b94](https://github.com/googleapis/google-cloud-go/commit/2456b943b7b8aaabd4d8bfb7572c0f477ae0db45)), refs [#7556](https://github.com/googleapis/google-cloud-go/issues/7556)
+
+## [0.10.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.0...auth/v0.10.1) (2024-11-06)
+
+
+### Bug Fixes
+
+* **auth:** Restore Application Default Credentials support to idtoken ([#11083](https://github.com/googleapis/google-cloud-go/issues/11083)) ([8771f2e](https://github.com/googleapis/google-cloud-go/commit/8771f2ea9807ab822083808e0678392edff3b4f2))
+* **auth:** Skip impersonate universe domain check if empty ([#11086](https://github.com/googleapis/google-cloud-go/issues/11086)) ([87159c1](https://github.com/googleapis/google-cloud-go/commit/87159c1059d4a18d1367ce62746a838a94964ab6))
+
 ## [0.10.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.9...auth/v0.10.0) (2024-10-30)
 
 
