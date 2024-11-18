@@ -42,6 +42,7 @@ jobs:
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
           LOG_LEVEL: DEBUG
+          DEFAULT_WORKSPACE: "${GITHUB_WORKSPACE}/production/helm/loki"
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
