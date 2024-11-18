@@ -26,7 +26,6 @@ const (
 )
 
 type ReaderIfc interface {
-	Client() *kgo.Client
 	Topic() string
 	Partition() int32
 	ConsumerGroup() string
@@ -48,7 +47,7 @@ type refactoredReaderMetrics struct {
 	lastCommittedOffset prometheus.Gauge
 }
 
-func newRefactoredReaderMetrics(r prometheus.Registerer, partitionID int32) *refactoredReaderMetrics {
+func newRefactoredReaderMetrics(r prometheus.Registerer) *refactoredReaderMetrics {
 	return &refactoredReaderMetrics{
 		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
@@ -104,14 +103,9 @@ func NewRefactoredReader(
 		topic:         topic,
 		partitionID:   partitionID,
 		consumerGroup: consumerGroup,
-		metrics:       newRefactoredReaderMetrics(reg, partitionID),
+		metrics:       newRefactoredReaderMetrics(reg),
 		logger:        logger,
 	}
-}
-
-// Client returns the underlying Kafka client
-func (r *RefactoredReader) Client() *kgo.Client {
-	return r.client
 }
 
 // Topic returns the topic being read

@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
@@ -65,14 +64,13 @@ func readersFromKafkaCfg(
 	consumerFactory ConsumerFactory,
 	partition int32,
 ) (*RefactoredReader, *ReaderService) {
-	partitionID := int32(0)
-	c, err := client.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
+	c, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	r := NewRefactoredReader(
 		c,
 		kafkaCfg.Topic,
-		partitionID,
-		kafkaCfg.GetConsumerGroup("test-consumer-group", partitionID),
+		partition,
+		kafkaCfg.GetConsumerGroup("test-consumer-group", partition),
 		log.NewNopLogger(),
 		nil,
 	)
