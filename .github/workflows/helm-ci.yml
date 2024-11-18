@@ -29,7 +29,7 @@ jobs:
         run: make helm-lint
 
       - name: Lint Code Base
-        uses: docker://github/super-linter:v3.17.2
+        uses: super-linter/super-linter:v7.2.0
         env:
           FILTER_REGEX_EXCLUDE: .*(CHANGELOG\.md|README\.md|Chart\.yaml|NOTES.txt).*
           FILTER_REGEX_INCLUDE: .*production/helm/.*
