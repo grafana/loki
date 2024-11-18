@@ -1,5 +1,15 @@
+# CONTRIBUTIONS ONLY
+
+**What does this mean?** I do not have time to fix issues myself. The only way fixes or new features will be added is by people submitting PRs. If you are interested in taking over maintenance and have a history of contributions to Kingpin, please let me know.
+
+**Current status.** Kingpin is largely feature stable. There hasn't been a need to add new features in a while, but there are some bugs that should be fixed.
+
+**Why?** I no longer use Kingpin personally (I now use [kong](https://github.com/alecthomas/kong)). Rather than leave the project in a limbo of people filing issues and wondering why they're not being worked on, I believe this notice will more clearly set expectations.
+
 # Kingpin - A Go (golang) command line and flag parser
-[![](https://godoc.org/github.com/alecthomas/kingpin?status.svg)](http://godoc.org/github.com/alecthomas/kingpin) [![Build Status](https://travis-ci.org/alecthomas/kingpin.svg?branch=master)](https://travis-ci.org/alecthomas/kingpin) [![Gitter chat](https://badges.gitter.im/alecthomas.png)](https://gitter.im/alecthomas/Lobby)
+[![](https://godoc.org/github.com/alecthomas/kingpin?status.svg)](http://godoc.org/github.com/alecthomas/kingpin) [![CI](https://github.com/alecthomas/kingpin/actions/workflows/ci.yml/badge.svg)](https://github.com/alecthomas/kingpin/actions/workflows/ci.yml)
+
+
 
 
 
@@ -41,7 +51,7 @@ positional arguments.
 
 Install it with:
 
-    $ go get gopkg.in/alecthomas/kingpin.v2
+    $ go get github.com/alecthomas/kingpin/v2
 
 It looks like this:
 
@@ -116,16 +126,14 @@ be separated by a space. That is no longer the case.
 
 ## Versions
 
-Kingpin uses [gopkg.in](https://gopkg.in/alecthomas/kingpin) for versioning.
+The current stable version is [github.com/alecthomas/kingpin/v2](https://github.com/alecthomas/kingpin/v2). The previous version, [gopkg.in/alecthomas/kingpin.v1](https://gopkg.in/alecthomas/kingpin.v1), is deprecated and in maintenance mode.
 
-The current stable version is [gopkg.in/alecthomas/kingpin.v2](https://gopkg.in/alecthomas/kingpin.v2). The previous version, [gopkg.in/alecthomas/kingpin.v1](https://gopkg.in/alecthomas/kingpin.v1), is deprecated and in maintenance mode.
-
-### [V2](https://gopkg.in/alecthomas/kingpin.v2) is the current stable version
+### [V2](https://github.com/alecthomas/kingpin/v2) is the current stable version
 
 Installation:
 
 ```sh
-$ go get gopkg.in/alecthomas/kingpin.v2
+$ go get github.com/alecthomas/kingpin/v2
 ```
 
 ### [V1](https://gopkg.in/alecthomas/kingpin.v1) is the OLD stable version
@@ -233,12 +241,12 @@ package main
 import (
   "fmt"
 
-  "gopkg.in/alecthomas/kingpin.v2"
+  "github.com/alecthomas/kingpin/v2"
 )
 
 var (
   debug   = kingpin.Flag("debug", "Enable debug mode.").Bool()
-  timeout = kingpin.Flag("timeout", "Timeout waiting for ping.").Default("5s").OverrideDefaultFromEnvar("PING_TIMEOUT").Short('t').Duration()
+  timeout = kingpin.Flag("timeout", "Timeout waiting for ping.").Default("5s").Envar("PING_TIMEOUT").Short('t').Duration()
   ip      = kingpin.Arg("ip", "IP address to ping.").Required().IP()
   count   = kingpin.Arg("count", "Number of packets to send").Int()
 )
@@ -248,6 +256,17 @@ func main() {
   kingpin.Parse()
   fmt.Printf("Would ping: %s with timeout %s and count %d\n", *ip, *timeout, *count)
 }
+```
+
+#### Reading arguments from a file
+Kingpin supports reading arguments from a file.
+Create a file with the corresponding arguments:
+```
+echo -t=5\n > args
+```
+And now supply it:
+```
+$ ping @args
 ```
 
 ### Complex Example
@@ -300,7 +319,7 @@ package main
 import (
   "os"
   "strings"
-  "gopkg.in/alecthomas/kingpin.v2"
+  "github.com/alecthomas/kingpin/v2"
 )
 
 var (
@@ -377,8 +396,8 @@ var (
 
 func main() {
   switch kingpin.Parse() {
-  case "delete user":
-  case "delete post":
+  case deleteUserCommand.FullCommand():
+  case deletePostCommand.FullCommand():
   }
 }
 ```
@@ -514,35 +533,35 @@ ips := IPList(kingpin.Arg("ips", "IP addresses to ping."))
 
 ### Bash/ZSH Shell Completion
 
-By default, all flags and commands/subcommands generate completions 
+By default, all flags and commands/subcommands generate completions
 internally.
 
-Out of the box, CLI tools using kingpin should be able to take advantage 
-of completion hinting for flags and commands. By specifying 
-`--completion-bash` as the first argument, your CLI tool will show 
-possible subcommands. By ending your argv with `--`, hints for flags 
+Out of the box, CLI tools using kingpin should be able to take advantage
+of completion hinting for flags and commands. By specifying
+`--completion-bash` as the first argument, your CLI tool will show
+possible subcommands. By ending your argv with `--`, hints for flags
 will be shown.
 
-To allow your end users to take advantage you must package a 
-`/etc/bash_completion.d` script with your distribution (or the equivalent 
-for your target platform/shell). An alternative is to instruct your end 
+To allow your end users to take advantage you must package a
+`/etc/bash_completion.d` script with your distribution (or the equivalent
+for your target platform/shell). An alternative is to instruct your end
 user to source a script from their `bash_profile` (or equivalent).
 
 Fortunately Kingpin makes it easy to generate or source a script for use
-with end users shells. `./yourtool --completion-script-bash` and 
+with end users shells. `./yourtool --completion-script-bash` and
 `./yourtool --completion-script-zsh` will generate these scripts for you.
 
 **Installation by Package**
 
-For the best user experience, you should bundle your pre-created 
-completion script with your CLI tool and install it inside 
-`/etc/bash_completion.d` (or equivalent). A good suggestion is to add 
-this as an automated step to your build pipeline, in the implementation 
+For the best user experience, you should bundle your pre-created
+completion script with your CLI tool and install it inside
+`/etc/bash_completion.d` (or equivalent). A good suggestion is to add
+this as an automated step to your build pipeline, in the implementation
 is improved for bug fixed.
 
 **Installation by `bash_profile`**
 
-Alternatively, instruct your users to add an additional statement to 
+Alternatively, instruct your users to add an additional statement to
 their `bash_profile` (or equivalent):
 
 ```
@@ -558,13 +577,13 @@ eval "$(your-cli-tool --completion-script-zsh)"
 #### Additional API
 To provide more flexibility, a completion option API has been
 exposed for flags to allow user defined completion options, to extend
-completions further than just EnumVar/Enum. 
+completions further than just EnumVar/Enum.
 
 
 **Provide Static Options**
 
-When using an `Enum` or `EnumVar`, users are limited to only the options 
-given. Maybe we wish to hint possible options to the user, but also 
+When using an `Enum` or `EnumVar`, users are limited to only the options
+given. Maybe we wish to hint possible options to the user, but also
 allow them to provide their own custom option. `HintOptions` gives
 this functionality to flags.
 
@@ -577,7 +596,7 @@ app.Flag("port", "Provide a port to connect to").
 ```
 
 **Provide Dynamic Options**
-Consider the case that you needed to read a local database or a file to 
+Consider the case that you needed to read a local database or a file to
 provide suggestions. You can dynamically generate the options
 
 ```
@@ -596,13 +615,13 @@ app.Flag("flag-1", "").HintAction(listHosts).String()
 
 **EnumVar/Enum**
 When using `Enum` or `EnumVar`, any provided options will be automatically
-used for bash autocompletion. However, if you wish to provide a subset or 
+used for bash autocompletion. However, if you wish to provide a subset or
 different options, you can use `HintOptions` or `HintAction` which will override
 the default completion options for `Enum`/`EnumVar`.
 
 
 **Examples**
-You can see an in depth example of the completion API within 
+You can see an in depth example of the completion API within
 `examples/completion/main.go`
 
 
@@ -610,11 +629,27 @@ You can see an in depth example of the completion API within
 
 `kingpin.CommandLine.HelpFlag.Short('h')`
 
+Short help is also available when creating a more complicated app:
+
+```go
+var (
+	app = kingpin.New("chat", "A command-line chat application.")
+  // ...
+)
+
+func main() {
+	app.HelpFlag.Short('h')
+	switch kingpin.MustParse(app.Parse(os.Args[1:])) {
+  // ...
+  }
+}
+```
+
 ### Custom help
 
 Kingpin v2 supports templatised help using the text/template library (actually, [a fork](https://github.com/alecthomas/template)).
 
-You can specify the template to use with the [Application.UsageTemplate()](http://godoc.org/gopkg.in/alecthomas/kingpin.v2#Application.UsageTemplate) function.
+You can specify the template to use with the [Application.UsageTemplate()](http://godoc.org/github.com/alecthomas/kingpin/v2#Application.UsageTemplate) function.
 
 There are four included templates: `kingpin.DefaultUsageTemplate` is the default,
 `kingpin.CompactUsageTemplate` provides a more compact representation for more complex command-line structures,

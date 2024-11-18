@@ -21,11 +21,47 @@ func (c *cmdMixin) CmdCompletion(context *ParseContext) []string {
 	// default commands' alternatives, since they weren't listed explicitly
 	// and the user may want to explicitly list something else.
 	argsSatisfied := 0
+	allSatisfied := false
+ElementLoop:
 	for _, el := range context.Elements {
 		switch clause := el.Clause.(type) {
 		case *ArgClause:
+			// Each new element should reset the previous state
+			allSatisfied = false
+			options = nil
+
 			if el.Value != nil && *el.Value != "" {
-				argsSatisfied++
+				// Get the list of valid options for the last argument
+				validOptions := c.argGroup.args[argsSatisfied].resolveCompletions()
+				if len(validOptions) == 0 {
+					// If there are no options for this argument,
+					// mark is as allSatisfied as we can't suggest anything
+					if !clause.consumesRemainder() {
+						argsSatisfied++
+						allSatisfied = true
+					}
+					continue ElementLoop
+				}
+
+				for _, opt := range validOptions {
+					if opt == *el.Value {
+						// We have an exact match
+						// We don't need to suggest any option
+						if !clause.consumesRemainder() {
+							argsSatisfied++
+						}
+						continue ElementLoop
+					}
+					if strings.HasPrefix(opt, *el.Value) {
+						// If the option match the partially entered argument, add it to the list
+						options = append(options, opt)
+					}
+				}
+				// Avoid further completion as we have done everything we could
+				if !clause.consumesRemainder() {
+					argsSatisfied++
+					allSatisfied = true
+				}
 			}
 		case *CmdClause:
 			options = append(options, clause.completionAlts...)
@@ -33,7 +69,7 @@ func (c *cmdMixin) CmdCompletion(context *ParseContext) []string {
 		}
 	}
 
-	if argsSatisfied < len(c.argGroup.args) {
+	if argsSatisfied < len(c.argGroup.args) && !allSatisfied {
 		// Since not all args have been satisfied, show options for the current one
 		options = append(options, c.argGroup.args[argsSatisfied].resolveCompletions()...)
 	} else {
@@ -191,6 +227,7 @@ type CmdClause struct {
 	name           string
 	aliases        []string
 	help           string
+	helpLong       string
 	isDefault      bool
 	validator      CmdClauseValidator
 	hidden         bool
@@ -252,6 +289,12 @@ func (c *CmdClause) PreAction(action Action) *CmdClause {
 	return c
 }
 
+// Help sets the help message.
+func (c *CmdClause) Help(help string) *CmdClause {
+	c.help = help
+	return c
+}
+
 func (c *CmdClause) init() error {
 	if err := c.flagGroup.init(c.app.defaultEnvarPrefix()); err != nil {
 		return err
@@ -270,5 +313,13 @@ func (c *CmdClause) init() error {
 
 func (c *CmdClause) Hidden() *CmdClause {
 	c.hidden = true
+	return c
+}
+
+// HelpLong adds a long help text, which can be used in usage templates.
+// For example, to use a longer help text in the command-specific help
+// than in the apps root help.
+func (c *CmdClause) HelpLong(help string) *CmdClause {
+	c.helpLong = help
 	return c
 }

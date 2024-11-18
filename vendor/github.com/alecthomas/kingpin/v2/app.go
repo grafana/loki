@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"text/template"
 )
 
 var (
@@ -32,6 +33,7 @@ type Application struct {
 	errorWriter    io.Writer // Destination for errors.
 	usageWriter    io.Writer // Destination for usage
 	usageTemplate  string
+	usageFuncs     template.FuncMap
 	validator      ApplicationValidator
 	terminate      func(status int) // See Terminate()
 	noInterspersed bool             // can flags be interspersed with args (or must they come first)
@@ -150,6 +152,12 @@ func (a *Application) UsageWriter(w io.Writer) *Application {
 // information. The default is UsageTemplate.
 func (a *Application) UsageTemplate(template string) *Application {
 	a.usageTemplate = template
+	return a
+}
+
+// UsageFuncs adds extra functions that can be used in the usage template.
+func (a *Application) UsageFuncs(funcs template.FuncMap) *Application {
+	a.usageFuncs = funcs
 	return a
 }
 
@@ -405,6 +413,10 @@ func (a *Application) setDefaults(context *ParseContext) error {
 			if flag.name == "help" {
 				return nil
 			}
+
+			if flag.name == "version" {
+				return nil
+			}
 			flagElements[flag.name] = element
 		}
 	}
@@ -452,13 +464,17 @@ func (a *Application) validateRequired(context *ParseContext) error {
 	}
 
 	// Check required flags and set defaults.
+	var missingFlags []string
 	for _, flag := range context.flags.long {
 		if flagElements[flag.name] == nil {
 			// Check required flags were provided.
 			if flag.needsValue() {
-				return fmt.Errorf("required flag --%s not provided", flag.name)
+				missingFlags = append(missingFlags, fmt.Sprintf("'--%s'", flag.name))
 			}
 		}
+	}
+	if len(missingFlags) != 0 {
+		return fmt.Errorf("required flag(s) %s not provided", strings.Join(missingFlags, ", "))
 	}
 
 	for _, arg := range context.arguments.args {
@@ -496,11 +512,6 @@ func (a *Application) setValues(context *ParseContext) (selected []string, err e
 			}
 
 		case *CmdClause:
-			if clause.validator != nil {
-				if err = clause.validator(clause); err != nil {
-					return
-				}
-			}
 			selected = append(selected, clause.name)
 			lastCmd = clause
 		}
@@ -631,6 +642,10 @@ func (a *Application) completionOptions(context *ParseContext) []string {
 	}
 
 	if (currArg != "" && strings.HasPrefix(currArg, "--")) || strings.HasPrefix(prevArg, "--") {
+		if context.argsOnly {
+			return nil
+		}
+
 		// Perform completion for A flag. The last/current argument started with "-"
 		var (
 			flagName  string // The name of a flag if given (could be half complete)

@@ -144,9 +144,7 @@ func (p *ParseContext) mergeFlags(flags *flagGroup) {
 }
 
 func (p *ParseContext) mergeArgs(args *argGroup) {
-	for _, arg := range args.args {
-		p.arguments.args = append(p.arguments.args, arg)
-	}
+	p.arguments.args = append(p.arguments.args, args.args...)
 }
 
 func (p *ParseContext) EOL() bool {
@@ -168,6 +166,10 @@ func (p *ParseContext) Next() *Token {
 		return &Token{Index: p.argi, Type: TokenEOL}
 	}
 
+	if p.argi > 0 && p.argi <= len(p.rawArgs) && p.rawArgs[p.argi-1] == "--" {
+		// If the previous argument was a --, from now on only arguments are parsed.
+		p.argsOnly = true
+	}
 	arg := p.args[0]
 	p.next()
 
@@ -175,9 +177,7 @@ func (p *ParseContext) Next() *Token {
 		return &Token{p.argi, TokenArg, arg}
 	}
 
-	// All remaining args are passed directly.
 	if arg == "--" {
-		p.argsOnly = true
 		return p.Next()
 	}
 
@@ -192,7 +192,7 @@ func (p *ParseContext) Next() *Token {
 
 	if strings.HasPrefix(arg, "-") {
 		if len(arg) == 1 {
-			return &Token{Index: p.argi, Type: TokenShort}
+			return &Token{Index: p.argi, Type: TokenArg}
 		}
 		shortRune, size := utf8.DecodeRuneInString(arg[1:])
 		short := string(shortRune)
@@ -214,7 +214,7 @@ func (p *ParseContext) Next() *Token {
 			p.args = append([]string{"-" + arg[size+1:]}, p.args...)
 		}
 		return &Token{p.argi, TokenShort, short}
-	} else if strings.HasPrefix(arg, "@") {
+	} else if EnableFileExpansion && strings.HasPrefix(arg, "@") {
 		expanded, err := ExpandArgsFromFile(arg[1:])
 		if err != nil {
 			return &Token{p.argi, TokenError, err.Error()}
@@ -281,7 +281,7 @@ func ExpandArgsFromFile(filename string) (out []string, err error) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if strings.HasPrefix(line, "#") {
+		if strings.HasPrefix(line, "#") || strings.TrimSpace(line) == "" {
 			continue
 		}
 		out = append(out, line)

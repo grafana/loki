@@ -14,6 +14,8 @@ var (
 	HelpCommand = CommandLine.HelpCommand
 	// Global version flag. Exposed for user customisation. May be nil.
 	VersionFlag = CommandLine.VersionFlag
+	// Whether to file expansion with '@' is enabled.
+	EnableFileExpansion = true
 )
 
 // Command adds a new command to the default parser.
