@@ -17,7 +17,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.5
 	github.com/alicebob/miniredis/v2 v2.33.0
-	github.com/aliyun/aliyun-oss-go-sdk v2.2.10+incompatible
+	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/baidubce/bce-sdk-go v0.9.200
 	github.com/bmatcuk/doublestar v1.3.4
