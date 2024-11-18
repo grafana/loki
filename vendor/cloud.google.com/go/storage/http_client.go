@@ -901,11 +901,12 @@ func (c *httpStorageClient) newRangeReaderXML(ctx context.Context, params *newRa
 				done <- true
 			}()
 
-			// Wait until timeout or request is successful.
-			timer := time.After(c.dynamicReadReqStallTimeout.getValue(params.bucket))
+			// Wait until stall timeout or request is successful.
+			stallTimeout := c.dynamicReadReqStallTimeout.getValue(params.bucket)
+			timer := time.After(stallTimeout)
 			select {
 			case <-timer:
-				log.Printf("stalled read-req cancelled after %fs", c.dynamicReadReqStallTimeout.getValue(params.bucket).Seconds())
+				log.Printf("stalled read-req (%p) cancelled after %fs", req, stallTimeout.Seconds())
 				cancel()
 				err = context.DeadlineExceeded
 				if res != nil && res.Body != nil {

@@ -39,6 +39,7 @@ jobs:
           VALIDATE_GO: false
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          LOG_LEVEL: DEBUG
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
