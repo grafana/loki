@@ -225,7 +225,7 @@ func (s *ReaderService) processNextFetchesUntilTargetOrMaxLagHonored(ctx context
 	return nil
 }
 
-func (p *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, maxLag time.Duration, logger log.Logger, recordsChan chan<- []Record, timeSince func(time.Time) time.Duration) (time.Duration, error) {
+func (s *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, maxLag time.Duration, logger log.Logger, recordsChan chan<- []Record, timeSince func(time.Time) time.Duration) (time.Duration, error) {
 	boff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: time.Second,
@@ -235,14 +235,14 @@ func (p *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, m
 
 	for boff.Ongoing() {
 		// Send a direct request to the Kafka backend to fetch the partition start offset.
-		partitionStartOffset, err := p.reader.FetchPartitionOffset(ctx, kafkaStartOffset)
+		partitionStartOffset, err := s.reader.FetchPartitionOffset(ctx, kafkaStartOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch partition start offset", "err", err)
 			boff.Wait()
 			continue
 		}
 
-		consumerGroupLastCommittedOffset, err := p.reader.FetchLastCommittedOffset(ctx)
+		consumerGroupLastCommittedOffset, err := s.reader.FetchLastCommittedOffset(ctx)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last committed offset", "err", err)
 			boff.Wait()
@@ -253,7 +253,7 @@ func (p *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, m
 		// We intentionally don't use WaitNextFetchLastProducedOffset() to not introduce further
 		// latency.
 		lastProducedOffsetRequestedAt := time.Now()
-		lastProducedOffset, err := p.reader.FetchPartitionOffset(ctx, kafkaEndOffset)
+		lastProducedOffset, err := s.reader.FetchPartitionOffset(ctx, kafkaEndOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last produced offset", "err", err)
 			boff.Wait()
@@ -278,19 +278,19 @@ func (p *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, m
 
 		// This message is NOT expected to be logged with a very high rate. In this log we display the last measured
 		// lag. If we don't have it (lag is zero value), then it will not be logged.
-		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset, "last_processed_offset", p.lastProcessedOffset, "offset_lag", lastProducedOffset-p.lastProcessedOffset)
+		level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is consuming records to honor target and max consumer lag", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset, "last_processed_offset", s.lastProcessedOffset, "offset_lag", lastProducedOffset-s.lastProcessedOffset)
 
 		for boff.Ongoing() {
 			// Continue reading until we reached the desired offset.
-			if lastProducedOffset <= p.lastProcessedOffset {
+			if lastProducedOffset <= s.lastProcessedOffset {
 				break
 			}
 			if time.Since(lastProducedOffsetRequestedAt) > time.Minute {
-				level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is still consuming records...", "last_processed_offset", p.lastProcessedOffset, "offset_lag", lastProducedOffset-p.lastProcessedOffset)
+				level.Info(loggerWithCurrentLagIfSet(logger, currLag)).Log("msg", "partition reader is still consuming records...", "last_processed_offset", s.lastProcessedOffset, "offset_lag", lastProducedOffset-s.lastProcessedOffset)
 			}
 
 			timedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			records, err := p.reader.Poll(timedCtx)
+			records, err := s.reader.Poll(timedCtx)
 			cancel()
 
 			if err != nil {
@@ -299,7 +299,7 @@ func (p *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, m
 			}
 			if len(records) > 0 {
 				recordsChan <- records
-				p.lastProcessedOffset = records[len(records)-1].Offset
+				s.lastProcessedOffset = records[len(records)-1].Offset
 			}
 		}
 
