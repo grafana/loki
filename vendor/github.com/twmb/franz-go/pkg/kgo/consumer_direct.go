@@ -65,29 +65,11 @@ func (*directConsumer) getSetAssigns(setOffsets map[string]map[int32]EpochOffset
 func (d *directConsumer) findNewAssignments() map[string]map[int32]Offset {
 	topics := d.tps.load()
 
-	var rns reNews
-	if d.cfg.regex {
-		defer rns.log(d.cfg)
-	}
-
 	toUse := make(map[string]map[int32]Offset, 10)
 	for topic, topicPartitions := range topics {
 		var useTopic bool
 		if d.cfg.regex {
-			want, seen := d.reSeen[topic]
-			if !seen {
-				for rawRe, re := range d.cfg.topics {
-					if want = re.MatchString(topic); want {
-						rns.add(rawRe, topic)
-						break
-					}
-				}
-				if !want {
-					rns.skip(topic)
-				}
-				d.reSeen[topic] = want
-			}
-			useTopic = want
+			useTopic = d.reSeen[topic]
 		} else {
 			useTopic = d.m.onlyt(topic)
 		}

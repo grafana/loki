@@ -3255,8 +3255,8 @@ func (s AttachedDiskInitializeParams) MarshalJSON() ([]byte, error) {
 // "audit_log_configs": [ { "log_type": "DATA_READ" }, { "log_type":
 // "DATA_WRITE", "exempted_members": [ "user:aliya@example.com" ] } ] } ] } For
 // sampleservice, this policy enables DATA_READ, DATA_WRITE and ADMIN_READ
-// logging. It also exempts jose@example.com from DATA_READ logging, and
-// aliya@example.com from DATA_WRITE logging.
+// logging. It also exempts `jose@example.com` from DATA_READ logging, and
+// `aliya@example.com` from DATA_WRITE logging.
 type AuditConfig struct {
 	// AuditLogConfigs: The configuration for logging of each type of permission.
 	AuditLogConfigs []*AuditLogConfig `json:"auditLogConfigs,omitempty"`
@@ -6732,8 +6732,6 @@ func (s BfdStatusPacketCounts) MarshalJSON() ([]byte, error) {
 
 // Binding: Associates `members`, or principals, with a `role`.
 type Binding struct {
-	// BindingId: This is deprecated and has no effect. Do not use.
-	BindingId string `json:"bindingId,omitempty"`
 	// Condition: The condition that is associated with this binding. If the
 	// condition evaluates to `true`, then this binding applies to the current
 	// request. If the condition evaluates to `false`, then this binding does not
@@ -6813,13 +6811,13 @@ type Binding struct {
 	// available pre-defined roles, see here
 	// (https://cloud.google.com/iam/docs/understanding-roles).
 	Role string `json:"role,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "BindingId") to
+	// ForceSendFields is a list of field names (e.g. "Condition") to
 	// unconditionally include in API requests. By default, fields with empty or
 	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "BindingId") to include in API
+	// NullFields is a list of field names (e.g. "Condition") to include in API
 	// requests with the JSON null value. By default, fields with empty values are
 	// omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
@@ -7217,6 +7215,7 @@ type Commitment struct {
 	//   "COMPUTE_OPTIMIZED_H3"
 	//   "GENERAL_PURPOSE"
 	//   "GENERAL_PURPOSE_C4"
+	//   "GENERAL_PURPOSE_C4A"
 	//   "GENERAL_PURPOSE_E2"
 	//   "GENERAL_PURPOSE_N2"
 	//   "GENERAL_PURPOSE_N2D"
@@ -7722,61 +7721,6 @@ type CommitmentsScopedListWarningData struct {
 
 func (s CommitmentsScopedListWarningData) MarshalJSON() ([]byte, error) {
 	type NoMethod CommitmentsScopedListWarningData
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
-// Condition: This is deprecated and has no effect. Do not use.
-type Condition struct {
-	// Iam: This is deprecated and has no effect. Do not use.
-	//
-	// Possible values:
-	//   "APPROVER" - This is deprecated and has no effect. Do not use.
-	//   "ATTRIBUTION" - This is deprecated and has no effect. Do not use.
-	//   "AUTHORITY" - This is deprecated and has no effect. Do not use.
-	//   "CREDENTIALS_TYPE" - This is deprecated and has no effect. Do not use.
-	//   "CREDS_ASSERTION" - This is deprecated and has no effect. Do not use.
-	//   "JUSTIFICATION_TYPE" - This is deprecated and has no effect. Do not use.
-	//   "NO_ATTR" - This is deprecated and has no effect. Do not use.
-	//   "SECURITY_REALM" - This is deprecated and has no effect. Do not use.
-	Iam string `json:"iam,omitempty"`
-	// Op: This is deprecated and has no effect. Do not use.
-	//
-	// Possible values:
-	//   "DISCHARGED" - This is deprecated and has no effect. Do not use.
-	//   "EQUALS" - This is deprecated and has no effect. Do not use.
-	//   "IN" - This is deprecated and has no effect. Do not use.
-	//   "NOT_EQUALS" - This is deprecated and has no effect. Do not use.
-	//   "NOT_IN" - This is deprecated and has no effect. Do not use.
-	//   "NO_OP" - This is deprecated and has no effect. Do not use.
-	Op string `json:"op,omitempty"`
-	// Svc: This is deprecated and has no effect. Do not use.
-	Svc string `json:"svc,omitempty"`
-	// Sys: This is deprecated and has no effect. Do not use.
-	//
-	// Possible values:
-	//   "IP" - This is deprecated and has no effect. Do not use.
-	//   "NAME" - This is deprecated and has no effect. Do not use.
-	//   "NO_ATTR" - This is deprecated and has no effect. Do not use.
-	//   "REGION" - This is deprecated and has no effect. Do not use.
-	//   "SERVICE" - This is deprecated and has no effect. Do not use.
-	Sys string `json:"sys,omitempty"`
-	// Values: This is deprecated and has no effect. Do not use.
-	Values []string `json:"values,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Iam") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Iam") to include in API requests
-	// with the JSON null value. By default, fields with empty values are omitted
-	// from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s Condition) MarshalJSON() ([]byte, error) {
-	type NoMethod Condition
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -16300,6 +16244,10 @@ type InstanceGroupManager struct {
 	// Id: [Output Only] A unique identifier for this resource type. The server
 	// generates this identifier.
 	Id uint64 `json:"id,omitempty,string"`
+	// InstanceFlexibilityPolicy: Instance flexibility allowing MIG to create VMs
+	// from multiple types of machines. Instance flexibility configuration on MIG
+	// overrides instance template configuration.
+	InstanceFlexibilityPolicy *InstanceGroupManagerInstanceFlexibilityPolicy `json:"instanceFlexibilityPolicy,omitempty"`
 	// InstanceGroup: [Output Only] The URL of the Instance Group resource.
 	InstanceGroup string `json:"instanceGroup,omitempty"`
 	// InstanceLifecyclePolicy: The repair policy for this managed instance group.
@@ -16326,8 +16274,8 @@ type InstanceGroupManager struct {
 	// Name: The name of the managed instance group. The name must be 1-63
 	// characters long, and comply with RFC1035.
 	Name string `json:"name,omitempty"`
-	// NamedPorts: Named ports configured for the Instance Groups complementary to
-	// this Instance Group Manager.
+	// NamedPorts: [Output Only] Named ports configured on the Instance Groups
+	// complementary to this Instance Group Manager.
 	NamedPorts []*NamedPort `json:"namedPorts,omitempty"`
 	// Region: [Output Only] The URL of the region where the managed instance group
 	// resides (for regional resources).
@@ -16667,6 +16615,54 @@ type InstanceGroupManagerAutoHealingPolicy struct {
 
 func (s InstanceGroupManagerAutoHealingPolicy) MarshalJSON() ([]byte, error) {
 	type NoMethod InstanceGroupManagerAutoHealingPolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type InstanceGroupManagerInstanceFlexibilityPolicy struct {
+	// InstanceSelections: Named instance selections configuring properties that
+	// the group will use when creating new VMs.
+	InstanceSelections map[string]InstanceGroupManagerInstanceFlexibilityPolicyInstanceSelection `json:"instanceSelections,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "InstanceSelections") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "InstanceSelections") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s InstanceGroupManagerInstanceFlexibilityPolicy) MarshalJSON() ([]byte, error) {
+	type NoMethod InstanceGroupManagerInstanceFlexibilityPolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type InstanceGroupManagerInstanceFlexibilityPolicyInstanceSelection struct {
+	// MachineTypes: Full machine-type names, e.g. "n1-standard-16".
+	MachineTypes []string `json:"machineTypes,omitempty"`
+	// Rank: Preference of this instance selection. Lower number means higher
+	// preference. MIG will first try to create a VM based on the machine-type with
+	// lowest rank and fallback to next rank based on availability. Machine types
+	// and instance selections with the same rank have the same preference.
+	Rank int64 `json:"rank,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "MachineTypes") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "MachineTypes") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s InstanceGroupManagerInstanceFlexibilityPolicyInstanceSelection) MarshalJSON() ([]byte, error) {
+	type NoMethod InstanceGroupManagerInstanceFlexibilityPolicyInstanceSelection
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -23872,138 +23868,6 @@ func (s LocationPolicyLocationConstraints) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// LogConfig: This is deprecated and has no effect. Do not use.
-type LogConfig struct {
-	// CloudAudit: This is deprecated and has no effect. Do not use.
-	CloudAudit *LogConfigCloudAuditOptions `json:"cloudAudit,omitempty"`
-	// Counter: This is deprecated and has no effect. Do not use.
-	Counter *LogConfigCounterOptions `json:"counter,omitempty"`
-	// DataAccess: This is deprecated and has no effect. Do not use.
-	DataAccess *LogConfigDataAccessOptions `json:"dataAccess,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "CloudAudit") to
-	// unconditionally include in API requests. By default, fields with empty or
-	// default values are omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "CloudAudit") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s LogConfig) MarshalJSON() ([]byte, error) {
-	type NoMethod LogConfig
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
-// LogConfigCloudAuditOptions: This is deprecated and has no effect. Do not
-// use.
-type LogConfigCloudAuditOptions struct {
-	// LogName: This is deprecated and has no effect. Do not use.
-	//
-	// Possible values:
-	//   "ADMIN_ACTIVITY" - This is deprecated and has no effect. Do not use.
-	//   "DATA_ACCESS" - This is deprecated and has no effect. Do not use.
-	//   "UNSPECIFIED_LOG_NAME" - This is deprecated and has no effect. Do not use.
-	LogName string `json:"logName,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "LogName") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "LogName") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s LogConfigCloudAuditOptions) MarshalJSON() ([]byte, error) {
-	type NoMethod LogConfigCloudAuditOptions
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
-// LogConfigCounterOptions: This is deprecated and has no effect. Do not use.
-type LogConfigCounterOptions struct {
-	// CustomFields: This is deprecated and has no effect. Do not use.
-	CustomFields []*LogConfigCounterOptionsCustomField `json:"customFields,omitempty"`
-	// Field: This is deprecated and has no effect. Do not use.
-	Field string `json:"field,omitempty"`
-	// Metric: This is deprecated and has no effect. Do not use.
-	Metric string `json:"metric,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "CustomFields") to
-	// unconditionally include in API requests. By default, fields with empty or
-	// default values are omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "CustomFields") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s LogConfigCounterOptions) MarshalJSON() ([]byte, error) {
-	type NoMethod LogConfigCounterOptions
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
-// LogConfigCounterOptionsCustomField: This is deprecated and has no effect. Do
-// not use.
-type LogConfigCounterOptionsCustomField struct {
-	// Name: This is deprecated and has no effect. Do not use.
-	Name string `json:"name,omitempty"`
-	// Value: This is deprecated and has no effect. Do not use.
-	Value string `json:"value,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Name") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Name") to include in API requests
-	// with the JSON null value. By default, fields with empty values are omitted
-	// from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s LogConfigCounterOptionsCustomField) MarshalJSON() ([]byte, error) {
-	type NoMethod LogConfigCounterOptionsCustomField
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
-// LogConfigDataAccessOptions: This is deprecated and has no effect. Do not
-// use.
-type LogConfigDataAccessOptions struct {
-	// LogMode: This is deprecated and has no effect. Do not use.
-	//
-	// Possible values:
-	//   "LOG_FAIL_CLOSED" - This is deprecated and has no effect. Do not use.
-	//   "LOG_MODE_UNSPECIFIED" - This is deprecated and has no effect. Do not use.
-	LogMode string `json:"logMode,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "LogMode") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "LogMode") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s LogConfigDataAccessOptions) MarshalJSON() ([]byte, error) {
-	type NoMethod LogConfigDataAccessOptions
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
 // MachineImage: Represents a machine image resource. A machine image is a
 // Compute Engine resource that stores all the configuration, metadata,
 // permissions, and data from one or more disks required to create a Virtual
@@ -24922,6 +24786,9 @@ type ManagedInstance struct {
 	// PreservedStateFromPolicy: [Output Only] Preserved state generated based on
 	// stateful policy for this instance.
 	PreservedStateFromPolicy *PreservedState `json:"preservedStateFromPolicy,omitempty"`
+	// PropertiesFromFlexibilityPolicy: [Output Only] Instance properties selected
+	// for this instance resulting from InstanceFlexibilityPolicy.
+	PropertiesFromFlexibilityPolicy *ManagedInstancePropertiesFromFlexibilityPolicy `json:"propertiesFromFlexibilityPolicy,omitempty"`
 	// Version: [Output Only] Intended version of this instance.
 	Version *ManagedInstanceVersion `json:"version,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "CurrentAction") to
@@ -25078,6 +24945,27 @@ type ManagedInstanceLastAttemptErrorsErrorsErrorDetails struct {
 
 func (s ManagedInstanceLastAttemptErrorsErrorsErrorDetails) MarshalJSON() ([]byte, error) {
 	type NoMethod ManagedInstanceLastAttemptErrorsErrorsErrorDetails
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type ManagedInstancePropertiesFromFlexibilityPolicy struct {
+	// MachineType: The machine type to be used for this instance.
+	MachineType string `json:"machineType,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "MachineType") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "MachineType") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ManagedInstancePropertiesFromFlexibilityPolicy) MarshalJSON() ([]byte, error) {
+	type NoMethod ManagedInstancePropertiesFromFlexibilityPolicy
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -32106,8 +31994,6 @@ type Policy struct {
 	// you to overwrite a version `3` policy with a version `1` policy, and all of
 	// the conditions in the version `3` policy are lost.
 	Etag string `json:"etag,omitempty"`
-	// Rules: This is deprecated and has no effect. Do not use.
-	Rules []*Rule `json:"rules,omitempty"`
 	// Version: Specifies the format of the policy. Valid values are `0`, `1`, and
 	// `3`. Requests that specify an invalid value are rejected. Any operation that
 	// affects conditional role bindings must specify version `3`. This requirement
@@ -39276,48 +39162,6 @@ type RoutersScopedListWarningData struct {
 
 func (s RoutersScopedListWarningData) MarshalJSON() ([]byte, error) {
 	type NoMethod RoutersScopedListWarningData
-	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
-}
-
-// Rule: This is deprecated and has no effect. Do not use.
-type Rule struct {
-	// Action: This is deprecated and has no effect. Do not use.
-	//
-	// Possible values:
-	//   "ALLOW" - This is deprecated and has no effect. Do not use.
-	//   "ALLOW_WITH_LOG" - This is deprecated and has no effect. Do not use.
-	//   "DENY" - This is deprecated and has no effect. Do not use.
-	//   "DENY_WITH_LOG" - This is deprecated and has no effect. Do not use.
-	//   "LOG" - This is deprecated and has no effect. Do not use.
-	//   "NO_ACTION" - This is deprecated and has no effect. Do not use.
-	Action string `json:"action,omitempty"`
-	// Conditions: This is deprecated and has no effect. Do not use.
-	Conditions []*Condition `json:"conditions,omitempty"`
-	// Description: This is deprecated and has no effect. Do not use.
-	Description string `json:"description,omitempty"`
-	// Ins: This is deprecated and has no effect. Do not use.
-	Ins []string `json:"ins,omitempty"`
-	// LogConfigs: This is deprecated and has no effect. Do not use.
-	LogConfigs []*LogConfig `json:"logConfigs,omitempty"`
-	// NotIns: This is deprecated and has no effect. Do not use.
-	NotIns []string `json:"notIns,omitempty"`
-	// Permissions: This is deprecated and has no effect. Do not use.
-	Permissions []string `json:"permissions,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Action") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
-	// details.
-	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Action") to include in API
-	// requests with the JSON null value. By default, fields with empty values are
-	// omitted from API requests. See
-	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
-	NullFields []string `json:"-"`
-}
-
-func (s Rule) MarshalJSON() ([]byte, error) {
-	type NoMethod Rule
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 

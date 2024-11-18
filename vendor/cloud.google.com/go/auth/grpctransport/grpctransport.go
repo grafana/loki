@@ -322,7 +322,7 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 	grpcOpts = addOpenTelemetryStatsHandler(grpcOpts, opts)
 	grpcOpts = append(grpcOpts, opts.GRPCDialOpts...)
 
-	return grpc.NewClient(endpoint, grpcOpts...)
+	return grpc.Dial(endpoint, grpcOpts...)
 }
 
 // grpcKeyProvider satisfies https://pkg.go.dev/google.golang.org/grpc/credentials#PerRPCCredentials.

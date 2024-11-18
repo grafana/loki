@@ -231,11 +231,16 @@ func (b *clusterImplBalancer) updateClientConnState(s balancer.ClientConnState) 
 		return err
 	}
 
-	if b.config == nil || b.config.ChildPolicy.Name != newConfig.ChildPolicy.Name {
-		if err := b.child.SwitchTo(bb); err != nil {
-			return fmt.Errorf("error switching to child of type %q: %v", newConfig.ChildPolicy.Name, err)
-		}
+	// Build config for the gracefulswitch balancer. It is safe to ignore JSON
+	// marshaling errors here, since the config was already validated as part of
+	// ParseConfig().
+	cfg := []map[string]any{{newConfig.ChildPolicy.Name: newConfig.ChildPolicy.Config}}
+	cfgJSON, _ := json.Marshal(cfg)
+	parsedCfg, err := gracefulswitch.ParseConfig(cfgJSON)
+	if err != nil {
+		return err
 	}
+
 	b.config = newConfig
 
 	b.telemetryLabels = newConfig.TelemetryLabels
@@ -250,7 +255,7 @@ func (b *clusterImplBalancer) updateClientConnState(s balancer.ClientConnState) 
 	// Addresses and sub-balancer config are sent to sub-balancer.
 	return b.child.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState:  s.ResolverState,
-		BalancerConfig: b.config.ChildPolicy.Config,
+		BalancerConfig: parsedCfg,
 	})
 }
 
