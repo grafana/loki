@@ -34,7 +34,7 @@ jobs:
         uses: bridgecrewio/checkov-action@master
         with:
           directory: production/helm/loki
-          framework: helmj
+          framework: helm
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
