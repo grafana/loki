@@ -6,6 +6,8 @@ import (
 )
 
 type Metrics struct {
+	reg prometheus.Registerer
+
 	chunks  *prometheus.GaugeVec
 	samples *prometheus.CounterVec
 
@@ -24,7 +26,10 @@ type Metrics struct {
 }
 
 func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
-	return &Metrics{
+	var m Metrics
+	m.reg = r
+
+	m = Metrics{
 		chunks: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",
@@ -96,4 +101,21 @@ func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
 			Help:      "Total number of write timeouts.",
 		}, []string{"tenant_id"}),
 	}
+
+	if m.reg != nil {
+		m.reg.MustRegister(
+			m.chunks,
+			m.samples,
+			m.pushErrors,
+			m.pushRetries,
+			m.pushSuccesses,
+			m.payloadSize,
+			m.streamsPerPush,
+			m.entriesPerPush,
+			m.servicesTracked,
+			m.writeTimeout,
+		)
+	}
+
+	return &m
 }

@@ -124,6 +124,7 @@ func Test_Push(t *testing.T) {
 			quit:        make(chan struct{}),
 			backoff:     &backoff,
 			entries:     entries{},
+			metrics:     NewMetrics(nil, ""),
 		}
 
 		lbls1 := labels.New(labels.Label{Name: "test", Value: "test"})
