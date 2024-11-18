@@ -212,6 +212,10 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 		return nil
 	}
 	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
+	if d.tokens == nil && d.state == nil {
+		return nil
+	}
+
 	return d.train(d.tokens, d.state, ts)
 }
 
