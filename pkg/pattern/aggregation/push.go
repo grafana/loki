@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -71,6 +73,8 @@ type Push struct {
 	backoff *backoff.Config
 
 	entries entries
+
+	metrics *AggregationMetrics
 }
 
 type entry struct {
@@ -108,6 +112,7 @@ func NewPush(
 	useTLS bool,
 	backoffCfg *backoff.Config,
 	logger log.Logger,
+	registrer prometheus.Registerer,
 ) (*Push, error) {
 	client, err := config.NewClientFromConfig(cfg, "pattern-ingester-push", config.WithHTTP2Disabled())
 	if err != nil {
@@ -142,6 +147,7 @@ func NewPush(
 		entries: entries{
 			entries: make([]entry, 0),
 		},
+		metrics: NewMetrics(registrer, "pattern_ingester"),
 	}
 
 	go p.run(pushPeriod)
@@ -222,6 +228,10 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 	payload = snappy.Encode(nil, payload)
 
+	p.metrics.streamsPerPush.WithLabelValues(p.tenantID).Observe(float64(len(streams)))
+	p.metrics.entriesPerPush.WithLabelValues(p.tenantID).Observe(float64(len(entries)))
+	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(len(entriesByStream)))
+
 	sp.LogKV(
 		"event", "build aggregated metrics payload",
 		"num_service", len(entriesByStream),
@@ -287,6 +297,31 @@ func (p *Push) run(pushPeriod time.Duration) {
 	}
 }
 
+func (p *Push) sendPayload(ctx context.Context, payload []byte) (int, error) {
+
+	status, err := p.send(ctx, payload)
+	if err != nil {
+		errorType := "unknown"
+		if status == 429 {
+			errorType = "rate_limited"
+		} else if status/100 == 5 {
+			errorType = "server_error"
+		} else if status/100 != 2 {
+			errorType = "client_error"
+		}
+		p.metrics.pushErrors.WithLabelValues(p.tenantID, errorType).Inc()
+	} else {
+		p.metrics.pushSuccesses.WithLabelValues(p.tenantID).Inc()
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
+
+	return status, err
+}
+
 // send makes one attempt to send the payload to Loki
 func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	var (
@@ -320,6 +355,9 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 
 	resp, err = p.httpClient.Do(req)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			p.metrics.writeTimeout.WithLabelValues(p.tenantID).Inc()
+		}
 		return -1, fmt.Errorf("failed to push payload: %w", err)
 	}
 	status := resp.StatusCode
