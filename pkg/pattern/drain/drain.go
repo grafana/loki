@@ -211,12 +211,17 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
-	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state)
+	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
 	return d.train(d.tokens, d.state, ts)
 }
 
 func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster {
 	if len(tokens) < 4 {
+		d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
+		return nil
+	}
+	if len(tokens) > 50 {
+		d.metrics.LinesSkipped.WithLabelValues(TooManyTokens).Inc()
 		return nil
 	}
 	if d.metrics != nil {
