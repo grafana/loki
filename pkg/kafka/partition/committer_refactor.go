@@ -90,6 +90,7 @@ func (c *refactoredPartitionCommitter) autoCommitLoop(ctx context.Context) {
 			}
 
 			if err := c.Commit(ctx, currOffset); err == nil {
+				c.lastCommittedOffset.Set(float64(currOffset))
 				previousOffset = currOffset
 			}
 		}

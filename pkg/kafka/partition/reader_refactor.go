@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -77,11 +76,6 @@ func newRefactoredReaderMetrics(r prometheus.Registerer, partitionID int32) *ref
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
-		}),
-		lastCommittedOffset: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Name:        "loki_ingest_storage_reader_last_committed_offset",
-			Help:        "The last consumed offset successfully committed by the partition reader. Set to -1 if not offset has been committed yet.",
-			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partitionID))},
 		}),
 	}
 }
@@ -166,7 +160,10 @@ func (r *RefactoredReader) FetchLastCommittedOffset(ctx context.Context) (int64,
 	if len(fetchRes.Groups) != 1 ||
 		len(fetchRes.Groups[0].Topics) != 1 ||
 		len(fetchRes.Groups[0].Topics[0].Partitions) != 1 {
-		return 0, errors.New("malformed response")
+		level.Debug(r.logger).Log(
+			"msg", "malformed response, setting to start offset",
+		)
+		return int64(KafkaStartOffset), nil
 	}
 
 	partition := fetchRes.Groups[0].Topics[0].Partitions[0]
@@ -294,6 +291,5 @@ func (r *RefactoredReader) Commit(ctx context.Context, offset int64) error {
 
 	committedOffset, _ := committed.Lookup(r.topic, r.partitionID)
 	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
-	r.metrics.lastCommittedOffset.Set(float64(committedOffset.At))
 	return nil
 }
