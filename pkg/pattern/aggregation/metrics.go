@@ -5,7 +5,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type AggregationMetrics struct {
+type Metrics struct {
 	chunks  *prometheus.GaugeVec
 	samples *prometheus.CounterVec
 
@@ -23,8 +23,8 @@ type AggregationMetrics struct {
 	writeTimeout *prometheus.CounterVec
 }
 
-func NewMetrics(r prometheus.Registerer, metricsNamespace string) *AggregationMetrics {
-	return &AggregationMetrics{
+func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
+	return &Metrics{
 		chunks: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",

@@ -74,7 +74,7 @@ type Push struct {
 
 	entries entries
 
-	metrics *AggregationMetrics
+	metrics *Metrics
 }
 
 type entry struct {
