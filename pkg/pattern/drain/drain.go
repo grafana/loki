@@ -260,7 +260,7 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 }
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state)
+	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
 	// Match no existing log cluster
 	if matchCluster == nil {

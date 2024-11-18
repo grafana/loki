@@ -57,8 +57,16 @@ func newPunctuationTokenizer(maxLineLength int) *punctuationTokenizer {
 	}
 }
 
-func (p *punctuationTokenizer) Tokenize(line string, tokens []string, state interface{}, linesDropped *prometheus.CounterVec) ([]string, interface{}) {
+func (p *punctuationTokenizer) Tokenize(
+	line string,
+	tokens []string,
+	state interface{},
+	linesDropped *prometheus.CounterVec,
+) ([]string, interface{}) {
 	if len(line) > p.maxLineLength {
+		if linesDropped != nil {
+			linesDropped.WithLabelValues(LineTooLong).Inc()
+		}
 		return nil, nil
 	}
 
@@ -132,7 +140,12 @@ func (p *punctuationTokenizer) Clone(tokens []string, state interface{}) ([]stri
 
 type splittingTokenizer struct{}
 
-func (splittingTokenizer) Tokenize(line string, tokens []string, state interface{}) ([]string, interface{}) {
+func (splittingTokenizer) Tokenize(
+	line string,
+	tokens []string,
+	state interface{},
+	_ *prometheus.CounterVec,
+) ([]string, interface{}) {
 	numEquals := strings.Count(line, "=")
 	numColons := strings.Count(line, ":")
 	numSpaces := strings.Count(line, " ")
@@ -217,7 +230,9 @@ func (t *logfmtTokenizer) Tokenize(
 	linesDropped *prometheus.CounterVec,
 ) ([]string, interface{}) {
 	if len(line) > t.maxLineLength {
-		linesDropped.WithLabelValues(LineTooLong).Inc()
+		if linesDropped != nil {
+			linesDropped.WithLabelValues(LineTooLong).Inc()
+		}
 		return nil, nil
 	}
 
