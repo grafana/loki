@@ -38,7 +38,6 @@ require (
 	github.com/fsouza/fake-gcs-server v1.50.2
 	github.com/go-kit/log v0.2.1
 	github.com/go-logfmt/logfmt v0.6.0
-	github.com/go-redis/redis/v9 v9.7.0
 	github.com/gocql/gocql v0.0.0-20200526081602-cd04bd7f22a7
 	github.com/gogo/protobuf v1.3.2 // remember to update loki-build-image/Dockerfile too
 	github.com/gogo/status v1.1.1
@@ -86,6 +85,7 @@ require (
 	github.com/prometheus/client_model v0.6.1
 	github.com/prometheus/common v0.60.1
 	github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb
+	github.com/redis/go-redis/v9 v9.7.0
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
