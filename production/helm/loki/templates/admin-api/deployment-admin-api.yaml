@@ -39,7 +39,7 @@ spec:
         {{- end }}
     spec:
       {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
-      {{- with .Values.distributor.topologySpreadConstraints }}
+      {{- with .Values.adminApi.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
