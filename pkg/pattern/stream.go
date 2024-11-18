@@ -38,10 +38,10 @@ func newStream(
 	drainCfg *drain.Config,
 	drainLimits drain.Limits,
 ) (*stream, error) {
-  linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
-  if err != nil {
-    return nil, err
-  }
+	linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
+	if err != nil {
+		return nil, err
+	}
 	return &stream{
 		fp:           fp,
 		labels:       labels,
