@@ -876,6 +876,8 @@ adminApi:
   affinity: {}
   # -- Node selector for admin-api Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for admin-api pods
+  topologySpreadConstraints: []
   # -- Tolerations for admin-api Pods
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
