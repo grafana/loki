@@ -251,7 +251,6 @@
 * Revert build image to Debian Bullseye to fix libc version issue in Promtail ([#14387](https://github.com/grafana/loki/issues/14387)) ([05b6a65](https://github.com/grafana/loki/commit/05b6a65f8bf00b880f17465553b1adaf0cf56d60))
 * **storage/chunk/client/aws:** have GetObject check for canceled context (backport release-3.1.x) ([#14421](https://github.com/grafana/loki/issues/14421)) ([f3d69ff](https://github.com/grafana/loki/commit/f3d69ffa960c91c0239436a32bb0aa578c0f022a))
 
-
 ## [3.2.0](https://github.com/grafana/loki/compare/v3.1.1...v3.2.0) (2024-09-18)
 
 
@@ -461,6 +460,7 @@
 * Update Loki v3 Helm statefulset-ingester.yaml template ([#13118](https://github.com/grafana/loki/issues/13118)) ([5b4e576](https://github.com/grafana/loki/commit/5b4e57602f7b7e5f4d73204ad682826d1041f8a8))
 * Use elements match in gapsBetweenTSDBsAndMetas test ([#13722](https://github.com/grafana/loki/issues/13722)) ([4cbe2a6](https://github.com/grafana/loki/commit/4cbe2a6a85c3095f66610cffd32cb3d3bdd43b3f))
 
+
 ### Performance Improvements
 
 * Avoid looking up unnecessary TSDB symbols during Volume API ([#13960](https://github.com/grafana/loki/issues/13960)) ([7c1a849](https://github.com/grafana/loki/commit/7c1a8493b3837396d085547a42d8260271f1d68a))
@@ -472,6 +472,7 @@
 * **mempool:** Replace `sync.Mutex` with `sync.Once` ([#13293](https://github.com/grafana/loki/issues/13293)) ([61a9854](https://github.com/grafana/loki/commit/61a9854eb189e5d2c91528ced10ecf39071df680))
 * Prune unused pattern branches ([#13329](https://github.com/grafana/loki/issues/13329)) ([5ef18cf](https://github.com/grafana/loki/commit/5ef18cff9296d56cab4dd99227c40de726b08ea6))
 * Re-introduce fixed size memory pool for bloom querier ([#13172](https://github.com/grafana/loki/issues/13172)) ([4117b6c](https://github.com/grafana/loki/commit/4117b6ca981b2852a15b102be2394bffce37b3e2))
+
 
 ### Miscellaneous Chores
 
