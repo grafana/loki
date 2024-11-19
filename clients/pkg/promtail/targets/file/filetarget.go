@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bmatcuk/doublestar"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -246,18 +246,39 @@ func (t *FileTarget) sync() error {
 		matches = []string{t.path}
 	} else {
 		// Gets current list of files to tail.
-		matches, err = doublestar.Glob(t.path)
+		base, pattern := doublestar.SplitPattern(t.path)
+		relMatches, err := doublestar.Glob(os.DirFS(base), pattern)
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
+		}
+		// Convert relative paths to absolute
+		matches = make([]string, len(relMatches))
+		for i, match := range relMatches {
+			matches[i] = filepath.Join(base, match)
+			matches[i], err = filepath.Abs(matches[i])
+			if err != nil {
+				return errors.Wrap(err, "filetarget.sync.filepath.Abs")
+			}
 		}
 	}
 
 	if fi, err := os.Stat(t.pathExclude); err == nil && !fi.IsDir() {
 		matchesExcluded = []string{t.pathExclude}
 	} else {
-		matchesExcluded, err = doublestar.Glob(t.pathExclude)
+		base, pattern := doublestar.SplitPattern(t.pathExclude)
+		relMatchesExcluded, err := doublestar.Glob(os.DirFS(base), pattern)
+		//matchesExcluded, err = doublestar.Glob(os.DirFS("/"), t.pathExclude)
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
+		}
+		// Convert relative paths to absolute
+		matchesExcluded = make([]string, len(relMatchesExcluded))
+		for i, match := range relMatchesExcluded {
+			matchesExcluded[i] = filepath.Join(base, match)
+			matchesExcluded[i], err = filepath.Abs(matchesExcluded[i])
+			if err != nil {
+				return errors.Wrap(err, "filetarget.sync.filepath.Abs")
+			}
 		}
 	}
 

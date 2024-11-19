@@ -509,11 +509,9 @@ github.com/bboreham/go-loser
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
-# github.com/bmatcuk/doublestar v1.3.4
-## explicit; go 1.12
-github.com/bmatcuk/doublestar
 # github.com/bmatcuk/doublestar/v4 v4.7.1
 ## explicit; go 1.16
+github.com/bmatcuk/doublestar/v4
 # github.com/buger/jsonparser v1.1.1
 ## explicit; go 1.13
 github.com/buger/jsonparser

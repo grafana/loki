@@ -117,7 +117,6 @@ require (
 	github.com/IBM/go-sdk-core/v5 v5.18.1
 	github.com/IBM/ibm-cos-sdk-go v1.11.1
 	github.com/axiomhq/hyperloglog v0.2.0
-	github.com/bmatcuk/doublestar v1.3.4
 	github.com/buger/jsonparser v1.1.1
 	github.com/coder/quartz v0.1.2
 	github.com/d4l3k/messagediff v1.2.1
