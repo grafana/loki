@@ -246,39 +246,20 @@ func (t *FileTarget) sync() error {
 		matches = []string{t.path}
 	} else {
 		// Gets current list of files to tail.
-		base, pattern := doublestar.SplitPattern(t.path)
-		relMatches, err := doublestar.Glob(os.DirFS(base), pattern)
+		matches, err = doublestar.FilepathGlob(t.path)
+
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
-		}
-		// Convert relative paths to absolute
-		matches = make([]string, len(relMatches))
-		for i, match := range relMatches {
-			matches[i] = filepath.Join(base, match)
-			matches[i], err = filepath.Abs(matches[i])
-			if err != nil {
-				return errors.Wrap(err, "filetarget.sync.filepath.Abs")
-			}
 		}
 	}
 
 	if fi, err := os.Stat(t.pathExclude); err == nil && !fi.IsDir() {
 		matchesExcluded = []string{t.pathExclude}
 	} else {
-		base, pattern := doublestar.SplitPattern(t.pathExclude)
-		relMatchesExcluded, err := doublestar.Glob(os.DirFS(base), pattern)
-		//matchesExcluded, err = doublestar.Glob(os.DirFS("/"), t.pathExclude)
+		matchesExcluded, err = doublestar.FilepathGlob(t.pathExclude)
+
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
-		}
-		// Convert relative paths to absolute
-		matchesExcluded = make([]string, len(relMatchesExcluded))
-		for i, match := range relMatchesExcluded {
-			matchesExcluded[i] = filepath.Join(base, match)
-			matchesExcluded[i], err = filepath.Abs(matchesExcluded[i])
-			if err != nil {
-				return errors.Wrap(err, "filetarget.sync.filepath.Abs")
-			}
 		}
 	}
 
