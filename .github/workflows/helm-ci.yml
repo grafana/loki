@@ -36,7 +36,7 @@ jobs:
           directory: production/helm/loki
           framework: helm
           soft_fail: false
-          output: github_failed_only
+          output_format: github_failed_only
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
