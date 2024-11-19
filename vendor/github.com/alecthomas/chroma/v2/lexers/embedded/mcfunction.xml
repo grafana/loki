@@ -1,0 +1,182 @@
+<lexer>
+  <config>
+    <name>mcfunction</name>
+    <alias>mcfunction</alias>
+    <filename>*.mcfunction</filename>
+    <dot_all>true</dot_all>
+    <not_multiline>true</not_multiline>
+  </config>
+  <rules>
+    <state name="nbtobjectvalue">
+      <rule pattern="(&#34;(\\\\|\\&#34;|[^&#34;])*&#34;|[a-zA-Z0-9_]+)">
+        <token type="NameTag"/>
+        <push state="nbtobjectattribute"/>
+      </rule>
+      <rule pattern="\}">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+    </state>
+    <state name="nbtarrayvalue">
+      <rule>
+        <include state="nbtvalue"/>
+      </rule>
+      <rule pattern=",">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="\]">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+    </state>
+    <state name="nbtvalue">
+      <rule>
+        <include state="simplevalue"/>
+      </rule>
+      <rule pattern="\{">
+        <token type="Punctuation"/>
+        <push state="nbtobjectvalue"/>
+      </rule>
+      <rule pattern="\[">
+        <token type="Punctuation"/>
+        <push state="nbtarrayvalue"/>
+      </rule>
+    </state>
+    <state name="argumentvalue">
+      <rule>
+        <include state="simplevalue"/>
+      </rule>
+      <rule pattern=",">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="[}\]]">
+        <token type="Punctuation"/>
+        <pop depth="2"/>
+      </rule>
+    </state>
+    <state name="argumentlist">
+      <rule pattern="(nbt)(={)">
+        <bygroups>
+          <token type="NameAttribute"/>
+          <token type="Punctuation"/>
+        </bygroups>
+        <push state="nbtobjectvalue"/>
+      </rule>
+      <rule pattern="([A-Za-z0-9/_!]+)(={)">
+        <bygroups>
+          <token type="NameAttribute"/>
+          <token type="Punctuation"/>
+        </bygroups>
+        <push state="argumentlist"/>
+      </rule>
+      <rule pattern="([A-Za-z0-9/_!]+)(=)">
+        <bygroups>
+          <token type="NameAttribute"/>
+          <token type="Punctuation"/>
+        </bygroups>
+        <push state="argumentvalue"/>
+      </rule>
+      <rule>
+        <include state="simplevalue"/>
+      </rule>
+      <rule pattern=",">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="[}\]]">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+    </state>
+    <state name="root">
+      <rule pattern="#.*?\n">
+        <token type="CommentSingle"/>
+      </rule>
+      <rule pattern="/?(geteduclientinfo|clearspawnpoint|defaultgamemode|transferserver|toggledownfall|immutableworld|detectredstone|setidletimeout|playanimation|classroommode|spreadplayers|testforblocks|setmaxplayers|setworldspawn|testforblock|worldbuilder|createagent|worldborder|camerashake|advancement|raytracefog|locatebiome|tickingarea|replaceitem|attributes|spawnpoint|difficulty|experience|scoreboard|whitelist|structure|playsound|stopsound|forceload|spectate|gamerule|function|schedule|wsserver|teleport|position|save-off|particle|setblock|datapack|mobevent|transfer|gamemode|save-all|bossbar|enchant|trigger|collect|execute|weather|teammsg|tpagent|banlist|dropall|publish|tellraw|testfor|save-on|destroy|ability|locate|summon|remove|effect|reload|ban-ip|recipe|pardon|detect|music|clear|clone|event|mixer|debug|title|ride|stop|list|turn|data|team|kick|loot|tell|help|give|flog|fill|move|time|seed|kill|save|item|deop|code|tag|ban|msg|say|tp|me|op|xp|w|place)\b">
+        <token type="KeywordReserved"/>
+      </rule>
+      <rule pattern="(@p|@r|@a|@e|@s|@c|@v)">
+        <token type="KeywordConstant"/>
+      </rule>
+      <rule pattern="\[">
+        <token type="Punctuation"/>
+        <push state="argumentlist"/>
+      </rule>
+      <rule pattern="{">
+        <token type="Punctuation"/>
+        <push state="nbtobjectvalue"/>
+      </rule>
+      <rule pattern="~">
+        <token type="NameBuiltin"/>
+      </rule>
+      <rule pattern="([a-zA-Z_]+:)?[a-zA-Z_]+\b">
+        <token type="Text"/>
+      </rule>
+      <rule pattern="([a-z]+)(\.)([0-9]+)\b">
+        <bygroups>
+          <token type="Text"/>
+          <token type="Punctuation"/>
+          <token type="LiteralNumber"/>
+        </bygroups>
+      </rule>
+      <rule pattern="([&lt;&gt;=]|&lt;=|&gt;=)">
+        <token type="Punctuation"/>
+      </rule>
+      <rule>
+        <include state="simplevalue"/>
+      </rule>
+      <rule pattern="\s+">
+        <token type="TextWhitespace"/>
+      </rule>
+    </state>
+    <state name="simplevalue">
+      <rule pattern="(true|false)">
+        <token type="KeywordConstant"/>
+      </rule>
+      <rule pattern="[01]b">
+        <token type="LiteralNumber"/>
+      </rule>
+      <rule pattern="-?(0|[1-9]\d*)(\.\d+[eE](\+|-)?\d+|[eE](\+|-)?\d+|\.\d+)">
+        <token type="LiteralNumberFloat"/>
+      </rule>
+      <rule pattern="(-?\d+)(\.\.)(-?\d+)">
+        <bygroups>
+          <token type="LiteralNumberInteger"/>
+          <token type="Punctuation"/>
+          <token type="LiteralNumberInteger"/>
+        </bygroups>
+      </rule>
+      <rule pattern="-?(0|[1-9]\d*)">
+        <token type="LiteralNumberInteger"/>
+      </rule>
+      <rule pattern="&#34;(\\\\|\\&#34;|[^&#34;])*&#34;">
+        <token type="LiteralStringDouble"/>
+      </rule>
+      <rule pattern="&#39;[^&#39;]+&#39;">
+        <token type="LiteralStringSingle"/>
+      </rule>
+      <rule pattern="([!#]?)(\w+)">
+        <bygroups>
+          <token type="Punctuation"/>
+          <token type="Text"/>
+        </bygroups>
+      </rule>
+    </state>
+    <state name="nbtobjectattribute">
+      <rule>
+        <include state="nbtvalue"/>
+      </rule>
+      <rule pattern=":">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern=",">
+        <token type="Punctuation"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="\}">
+        <token type="Punctuation"/>
+        <pop depth="2"/>
+      </rule>
+    </state>
+  </rules>
+</lexer>

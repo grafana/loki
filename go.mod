@@ -116,7 +116,6 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.18.1
 	github.com/IBM/ibm-cos-sdk-go v1.11.1
-	github.com/alecthomas/chroma v0.10.0
 	github.com/axiomhq/hyperloglog v0.2.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/coder/quartz v0.1.2
