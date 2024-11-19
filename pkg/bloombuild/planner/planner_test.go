@@ -339,8 +339,10 @@ func Test_processTenantTaskResults(t *testing.T) {
 				},
 			},
 			expectedMetas: []bloomshipper.Meta{
-				plannertest.GenMeta(0, 10, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
-				plannertest.GenMeta(10, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(10, 20)}),
+				plannertest.GenMeta(0, 20, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 10),
+					plannertest.GenBlockRef(10, 20),
+				}),
 			},
 			expectedTasksSucceed: 2,
 		},
@@ -378,8 +380,10 @@ func Test_processTenantTaskResults(t *testing.T) {
 				},
 			},
 			expectedMetas: []bloomshipper.Meta{
-				plannertest.GenMeta(0, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(0, 10)}),
-				plannertest.GenMeta(8, 10, []int{2}, []bloomshipper.BlockRef{plannertest.GenBlockRef(8, 10)}),
+				plannertest.GenMeta(0, 10, []int{1, 2}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 10),
+					plannertest.GenBlockRef(8, 10),
+				}),
 			},
 			expectedTasksSucceed: 1,
 		},

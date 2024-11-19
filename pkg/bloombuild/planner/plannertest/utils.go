@@ -24,25 +24,31 @@ func TsdbID(n int) tsdb.SingleTenantTSDBIdentifier {
 	}
 }
 
-func GenMeta(min, max model.Fingerprint, sources []int, blocks []bloomshipper.BlockRef) bloomshipper.Meta {
-	m := bloomshipper.Meta{
-		MetaRef: bloomshipper.MetaRef{
-			Ref: bloomshipper.Ref{
-				TenantID:  "fakeTenant",
-				TableName: TestTable.Addr(),
-				Bounds:    v1.NewBounds(min, max),
-			},
-		},
-		Blocks: blocks,
+func GenMeta(min, max model.Fingerprint, tsdbs []int, blocks []bloomshipper.BlockRef) bloomshipper.Meta {
+	sources := make([]tsdb.SingleTenantTSDBIdentifier, 0, len(tsdbs))
+	for _, t := range tsdbs {
+		sources = append(sources, TsdbID(t))
 	}
-	for _, source := range sources {
-		m.Sources = append(m.Sources, TsdbID(source))
+
+	ref, err := bloomshipper.MetaRefFrom("fakeTenant", TestTable.Addr(), v1.NewBounds(min, max), sources, blocks)
+	if err != nil {
+		panic(err)
 	}
-	return m
+
+	// We reset the start/end TS since ResolveMetas does not decode these and are always set to 0.
+	ref.StartTimestamp = 0
+	ref.EndTimestamp = 0
+
+	return bloomshipper.Meta{
+		MetaRef: ref,
+		Sources: sources,
+		Blocks:  blocks,
+	}
 }
 
 func GenBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
 	startTS, endTS := TestDay.Bounds()
+
 	return bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
 			TenantID:       "fakeTenant",

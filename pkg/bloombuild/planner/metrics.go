@@ -16,6 +16,7 @@ const (
 
 	phasePlanning = "planning"
 	phaseBuilding = "building"
+	phaseMerging  = "merging"
 )
 
 type Metrics struct {

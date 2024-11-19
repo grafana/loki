@@ -488,11 +488,64 @@ func (p *Planner) processTenantTaskResults(
 		return tasksSucceed, nil
 	}
 
-	if _, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, newMetas, originalMetas, phaseBuilding); err != nil {
-		return 0, fmt.Errorf("failed to delete outdated metas: %w", err)
+	// We can now delete the outdated metas and blocks from previous iterations now that they have been updated
+	upToDate, err := p.deleteOutdatedMetasAndBlocks(ctx, table, tenant, newMetas, originalMetas, phaseBuilding)
+	if err != nil {
+		return tasksSucceed, fmt.Errorf("failed to delete outdated metas: %w", err)
+	}
+
+	if len(upToDate) > 1 {
+		// We now merge all the upToDate metas into a single bigger one
+		// Then we put the merged meta into the store and delete the old ones (but we keep the blocks!)
+		if err := p.mergeMetas(ctx, table, tenant, upToDate); err != nil {
+			return tasksSucceed, fmt.Errorf("failed to put merged meta: %w", err)
+		}
 	}
 
 	return tasksSucceed, nil
+}
+
+func (p *Planner) mergeMetas(
+	ctx context.Context,
+	table config.DayTable,
+	tenant string,
+	metas []bloomshipper.Meta,
+) error {
+	logger := log.With(p.logger, "table", table.Addr(), "tenant", tenant)
+
+	mergedMeta, err := bloomshipper.MergeMetas(metas)
+	if err != nil {
+		return fmt.Errorf("failed to merge metas: %w", err)
+	}
+
+	client, err := p.bloomStore.Client(table.ModelTime())
+	if err != nil {
+		return fmt.Errorf("failed to get client: %w", err)
+	}
+
+	if err := client.PutMeta(ctx, mergedMeta); err != nil {
+		return fmt.Errorf("failed to put merged meta: %w", err)
+	}
+
+	var deletedMetas int
+	defer func() {
+		p.metrics.metasDeleted.WithLabelValues(phaseMerging).Add(float64(deletedMetas))
+	}()
+
+	for _, meta := range metas {
+		if err := client.DeleteMetas(ctx, []bloomshipper.MetaRef{meta.MetaRef}); err != nil {
+			if client.IsObjectNotFoundErr(err) {
+				level.Debug(logger).Log("msg", "meta not found while attempting delete, continuing", "meta", meta.String())
+			} else {
+				level.Error(logger).Log("msg", "failed to delete meta", "err", err, "meta", meta.String())
+				return errors.Wrap(err, "failed to delete meta")
+			}
+		}
+		deletedMetas++
+		level.Debug(logger).Log("msg", "removed outdated meta", "meta", meta.String())
+	}
+
+	return nil
 }
 
 func openAllTSDBs(

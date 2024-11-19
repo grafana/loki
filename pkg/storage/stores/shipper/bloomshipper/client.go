@@ -191,6 +191,63 @@ type MetaClient interface {
 	DeleteMetas(ctx context.Context, refs []MetaRef) error
 }
 
+func MergeMetas(metas []Meta) (Meta, error) {
+	if len(metas) == 0 {
+		return Meta{}, fmt.Errorf("no metas to merge")
+	}
+
+	tenant := metas[0].TenantID
+	table := metas[0].TableName
+
+	addedTSDBs := make(map[tsdb.SingleTenantTSDBIdentifier]struct{}, len(metas[0].Sources))
+	addedBlocks := make(map[BlockRef]struct{}, len(metas)*len(metas[0].Blocks))
+
+	bounds := metas[0].Bounds
+	for _, meta := range metas {
+		if meta.TenantID != tenant || meta.TableName != table {
+			return Meta{}, fmt.Errorf("mismatched tenants or tables")
+		}
+
+		if meta.Bounds.Min < bounds.Min {
+			bounds.Min = meta.Bounds.Min
+		}
+		if meta.Bounds.Max > bounds.Max {
+			bounds.Max = meta.Bounds.Max
+		}
+
+		for _, source := range meta.Sources {
+			addedTSDBs[source] = struct{}{}
+		}
+
+		for _, block := range meta.Blocks {
+			addedBlocks[block] = struct{}{}
+		}
+	}
+
+	sources := make([]tsdb.SingleTenantTSDBIdentifier, 0, len(addedTSDBs))
+	for source := range addedTSDBs {
+		sources = append(sources, source)
+	}
+
+	blocks := make([]BlockRef, 0, len(addedBlocks))
+	for block := range addedBlocks {
+		blocks = append(blocks, block)
+	}
+
+	metaRef, err := MetaRefFrom(tenant, table, bounds, sources, blocks)
+	if err != nil {
+		return Meta{}, fmt.Errorf("failed to create merged meta ref: %w", err)
+	}
+
+	merged := Meta{
+		MetaRef: metaRef,
+		Sources: sources,
+		Blocks:  blocks,
+	}
+
+	return merged, nil
+}
+
 type Block struct {
 	BlockRef
 	Data io.ReadSeekCloser
