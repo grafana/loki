@@ -327,6 +327,8 @@ github.com/alecthomas/chroma/lexers/y
 github.com/alecthomas/chroma/lexers/z
 github.com/alecthomas/chroma/quick
 github.com/alecthomas/chroma/styles
+# github.com/alecthomas/chroma/v2 v2.14.0
+## explicit; go 1.19
 # github.com/alecthomas/kingpin/v2 v2.4.0
 ## explicit; go 1.17
 github.com/alecthomas/kingpin/v2
@@ -584,8 +586,8 @@ github.com/dimchansky/utfbom
 # github.com/distribution/reference v0.6.0
 ## explicit; go 1.20
 github.com/distribution/reference
-# github.com/dlclark/regexp2 v1.4.0
-## explicit
+# github.com/dlclark/regexp2 v1.11.0
+## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
 # github.com/docker/docker v27.3.1+incompatible

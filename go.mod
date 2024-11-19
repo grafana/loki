@@ -116,6 +116,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.18.1
 	github.com/IBM/ibm-cos-sdk-go v1.11.1
+	github.com/alecthomas/chroma v0.10.0
 	github.com/axiomhq/hyperloglog v0.2.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/coder/quartz v0.1.2
@@ -164,7 +165,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.24.1 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.48.1 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.48.1 // indirect
-	github.com/dlclark/regexp2 v1.4.0 // indirect
+	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/ebitengine/purego v0.8.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
@@ -215,7 +216,7 @@ require (
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma v0.10.0
+	github.com/alecthomas/chroma/v2 v2.14.0
 	github.com/alecthomas/units v0.0.0-20240626203959-61d1e3462e30 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
