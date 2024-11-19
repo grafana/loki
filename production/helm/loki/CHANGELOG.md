@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.20.0-weekly.229
+
+- [CHANGE] Changed version of Grafana Loki to k229-df7a8e4
+- [CHANGE] Changed version of Grafana Enterprise Logs to weekly-k229-1f7f8e3
+
 - [ENHANCEMENT] Expose Topology Spread Constraints in Helm chart templates and default values.
 
 ## 6.19.0
