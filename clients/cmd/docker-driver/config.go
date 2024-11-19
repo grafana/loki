@@ -66,18 +66,16 @@ const (
 	defaultHostLabelName  = model.LabelName("host")
 )
 
-var (
-	defaultClientConfig = client.Config{
-		BatchWait: client.BatchWait,
-		BatchSize: client.BatchSize,
-		BackoffConfig: backoff.Config{
-			MinBackoff: client.MinBackoff,
-			MaxBackoff: client.MaxBackoff,
-			MaxRetries: client.MaxRetries,
-		},
-		Timeout: client.Timeout,
-	}
-)
+var defaultClientConfig = client.Config{
+	BatchWait: client.BatchWait,
+	BatchSize: client.BatchSize,
+	BackoffConfig: backoff.Config{
+		MinBackoff: client.MinBackoff,
+		MaxBackoff: client.MaxBackoff,
+		MaxRetries: client.MaxRetries,
+	},
+	Timeout: client.Timeout,
+}
 
 type config struct {
 	labels       model.LabelSet
@@ -153,7 +151,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	clientConfig.URL = flagext.URLValue{URL: url}
 
 	// parse timeout
-	if err := parseDuration(cfgTimeoutKey, logCtx, func(d time.Duration) { clientConfig.Timeout = d }); err != nil {
+	if err := parseDurationWithDefault(cfgTimeoutKey, logCtx, func(d time.Duration) { clientConfig.Timeout = d }, 10*time.Second); err != nil {
 		return nil, err
 	}
 
@@ -172,7 +170,7 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if err := parseDuration(cfgMaxBackoffKey, logCtx, func(d time.Duration) { clientConfig.BackoffConfig.MaxBackoff = d }); err != nil {
 		return nil, err
 	}
-	if err := parseInt(cfgMaxRetriesKey, logCtx, func(i int) { clientConfig.BackoffConfig.MaxRetries = i }); err != nil {
+	if err := parseIntWithDefault(cfgMaxRetriesKey, logCtx, func(i int) { clientConfig.BackoffConfig.MaxRetries = i }, 2); err != nil {
 		return nil, err
 	}
 
@@ -350,6 +348,19 @@ func parseDuration(key string, logCtx logger.Info, set func(d time.Duration)) er
 	return nil
 }
 
+func parseDurationWithDefault(key string, logCtx logger.Info, set func(d time.Duration), defaultValue time.Duration) error {
+	if raw, ok := logCtx.Config[key]; ok {
+		val, err := time.ParseDuration(raw)
+		if err != nil {
+			return fmt.Errorf("%s: invalid option %s format: %s", driverName, key, raw)
+		}
+		set(val)
+	} else {
+		set(defaultValue)
+	}
+	return nil
+}
+
 func parseInt(key string, logCtx logger.Info, set func(i int)) error {
 	if raw, ok := logCtx.Config[key]; ok {
 		val, err := strconv.Atoi(raw)
@@ -357,6 +368,19 @@ func parseInt(key string, logCtx logger.Info, set func(i int)) error {
 			return fmt.Errorf("%s: invalid option %s format: %s", driverName, key, raw)
 		}
 		set(val)
+	}
+	return nil
+}
+
+func parseIntWithDefault(key string, logCtx logger.Info, set func(i int), defaultValue int) error {
+	if raw, ok := logCtx.Config[key]; ok {
+		val, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("%s: invalid option %s format: %s", driverName, key, raw)
+		}
+		set(val)
+	} else {
+		set(defaultValue)
 	}
 	return nil
 }
