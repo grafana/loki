@@ -108,6 +108,13 @@ func (c *Context) Index() Index {
 	return c.index
 }
 
+// Merge index stats from multiple respones in a concurrency-safe manner
+func (c *Context) MergeIndex(i Index) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.index.Merge(i)
+}
+
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{

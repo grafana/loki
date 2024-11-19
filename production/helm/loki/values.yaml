@@ -876,6 +876,8 @@ adminApi:
   affinity: {}
   # -- Node selector for admin-api Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for admin-api pods
+  topologySpreadConstraints: []
   # -- Tolerations for admin-api Pods
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
@@ -3009,7 +3011,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.23-alpine
+    tag: 1.6.32-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3347,7 +3349,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.27.5
+    tag: 1.28.0
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

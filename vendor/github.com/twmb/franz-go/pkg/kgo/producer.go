@@ -480,12 +480,24 @@ func (cl *Client) produce(
 		}()
 
 		drainBuffered := func(err error) {
-			p.mu.Lock()
-			quit = true
+			// The expected case here is that a context was
+			// canceled while we we waiting for space, so we are
+			// exiting and need to kill the goro above.
+			//
+			// However, it is possible that the goro above has
+			// already exited AND the context was canceled, and
+			// `select` chose the context-canceled case.
+			//
+			// So, to avoid a deadlock, we need to wakeup the
+			// goro above in another goroutine.
+			go func() {
+				p.mu.Lock()
+				quit = true
+				p.mu.Unlock()
+				p.c.Broadcast()
+			}()
+			<-wait // we wait for the goroutine to exit, then unlock again (since the goroutine leaves the mutex locked)
 			p.mu.Unlock()
-			p.c.Broadcast() // wake the goroutine above
-			<-wait
-			p.mu.Unlock() // we wait for the goroutine to exit, then unlock again (since the goroutine leaves the mutex locked)
 			p.promiseRecordBeforeBuf(promisedRec{ctx, promise, r}, err)
 		}
 
