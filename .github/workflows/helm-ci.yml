@@ -11,35 +11,9 @@ env:
 
 jobs:
   call-lint:
-    name: Lint Helm Chart
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Check Docs
-        run: |
-          docker run --rm --volume "$(pwd):/helm-docs" -u "$(id -u)" jnorwood/helm-docs:v1.11.0
-          if ! git diff --exit-code; then
-              echo "Documentation not up to date. Please run helm-docs and commit changes!" >&2
-              exit 1
-          fi
-
-      - name: Lint Yaml
-        run: make helm-lint
-
-      - name: Lint Code Base
-        uses: docker://github/super-linter:v3.17.2
-        env:
-          FILTER_REGEX_EXCLUDE: .*(CHANGELOG\.md|README\.md|Chart\.yaml|NOTES.txt).*
-          FILTER_REGEX_INCLUDE: .*production/helm/.*
-          VALIDATE_ALL_CODEBASE: false
-          VALIDATE_KUBERNETES_KUBEVAL: false
-          VALIDATE_YAML: false
-          VALIDATE_GO: false
-          DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
-          LOG_LEVEL: DEBUG
+    uses: grafana/helm-charts/.github/workflows/linter.yml@main
+    with:
+      filter_regex_include: .*production/helm/loki/.*
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
