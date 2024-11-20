@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
@@ -79,7 +80,7 @@ func New(
 	}
 
 	// Queue to manage tasks
-	queueMetrics := queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
+	queueMetrics := queue.NewMetrics(r, constants.Loki, metricsSubsystem)
 	queueLimits := NewQueueLimits(limits)
 	tasksQueue, err := queue.NewQueue(logger, cfg.Queue, queueLimits, queueMetrics, storageMetrics)
 	if err != nil {
