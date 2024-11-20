@@ -40,6 +40,7 @@ type Metrics struct {
 	tenantsDiscovered    prometheus.Counter
 	tenantTasksPlanned   *prometheus.GaugeVec
 	tenantTasksCompleted *prometheus.GaugeVec
+	tenantTasksTiming    *prometheus.HistogramVec
 
 	// Retention metrics
 	retentionRunning                  prometheus.Gauge
@@ -165,6 +166,14 @@ func NewMetrics(
 			Subsystem: metricsSubsystem,
 			Name:      "tenant_tasks_completed",
 			Help:      "Number of tasks completed for a tenant during the current build iteration.",
+		}, []string{"tenant", "status"}),
+		tenantTasksTiming: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: metricsNamespace,
+			Subsystem: metricsSubsystem,
+			Name:      "tenant_tasks_time_seconds",
+			Help:      "Time spent building tasks for a tenant during the current build iteration.",
+			// 1s --> 1h (steps of 1 minute)
+			Buckets: prometheus.LinearBuckets(1, 60, 60),
 		}, []string{"tenant", "status"}),
 
 		// Retention
