@@ -41,7 +41,7 @@ configMapGenerator:
 images:
 - name: controller
   newName: quay.io/openshift-logging/loki-operator
-  newTag: 0.1.0
+  newTag: 6.1.0
 
 patches:
 - path: auth_proxy_service_annotations_patch.yaml
