@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strconv"
@@ -17,7 +18,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
@@ -319,7 +320,11 @@ func parsePipeline(logCtx logger.Info) (PipelineConfig, error) {
 		}
 	}
 	if okString {
-		if err := yaml.UnmarshalStrict([]byte(pipelineString), &pipeline.PipelineStages); err != nil {
+		decoder := yaml.NewDecoder(bytes.NewReader([]byte(pipelineString)))
+		decoder.KnownFields(true)
+
+		err := decoder.Decode(&pipeline)
+		if err != nil && !errors.Is(err, io.EOF) {
 			return pipeline, err
 		}
 	}
@@ -363,7 +368,11 @@ func parseInt(key string, logCtx logger.Info, set func(i int)) error {
 
 func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 	relabelConfig := make([]*relabel.Config, 0)
-	if err := yaml.UnmarshalStrict([]byte(config), &relabelConfig); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader([]byte(config)))
+	decoder.KnownFields(true)
+
+	err := decoder.Decode(&relabelConfig)
+	if err != nil && !errors.Is(err, io.EOF) {
 		return nil, err
 	}
 	relabed, _ := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
@@ -389,5 +398,12 @@ func loadConfig(filename string, cfg interface{}) error {
 		return errors.Wrap(err, "Error reading config file")
 	}
 
-	return yaml.UnmarshalStrict(buf, cfg)
+	decoder := yaml.NewDecoder(bytes.NewReader(buf))
+	decoder.KnownFields(true)
+
+	err = decoder.Decode(cfg)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	return nil
 }

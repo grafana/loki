@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/imdario/mergo"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // YAMLMerger takes a set of given YAML fragments and merges them into a single YAML document.

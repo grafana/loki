@@ -7,7 +7,7 @@ import (
 	"bytes"
 	"io"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // UnmarshalConfig unmarshals an instance config from a reader based on a
@@ -15,7 +15,7 @@ import (
 func UnmarshalConfig(r io.Reader) (*Config, error) {
 	var cfg Config
 	dec := yaml.NewDecoder(r)
-	dec.SetStrict(true)
+	dec.KnownFields(true)
 	err := dec.Decode(&cfg)
 	return &cfg, err
 }

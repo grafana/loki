@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	"github.com/prometheus/prometheus/tsdb/wlog"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/util"
 	"github.com/grafana/loki/v3/pkg/ruler/storage/wal"
@@ -88,13 +88,13 @@ func (c Config) MarshalYAML() (interface{}, error) {
 		return nil, err
 	}
 
-	// Use a yaml.MapSlice rather than a map[string]interface{} so
+	// Use a yaml.Node rather than a map[string]interface{} so
 	// order of keys is retained compared to just calling MarshalConfig.
-	var m yaml.MapSlice
-	if err := yaml.Unmarshal(bb, &m); err != nil {
+	var n yaml.Node
+	if err := yaml.Unmarshal(bb, &n); err != nil {
 		return nil, err
 	}
-	return m, nil
+	return n, nil
 }
 
 // ApplyDefaults applies default configurations to the configuration to all

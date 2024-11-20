@@ -18,7 +18,7 @@ import (
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"

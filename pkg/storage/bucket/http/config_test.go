@@ -6,7 +6,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.

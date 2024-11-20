@@ -1,8 +1,11 @@
 package positions
 
 import (
+	"bytes"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -12,7 +15,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 const (
@@ -224,8 +227,11 @@ func readPositionsFile(cfg Config, logger log.Logger) (map[string]string, error)
 	}
 
 	var p File
-	err = yaml.UnmarshalStrict(buf, &p)
-	if err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(buf))
+	decoder.KnownFields(true)
+
+	err = decoder.Decode(p)
+	if err != nil && !errors.Is(err, io.EOF) {
 		// return empty if cfg option enabled
 		if cfg.IgnoreInvalidYaml {
 			level.Debug(logger).Log("msg", "ignoring invalid positions file", "file", cleanfn, "error", err)

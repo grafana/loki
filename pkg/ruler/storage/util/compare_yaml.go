@@ -6,7 +6,7 @@ package util
 import (
 	"bytes"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // CompareYAML marshals a and b to YAML and ensures that their contents are

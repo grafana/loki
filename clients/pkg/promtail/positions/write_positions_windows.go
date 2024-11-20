@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // writePositionFile is a fall back for Windows because renameio does not support Windows.

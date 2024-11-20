@@ -1,12 +1,13 @@
 package push
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 var defaultGlobalOTLPConfig = GlobalOTLPConfig{}
@@ -153,7 +154,10 @@ log_attributes:
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := OTLPConfig{}
-			err := yaml.UnmarshalStrict(tc.yamlConfig, &cfg)
+			decoder := yaml.NewDecoder(bytes.NewReader(tc.yamlConfig))
+			decoder.KnownFields(true)
+
+			err := decoder.Decode(cfg)
 			if tc.expectedErr != nil {
 				require.ErrorIs(t, err, tc.expectedErr)
 				return

@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -10,7 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -315,7 +316,10 @@ query_timeout: 5m
 
 		t.Run(tc.desc, func(t *testing.T) {
 			var out Limits
-			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
+			decoder := yaml.NewDecoder(bytes.NewReader([]byte(tc.yaml)))
+			decoder.KnownFields(true)
+			err := decoder.Decode(out)
+			require.NoError(t, err)
 			require.Equal(t, tc.exp, out)
 		})
 	}

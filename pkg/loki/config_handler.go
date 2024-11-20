@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func yamlMarshalUnmarshal(in interface{}) (map[interface{}]interface{}, error) {

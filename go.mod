@@ -148,7 +148,6 @@ require (
 	golang.org/x/oauth2 v0.24.0
 	golang.org/x/text v0.20.0
 	google.golang.org/protobuf v1.35.2
-	gopkg.in/yaml.v2 v2.4.0
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.31.2
 	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3
@@ -191,6 +190,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.29.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.29.0 // indirect
 	google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
 require (
