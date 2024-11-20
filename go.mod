@@ -59,7 +59,7 @@ require (
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.30.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/imdario/mergo v0.3.16
+	github.com/imdario/mergo v1.0.1
 	github.com/influxdata/telegraf v1.16.3
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
