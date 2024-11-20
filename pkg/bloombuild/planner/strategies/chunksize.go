@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -31,9 +32,9 @@ type ChunkSizeStrategyMetrics struct {
 	tenantTaskSize *prometheus.HistogramVec
 }
 
-func NewChunkSizeStrategyMetrics(reg prometheus.Registerer) *ChunkSizeStrategyMetrics {
+func NewChunkSizeStrategyMetrics(r prometheus.Registerer) *ChunkSizeStrategyMetrics {
 	return &ChunkSizeStrategyMetrics{
-		tenantTaskSize: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		tenantTaskSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: metricsSubsystem,
 			Name:      "tenant_task_size_bytes",
