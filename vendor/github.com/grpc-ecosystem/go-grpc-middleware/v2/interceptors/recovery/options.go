@@ -1,7 +1,10 @@
+// Copyright (c) The go-grpc-middleware Authors.
+// Licensed under the Apache License 2.0.
+
 // Copyright 2017 David Ackroyd. All Rights Reserved.
 // See LICENSE for licensing terms.
 
-package grpc_recovery
+package recovery
 
 import "context"
 
@@ -29,7 +32,7 @@ type Option func(*options)
 // WithRecoveryHandler customizes the function for recovering from a panic.
 func WithRecoveryHandler(f RecoveryHandlerFunc) Option {
 	return func(o *options) {
-		o.recoveryHandlerFunc = RecoveryHandlerFuncContext(func(ctx context.Context, p interface{}) error {
+		o.recoveryHandlerFunc = RecoveryHandlerFuncContext(func(ctx context.Context, p any) error {
 			return f(p)
 		})
 	}
