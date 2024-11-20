@@ -23,8 +23,10 @@ You should only use structured metadata in the following situations:
 
 - If you are ingesting data in OpenTelemetry format, using Grafana Alloy or an OpenTelemetry Collector. Structured metadata was designed to support native ingestion of OpenTelemetry data.
 - If you have high cardinality metadata that should not be used as a label and does not exist in the log line.  Some examples might include `process_id` or `thread_id` or Kubernetes pod names.
- 
-It is an antipattern to extract information that already exists in your log lines and put it into structured metadata.
+- If you are using [Explore Logs](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) to visualize and explore your Loki logs.
+- If you are a large-scale customer, who is ingesting more than 75TB of logs a month and are using [Bloom filters](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/bloom-filters/)
+
+We do not recommend extracting information that already exists in your log lines and putting it into structured metadata.
 
 ## Attaching structured metadata to log lines
 
@@ -36,10 +38,11 @@ See the [Promtail: Structured metadata stage](https://grafana.com/docs/loki/<LOK
 
 With Loki version 1.2.0, support for structured metadata has been added to the Logstash output plugin. For more information, see [logstash](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/logstash/).
 
-{{% admonition type="warning" %}}
-Structured metadata size is taken into account while asserting ingestion rate limiting. 
+{{< admonition type="warning" >}}
+Structured metadata size is taken into account while asserting ingestion rate limiting.
 Along with that, there are separate limits on how much structured metadata can be attached per log line.
-```
+
+```yaml
 # Maximum size accepted for structured metadata per log line.
 # CLI flag: -limits.max-structured-metadata-size
 [max_structured_metadata_size: <int> | default = 64KB]
@@ -48,7 +51,8 @@ Along with that, there are separate limits on how much structured metadata can b
 # CLI flag: -limits.max-structured-metadata-entries-count
 [max_structured_metadata_entries_count: <int> | default = 128]
 ```
-{{% /admonition %}}
+
+{{< /admonition >}}
 
 ## Querying structured metadata
 
