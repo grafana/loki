@@ -90,7 +90,7 @@ require (
 	github.com/segmentio/fasthash v1.0.3
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
-	github.com/sony/gobreaker v0.5.0
+	github.com/sony/gobreaker/v2 v2.0.0
 	github.com/spf13/afero v1.11.0
 	github.com/stretchr/testify v1.9.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
