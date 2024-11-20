@@ -30,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -211,7 +212,11 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
-	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
+	var linesSkipped *prometheus.CounterVec
+	if d.metrics != nil {
+		linesSkipped = d.metrics.LinesSkipped
+	}
+	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state, linesSkipped)
 	if d.tokens == nil && d.state == nil {
 		return nil
 	}
@@ -221,11 +226,16 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 
 func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster {
 	if len(tokens) < 4 {
-		d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
+		if d.metrics != nil && d.metrics.LinesSkipped != nil {
+			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
+		}
 		return nil
 	}
-	if len(tokens) > 50 {
-		d.metrics.LinesSkipped.WithLabelValues(TooManyTokens).Inc()
+	if len(tokens) > 80 {
+		print(tokens)
+		if d.metrics != nil && d.metrics.LinesSkipped != nil {
+			d.metrics.LinesSkipped.WithLabelValues(TooManyTokens).Inc()
+		}
 		return nil
 	}
 	if d.metrics != nil {
