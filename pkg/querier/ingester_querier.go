@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/user"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
