@@ -1269,10 +1269,6 @@ builder:
     # Number of times to backoff and retry before failing.
     # CLI flag: -bloom-build.builder.backoff.backoff-retries
     [max_retries: <int> | default = 10]
-
-  # Prefetch blocks on gateways as soon as they are built
-  # CLI flag: -bloom-build.builder.prefetch-blocks-on-gateway
-  [prefetch_blocks_on_gateway: <boolean> | default = false]
 ```
 
 ### bloom_gateway
