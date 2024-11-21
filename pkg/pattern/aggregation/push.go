@@ -277,7 +277,7 @@ func (p *Push) run(pushPeriod time.Duration) {
 					break
 				}
 
-				if status > 0 && status != 429 && status/100 != 5 {
+				if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
 					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
 					pushTicker.Reset(pushPeriod)
 					break
@@ -298,7 +298,6 @@ func (p *Push) run(pushPeriod time.Duration) {
 }
 
 func (p *Push) sendPayload(ctx context.Context, payload []byte) (int, error) {
-
 	status, err := p.send(ctx, payload)
 	if err != nil {
 		errorType := util.ErrorTypeFromHTTPStatus(status)
@@ -349,21 +348,21 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 		}
 		return -1, fmt.Errorf("failed to push payload: %w", err)
 	}
-	status := resp.StatusCode
-	if status/100 != 2 {
+	statusCode := resp.StatusCode
+	if util.IsError(statusCode) {
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
 		line := ""
 		if scanner.Scan() {
 			line = scanner.Text()
 		}
-		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
+		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, statusCode, line)
 	}
 
 	if err := resp.Body.Close(); err != nil {
 		level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
 	}
 
-	return status, err
+	return statusCode, err
 }
 
 func AggregatedMetricEntry(

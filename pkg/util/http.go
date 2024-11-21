@@ -327,3 +327,15 @@ func ErrorTypeFromHTTPStatus(status int) string {
 
 	return errorType
 }
+
+func IsError(status int) bool {
+	return status/200 != 0
+}
+
+func IsServerError(status int) bool {
+	return status/100 == 5
+}
+
+func IsRateLimited(status int) bool {
+	return status == 429
+}
