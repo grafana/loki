@@ -16,9 +16,8 @@ import (
 )
 
 type serviceMetrics struct {
-	phase        *prometheus.GaugeVec
-	receiveDelay *prometheus.HistogramVec
-	partition    *prometheus.GaugeVec
+	phase     *prometheus.GaugeVec
+	partition *prometheus.GaugeVec
 }
 
 func newServiceMetrics(r prometheus.Registerer) *serviceMetrics {
@@ -30,10 +29,6 @@ func newServiceMetrics(r prometheus.Registerer) *serviceMetrics {
 		phase: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "loki_ingest_storage_reader_phase",
 			Help: "The current phase of the consumer.",
-		}, []string{"phase"}),
-		receiveDelay: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name: "loki_ingest_storage_reader_receive_delay_seconds",
-			Help: "Delay between producing a record and receiving it in the consumer.",
 		}, []string{"phase"}),
 	}
 }
@@ -103,7 +98,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 		lastCommittedOffset = int64(KafkaStartOffset)
 	}
 
-	if lastCommittedOffset > 0 {
+	if lastCommittedOffset >= 0 {
 		lastCommittedOffset++ // We want to begin to read from the next offset, but only if we've previously committed an offset.
 	}
 
@@ -261,7 +256,12 @@ func (s *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, m
 		}
 		lastProducedOffset = lastProducedOffset - 1 // Kafka returns the next empty offset so we must subtract 1 to get the oldest written offset.
 
-		level.Debug(logger).Log("msg", "fetched latest offset information", "partition_start_offset", partitionStartOffset, "last_produced_offset", lastProducedOffset)
+		level.Debug(logger).Log(
+			"msg", "fetched latest offset information",
+			"partition_start_offset", partitionStartOffset,
+			"last_produced_offset", lastProducedOffset,
+			"last_committed_offset", consumerGroupLastCommittedOffset,
+		)
 
 		// Ensure there are some records to consume. For example, if the partition has been inactive for a long
 		// time and all its records have been deleted, the partition start offset may be > 0 but there are no

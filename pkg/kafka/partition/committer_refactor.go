@@ -90,6 +90,7 @@ func (c *refactoredPartitionCommitter) autoCommitLoop(ctx context.Context) {
 			}
 
 			if err := c.Commit(ctx, currOffset); err == nil {
+				level.Error(c.logger).Log("msg", "failed to commit", "offset", currOffset)
 				c.lastCommittedOffset.Set(float64(currOffset))
 				previousOffset = currOffset
 			}
@@ -131,6 +132,12 @@ func (c *refactoredPartitionCommitter) Stop() {
 	if offset < 0 {
 		return
 	}
+
 	// Commit has internal timeouts, so this call shouldn't block for too long
-	_ = c.Commit(context.Background(), offset)
+	logger := log.With(c.logger, "msg", "stopping partition committer", "final_offset", offset)
+	if err := c.Commit(context.Background(), offset); err != nil {
+		level.Error(logger).Log("err", err)
+	} else {
+		level.Info(logger).Log()
+	}
 }
