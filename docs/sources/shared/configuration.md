@@ -1269,6 +1269,10 @@ builder:
     # Number of times to backoff and retry before failing.
     # CLI flag: -bloom-build.builder.backoff.backoff-retries
     [max_retries: <int> | default = 10]
+
+  # Prefetch blocks on gateways as soon as they are built
+  # CLI flag: -bloom-build.builder.prefetch-blocks-on-gateway
+  [prefetch_blocks_on_gateway: <boolean> | default = false]
 ```
 
 ### bloom_gateway
@@ -3764,6 +3768,10 @@ shard_streams:
 # Experimental. Compression algorithm for bloom block pages.
 # CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
+
+# Experimental. Prefetch blocks on bloom gateways as soon as they are built.
+# CLI flag: -bloom-build.prefetch-blocks
+[bloom_prefetch_blocks: <boolean> | default = false]
 
 # Experimental. The maximum bloom block size. A value of 0 sets an unlimited
 # size. Default is 200MB. The actual block size might exceed this limit since

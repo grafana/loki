@@ -18,6 +18,9 @@ type metrics struct {
 const (
 	typeSuccess = "success"
 	typeError   = "error"
+
+	routeFilterChunks  = "FilterChunks"
+	routePrefectBlocks = "PrefetchBloomBlocks"
 )
 
 type clientMetrics struct {
@@ -32,7 +35,7 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Subsystem: "bloom_gateway_client",
 			Name:      "requests_total",
 			Help:      "Total number of requests made to the bloom gateway",
-		}, []string{"type"}),
+		}, []string{"route", "type"}),
 		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Subsystem: "bloom_gateway_client",

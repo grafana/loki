@@ -11,10 +11,11 @@ import (
 
 // Config configures the bloom-builder component.
 type Config struct {
-	GrpcConfig     grpcclient.Config `yaml:"grpc_config"`
-	PlannerAddress string            `yaml:"planner_address"`
-	BackoffConfig  backoff.Config    `yaml:"backoff_config"`
-	WorkingDir     string            `yaml:"working_directory" doc:"hidden"`
+	GrpcConfig              grpcclient.Config `yaml:"grpc_config"`
+	PlannerAddress          string            `yaml:"planner_address"`
+	BackoffConfig           backoff.Config    `yaml:"backoff_config"`
+	WorkingDir              string            `yaml:"working_directory" doc:"hidden"`
+	PrefetchBlocksOnGateway bool              `yaml:"prefetch_blocks_on_gateway"`
 }
 
 // RegisterFlagsWithPrefix registers flags for the bloom-planner configuration.
@@ -23,6 +24,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.GrpcConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 	cfg.BackoffConfig.RegisterFlagsWithPrefix(prefix+".backoff", f)
 	f.StringVar(&cfg.WorkingDir, prefix+".working-directory", "", "Working directory to which blocks are temporarily written to. Empty string defaults to the operating system's temp directory.")
+	f.BoolVar(&cfg.PrefetchBlocksOnGateway, prefix+".prefetch-blocks-on-gateway", false, "Prefetch blocks on gateways as soon as they are built")
 }
 
 func (cfg *Config) Validate() error {
@@ -42,4 +44,5 @@ type Limits interface {
 	BloomMaxBlockSize(tenantID string) int
 	BloomMaxBloomSize(tenantID string) int
 	BuilderResponseTimeout(tenantID string) time.Duration
+	PrefetchBloomBlocks(tenantID string) bool
 }

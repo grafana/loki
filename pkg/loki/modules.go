@@ -1634,6 +1634,22 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		ringManager = t.indexGatewayRingManager
 	}
 
+	var bloomGatewayClient bloomgateway.Client
+	if t.Cfg.BloomGateway.Enabled {
+		var err error
+		bloomGatewayClient, err = bloomgateway.NewClient(
+			t.Cfg.BloomGateway.Client,
+			t.Overrides,
+			prometheus.DefaultRegisterer,
+			logger,
+			t.cacheGenerationLoader,
+			t.Cfg.CompactorConfig.RetentionEnabled,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
 		t.Overrides,
@@ -1642,6 +1658,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		t.ClientMetrics,
 		t.Store,
 		t.BloomStore,
+		bloomGatewayClient,
 		logger,
 		prometheus.DefaultRegisterer,
 		ringManager,
