@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
-var downloadQueueCapacity = 10000
+var downloadQueueCapacity = 100000
 
 type options struct {
 	ignoreNotFound bool // ignore 404s from object storage; default=true
