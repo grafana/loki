@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.20.0
 
+- [CHANGE] Changed version of Grafana Loki to 3.3.0
+
+## 6.19.0-weekly.227
+
 - [ENHANCEMENT] Expose Topology Spread Constraints in Helm chart templates and default values.
 - [CHANGE] Changed version of Minio helm chart to 5.3.0 (#14834)
 

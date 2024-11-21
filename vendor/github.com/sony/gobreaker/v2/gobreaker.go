@@ -114,7 +114,7 @@ type Settings struct {
 }
 
 // CircuitBreaker is a state machine to prevent sending requests that are likely to fail.
-type CircuitBreaker struct {
+type CircuitBreaker[T any] struct {
 	name          string
 	maxRequests   uint32
 	interval      time.Duration
@@ -133,13 +133,13 @@ type CircuitBreaker struct {
 // TwoStepCircuitBreaker is like CircuitBreaker but instead of surrounding a function
 // with the breaker functionality, it only checks whether a request can proceed and
 // expects the caller to report the outcome in a separate step using a callback.
-type TwoStepCircuitBreaker struct {
-	cb *CircuitBreaker
+type TwoStepCircuitBreaker[T any] struct {
+	cb *CircuitBreaker[T]
 }
 
 // NewCircuitBreaker returns a new CircuitBreaker configured with the given Settings.
-func NewCircuitBreaker(st Settings) *CircuitBreaker {
-	cb := new(CircuitBreaker)
+func NewCircuitBreaker[T any](st Settings) *CircuitBreaker[T] {
+	cb := new(CircuitBreaker[T])
 
 	cb.name = st.Name
 	cb.onStateChange = st.OnStateChange
@@ -180,9 +180,9 @@ func NewCircuitBreaker(st Settings) *CircuitBreaker {
 }
 
 // NewTwoStepCircuitBreaker returns a new TwoStepCircuitBreaker configured with the given Settings.
-func NewTwoStepCircuitBreaker(st Settings) *TwoStepCircuitBreaker {
-	return &TwoStepCircuitBreaker{
-		cb: NewCircuitBreaker(st),
+func NewTwoStepCircuitBreaker[T any](st Settings) *TwoStepCircuitBreaker[T] {
+	return &TwoStepCircuitBreaker[T]{
+		cb: NewCircuitBreaker[T](st),
 	}
 }
 
@@ -198,12 +198,12 @@ func defaultIsSuccessful(err error) bool {
 }
 
 // Name returns the name of the CircuitBreaker.
-func (cb *CircuitBreaker) Name() string {
+func (cb *CircuitBreaker[T]) Name() string {
 	return cb.name
 }
 
 // State returns the current state of the CircuitBreaker.
-func (cb *CircuitBreaker) State() State {
+func (cb *CircuitBreaker[T]) State() State {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
@@ -213,7 +213,7 @@ func (cb *CircuitBreaker) State() State {
 }
 
 // Counts returns internal counters
-func (cb *CircuitBreaker) Counts() Counts {
+func (cb *CircuitBreaker[T]) Counts() Counts {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
@@ -225,10 +225,11 @@ func (cb *CircuitBreaker) Counts() Counts {
 // Otherwise, Execute returns the result of the request.
 // If a panic occurs in the request, the CircuitBreaker handles it as an error
 // and causes the same panic again.
-func (cb *CircuitBreaker) Execute(req func() (interface{}, error)) (interface{}, error) {
+func (cb *CircuitBreaker[T]) Execute(req func() (T, error)) (T, error) {
 	generation, err := cb.beforeRequest()
 	if err != nil {
-		return nil, err
+		var defaultValue T
+		return defaultValue, err
 	}
 
 	defer func() {
@@ -245,24 +246,24 @@ func (cb *CircuitBreaker) Execute(req func() (interface{}, error)) (interface{},
 }
 
 // Name returns the name of the TwoStepCircuitBreaker.
-func (tscb *TwoStepCircuitBreaker) Name() string {
+func (tscb *TwoStepCircuitBreaker[T]) Name() string {
 	return tscb.cb.Name()
 }
 
 // State returns the current state of the TwoStepCircuitBreaker.
-func (tscb *TwoStepCircuitBreaker) State() State {
+func (tscb *TwoStepCircuitBreaker[T]) State() State {
 	return tscb.cb.State()
 }
 
 // Counts returns internal counters
-func (tscb *TwoStepCircuitBreaker) Counts() Counts {
+func (tscb *TwoStepCircuitBreaker[T]) Counts() Counts {
 	return tscb.cb.Counts()
 }
 
 // Allow checks if a new request can proceed. It returns a callback that should be used to
 // register the success or failure in a separate step. If the circuit breaker doesn't allow
 // requests, it returns an error.
-func (tscb *TwoStepCircuitBreaker) Allow() (done func(success bool), err error) {
+func (tscb *TwoStepCircuitBreaker[T]) Allow() (done func(success bool), err error) {
 	generation, err := tscb.cb.beforeRequest()
 	if err != nil {
 		return nil, err
@@ -273,7 +274,7 @@ func (tscb *TwoStepCircuitBreaker) Allow() (done func(success bool), err error) 
 	}, nil
 }
 
-func (cb *CircuitBreaker) beforeRequest() (uint64, error) {
+func (cb *CircuitBreaker[T]) beforeRequest() (uint64, error) {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
@@ -290,7 +291,7 @@ func (cb *CircuitBreaker) beforeRequest() (uint64, error) {
 	return generation, nil
 }
 
-func (cb *CircuitBreaker) afterRequest(before uint64, success bool) {
+func (cb *CircuitBreaker[T]) afterRequest(before uint64, success bool) {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
@@ -307,7 +308,7 @@ func (cb *CircuitBreaker) afterRequest(before uint64, success bool) {
 	}
 }
 
-func (cb *CircuitBreaker) onSuccess(state State, now time.Time) {
+func (cb *CircuitBreaker[T]) onSuccess(state State, now time.Time) {
 	switch state {
 	case StateClosed:
 		cb.counts.onSuccess()
@@ -319,7 +320,7 @@ func (cb *CircuitBreaker) onSuccess(state State, now time.Time) {
 	}
 }
 
-func (cb *CircuitBreaker) onFailure(state State, now time.Time) {
+func (cb *CircuitBreaker[T]) onFailure(state State, now time.Time) {
 	switch state {
 	case StateClosed:
 		cb.counts.onFailure()
@@ -331,7 +332,7 @@ func (cb *CircuitBreaker) onFailure(state State, now time.Time) {
 	}
 }
 
-func (cb *CircuitBreaker) currentState(now time.Time) (State, uint64) {
+func (cb *CircuitBreaker[T]) currentState(now time.Time) (State, uint64) {
 	switch cb.state {
 	case StateClosed:
 		if !cb.expiry.IsZero() && cb.expiry.Before(now) {
@@ -345,7 +346,7 @@ func (cb *CircuitBreaker) currentState(now time.Time) (State, uint64) {
 	return cb.state, cb.generation
 }
 
-func (cb *CircuitBreaker) setState(state State, now time.Time) {
+func (cb *CircuitBreaker[T]) setState(state State, now time.Time) {
 	if cb.state == state {
 		return
 	}
@@ -360,7 +361,7 @@ func (cb *CircuitBreaker) setState(state State, now time.Time) {
 	}
 }
 
-func (cb *CircuitBreaker) toNewGeneration(now time.Time) {
+func (cb *CircuitBreaker[T]) toNewGeneration(now time.Time) {
 	cb.generation++
 	cb.counts.clear()
 
