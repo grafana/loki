@@ -230,7 +230,7 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 	p.metrics.streamsPerPush.WithLabelValues(p.tenantID).Observe(float64(len(streams)))
 	p.metrics.entriesPerPush.WithLabelValues(p.tenantID).Observe(float64(len(entries)))
-	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(len(entriesByStream)))
+	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(serviceLimit))
 
 	sp.LogKV(
 		"event", "build aggregated metrics payload",
