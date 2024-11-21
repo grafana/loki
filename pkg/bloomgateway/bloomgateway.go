@@ -52,7 +52,6 @@ type Gateway struct {
 	queue       *queue.RequestQueue
 	activeUsers *util.ActiveUsersCleanupService
 	bloomStore  bloomshipper.Store
-	runningCtx  context.Context
 
 	pendingTasks *atomic.Int64
 
@@ -134,7 +133,6 @@ func (g *Gateway) starting(ctx context.Context) error {
 		return errors.Wrap(err, "unable to start bloom gateway subservices")
 	}
 
-	g.runningCtx = ctx
 	return nil
 }
 
@@ -170,8 +168,7 @@ func (g *Gateway) PrefetchBloomBlocks(_ context.Context, req *logproto.PrefetchB
 	}
 	bqs, err := g.bloomStore.FetchBlocks(
 		// We don't use the ctx passed to the handler since its canceled when the handler returns
-		// We use the runningCtx instead which holds the ctx from the service running method
-		g.runningCtx,
+		context.Background(),
 		refs,
 		bloomshipper.WithFetchAsync(true),
 		bloomshipper.WithIgnoreNotFound(true),
