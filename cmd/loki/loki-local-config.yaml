@@ -45,7 +45,6 @@ schema_config:
 pattern_ingester:
   enabled: true
   metric_aggregation:
-    enabled: true
     loki_address: localhost:3100
 
 ruler:
