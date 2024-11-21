@@ -11,8 +11,7 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-[//]: # '<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.'
-
+[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 - [CHANGE] Changed version of Minio helm chart to 5.3.0 (#14834)
 
 ## 6.20.0
@@ -99,7 +98,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.7.3
 
 - [BUGFIX] Removed Helm test binary
-
+  
 ## 6.7.2
 
 - [BUGFIX] Fix imagePullSecrets for statefulset-results-cache
@@ -148,9 +147,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
 
+
 ## 6.4.2
 
-- [BUGFIX] Fixed helm helper functions to include missing `loki.hpa.apiVersion` #12716
+- [BUGFIX] Fixed helm helper functions to include missing `loki.hpa.apiVersion`  #12716
 
 ## 6.4.1
 
@@ -815,5 +815,5 @@ Entries should include a reference to the pull request that introduced the chang
 ## 3.0.0
 
 - [CHANGE] Loki helm chart was moved to this location in the Loki repo. The chart now supports both
-  [single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable) deployment modes. For changes prior to version 3.0.0, please
-  look in the respective deprectated [single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/blob/main/charts/loki-simple-scalable/CHANGELOG.md) charts.
+[single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/tree/main/charts/loki-simple-scalable) deployment modes. For changes prior to version 3.0.0, please
+look in the respective deprectated [single binary](https://github.com/grafana/helm-charts/tree/main/charts/loki) and [simple scalable](https://github.com/grafana/helm-charts/blob/main/charts/loki-simple-scalable/CHANGELOG.md) charts.
