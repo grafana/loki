@@ -3,9 +3,11 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -13,7 +15,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
-	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -272,7 +273,7 @@ func (t *table) Sync(ctx context.Context) error {
 	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	t.indexSetsMtx.RLock()
-	users := maps.Keys(t.indexSets)
+	users := slices.Collect(maps.Keys(t.indexSets))
 	t.indexSetsMtx.RUnlock()
 
 	for _, userID := range users {
