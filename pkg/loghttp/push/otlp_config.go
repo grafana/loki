@@ -56,6 +56,7 @@ func (cfg *GlobalOTLPConfig) RegisterFlags(fs *flag.FlagSet) {
 		"service.namespace",
 		"service.instance.id",
 		"deployment.environment",
+		"deployment.environment.name",
 		"cloud.region",
 		"cloud.availability_zone",
 		"k8s.cluster.name",

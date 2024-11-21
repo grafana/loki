@@ -82,7 +82,8 @@ This is the generated reference for the Loki Helm Chart values.
     "type": "RollingUpdate"
   },
   "terminationGracePeriodSeconds": 60,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -277,6 +278,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for admin-api Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3052,7 +3062,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": null
+    "tag": "3.3.0"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3225,7 +3235,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-null
+"3.3.0"
 </pre>
 </td>
 		</tr>
@@ -6080,7 +6090,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"3.3.0"
 </pre>
 </td>
 		</tr>
