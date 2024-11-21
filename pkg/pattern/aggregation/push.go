@@ -297,19 +297,6 @@ func (p *Push) run(pushPeriod time.Duration) {
 	}
 }
 
-func (p *Push) sendPayload(ctx context.Context, payload []byte) (int, error) {
-	status, err := p.send(ctx, payload)
-	if err != nil {
-		errorType := util.ErrorTypeFromHTTPStatus(status)
-		p.metrics.pushErrors.WithLabelValues(p.tenantID, errorType).Inc()
-		return 0, err
-	}
-	p.metrics.pushSuccesses.WithLabelValues(p.tenantID).Inc()
-	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
-
-	return status, nil
-}
-
 // send makes one attempt to send the payload to Loki
 func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	var (
@@ -325,6 +312,8 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	defer sp.Finish()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
+	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
+
 	if err != nil {
 		return -1, fmt.Errorf("failed to create push request: %w", err)
 	}
@@ -350,12 +339,15 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	}
 	statusCode := resp.StatusCode
 	if util.IsError(statusCode) {
+		errType := util.ErrorTypeFromHTTPStatus(statusCode)
+
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
 		line := ""
 		if scanner.Scan() {
 			line = scanner.Text()
 		}
 		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, statusCode, line)
+		p.metrics.pushErrors.WithLabelValues(p.tenantID, errType).Inc()
 	}
 
 	if err := resp.Body.Close(); err != nil {
