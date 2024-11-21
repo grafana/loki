@@ -301,25 +301,14 @@ func (p *Push) sendPayload(ctx context.Context, payload []byte) (int, error) {
 
 	status, err := p.send(ctx, payload)
 	if err != nil {
-		errorType := "unknown"
-		if status == 429 {
-			errorType = "rate_limited"
-		} else if status/100 == 5 {
-			errorType = "server_error"
-		} else if status/100 != 2 {
-			errorType = "client_error"
-		}
+		errorType := util.ErrorTypeFromHTTPStatus(status)
 		p.metrics.pushErrors.WithLabelValues(p.tenantID, errorType).Inc()
-	} else {
-		p.metrics.pushSuccesses.WithLabelValues(p.tenantID).Inc()
-	}
-	if err != nil {
 		return 0, err
 	}
-
+	p.metrics.pushSuccesses.WithLabelValues(p.tenantID).Inc()
 	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
 
-	return status, err
+	return status, nil
 }
 
 // send makes one attempt to send the payload to Loki
