@@ -166,12 +166,16 @@ func (g *Gateway) PrefetchBloomBlocks(_ context.Context, req *logproto.PrefetchB
 	if err != nil {
 		return nil, err
 	}
+
 	bqs, err := g.bloomStore.FetchBlocks(
 		// We don't use the ctx passed to the handler since its canceled when the handler returns
 		context.Background(),
 		refs,
 		bloomshipper.WithFetchAsync(true),
 		bloomshipper.WithIgnoreNotFound(true),
+		bloomshipper.WithCacheGetOptions(
+			bloomshipper.WithSkipHitMissMetrics(true),
+		),
 	)
 	if err != nil {
 		return nil, err
