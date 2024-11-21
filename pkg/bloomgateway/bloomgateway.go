@@ -161,6 +161,11 @@ func (g *Gateway) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
+func (g *Gateway) PrefetchBloomBlocks(_ context.Context, _ *logproto.PrefetchBloomBlocksRequest) (*logproto.PrefetchBloomBlocksResponse, error) {
+	// TODO: Implement prefetching of bloom blocks
+	return &logproto.PrefetchBloomBlocksResponse{}, nil
+}
+
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
