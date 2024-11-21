@@ -1,6 +1,7 @@
 package aggregation
 
 import (
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -25,39 +26,39 @@ type Metrics struct {
 	writeTimeout *prometheus.CounterVec
 }
 
-func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
+func NewMetrics(r prometheus.Registerer) *Metrics {
 	var m Metrics
 	m.reg = r
 
 	m = Metrics{
 		chunks: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "metric_chunks",
 			Help:      "The total number of chunks in memory.",
 		}, []string{"service_name"}),
 		samples: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "metric_samples",
 			Help:      "The total number of samples in memory.",
 		}, []string{"service_name"}),
 		pushErrors: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "push_errors_total",
 			Help:      "Total number of errors when pushing metrics to Loki.",
 		}, []string{"tenant_id", "error_type"}),
 
 		pushRetries: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "push_retries_total",
 			Help:      "Total number of retries when pushing metrics to Loki.",
 		}, []string{"tenant_id"}),
 
 		pushSuccesses: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "push_successes_total",
 			Help:      "Total number of successful pushes to Loki.",
@@ -65,7 +66,7 @@ func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
 
 		// Batch metrics
 		payloadSize: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "push_payload_bytes",
 			Help:      "Size of push payloads in bytes.",
@@ -73,7 +74,7 @@ func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
 		}, []string{"tenant_id"}),
 
 		streamsPerPush: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "streams_per_push",
 			Help:      "Number of streams in each push request.",
@@ -81,7 +82,7 @@ func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
 		}, []string{"tenant_id"}),
 
 		entriesPerPush: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "entries_per_push",
 			Help:      "Number of entries in each push request.",
@@ -89,13 +90,13 @@ func NewMetrics(r prometheus.Registerer, metricsNamespace string) *Metrics {
 		}, []string{"tenant_id"}),
 
 		servicesTracked: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "services_tracked",
 			Help:      "Number of unique services being tracked.",
 		}, []string{"tenant_id"}),
 		writeTimeout: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
 			Name:      "write_timeouts_total",
 			Help:      "Total number of write timeouts.",

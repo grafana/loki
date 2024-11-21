@@ -147,7 +147,7 @@ func NewPush(
 		entries: entries{
 			entries: make([]entry, 0),
 		},
-		metrics: NewMetrics(registrer, "pattern_ingester"),
+		metrics: NewMetrics(registrer),
 	}
 
 	go p.run(pushPeriod)
