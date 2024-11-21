@@ -232,7 +232,6 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 		return nil
 	}
 	if len(tokens) > 80 {
-		print(tokens)
 		if d.metrics != nil && d.metrics.LinesSkipped != nil {
 			d.metrics.LinesSkipped.WithLabelValues(TooManyTokens).Inc()
 		}
