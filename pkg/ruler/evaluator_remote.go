@@ -223,6 +223,11 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	body := []byte(args.Encode())
 	hash := util.HashedQuery(query)
 
+	// Retrieve rule details from context
+	ruleName, ruleType := GetRuleDetailsFromContext(ctx)
+
+	// Construct the X-Query-Tags header value
+	queryTags := fmt.Sprintf("source=ruler,rule_name=%s,rule_type=%s", ruleName, ruleType)
 	req := httpgrpc.HTTPRequest{
 		Method: http.MethodPost,
 		Url:    queryEndpointPath,
@@ -231,7 +236,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{userAgent}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeFormPost}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
-			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{"source=ruler"}},
+			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{queryTags}},
 			{Key: textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName), Values: []string{orgID}},
 		},
 	}
