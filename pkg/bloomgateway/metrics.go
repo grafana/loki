@@ -53,6 +53,7 @@ type serverMetrics struct {
 	requestedChunks  prometheus.Histogram
 	filteredChunks   prometheus.Histogram
 	receivedMatchers prometheus.Histogram
+	prefetchedBlocks *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -108,6 +109,12 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Help:      "Number of matchers per request.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
+		prefetchedBlocks: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "prefetched_blocks_total",
+			Help:      "Total amount of blocks prefetched by the bloom-gateway",
+		}, []string{"status"}),
 	}
 }
 

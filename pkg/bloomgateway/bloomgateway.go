@@ -178,6 +178,7 @@ func (g *Gateway) PrefetchBloomBlocks(_ context.Context, req *logproto.PrefetchB
 		),
 	)
 	if err != nil {
+		g.metrics.prefetchedBlocks.WithLabelValues(typeError).Add(float64(len(refs)))
 		return nil, err
 	}
 
@@ -192,6 +193,8 @@ func (g *Gateway) PrefetchBloomBlocks(_ context.Context, req *logproto.PrefetchB
 			level.Warn(g.logger).Log("msg", "failed to close block querier", "err", err)
 		}
 	}
+
+	g.metrics.prefetchedBlocks.WithLabelValues(typeSuccess).Add(float64(len(refs)))
 	return &logproto.PrefetchBloomBlocksResponse{}, err
 }
 
