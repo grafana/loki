@@ -166,12 +166,27 @@ func (g *Gateway) PrefetchBloomBlocks(ctx context.Context, req *logproto.Prefetc
 	if err != nil {
 		return nil, err
 	}
-	_, err = g.bloomStore.FetchBlocks(
+	bqs, err := g.bloomStore.FetchBlocks(
 		ctx,
 		refs,
 		bloomshipper.WithFetchAsync(true),
 		bloomshipper.WithIgnoreNotFound(true),
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, bq := range bqs {
+		if bq == nil {
+			// This is the expected case: the blocks is not yet downloaded and the block querier is nil
+			continue
+		}
+
+		// Close any block querier that were already downloaded
+		if err := bq.Close(); err != nil {
+			level.Warn(g.logger).Log("msg", "failed to close block querier", "err", err)
+		}
+	}
 	return &logproto.PrefetchBloomBlocksResponse{}, err
 }
 
