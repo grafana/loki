@@ -211,7 +211,7 @@ func (c *GatewayClient) PrefetchBloomBlocks(ctx context.Context, blocks []blooms
 	}
 
 	pos := make(map[string]int)
-	servers := make([]addrWithBlocks, 0)
+	servers := make([]addrWithBlocks, 0, len(blocks))
 	for _, block := range blocks {
 		addr, err := c.pool.Addr(block.String())
 		if err != nil {
@@ -230,7 +230,7 @@ func (c *GatewayClient) PrefetchBloomBlocks(ctx context.Context, blocks []blooms
 		}
 	}
 
-	if err := concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
+	return concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
 		rs := servers[i]
 		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.PrefetchBloomBlocksRequest{Blocks: rs.blocks}
@@ -243,11 +243,7 @@ func (c *GatewayClient) PrefetchBloomBlocks(ctx context.Context, blocks []blooms
 			}
 			return err
 		})
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 // FilterChunks implements Client
