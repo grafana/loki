@@ -28,6 +28,8 @@ type PartitionController interface {
 	HighestCommittedOffset(ctx context.Context) (int64, error)
 	// Returns the highest available offset in the partition
 	HighestPartitionOffset(ctx context.Context) (int64, error)
+	// Returns the earliest available offset in the partition
+	EarliestPartitionOffset(ctx context.Context) (int64, error)
 	// Commits the offset to the consumer group.
 	Commit(context.Context, int64) error
 	// Process will run load batches at a time and send them to channel,
@@ -74,17 +76,26 @@ func NewPartitionJobController(
 // Returns whether an applicable job exists, the job, and an error
 func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error) {
 	// Read the most recent committed offset
-	startOffset, err := l.part.HighestCommittedOffset(ctx)
+	committedOffset, err := l.part.HighestCommittedOffset(ctx)
 	if err != nil {
 		return false, Job{}, err
+	}
+
+	earliestOffset, err := l.part.EarliestPartitionOffset(ctx)
+	if err != nil {
+		return false, Job{}, err
+	}
+
+	startOffset := committedOffset + 1
+	if startOffset < earliestOffset {
+		startOffset = earliestOffset
 	}
 
 	highestOffset, err := l.part.HighestPartitionOffset(ctx)
 	if err != nil {
 		return false, Job{}, err
 	}
-
-	if highestOffset == startOffset {
+	if highestOffset == committedOffset {
 		return false, Job{}, nil
 	}
 
@@ -93,7 +104,7 @@ func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error)
 		Partition: l.part.Partition(),
 		Offsets: Offsets{
 			Min: startOffset,
-			Max: startOffset + l.stepLen,
+			Max: min(startOffset+l.stepLen, highestOffset),
 		},
 	}
 

@@ -366,6 +366,10 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		)
 	}
 
+	if lastOffset <= 0 {
+		return false, nil
+	}
+
 	if err = i.jobController.part.Commit(ctx, lastOffset); err != nil {
 		level.Error(logger).Log(
 			"msg", "failed to commit offset",
@@ -723,7 +727,7 @@ func newStream(fp model.Fingerprint, ls labels.Labels, cfg Config, metrics *Slim
 		fp: fp,
 		ls: ls,
 
-		chunkFormat:     chunkenc.ChunkFormatV3,
+		chunkFormat:     chunkenc.ChunkFormatV4,
 		codec:           cfg.parsedEncoding,
 		blockSize:       cfg.BlockSize.Val(),
 		targetChunkSize: cfg.TargetChunkSize.Val(),

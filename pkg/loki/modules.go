@@ -880,6 +880,8 @@ func (t *Loki) updateConfigForShipperStore() {
 
 	case t.Cfg.isTarget(BlockBuilder):
 		// Blockbuilder handles index creation independently of the shipper.
+		// TODO: introduce Disabled mode for boltdb shipper and set it here.
+		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeDisabled
 
 	default:

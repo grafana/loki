@@ -117,14 +117,6 @@ func (r *partitionReader) fetchPartitionOffset(ctx context.Context, position int
 
 	// Ensure no error occurred.
 	res := resps[0]
-
-	level.Debug(r.logger).Log(
-		"msg", "fetched partition offset",
-		"partition", r.partitionID,
-		"position", position,
-		"topic", r.topic,
-		"err", res.Err,
-	)
 	if res.Err != nil {
 		return 0, res.Err
 	}
@@ -149,6 +141,15 @@ func (r *partitionReader) fetchPartitionOffset(ctx context.Context, position int
 	if err := kerr.ErrorForCode(listRes.Topics[0].Partitions[0].ErrorCode); err != nil {
 		return 0, err
 	}
+
+	level.Debug(r.logger).Log(
+		"msg", "fetched partition offset",
+		"partition", r.partitionID,
+		"position", position,
+		"topic", r.topic,
+		"err", res.Err,
+		"offset", listRes.Topics[0].Partitions[0].Offset,
+	)
 
 	return listRes.Topics[0].Partitions[0].Offset, nil
 }
@@ -245,6 +246,16 @@ func (r *partitionReader) HighestPartitionOffset(ctx context.Context) (int64, er
 		r.backoff,
 		func() (int64, error) {
 			return r.fetchPartitionOffset(ctx, kafkaEndOffset)
+		},
+	)
+}
+
+func (r *partitionReader) EarliestPartitionOffset(ctx context.Context) (int64, error) {
+	return withBackoff(
+		ctx,
+		r.backoff,
+		func() (int64, error) {
+			return r.fetchPartitionOffset(ctx, kafkaStartOffset)
 		},
 	)
 }
