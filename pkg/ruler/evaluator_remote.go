@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/user"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -182,11 +181,9 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 					PermitWithoutStream: true,
 				},
 			),
-			grpc.WithUnaryInterceptor(
-				grpc_middleware.ChainUnaryClient(
-					otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-					middleware.ClientUserHeaderInterceptor,
-				),
+			grpc.WithChainUnaryInterceptor(
+				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+				middleware.ClientUserHeaderInterceptor,
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
 		},
