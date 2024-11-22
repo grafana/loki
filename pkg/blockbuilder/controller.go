@@ -256,7 +256,7 @@ func (d *dummyPartitionController) HighestPartitionOffset(_ context.Context) (in
 	return d.highest, nil
 }
 
-func (d *dummyPartitionController) Commit(ctx context.Context, offset int64) error {
+func (d *dummyPartitionController) Commit(_ context.Context, offset int64) error {
 	d.committed = offset
 	return nil
 }

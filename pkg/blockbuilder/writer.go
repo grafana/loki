@@ -15,10 +15,10 @@ type kafkaConsumer struct {
 	decoder *kafka.Decoder
 }
 
-func (c *kafkaConsumer) Write(ctx context.Context, req *push.PushRequest) error {
+func (c *kafkaConsumer) Write(_ context.Context, req *push.PushRequest) error {
 	return nil
 }
 
-func (c *kafkaConsumer) Commit(ctx context.Context) error {
+func (c *kafkaConsumer) Commit(_ context.Context) error {
 	return nil
 }
