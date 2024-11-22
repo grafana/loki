@@ -137,6 +137,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # itself to a key value store.
 [ingester: <ingester>]
 
+federated_query:
+  [cluster_rings: <list of LifecyclerConfigs>]
+
 pattern_ingester:
   # Whether the pattern ingester is enabled.
   # CLI flag: -pattern-ingester.enabled

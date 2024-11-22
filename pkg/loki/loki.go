@@ -78,32 +78,33 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
-	Server              server.Config              `yaml:"server,omitempty"`
-	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
-	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
-	Querier             querier.Config             `yaml:"querier,omitempty"`
-	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
-	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
-	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
-	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
-	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
-	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
-	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
-	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
-	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
-	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
-	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
-	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
-	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
-	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
-	LimitsConfig        validation.Limits          `yaml:"limits_config"`
-	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
-	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
-	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
-	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
+	Server              server.Config                `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config        `yaml:"internal_server,omitempty" doc:"hidden"`
+	Distributor         distributor.Config           `yaml:"distributor,omitempty"`
+	Querier             querier.Config               `yaml:"querier,omitempty"`
+	QueryScheduler      scheduler.Config             `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config          `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config            `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config                 `yaml:"ruler,omitempty"`
+	RulerStorage        rulestore.Config             `yaml:"ruler_storage,omitempty" doc:"hidden"`
+	IngesterClient      ingester_client.Config       `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config              `yaml:"ingester,omitempty"`
+	FederatedQuery      querier.FederatedQueryConfig `yaml:"federated_query,omitempty"`
+	Pattern             pattern.Config               `yaml:"pattern_ingester,omitempty"`
+	IndexGateway        indexgateway.Config          `yaml:"index_gateway"`
+	BloomBuild          bloombuild.Config            `yaml:"bloom_build,omitempty" category:"experimental"`
+	BloomGateway        bloomgateway.Config          `yaml:"bloom_gateway,omitempty" category:"experimental"`
+	StorageConfig       storage.Config               `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig    config.ChunkStoreConfig      `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig          `yaml:"schema_config,omitempty"`
+	CompactorConfig     compactor.Config             `yaml:"compactor,omitempty"`
+	CompactorHTTPClient compactorclient.HTTPConfig   `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactorclient.GRPCConfig   `yaml:"compactor_grpc_client,omitempty"`
+	LimitsConfig        validation.Limits            `yaml:"limits_config"`
+	Worker              worker.Config                `yaml:"frontend_worker,omitempty"`
+	TableManager        index.TableManagerConfig     `yaml:"table_manager,omitempty"`
+	MemberlistKV        memberlist.KVConfig          `yaml:"memberlist"`
+	KafkaConfig         kafka.Config                 `yaml:"kafka_config,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -352,7 +353,7 @@ type Loki struct {
 	Querier                   querier.Querier
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
-	ingesterQuerier           *querier.IngesterQuerier
+	ingesterQuerier           storage.IIngesterQuerier
 	Store                     storage.Store
 	BloomStore                bloomshipper.Store
 	tableManager              *index.TableManager

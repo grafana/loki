@@ -126,7 +126,7 @@ type SingleTenantQuerier struct {
 	cfg             Config
 	store           Store
 	limits          Limits
-	ingesterQuerier *IngesterQuerier
+	ingesterQuerier storage.IIngesterQuerier
 	patternQuerier  PatterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
@@ -138,7 +138,7 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer, logger log.Logger) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier storage.IIngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer, logger log.Logger) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
