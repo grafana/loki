@@ -737,8 +737,9 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
 		// Consider streams which overlap our time range
+		s.chunkMtx.RLock()
+		defer s.chunkMtx.RUnlock()
 		if shouldConsiderStream(s, from, through) {
-			s.chunkMtx.RLock()
 			var hasChunkOverlap bool
 			for _, chk := range s.chunks {
 				// Consider chunks which overlap our time range
@@ -759,7 +760,6 @@ func (i *instance) getStats(ctx context.Context, req *logproto.IndexStatsRequest
 			if hasChunkOverlap {
 				res.Streams++
 			}
-			s.chunkMtx.RUnlock()
 		}
 		return nil
 	}); err != nil {
