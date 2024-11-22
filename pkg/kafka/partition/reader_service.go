@@ -17,6 +17,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+var errWaitTargetLagDeadlineExceeded = errors.New("waiting for target lag deadline exceeded")
+
+const (
+	kafkaStartOffset = -2
+	kafkaEndOffset   = -1
+
+	phaseStarting = "starting"
+	phaseRunning  = "running"
+)
+
+type ConsumerFactory func(committer Committer) (Consumer, error)
+
+type Consumer interface {
+	Start(ctx context.Context, recordsChan <-chan []Record) func()
+}
+
 type serviceMetrics struct {
 	phase     *prometheus.GaugeVec
 	partition *prometheus.GaugeVec
@@ -43,7 +59,7 @@ type ReaderService struct {
 	consumerFactory ConsumerFactory
 	logger          log.Logger
 	metrics         *serviceMetrics
-	committer       *refactoredPartitionCommitter
+	committer       *partitionCommitter
 
 	lastProcessedOffset int64
 }
@@ -55,7 +71,7 @@ type ReaderConfig struct {
 }
 
 // mimics `NewReader` constructor but builds a reader service using
-// a refactored reader.
+// a reader.
 func NewReaderService(
 	kafkaCfg kafka.Config,
 	partitionID int32,
@@ -75,8 +91,8 @@ func NewReaderService(
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
 
-	// Create the refactored reader
-	reader := NewRefactoredReader(
+	// Create the reader
+	reader := newReader(
 		c,
 		kafkaCfg.Topic,
 		partitionID,
@@ -115,7 +131,7 @@ func newReaderServiceFromIfc(
 	}
 
 	// Create the committer
-	s.committer = newRefactoredCommitter(reader, cfg.ConsumerGroupOffsetCommitFreq, logger, reg)
+	s.committer = newCommitter(reader, cfg.ConsumerGroupOffsetCommitFreq, logger, reg)
 
 	s.Service = services.NewBasicService(s.starting, s.running, nil)
 	return s
@@ -397,4 +413,12 @@ func (s *serviceMetrics) reportRunning(partition int32) {
 	s.partition.WithLabelValues(strconv.Itoa(int(partition))).Set(1)
 	s.phase.WithLabelValues(phaseStarting).Set(0)
 	s.phase.WithLabelValues(phaseRunning).Set(1)
+}
+
+func loggerWithCurrentLagIfSet(logger log.Logger, currLag time.Duration) log.Logger {
+	if currLag <= 0 {
+		return logger
+	}
+
+	return log.With(logger, "current_lag", currLag)
 }
