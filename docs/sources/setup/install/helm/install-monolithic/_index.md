@@ -197,7 +197,7 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 1. Deploy Loki using the configuration file `values.yaml`:
 
    ```bash
-    helm install loki grafana/loki-stack -f values.yaml
+    helm install loki grafana/loki -f values.yaml
     ```
 1. Install or upgrade the Loki deployment.
      - To install:
