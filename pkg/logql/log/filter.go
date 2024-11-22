@@ -440,6 +440,8 @@ func contains(line, substr []byte, caseInsensitive bool) bool {
 	return containsLower(line, substr)
 }
 
+// containsLower verifies if substr is a substring of line, with case insensitive comparison.
+// substr is expected to be in lowercase.
 func containsLower(line, substr []byte) bool {
 	if len(substr) == 0 {
 		return true
@@ -447,35 +449,45 @@ func containsLower(line, substr []byte) bool {
 	if len(substr) > len(line) {
 		return false
 	}
-	j := 0
-	for len(line) > 0 {
-		// ascii fast case
-		if c := line[0]; c < utf8.RuneSelf && substr[j] < utf8.RuneSelf {
-			if c == substr[j] || c+'a'-'A' == substr[j] || c == substr[j]+'a'-'A' {
-				j++
-				if j == len(substr) {
-					return true
+
+	// Fast path - try to find first byte of substr
+	firstByte := substr[0]
+	maxIndex := len(line) - len(substr)
+
+	i := 0
+	for i <= maxIndex {
+		// Find potential first byte match
+		c := line[i]
+		if c != firstByte && c+'a'-'A' != firstByte && c != firstByte+'a'-'A' {
+			i++
+			continue
+		}
+
+		// Found potential match, check rest of substr
+		matched := true
+		for j := 1; j < len(substr); j++ {
+			c = line[i+j]
+			s := substr[j]
+			// Fast ASCII comparison
+			if c < utf8.RuneSelf && s < utf8.RuneSelf {
+				if c != s && c+'a'-'A' != s && c != s+'a'-'A' {
+					matched = false
+					break
 				}
-				line = line[1:]
 				continue
 			}
-			line = line[1:]
-			j = 0
-			continue
-		}
-		// unicode slow case
-		lr, lwid := utf8.DecodeRune(line)
-		mr, mwid := utf8.DecodeRune(substr[j:])
-		if lr == mr || mr == unicode.To(unicode.LowerCase, lr) {
-			j += mwid
-			if j == len(substr) {
-				return true
+			// Slower Unicode path only when needed
+			lr, _ := utf8.DecodeRune(line[i+j:])
+			mr, _ := utf8.DecodeRune(substr[j:])
+			if lr != mr && mr != unicode.To(unicode.LowerCase, lr) {
+				matched = false
+				break
 			}
-			line = line[lwid:]
-			continue
 		}
-		line = line[lwid:]
-		j = 0
+		if matched {
+			return true
+		}
+		i++
 	}
 	return false
 }
