@@ -28,7 +28,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -148,7 +148,7 @@ type Distributor struct {
 	subservicesWatcher *services.FailureWatcher
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
-	labelCache           *lru.Cache
+	labelCache           *lru.Cache[string, labelData]
 
 	// Push failures rate limiter.
 	writeFailuresManager *writefailures.Manager
@@ -217,7 +217,7 @@ func New(
 	var servs []services.Service
 
 	rateLimitStrat := validation.LocalIngestionRateStrategy
-	labelCache, err := lru.New(maxLabelCacheSize)
+	labelCache, err := lru.New[string, labelData](maxLabelCacheSize)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +233,7 @@ func New(
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
 		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
-			prometheus.WrapRegistererWithPrefix("_kafka_", registerer))
+			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 	}
 
 	d := &Distributor{
@@ -1086,8 +1086,7 @@ type labelData struct {
 
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		labelVal := val.(labelData)
-		return labelVal.ls, labelVal.ls.String(), labelVal.hash, nil
+		return val.ls, val.ls.String(), val.hash, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)

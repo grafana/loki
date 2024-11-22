@@ -36,7 +36,15 @@ func TestPartitionCommitter(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	partitionID := int32(1)
 	consumerGroup := "test-consumer-group"
-	committer := newCommitter(kafkaCfg, admClient, partitionID, consumerGroup, logger, reg)
+	reader := newReader(
+		client,
+		kafkaCfg.Topic,
+		partitionID,
+		consumerGroup,
+		logger,
+		reg,
+	)
+	committer := newCommitter(reader, kafkaCfg.ConsumerGroupOffsetCommitInterval, logger, reg)
 
 	// Test committing an offset
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

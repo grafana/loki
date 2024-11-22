@@ -48,7 +48,7 @@ jobs:
          echo "IMAGE_TAGS=$IMAGE_TAGS" >> $GITHUB_OUTPUT
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v5
+       uses: docker/build-push-action@v6
        with:
          context: ./operator
          push: true
@@ -86,7 +86,7 @@ jobs:
          echo "IMAGE_TAGS=$IMAGE_TAGS" >> $GITHUB_OUTPUT
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v5
+       uses: docker/build-push-action@v6
        with:
          context: ./operator/bundle/openshift
          file: ./operator/bundle/openshift/bundle.Dockerfile
@@ -125,7 +125,7 @@ jobs:
          echo "IMAGE_TAGS=$IMAGE_TAGS" >> $GITHUB_OUTPUT
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v5
+       uses: docker/build-push-action@v6
        with:
          context: ./operator
          file: ./operator/calculator.Dockerfile
