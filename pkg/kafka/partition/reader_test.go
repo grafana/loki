@@ -63,7 +63,7 @@ func readersFromKafkaCfg(
 	kafkaCfg kafka.Config,
 	consumerFactory ConsumerFactory,
 	partition int32,
-) (ReaderIfc, *ReaderService) {
+) (Reader, *ReaderService) {
 	partitionReader, err := NewReaderService(
 		kafkaCfg,
 		partition,

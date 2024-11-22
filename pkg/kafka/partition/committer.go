@@ -26,7 +26,7 @@ type partitionCommitter struct {
 	lastCommittedOffset   prometheus.Gauge
 
 	logger     log.Logger
-	reader     ReaderIfc
+	reader     Reader
 	commitFreq time.Duration
 
 	toCommit *atomic.Int64
@@ -34,7 +34,7 @@ type partitionCommitter struct {
 	cancel   context.CancelFunc
 }
 
-func newCommitter(reader ReaderIfc, commitFreq time.Duration, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
+func newCommitter(reader Reader, commitFreq time.Duration, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
 	c := &partitionCommitter{
 		logger:     logger,
 		reader:     reader,
