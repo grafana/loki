@@ -1,5 +1,5 @@
 "jobs":
-  "check":
+  check:
     "uses": "grafana/loki-release/.github/workflows/check.yml@main"
     "with":
       "build_image": "grafana/loki-build-image:0.34.1"
@@ -7,6 +7,102 @@
       "release_lib_ref": "main"
       "skip_validation": false
       "use_github_app_token": true
+  version:
+    needs:
+      - "check"
+    outputs:
+      pr_created: "${{ steps.version.outputs.pr_created }}"
+      version: "${{ steps.version.outputs.version }}"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "pull release library code"
+        uses: "actions/checkout@v4"
+        with:
+          path: "lib"
+          ref: "${{ env.RELEASE_LIB_REF }}"
+          repository: "grafana/loki-release"
+      - name: "pull code to release"
+        uses: "actions/checkout@v4"
+        with:
+          path: "release"
+          repository: "${{ env.RELEASE_REPO }}"
+      - name: "setup node"
+        uses: "actions/setup-node@v4"
+        with:
+          node-version: 20
+      - id: "extract_branch"
+        name: "extract branch name"
+        run: |
+          echo "branch=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}" >> $GITHUB_OUTPUT
+        working-directory: "release"
+      - id: "get_github_app_token"
+        if: "${{ fromJSON(env.USE_GITHUB_APP_TOKEN) }}"
+        name: "get github app token"
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+      - id: "github_app_token"
+        name: "set github token"
+        run: |
+          if [[ "${USE_GITHUB_APP_TOKEN}" == "true" ]]; then
+            echo "token=${{ steps.get_github_app_token.outputs.token }}" >> $GITHUB_OUTPUT
+          else
+            echo "token=${{ secrets.GH_TOKEN }}" >> $GITHUB_OUTPUT
+          fi
+      - id: "version"
+        name: "get release version"
+        run: |
+          npm install
+
+          if [[ -z "${{ env.RELEASE_AS }}" ]]; then
+            npm exec -- release-please release-pr \
+              --consider-all-branches \
+              --dry-run \
+              --dry-run-output release.json \
+              --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+              --manifest-file .release-please-manifest.json \
+              --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+              --release-type simple \
+              --repo-url "${{ env.RELEASE_REPO }}" \
+              --separate-pull-requests false \
+              --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+              --token "${{ steps.github_app_token.outputs.token }}" \
+              --versioning-strategy "${{ env.VERSIONING_STRATEGY }}"
+          else
+            npm exec -- release-please release-pr \
+              --consider-all-branches \
+              --dry-run \
+              --dry-run-output release.json \
+              --group-pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+              --manifest-file .release-please-manifest.json \
+              --pull-request-title-pattern "chore\${scope}: release\${component} \${version}" \
+              --release-type simple \
+              --repo-url "${{ env.RELEASE_REPO }}" \
+              --separate-pull-requests false \
+              --target-branch "${{ steps.extract_branch.outputs.branch }}" \
+              --token "${{ steps.github_app_token.outputs.token }}" \
+              --release-as "${{ env.RELEASE_AS }}"
+          fi
+
+          cat release.json
+
+          if [[ `jq length release.json` -gt 1 ]]; then 
+            echo 'release-please would create more than 1 PR, so cannot determine correct version'
+            echo "pr_created=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          if [[ `jq length release.json` -eq 0 ]]; then 
+            echo "pr_created=false" >> $GITHUB_OUTPUT
+          else
+            version="$(npm run --silent get-version)"
+            echo "Parsed version: ${version}"
+            echo "version=${version}" >> $GITHUB_OUTPUT
+            echo "pr_created=true" >> $GITHUB_OUTPUT
+          fi
+        working-directory: "lib"
   "fluent-bit":
     "env":
       "BUILD_TIMEOUT": 60
@@ -336,7 +432,7 @@
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
     "needs":
-    - "check"
+    - "version"
     "runs-on": "ubuntu-latest"
     "steps":
     - "name": "pull release library code"
@@ -381,7 +477,7 @@
         "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }},GOARCH=${{ steps.weekly-version.outputs.platform_short }}"
         "context": "release"
         "file": "release/clients/cmd/docker-driver/Dockerfile"
-        "outputs": "type=docker,dest=release/images/grafana/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        "outputs": "type=docker,dest=release/images/grafana/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.weekly-version.outputs.platform }}.tar"
         "platforms": "${{ matrix.platform }}"
         "push": false
         "tags": "${{ env.IMAGE_PREFIX }}/grafana/loki-docker-driver:${{ steps.weekly-version.outputs.version }}"
@@ -392,9 +488,9 @@
       "run": |
         rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
         mkdir "${{ env.BUILD_DIR }}/rootfs"
-        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
-        docker plugin push "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}"
+        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "release/images/%s-${{ needs.version.outputs.version}}-${{ steps.weekly-version.outputs.platform }}.tar"
+        docker plugin create "${{ env.IMAGE_TAG }}${{ steps.weekly-version.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
+        docker plugin push "${{ env.IMAGE_TAG }}${{ steps.weekly-version.outputs.plugin_arch }}"
       "working-directory": "release"
     "strategy":
       "matrix":
