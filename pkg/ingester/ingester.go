@@ -296,7 +296,7 @@ type Ingester struct {
 
 	ingestPartitionID       int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
-	partitionReader         *partition.Reader
+	partitionReader         *partition.ReaderService
 }
 
 // New makes a new Ingester.
@@ -380,7 +380,14 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
-		i.partitionReader, err = partition.NewReader(cfg.KafkaIngestion.KafkaConfig, i.ingestPartitionID, cfg.LifecyclerConfig.ID, NewKafkaConsumerFactory(i, logger, registerer), logger, registerer)
+		i.partitionReader, err = partition.NewReaderService(
+			cfg.KafkaIngestion.KafkaConfig,
+			i.ingestPartitionID,
+			cfg.LifecyclerConfig.ID,
+			NewKafkaConsumerFactory(i, logger, registerer),
+			logger,
+			registerer,
+		)
 		if err != nil {
 			return nil, err
 		}
