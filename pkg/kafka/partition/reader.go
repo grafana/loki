@@ -43,7 +43,7 @@ type ReaderIfc interface {
 	ConsumerGroup() string
 	FetchLastCommittedOffset(ctx context.Context) (int64, error)
 	FetchPartitionOffset(ctx context.Context, position SpecialOffset) (int64, error)
-	Poll(ctx context.Context) ([]Record, error)
+	Poll(ctx context.Context, maxPollRecords int) ([]Record, error)
 	Commit(ctx context.Context, offset int64) error
 	// Set the target offset for consumption. reads will begin from here.
 	SetOffsetForConsumption(offset int64)
@@ -257,9 +257,10 @@ func (r *Reader) FetchPartitionOffset(ctx context.Context, position SpecialOffse
 }
 
 // Poll retrieves the next batch of records from Kafka
-func (r *Reader) Poll(ctx context.Context) ([]Record, error) {
+// Number of records fetched can be limited by configuring maxPollRecords to a non-zero value.
+func (r *Reader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error) {
 	start := time.Now()
-	fetches := r.client.PollFetches(ctx)
+	fetches := r.client.PollRecords(ctx, maxPollRecords)
 	r.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
 
 	// Record metrics

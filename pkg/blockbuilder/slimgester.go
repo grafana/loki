@@ -141,7 +141,7 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 	default:
 		_, err := i.runOne(ctx)
 		if err != nil {
-			return err
+			level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
 		}
 	}
 
@@ -157,7 +157,7 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 				"err", err,
 			)
 			if err != nil {
-				return err
+				level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
 			}
 		}
 	}
@@ -213,6 +213,8 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 			level.Debug(logger).Log(
 				"msg", "finished loading records",
 				"ctx_error", ctx.Err(),
+				"last_offset", lastOffset,
+				"total_records", lastOffset-job.Offsets.Min,
 			)
 			close(inputCh)
 			return nil
@@ -305,6 +307,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 						func() (res struct{}, err error) {
 							err = i.store.PutOne(ctx, chk.From, chk.Through, *chk)
 							if err != nil {
+								level.Error(logger).Log("msg", "failed to flush chunk", "err", err)
 								i.metrics.chunksFlushFailures.Inc()
 								return
 							}
@@ -320,6 +323,10 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 								Entries:  uint32(chk.Data.Entries()),
 							}
 							err = indexer.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, index.ChunkMetas{meta})
+							if err != nil {
+								level.Error(logger).Log("msg", "failed to append chunk to index", "err", err)
+							}
+
 							return
 						},
 					); err != nil {
@@ -346,24 +353,30 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 
 	built, err := indexer.create(ctx, nodeName, tableRanges)
 	if err != nil {
+		level.Error(logger).Log("msg", "failed to build index", "err", err)
 		return false, err
 	}
 
+	u := newUploader(i.objStore)
 	for _, db := range built {
-		u := newUploader(i.objStore)
-		if err := u.Put(ctx, db); err != nil {
-			level.Error(util_log.Logger).Log(
-				"msg", "failed to upload tsdb",
-				"path", db.id.Path(),
-			)
+		if _, err := withBackoff(ctx, i.cfg.Backoff, func() (res struct{}, err error) {
+			err = u.Put(ctx, db)
+			if err != nil {
+				level.Error(util_log.Logger).Log(
+					"msg", "failed to upload tsdb",
+					"path", db.id.Path(),
+				)
+				return
+			}
 
+			level.Debug(logger).Log(
+				"msg", "uploaded tsdb",
+				"name", db.id.Name(),
+			)
+			return
+		}); err != nil {
 			return false, err
 		}
-
-		level.Debug(logger).Log(
-			"msg", "uploaded tsdb",
-			"name", db.id.Name(),
-		)
 	}
 
 	if lastOffset <= job.Offsets.Min {
