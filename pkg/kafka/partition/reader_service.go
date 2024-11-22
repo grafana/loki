@@ -91,10 +91,10 @@ func NewReaderService(
 	)
 
 	if err != nil {
-		return nil, errors.Wrap(err, "creating kafka reader")
+		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
 
-	return newReaderServiceFromIfc(
+	return newReaderService(
 		ReaderConfig{
 			TargetConsumerLagAtStartup:    kafkaCfg.TargetConsumerLagAtStartup,
 			MaxConsumerLagAtStartup:       kafkaCfg.MaxConsumerLagAtStartup,
@@ -107,7 +107,7 @@ func NewReaderService(
 	), nil
 }
 
-func newReaderServiceFromIfc(
+func newReaderService(
 	cfg ReaderConfig,
 	reader Reader,
 	consumerFactory ConsumerFactory,
