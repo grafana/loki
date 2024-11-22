@@ -44,6 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
+	"github.com/grafana/loki/v3/pkg/dash"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -134,6 +135,7 @@ const (
 	Analytics                string = "analytics"
 	InitCodec                string = "init-codec"
 	PartitionRing            string = "partition-ring"
+	Dashboards               string = "dashboards"
 )
 
 const (
@@ -1768,6 +1770,18 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
 
 	return t.partitionRingWatcher, nil
+}
+
+func (t *Loki) initDashboards() (services.Service, error) {
+	loader, err := dash.NewDashboardLoader(dash.NewSimpleLoader(t.Cfg.SchemaConfig))
+	if err != nil {
+		return nil, err
+	}
+	t.Server.HTTP.Path("/grafana/dashboards/writes").Methods("GET").Handler(loader.Writes())
+	return services.NewBasicService(nil, func(serviceContext context.Context) error {
+		<-serviceContext.Done()
+		return nil
+	}, nil), nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {

@@ -7,13 +7,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-type metrics struct {
-	indexQueryLatency *prometheus.HistogramVec
+type Metrics struct {
+	IndexQueryLatency *prometheus.HistogramVec
 }
 
-func newMetrics(reg prometheus.Registerer) *metrics {
-	return &metrics{
-		indexQueryLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+func NewMetrics(reg prometheus.Registerer) *Metrics {
+	return &Metrics{
+		IndexQueryLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Name:      "index_request_duration_seconds",
 			Help:      "Time (in seconds) spent in serving index query requests",
