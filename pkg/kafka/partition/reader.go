@@ -16,6 +16,10 @@ import (
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 type SpecialOffset int
@@ -95,6 +99,35 @@ type Reader struct {
 	consumerGroup string
 	metrics       *readerMetrics
 	logger        log.Logger
+}
+
+func NewReader(
+	cfg kafka.Config,
+	partitionID int32,
+	instanceID string,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) (*Reader, error) {
+	// Create a new Kafka client for this reader
+	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
+	c, err := client.NewReaderClient(
+		cfg,
+		clientMetrics,
+		log.With(logger, "component", "kafka-client"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating kafka client: %w", err)
+	}
+
+	// Create the reader
+	return newReader(
+		c,
+		cfg.Topic,
+		partitionID,
+		cfg.GetConsumerGroup(instanceID, partitionID),
+		logger,
+		reg,
+	), nil
 }
 
 // NewReader creates a new Reader instance

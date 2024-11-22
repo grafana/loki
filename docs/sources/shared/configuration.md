@@ -137,6 +137,57 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # itself to a key value store.
 [ingester: <ingester>]
 
+block_builder:
+  # How many flushes can happen concurrently
+  # CLI flag: -blockbuilder.concurrent-flushes
+  [concurrent_flushes: <int> | default = 1]
+
+  # How many workers to process writes, defaults to number of available cpus
+  # CLI flag: -blockbuilder.concurrent-writers
+  [concurrent_writers: <int> | default = 1]
+
+  # The targeted _uncompressed_ size in bytes of a chunk block When this
+  # threshold is exceeded the head block will be cut and compressed inside the
+  # chunk.
+  # CLI flag: -blockbuilder.chunks-block-size
+  [chunk_block_size: <int> | default = 256KB]
+
+  # A target _compressed_ size in bytes for chunks. This is a desired size not
+  # an exact size, chunks may be slightly bigger or significantly smaller if
+  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
+  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
+  # with a variable number of blocks to meet the target size.
+  # CLI flag: -blockbuilder.chunk-target-size
+  [chunk_target_size: <int> | default = 1536KB]
+
+  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
+  # lz4-256k, lz4-1M, lz4, flate, zstd)
+  # CLI flag: -blockbuilder.chunk-encoding
+  [chunk_encoding: <string> | default = "snappy"]
+
+  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
+  # for longer than this, the current chunk will be flushed to the store and a
+  # new chunk created.
+  # CLI flag: -blockbuilder.max-chunk-age
+  [max_chunk_age: <duration> | default = 2h]
+
+  # The interval at which to run.
+  # CLI flag: -blockbuilder.interval
+  [interval: <duration> | default = 10m]
+
+  backoff_config:
+    # Minimum delay when backing off.
+    # CLI flag: -blockbuilder.backoff..backoff-min-period
+    [min_period: <duration> | default = 100ms]
+
+    # Maximum delay when backing off.
+    # CLI flag: -blockbuilder.backoff..backoff-max-period
+    [max_period: <duration> | default = 10s]
+
+    # Number of times to backoff and retry before failing.
+    # CLI flag: -blockbuilder.backoff..backoff-retries
+    [max_retries: <int> | default = 10]
+
 pattern_ingester:
   # Whether the pattern ingester is enabled.
   # CLI flag: -pattern-ingester.enabled
