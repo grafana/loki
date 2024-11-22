@@ -10,11 +10,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 var errWaitTargetLagDeadlineExceeded = errors.New("waiting for target lag deadline exceeded")
