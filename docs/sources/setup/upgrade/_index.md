@@ -76,6 +76,18 @@ Their YAML counterparts in the `limits_config` block are kept identical.
 
 All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-compactor.` have been removed.
 
+
+## 3.3.0
+
+### Loki
+
+#### Experimental Bloom Filters
+
+With Loki 3.3.0, the bloom block format changed and any previously created block is incompatible with the new format.
+Before upgrading, we recommend deleting all the existing bloom blocks in the object store. We store bloom blocks and
+metas inside the `bloom` path in the configured object store. To get rid of all the bloom blocks, delete all the objects
+inside the `bloom` path in the object store.
+
 ## 3.0.0
 
 {{< admonition type="note" >}}
