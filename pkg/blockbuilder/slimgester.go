@@ -206,7 +206,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		"load records",
 		1,
 		func(ctx context.Context) error {
-			lastOffset, err = i.jobController.part.Process(ctx, job.Offsets, inputCh)
+			lastOffset, err = i.jobController.Process(ctx, job.Offsets, inputCh)
 			return err
 		},
 		func(ctx context.Context) error {
@@ -366,7 +366,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		)
 	}
 
-	if lastOffset <= 0 {
+	if lastOffset <= job.Offsets.Min {
 		return false, nil
 	}
 
@@ -788,4 +788,24 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 		s.blockSize,
 		s.targetChunkSize,
 	)
+}
+
+func withBackoff[T any](
+	ctx context.Context,
+	config backoff.Config,
+	fn func() (T, error),
+) (T, error) {
+	var zero T
+
+	var boff = backoff.New(ctx, config)
+	for boff.Ongoing() {
+		res, err := fn()
+		if err != nil {
+			boff.Wait()
+			continue
+		}
+		return res, nil
+	}
+
+	return zero, boff.ErrCause()
 }

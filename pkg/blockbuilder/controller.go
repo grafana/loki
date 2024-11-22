@@ -7,6 +7,10 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
+
 	"github.com/grafana/loki/pkg/push"
 )
 
@@ -60,28 +64,126 @@ type PartitionController interface {
 //	containing log data and "committed" is the consumer group
 type PartitionJobController struct {
 	stepLen int64
-	part    PartitionController
+	part    partition.ReaderIfc
+	backoff backoff.Config
+	decoder *kafka.Decoder
 }
 
 func NewPartitionJobController(
-	controller PartitionController,
-) *PartitionJobController {
+	controller partition.ReaderIfc,
+	backoff backoff.Config,
+) (*PartitionJobController, error) {
+	decoder, err := kafka.NewDecoder()
+	if err != nil {
+		return nil, err
+	}
 	return &PartitionJobController{
 		stepLen: 1000, // Default step length of 1000 offsets per job
 		part:    controller,
+		backoff: backoff,
+		decoder: decoder,
+	}, nil
+}
+
+func (l *PartitionJobController) HighestCommittedOffset(ctx context.Context) (int64, error) {
+	return withBackoff(
+		ctx,
+		l.backoff,
+		func() (int64, error) {
+			return l.part.FetchLastCommittedOffset(ctx)
+		},
+	)
+}
+
+func (l *PartitionJobController) HighestPartitionOffset(ctx context.Context) (int64, error) {
+	return withBackoff(
+		ctx,
+		l.backoff,
+		func() (int64, error) {
+			return l.part.FetchPartitionOffset(ctx, partition.KafkaEndOffset)
+		},
+	)
+}
+
+func (l *PartitionJobController) EarliestPartitionOffset(ctx context.Context) (int64, error) {
+	return withBackoff(
+		ctx,
+		l.backoff,
+		func() (int64, error) {
+			return l.part.FetchPartitionOffset(ctx, partition.KafkaStartOffset)
+		},
+	)
+}
+
+func (l *PartitionJobController) Process(ctx context.Context, offsets Offsets, ch chan<- []AppendInput) (int64, error) {
+	l.part.SetOffsetForConsumption(offsets.Min)
+
+	var (
+		lastOffset = offsets.Min - 1
+		boff       = backoff.New(ctx, l.backoff)
+		err        error
+	)
+
+	for boff.Ongoing() {
+		var records []partition.Record
+		records, err = l.part.Poll(ctx)
+		if err != nil {
+			boff.Wait()
+			continue
+		}
+
+		if len(records) == 0 {
+			// No more records available
+			break
+		}
+
+		// Reset backoff on successful poll
+		boff.Reset()
+
+		converted := make([]AppendInput, 0, len(records))
+		for _, record := range records {
+			offset := records[len(records)-1].Offset
+			if offset >= offsets.Max {
+				break
+			}
+			lastOffset = offset
+
+			stream, labels, err := l.decoder.Decode(record.Content)
+			if err != nil {
+				return 0, fmt.Errorf("failed to decode record: %w", err)
+			}
+			if len(stream.Entries) == 0 {
+				continue
+			}
+
+			converted = append(converted, AppendInput{
+				tenant:    record.TenantID,
+				labels:    labels,
+				labelsStr: stream.Labels,
+				entries:   stream.Entries,
+			})
+
+			select {
+			case ch <- converted:
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
+		}
 	}
+
+	return lastOffset, err
 }
 
 // LoadJob(ctx) returns the next job by finding the most recent unconsumed offset in the partition
 // Returns whether an applicable job exists, the job, and an error
 func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error) {
 	// Read the most recent committed offset
-	committedOffset, err := l.part.HighestCommittedOffset(ctx)
+	committedOffset, err := l.HighestCommittedOffset(ctx)
 	if err != nil {
 		return false, Job{}, err
 	}
 
-	earliestOffset, err := l.part.EarliestPartitionOffset(ctx)
+	earliestOffset, err := l.EarliestPartitionOffset(ctx)
 	if err != nil {
 		return false, Job{}, err
 	}
@@ -91,7 +193,7 @@ func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error)
 		startOffset = earliestOffset
 	}
 
-	highestOffset, err := l.part.HighestPartitionOffset(ctx)
+	highestOffset, err := l.HighestPartitionOffset(ctx)
 	if err != nil {
 		return false, Job{}, err
 	}
