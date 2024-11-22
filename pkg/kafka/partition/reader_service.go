@@ -55,7 +55,7 @@ type ReaderService struct {
 	services.Service
 
 	cfg             ReaderConfig
-	reader          ReaderIfc
+	reader          Reader
 	consumerFactory ConsumerFactory
 	logger          log.Logger
 	metrics         *serviceMetrics
@@ -82,7 +82,7 @@ func NewReaderService(
 ) (*ReaderService, error) {
 
 	// Create the reader
-	reader, err := NewReader(
+	reader, err := NewStdReader(
 		kafkaCfg,
 		partitionID,
 		instanceID,
@@ -109,7 +109,7 @@ func NewReaderService(
 
 func newReaderServiceFromIfc(
 	cfg ReaderConfig,
-	reader ReaderIfc,
+	reader Reader,
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
