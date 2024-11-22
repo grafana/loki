@@ -10,6 +10,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -52,7 +54,51 @@ type ReaderConfig struct {
 	ConsumerGroupOffsetCommitFreq time.Duration
 }
 
+// mimics `NewReader` constructor but builds a reader service using
+// a refactored reader.
 func NewReaderService(
+	kafkaCfg kafka.Config,
+	partitionID int32,
+	instanceID string,
+	consumerFactory ConsumerFactory,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) (*ReaderService, error) {
+	// Create a new Kafka client for this reader
+	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
+	c, err := client.NewReaderClient(
+		kafkaCfg,
+		clientMetrics,
+		log.With(logger, "component", "kafka-client"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating kafka client: %w", err)
+	}
+
+	// Create the refactored reader
+	reader := NewRefactoredReader(
+		c,
+		kafkaCfg.Topic,
+		partitionID,
+		kafkaCfg.GetConsumerGroup(instanceID, partitionID),
+		logger,
+		reg,
+	)
+
+	return newReaderServiceFromIfc(
+		ReaderConfig{
+			TargetConsumerLagAtStartup:    kafkaCfg.TargetConsumerLagAtStartup,
+			MaxConsumerLagAtStartup:       kafkaCfg.MaxConsumerLagAtStartup,
+			ConsumerGroupOffsetCommitFreq: kafkaCfg.ConsumerGroupOffsetCommitInterval,
+		},
+		reader,
+		consumerFactory,
+		logger,
+		reg,
+	), nil
+}
+
+func newReaderServiceFromIfc(
 	cfg ReaderConfig,
 	reader ReaderIfc,
 	consumerFactory ConsumerFactory,

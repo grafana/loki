@@ -63,30 +63,19 @@ func readersFromKafkaCfg(
 	kafkaCfg kafka.Config,
 	consumerFactory ConsumerFactory,
 	partition int32,
-) (*RefactoredReader, *ReaderService) {
-	c, err := client.NewReaderClient(kafkaCfg, nil, log.NewNopLogger())
-	require.NoError(t, err)
-	r := NewRefactoredReader(
-		c,
-		kafkaCfg.Topic,
+) (ReaderIfc, *ReaderService) {
+	partitionReader, err := NewReaderService(
+		kafkaCfg,
 		partition,
-		kafkaCfg.GetConsumerGroup("test-consumer-group", partition),
-		log.NewNopLogger(),
-		nil,
-	)
-	partitionReader := NewReaderService(
-		ReaderConfig{
-			TargetConsumerLagAtStartup:    kafkaCfg.TargetConsumerLagAtStartup,
-			MaxConsumerLagAtStartup:       kafkaCfg.MaxConsumerLagAtStartup,
-			ConsumerGroupOffsetCommitFreq: kafkaCfg.ConsumerGroupOffsetCommitInterval,
-		},
-		r,
+		"test-consumer-group",
 		consumerFactory,
 		log.NewNopLogger(),
 		nil,
 	)
+	require.NoError(t, err)
 
-	return r, partitionReader
+	// Get the underlying reader from the service
+	return partitionReader.reader, partitionReader
 }
 
 func TestPartitionReader_BasicFunctionality(t *testing.T) {
