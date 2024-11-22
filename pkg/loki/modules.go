@@ -48,6 +48,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -1790,14 +1791,22 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
 	}
 
-	reader, err := blockbuilder.NewPartitionReader(
+	reader, err := partition.NewReader(
 		t.Cfg.KafkaConfig,
-		t.Cfg.BlockBuilder.Backoff,
 		ingestPartitionID,
 		id,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	controller, err := blockbuilder.NewPartitionJobController(
+		reader,
+		t.Cfg.BlockBuilder.Backoff,
+	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -1815,9 +1824,7 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		objectStore,
 		logger,
 		prometheus.DefaultRegisterer,
-		blockbuilder.NewPartitionJobController(
-			reader,
-		),
+		controller,
 	)
 
 	if err != nil {

@@ -55,9 +55,9 @@ func TestPartitionCommitter(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify metrics
-	assert.Equal(t, float64(1), testutil.ToFloat64(committer.metrics.CommitRequestsTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(committer.metrics.CommitFailuresTotal))
-	assert.Equal(t, float64(testOffset), testutil.ToFloat64(committer.metrics.LastCommittedOffset))
+	assert.Equal(t, float64(1), testutil.ToFloat64(committer.commitRequestsTotal))
+	assert.Equal(t, float64(0), testutil.ToFloat64(committer.commitFailuresTotal))
+	assert.Equal(t, float64(testOffset), testutil.ToFloat64(committer.lastCommittedOffset))
 
 	// Verify committed offset
 	offsets, err := admClient.FetchOffsets(context.Background(), consumerGroup)
@@ -72,9 +72,9 @@ func TestPartitionCommitter(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify updated metrics
-	assert.Equal(t, float64(2), testutil.ToFloat64(committer.metrics.CommitRequestsTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(committer.metrics.CommitFailuresTotal))
-	assert.Equal(t, float64(newTestOffset), testutil.ToFloat64(committer.metrics.LastCommittedOffset))
+	assert.Equal(t, float64(2), testutil.ToFloat64(committer.commitRequestsTotal))
+	assert.Equal(t, float64(0), testutil.ToFloat64(committer.commitFailuresTotal))
+	assert.Equal(t, float64(newTestOffset), testutil.ToFloat64(committer.lastCommittedOffset))
 
 	// Verify updated committed offset
 	offsets, err = admClient.FetchOffsets(context.Background(), consumerGroup)

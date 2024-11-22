@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 var errWaitTargetLagDeadlineExceeded = errors.New("waiting for target lag deadline exceeded")
@@ -81,26 +80,19 @@ func NewReaderService(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*ReaderService, error) {
-	// Create a new Kafka client for this reader
-	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
-	c, err := client.NewReaderClient(
-		kafkaCfg,
-		clientMetrics,
-		log.With(logger, "component", "kafka-client"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating kafka client: %w", err)
-	}
 
 	// Create the reader
-	reader := newReader(
-		c,
-		kafkaCfg.Topic,
+	reader, err := NewReader(
+		kafkaCfg,
 		partitionID,
-		kafkaCfg.GetConsumerGroup(instanceID, partitionID),
+		instanceID,
 		logger,
 		reg,
 	)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "creating kafka reader")
+	}
 
 	return newReaderServiceFromIfc(
 		ReaderConfig{
