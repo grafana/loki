@@ -27,7 +27,7 @@ configMapGenerator:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: 0.7.1
+  newTag: 2.8.8
 
 patches:
 - path: manager_related_image_patch.yaml

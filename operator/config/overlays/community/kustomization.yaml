@@ -40,7 +40,7 @@ configMapGenerator:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: 0.7.1
+  newTag: 2.8.8
 
 # the following config is for teaching kustomize how to do var substitution
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
