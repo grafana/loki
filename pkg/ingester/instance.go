@@ -557,6 +557,87 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 	return iter.NewSortSampleIterator(iters), nil
 }
 
+func (i *instance) QueryVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	it, err := i.queryVariants(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return it, err
+}
+
+func (i *instance) queryVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractors, err := expr.Extractors()
+	if err != nil {
+		return nil, err
+	}
+
+	for j, extractor := range extractors {
+
+		extractor, err = deletion.SetupExtractor(req, extractor)
+		if err != nil {
+			return nil, err
+		}
+
+		if i.extractorWrapper != nil &&
+			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		}
+
+		extractors[j] = extractor
+	}
+
+	stats := stats.FromContext(ctx)
+	var iters []iter.SampleIterator
+
+	shard, err := parseShardFromRequest(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+  selector, err := req.LogSelector()
+	if err != nil {
+		return nil, err
+	}
+	err = i.forMatchingStreams(
+		ctx,
+		req.Start,
+		selector.Matchers(),
+		shard,
+		func(stream *stream) error {
+			iter, err := stream.SampleIterator(
+				ctx,
+				stats,
+				req.Start,
+				req.End,
+				extractors,
+			)
+			if err != nil {
+				return err
+			}
+			iters = append(iters, iter)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return iter.NewSortSampleIterator(iters), nil
+}
+
 // Label returns the label names or values depending on the given request
 // Without label matchers the label names and values are retrieved from the index directly.
 // If label matchers are given only the matching streams are fetched from the index.

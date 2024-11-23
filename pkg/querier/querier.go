@@ -1462,20 +1462,20 @@ func (q *SingleTenantQuerier) SelectVariants(
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
-		// TOTO(twhitney): implement iterators
-		// queryRequestCopy := *params.VariantsQueryRequest
-		// newParams := logql.SelectVariantsParams{
-		// 	VariantsQueryRequest: &queryRequestCopy,
-		// }
-		// newParams.Start = ingesterQueryInterval.start
-		// newParams.End = ingesterQueryInterval.end
+		// TODO(twhitney): implement iterators
+		queryRequestCopy := *params.VariantsQueryRequest
+		newParams := logql.SelectVariantsParams{
+			VariantsQueryRequest: &queryRequestCopy,
+		}
+		newParams.Start = ingesterQueryInterval.start
+		newParams.End = ingesterQueryInterval.end
 
-		// ingesterIters, err := q.ingesterQuerier.SelectVariants(ctx, newParams)
-		// if err != nil {
-		// 	return nil, err
-		// }
+		ingesterIters, err := q.ingesterQuerier.SelectVariants(ctx, newParams)
+		if err != nil {
+			return nil, err
+		}
 
-		// iters = append(iters, ingesterIters...)
+		iters = append(iters, ingesterIters...)
 	}
 
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
