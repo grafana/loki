@@ -154,6 +154,10 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	return s.processConsumerLag(ctx)
 }
 
+// processConsumerLag consumes from the partition until it has processed up to
+// MaxConsumerLagAtStartup. If there is enough time, it will also make a best
+// effort attempt to process up to TargetConsumerLagAtStartup. It returns
+// an error if MaxConsumerLagAtStartup could not be satisfied.
 func (s *ReaderService) processConsumerLag(ctx context.Context) error {
 	targetLag := s.cfg.TargetConsumerLagAtStartup
 	maxLag := s.cfg.MaxConsumerLagAtStartup
