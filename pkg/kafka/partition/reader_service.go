@@ -80,20 +80,16 @@ func NewReaderService(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*ReaderService, error) {
-
-	// Create the reader
-	reader, err := NewStdReader(
+	reader, err := NewKafkaReader(
 		kafkaCfg,
 		partitionID,
 		instanceID,
 		logger,
 		reg,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
-
 	return newReaderService(
 		ReaderConfig{
 			TargetConsumerLagAtStartup:    kafkaCfg.TargetConsumerLagAtStartup,
