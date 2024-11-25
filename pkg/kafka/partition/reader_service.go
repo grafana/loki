@@ -120,7 +120,7 @@ func newReaderService(
 		consumerFactory:     consumerFactory,
 		logger:              log.With(logger, "partition", reader.Partition(), "consumer_group", reader.ConsumerGroup()),
 		metrics:             newServiceMetrics(reg),
-		lastProcessedOffset: -1,
+		lastProcessedOffset: kafkaEndOffset,
 	}
 
 	// Create the committer
