@@ -155,16 +155,22 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	level.Debug(s.logger).Log("msg", "consuming from offset", "offset", consumeOffset)
 	s.reader.SetOffsetForConsumption(consumeOffset)
 
-	if targetLag, maxLag := s.cfg.TargetConsumerLagAtStartup, s.cfg.MaxConsumerLagAtStartup; targetLag > 0 && maxLag > 0 {
+	return s.processConsumerLag(ctx)
+}
+
+func (s *ReaderService) processConsumerLag(ctx context.Context) error {
+	targetLag := s.cfg.TargetConsumerLagAtStartup
+	maxLag := s.cfg.MaxConsumerLagAtStartup
+
+	if targetLag > 0 && maxLag > 0 {
 		consumer, err := s.consumerFactory(s.committer)
 		if err != nil {
-			return fmt.Errorf("creating consumer: %w", err)
+			return fmt.Errorf("failed to create consumer: %w", err)
 		}
 
 		cancelCtx, cancel := context.WithCancel(ctx)
 		recordsChan := make(chan []Record)
 		wait := consumer.Start(cancelCtx, recordsChan)
-
 		defer func() {
 			close(recordsChan)
 			cancel()
