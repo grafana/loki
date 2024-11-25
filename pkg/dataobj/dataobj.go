@@ -40,6 +40,9 @@ type BuilderConfig struct {
 //
 // Once a builder is no longer needed, call [Builder.Close] to trigger a final
 // flush and release resources.
+//
+// Methods on Builder are not goroutine safe; callers are responsible for
+// synchronizing calls.
 type Builder struct {
 	cfg    BuilderConfig
 	bucket objstore.Bucket
