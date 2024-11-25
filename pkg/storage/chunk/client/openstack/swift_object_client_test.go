@@ -12,8 +12,6 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	bucket_http "github.com/grafana/loki/v3/pkg/storage/bucket/http"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/swift"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
@@ -92,16 +90,14 @@ func Test_Hedging(t *testing.T) {
 			})
 
 			c, err := NewSwiftObjectClient(SwiftConfig{
-				Config: swift.Config{
-					MaxRetries:     1,
-					ContainerName:  "foo",
-					AuthVersion:    1,
-					Password:       flagext.SecretWithValue("passwd"),
-					ConnectTimeout: 10 * time.Second,
-					RequestTimeout: 10 * time.Second,
-					HTTP: bucket_http.Config{
-						Transport: transportCounter,
-					},
+				MaxRetries:     1,
+				ContainerName:  "foo",
+				AuthVersion:    1,
+				Password:       flagext.SecretWithValue("passwd"),
+				ConnectTimeout: 10 * time.Second,
+				RequestTimeout: 10 * time.Second,
+				HTTP: HTTPConfig{
+					Transport: transportCounter,
 				},
 			}, hedging.Config{
 				At:           tc.hedgeAt,

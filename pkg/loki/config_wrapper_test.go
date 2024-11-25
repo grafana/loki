@@ -547,9 +547,9 @@ memberlist:
 
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []swift.Config{
-				config.Ruler.StoreConfig.Swift.Config,
-				config.StorageConfig.Swift.Config,
+			for _, actual := range []openstack.SwiftConfig{
+				config.Ruler.StoreConfig.Swift,
+				config.StorageConfig.Swift,
 			} {
 				assert.Equal(t, 3, actual.AuthVersion)
 				assert.Equal(t, "http://example.com", actual.AuthURL)

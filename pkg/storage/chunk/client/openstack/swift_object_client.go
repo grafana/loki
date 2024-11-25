@@ -22,7 +22,7 @@ import (
 )
 
 // Config stores the http.Client configuration for the storage clients.
-type HttpConfig struct {
+type HTTPConfig struct {
 	Transport http.RoundTripper `yaml:"-"`
 	TLSConfig TLSConfig         `yaml:",inline"`
 }
@@ -32,7 +32,7 @@ type TLSConfig struct {
 	CAPath string `yaml:"tls_ca_path" category:"advanced"`
 }
 
-func defaultTransport(config HttpConfig) (http.RoundTripper, error) {
+func defaultTransport(config HTTPConfig) (http.RoundTripper, error) {
 	if config.Transport != nil {
 		return config.Transport, nil
 	}
@@ -87,7 +87,7 @@ type SwiftConfig struct {
 	MaxRetries        int            `yaml:"max_retries" category:"advanced"`
 	ConnectTimeout    time.Duration  `yaml:"connect_timeout" category:"advanced"`
 	RequestTimeout    time.Duration  `yaml:"request_timeout" category:"advanced"`
-	HTTP              HttpConfig     `yaml:"http"`
+	HTTP              HTTPConfig     `yaml:"http"`
 }
 
 // RegisterFlags registers flags.
