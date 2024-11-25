@@ -954,6 +954,7 @@ func BenchmarkReadWithStructuredMetadataV4(b *testing.B) {
 	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunk(c)
 	b.ResetTimer()
+	b.ReportAllocs()
 	ctx := context.Background()
 	for n := 0; n < b.N; n++ {
 		iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor, true)
@@ -968,6 +969,7 @@ func BenchmarkReadWithStructuredMetadataV5(b *testing.B) {
 	c := NewMemChunk(ChunkFormatV5, compression.Snappy, UnorderedWithOrganizedStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunk(c)
 	b.ResetTimer()
+	b.ReportAllocs()
 	ctx := context.Background()
 	for n := 0; n < b.N; n++ {
 		iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor, true)

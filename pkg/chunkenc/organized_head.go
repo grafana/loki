@@ -281,18 +281,11 @@ type organizedBufferedIterator struct {
 	closed bool
 
 	// Buffers and readers for structured metadata bytes
-	smBytes      []byte
-	smReader     io.Reader // initialized later
-	smBuf        []symbol
-	smReadBuf    [2 * binary.MaxVarintLen64]byte // same, enough to contain two varints
-	smValidBytes int
+	smBytes []byte
+	smBuf   []symbol
 
 	// Buffers and readers for timestamp bytes
 	tsBytes          []byte
-	tsReadBufValid   int
-	tsReadBuf        [binary.MaxVarintLen64]byte
-	tsReader         io.Reader
-	tsBuf            []byte
 	queryMetricsOnly bool
 }
 
@@ -301,20 +294,11 @@ func (e *organizedBufferedIterator) Next() bool {
 	if !e.closed && e.reader == nil && !e.queryMetricsOnly {
 		var err error
 
-		// todo(shantanu): handle all errors
 		e.reader, err = e.pool.GetReader(bytes.NewReader(e.origBytes))
 		if err != nil {
 			e.err = err
 			return false
 		}
-	}
-
-	if !e.closed && e.tsReader == nil {
-		e.tsReader = bytes.NewReader(e.tsBytes)
-	}
-
-	if !e.closed && e.smReader == nil {
-		e.smReader = bytes.NewReader(e.smBytes)
 	}
 
 	// todo (shantanu): need a better way to close the iterator instead of individually doing this.
@@ -356,31 +340,15 @@ func (e *organizedBufferedIterator) Next() bool {
 }
 
 func (e *organizedBufferedIterator) nextTs() (ts int64, ok bool) {
-	var tsw, lastAttempt int
-
-	for tsw == 0 {
-		n, err := e.tsReader.Read(e.tsReadBuf[e.tsReadBufValid:])
-		e.tsReadBufValid += n
-
-		if err != nil {
-			if err != io.EOF {
-				e.err = err
-				return 0, false
-			}
-			if e.tsReadBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, false
-			}
-			if e.tsReadBufValid == lastAttempt { // Got EOF and could not parse same data last time.
-				e.err = fmt.Errorf("invalid data in chunk")
-				return 0, false
-			}
-		}
-
-		ts, tsw = binary.Varint(e.tsReadBuf[:e.tsReadBufValid])
-		lastAttempt = e.tsReadBufValid
+	if len(e.tsBytes) == 0 {
+		return 0, false
 	}
 
-	e.tsReadBufValid = copy(e.tsReadBuf[:], e.tsReadBuf[tsw:e.tsReadBufValid])
+	ts, n := binary.Varint(e.tsBytes)
+	if n <= 0 {
+		return 0, false
+	}
+	e.tsBytes = e.tsBytes[n:]
 
 	return ts, true
 }
@@ -459,70 +427,38 @@ func (e *organizedBufferedIterator) nextLine() ([]byte, bool, int64) {
 }
 
 func (e *organizedBufferedIterator) nextMetadata() (labels.Labels, bool) {
-	var smWidth, smLength, tWidth, lastAttempt, sw int
-	for smWidth == 0 {
-		n, err := e.smReader.Read(e.smReadBuf[e.smValidBytes:])
-		e.smValidBytes += n
-		if err != nil {
-			if err != io.EOF {
-				e.err = err
-				return nil, false
-			}
-			if e.smValidBytes == 0 {
-				return nil, false
-			}
-			if e.smValidBytes == lastAttempt {
-				e.err = fmt.Errorf("invalid data in chunk")
-				return nil, false
-			}
-		}
-		var sm uint64
-		_, sw = binary.Uvarint(e.smReadBuf[tWidth:e.smValidBytes])
-		sm, smWidth = binary.Uvarint(e.smReadBuf[tWidth+sw : e.smValidBytes])
-
-		smLength = int(sm)
-		lastAttempt = e.smValidBytes
+	// [width of buffer][number of symbols][name][value]...
+	if len(e.smBytes) == 0 {
+		return nil, false
 	}
-
-	// check if we have enough buffer to fetch the entire metadata symbols
-	if e.smBuf == nil || smLength > cap(e.smBuf) {
-		// need a new pool
-		if e.smBuf != nil {
-			BytesBufferPool.Put(e.smBuf)
-		}
-		e.smBuf = SymbolsPool.Get(smLength).([]symbol)
-		if smLength > cap(e.smBuf) {
-			e.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", smLength, cap(e.smBuf))
+	_, n := binary.Uvarint(e.smBytes)
+	if n <= 0 {
+		return nil, false
+	}
+	e.smBytes = e.smBytes[n:]
+	sm, n := binary.Uvarint(e.smBytes)
+	if n <= 0 {
+		return nil, false
+	}
+	smLength := int(sm)
+	e.smBytes = e.smBytes[n:]
+	if len(e.smBuf) < smLength {
+		e.smBuf = make([]symbol, smLength)
+	} else {
+		e.smBuf = e.smBuf[:smLength]
+	}
+	var name, val uint64
+	for i := 0; i < smLength; i++ {
+		name, n = binary.Uvarint(e.smBytes)
+		if n <= 0 {
 			return nil, false
 		}
-	}
-
-	e.smBuf = e.smBuf[:smLength]
-
-	// shift down what is still left in the fixed-size read buffer, if any
-	e.smValidBytes = copy(e.smReadBuf[:], e.smReadBuf[smWidth+sw+tWidth:e.smValidBytes])
-
-	for i := 0; i < smLength; i++ {
-		var name, val uint64
-		var nw, vw int
-		for vw == 0 {
-			n, err := e.smReader.Read(e.smReadBuf[e.smValidBytes:])
-			e.smValidBytes += n
-			if err != nil {
-				if err != io.EOF {
-					e.err = err
-					return nil, false
-				}
-				if e.smValidBytes == 0 {
-					return nil, false
-				}
-			}
-			name, nw = binary.Uvarint(e.smReadBuf[:e.smValidBytes])
-			val, vw = binary.Uvarint(e.smReadBuf[nw:e.smValidBytes])
+		e.smBytes = e.smBytes[n:]
+		val, n = binary.Uvarint(e.smBytes)
+		if n <= 0 {
+			return nil, false
 		}
-
-		// Shift down what is still left in the fixed-size read buffer, if any.
-		e.smValidBytes = copy(e.smReadBuf[:], e.smReadBuf[nw+vw:e.smValidBytes])
+		e.smBytes = e.smBytes[n:]
 
 		e.smBuf[i].Name = uint32(name)
 		e.smBuf[i].Value = uint32(val)
@@ -636,6 +572,8 @@ type sampleOrganizedBufferedIterator struct {
 }
 
 func (s *sampleOrganizedBufferedIterator) At() logproto.Sample {
+	// todo(shantanu) : check how this hash is used and check deduping
+	// might need another buffer to store hash of each log line separately
 	return s.cur
 }
 
