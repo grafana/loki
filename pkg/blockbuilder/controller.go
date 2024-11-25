@@ -134,7 +134,7 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets Offsets, c
 		err        error
 	)
 
-	for boff.Ongoing() {
+	for lastOffset < offsets.Max && boff.Ongoing() {
 		var records []partition.Record
 		records, err = l.part.Poll(ctx, int(offsets.Max-lastOffset))
 		if err != nil {
@@ -153,7 +153,7 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets Offsets, c
 		converted := make([]AppendInput, 0, len(records))
 		for _, record := range records {
 			if record.Offset >= offsets.Max {
-				return lastOffset, nil
+				break
 			}
 			lastOffset = record.Offset
 
