@@ -36,7 +36,7 @@ func TestPartitionCommitter(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	partitionID := int32(1)
 	consumerGroup := "test-consumer-group"
-	reader := newStdReader(
+	reader := newKafkaReader(
 		client,
 		kafkaCfg.Topic,
 		partitionID,
