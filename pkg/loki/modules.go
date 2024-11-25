@@ -1822,6 +1822,7 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 	controller, err := blockbuilder.NewPartitionJobController(
 		reader,
 		t.Cfg.BlockBuilder.Backoff,
+		logger,
 	)
 
 	if err != nil {

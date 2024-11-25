@@ -346,7 +346,7 @@ func (s *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, m
 			}
 
 			timedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			records, err := s.reader.Poll(timedCtx)
+			records, err := s.reader.Poll(timedCtx, -1)
 			cancel()
 
 			if err != nil {
@@ -382,7 +382,7 @@ func (s *ReaderService) startFetchLoop(ctx context.Context) chan []Record {
 			case <-ctx.Done():
 				return
 			default:
-				res, err := s.reader.Poll(ctx)
+				res, err := s.reader.Poll(ctx, -1)
 				if err != nil {
 					level.Error(s.logger).Log("msg", "error polling records", "err", err)
 					continue
