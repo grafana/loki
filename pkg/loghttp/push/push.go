@@ -345,7 +345,7 @@ func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger)
 		level.Error(logger).Log("msg", "failed to marshal error response", "error", err)
 		writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
 			codes.Internal,
-			fmt.Sprintf("failed to marshal error response. original error: %s", err.Error()),
+			fmt.Sprintf("failed to marshal error response: %s", err.Error()),
 		).Proto())
 		_, _ = w.Write(writeResponseFailedBody)
 		return
@@ -356,7 +356,7 @@ func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger)
 		level.Error(logger).Log("msg", "failed to write error response", "error", err)
 		writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
 			codes.Internal,
-			fmt.Sprintf("failed write error. original error: %s", err.Error()),
+			fmt.Sprintf("failed write error: %s", err.Error()),
 		).Proto())
 		_, _ = w.Write(writeResponseFailedBody)
 	}
