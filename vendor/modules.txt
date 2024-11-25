@@ -465,7 +465,7 @@ github.com/aws/smithy-go/transport/http/internal/io
 # github.com/axiomhq/hyperloglog v0.2.0
 ## explicit; go 1.21
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.200
+# github.com/baidubce/bce-sdk-go v0.9.201
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1931,7 +1931,7 @@ golang.org/x/tools/internal/stdlib
 golang.org/x/tools/internal/tokeninternal
 golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
-# google.golang.org/api v0.208.0
+# google.golang.org/api v0.209.0
 ## explicit; go 1.21
 google.golang.org/api/cloudresourcemanager/v1
 google.golang.org/api/compute/v1

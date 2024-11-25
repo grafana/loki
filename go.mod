@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.5
-	github.com/baidubce/bce-sdk-go v0.9.200
+	github.com/baidubce/bce-sdk-go v0.9.201
 	github.com/bmatcuk/doublestar/v4 v4.7.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -103,7 +103,7 @@ require (
 	golang.org/x/sync v0.9.0
 	golang.org/x/sys v0.27.0
 	golang.org/x/time v0.8.0
-	google.golang.org/api v0.208.0
+	google.golang.org/api v0.209.0
 	google.golang.org/grpc v1.68.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1

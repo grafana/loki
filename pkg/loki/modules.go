@@ -1808,7 +1808,7 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
 	}
 
-	reader, err := partition.NewReader(
+	reader, err := partition.NewStdReader(
 		t.Cfg.KafkaConfig,
 		ingestPartitionID,
 		id,
@@ -1822,6 +1822,7 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 	controller, err := blockbuilder.NewPartitionJobController(
 		reader,
 		t.Cfg.BlockBuilder.Backoff,
+		logger,
 	)
 
 	if err != nil {
