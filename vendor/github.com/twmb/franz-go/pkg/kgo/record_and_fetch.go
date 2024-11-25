@@ -120,7 +120,7 @@ type Record struct {
 	// before the record is unbuffered.
 	ProducerEpoch int16
 
-	// ProducerEpoch is the producer ID of this message if it was produced
+	// ProducerID is the producer ID of this message if it was produced
 	// with a producer ID. An epoch and ID of 0 means it was not.
 	//
 	// For producing, this is left unset. This will be set by the client
@@ -274,6 +274,9 @@ func (p *FetchPartition) EachRecord(fn func(*Record)) {
 type FetchTopic struct {
 	// Topic is the topic this is for.
 	Topic string
+	// TopicID is the ID of the topic, if your cluster supports returning
+	// topic IDs in fetch responses (Kafka 3.1+).
+	TopicID [16]byte
 	// Partitions contains individual partitions in the topic that were
 	// fetched.
 	Partitions []FetchPartition
@@ -345,8 +348,8 @@ type FetchError struct {
 //     client for.
 //
 //  3. an untyped batch parse failure; these are usually unrecoverable by
-//     restarts, and it may be best to just let the client continue. However,
-//     restarting is an option, but you may need to manually repair your
+//     restarts, and it may be best to just let the client continue.
+//     Restarting is an option, but you may need to manually repair your
 //     partition.
 //
 //  4. an injected ErrClientClosed; this is a fatal informational error that
@@ -560,6 +563,7 @@ func (fs Fetches) EachTopic(fn func(FetchTopic)) {
 	for topic, partitions := range topics {
 		fn(FetchTopic{
 			topic,
+			[16]byte{},
 			partitions,
 		})
 	}

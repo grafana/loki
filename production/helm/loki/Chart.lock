@@ -1,12 +1,12 @@
 dependencies:
 - name: minio
   repository: https://charts.min.io/
-  version: 4.0.15
+  version: 4.1.0
 - name: grafana-agent-operator
   repository: https://grafana.github.io/helm-charts
-  version: 0.3.15
+  version: 0.5.0
 - name: rollout-operator
   repository: https://grafana.github.io/helm-charts
-  version: 0.13.0
-digest: sha256:d0e60c2879039ee5e8b7b10530f0e8790d6d328ee8afca71f01128627e921587
-generated: "2024-04-07T14:12:43.317329844-04:00"
+  version: 0.19.1
+digest: sha256:c5c928ea56124dd145a4d3e8b1cc478cc6ce8d002e8dafa7a7457cd096e4d6e2
+generated: "2024-11-15T21:25:36.196519401Z"

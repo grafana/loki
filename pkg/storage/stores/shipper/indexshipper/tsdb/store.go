@@ -85,6 +85,13 @@ func (s *store) init(name, prefix string, indexShipperCfg indexshipper.Config, s
 	var indices []Index
 	opts := DefaultIndexClientOptions()
 
+	// early return in case index shipper is disabled.
+	if indexShipperCfg.Mode == indexshipper.ModeDisabled {
+		s.indexWriter = noopIndexWriter{}
+		s.Reader = NewIndexClient(NoopIndex{}, opts, limits)
+		return nil
+	}
+
 	if indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
 		// We disable bloom filters on write nodes
 		// for the Stats() methods as it's of relatively little
@@ -171,4 +178,10 @@ type failingIndexWriter struct{}
 
 func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
+}
+
+type noopIndexWriter struct{}
+
+func (f noopIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
+	return nil
 }

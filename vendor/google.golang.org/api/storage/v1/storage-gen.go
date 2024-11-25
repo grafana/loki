@@ -2300,6 +2300,8 @@ type Object struct {
 	// format. Will be returned if and only if this version of the object has been
 	// deleted.
 	TimeDeleted string `json:"timeDeleted,omitempty"`
+	// TimeFinalized: The time when the object was finalized.
+	TimeFinalized string `json:"timeFinalized,omitempty"`
 	// TimeStorageClassUpdated: The time at which the object's storage class was
 	// last changed. When the object is initially created, it will be set to
 	// timeCreated.
@@ -5537,6 +5539,18 @@ func (r *BucketsService) Restore(bucket string, generation int64) *BucketsRestor
 	return c
 }
 
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to full.
+//
+// Possible values:
+//
+//	"full" - Include all properties.
+//	"noAcl" - Omit owner, acl and defaultObjectAcl properties.
+func (c *BucketsRestoreCall) Projection(projection string) *BucketsRestoreCall {
+	c.urlParams_.Set("projection", projection)
+	return c
+}
+
 // UserProject sets the optional parameter "userProject": The project to be
 // billed for this request. Required for Requester Pays buckets.
 func (c *BucketsRestoreCall) UserProject(userProject string) *BucketsRestoreCall {
@@ -5586,17 +5600,40 @@ func (c *BucketsRestoreCall) doRequest(alt string) (*http.Response, error) {
 }
 
 // Do executes the "storage.buckets.restore" call.
-func (c *BucketsRestoreCall) Do(opts ...googleapi.CallOption) error {
+// Any non-2xx status code is an error. Response headers are in either
+// *Bucket.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *BucketsRestoreCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer googleapi.CloseBody(res)
 	if err := googleapi.CheckResponse(res); err != nil {
-		return gensupport.WrapError(err)
+		return nil, gensupport.WrapError(err)
 	}
-	return nil
+	ret := &Bucket{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 type BucketsSetIamPolicyCall struct {

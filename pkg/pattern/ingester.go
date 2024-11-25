@@ -403,6 +403,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 				aggCfg.UseTLS,
 				&aggCfg.BackoffConfig,
 				i.logger,
+				i.registerer,
 			)
 			if err != nil {
 				return nil, err
