@@ -153,6 +153,7 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets Offsets, c
 		converted := make([]AppendInput, 0, len(records))
 		for _, record := range records {
 			if record.Offset >= offsets.Max {
+				level.Debug(l.logger).Log("msg", "record offset exceeds job max offset. stop processing", "record offset", record.Offset, "max offset", offsets.Max)
 				break
 			}
 			lastOffset = record.Offset
@@ -173,10 +174,12 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets Offsets, c
 			})
 		}
 
-		select {
-		case ch <- converted:
-		case <-ctx.Done():
-			return 0, ctx.Err()
+		if len(converted) > 0 {
+			select {
+			case ch <- converted:
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
 		}
 	}
 
