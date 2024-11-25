@@ -152,6 +152,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 		// Read from the next offset.
 		consumeOffset = lastCommittedOffset + 1
 	}
+	level.Debug(s.logger).Log("msg", "consuming from offset", "offset", consumeOffset)
 	s.reader.SetOffsetForConsumption(consumeOffset)
 
 	if targetLag, maxLag := s.cfg.TargetConsumerLagAtStartup, s.cfg.MaxConsumerLagAtStartup; targetLag > 0 && maxLag > 0 {
