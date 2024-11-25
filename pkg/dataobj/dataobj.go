@@ -14,12 +14,22 @@ import (
 type BuilderConfig struct {
 	// MaxPageSize sets a maximum size for encoded pages within the data object.
 	// MaxPageSize accounts for encoding, but not for compression.
+	//
+	// Pages may can go above this size if a single entry within a column exceeds
+	// MaxPageSize.
 	MaxPageSize flagext.Bytes
 
 	// MaxMetadataSize sets a maximum size for metadata within the data object.
+	//
+	// Metadata may go above this size if there is user-provided data (e.g.,
+	// labels) which exceeds MaxMetadataSize.
 	MaxMetadataSize flagext.Bytes
 
-	// MaxObjectSizeBytes sets a maximum size for each data object.
+	// MaxObjectSizeBytes sets a maximum size for each data object. Once buffered
+	// data in memory exceeds this size, a flush will be triggered.
+	//
+	// Only buffered data that fits within MaxObjectSizeBytes is flushed.
+	// Remaining data can be flushed manually by calling [Builder.Flush].
 	MaxObjectSizeBytes flagext.Bytes
 }
 
