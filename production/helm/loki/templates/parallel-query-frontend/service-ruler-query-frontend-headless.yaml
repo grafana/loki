@@ -4,11 +4,11 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.rulerQueryFrontendFullname" . }}-headless
+  name: {{ include "loki.parallelQueryFrontendFullname" . }}-headless
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.rulerQueryFrontendLabels" . | nindent 4 }}
-    {{- with .Values.rulerQueryFrontend.serviceLabels }}
+    {{- include "loki.parallelQueryFrontendLabels" . | nindent 4 }}
+    {{- with .Values.parallelQueryFrontend.serviceLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
     prometheus.io/service-monitor: "false"
@@ -16,7 +16,7 @@ metadata:
     {{- with .Values.loki.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
     {{- end }}
-    {{- with .Values.rulerQueryFrontend.serviceAnnotations }}
+    {{- with .Values.parallelQueryFrontend.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
     {{- end }}
 spec:
@@ -32,17 +32,17 @@ spec:
       port: 9095
       targetPort: grpc
       protocol: TCP
-      {{- if .Values.rulerQueryFrontend.appProtocol.grpc }}
-      appProtocol: {{ .Values.rulerQueryFrontend.appProtocol.grpc }}
+      {{- if .Values.parallelQueryFrontend.appProtocol.grpc }}
+      appProtocol: {{ .Values.parallelQueryFrontend.appProtocol.grpc }}
       {{- end }}
     - name: grpclb
       port: 9096
       targetPort: grpc
       protocol: TCP
-      {{- if .Values.rulerQueryFrontend.appProtocol.grpc }}
-      appProtocol: {{ .Values.rulerQueryFrontend.appProtocol.grpc }}
+      {{- if .Values.parallelQueryFrontend.appProtocol.grpc }}
+      appProtocol: {{ .Values.parallelQueryFrontend.appProtocol.grpc }}
       {{- end }}
   selector:
-    {{- include "loki.rulerQueryFrontendSelectorLabels" . | nindent 4 }}
+    {{- include "loki.parallelQueryFrontendSelectorLabels" . | nindent 4 }}
 {{- end -}}
 {{- end -}}

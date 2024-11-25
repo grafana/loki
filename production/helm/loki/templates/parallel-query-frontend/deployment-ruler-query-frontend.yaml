@@ -4,17 +4,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "loki.rulerQueryFrontendFullname" . }}
+  name: {{ include "loki.parallelQueryFrontendFullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.rulerQueryFrontendLabels" . | nindent 4 }}
+    {{- include "loki.parallelQueryFrontendLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-{{- if not .Values.rulerQueryFrontend.autoscaling.enabled }}
-  replicas: {{ .Values.rulerQueryFrontend.replicas }}
+{{- if not .Values.parallelQueryFrontend.autoscaling.enabled }}
+  replicas: {{ .Values.parallelQueryFrontend.replicas }}
 {{- end }}
   strategy:
     rollingUpdate:
@@ -23,7 +23,7 @@ spec:
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   selector:
     matchLabels:
-      {{- include "loki.rulerQueryFrontendSelectorLabels" . | nindent 6 }}
+      {{- include "loki.parallelQueryFrontendSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -31,16 +31,16 @@ spec:
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.rulerQueryFrontend.podAnnotations }}
+        {{- with .Values.parallelQueryFrontend.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.rulerQueryFrontendSelectorLabels" . | nindent 8 }}
+        {{- include "loki.parallelQueryFrontendSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.rulerQueryFrontend.podLabels }}
+        {{- with .Values.parallelQueryFrontend.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -49,26 +49,26 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQueryFrontend.hostAliases }}
+      {{- with .Values.parallelQueryFrontend.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.rulerQueryFrontendPriorityClassName" . | nindent 6 }}
+      {{- include "loki.parallelQueryFrontendPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.rulerQueryFrontend.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.parallelQueryFrontend.terminationGracePeriodSeconds }}
       containers:
-        - name: ruler-query-frontend
+        - name: parallel-query-frontend
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
-          {{- if or .Values.loki.command .Values.rulerQueryFrontend.command }}
+          {{- if or .Values.loki.command .Values.parallelQueryFrontend.command }}
           command:
-            - {{ coalesce .Values.rulerQueryFrontend.command .Values.loki.command | quote }}
+            - {{ coalesce .Values.parallelQueryFrontend.command .Values.loki.command | quote }}
           {{- end }}
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-frontend
-            {{- with .Values.rulerQueryFrontend.extraArgs }}
+            {{- with .Values.parallelQueryFrontend.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -81,11 +81,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.rulerQueryFrontend.extraEnv }}
+          {{- with .Values.parallelQueryFrontend.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.rulerQueryFrontend.extraEnvFrom }}
+          {{- with .Values.parallelQueryFrontend.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -102,23 +102,23 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.rulerQueryFrontend.extraVolumeMounts }}
+            {{- with .Values.parallelQueryFrontend.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
-            {{- toYaml .Values.rulerQueryFrontend.resources | nindent 12 }}
-        {{- if .Values.rulerQueryFrontend.extraContainers }}
-        {{- toYaml .Values.rulerQueryFrontend.extraContainers | nindent 8}}
+            {{- toYaml .Values.parallelQueryFrontend.resources | nindent 12 }}
+        {{- if .Values.parallelQueryFrontend.extraContainers }}
+        {{- toYaml .Values.parallelQueryFrontend.extraContainers | nindent 8}}
         {{- end }}
-      {{- with .Values.rulerQueryFrontend.affinity }}
+      {{- with .Values.parallelQueryFrontend.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQueryFrontend.nodeSelector }}
+      {{- with .Values.parallelQueryFrontend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQueryFrontend.tolerations }}
+      {{- with .Values.parallelQueryFrontend.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -137,7 +137,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.rulerQueryFrontend.extraVolumes }}
+        {{- with .Values.parallelQueryFrontend.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end -}}

@@ -4,27 +4,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "loki.rulerQuerierFullname" . }}
+  name: {{ include "loki.parallelQuerierFullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.rulerQuerierLabels" . | nindent 4 }}
+    {{- include "loki.parallelQuerierLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
   {{- with .Values.loki.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-{{- if not .Values.rulerQuerier.autoscaling.enabled }}
-  replicas: {{ .Values.rulerQuerier.replicas }}
+{{- if not .Values.parallelQuerier.autoscaling.enabled }}
+  replicas: {{ .Values.parallelQuerier.replicas }}
 {{- end }}
   strategy:
     rollingUpdate:
-      maxSurge: {{ .Values.rulerQuerier.maxSurge }}
+      maxSurge: {{ .Values.parallelQuerier.maxSurge }}
       maxUnavailable: 1
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   selector:
     matchLabels:
-      {{- include "loki.rulerQuerierSelectorLabels" . | nindent 6 }}
+      {{- include "loki.parallelQuerierSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -32,21 +32,21 @@ spec:
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.rulerQuerier.podAnnotations }}
+        {{- with .Values.parallelQuerier.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.rulerQuerierSelectorLabels" . | nindent 8 }}
+        {{- include "loki.parallelQuerierSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.rulerQuerier.podLabels }}
+        {{- with .Values.parallelQuerier.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
       {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
-      {{- with .Values.rulerQuerier.topologySpreadConstraints }}
+      {{- with .Values.parallelQuerier.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -56,20 +56,20 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQuerier.hostAliases }}
+      {{- with .Values.parallelQuerier.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.rulerQuerierPriorityClassName" . | nindent 6 }}
+      {{- include "loki.parallelQuerierPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.rulerQuerier.terminationGracePeriodSeconds }}
-      {{- with .Values.rulerQuerier.initContainers }}
+      terminationGracePeriodSeconds: {{ .Values.parallelQuerier.terminationGracePeriodSeconds }}
+      {{- with .Values.parallelQuerier.initContainers }}
       initContainers:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: ruler-querier
+        - name: parallel-querier
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
@@ -82,7 +82,7 @@ spec:
             - -distributor.zone-awareness-enabled=true
             {{- end }}
             {{- end }}
-            {{- with .Values.rulerQuerier.extraArgs }}
+            {{- with .Values.parallelQuerier.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -95,11 +95,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.rulerQuerier.extraEnv }}
+          {{- with .Values.parallelQuerier.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.rulerQuerier.extraEnvFrom }}
+          {{- with .Values.parallelQuerier.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -120,27 +120,27 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.rulerQuerier.extraVolumeMounts }}
+            {{- with .Values.parallelQuerier.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
-            {{- toYaml .Values.rulerQuerier.resources | nindent 12 }}
-        {{- if .Values.rulerQuerier.extraContainers }}
-        {{- toYaml .Values.rulerQuerier.extraContainers | nindent 8}}
+            {{- toYaml .Values.parallelQuerier.resources | nindent 12 }}
+        {{- if .Values.parallelQuerier.extraContainers }}
+        {{- toYaml .Values.parallelQuerier.extraContainers | nindent 8}}
         {{- end }}
-      {{- with .Values.rulerQuerier.affinity }}
+      {{- with .Values.parallelQuerier.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQuerier.nodeSelector }}
+      {{- with .Values.parallelQuerier.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQuerier.tolerations }}
+      {{- with .Values.parallelQuerier.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQuerier.dnsConfig }}
+      {{- with .Values.parallelQuerier.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -161,7 +161,7 @@ spec:
         {{- end }}
         - name: data
           emptyDir: {}
-        {{- with .Values.rulerQuerier.extraVolumes }}
+        {{- with .Values.parallelQuerier.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}

@@ -2968,7 +2968,7 @@ ruler:
 
 # --  Configuration for the parallel ruler querier
 # -- Only deployed if .Values.ruler.remoteEvaluationDedicatedQueryPath
-rulerQuerier:
+parallelQuerier:
   # -- Number of replicas for the querier
   replicas: 2
   # -- hostAliases to add
@@ -3088,7 +3088,7 @@ rulerQuerier:
 
 # -- Configuration for the parallel ruler query-frontend
 # -- Only deployed if .Values.ruler.remoteEvaluationDedicatedQueryPath
-rulerQueryFrontend:
+parallelQueryFrontend:
   # -- Number of replicas for the query-frontend
   replicas: 2
   # -- hostAliases to add
@@ -3179,7 +3179,7 @@ rulerQueryFrontend:
     grpc: ""
 
 
-rulerQueryScheduler:
+parallelQueryScheduler:
   # -- Number of replicas for the query-scheduler.
   # It should be lower than `-querier.max-concurrent` to avoid generating back-pressure in queriers;
   # it's also recommended that this value evenly divides the latter

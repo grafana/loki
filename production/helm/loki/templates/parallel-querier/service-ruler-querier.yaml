@@ -4,18 +4,18 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.rulerQuerierFullname" . }}
+  name: {{ include "loki.parallelQuerierFullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.rulerQuerierLabels" . | nindent 4 }}
-    {{- with .Values.rulerQuerier.serviceLabels }}
+    {{- include "loki.parallelQuerierLabels" . | nindent 4 }}
+    {{- with .Values.parallelQuerier.serviceLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   annotations:
     {{- with .Values.loki.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
     {{- end }}
-    {{- with .Values.rulerQuerier.serviceAnnotations }}
+    {{- with .Values.parallelQuerier.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
     {{- end }}
 spec:
@@ -29,10 +29,10 @@ spec:
       port: 9095
       targetPort: grpc
       protocol: TCP
-      {{- if .Values.rulerQuerier.appProtocol.grpc }}
-      appProtocol: {{ .Values.rulerQuerier.appProtocol.grpc }}
+      {{- if .Values.parallelQuerier.appProtocol.grpc }}
+      appProtocol: {{ .Values.parallelQuerier.appProtocol.grpc }}
       {{- end }}
   selector:
-    {{- include "loki.rulerQuerierSelectorLabels" . | nindent 4 }}
+    {{- include "loki.parallelQuerierSelectorLabels" . | nindent 4 }}
 {{- end -}}
 {{- end -}}

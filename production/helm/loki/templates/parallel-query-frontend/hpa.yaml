@@ -1,23 +1,23 @@
 {{- if .Values.ruler.remoteEvaluationDedicatedQueryPath }}
 {{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
-{{- if and $isDistributed .Values.rulerQuerier.autoscaling.enabled }}
+{{- if and $isDistributed .Values.parallelQueryFrontend.autoscaling.enabled }}
 {{- $apiVersion := include "loki.hpa.apiVersion" . -}}
 apiVersion: {{ $apiVersion }}
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{ include "loki.rulerQuerierFullname" . }}
+  name: {{ include "loki.parallelQueryFrontendFullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.rulerQuerierLabels" . | nindent 4 }}
+    {{- include "loki.parallelQueryFrontendLabels" . | nindent 4 }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{ include "loki.rulerQuerierFullname" . }}
-  minReplicas: {{ .Values.rulerQuerier.autoscaling.minReplicas }}
-  maxReplicas: {{ .Values.rulerQuerier.autoscaling.maxReplicas }}
+    name: {{ include "loki.parallelQueryFrontendFullname" . }}
+  minReplicas: {{ .Values.parallelQueryFrontend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.parallelQueryFrontend.autoscaling.maxReplicas }}
   metrics:
-  {{- with .Values.rulerQuerier.autoscaling.targetMemoryUtilizationPercentage }}
+  {{- with .Values.parallelQueryFrontend.autoscaling.targetMemoryUtilizationPercentage }}
     - type: Resource
       resource:
         name: memory
@@ -29,7 +29,7 @@ spec:
         targetAverageUtilization: {{ . }}
         {{- end }}
   {{- end }}
-  {{- with .Values.rulerQuerier.autoscaling.targetCPUUtilizationPercentage }}
+  {{- with .Values.parallelQueryFrontend.autoscaling.targetCPUUtilizationPercentage }}
     - type: Resource
       resource:
         name: cpu
@@ -41,15 +41,15 @@ spec:
         targetAverageUtilization: {{ . }}
         {{- end }}
   {{- end }}
-  {{- with .Values.rulerQuerier.autoscaling.customMetrics }}
+  {{- with .Values.parallelQueryFrontend.autoscaling.customMetrics }}
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- if .Values.rulerQuerier.autoscaling.behavior.enabled }}
+  {{- if .Values.parallelQueryFrontend.autoscaling.behavior.enabled }}
   behavior:
-    {{- with .Values.rulerQuerier.autoscaling.behavior.scaleDown }}
+    {{- with .Values.parallelQueryFrontend.autoscaling.behavior.scaleDown }}
     scaleDown: {{ toYaml . | nindent 6 }}
     {{- end }}
-    {{- with .Values.rulerQuerier.autoscaling.behavior.scaleUp }}
+    {{- with .Values.parallelQueryFrontend.autoscaling.behavior.scaleUp }}
     scaleUp: {{ toYaml . | nindent 6 }}
     {{- end }}
   {{- end }}

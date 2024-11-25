@@ -4,18 +4,18 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki.rulerQuerySchedulerFullname" . }}
+  name: {{ include "loki.parallelQuerySchedulerFullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.rulerQuerySchedulerLabels" . | nindent 4 }}
-    {{- with .Values.rulerQueryScheduler.serviceLabels }}
+    {{- include "loki.parallelQuerySchedulerLabels" . | nindent 4 }}
+    {{- with .Values.parallelQueryScheduler.serviceLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   annotations:
     {{- with .Values.loki.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
     {{- end }}
-    {{- with .Values.rulerQueryScheduler.serviceAnnotations }}
+    {{- with .Values.parallelQueryScheduler.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
     {{- end }}
 spec:
@@ -31,10 +31,10 @@ spec:
       port: 9095
       targetPort: grpc
       protocol: TCP
-      {{- with .Values.rulerQueryScheduler.appProtocol.grpc }}
+      {{- with .Values.parallelQueryScheduler.appProtocol.grpc }}
       appProtocol: {{ . }}
       {{- end }}
   selector:
-    {{- include "loki.rulerQuerySchedulerSelectorLabels" . | nindent 4 }}
+    {{- include "loki.parallelQuerySchedulerSelectorLabels" . | nindent 4 }}
 {{- end }}
 {{- end }}

@@ -1,0 +1,23 @@
+{{- if .Values.ruler.remoteEvaluationDedicatedQueryPath }}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.parallelQuerier.replicas) 1) }}
+{{- if kindIs "invalid" .Values.parallelQuerier.maxUnavailable }}
+{{- fail "`.Values.parallelQuerier.maxUnavailable` must be set when `.Values.parallelQuerier.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.parallelQuerierFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.parallelQuerierLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.parallelQuerierSelectorLabels" . | nindent 6 }}
+  {{- with .Values.parallelQuerier.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

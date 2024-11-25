@@ -4,16 +4,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "loki.rulerQuerySchedulerFullname" . }}
+  name: {{ include "loki.parallelQuerySchedulerFullname" . }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "loki.rulerQuerySchedulerLabels" . | nindent 4 }}
+    {{- include "loki.parallelQuerySchedulerLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  replicas: {{ .Values.rulerQueryScheduler.replicas }}
+  replicas: {{ .Values.parallelQueryScheduler.replicas }}
   strategy:
     rollingUpdate:
       maxSurge: 0
@@ -21,7 +21,7 @@ spec:
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   selector:
     matchLabels:
-      {{- include "loki.rulerQuerySchedulerSelectorLabels" . | nindent 6 }}
+      {{- include "loki.parallelQuerySchedulerSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -29,15 +29,15 @@ spec:
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.rulerQueryScheduler.podAnnotations }}
+        {{- with .Values.parallelQueryScheduler.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.rulerQuerySchedulerSelectorLabels" . | nindent 8 }}
+        {{- include "loki.parallelQuerySchedulerSelectorLabels" . | nindent 8 }}
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-        {{- with .Values.rulerQueryScheduler.podLabels }}
+        {{- with .Values.parallelQueryScheduler.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist
@@ -47,22 +47,22 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQueryScheduler.hostAliases }}
+      {{- with .Values.parallelQueryScheduler.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- include "loki.rulerQuerySchedulerPriorityClassName" . | nindent 6 }}
+      {{- include "loki.parallelQuerySchedulerPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.rulerQueryScheduler.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.parallelQueryScheduler.terminationGracePeriodSeconds }}
       containers:
-        - name: ruler-query-scheduler
+        - name: parallel-query-scheduler
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-scheduler
-            {{- with .Values.rulerQueryScheduler.extraArgs }}
+            {{- with .Values.parallelQueryScheduler.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -75,11 +75,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.rulerQueryScheduler.extraEnv }}
+          {{- with .Values.parallelQueryScheduler.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.rulerQueryScheduler.extraEnvFrom }}
+          {{- with .Values.parallelQueryScheduler.extraEnvFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -98,25 +98,25 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.rulerQueryScheduler.extraVolumeMounts }}
+            {{- with .Values.parallelQueryScheduler.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- with .Values.rulerQueryScheduler.resources }}
+          {{- with .Values.parallelQueryScheduler.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        {{- if .Values.rulerQueryScheduler.extraContainers }}
-        {{- toYaml .Values.rulerQueryScheduler.extraContainers | nindent 8}}
+        {{- if .Values.parallelQueryScheduler.extraContainers }}
+        {{- toYaml .Values.parallelQueryScheduler.extraContainers | nindent 8}}
         {{- end }}
-      {{- with .Values.rulerQueryScheduler.affinity }}
+      {{- with .Values.parallelQueryScheduler.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQueryScheduler.nodeSelector }}
+      {{- with .Values.parallelQueryScheduler.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.rulerQueryScheduler.tolerations }}
+      {{- with .Values.parallelQueryScheduler.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -135,7 +135,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.rulerQueryScheduler.extraVolumes }}
+        {{- with .Values.parallelQueryScheduler.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}
