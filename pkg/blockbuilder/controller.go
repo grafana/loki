@@ -67,14 +67,14 @@ type PartitionController interface {
 //	containing log data and "committed" is the consumer group
 type PartitionJobController struct {
 	stepLen int64
-	part    partition.ReaderIfc
+	part    partition.Reader
 	backoff backoff.Config
 	decoder *kafka.Decoder
 	logger  log.Logger
 }
 
 func NewPartitionJobController(
-	controller partition.ReaderIfc,
+	controller partition.Reader,
 	backoff backoff.Config,
 	logger log.Logger,
 ) (*PartitionJobController, error) {

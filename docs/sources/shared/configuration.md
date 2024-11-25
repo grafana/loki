@@ -3816,6 +3816,10 @@ shard_streams:
 # CLI flag: -bloom-build.block-encoding
 [bloom_block_encoding: <string> | default = "none"]
 
+# Experimental. Prefetch blocks on bloom gateways as soon as they are built.
+# CLI flag: -bloom-build.prefetch-blocks
+[bloom_prefetch_blocks: <boolean> | default = false]
+
 # Experimental. The maximum bloom block size. A value of 0 sets an unlimited
 # size. Default is 200MB. The actual block size might exceed this limit since
 # blooms will be added to blocks until the block exceeds the maximum block size.

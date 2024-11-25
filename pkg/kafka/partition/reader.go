@@ -37,7 +37,7 @@ type Record struct {
 	Offset   int64
 }
 
-type ReaderIfc interface {
+type Reader interface {
 	Topic() string
 	Partition() int32
 	ConsumerGroup() string
@@ -91,8 +91,8 @@ func newReaderMetrics(r prometheus.Registerer) *readerMetrics {
 	}
 }
 
-// Reader provides low-level access to Kafka partition reading operations
-type Reader struct {
+// StdReader provides low-level access to Kafka partition reading operations
+type StdReader struct {
 	client        *kgo.Client
 	topic         string
 	partitionID   int32
@@ -101,13 +101,13 @@ type Reader struct {
 	logger        log.Logger
 }
 
-func NewReader(
+func NewStdReader(
 	cfg kafka.Config,
 	partitionID int32,
 	instanceID string,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) (*Reader, error) {
+) (*StdReader, error) {
 	// Create a new Kafka client for this reader
 	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
 	c, err := client.NewReaderClient(
@@ -120,7 +120,7 @@ func NewReader(
 	}
 
 	// Create the reader
-	return newReader(
+	return newStdReader(
 		c,
 		cfg.Topic,
 		partitionID,
@@ -130,16 +130,16 @@ func NewReader(
 	), nil
 }
 
-// NewReader creates a new Reader instance
-func newReader(
+// newStdReader creates a new StdReader instance
+func newStdReader(
 	client *kgo.Client,
 	topic string,
 	partitionID int32,
 	consumerGroup string,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) *Reader {
-	return &Reader{
+) *StdReader {
+	return &StdReader{
 		client:        client,
 		topic:         topic,
 		partitionID:   partitionID,
@@ -150,22 +150,22 @@ func newReader(
 }
 
 // Topic returns the topic being read
-func (r *Reader) Topic() string {
+func (r *StdReader) Topic() string {
 	return r.topic
 }
 
 // Partition returns the partition being read
-func (r *Reader) Partition() int32 {
+func (r *StdReader) Partition() int32 {
 	return r.partitionID
 }
 
 // ConsumerGroup returns the consumer group
-func (r *Reader) ConsumerGroup() string {
+func (r *StdReader) ConsumerGroup() string {
 	return r.consumerGroup
 }
 
 // FetchLastCommittedOffset retrieves the last committed offset for this partition
-func (r *Reader) FetchLastCommittedOffset(ctx context.Context) (int64, error) {
+func (r *StdReader) FetchLastCommittedOffset(ctx context.Context) (int64, error) {
 	req := kmsg.NewPtrOffsetFetchRequest()
 	req.Topics = []kmsg.OffsetFetchRequestTopic{{
 		Topic:      r.topic,
@@ -210,7 +210,7 @@ func (r *Reader) FetchLastCommittedOffset(ctx context.Context) (int64, error) {
 }
 
 // FetchPartitionOffset retrieves the offset for a specific position
-func (r *Reader) FetchPartitionOffset(ctx context.Context, position SpecialOffset) (int64, error) {
+func (r *StdReader) FetchPartitionOffset(ctx context.Context, position SpecialOffset) (int64, error) {
 	partitionReq := kmsg.NewListOffsetsRequestTopicPartition()
 	partitionReq.Partition = r.partitionID
 	partitionReq.Timestamp = int64(position)
@@ -258,7 +258,7 @@ func (r *Reader) FetchPartitionOffset(ctx context.Context, position SpecialOffse
 
 // Poll retrieves the next batch of records from Kafka
 // Number of records fetched can be limited by configuring maxPollRecords to a non-zero value.
-func (r *Reader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error) {
+func (r *StdReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error) {
 	start := time.Now()
 	fetches := r.client.PollRecords(ctx, maxPollRecords)
 	r.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
@@ -304,14 +304,14 @@ func (r *Reader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error)
 	return records, nil
 }
 
-func (r *Reader) SetOffsetForConsumption(offset int64) {
+func (r *StdReader) SetOffsetForConsumption(offset int64) {
 	r.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
 		r.topic: {r.partitionID: kgo.NewOffset().At(offset)},
 	})
 }
 
 // Commit commits an offset to the consumer group
-func (r *Reader) Commit(ctx context.Context, offset int64) error {
+func (r *StdReader) Commit(ctx context.Context, offset int64) error {
 	admin := kadm.NewClient(r.client)
 
 	// Commit the last consumed offset.

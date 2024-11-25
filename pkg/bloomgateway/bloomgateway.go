@@ -161,6 +161,43 @@ func (g *Gateway) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), g.serviceMngr)
 }
 
+func (g *Gateway) PrefetchBloomBlocks(_ context.Context, req *logproto.PrefetchBloomBlocksRequest) (*logproto.PrefetchBloomBlocksResponse, error) {
+	refs, err := decodeBlockKeys(req.Blocks)
+	if err != nil {
+		return nil, err
+	}
+
+	bqs, err := g.bloomStore.FetchBlocks(
+		// We don't use the ctx passed to the handler since its canceled when the handler returns
+		context.Background(),
+		refs,
+		bloomshipper.WithFetchAsync(true),
+		bloomshipper.WithIgnoreNotFound(true),
+		bloomshipper.WithCacheGetOptions(
+			bloomshipper.WithSkipHitMissMetrics(true),
+		),
+	)
+	if err != nil {
+		g.metrics.prefetchedBlocks.WithLabelValues(typeError).Add(float64(len(refs)))
+		return nil, err
+	}
+
+	for _, bq := range bqs {
+		if bq == nil {
+			// This is the expected case: the blocks is not yet downloaded and the block querier is nil
+			continue
+		}
+
+		// Close any block querier that were already downloaded
+		if err := bq.Close(); err != nil {
+			level.Warn(g.logger).Log("msg", "failed to close block querier", "err", err)
+		}
+	}
+
+	g.metrics.prefetchedBlocks.WithLabelValues(typeSuccess).Add(float64(len(refs)))
+	return &logproto.PrefetchBloomBlocksResponse{}, err
+}
+
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
 	tenantID, err := tenant.TenantID(ctx)
@@ -204,14 +241,10 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return &logproto.FilterChunkRefResponse{ChunkRefs: req.Refs}, nil
 	}
 
-	blocks := make([]bloomshipper.BlockRef, 0, len(req.Blocks))
-	for _, key := range req.Blocks {
-		block, err := bloomshipper.BlockRefFromKey(key)
-		if err != nil {
-			stats.Status = labelFailure
-			return nil, errors.New("could not parse block key")
-		}
-		blocks = append(blocks, block)
+	blocks, err := decodeBlockKeys(req.Blocks)
+	if err != nil {
+		stats.Status = labelFailure
+		return nil, err
 	}
 
 	// Shortcut if request does not contain blocks
@@ -469,4 +502,16 @@ func filterChunkRefsForSeries(cur *logproto.GroupedChunkRefs, removals v1.ChunkR
 	}
 
 	cur.Refs = cur.Refs[:len(res)]
+}
+
+func decodeBlockKeys(keys []string) ([]bloomshipper.BlockRef, error) {
+	blocks := make([]bloomshipper.BlockRef, 0, len(keys))
+	for _, key := range keys {
+		block, err := bloomshipper.BlockRefFromKey(key)
+		if err != nil {
+			return nil, errors.New("could not parse block key")
+		}
+		blocks = append(blocks, block)
+	}
+	return blocks, nil
 }
