@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -71,6 +73,8 @@ type Push struct {
 	backoff *backoff.Config
 
 	entries entries
+
+	metrics *Metrics
 }
 
 type entry struct {
@@ -108,6 +112,7 @@ func NewPush(
 	useTLS bool,
 	backoffCfg *backoff.Config,
 	logger log.Logger,
+	registrer prometheus.Registerer,
 ) (*Push, error) {
 	client, err := config.NewClientFromConfig(cfg, "pattern-ingester-push", config.WithHTTP2Disabled())
 	if err != nil {
@@ -142,6 +147,7 @@ func NewPush(
 		entries: entries{
 			entries: make([]entry, 0),
 		},
+		metrics: NewMetrics(registrer),
 	}
 
 	go p.run(pushPeriod)
@@ -222,6 +228,10 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 	payload = snappy.Encode(nil, payload)
 
+	p.metrics.streamsPerPush.WithLabelValues(p.tenantID).Observe(float64(len(streams)))
+	p.metrics.entriesPerPush.WithLabelValues(p.tenantID).Observe(float64(len(entries)))
+	p.metrics.servicesTracked.WithLabelValues(p.tenantID).Set(float64(serviceLimit))
+
 	sp.LogKV(
 		"event", "build aggregated metrics payload",
 		"num_service", len(entriesByStream),
@@ -267,7 +277,7 @@ func (p *Push) run(pushPeriod time.Duration) {
 					break
 				}
 
-				if status > 0 && status != 429 && status/100 != 5 {
+				if status > 0 && util.IsRateLimited(status) && !util.IsServerError(status) {
 					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "status", status, "err", err)
 					pushTicker.Reset(pushPeriod)
 					break
@@ -302,6 +312,8 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	defer sp.Finish()
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
+	p.metrics.payloadSize.WithLabelValues(p.tenantID).Observe(float64(len(payload)))
+
 	if err != nil {
 		return -1, fmt.Errorf("failed to create push request: %w", err)
 	}
@@ -320,23 +332,29 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 
 	resp, err = p.httpClient.Do(req)
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			p.metrics.writeTimeout.WithLabelValues(p.tenantID).Inc()
+		}
 		return -1, fmt.Errorf("failed to push payload: %w", err)
 	}
-	status := resp.StatusCode
-	if status/100 != 2 {
+	statusCode := resp.StatusCode
+	if util.IsError(statusCode) {
+		errType := util.ErrorTypeFromHTTPStatus(statusCode)
+
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
 		line := ""
 		if scanner.Scan() {
 			line = scanner.Text()
 		}
-		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
+		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, statusCode, line)
+		p.metrics.pushErrors.WithLabelValues(p.tenantID, errType).Inc()
 	}
 
 	if err := resp.Body.Close(); err != nil {
 		level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
 	}
 
-	return status, err
+	return statusCode, err
 }
 
 func AggregatedMetricEntry(

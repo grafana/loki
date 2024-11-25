@@ -12,7 +12,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 // RedisConfig defines how a RedisCache should be constructed.
@@ -63,15 +63,15 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 	}
 
 	opt := &redis.UniversalOptions{
-		Addrs:         endpoints,
-		MasterName:    cfg.MasterName,
-		Username:      cfg.Username,
-		Password:      cfg.Password.String(),
-		DB:            cfg.DB,
-		PoolSize:      cfg.PoolSize,
-		IdleTimeout:   cfg.IdleTimeout,
-		MaxConnAge:    cfg.MaxConnAge,
-		RouteRandomly: cfg.RouteRandomly,
+		Addrs:           endpoints,
+		MasterName:      cfg.MasterName,
+		Username:        cfg.Username,
+		Password:        cfg.Password.String(),
+		DB:              cfg.DB,
+		PoolSize:        cfg.PoolSize,
+		ConnMaxIdleTime: cfg.IdleTimeout,
+		ConnMaxLifetime: cfg.MaxConnAge,
+		RouteRandomly:   cfg.RouteRandomly,
 	}
 	if cfg.EnableTLS {
 		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}

@@ -1,6 +1,8 @@
 package swift
 
 import (
+	"net/http"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/thanos-io/objstore"
@@ -9,7 +11,7 @@ import (
 )
 
 // NewBucketClient creates a new Swift bucket client
-func NewBucketClient(cfg Config, _ string, logger log.Logger) (objstore.Bucket, error) {
+func NewBucketClient(cfg Config, _ string, logger log.Logger, wrapper func(http.RoundTripper) http.RoundTripper) (objstore.Bucket, error) {
 	bucketConfig := swift.Config{
 		ApplicationCredentialID:     cfg.ApplicationCredentialID,
 		ApplicationCredentialName:   cfg.ApplicationCredentialName,
@@ -55,5 +57,5 @@ func NewBucketClient(cfg Config, _ string, logger log.Logger) (objstore.Bucket, 
 		UseDynamicLargeObjects: false,
 	}
 
-	return swift.NewContainerFromConfig(logger, &bucketConfig, false, nil)
+	return swift.NewContainerFromConfig(logger, &bucketConfig, false, wrapper)
 }

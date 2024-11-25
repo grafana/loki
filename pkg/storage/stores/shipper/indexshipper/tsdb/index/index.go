@@ -62,6 +62,10 @@ const (
 	fingerprintInterval = 1 << 10
 
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
+
+	// reserved; used in multitenant indices to signal the tenant. Eventually compacted away when
+	// single tenant indices are created.
+	TenantLabel = "__loki_tenant__"
 )
 
 type indexWriterStage uint8

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
@@ -97,7 +98,11 @@ func validateSchemaValues(c *Config) []error {
 			errs = append(errs, fmt.Errorf("unrecognized `store` (index) type `%s`, choose one of: %s", cfg.IndexType, strings.Join(types.SupportedIndexTypes, ", ")))
 		}
 
-		if !util.StringsContain(types.TestingStorageTypes, cfg.ObjectType) &&
+		if c.StorageConfig.UseThanosObjstore {
+			if !util.StringsContain(bucket.SupportedBackends, cfg.ObjectType) && !c.StorageConfig.ObjectStore.NamedStores.Exists(cfg.ObjectType) {
+				errs = append(errs, fmt.Errorf("unrecognized `object_store` type `%s`, which also does not match any named_stores. Choose one of: %s. Or choose a named_store", cfg.ObjectType, strings.Join(bucket.SupportedBackends, ", ")))
+			}
+		} else if !util.StringsContain(types.TestingStorageTypes, cfg.ObjectType) &&
 			!util.StringsContain(types.SupportedStorageTypes, cfg.ObjectType) &&
 			!util.StringsContain(types.DeprecatedStorageTypes, cfg.ObjectType) {
 			if !c.StorageConfig.NamedStores.Exists(cfg.ObjectType) {
