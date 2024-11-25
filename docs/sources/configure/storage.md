@@ -259,6 +259,8 @@ schema_config:
 
 `service_account` should contain JSON from either a GCP Console client_credentials.json file or a GCP service account key. If this value is blank, most services will fall back to GCP's Application Default Credentials strategy. See [How Application Default Credentials works](https://cloud.google.com/docs/authentication/application-default-credentials) for more information about ADC.
 
+The [pre-defined `storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) (or a custom role modeled after it) contains sufficient permissions for Loki to operate.
+
 {{< admonition type="note" >}}
 NOTE: GCP recommends [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation) instead of a service account key.
 {{< /admonition >}}
