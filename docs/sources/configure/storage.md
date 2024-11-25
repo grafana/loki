@@ -235,8 +235,8 @@ For more information, see the [retention configuration](https://grafana.com/docs
 ```yaml
 storage_config:
   tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
+    active_index_directory: var/loki/index
+    cache_location: var/loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
   gcs:
       bucket_name: <bucket>
@@ -257,8 +257,8 @@ schema_config:
 ```yaml
 storage_config:
    tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
+    active_index_directory: var/loki/index
+    cache_location: var/loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
   aws:
     s3: s3://<access_key>:<uri-encoded-secret-access-key>@<region>
@@ -373,11 +373,11 @@ storage_config:
     # If `connection_string` is set, the values of `account_name` and `endpoint_suffix` values will not be used. Use this method over `account_key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.
     connection_string: <connection-string>
   tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
+    active_index_directory: var/loki/index
+    cache_location: var/loki/index_cache
     cache_ttl: 24h
   filesystem:
-    directory: /loki/chunks
+    directory: var/loki/chunks
 ```
 
 #### Using a service principal
@@ -405,11 +405,11 @@ storage_config:
     container_name: <container-name>
     request_timeout: 0
   tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
+    active_index_directory: var/loki/index
+    cache_location: var/loki/index_cache
     cache_ttl: 24h
   filesystem:
-    directory: /loki/chunks
+    directory: var/loki/chunks
 ```
 
 ### IBM Deployment (COS Single Store)
@@ -427,8 +427,8 @@ schema_config:
 
 storage_config:
   tsdb_shipper:
-   active_index_directory: /loki/index
-   cache_location: /loki/index_cache
+   active_index_directory: var/loki/index
+   cache_location: var/loki/index_cache
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -482,8 +482,8 @@ storage_config:
     s3: http<s>://<username>:<secret>@<fqdn>:<port>
     s3forcepathstyle: true
   tsdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/index_cache
+    active_index_directory: var/loki/index
+    cache_location: var/loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
 
 schema_config:
