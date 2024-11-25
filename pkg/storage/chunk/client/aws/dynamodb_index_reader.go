@@ -80,8 +80,7 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 
 	var readerGroup errgroup.Group
 	// Start a goroutine for each processor
-	for i, processor := range processors {
-		segment, processor := i, processor // https://golang.org/doc/faq#closures_and_goroutines
+	for segment, processor := range processors {
 		readerGroup.Go(func() error {
 			input := &dynamodb.ScanInput{
 				TableName:              aws.String(tableName),

@@ -280,10 +280,13 @@ type CopyObjectArgs struct {
 	IfUnmodifiedSince string
 	TrafficLimit      int64
 	CannedAcl         string
+	TaggingDirective  string
 }
 
 type MultiCopyObjectArgs struct {
 	StorageClass string
+	ObjectTagging string
+	TaggingDirective string
 }
 
 type CallbackResult struct {
@@ -456,6 +459,8 @@ type InitiateMultipartUploadArgs struct {
 	ContentDisposition string
 	Expires            string
 	StorageClass       string
+	ObjectTagging      string
+	TaggingDirective   string
 }
 
 // InitiateMultipartUploadResult defines the result structure to initiate a multipart upload.

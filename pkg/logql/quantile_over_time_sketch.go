@@ -64,6 +64,10 @@ func (q ProbabilisticQuantileVector) QuantileSketchVec() ProbabilisticQuantileVe
 	return q
 }
 
+func (ProbabilisticQuantileVector) CountMinSketchVec() CountMinSketchVector {
+	return CountMinSketchVector{}
+}
+
 func (q ProbabilisticQuantileVector) ToProto() *logproto.QuantileSketchVector {
 	samples := make([]*logproto.QuantileSketchSample, len(q))
 	for i, sample := range q {
@@ -265,8 +269,8 @@ func (r *quantileSketchBatchRangeVectorIterator) agg(samples []promql.FPoint) sk
 	return s
 }
 
-// MergeQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
-func MergeQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
+// JoinQuantileSketchVector joins the results from stepEvaluator into a ProbabilisticQuantileMatrix.
+func JoinQuantileSketchVector(next bool, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()

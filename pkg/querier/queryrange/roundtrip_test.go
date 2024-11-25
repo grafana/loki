@@ -360,7 +360,7 @@ func TestInstantQueryTripperwareResultCaching(t *testing.T) {
 	testLocal.CacheResults = false
 	testLocal.CacheIndexStatsResults = false
 	testLocal.CacheInstantMetricResults = false
-	var l = fakeLimits{
+	l := fakeLimits{
 		maxQueryParallelism:     1,
 		tsdbMaxQueryParallelism: 1,
 		maxQueryBytesRead:       1000,
@@ -1038,12 +1038,11 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	})
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)"), err)
 	require.False(t, called)
 }
 
 func TestTripperware_RequiredLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, test := range []struct {
@@ -1095,7 +1094,6 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 }
 
 func TestTripperware_RequiredNumberLabels(t *testing.T) {
-
 	const noErr = ""
 
 	for _, tc := range []struct {
@@ -1215,7 +1213,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "range_query_prom",
-			path:       "/prom/query",
+			path:       "/api/prom/query",
 			expectedOp: QueryRangeOp,
 		},
 		{
@@ -1230,7 +1228,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "series_query_prom",
-			path:       "/prom/series",
+			path:       "/api/prom/series",
 			expectedOp: SeriesOp,
 		},
 		{
@@ -1240,7 +1238,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/prom/labels",
+			path:       "/api/prom/labels",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1250,7 +1248,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/prom/label",
+			path:       "/api/prom/label",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1260,8 +1258,18 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "label_values_query_prom",
-			path:       "/prom/label/__name__/values",
+			path:       "/api/prom/label/__name__/values",
 			expectedOp: LabelNamesOp,
+		},
+		{
+			name:       "detected_fields",
+			path:       "/loki/api/v1/detected_fields",
+			expectedOp: DetectedFieldsOp,
+		},
+		{
+			name:       "detected_fields_values",
+			path:       "/loki/api/v1/detected_field/foo/values",
+			expectedOp: DetectedFieldsOp,
 		},
 	}
 
@@ -1523,8 +1531,13 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 	return valid.DefaultTSDBMaxBytesPerShard
 }
+
 func (f fakeLimits) TSDBShardingStrategy(string) string {
 	return logql.PowerOfTwoVersion.String()
+}
+
+func (f fakeLimits) ShardAggregations(string) []string {
+	return nil
 }
 
 type ingesterQueryOpts struct {

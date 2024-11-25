@@ -1771,7 +1771,6 @@ func Test_GetSeries(t *testing.T) {
 			[]logproto.SeriesIdentifier{},
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.req.Selector != "" {
 				tt.req.Plan = &plan.QueryPlan{

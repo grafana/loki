@@ -592,20 +592,6 @@ func (b *outlierDetectionBalancer) Target() string {
 	return b.cc.Target()
 }
 
-func max(x, y time.Duration) time.Duration {
-	if x < y {
-		return y
-	}
-	return x
-}
-
-func min(x, y time.Duration) time.Duration {
-	if x < y {
-		return x
-	}
-	return y
-}
-
 // handleSubConnUpdate stores the recent state and forward the update
 // if the SubConn is not ejected.
 func (b *outlierDetectionBalancer) handleSubConnUpdate(u *scUpdate) {
@@ -671,7 +657,7 @@ func (b *outlierDetectionBalancer) handleChildStateUpdate(u balancer.State) {
 func (b *outlierDetectionBalancer) handleLBConfigUpdate(u lbCfgUpdate) {
 	lbCfg := u.lbCfg
 	noopCfg := lbCfg.SuccessRateEjection == nil && lbCfg.FailurePercentageEjection == nil
-	// If the child has sent it's first update and this config flips the noop
+	// If the child has sent its first update and this config flips the noop
 	// bit compared to the most recent picker update sent upward, then a new
 	// picker with this updated bit needs to be forwarded upward. If a child
 	// update was received during the suppression of child updates within

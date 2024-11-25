@@ -32,6 +32,7 @@ const (
 	EditionProto2      Edition = 998
 	EditionProto3      Edition = 999
 	Edition2023        Edition = 1000
+	Edition2024        Edition = 1001
 	EditionUnsupported Edition = 100000
 )
 
@@ -77,28 +78,42 @@ type (
 		Locations SourceLocations
 	}
 
+	// EditionFeatures is a frequently-instantiated struct, so please take care
+	// to minimize padding when adding new fields to this struct (add them in
+	// the right place/order).
 	EditionFeatures struct {
+		// StripEnumPrefix determines if the plugin generates enum value
+		// constants as-is, with their prefix stripped, or both variants.
+		StripEnumPrefix int
+
 		// IsFieldPresence is true if field_presence is EXPLICIT
 		// https://protobuf.dev/editions/features/#field_presence
 		IsFieldPresence bool
+
 		// IsFieldPresence is true if field_presence is LEGACY_REQUIRED
 		// https://protobuf.dev/editions/features/#field_presence
 		IsLegacyRequired bool
+
 		// IsOpenEnum is true if enum_type is OPEN
 		// https://protobuf.dev/editions/features/#enum_type
 		IsOpenEnum bool
+
 		// IsPacked is true if repeated_field_encoding is PACKED
 		// https://protobuf.dev/editions/features/#repeated_field_encoding
 		IsPacked bool
+
 		// IsUTF8Validated is true if utf_validation is VERIFY
 		// https://protobuf.dev/editions/features/#utf8_validation
 		IsUTF8Validated bool
+
 		// IsDelimitedEncoded is true if message_encoding is DELIMITED
 		// https://protobuf.dev/editions/features/#message_encoding
 		IsDelimitedEncoded bool
+
 		// IsJSONCompliant is true if json_format is ALLOW
 		// https://protobuf.dev/editions/features/#json_format
 		IsJSONCompliant bool
+
 		// GenerateLegacyUnmarshalJSON determines if the plugin generates the
 		// UnmarshalJSON([]byte) error method for enums.
 		GenerateLegacyUnmarshalJSON bool
@@ -258,6 +273,7 @@ type (
 		StringName       stringName
 		IsProto3Optional bool // promoted from google.protobuf.FieldDescriptorProto
 		IsWeak           bool // promoted from google.protobuf.FieldOptions
+		IsLazy           bool // promoted from google.protobuf.FieldOptions
 		Default          defaultValue
 		ContainingOneof  protoreflect.OneofDescriptor // must be consistent with Message.Oneofs.Fields
 		Enum             protoreflect.EnumDescriptor
@@ -351,6 +367,7 @@ func (fd *Field) IsPacked() bool {
 }
 func (fd *Field) IsExtension() bool { return false }
 func (fd *Field) IsWeak() bool      { return fd.L1.IsWeak }
+func (fd *Field) IsLazy() bool      { return fd.L1.IsLazy }
 func (fd *Field) IsList() bool      { return fd.Cardinality() == protoreflect.Repeated && !fd.IsMap() }
 func (fd *Field) IsMap() bool       { return fd.Message() != nil && fd.Message().IsMapEntry() }
 func (fd *Field) MapKey() protoreflect.FieldDescriptor {
@@ -425,6 +442,7 @@ type (
 		Extendee        protoreflect.MessageDescriptor
 		Cardinality     protoreflect.Cardinality
 		Kind            protoreflect.Kind
+		IsLazy          bool
 		EditionFeatures EditionFeatures
 	}
 	ExtensionL2 struct {
@@ -465,6 +483,7 @@ func (xd *Extension) IsPacked() bool {
 }
 func (xd *Extension) IsExtension() bool                      { return true }
 func (xd *Extension) IsWeak() bool                           { return false }
+func (xd *Extension) IsLazy() bool                           { return xd.L1.IsLazy }
 func (xd *Extension) IsList() bool                           { return xd.Cardinality() == protoreflect.Repeated }
 func (xd *Extension) IsMap() bool                            { return false }
 func (xd *Extension) MapKey() protoreflect.FieldDescriptor   { return nil }

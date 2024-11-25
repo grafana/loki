@@ -13,6 +13,24 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.20.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.3.0
+
+## 6.19.0-weekly.227
+
+- [ENHANCEMENT] Expose Topology Spread Constraints in Helm chart templates and default values.
+
+## 6.19.0
+
+## 6.18.0
+
+- [CHANGE] Added automated weekly releases, which created this release.
+
+## 6.17.1
+
+- [BUGFIX] Added missing `loki.storage.azure.chunkDelimiter` parameter to Helm chart.
+
 ## 6.17.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.2.0
@@ -24,6 +42,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.15.0
 
 - [ENHANCEMENT] Allow setting annotations for memberlist and query-scheduler-discovery services
+- [ENHANCEMENT] Allow to customize `client_max_body_size` when using Loki Gateway. #12924
 
 ## 6.14.1
 

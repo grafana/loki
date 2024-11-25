@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -16,11 +17,8 @@ import (
 // characterized by small page sizes
 func smallBlockOpts(v Version, enc compression.Codec) BlockOptions {
 	return BlockOptions{
-		Schema: Schema{
-			version:  v,
-			encoding: enc,
-		},
-		SeriesPageSize: 100,
+		Schema:         NewSchema(v, enc),
+		SeriesPageSize: 4 << 10,
 		BloomPageSize:  2 << 10,
 		BlockSize:      0, // unlimited
 	}
@@ -55,11 +53,11 @@ func TestV3Roundtrip(t *testing.T) {
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
-	CompareIterators[SeriesWithBlooms, *SeriesWithBlooms](
+	CompareIterators(
 		t,
 		func(t *testing.T, a SeriesWithBlooms, b *SeriesWithBlooms) {
-			require.Equal(t, a.Series.Series.Fingerprint, b.Series.Series.Fingerprint)
-			require.ElementsMatch(t, a.Series.Series.Chunks, b.Series.Series.Chunks)
+			require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
+			require.ElementsMatch(t, a.Series.Chunks, b.Series.Chunks)
 			bloomsA, err := v2.Collect(a.Blooms)
 			require.NoError(t, err)
 			bloomsB, err := v2.Collect(b.Blooms)
@@ -80,4 +78,104 @@ func TestV3Roundtrip(t *testing.T) {
 		v2.NewSliceIter(unmodifiedData),
 		querier,
 	)
+}
+
+func seriesWithBlooms(nSeries int, fromFp, throughFp model.Fingerprint) []SeriesWithBlooms {
+	series, _ := MkBasicSeriesWithBlooms(nSeries, fromFp, throughFp, 0, 10000)
+	return series
+}
+
+func seriesWithoutBlooms(nSeries int, fromFp, throughFp model.Fingerprint) []SeriesWithBlooms {
+	series := seriesWithBlooms(nSeries, fromFp, throughFp)
+
+	// remove blooms from series
+	for i := range series {
+		series[i].Blooms = v2.NewEmptyIter[*Bloom]()
+	}
+
+	return series
+}
+func TestFullBlock(t *testing.T) {
+	opts := smallBlockOpts(V3, compression.None)
+	minBlockSize := opts.SeriesPageSize // 1 index page, 4KB
+	const maxEmptySeriesPerBlock = 47
+	for _, tc := range []struct {
+		name         string
+		maxBlockSize uint64
+		series       []SeriesWithBlooms
+		expected     []SeriesWithBlooms
+	}{
+		{
+			name:         "only series without blooms",
+			maxBlockSize: minBlockSize,
+			// +1 so we test adding the last series that fills the block
+			series:   seriesWithoutBlooms(maxEmptySeriesPerBlock+1, 0, 0xffff),
+			expected: seriesWithoutBlooms(maxEmptySeriesPerBlock+1, 0, 0xffff),
+		},
+		{
+			name:         "series without blooms and one with blooms",
+			maxBlockSize: minBlockSize,
+			series: append(
+				seriesWithoutBlooms(maxEmptySeriesPerBlock, 0, 0x7fff),
+				seriesWithBlooms(50, 0x8000, 0xffff)...,
+			),
+			expected: append(
+				seriesWithoutBlooms(maxEmptySeriesPerBlock, 0, 0x7fff),
+				seriesWithBlooms(1, 0x8000, 0x8001)...,
+			),
+		},
+		{
+			name:         "only one series with bloom",
+			maxBlockSize: minBlockSize,
+			series:       seriesWithBlooms(10, 0, 0xffff),
+			expected:     seriesWithBlooms(1, 0, 1),
+		},
+		{
+			name:         "one huge series with bloom and then series without",
+			maxBlockSize: minBlockSize,
+			series: append(
+				seriesWithBlooms(1, 0, 1),
+				seriesWithoutBlooms(100, 1, 0xffff)...,
+			),
+			expected: seriesWithBlooms(1, 0, 1),
+		},
+		{
+			name:         "big block",
+			maxBlockSize: 1 << 20, // 1MB
+			series:       seriesWithBlooms(100, 0, 0xffff),
+			expected:     seriesWithBlooms(100, 0, 0xffff),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			indexBuf := bytes.NewBuffer(nil)
+			bloomsBuf := bytes.NewBuffer(nil)
+			writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+			reader := NewByteReader(indexBuf, bloomsBuf)
+			opts.BlockSize = tc.maxBlockSize
+
+			b, err := NewBlockBuilderV3(opts, writer)
+			require.NoError(t, err)
+
+			_, err = b.BuildFrom(v2.NewSliceIter(tc.series))
+			require.NoError(t, err)
+
+			block := NewBlock(reader, NewMetrics(nil))
+			querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
+
+			CompareIterators(
+				t,
+				func(t *testing.T, a SeriesWithBlooms, b *SeriesWithBlooms) {
+					require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
+					require.ElementsMatch(t, a.Series.Chunks, b.Series.Chunks)
+					bloomsA, err := v2.Collect(a.Blooms)
+					require.NoError(t, err)
+					bloomsB, err := v2.Collect(b.Blooms)
+					require.NoError(t, err)
+					require.Equal(t, len(bloomsB), len(bloomsA))
+				},
+				v2.NewSliceIter(tc.expected),
+				querier,
+			)
+		})
+	}
 }

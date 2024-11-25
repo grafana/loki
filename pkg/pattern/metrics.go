@@ -9,6 +9,7 @@ type ingesterMetrics struct {
 	flushQueueLength       prometheus.Gauge
 	patternsDiscardedTotal *prometheus.CounterVec
 	patternsDetectedTotal  *prometheus.CounterVec
+	linesSkipped           *prometheus.CounterVec
 	tokensPerLine          *prometheus.HistogramVec
 	statePerLine           *prometheus.HistogramVec
 	samples                *prometheus.CounterVec
@@ -34,6 +35,12 @@ func newIngesterMetrics(r prometheus.Registerer, metricsNamespace string) *inges
 			Name:      "patterns_detected_total",
 			Help:      "The total number of patterns detected from incoming log lines.",
 		}, []string{"tenant", "format"}),
+		linesSkipped: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Subsystem: "pattern_ingester",
+			Name:      "patterns_dropped_total",
+			Help:      "The total number of log lines skipped for pattern recognition.",
+		}, []string{"tenant", "reason"}),
 		tokensPerLine: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsNamespace,
 			Subsystem: "pattern_ingester",

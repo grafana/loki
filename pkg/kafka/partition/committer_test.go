@@ -14,7 +14,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
 )
 
@@ -24,7 +24,7 @@ func TestPartitionCommitter(t *testing.T) {
 	topicName := "test-topic"
 	_, kafkaCfg := testkafka.CreateCluster(t, numPartitions, topicName)
 
-	client, err := kafka.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
+	client, err := client.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
 	require.NoError(t, err)
 
 	// Create a Kafka admin client
@@ -36,7 +36,15 @@ func TestPartitionCommitter(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	partitionID := int32(1)
 	consumerGroup := "test-consumer-group"
-	committer := newCommitter(kafkaCfg, admClient, partitionID, consumerGroup, logger, reg)
+	reader := newKafkaReader(
+		client,
+		kafkaCfg.Topic,
+		partitionID,
+		consumerGroup,
+		logger,
+		reg,
+	)
+	committer := newCommitter(reader, kafkaCfg.ConsumerGroupOffsetCommitInterval, logger, reg)
 
 	// Test committing an offset
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

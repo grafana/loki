@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make release-workflows` after changing this
-BUILD_IMAGE_VERSION ?= 0.34.0
+BUILD_IMAGE_VERSION ?= 0.34.1
 GO_VERSION := 1.23.1
 
 # Docker image info
@@ -339,7 +339,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --timeout 15m
+	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 endif
 
@@ -458,13 +458,17 @@ endif
 LOKI_DOCKER_DRIVER ?= "grafana/loki-docker-driver"
 PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
+PLUGIN_BUILD_ARGS ?=
+ifeq ("$(PLUGIN_ARCH)", "-arm64")
+	PLUGIN_BUILD_ARGS = --build-arg GOARCH=arm64
+endif
 
 # build-rootfs
 # builds the plugin rootfs
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build $(PLUGIN_BUILD_ARGS) --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -481,7 +485,7 @@ docker-driver: docker-driver-clean ## build the docker-driver executable
 	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
 clients/cmd/docker-driver/docker-driver:
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 GOARCH=$(GOARCH) go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
 ifndef DOCKER_PASSWORD
@@ -664,7 +668,7 @@ else
 endif
 
 build-image: ensure-buildx-builder
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \

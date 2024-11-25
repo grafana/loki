@@ -38,6 +38,12 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- with .Values.adminApi.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
       {{- if .Values.adminApi.priorityClassName }}
       priorityClassName: {{ .Values.adminApi.priorityClassName }}
@@ -121,6 +127,10 @@ spec:
             {{- if .Values.adminApi.env }}
             {{ toYaml .Values.adminApi.env | nindent 12 }}
             {{- end }}
+          {{- with .Values.adminApi.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- with .Values.adminApi.extraContainers }}
         {{ toYaml . | nindent 8 }}
         {{- end }}

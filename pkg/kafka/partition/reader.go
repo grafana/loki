@@ -9,35 +9,25 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/multierror"
-	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/plugin/kprom"
+	"github.com/twmb/franz-go/pkg/kmsg"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
-// Reader is responsible for reading data from a specific Kafka partition
-// and passing it to the consumer for processing. It is a core component of the
-// Loki ingester's Kafka-based ingestion pipeline.
-type Reader struct {
-	services.Service
+type SpecialOffset int
 
-	kafkaCfg            kafka.Config
-	partitionID         int32
-	consumerGroup       string
-	consumerFactory     ConsumerFactory
-	committer           *partitionCommitter
-	lastProcessedOffset int64
-
-	client  *kgo.Client
-	logger  log.Logger
-	metrics readerMetrics
-	reg     prometheus.Registerer
-}
+const (
+	KafkaStartOffset SpecialOffset = -2
+	KafkaEndOffset   SpecialOffset = -1
+)
 
 type Record struct {
 	// Context holds the tracing (and potentially other) info, that the record was enriched with on fetch from Kafka.
@@ -47,123 +37,258 @@ type Record struct {
 	Offset   int64
 }
 
-type ConsumerFactory func(committer Committer) (Consumer, error)
-
-type Consumer interface {
-	Start(ctx context.Context, recordsChan <-chan []Record) func()
+type Reader interface {
+	Topic() string
+	Partition() int32
+	ConsumerGroup() string
+	FetchLastCommittedOffset(ctx context.Context) (int64, error)
+	FetchPartitionOffset(ctx context.Context, position SpecialOffset) (int64, error)
+	Poll(ctx context.Context, maxPollRecords int) ([]Record, error)
+	Commit(ctx context.Context, offset int64) error
+	// Set the target offset for consumption. reads will begin from here.
+	SetOffsetForConsumption(offset int64)
 }
 
-// NewReader creates and initializes a new PartitionReader.
-// It sets up the basic service and initializes the reader with the provided configuration.
-func NewReader(
-	kafkaCfg kafka.Config,
+// readerMetrics contains metrics specific to Kafka reading operations
+type readerMetrics struct {
+	recordsPerFetch     prometheus.Histogram
+	fetchesErrors       prometheus.Counter
+	fetchesTotal        prometheus.Counter
+	fetchWaitDuration   prometheus.Histogram
+	receiveDelay        prometheus.Histogram
+	lastCommittedOffset prometheus.Gauge
+}
+
+func newReaderMetrics(r prometheus.Registerer) *readerMetrics {
+	return &readerMetrics{
+		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
+			Help:                        "How long the reader spent waiting for a batch of records from Kafka.",
+			NativeHistogramBucketFactor: 1.1,
+		}),
+		recordsPerFetch: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "loki_kafka_reader_records_per_fetch",
+			Help:    "The number of records received in a single fetch operation.",
+			Buckets: prometheus.ExponentialBuckets(1, 2, 15),
+		}),
+		fetchesErrors: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_kafka_reader_fetch_errors_total",
+			Help: "The number of fetch errors encountered.",
+		}),
+		fetchesTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_kafka_reader_fetches_total",
+			Help: "Total number of Kafka fetches performed.",
+		}),
+		receiveDelay: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_kafka_reader_receive_delay_seconds",
+			Help:                            "Delay between producing a record and receiving it.",
+			NativeHistogramZeroThreshold:    math.Pow(2, -10),
+			NativeHistogramBucketFactor:     1.2,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
+		}),
+	}
+}
+
+// KafkaReader provides low-level access to Kafka partition reading operations
+type KafkaReader struct {
+	client        *kgo.Client
+	topic         string
+	partitionID   int32
+	consumerGroup string
+	metrics       *readerMetrics
+	logger        log.Logger
+}
+
+func NewKafkaReader(
+	cfg kafka.Config,
 	partitionID int32,
 	instanceID string,
-	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
-) (*Reader, error) {
-	r := &Reader{
-		kafkaCfg:            kafkaCfg,
-		partitionID:         partitionID,
-		consumerGroup:       kafkaCfg.GetConsumerGroup(instanceID, partitionID),
-		logger:              logger,
-		metrics:             newReaderMetrics(reg),
-		reg:                 reg,
-		lastProcessedOffset: -1,
-		consumerFactory:     consumerFactory,
-	}
-	r.Service = services.NewBasicService(r.start, r.run, nil)
-	return r, nil
-}
-
-// start initializes the Kafka client and committer for the PartitionReader.
-// This method is called when the PartitionReader service starts.
-func (p *Reader) start(_ context.Context) error {
-	var err error
-	p.client, err = kafka.NewReaderClient(p.kafkaCfg, p.metrics.kprom, p.logger,
-		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{
-			p.kafkaCfg.Topic: {p.partitionID: kgo.NewOffset().AtStart()},
-		}),
+) (*KafkaReader, error) {
+	// Create a new Kafka client for this reader
+	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
+	c, err := client.NewReaderClient(
+		cfg,
+		clientMetrics,
+		log.With(logger, "component", "kafka-client"),
 	)
 	if err != nil {
-		return errors.Wrap(err, "creating kafka reader client")
-	}
-	p.committer = newCommitter(p.kafkaCfg, kadm.NewClient(p.client), p.partitionID, p.consumerGroup, p.logger, p.reg)
-	// todo: attempt to ensure max lag timestamp on startup.
-	return nil
-}
-
-// run is the main loop of the PartitionReader. It continuously fetches and processes
-// data from Kafka, and send it to the consumer.
-func (p *Reader) run(ctx context.Context) error {
-	level.Info(p.logger).Log("msg", "starting partition reader", "partition", p.partitionID, "consumer_group", p.consumerGroup)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	consumer, err := p.consumerFactory(p.committer)
-	if err != nil {
-		return errors.Wrap(err, "creating consumer")
+		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
 
-	recordsChan := p.startFetchLoop(ctx)
-	wait := consumer.Start(ctx, recordsChan)
-
-	wait()
-	p.committer.Stop()
-	return nil
+	// Create the reader
+	return newKafkaReader(
+		c,
+		cfg.Topic,
+		partitionID,
+		cfg.GetConsumerGroup(instanceID, partitionID),
+		logger,
+		reg,
+	), nil
 }
 
-func (p *Reader) startFetchLoop(ctx context.Context) <-chan []Record {
-	records := make(chan []Record)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				records <- p.poll(ctx)
-			}
-		}
-	}()
-	return records
+// newKafkaReader creates a new KafkaReader instance
+func newKafkaReader(
+	client *kgo.Client,
+	topic string,
+	partitionID int32,
+	consumerGroup string,
+	logger log.Logger,
+	reg prometheus.Registerer,
+) *KafkaReader {
+	return &KafkaReader{
+		client:        client,
+		topic:         topic,
+		partitionID:   partitionID,
+		consumerGroup: consumerGroup,
+		metrics:       newReaderMetrics(reg),
+		logger:        logger,
+	}
 }
 
-// logFetchErrors logs any errors encountered during the fetch operation.
-func (p *Reader) logFetchErrors(fetches kgo.Fetches) {
-	mErr := multierror.New()
+// Topic returns the topic being read
+func (r *KafkaReader) Topic() string {
+	return r.topic
+}
+
+// Partition returns the partition being read
+func (r *KafkaReader) Partition() int32 {
+	return r.partitionID
+}
+
+// ConsumerGroup returns the consumer group
+func (r *KafkaReader) ConsumerGroup() string {
+	return r.consumerGroup
+}
+
+// FetchLastCommittedOffset retrieves the last committed offset for this partition
+func (r *KafkaReader) FetchLastCommittedOffset(ctx context.Context) (int64, error) {
+	req := kmsg.NewPtrOffsetFetchRequest()
+	req.Topics = []kmsg.OffsetFetchRequestTopic{{
+		Topic:      r.topic,
+		Partitions: []int32{r.partitionID},
+	}}
+	req.Group = r.consumerGroup
+
+	resps := r.client.RequestSharded(ctx, req)
+
+	// Since we issued a request for only 1 partition, we expect exactly 1 response.
+	if expected, actual := 1, len(resps); actual != expected {
+		return 0, fmt.Errorf("unexpected number of responses: %d", len(resps))
+	}
+
+	// Ensure no error occurred.
+	res := resps[0]
+	if res.Err != nil {
+		return 0, res.Err
+	}
+
+	// Parse the response.
+	fetchRes, ok := res.Resp.(*kmsg.OffsetFetchResponse)
+	if !ok {
+		return 0, errors.New("unexpected response type")
+	}
+
+	if len(fetchRes.Groups) != 1 ||
+		len(fetchRes.Groups[0].Topics) != 1 ||
+		len(fetchRes.Groups[0].Topics[0].Partitions) != 1 {
+		level.Debug(r.logger).Log(
+			"msg", "malformed response, setting to start offset",
+		)
+		return int64(KafkaStartOffset), nil
+	}
+
+	partition := fetchRes.Groups[0].Topics[0].Partitions[0]
+	if err := kerr.ErrorForCode(partition.ErrorCode); err != nil {
+		return 0, err
+	}
+
+	return partition.Offset, nil
+}
+
+// FetchPartitionOffset retrieves the offset for a specific position
+func (r *KafkaReader) FetchPartitionOffset(ctx context.Context, position SpecialOffset) (int64, error) {
+	partitionReq := kmsg.NewListOffsetsRequestTopicPartition()
+	partitionReq.Partition = r.partitionID
+	partitionReq.Timestamp = int64(position)
+
+	topicReq := kmsg.NewListOffsetsRequestTopic()
+	topicReq.Topic = r.topic
+	topicReq.Partitions = []kmsg.ListOffsetsRequestTopicPartition{partitionReq}
+
+	req := kmsg.NewPtrListOffsetsRequest()
+	req.IsolationLevel = 0 // 0 means READ_UNCOMMITTED.
+	req.Topics = []kmsg.ListOffsetsRequestTopic{topicReq}
+
+	// Even if we share the same client, other in-flight requests are not canceled once this context is canceled
+	// (or its deadline is exceeded). We've verified it with a unit test.
+	resps := r.client.RequestSharded(ctx, req)
+
+	// Since we issued a request for only 1 partition, we expect exactly 1 response.
+	if len(resps) != 1 {
+		return 0, fmt.Errorf("unexpected number of responses: %d", len(resps))
+	}
+
+	// Ensure no error occurred.
+	res := resps[0]
+	if res.Err != nil {
+		return 0, res.Err
+	}
+
+	listRes, ok := res.Resp.(*kmsg.ListOffsetsResponse)
+	if !ok {
+		return 0, errors.New("unexpected response type")
+	}
+
+	if len(listRes.Topics) != 1 ||
+		len(listRes.Topics[0].Partitions) != 1 {
+		return 0, errors.New("malformed response")
+	}
+
+	partition := listRes.Topics[0].Partitions[0]
+	if err := kerr.ErrorForCode(partition.ErrorCode); err != nil {
+		return 0, err
+	}
+
+	return partition.Offset, nil
+}
+
+// Poll retrieves the next batch of records from Kafka
+// Number of records fetched can be limited by configuring maxPollRecords to a non-zero value.
+func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error) {
+	start := time.Now()
+	fetches := r.client.PollRecords(ctx, maxPollRecords)
+	r.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
+
+	// Record metrics
+	r.metrics.fetchesTotal.Add(float64(len(fetches)))
+	var numRecords int
+	fetches.EachRecord(func(record *kgo.Record) {
+		numRecords++
+		r.metrics.receiveDelay.Observe(time.Since(record.Timestamp).Seconds())
+	})
+	r.metrics.recordsPerFetch.Observe(float64(numRecords))
+
+	// Handle errors
+	var errs multierror.MultiError
 	fetches.EachError(func(topic string, partition int32, err error) {
 		if errors.Is(err, context.Canceled) {
 			return
 		}
-
-		// kgo advises to "restart" the kafka client if the returned error is a kerr.Error.
-		// Recreating the client would cause duplicate metrics registration, so we don't do it for now.
-		mErr.Add(fmt.Errorf("topic %q, partition %d: %w", topic, partition, err))
+		errs.Add(fmt.Errorf("topic %q, partition %d: %w", topic, partition, err))
 	})
-	if len(mErr) == 0 {
-		return
+	if len(errs) > 0 {
+		r.metrics.fetchesErrors.Add(float64(len(errs)))
+		return nil, fmt.Errorf("fetch errors: %v", errs.Err())
 	}
-	p.metrics.fetchesErrors.Add(float64(len(mErr)))
-	level.Error(p.logger).Log("msg", "encountered error while fetching", "err", mErr.Err())
-}
 
-// pollFetches retrieves the next batch of records from Kafka and measures the fetch duration.
-func (p *Reader) poll(ctx context.Context) []Record {
-	defer func(start time.Time) {
-		p.metrics.fetchWaitDuration.Observe(time.Since(start).Seconds())
-	}(time.Now())
-	fetches := p.client.PollFetches(ctx)
-	p.recordFetchesMetrics(fetches)
-	p.logFetchErrors(fetches)
-	fetches = filterOutErrFetches(fetches)
-	if fetches.NumRecords() == 0 {
-		return nil
-	}
+	// Build records slice
 	records := make([]Record, 0, fetches.NumRecords())
 	fetches.EachRecord(func(rec *kgo.Record) {
-		if rec.Partition != p.partitionID {
-			level.Error(p.logger).Log("msg", "wrong partition record received", "partition", rec.Partition, "expected_partition", p.partitionID)
+		if rec.Partition != r.partitionID {
 			return
 		}
 		records = append(records, Record{
@@ -175,100 +300,32 @@ func (p *Reader) poll(ctx context.Context) []Record {
 			Offset:   rec.Offset,
 		})
 	})
-	p.lastProcessedOffset = records[len(records)-1].Offset
-	return records
+
+	return records, nil
 }
 
-// recordFetchesMetrics updates various metrics related to the fetch operation.
-func (p *Reader) recordFetchesMetrics(fetches kgo.Fetches) {
-	var (
-		now        = time.Now()
-		numRecords = 0
-	)
-	fetches.EachRecord(func(record *kgo.Record) {
-		numRecords++
-		delay := now.Sub(record.Timestamp).Seconds()
-		if p.lastProcessedOffset == -1 {
-			p.metrics.receiveDelayWhenStarting.Observe(delay)
-		} else {
-			p.metrics.receiveDelayWhenRunning.Observe(delay)
-		}
+func (r *KafkaReader) SetOffsetForConsumption(offset int64) {
+	r.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
+		r.topic: {r.partitionID: kgo.NewOffset().At(offset)},
 	})
-
-	p.metrics.fetchesTotal.Add(float64(len(fetches)))
-	p.metrics.recordsPerFetch.Observe(float64(numRecords))
 }
 
-// filterOutErrFetches removes any fetches that resulted in errors from the provided slice.
-func filterOutErrFetches(fetches kgo.Fetches) kgo.Fetches {
-	filtered := make(kgo.Fetches, 0, len(fetches))
-	for i, fetch := range fetches {
-		if !isErrFetch(fetch) {
-			filtered = append(filtered, fetches[i])
-		}
+// Commit commits an offset to the consumer group
+func (r *KafkaReader) Commit(ctx context.Context, offset int64) error {
+	admin := kadm.NewClient(r.client)
+
+	// Commit the last consumed offset.
+	toCommit := kadm.Offsets{}
+	toCommit.AddOffset(r.topic, r.partitionID, offset, -1)
+
+	committed, err := admin.CommitOffsets(ctx, r.consumerGroup, toCommit)
+	if err != nil {
+		return err
+	} else if !committed.Ok() {
+		return committed.Error()
 	}
 
-	return filtered
-}
-
-// isErrFetch checks if a given fetch resulted in any errors.
-func isErrFetch(fetch kgo.Fetch) bool {
-	for _, t := range fetch.Topics {
-		for _, p := range t.Partitions {
-			if p.Err != nil {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-type readerMetrics struct {
-	receiveDelayWhenStarting prometheus.Observer
-	receiveDelayWhenRunning  prometheus.Observer
-	recordsPerFetch          prometheus.Histogram
-	fetchesErrors            prometheus.Counter
-	fetchesTotal             prometheus.Counter
-	fetchWaitDuration        prometheus.Histogram
-	// strongConsistencyInstrumentation *StrongReadConsistencyInstrumentation[struct{}]
-	// lastConsumedOffset               prometheus.Gauge
-	consumeLatency prometheus.Histogram
-	kprom          *kprom.Metrics
-}
-
-// newReaderMetrics initializes and returns a new set of metrics for the PartitionReader.
-func newReaderMetrics(reg prometheus.Registerer) readerMetrics {
-	receiveDelay := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:                            "loki_ingest_storage_reader_receive_delay_seconds",
-		Help:                            "Delay between producing a record and receiving it in the consumer.",
-		NativeHistogramZeroThreshold:    math.Pow(2, -10), // Values below this will be considered to be 0. Equals to 0.0009765625, or about 1ms.
-		NativeHistogramBucketFactor:     1.2,              // We use higher factor (scheme=2) to have wider spread of buckets.
-		NativeHistogramMaxBucketNumber:  100,
-		NativeHistogramMinResetDuration: 1 * time.Hour,
-		Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18), // Buckets between 125ms and 9h.
-	}, []string{"phase"})
-
-	return readerMetrics{
-		receiveDelayWhenStarting: receiveDelay.WithLabelValues("starting"),
-		receiveDelayWhenRunning:  receiveDelay.WithLabelValues("running"),
-		kprom:                    kafka.NewReaderClientMetrics("partition-reader", reg),
-		fetchWaitDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:                        "loki_ingest_storage_reader_records_batch_wait_duration_seconds",
-			Help:                        "How long a consumer spent waiting for a batch of records from the Kafka client. If fetching is faster than processing, then this will be close to 0.",
-			NativeHistogramBucketFactor: 1.1,
-		}),
-		recordsPerFetch: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "loki_ingest_storage_reader_records_per_fetch",
-			Help:    "The number of records received by the consumer in a single fetch operation.",
-			Buckets: prometheus.ExponentialBuckets(1, 2, 15),
-		}),
-		fetchesErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_ingest_storage_reader_fetch_errors_total",
-			Help: "The number of fetch errors encountered by the consumer.",
-		}),
-		fetchesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "loki_ingest_storage_reader_fetches_total",
-			Help: "Total number of Kafka fetches received by the consumer.",
-		}),
-	}
+	committedOffset, _ := committed.Lookup(r.topic, r.partitionID)
+	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
+	return nil
 }

@@ -20,11 +20,9 @@ run:
 
   # list of build tags, all linters use it. Default is empty list.
   build-tags:
-    - linux
     - cgo
-    - promtail_journal_enabled
     - integration
-    
+
 # output configuration options
 output:
   formats:
@@ -63,7 +61,7 @@ linters:
     - govet
     - typecheck
     - depguard
-    - exportloopref
+    - copyloopvar
     - gofmt
     - goimports
     - gosimple

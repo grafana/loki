@@ -229,6 +229,7 @@ func dialPoolNewAuth(ctx context.Context, secure bool, poolSize int, ds *interna
 		GRPCDialOpts:          prepareDialOptsNewAuth(ds),
 		PoolSize:              poolSize,
 		Credentials:           creds,
+		ClientCertProvider:    ds.ClientCertSource,
 		APIKey:                ds.APIKey,
 		DetectOpts: &credentials.DetectOptions{
 			Scopes:          ds.Scopes,
@@ -247,6 +248,7 @@ func dialPoolNewAuth(ctx context.Context, secure bool, poolSize int, ds *interna
 			DefaultScopes:                   ds.DefaultScopes,
 			SkipValidation:                  skipValidation,
 		},
+		UniverseDomain: ds.UniverseDomain,
 	})
 	return pool, err
 }

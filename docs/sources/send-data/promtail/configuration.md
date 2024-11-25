@@ -2,6 +2,8 @@
 title: Configure Promtail
 menuTitle:  Configuration reference
 description: Configuration parameters for the Promtail agent.
+aliases: 
+- ../../clients/promtail/configuration/ # /docs/loki/latest/clients/promtail/configuration/
 weight:  200
 ---
 
@@ -71,12 +73,12 @@ ${VAR:-default_value}
 
 Where default_value is the value to use if the environment variable is undefined.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
 backslashes with single backslashes. Because of this every use of a backslash `\` needs to
 be replaced with a double backslash `\\`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Generic placeholders
 

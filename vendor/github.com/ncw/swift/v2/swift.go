@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"mime"
 	"net/http"
 	"net/url"
@@ -364,7 +363,7 @@ func drainAndClose(rd io.ReadCloser, err *error) {
 		return
 	}
 
-	_, _ = io.Copy(ioutil.Discard, rd)
+	_, _ = io.Copy(io.Discard, rd)
 	cerr := rd.Close()
 	if err != nil && *err == nil {
 		*err = cerr
@@ -787,6 +786,18 @@ func (c *Connection) Call(ctx context.Context, targetUrl string, p RequestOpts) 
 			drainAndClose(resp.Body, nil)
 			c.UnAuthenticate()
 			retries--
+			err = AuthorizationFailed
+
+			// Attempt to rewind the body
+			if p.Body != nil {
+				if do, ok := p.Body.(io.Seeker); ok {
+					if _, seekErr := do.Seek(0, io.SeekStart); seekErr != nil {
+						return
+					}
+				} else {
+					return
+				}
+			}
 		} else {
 			break
 		}
@@ -920,9 +931,11 @@ func (c *Connection) ContainerNames(ctx context.Context, opts *ContainersOpts) (
 
 // Container contains information about a container
 type Container struct {
-	Name  string // Name of the container
-	Count int64  // Number of objects in the container
-	Bytes int64  // Total number of bytes used in the container
+	Name       string // Name of the container
+	Count      int64  // Number of objects in the container
+	Bytes      int64  // Total number of bytes used in the container
+	QuotaCount int64  // Maximum object count of the container. 0 if not available
+	QuotaBytes int64  // Maximum size of the container, in bytes. 0 if not available
 }
 
 // Containers returns a slice of structures with full information as
@@ -1350,6 +1363,9 @@ func (c *Connection) Container(ctx context.Context, container string) (info Cont
 	if info.Count, err = getInt64FromHeader(resp, "X-Container-Object-Count"); err != nil {
 		return
 	}
+	// optional headers
+	info.QuotaBytes, _ = getInt64FromHeader(resp, "X-Container-Meta-Quota-Bytes")
+	info.QuotaCount, _ = getInt64FromHeader(resp, "X-Container-Meta-Quota-Count")
 	return
 }
 

@@ -377,8 +377,8 @@ func (q *QuerierAPI) DetectedFieldsHandler(ctx context.Context, req *logproto.De
 			"msg", "queried store for detected fields that does not support it, no response from querier.DetectedFields",
 		)
 		return &logproto.DetectedFieldsResponse{
-			Fields:     []*logproto.DetectedField{},
-			FieldLimit: req.GetFieldLimit(),
+			Fields: []*logproto.DetectedField{},
+			Limit:  req.GetLimit(),
 		}, nil
 	}
 	return resp, nil
@@ -412,7 +412,7 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.E
 	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
-			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)
+			"max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)", limit, maxEntriesLimit)
 	}
 	return nil
 }

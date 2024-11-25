@@ -9,8 +9,11 @@ NOTE: As semantic versioning states all 0.y.z releases can contain breaking chan
 We use *breaking :warning:* to mark changes that are not backward compatible (relates only to v0.y.z releases.)
 
 ## Unreleased
+- [#38](https://github.com/thanos-io/objstore/pull/38) GCS: Upgrade cloud.google.com/go/storage version to `v1.43.0`.
+- [#145](https://github.com/thanos-io/objstore/pull/145) Include content length in the response of Get and GetRange.
 
 ### Fixed
+- [#153](https://github.com/thanos-io/objstore/pull/153) Metrics: Fix `objstore_bucket_operation_duration_seconds_*` for `get` and `get_range` operations.
 - [#117](https://github.com/thanos-io/objstore/pull/117) Metrics: Fix `objstore_bucket_operation_failures_total` incorrectly incremented if context is cancelled while reading object contents.
 - [#115](https://github.com/thanos-io/objstore/pull/115) GCS: Fix creation of bucket with GRPC connections. Also update storage client to `v1.40.0`.
 - [#102](https://github.com/thanos-io/objstore/pull/102) Azure: bump azblob sdk to get concurrency fixes.
@@ -22,6 +25,7 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#79](https://github.com/thanos-io/objstore/pull/79) Metrics: Fix `objstore_bucket_operation_duration_seconds` for `iter` operations.
 
 ### Added
+- [#63](https://github.com/thanos-io/objstore/pull/63) Implement a `IterWithAttributes` method on the bucket client.
 - [#15](https://github.com/thanos-io/objstore/pull/15) Add Oracle Cloud Infrastructure Object Storage Bucket support.
 - [#25](https://github.com/thanos-io/objstore/pull/25) S3: Support specifying S3 storage class.
 - [#32](https://github.com/thanos-io/objstore/pull/32) Swift: Support authentication using application credentials.
@@ -50,6 +54,8 @@ We use *breaking :warning:* to mark changes that are not backward compatible (re
 - [#116](https://github.com/thanos-io/objstore/pull/116) Azure: Add new storage_create_container configuration property
 - [#128](https://github.com/thanos-io/objstore/pull/128) GCS: Add support for `ChunkSize` for writer.
 - [#130](https://github.com/thanos-io/objstore/pull/130) feat: Decouple creating bucket metrics from instrumenting the bucket
+- [#147](https://github.com/thanos-io/objstore/pull/147) feat: Add MaxRetries config to cos, gcs and obs.
+- [#150](https://github.com/thanos-io/objstore/pull/150) Add support for roundtripper wrapper.
 
 ### Changed
 - [#38](https://github.com/thanos-io/objstore/pull/38) *: Upgrade minio-go version to `v7.0.45`.

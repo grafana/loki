@@ -391,6 +391,7 @@ func (m *FilterChunkRefRequest) WithStartEndForCache(start, end time.Time) resul
 		if len(refs) > 0 {
 			chunkRefs = append(chunkRefs, &GroupedChunkRefs{
 				Fingerprint: chunkRef.Fingerprint,
+				Labels:      chunkRef.Labels,
 				Tenant:      chunkRef.Tenant,
 				Refs:        refs,
 			})
@@ -524,7 +525,7 @@ func (m *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 		otlog.String("start", m.Start.String()),
 		otlog.String("end", m.End.String()),
 		otlog.String("step", time.Duration(m.Step).String()),
-		otlog.String("field_limit", fmt.Sprintf("%d", m.FieldLimit)),
+		otlog.String("field_limit", fmt.Sprintf("%d", m.Limit)),
 		otlog.String("line_limit", fmt.Sprintf("%d", m.LineLimit)),
 	}
 	sp.LogFields(fields...)

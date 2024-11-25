@@ -18,17 +18,20 @@ const (
 	Day = 24 * time.Hour
 )
 
-type tokenSettings struct {
-	nGramLen int
-}
-
 type wrappedError struct {
 	mu  sync.Mutex
 	err error
 }
 
 func (e *wrappedError) Error() string {
-	return e.err.Error()
+	e.mu.Lock()
+	err := e.err
+	e.mu.Unlock()
+
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func (e *wrappedError) Set(err error) {
@@ -171,6 +174,7 @@ func (it *requestIterator) Next() bool {
 	it.curr = v1.Request{
 		Recorder: it.recorder,
 		Fp:       model.Fingerprint(group.Fingerprint),
+		Labels:   logproto.FromLabelAdaptersToLabels(group.Labels.Labels),
 		Chks:     convertToChunkRefs(group.Refs),
 		Search:   it.search,
 		Response: it.channel,

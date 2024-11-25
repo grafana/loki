@@ -145,8 +145,8 @@ func (a *AIMDController) ObjectExists(ctx context.Context, objectKey string) (bo
 	return a.inner.ObjectExists(ctx, objectKey)
 }
 
-func (a *AIMDController) ObjectExistsWithSize(ctx context.Context, objectKey string) (bool, int64, error) {
-	return a.inner.ObjectExistsWithSize(ctx, objectKey)
+func (a *AIMDController) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return a.inner.GetAttributes(ctx, objectKey)
 }
 
 func (a *AIMDController) DeleteObject(ctx context.Context, objectKey string) error {
@@ -216,8 +216,8 @@ func NewNoopController(Config) *NoopController {
 	return &NoopController{}
 }
 
-func (n *NoopController) ObjectExistsWithSize(context.Context, string) (bool, int64, error) {
-	return true, 0, nil
+func (n *NoopController) GetAttributes(context.Context, string) (client.ObjectAttributes, error) {
+	return client.ObjectAttributes{}, nil
 }
 func (n *NoopController) ObjectExists(context.Context, string) (bool, error) { return true, nil }
 func (n *NoopController) PutObject(context.Context, string, io.Reader) error { return nil }
