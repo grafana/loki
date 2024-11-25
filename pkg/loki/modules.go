@@ -1808,7 +1808,7 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
 	}
 
-	reader, err := partition.NewStdReader(
+	reader, err := partition.NewKafkaReader(
 		t.Cfg.KafkaConfig,
 		ingestPartitionID,
 		id,
