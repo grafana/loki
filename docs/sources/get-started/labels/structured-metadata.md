@@ -26,6 +26,19 @@ You should only use structured metadata in the following situations:
 - If you are using [Explore Logs](https://grafana.com/docs/grafana-cloud/visualizations/simplified-exploration/logs/) to visualize and explore your Loki logs.  You must set `discover_log_levels` and `allow_structured_metadata` to `true` in your Loki configuration.
 - If you are a large-scale customer, who is ingesting more than 75TB of logs a month and are using [Bloom filters](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/bloom-filters/) (Experimental), starting in [Loki 3.3](https://grafana.com/docs/loki/<LOKI_VERSION>/release-notes/v3-3/) Bloom filters now utilize structured metadata.
 
+## Enable or disable structured metadata
+
+You enable structured metadata in the Loki config.yaml file.
+
+```yaml
+limits_config:
+    allow_structured_metadata: true
+    volume_enabled: true
+    retention_period: 672h # 28 days retention
+```
+
+You can disable Structured Metadata by setting `allow_structured_metadata: false` in the `limits_config` section or set the command line argument `-validation.allow-structured-metadata=false`. Note structured metadata is required to support ingesting OTLP data.
+
 ## Attaching structured metadata to log lines
 
 You have the option to attach structured metadata to log lines in the push payload along with each log line and the timestamp.
