@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package dataobj.metadata.streams.v1;
+
+option go_package = "github.com/grafana/loki/pkg/dataobj/internal/streamsmd";
+
+// Metadata for the streams section.
+message Metadata {
+  // The list of streams stored within the streams section. Writers may choose
+  // to order streams for more effective searching; the order in the stream list
+  // does not need to match the order of streams written to the data object.
+  repeated Stream streams = 1;
+}
+
+// Stream describes an individual log stream within the streams section.
+message Stream {
+  // Label set representing the stream.
+  StreamIdentifier identifier = 1;
+
+  // Total uncompressed size of the entire stream.
+  uint32 uncompressed_size = 2;
+
+  // Total compressed size of the entire stream. Compressed size may match
+  // uncompressed size if no compression is used.
+  uint32 compressed_size = 3;
+
+  // Byte offset from the start of the data object to the ColumnsMetadata message.
+  uint32 columns_metadata_offset = 4;
+
+  // Size of the ColumnsMetadata message in bytes.
+  uint32 columns_metadata_size = 5;
+}
+
+// StreamIdentifier represents a stream.
+message StreamIdentifier {
+  message Label {
+    string name = 1;
+    string value = 2;
+  }
+
+  // Set of labels representing the stream.
+  repeated Label labels = 1;
+}
+
+// ColumnsMetadata describes the set of columns for a stream. One
+// ColumnsMetadata is written to the data object per stream.
+message ColumnsMetadata {
+  // Name of the column; set only for COLUMN_TYPE_METADATA.
+  string name = 1;
+
+  // Column type.
+  ColumnType type = 2;
+
+  // Total number of rows in the entire column.
+  uint32 rows_count = 3;
+
+  // Compression type used for all pages.
+  CompressionType compression = 4;
+
+  // Total uncompressed size of all pages in the column.
+  uint32 uncompressed_size = 5;
+
+  // Total compressed size of all pages in the column. Compressed size may
+  // match uncompressed size if no compression is used.
+  uint32 compressed_size = 6;
+
+  // Byte offset from the start of the data object to the first page's header.
+  uint32 page0_header_offset = 7;
+
+  // Statistics for the column.
+  Statistics statistics = 8;
+}
+
+// ColumnType represents the valid types that a stream's column can have.
+enum ColumnType {
+  // Invalid column type.
+  COLUMN_TYPE_UNSPECIFIED = 0;
+
+  // A column of timestamps of log lines.
+  COLUMN_TYPE_TIMESTAMP = 1;
+
+  // A column containing structured metadata values for a specific key.
+  COLUMN_TYPE_METADATA = 2;
+
+  // A column containing log lines.
+  COLUMN_TYPE_LOG_LINE = 3;
+}
+
+// CompressionType represents the valid compression types that can be used for
+// compressing a column's data page.
+enum CompressionType {
+  // Invalid compression type.
+  COMPRESSION_UNSPECIFIED = 0;
+
+  // No compression.
+  COMPRESSION_NONE = 1;
+
+  // Gzip compression.
+  COMPRESSION_GZIP = 2;
+}
+
+// Statistics about a coulmn or a page. All statistics are optional and are
+// conditionally set depending on the column type.
+message Statistics {
+  // Minimum value. Set for COLUMN_TYPE_TIMESTAMP.
+  bytes min_value = 1;
+
+  // Maximum value. Set for COLUMN_TYPE_TIMESTAMP.
+  bytes max_value = 2;
+
+  // A sketch of distinct values. Set for COLUMN_TYPE_METADATA.
+  uint32 count_distinct_sketch = 3;
+}
+
+// PageHeader describes a page within the data object. PageHeader is written
+// before encoded + compressed page data. The actual page data is not
+// represented in protobuf.
+message PageHeader {
+  // Uncompressed size of the page within the data object.
+  uint32 uncompressed_size = 1;
+
+  // Compressed size of the page within the data object. Compression size
+  // will match uncompressed size if no compression is used.
+  uint32 compressed_size = 2;
+
+  // CRC32 checksum of the page data.
+  uint32 crc32 = 3;
+
+  // Number of rows in the page.
+  uint32 rows_count = 4;
+
+  // Encoding type used for the page.
+  EncodingType encoding = 5;
+
+  // Optional statistics for the page.
+  Statistics statistics = 6;
+}
+
+// EncodingType holds various encoding types for data within a page.
+enum EncodingType {
+  // Invalid encoding type.
+  ENCODING_UNSPECIFIED = 0;
+
+  // Plain encoding; data is stored as-is.
+  ENCODING_PLAIN = 1;
+
+  // Delta encoding. The first value within the page is stored as-is, and
+  // subsequent values are stored as the delta from the previous value.
+  ENCODING_DELTA = 2;
+}
