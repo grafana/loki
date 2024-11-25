@@ -547,9 +547,9 @@ memberlist:
 
 			assert.Equal(t, "swift", config.Ruler.StoreConfig.Type)
 
-			for _, actual := range []swift.Config{
-				config.Ruler.StoreConfig.Swift.Config,
-				config.StorageConfig.Swift.Config,
+			for _, actual := range []openstack.SwiftConfig{
+				config.Ruler.StoreConfig.Swift,
+				config.StorageConfig.Swift,
 			} {
 				assert.Equal(t, 3, actual.AuthVersion)
 				assert.Equal(t, "http://example.com", actual.AuthURL)
@@ -557,7 +557,7 @@ memberlist:
 				assert.Equal(t, "example.com", actual.UserDomainName)
 				assert.Equal(t, "1", actual.UserDomainID)
 				assert.Equal(t, "27", actual.UserID)
-				assert.Equal(t, "supersecret", actual.Password)
+				assert.Equal(t, flagext.SecretWithValue("supersecret"), actual.Password)
 				assert.Equal(t, "2", actual.DomainID)
 				assert.Equal(t, "test.com", actual.DomainName)
 				assert.Equal(t, "13", actual.ProjectID)

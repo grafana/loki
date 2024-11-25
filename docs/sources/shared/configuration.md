@@ -5976,6 +5976,12 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # is received on a request.
 # CLI flag: -<prefix>.swift.request-timeout
 [request_timeout: <duration> | default = 5s]
+
+http:
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
+  # CLI flag: -<prefix>.swift.http.tls-ca-path
+  [tls_ca_path: <string> | default = ""]
 ```
 
 ### table_manager
