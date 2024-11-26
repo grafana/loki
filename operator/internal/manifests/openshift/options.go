@@ -2,7 +2,7 @@ package openshift
 
 import (
 	"fmt"
-	"math/rand"
+	"crypto/rand"
 	"time"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -116,7 +116,7 @@ func (o *Options) WithTenantsForMode(mode lokiv1.ModeType, gwBaseDomain string, 
 func newCookieSecret() string {
 	b := make([]rune, cookieSecretLength)
 	for i := range b {
-		b[i] = allowedRunes[rand.Intn(len(allowedRunes))]
+		b[i] = allowedRunes[rand.Int(len(allowedRunes))]
 	}
 
 	return string(b)
