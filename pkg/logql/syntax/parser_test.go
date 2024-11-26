@@ -3634,4 +3634,22 @@ func TestParseLabels_StructuredMetadata(t *testing.T) {
 	require.Equal(t, true, matches)
 	_, err = ParseLabels(lbr.String())
 	require.NoError(t, err)
+
+	// check that it works for line filter
+	f, err := log.NewFilter("asdf bob ", log.LineMatchEqual)
+	require.NoError(t, err)
+	equalLineFilterStage := f.ToStage()
+	p = log.NewPipeline([]log.Stage{
+		log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
+		newMustLineFormatter("lbs {{.foo}} {{.user}}"),
+		equalLineFilterStage,
+	})
+	l, lbr, matches = p.ForStream(lbs).Process(0, []byte("line"), structuredMetadata...)
+	require.Equal(t, []byte("lbs bar asdf bob "), l)
+	require.Equal(t, log.NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
+	_, err = ParseLabels(lbr.String())
+	require.NoError(t, err)
 }
