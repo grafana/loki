@@ -108,7 +108,7 @@ func (c *Context) Index() Index {
 	return c.index
 }
 
-// Merge index stats from multiple respones in a concurrency-safe manner
+// Merge index stats from multiple response in a concurrency-safe manner
 func (c *Context) MergeIndex(i Index) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()

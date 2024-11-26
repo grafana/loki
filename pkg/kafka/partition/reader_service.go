@@ -80,20 +80,16 @@ func NewReaderService(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*ReaderService, error) {
-
-	// Create the reader
-	reader, err := NewStdReader(
+	reader, err := NewKafkaReader(
 		kafkaCfg,
 		partitionID,
 		instanceID,
 		logger,
 		reg,
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
-
 	return newReaderService(
 		ReaderConfig{
 			TargetConsumerLagAtStartup:    kafkaCfg.TargetConsumerLagAtStartup,
@@ -118,9 +114,9 @@ func newReaderService(
 		cfg:                 cfg,
 		reader:              reader,
 		consumerFactory:     consumerFactory,
-		logger:              logger,
+		logger:              log.With(logger, "partition", reader.Partition(), "consumer_group", reader.ConsumerGroup()),
 		metrics:             newServiceMetrics(reg),
-		lastProcessedOffset: -1,
+		lastProcessedOffset: kafkaEndOffset,
 	}
 
 	// Create the committer
@@ -131,11 +127,7 @@ func newReaderService(
 }
 
 func (s *ReaderService) starting(ctx context.Context) error {
-	level.Info(s.logger).Log(
-		"msg", "starting reader service",
-		"partition", s.reader.Partition(),
-		"consumer_group", s.reader.ConsumerGroup(),
-	)
+	level.Info(s.logger).Log("msg", "starting reader service")
 	s.metrics.reportOwnerOfPartition(s.reader.Partition())
 	s.metrics.reportStarting()
 
@@ -146,30 +138,35 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	}
 
 	if lastCommittedOffset == int64(KafkaEndOffset) {
-		level.Warn(s.logger).Log(
-			"msg", "no committed offset found for partition, starting from the beginning",
-			"partition", s.reader.Partition(),
-			"consumer_group", s.reader.ConsumerGroup(),
-		)
-		lastCommittedOffset = int64(KafkaStartOffset)
+		level.Warn(s.logger).Log("msg", fmt.Sprintf("no committed offset found, starting from %d", kafkaStartOffset))
+	} else {
+		level.Debug(s.logger).Log("msg", "last committed offset", "offset", lastCommittedOffset)
 	}
 
+	consumeOffset := int64(kafkaStartOffset)
 	if lastCommittedOffset >= 0 {
-		lastCommittedOffset++ // We want to begin to read from the next offset, but only if we've previously committed an offset.
+		// Read from the next offset.
+		consumeOffset = lastCommittedOffset + 1
 	}
+	level.Debug(s.logger).Log("msg", "consuming from offset", "offset", consumeOffset)
+	s.reader.SetOffsetForConsumption(consumeOffset)
 
-	s.reader.SetOffsetForConsumption(lastCommittedOffset)
+	return s.processConsumerLag(ctx)
+}
 
-	if targetLag, maxLag := s.cfg.TargetConsumerLagAtStartup, s.cfg.MaxConsumerLagAtStartup; targetLag > 0 && maxLag > 0 {
+func (s *ReaderService) processConsumerLag(ctx context.Context) error {
+	targetLag := s.cfg.TargetConsumerLagAtStartup
+	maxLag := s.cfg.MaxConsumerLagAtStartup
+
+	if targetLag > 0 && maxLag > 0 {
 		consumer, err := s.consumerFactory(s.committer)
 		if err != nil {
-			return fmt.Errorf("creating consumer: %w", err)
+			return fmt.Errorf("failed to create consumer: %w", err)
 		}
 
 		cancelCtx, cancel := context.WithCancel(ctx)
 		recordsChan := make(chan []Record)
 		wait := consumer.Start(cancelCtx, recordsChan)
-
 		defer func() {
 			close(recordsChan)
 			cancel()
@@ -178,12 +175,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 
 		err = s.processNextFetchesUntilTargetOrMaxLagHonored(ctx, maxLag, targetLag, recordsChan)
 		if err != nil {
-			level.Error(s.logger).Log(
-				"msg", "failed to catch up to max lag",
-				"partition", s.reader.Partition(),
-				"consumer_group", s.reader.ConsumerGroup(),
-				"err", err,
-			)
+			level.Error(s.logger).Log("msg", "failed to catch up to max lag", "err", err)
 			return err
 		}
 	}
@@ -192,11 +184,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 }
 
 func (s *ReaderService) running(ctx context.Context) error {
-	level.Info(s.logger).Log(
-		"msg", "reader service running",
-		"partition", s.reader.Partition(),
-		"consumer_group", s.reader.ConsumerGroup(),
-	)
+	level.Info(s.logger).Log("msg", "reader service running")
 	s.metrics.reportRunning()
 
 	consumer, err := s.consumerFactory(s.committer)
