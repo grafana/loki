@@ -335,7 +335,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
 	if cfg.WAL.Enabled {
-		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(cfg.WAL.Dir, 0750); err != nil {
 			// Best effort try to make path absolute for easier debugging.
 			path, _ := filepath.Abs(cfg.WAL.Dir)
 			if path == "" {

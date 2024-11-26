@@ -33,7 +33,7 @@ func (m *mockIndex) Reader() (io.ReadSeeker, error) {
 }
 
 func setupIndexesAtPath(t *testing.T, userID, path string, start, end int) []string {
-	require.NoError(t, os.MkdirAll(path, 0755))
+	require.NoError(t, os.MkdirAll(path, 0750))
 	var testIndexes []string
 	for ; start < end; start++ {
 		fileName := buildIndexFilename(userID, start)
