@@ -640,9 +640,6 @@ func newRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
-	//if canSkipLogLines(expr) {
-	//	mode = ModeMetricsOnly
-	//}
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
 		iter, err := newRangeVectorIterator(

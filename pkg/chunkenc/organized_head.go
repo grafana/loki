@@ -96,58 +96,6 @@ func (b *organisedHeadBlock) CompressedBlock(pool compression.WriterPool) (block
 	}, len(bl), nil
 }
 
-func (b *organisedHeadBlock) serialiseStructuredMetadataComp(pool compression.WriterPool) ([]byte, error) {
-	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		inBuf.Reset()
-		serializeBytesBufferPool.Put(inBuf)
-	}()
-
-	symbolsSectionBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		symbolsSectionBuf.Reset()
-		serializeBytesBufferPool.Put(symbolsSectionBuf)
-	}()
-
-	outBuf := &bytes.Buffer{}
-	compressedWriter := pool.GetWriter(outBuf)
-	defer pool.PutWriter(compressedWriter)
-	encBuf := make([]byte, binary.MaxVarintLen64)
-
-	_ = b.forEntries(context.Background(), logproto.FORWARD, 0, math.MaxInt64,
-		func(_ *stats.Context, _ int64, _ string, symbols symbols) error {
-			symbolsSectionBuf.Reset()
-			n := binary.PutUvarint(encBuf, uint64(len(symbols)))
-			symbolsSectionBuf.Write(encBuf[:n])
-
-			for _, l := range symbols {
-				n = binary.PutUvarint(encBuf, uint64(l.Name))
-				symbolsSectionBuf.Write(encBuf[:n])
-
-				n = binary.PutUvarint(encBuf, uint64(l.Value))
-				symbolsSectionBuf.Write(encBuf[:n])
-			}
-
-			// write the length of symbols section
-			n = binary.PutUvarint(encBuf, uint64(symbolsSectionBuf.Len()))
-			inBuf.Write(encBuf[:n])
-
-			inBuf.Write(symbolsSectionBuf.Bytes())
-
-			return nil
-		},
-	)
-
-	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
-		return nil, errors.Wrap(err, "appending entry")
-	}
-	if err := compressedWriter.Close(); err != nil {
-		return nil, errors.Wrap(err, "flushing pending compress buffer")
-	}
-
-	return outBuf.Bytes(), nil
-}
-
 func (b *organisedHeadBlock) serialiseStructuredMetadata(_ compression.WriterPool) ([]byte, error) {
 	symbolsSectionBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
@@ -195,36 +143,6 @@ func (b *organisedHeadBlock) serialiseTimestamps(_ compression.WriterPool) ([]by
 			return nil
 		},
 	)
-
-	return outBuf.Bytes(), nil
-}
-
-func (b *organisedHeadBlock) serialiseTimestampsComp(pool compression.WriterPool) ([]byte, error) {
-	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		inBuf.Reset()
-		serializeBytesBufferPool.Put(inBuf)
-	}()
-
-	outBuf := &bytes.Buffer{}
-	compressedWriter := pool.GetWriter(outBuf)
-	defer pool.PutWriter(compressedWriter)
-	encBuf := make([]byte, binary.MaxVarintLen64)
-
-	_ = b.forEntries(context.Background(), logproto.FORWARD, 0, math.MaxInt64,
-		func(_ *stats.Context, ts int64, _ string, _ symbols) error {
-			n := binary.PutVarint(encBuf, ts)
-			inBuf.Write(encBuf[:n])
-			return nil
-		},
-	)
-
-	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
-		return nil, errors.Wrap(err, "appending entry")
-	}
-	if err := compressedWriter.Close(); err != nil {
-		return nil, errors.Wrap(err, "flushing pending compress buffer")
-	}
 
 	return outBuf.Bytes(), nil
 }
