@@ -13,8 +13,9 @@ aliases:
 # Bloom filters (Experimental)
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.  
-Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
+In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
+
+In Grafana Cloud, Query acceleration using Bloom filters is enabled as a [public preview](/docs/release-life-cycle/) for select large-scale customers that are ingesting more that 75TB of logs a month. Limited support and no SLA are provided.
 {{< /admonition >}}
 
 Loki leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through.

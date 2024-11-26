@@ -97,8 +97,8 @@ func TestObjectClientAdapter_List(t *testing.T) {
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/b", buff))
 		require.NoError(t, newBucket.Upload(context.Background(), "depply/nested/folder/c", buff))
 
-		client, err := NewObjectClient(context.Background(), "filesystem", Config{
-			StorageBackendConfig: StorageBackendConfig{
+		client, err := NewObjectClient(context.Background(), "filesystem", ConfigWithNamedStores{
+			Config: Config{
 				Filesystem: config,
 			},
 		}, "test", hedging.Config{}, false, log.NewNopLogger())

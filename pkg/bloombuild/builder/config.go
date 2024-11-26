@@ -42,4 +42,5 @@ type Limits interface {
 	BloomMaxBlockSize(tenantID string) int
 	BloomMaxBloomSize(tenantID string) int
 	BuilderResponseTimeout(tenantID string) time.Duration
+	PrefetchBloomBlocks(tenantID string) bool
 }

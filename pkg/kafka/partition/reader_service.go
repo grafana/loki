@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 var errWaitTargetLagDeadlineExceeded = errors.New("waiting for target lag deadline exceeded")
@@ -56,7 +55,7 @@ type ReaderService struct {
 	services.Service
 
 	cfg             ReaderConfig
-	reader          ReaderIfc
+	reader          Reader
 	consumerFactory ConsumerFactory
 	logger          log.Logger
 	metrics         *serviceMetrics
@@ -81,28 +80,17 @@ func NewReaderService(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*ReaderService, error) {
-	// Create a new Kafka client for this reader
-	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
-	c, err := client.NewReaderClient(
+	reader, err := NewKafkaReader(
 		kafkaCfg,
-		clientMetrics,
-		log.With(logger, "component", "kafka-client"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating kafka client: %w", err)
-	}
-
-	// Create the reader
-	reader := newReader(
-		c,
-		kafkaCfg.Topic,
 		partitionID,
-		kafkaCfg.GetConsumerGroup(instanceID, partitionID),
+		instanceID,
 		logger,
 		reg,
 	)
-
-	return newReaderServiceFromIfc(
+	if err != nil {
+		return nil, fmt.Errorf("creating kafka reader: %w", err)
+	}
+	return newReaderService(
 		ReaderConfig{
 			TargetConsumerLagAtStartup:    kafkaCfg.TargetConsumerLagAtStartup,
 			MaxConsumerLagAtStartup:       kafkaCfg.MaxConsumerLagAtStartup,
@@ -115,9 +103,9 @@ func NewReaderService(
 	), nil
 }
 
-func newReaderServiceFromIfc(
+func newReaderService(
 	cfg ReaderConfig,
-	reader ReaderIfc,
+	reader Reader,
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
@@ -126,9 +114,9 @@ func newReaderServiceFromIfc(
 		cfg:                 cfg,
 		reader:              reader,
 		consumerFactory:     consumerFactory,
-		logger:              logger,
+		logger:              log.With(logger, "partition", reader.Partition(), "consumer_group", reader.ConsumerGroup()),
 		metrics:             newServiceMetrics(reg),
-		lastProcessedOffset: -1,
+		lastProcessedOffset: kafkaEndOffset,
 	}
 
 	// Create the committer
@@ -139,12 +127,9 @@ func newReaderServiceFromIfc(
 }
 
 func (s *ReaderService) starting(ctx context.Context) error {
-	level.Info(s.logger).Log(
-		"msg", "starting reader service",
-		"partition", s.reader.Partition(),
-		"consumer_group", s.reader.ConsumerGroup(),
-	)
-	s.metrics.reportStarting(s.reader.Partition())
+	level.Info(s.logger).Log("msg", "starting reader service")
+	s.metrics.reportOwnerOfPartition(s.reader.Partition())
+	s.metrics.reportStarting()
 
 	// Fetch the last committed offset to determine where to start reading
 	lastCommittedOffset, err := s.reader.FetchLastCommittedOffset(ctx)
@@ -153,30 +138,35 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	}
 
 	if lastCommittedOffset == int64(KafkaEndOffset) {
-		level.Warn(s.logger).Log(
-			"msg", "no committed offset found for partition, starting from the beginning",
-			"partition", s.reader.Partition(),
-			"consumer_group", s.reader.ConsumerGroup(),
-		)
-		lastCommittedOffset = int64(KafkaStartOffset)
+		level.Warn(s.logger).Log("msg", fmt.Sprintf("no committed offset found, starting from %d", kafkaStartOffset))
+	} else {
+		level.Debug(s.logger).Log("msg", "last committed offset", "offset", lastCommittedOffset)
 	}
 
+	consumeOffset := int64(kafkaStartOffset)
 	if lastCommittedOffset >= 0 {
-		lastCommittedOffset++ // We want to begin to read from the next offset, but only if we've previously committed an offset.
+		// Read from the next offset.
+		consumeOffset = lastCommittedOffset + 1
 	}
+	level.Debug(s.logger).Log("msg", "consuming from offset", "offset", consumeOffset)
+	s.reader.SetOffsetForConsumption(consumeOffset)
 
-	s.reader.SetOffsetForConsumption(lastCommittedOffset)
+	return s.processConsumerLag(ctx)
+}
 
-	if targetLag, maxLag := s.cfg.TargetConsumerLagAtStartup, s.cfg.MaxConsumerLagAtStartup; targetLag > 0 && maxLag > 0 {
+func (s *ReaderService) processConsumerLag(ctx context.Context) error {
+	targetLag := s.cfg.TargetConsumerLagAtStartup
+	maxLag := s.cfg.MaxConsumerLagAtStartup
+
+	if targetLag > 0 && maxLag > 0 {
 		consumer, err := s.consumerFactory(s.committer)
 		if err != nil {
-			return fmt.Errorf("creating consumer: %w", err)
+			return fmt.Errorf("failed to create consumer: %w", err)
 		}
 
 		cancelCtx, cancel := context.WithCancel(ctx)
 		recordsChan := make(chan []Record)
 		wait := consumer.Start(cancelCtx, recordsChan)
-
 		defer func() {
 			close(recordsChan)
 			cancel()
@@ -185,12 +175,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 
 		err = s.processNextFetchesUntilTargetOrMaxLagHonored(ctx, maxLag, targetLag, recordsChan)
 		if err != nil {
-			level.Error(s.logger).Log(
-				"msg", "failed to catch up to max lag",
-				"partition", s.reader.Partition(),
-				"consumer_group", s.reader.ConsumerGroup(),
-				"err", err,
-			)
+			level.Error(s.logger).Log("msg", "failed to catch up to max lag", "err", err)
 			return err
 		}
 	}
@@ -199,12 +184,8 @@ func (s *ReaderService) starting(ctx context.Context) error {
 }
 
 func (s *ReaderService) running(ctx context.Context) error {
-	level.Info(s.logger).Log(
-		"msg", "reader service running",
-		"partition", s.reader.Partition(),
-		"consumer_group", s.reader.ConsumerGroup(),
-	)
-	s.metrics.reportRunning(s.reader.Partition())
+	level.Info(s.logger).Log("msg", "reader service running")
+	s.metrics.reportRunning()
 
 	consumer, err := s.consumerFactory(s.committer)
 	if err != nil {
@@ -353,7 +334,7 @@ func (s *ReaderService) processNextFetchesUntilLagHonored(ctx context.Context, m
 			}
 
 			timedCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			records, err := s.reader.Poll(timedCtx)
+			records, err := s.reader.Poll(timedCtx, -1)
 			cancel()
 
 			if err != nil {
@@ -389,7 +370,7 @@ func (s *ReaderService) startFetchLoop(ctx context.Context) chan []Record {
 			case <-ctx.Done():
 				return
 			default:
-				res, err := s.reader.Poll(ctx)
+				res, err := s.reader.Poll(ctx, -1)
 				if err != nil {
 					level.Error(s.logger).Log("msg", "error polling records", "err", err)
 					continue
@@ -404,14 +385,16 @@ func (s *ReaderService) startFetchLoop(ctx context.Context) chan []Record {
 	return records
 }
 
-func (s *serviceMetrics) reportStarting(partition int32) {
-	s.partition.WithLabelValues(strconv.Itoa(int(partition))).Set(1)
+func (s *serviceMetrics) reportOwnerOfPartition(id int32) {
+	s.partition.WithLabelValues(strconv.Itoa(int(id))).Set(1)
+}
+
+func (s *serviceMetrics) reportStarting() {
 	s.phase.WithLabelValues(phaseStarting).Set(1)
 	s.phase.WithLabelValues(phaseRunning).Set(0)
 }
 
-func (s *serviceMetrics) reportRunning(partition int32) {
-	s.partition.WithLabelValues(strconv.Itoa(int(partition))).Set(1)
+func (s *serviceMetrics) reportRunning() {
 	s.phase.WithLabelValues(phaseStarting).Set(0)
 	s.phase.WithLabelValues(phaseRunning).Set(1)
 }
