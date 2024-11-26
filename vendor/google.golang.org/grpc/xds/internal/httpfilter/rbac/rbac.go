@@ -141,12 +141,12 @@ func (builder) ParseFilterConfig(cfg proto.Message) (httpfilter.FilterConfig, er
 	if cfg == nil {
 		return nil, fmt.Errorf("rbac: nil configuration message provided")
 	}
-	any, ok := cfg.(*anypb.Any)
+	m, ok := cfg.(*anypb.Any)
 	if !ok {
 		return nil, fmt.Errorf("rbac: error parsing config %v: unknown type %T", cfg, cfg)
 	}
 	msg := new(rpb.RBAC)
-	if err := any.UnmarshalTo(msg); err != nil {
+	if err := m.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("rbac: error parsing config %v: %v", cfg, err)
 	}
 	return parseConfig(msg)
@@ -156,12 +156,12 @@ func (builder) ParseFilterConfigOverride(override proto.Message) (httpfilter.Fil
 	if override == nil {
 		return nil, fmt.Errorf("rbac: nil configuration message provided")
 	}
-	any, ok := override.(*anypb.Any)
+	m, ok := override.(*anypb.Any)
 	if !ok {
 		return nil, fmt.Errorf("rbac: error parsing override config %v: unknown type %T", override, override)
 	}
 	msg := new(rpb.RBACPerRoute)
-	if err := any.UnmarshalTo(msg); err != nil {
+	if err := m.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("rbac: error parsing override config %v: %v", override, err)
 	}
 	return parseConfig(msg.Rbac)

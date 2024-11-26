@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
@@ -46,7 +46,7 @@ func Test_TopicDiscovery(t *testing.T) {
 			cancel:        func() {},
 			ConsumerGroup: group,
 			logger:        log.NewNopLogger(),
-			discoverer: DiscovererFn(func(s sarama.ConsumerGroupSession, c sarama.ConsumerGroupClaim) (RunnableTarget, error) {
+			discoverer: DiscovererFn(func(_ sarama.ConsumerGroupSession, _ sarama.ConsumerGroupClaim) (RunnableTarget, error) {
 				return nil, nil
 			}),
 		},
@@ -195,7 +195,6 @@ func Test_validateConfig(t *testing.T) {
 	}
 
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			err := validateConfig(tt.cfg)
 			if (err != nil) != tt.wantErr {

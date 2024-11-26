@@ -22,9 +22,11 @@ package bootstrap
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net"
 	"net/url"
 	"os"
 	"slices"
@@ -117,6 +119,19 @@ func (scs *ServerConfigs) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// String returns a string representation of the ServerConfigs, by concatenating
+// the string representations of the underlying server configs.
+func (scs *ServerConfigs) String() string {
+	ret := ""
+	for i, sc := range *scs {
+		if i > 0 {
+			ret += ", "
+		}
+		ret += sc.String()
+	}
+	return ret
+}
+
 // Authority contains configuration for an xDS control plane authority.
 //
 // This type does not implement custom JSON marshal/unmarshal logic because it
@@ -166,6 +181,7 @@ type ServerConfig struct {
 	// credentials and store it here for easy access.
 	selectedCreds   ChannelCreds
 	credsDialOption grpc.DialOption
+	dialerOption    grpc.DialOption
 
 	cleanups []func()
 }
@@ -204,10 +220,14 @@ func (sc *ServerConfig) ServerFeaturesIgnoreResourceDeletion() bool {
 	return false
 }
 
-// CredsDialOption returns the first supported transport credentials from the
-// configuration, as a dial option.
-func (sc *ServerConfig) CredsDialOption() grpc.DialOption {
-	return sc.credsDialOption
+// DialOptions returns a slice of all the configured dial options for this
+// server.
+func (sc *ServerConfig) DialOptions() []grpc.DialOption {
+	dopts := []grpc.DialOption{sc.credsDialOption}
+	if sc.dialerOption != nil {
+		dopts = append(dopts, sc.dialerOption)
+	}
+	return dopts
 }
 
 // Cleanups returns a collection of functions to be called when the xDS client
@@ -237,14 +257,6 @@ func (sc *ServerConfig) Equal(other *ServerConfig) bool {
 }
 
 // String returns the string representation of the ServerConfig.
-//
-// This string representation will be used as map keys in federation
-// (`map[ServerConfig]authority`), so that the xDS ClientConn and stream will be
-// shared by authorities with different names but the same server config.
-//
-// It covers (almost) all the fields so the string can represent the config
-// content. It doesn't cover NodeProto because NodeProto isn't used by
-// federation.
 func (sc *ServerConfig) String() string {
 	if len(sc.serverFeatures) == 0 {
 		return fmt.Sprintf("%s-%s", sc.serverURI, sc.selectedCreds.String())
@@ -270,6 +282,12 @@ func (sc *ServerConfig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(server)
 }
 
+// dialer captures the Dialer method specified via the credentials bundle.
+type dialer interface {
+	// Dialer specifies how to dial the xDS server.
+	Dialer(context.Context, string) (net.Conn, error)
+}
+
 // UnmarshalJSON takes the json data (a server) and unmarshals it to the struct.
 func (sc *ServerConfig) UnmarshalJSON(data []byte) error {
 	server := serverConfigJSON{}
@@ -293,6 +311,9 @@ func (sc *ServerConfig) UnmarshalJSON(data []byte) error {
 		}
 		sc.selectedCreds = cc
 		sc.credsDialOption = grpc.WithCredentialsBundle(bundle)
+		if d, ok := bundle.(dialer); ok {
+			sc.dialerOption = grpc.WithContextDialer(d.Dialer)
+		}
 		sc.cleanups = append(sc.cleanups, cancel)
 		break
 	}
@@ -361,7 +382,7 @@ type Config struct {
 
 // XDSServers returns the top-level list of management servers to connect to,
 // ordered by priority.
-func (c *Config) XDSServers() []*ServerConfig {
+func (c *Config) XDSServers() ServerConfigs {
 	return c.xDSServers
 }
 
@@ -608,8 +629,9 @@ func newConfigFromContents(data []byte) (*Config, error) {
 //
 // # Testing-Only
 type ConfigOptionsForTesting struct {
-	// Servers is the top-level xDS server configuration
-	Servers []json.RawMessage
+	// Servers is the top-level xDS server configuration. It contains a list of
+	// server configurations.
+	Servers json.RawMessage
 	// CertificateProviders is the certificate providers configuration.
 	CertificateProviders map[string]json.RawMessage
 	// ServerListenerResourceNameTemplate is the listener resource name template
@@ -630,13 +652,9 @@ type ConfigOptionsForTesting struct {
 //
 // # Testing-Only
 func NewContentsForTesting(opts ConfigOptionsForTesting) ([]byte, error) {
-	var servers []*ServerConfig
-	for _, serverCfgJSON := range opts.Servers {
-		server := &ServerConfig{}
-		if err := server.UnmarshalJSON(serverCfgJSON); err != nil {
-			return nil, err
-		}
-		servers = append(servers, server)
+	var servers ServerConfigs
+	if err := json.Unmarshal(opts.Servers, &servers); err != nil {
+		return nil, err
 	}
 	certProviders := make(map[string]certproviderNameAndConfig)
 	for k, v := range opts.CertificateProviders {

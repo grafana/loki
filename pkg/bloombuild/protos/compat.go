@@ -249,7 +249,7 @@ func (r *TaskResult) ToProtoTaskResult() *ProtoTaskResult {
 		}
 
 		protoMetas = append(protoMetas, &ProtoMeta{
-			MetaRef:      meta.MetaRef.String(),
+			MetaRef:      meta.String(),
 			SourcesTSDBs: metaRefs,
 			BlockRefs:    blockRefs,
 		})
@@ -259,4 +259,8 @@ func (r *TaskResult) ToProtoTaskResult() *ProtoTaskResult {
 		TaskID:       r.TaskID,
 		CreatedMetas: protoMetas,
 	}
+}
+
+func FromProtoDayTableToDayTable(proto DayTable) config.DayTable {
+	return config.NewDayTable(config.NewDayTime(model.Time(proto.DayTimestampMS)), proto.Prefix)
 }

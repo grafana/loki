@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"time"
 
-	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"google.golang.org/api/iterator"
 	raw "google.golang.org/api/storage/v1"
 )
@@ -103,6 +102,7 @@ func (c *Client) HMACKeyHandle(projectID, accessID string) *HMACKeyHandle {
 //
 // Options such as UserProjectForHMACKeys can be used to set the
 // userProject to be billed against for operations.
+// Note: gRPC is not supported.
 func (hkh *HMACKeyHandle) Get(ctx context.Context, opts ...HMACKeyOption) (*HMACKey, error) {
 	desc := new(hmacKeyDesc)
 	for _, opt := range opts {
@@ -118,6 +118,7 @@ func (hkh *HMACKeyHandle) Get(ctx context.Context, opts ...HMACKeyOption) (*HMAC
 // Delete invokes an RPC to delete the key referenced by accessID, on Google Cloud Storage.
 // Only inactive HMAC keys can be deleted.
 // After deletion, a key cannot be used to authenticate requests.
+// Note: gRPC is not supported.
 func (hkh *HMACKeyHandle) Delete(ctx context.Context, opts ...HMACKeyOption) error {
 	desc := new(hmacKeyDesc)
 	for _, opt := range opts {
@@ -158,23 +159,8 @@ func toHMACKeyFromRaw(hk *raw.HmacKey, updatedTimeCanBeNil bool) (*HMACKey, erro
 	return hmKey, nil
 }
 
-func toHMACKeyFromProto(pbmd *storagepb.HmacKeyMetadata) *HMACKey {
-	if pbmd == nil {
-		return nil
-	}
-
-	return &HMACKey{
-		AccessID:            pbmd.GetAccessId(),
-		ID:                  pbmd.GetId(),
-		State:               HMACState(pbmd.GetState()),
-		ProjectID:           pbmd.GetProject(),
-		CreatedTime:         convertProtoTime(pbmd.GetCreateTime()),
-		UpdatedTime:         convertProtoTime(pbmd.GetUpdateTime()),
-		ServiceAccountEmail: pbmd.GetServiceAccountEmail(),
-	}
-}
-
 // CreateHMACKey invokes an RPC for Google Cloud Storage to create a new HMACKey.
+// Note: gRPC is not supported.
 func (c *Client) CreateHMACKey(ctx context.Context, projectID, serviceAccountEmail string, opts ...HMACKeyOption) (*HMACKey, error) {
 	if projectID == "" {
 		return nil, errors.New("storage: expecting a non-blank projectID")
@@ -203,6 +189,7 @@ type HMACKeyAttrsToUpdate struct {
 }
 
 // Update mutates the HMACKey referred to by accessID.
+// Note: gRPC is not supported.
 func (h *HMACKeyHandle) Update(ctx context.Context, au HMACKeyAttrsToUpdate, opts ...HMACKeyOption) (*HMACKey, error) {
 	if au.State != Active && au.State != Inactive {
 		return nil, fmt.Errorf("storage: invalid state %q for update, must be either %q or %q", au.State, Active, Inactive)
@@ -237,6 +224,7 @@ type HMACKeysIterator struct {
 // ListHMACKeys returns an iterator for listing HMACKeys.
 //
 // Note: This iterator is not safe for concurrent operations without explicit synchronization.
+// Note: gRPC is not supported.
 func (c *Client) ListHMACKeys(ctx context.Context, projectID string, opts ...HMACKeyOption) *HMACKeysIterator {
 	desc := new(hmacKeyDesc)
 	for _, opt := range opts {

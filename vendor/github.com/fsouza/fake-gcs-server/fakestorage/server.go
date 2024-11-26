@@ -73,6 +73,10 @@ func NewServerWithHostPort(objects []Object, host string, port uint16) (*Server,
 	})
 }
 
+type EventManagerOptions = notification.EventManagerOptions
+
+type EventNotificationOptions = notification.EventNotificationOptions
+
 // Options are used to configure the server on creation.
 type Options struct {
 	InitialObjects []Object
@@ -111,7 +115,7 @@ type Options struct {
 
 	// EventOptions contains the events that should be published and the URL
 	// of the Google cloud function such events should be published to.
-	EventOptions notification.EventManagerOptions
+	EventOptions EventManagerOptions
 
 	// Location used for buckets in the server.
 	BucketsLocation string
@@ -316,6 +320,7 @@ func (s *Server) buildMuxer() {
 	// Signed URLs (upload and download)
 	handler.MatcherFunc(s.publicHostMatcher).Path("/{bucketName}/{objectName:.+}").Methods(http.MethodPost, http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.insertObject))
 	handler.MatcherFunc(s.publicHostMatcher).Path("/{bucketName}/{objectName:.+}").Methods(http.MethodGet, http.MethodHead).HandlerFunc(s.getObject)
+	handler.MatcherFunc(s.publicHostMatcher).Path("/{bucketName}/{objectName:.+}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteObject))
 	handler.Host(bucketHost).Path("/{objectName:.+}").Methods(http.MethodPost, http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.insertObject))
 	handler.Host("{bucketName:.+}").Path("/{objectName:.+}").Methods(http.MethodPost, http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.insertObject))
 

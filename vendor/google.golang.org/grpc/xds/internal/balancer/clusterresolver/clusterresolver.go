@@ -134,7 +134,7 @@ func (bb) ParseConfig(j json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 		// This will never occur, valid configuration is emitted from the xDS
 		// Client. Validity is already checked in the xDS Client, however, this
 		// double validation is present because Unmarshalling and Validating are
-		// coupled into one json.Unmarshal operation). We will switch this in
+		// coupled into one json.Unmarshal operation. We will switch this in
 		// the future to two separate operations.
 		return nil, fmt.Errorf("error unmarshalling xDS LB Policy: %v", err)
 	}
@@ -216,7 +216,7 @@ func (b *clusterResolverBalancer) handleResourceUpdate(update *resourceUpdate) {
 	b.updateChildConfig()
 
 	if update.onDone != nil {
-		update.onDone.OnDone()
+		update.onDone()
 	}
 }
 

@@ -2908,6 +2908,13 @@ func Product(product string) ClientOption {
 	}
 }
 
+// VerifyObjectStrict  sets the flag of verifying object name strictly.
+func VerifyObjectStrict(enable bool) ClientOption {
+	return func(client *Client) {
+		client.Config.VerifyObjectStrict = enable
+	}
+}
+
 // Private
 func (client Client) do(method, bucketName string, params map[string]interface{},
 	headers map[string]string, data io.Reader, options ...Option) (*Response, error) {

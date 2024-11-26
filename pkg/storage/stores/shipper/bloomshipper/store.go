@@ -314,7 +314,7 @@ func NewBloomStore(
 
 	// sort by From time
 	sort.Slice(periodicConfigs, func(i, j int) bool {
-		return periodicConfigs[i].From.Time.Before(periodicConfigs[i].From.Time)
+		return periodicConfigs[i].From.Time.Before(periodicConfigs[j].From.Time)
 	})
 
 	// TODO(chaudum): Remove wrapper
@@ -334,7 +334,7 @@ func NewBloomStore(
 	}
 
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
+		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, "bloomshipper", storageConfig, clientMetrics)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}

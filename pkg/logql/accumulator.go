@@ -86,6 +86,7 @@ func (a *QuantileSketchAccumulator) Accumulate(_ context.Context, res logqlmodel
 
 	var err error
 	a.matrix, err = a.matrix.Merge(data)
+	a.stats.Merge(res.Statistics)
 	return err
 }
 
@@ -107,6 +108,82 @@ func (a *QuantileSketchAccumulator) Result() []logqlmodel.Result {
 	return []logqlmodel.Result{
 		{
 			Data:       a.matrix,
+			Headers:    headers,
+			Warnings:   warnings,
+			Statistics: a.stats,
+		},
+	}
+}
+
+type CountMinSketchAccumulator struct {
+	vec *CountMinSketchVector
+
+	stats    stats.Result        // for accumulating statistics from downstream requests
+	headers  map[string][]string // for accumulating headers from downstream requests
+	warnings map[string]struct{} // for accumulating warnings from downstream requests}
+}
+
+// newCountMinSketchAccumulator returns an accumulator for sharded
+// count min sketch queries that merges results as they come in.
+func newCountMinSketchAccumulator() *CountMinSketchAccumulator {
+	return &CountMinSketchAccumulator{
+		headers:  make(map[string][]string),
+		warnings: make(map[string]struct{}),
+	}
+}
+
+func (a *CountMinSketchAccumulator) Accumulate(_ context.Context, res logqlmodel.Result, _ int) error {
+	if res.Data.Type() != CountMinSketchVectorType {
+		return fmt.Errorf("unexpected matrix data type: got (%s), want (%s)", res.Data.Type(), CountMinSketchVectorType)
+	}
+	data, ok := res.Data.(CountMinSketchVector)
+	if !ok {
+		return fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", res.Data)
+	}
+
+	// TODO(owen-d/ewelch): Shard counts should be set by the querier
+	// so we don't have to do it in tricky ways in multiple places.
+	// See pkg/logql/downstream.go:DownstreamEvaluator.Downstream
+	// for another example.
+	if res.Statistics.Summary.Shards == 0 {
+		res.Statistics.Summary.Shards = 1
+	}
+	a.stats.Merge(res.Statistics)
+	metadata.ExtendHeaders(a.headers, res.Headers)
+
+	for _, w := range res.Warnings {
+		a.warnings[w] = struct{}{}
+	}
+
+	if a.vec == nil {
+		a.vec = &data // TODO: maybe the matrix should already be a pointeer
+		return nil
+	}
+
+	var err error
+	a.vec, err = a.vec.Merge(&data)
+	a.stats.Merge(res.Statistics)
+	return err
+}
+
+func (a *CountMinSketchAccumulator) Result() []logqlmodel.Result {
+	headers := make([]*definitions.PrometheusResponseHeader, 0, len(a.headers))
+	for name, vals := range a.headers {
+		headers = append(
+			headers,
+			&definitions.PrometheusResponseHeader{
+				Name:   name,
+				Values: vals,
+			},
+		)
+	}
+
+	warnings := maps.Keys(a.warnings)
+	sort.Strings(warnings)
+
+	return []logqlmodel.Result{
+		{
+			Data:       a.vec,
 			Headers:    headers,
 			Warnings:   warnings,
 			Statistics: a.stats,
@@ -333,7 +410,6 @@ func (acc *AccumulatedStreams) appendTo(dst, src *logproto.Stream) {
 
 	acc.count += len(src.Entries)
 	heap.Fix(acc, acc.labelmap[dst.Labels])
-
 }
 
 // Pop returns a stream with one entry. It pops the first entry of the first stream

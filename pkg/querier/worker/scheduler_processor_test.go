@@ -79,7 +79,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 		workerCtx, workerCancel := context.WithCancel(context.Background())
 
-		requestHandler.On("Do", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		requestHandler.On("Do", mock.Anything, mock.Anything).Run(func(_ mock.Arguments) {
 			// Cancel the worker context while the query execution is in progress.
 			workerCancel()
 

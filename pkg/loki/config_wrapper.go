@@ -244,21 +244,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-	}
-
-	if mergeWithExisting {
-		r.IngesterRF1.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
-		r.IngesterRF1.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.IngesterRF1.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.IngesterRF1.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
-		r.IngesterRF1.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.IngesterRF1.LifecyclerConfig.ID = rc.InstanceID
-		r.IngesterRF1.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
-		r.IngesterRF1.LifecyclerConfig.Port = rc.InstancePort
-		r.IngesterRF1.LifecyclerConfig.Addr = rc.InstanceAddr
-		r.IngesterRF1.LifecyclerConfig.Zone = rc.InstanceZone
-		r.IngesterRF1.LifecyclerConfig.ListenPort = rc.ListenPort
-		r.IngesterRF1.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.KafkaIngestion.PartitionRingConfig.KVStore = rc.KVStore
 	}
 
 	if mergeWithExisting {
@@ -274,21 +260,6 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Pattern.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Pattern.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
-	}
-
-	if mergeWithExisting {
-		r.KafkaIngester.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
-		r.KafkaIngester.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.KafkaIngester.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.KafkaIngester.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
-		r.KafkaIngester.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.KafkaIngester.LifecyclerConfig.ID = rc.InstanceID
-		r.KafkaIngester.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
-		r.KafkaIngester.LifecyclerConfig.Port = rc.InstancePort
-		r.KafkaIngester.LifecyclerConfig.Addr = rc.InstanceAddr
-		r.KafkaIngester.LifecyclerConfig.Zone = rc.InstanceZone
-		r.KafkaIngester.LifecyclerConfig.ListenPort = rc.ListenPort
-		r.KafkaIngester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
 	// Distributor
@@ -570,9 +541,35 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.AlibabaCloud, defaults.StorageConfig.AlibabaStorageConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "alibaba"
+			r.Ruler.StoreConfig.AlibabaCloud = r.Common.Storage.AlibabaCloud
+			r.StorageConfig.AlibabaStorageConfig = r.Common.Storage.AlibabaCloud
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.COS, defaults.StorageConfig.COSConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "cos"
+			r.Ruler.StoreConfig.COS = r.Common.Storage.COS
+			r.StorageConfig.COSConfig = r.Common.Storage.COS
+		}
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.CongestionControl, defaults.StorageConfig.CongestionControl) {
 		applyConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.CongestionControl = r.Common.Storage.CongestionControl
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
+		applyConfig = func(r *ConfigWrapper) {
+			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
 		}
 	}
 
@@ -673,7 +670,6 @@ func applyIngesterFinalSleep(cfg *ConfigWrapper) {
 
 func applyIngesterReplicationFactor(cfg *ConfigWrapper) {
 	cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
-	cfg.IngesterRF1.LifecyclerConfig.RingConfig.ReplicationFactor = cfg.Common.ReplicationFactor
 }
 
 // applyChunkRetain is used to set chunk retain based on having an index query cache configured

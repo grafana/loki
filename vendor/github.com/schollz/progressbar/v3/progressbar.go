@@ -45,16 +45,19 @@ type state struct {
 	isAltSaucerHead   bool
 
 	lastShown time.Time
-	startTime time.Time
+	startTime time.Time // time when the progress bar start working
 
 	counterTime         time.Time
 	counterNumSinceLast int64
 	counterLastTenRates []float64
+	spinnerIdx          int // the index of spinner
 
 	maxLineWidth int
 	currentBytes float64
 	finished     bool
 	exit         bool // Progress bar exit halfway
+
+	details []string // details to show,only used when detail row is set to more than 0
 
 	rendered string
 }
@@ -80,6 +83,9 @@ type config struct {
 	showIterationsPerSecond bool
 	showIterationsCount     bool
 
+	// whether the progress bar should show the total bytes (e.g. 23/24 or 23/-, vs. just 23).
+	showTotalBytes bool
+
 	// whether the progress bar should show elapsed time.
 	// always enabled if predictTime is true.
 	elapsedTime bool
@@ -103,6 +109,11 @@ type config struct {
 	// spinnerTypeOptionUsed remembers if the spinnerType was changed manually
 	spinnerTypeOptionUsed bool
 
+	// spinnerChangeInterval the change interval of spinner
+	// if set this attribute to 0, the spinner only change when renderProgressBar was called
+	// for example, each time when Add() was called,which will call renderProgressBar function
+	spinnerChangeInterval time.Duration
+
 	// spinner represents the spinner as a slice of string
 	spinner []string
 
@@ -123,6 +134,9 @@ type config struct {
 	// showDescriptionAtLineEnd specifies whether description should be written at line end instead of line start
 	showDescriptionAtLineEnd bool
 
+	// specifies how many rows of details to show,default value is 0 and no details will be shown
+	maxDetailRow int
+
 	stdBuffer bytes.Buffer
 }
 
@@ -134,7 +148,45 @@ type Theme struct {
 	SaucerPadding string
 	BarStart      string
 	BarEnd        string
+
+	// BarStartFilled is used after the Bar starts filling, if set. Otherwise, it defaults to BarStart.
+	BarStartFilled string
+
+	// BarEndFilled is used once the Bar finishes, if set. Otherwise, it defaults to BarEnd.
+	BarEndFilled string
 }
+
+var (
+	// ThemeDefault is given by default (if not changed with OptionSetTheme), and it looks like "|████     |".
+	ThemeDefault = Theme{Saucer: "█", SaucerPadding: " ", BarStart: "|", BarEnd: "|"}
+
+	// ThemeASCII is a predefined Theme that uses ASCII symbols. It looks like "[===>...]".
+	// Configure it with OptionSetTheme(ThemeASCII).
+	ThemeASCII = Theme{
+		Saucer:        "=",
+		SaucerHead:    ">",
+		SaucerPadding: ".",
+		BarStart:      "[",
+		BarEnd:        "]",
+	}
+
+	// ThemeUnicode is a predefined Theme that uses Unicode characters, displaying a graphic bar.
+	// It looks like "" (rendering will depend on font being used).
+	// It requires special symbols usually found in "nerd fonts" [2], or in Fira Code [1], and other sources.
+	// Configure it with OptionSetTheme(ThemeUnicode).
+	//
+	// [1] https://github.com/tonsky/FiraCode
+	// [2] https://www.nerdfonts.com/
+	ThemeUnicode = Theme{
+		Saucer:         "\uEE04", // 
+		SaucerHead:     "\uEE04", // 
+		SaucerPadding:  "\uEE01", // 
+		BarStart:       "\uEE00", // 
+		BarStartFilled: "\uEE03", // 
+		BarEnd:         "\uEE02", // 
+		BarEndFilled:   "\uEE05", // 
+	}
+)
 
 // Option is the type all options need to adhere to
 type Option func(p *ProgressBar)
@@ -143,6 +195,18 @@ type Option func(p *ProgressBar)
 func OptionSetWidth(s int) Option {
 	return func(p *ProgressBar) {
 		p.config.width = s
+	}
+}
+
+// OptionSetSpinnerChangeInterval sets the spinner change interval
+// the spinner will change according to this value.
+// By default, this value is 100 * time.Millisecond
+// If you don't want to let this progressbar update by specified time interval
+// you can  set this value to zero, then the spinner will change each time rendered,
+// such as when Add() or Describe() was called
+func OptionSetSpinnerChangeInterval(interval time.Duration) Option {
+	return func(p *ProgressBar) {
+		p.config.spinnerChangeInterval = interval
 	}
 }
 
@@ -162,7 +226,8 @@ func OptionSpinnerCustom(spinner []string) Option {
 	}
 }
 
-// OptionSetTheme sets the elements the bar is constructed of
+// OptionSetTheme sets the elements the bar is constructed with.
+// There are two pre-defined themes you can use: ThemeASCII and ThemeUnicode.
 func OptionSetTheme(t Theme) Option {
 	return func(p *ProgressBar) {
 		p.config.theme = t
@@ -240,10 +305,17 @@ func OptionShowIts() Option {
 	}
 }
 
-// OptionShowElapsedOnFinish will keep the display of elapsed time on finish
+// OptionShowElapsedTimeOnFinish will keep the display of elapsed time on finish.
 func OptionShowElapsedTimeOnFinish() Option {
 	return func(p *ProgressBar) {
 		p.config.showElapsedTimeOnFinish = true
+	}
+}
+
+// OptionShowTotalBytes will keep the display of total bytes.
+func OptionShowTotalBytes(flag bool) Option {
+	return func(p *ProgressBar) {
+		p.config.showTotalBytes = flag
 	}
 }
 
@@ -262,7 +334,7 @@ func OptionThrottle(duration time.Duration) Option {
 	}
 }
 
-// OptionClearOnFinish will clear the bar once its finished
+// OptionClearOnFinish will clear the bar once its finished.
 func OptionClearOnFinish() Option {
 	return func(p *ProgressBar) {
 		p.config.clearOnFinish = true
@@ -308,7 +380,13 @@ func OptionShowDescriptionAtLineEnd() Option {
 	}
 }
 
-var defaultTheme = Theme{Saucer: "█", SaucerPadding: " ", BarStart: "|", BarEnd: "|"}
+// OptionSetMaxDetailRow sets the max row of details
+// the row count should be less than the terminal height, otherwise it will not give you the output you want
+func OptionSetMaxDetailRow(row int) Option {
+	return func(p *ProgressBar) {
+		p.config.maxDetailRow = row
+	}
+}
 
 // NewOptions constructs a new instance of ProgressBar, with any options you specify
 func NewOptions(max int, options ...Option) *ProgressBar {
@@ -318,18 +396,24 @@ func NewOptions(max int, options ...Option) *ProgressBar {
 // NewOptions64 constructs a new instance of ProgressBar, with any options you specify
 func NewOptions64(max int64, options ...Option) *ProgressBar {
 	b := ProgressBar{
-		state: getBasicState(),
+		state: state{
+			startTime:   time.Time{},
+			lastShown:   time.Time{},
+			counterTime: time.Time{},
+		},
 		config: config{
-			writer:           os.Stdout,
-			theme:            defaultTheme,
-			iterationString:  "it",
-			width:            40,
-			max:              max,
-			throttleDuration: 0 * time.Nanosecond,
-			elapsedTime:      max == -1,
-			predictTime:      true,
-			spinnerType:      9,
-			invisible:        false,
+			writer:                os.Stdout,
+			theme:                 ThemeDefault,
+			iterationString:       "it",
+			width:                 40,
+			max:                   max,
+			throttleDuration:      0 * time.Nanosecond,
+			elapsedTime:           max == -1,
+			predictTime:           true,
+			spinnerType:           9,
+			invisible:             false,
+			spinnerChangeInterval: 100 * time.Millisecond,
+			showTotalBytes:        true,
 		},
 	}
 
@@ -341,11 +425,13 @@ func NewOptions64(max int64, options ...Option) *ProgressBar {
 		panic("invalid spinner type, must be between 0 and 75")
 	}
 
+	if b.config.maxDetailRow < 0 {
+		panic("invalid max detail row, must be greater than 0")
+	}
+
 	// ignoreLength if max bytes not known
 	if b.config.max == -1 {
-		b.config.ignoreLength = true
-		b.config.max = int64(b.config.width)
-		b.config.predictTime = false
+		b.lengthUnknown()
 	}
 
 	b.config.maxHumanized, b.config.maxHumanizedSuffix = humanizeBytes(float64(b.config.max),
@@ -353,6 +439,27 @@ func NewOptions64(max int64, options ...Option) *ProgressBar {
 
 	if b.config.renderWithBlankState {
 		b.RenderBlank()
+	}
+
+	// if the render time interval attribute is set
+	if b.config.spinnerChangeInterval != 0 && !b.config.invisible && b.config.ignoreLength {
+		go func() {
+			ticker := time.NewTicker(b.config.spinnerChangeInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if b.IsFinished() {
+						return
+					}
+					if b.IsStarted() {
+						b.lock.Lock()
+						b.render()
+						b.lock.Unlock()
+					}
+				}
+			}
+		}()
 	}
 
 	return &b
@@ -386,6 +493,7 @@ func DefaultBytes(maxBytes int64, description ...string) *ProgressBar {
 		OptionSetDescription(desc),
 		OptionSetWriter(os.Stderr),
 		OptionShowBytes(true),
+		OptionShowTotalBytes(true),
 		OptionSetWidth(10),
 		OptionThrottle(65*time.Millisecond),
 		OptionShowCount(),
@@ -412,6 +520,7 @@ func DefaultBytesSilent(maxBytes int64, description ...string) *ProgressBar {
 		OptionSetDescription(desc),
 		OptionSetWriter(io.Discard),
 		OptionShowBytes(true),
+		OptionShowTotalBytes(true),
 		OptionSetWidth(10),
 		OptionThrottle(65*time.Millisecond),
 		OptionShowCount(),
@@ -432,6 +541,7 @@ func Default(max int64, description ...string) *ProgressBar {
 		OptionSetDescription(desc),
 		OptionSetWriter(os.Stderr),
 		OptionSetWidth(10),
+		OptionShowTotalBytes(true),
 		OptionThrottle(65*time.Millisecond),
 		OptionShowCount(),
 		OptionShowIts(),
@@ -458,6 +568,7 @@ func DefaultSilent(max int64, description ...string) *ProgressBar {
 		OptionSetDescription(desc),
 		OptionSetWriter(io.Discard),
 		OptionSetWidth(10),
+		OptionShowTotalBytes(true),
 		OptionThrottle(65*time.Millisecond),
 		OptionShowCount(),
 		OptionShowIts(),
@@ -484,6 +595,24 @@ func (p *ProgressBar) RenderBlank() error {
 		p.state.lastShown = time.Time{}
 	}
 	return p.render()
+}
+
+// StartWithoutRender will start the progress bar without rendering it
+// this method is created for the use case where you want to start the progress
+// but don't want to render it immediately.
+// If you want to start the progress and render it immediately, use RenderBlank instead,
+// or maybe you can use Add to start it automatically, but it will make the time calculation less precise.
+func (p *ProgressBar) StartWithoutRender() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if p.IsStarted() {
+		return
+	}
+
+	p.state.startTime = time.Now()
+	// the counterTime should be set to the current time
+	p.state.counterTime = time.Now()
 }
 
 // Reset will reset the clock that is used
@@ -567,6 +696,10 @@ func (p *ProgressBar) Add64(num int64) error {
 
 	p.state.currentBytes += float64(num)
 
+	if p.state.counterTime.IsZero() {
+		p.state.counterTime = time.Now()
+	}
+
 	// reset the countdown timer every second to take rolling average
 	p.state.counterNumSinceLast += num
 	if time.Since(p.state.counterTime).Seconds() > 0.5 {
@@ -592,6 +725,66 @@ func (p *ProgressBar) Add64(num int64) error {
 	if updateBar || p.config.showIterationsPerSecond || p.config.showIterationsCount {
 		return p.render()
 	}
+
+	return nil
+}
+
+// AddDetail adds a detail to the progress bar. Only used when maxDetailRow is set to a value greater than 0
+func (p *ProgressBar) AddDetail(detail string) error {
+	if p.config.maxDetailRow == 0 {
+		return errors.New("maxDetailRow is set to 0, cannot add detail")
+	}
+	if p.IsFinished() {
+		return errors.New("cannot add detail to a finished progress bar")
+	}
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.state.details == nil {
+		// if we add a detail before the first add, it will be weird that we have detail but don't have the progress bar in the top.
+		// so when we add the first detail, we will render the progress bar first.
+		if err := p.render(); err != nil {
+			return err
+		}
+	}
+	p.state.details = append(p.state.details, detail)
+	if len(p.state.details) > p.config.maxDetailRow {
+		p.state.details = p.state.details[1:]
+	}
+	if err := p.renderDetails(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// renderDetails renders the details of the progress bar
+func (p *ProgressBar) renderDetails() error {
+	if p.config.invisible {
+		return nil
+	}
+	if p.state.finished {
+		return nil
+	}
+	if p.config.maxDetailRow == 0 {
+		return nil
+	}
+
+	b := strings.Builder{}
+	b.WriteString("\n")
+
+	// render the details row
+	for _, detail := range p.state.details {
+		b.WriteString(fmt.Sprintf("\u001B[K\r%s\n", detail))
+	}
+	// add empty lines to fill the maxDetailRow
+	for i := len(p.state.details); i < p.config.maxDetailRow; i++ {
+		b.WriteString("\u001B[K\n")
+	}
+
+	// move the cursor up to the start of the details row
+	b.WriteString(fmt.Sprintf("\u001B[%dF", p.config.maxDetailRow+1))
+
+	writeString(p.config, b.String())
 
 	return nil
 }
@@ -656,6 +849,11 @@ func (p *ProgressBar) ChangeMax64(newMax int64) {
 			p.config.useIECUnits)
 	}
 
+	if newMax == -1 {
+		p.lengthUnknown()
+	} else {
+		p.lengthKnown(newMax)
+	}
 	p.lock.Unlock() // so p.Add can lock
 
 	p.Add(0) // re-render
@@ -669,22 +867,31 @@ func (p *ProgressBar) IsFinished() bool {
 	return p.state.finished
 }
 
+// IsStarted returns true if progress bar is started
+func (p *ProgressBar) IsStarted() bool {
+	return !p.state.startTime.IsZero()
+}
+
 // render renders the progress bar, updating the maximum
 // rendered line width. this function is not thread-safe,
 // so it must be called with an acquired lock.
 func (p *ProgressBar) render() error {
 	// make sure that the rendering is not happening too quickly
 	// but always show if the currentNum reaches the max
-	if time.Since(p.state.lastShown).Nanoseconds() < p.config.throttleDuration.Nanoseconds() &&
+	if !p.IsStarted() {
+		p.state.startTime = time.Now()
+	} else if time.Since(p.state.lastShown).Nanoseconds() < p.config.throttleDuration.Nanoseconds() &&
 		p.state.currentNum < p.config.max {
 		return nil
 	}
 
 	if !p.config.useANSICodes {
-		// first, clear the existing progress bar
-		err := clearProgressBar(p.config, p.state)
-		if err != nil {
-			return err
+		// first, clear the existing progress bar, if not yet finished.
+		if !p.state.finished {
+			err := clearProgressBar(p.config, p.state)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -694,6 +901,11 @@ func (p *ProgressBar) render() error {
 		if !p.config.clearOnFinish {
 			io.Copy(p.config.writer, &p.config.stdBuffer)
 			renderProgressBar(p.config, &p.state)
+		}
+		if p.config.maxDetailRow > 0 {
+			p.renderDetails()
+			// put the cursor back to the last line of the details
+			writeString(p.config, fmt.Sprintf("\u001B[%dB\r\u001B[%dC", p.config.maxDetailRow, len(p.state.details[len(p.state.details)-1])))
 		}
 		if p.config.onCompletion != nil {
 			p.config.onCompletion()
@@ -726,6 +938,20 @@ func (p *ProgressBar) render() error {
 	return nil
 }
 
+// lengthUnknown sets the progress bar to ignore the length
+func (p *ProgressBar) lengthUnknown() {
+	p.config.ignoreLength = true
+	p.config.max = int64(p.config.width)
+	p.config.predictTime = false
+}
+
+// lengthKnown sets the progress bar to do not ignore the length
+func (p *ProgressBar) lengthKnown(max int64) {
+	p.config.ignoreLength = false
+	p.config.max = max
+	p.config.predictTime = true
+}
+
 // State returns the current state
 func (p *ProgressBar) State() State {
 	p.lock.Lock()
@@ -738,7 +964,12 @@ func (p *ProgressBar) State() State {
 	}
 	s.CurrentPercent = float64(p.state.currentNum) / float64(p.config.max)
 	s.CurrentBytes = p.state.currentBytes
-	s.SecondsSince = time.Since(p.state.startTime).Seconds()
+	if p.IsStarted() {
+		s.SecondsSince = time.Since(p.state.startTime).Seconds()
+	} else {
+		s.SecondsSince = 0
+	}
+
 	if p.state.currentNum > 0 {
 		s.SecondsLeft = s.SecondsSince / float64(p.state.currentNum) * (float64(p.config.max) - float64(p.state.currentNum))
 	}
@@ -798,21 +1029,32 @@ func renderProgressBar(c config, s *state) (int, error) {
 			if c.showBytes {
 				currentHumanize, currentSuffix := humanizeBytes(s.currentBytes, c.useIECUnits)
 				if currentSuffix == c.maxHumanizedSuffix {
-					sb.WriteString(fmt.Sprintf("%s/%s%s",
-						currentHumanize, c.maxHumanized, c.maxHumanizedSuffix))
-				} else {
+					if c.showTotalBytes {
+						sb.WriteString(fmt.Sprintf("%s/%s%s",
+							currentHumanize, c.maxHumanized, c.maxHumanizedSuffix))
+					} else {
+						sb.WriteString(fmt.Sprintf("%s%s",
+							currentHumanize, c.maxHumanizedSuffix))
+					}
+				} else if c.showTotalBytes {
 					sb.WriteString(fmt.Sprintf("%s%s/%s%s",
 						currentHumanize, currentSuffix, c.maxHumanized, c.maxHumanizedSuffix))
+				} else {
+					sb.WriteString(fmt.Sprintf("%s%s", currentHumanize, currentSuffix))
 				}
-			} else {
+			} else if c.showTotalBytes {
 				sb.WriteString(fmt.Sprintf("%.0f/%d", s.currentBytes, c.max))
+			} else {
+				sb.WriteString(fmt.Sprintf("%.0f", s.currentBytes))
 			}
 		} else {
 			if c.showBytes {
 				currentHumanize, currentSuffix := humanizeBytes(s.currentBytes, c.useIECUnits)
 				sb.WriteString(fmt.Sprintf("%s%s", currentHumanize, currentSuffix))
-			} else {
+			} else if c.showTotalBytes {
 				sb.WriteString(fmt.Sprintf("%.0f/%s", s.currentBytes, "-"))
+			} else {
+				sb.WriteString(fmt.Sprintf("%.0f", s.currentBytes))
 			}
 		}
 	}
@@ -848,6 +1090,10 @@ func renderProgressBar(c config, s *state) (int, error) {
 	}
 
 	leftBrac, rightBrac, saucer, saucerHead := "", "", "", ""
+	barStart, barEnd := c.theme.BarStart, c.theme.BarEnd
+	if s.finished && c.theme.BarEndFilled != "" {
+		barEnd = c.theme.BarEndFilled
+	}
 
 	// show time prediction in "current/total" seconds format
 	switch {
@@ -883,6 +1129,9 @@ func renderProgressBar(c config, s *state) (int, error) {
 
 		c.width = width - getStringWidth(c, c.description, true) - 10 - amend - sb.Len() - len(leftBrac) - len(rightBrac)
 		s.currentSaucerSize = int(float64(s.currentPercent) / 100.0 * float64(c.width))
+	}
+	if (s.currentSaucerSize > 0 || s.currentPercent > 0) && c.theme.BarStartFilled != "" {
+		barStart = c.theme.BarStartFilled
 	}
 	if s.currentSaucerSize > 0 {
 		if c.ignoreLength {
@@ -925,7 +1174,16 @@ func renderProgressBar(c config, s *state) (int, error) {
 		if len(c.spinner) > 0 {
 			selectedSpinner = c.spinner
 		}
-		spinner := selectedSpinner[int(math.Round(math.Mod(float64(time.Since(s.startTime).Milliseconds()/100), float64(len(selectedSpinner)))))]
+
+		var spinner string
+		if c.spinnerChangeInterval != 0 {
+			// if the spinner is changed according to an interval, calculate it
+			spinner = selectedSpinner[int(math.Round(math.Mod(float64(time.Since(s.startTime).Nanoseconds()/c.spinnerChangeInterval.Nanoseconds()), float64(len(selectedSpinner)))))]
+		} else {
+			// if the spinner is changed according to the number render was called
+			spinner = selectedSpinner[s.spinnerIdx]
+			s.spinnerIdx = (s.spinnerIdx + 1) % len(selectedSpinner)
+		}
 		if c.elapsedTime {
 			if c.showDescriptionAtLineEnd {
 				str = fmt.Sprintf("\r%s %s [%s] %s ",
@@ -956,11 +1214,11 @@ func renderProgressBar(c config, s *state) (int, error) {
 	} else if rightBrac == "" {
 		str = fmt.Sprintf("%4d%% %s%s%s%s%s %s",
 			s.currentPercent,
-			c.theme.BarStart,
+			barStart,
 			saucer,
 			saucerHead,
 			strings.Repeat(c.theme.SaucerPadding, repeatAmount),
-			c.theme.BarEnd,
+			barEnd,
 			sb.String())
 		if (s.currentPercent == 100 && c.showElapsedTimeOnFinish) || c.elapsedTime {
 			str = fmt.Sprintf("%s [%s]", str, leftBrac)
@@ -975,11 +1233,11 @@ func renderProgressBar(c config, s *state) (int, error) {
 		if s.currentPercent == 100 {
 			str = fmt.Sprintf("%4d%% %s%s%s%s%s %s",
 				s.currentPercent,
-				c.theme.BarStart,
+				barStart,
 				saucer,
 				saucerHead,
 				strings.Repeat(c.theme.SaucerPadding, repeatAmount),
-				c.theme.BarEnd,
+				barEnd,
 				sb.String())
 
 			if c.showElapsedTimeOnFinish {
@@ -994,11 +1252,11 @@ func renderProgressBar(c config, s *state) (int, error) {
 		} else {
 			str = fmt.Sprintf("%4d%% %s%s%s%s%s %s [%s:%s]",
 				s.currentPercent,
-				c.theme.BarStart,
+				barStart,
 				saucer,
 				saucerHead,
 				strings.Repeat(c.theme.SaucerPadding, repeatAmount),
-				c.theme.BarEnd,
+				barEnd,
 				sb.String(),
 				leftBrac,
 				rightBrac)
@@ -1153,6 +1411,8 @@ func shouldCacheOutput(pb *ProgressBar) bool {
 }
 
 func Bprintln(pb *ProgressBar, a ...interface{}) (int, error) {
+	pb.lock.Lock()
+	defer pb.lock.Unlock()
 	if !shouldCacheOutput(pb) {
 		return fmt.Fprintln(pb.config.writer, a...)
 	} else {
@@ -1161,6 +1421,8 @@ func Bprintln(pb *ProgressBar, a ...interface{}) (int, error) {
 }
 
 func Bprintf(pb *ProgressBar, format string, a ...interface{}) (int, error) {
+	pb.lock.Lock()
+	defer pb.lock.Unlock()
 	if !shouldCacheOutput(pb) {
 		return fmt.Fprintf(pb.config.writer, format, a...)
 	} else {

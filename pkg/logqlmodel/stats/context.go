@@ -103,6 +103,18 @@ func (c *Context) Store() Store {
 	return c.store
 }
 
+// Index returns the index statistics accumulated so far.
+func (c *Context) Index() Index {
+	return c.index
+}
+
+// Merge index stats from multiple response in a concurrency-safe manner
+func (c *Context) MergeIndex(i Index) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.index.Merge(i)
+}
+
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
@@ -235,6 +247,9 @@ func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
 	i.ShardsDuration += m.ShardsDuration
+	if m.UsedBloomFilters {
+		i.UsedBloomFilters = m.UsedBloomFilters
+	}
 }
 
 func (c *Caches) Merge(m Caches) {
@@ -400,6 +415,14 @@ func (c *Context) AddChunksDownloaded(i int64) {
 
 func (c *Context) AddChunksRef(i int64) {
 	atomic.AddInt64(&c.store.TotalChunksRef, i)
+}
+
+func (c *Context) AddIndexTotalChunkRefs(i int64) {
+	atomic.AddInt64(&c.index.TotalChunks, i)
+}
+
+func (c *Context) AddIndexPostFilterChunkRefs(i int64) {
+	atomic.AddInt64(&c.index.PostFilterChunks, i)
 }
 
 // AddCacheEntriesFound counts the number of cache entries requested and found

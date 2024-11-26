@@ -9,10 +9,10 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -33,16 +33,17 @@ const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID string
-	buf        []byte             // buffer used to compute fps.
-	mapper     *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	streams    *streamsMap
-	index      *index.BitPrefixInvertedIndex
-	logger     log.Logger
-	metrics    *ingesterMetrics
-	drainCfg   *drain.Config
-	ringClient RingClient
-	ingesterID string
+	instanceID  string
+	buf         []byte             // buffer used to compute fps.
+	mapper      *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	streams     *streamsMap
+	index       *index.BitPrefixInvertedIndex
+	logger      log.Logger
+	metrics     *ingesterMetrics
+	drainCfg    *drain.Config
+	drainLimits drain.Limits
+	ringClient  RingClient
+	ingesterID  string
 
 	aggMetricsLock             sync.Mutex
 	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
@@ -60,6 +61,7 @@ func newInstance(
 	logger log.Logger,
 	metrics *ingesterMetrics,
 	drainCfg *drain.Config,
+	drainLimits drain.Limits,
 	ringClient RingClient,
 	ingesterID string,
 	writer aggregation.EntryWriter,
@@ -76,6 +78,7 @@ func newInstance(
 		index:                      index,
 		metrics:                    metrics,
 		drainCfg:                   drainCfg,
+		drainLimits:                drainLimits,
 		ringClient:                 ringClient,
 		ingesterID:                 ingesterID,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
@@ -93,7 +96,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	for _, reqStream := range req.Streams {
 		// All streams are observed for metrics
 		// TODO(twhitney): this would be better as a queue that drops in response to backpressure
-		i.Observe(reqStream.Labels, reqStream.Entries)
+		i.Observe(ctx, reqStream.Labels, reqStream.Entries)
 
 		// But only owned streamed are processed for patterns
 		ownedStream, err := i.isOwnedStream(i.ingesterID, reqStream.Labels)
@@ -102,7 +105,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		}
 
 		if ownedStream {
-			if reqStream.Entries == nil || len(reqStream.Entries) == 0 {
+			if len(reqStream.Entries) == 0 {
 				continue
 			}
 			s, _, err := i.streams.LoadOrStoreNew(reqStream.Labels,
@@ -158,7 +161,7 @@ func (i *instance) isOwnedStream(ingesterID string, stream string) (bool, error)
 func (i *instance) Iterator(ctx context.Context, req *logproto.QueryPatternsRequest) (iter.Iterator, error) {
 	matchers, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	from, through := util.RoundToMilliseconds(req.Start, req.End)
 	step := model.Time(req.Step)
@@ -216,12 +219,12 @@ outer:
 func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream) (*stream, error) {
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	fp := i.getHashForLabels(labels)
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 	firstEntryLine := pushReqStream.Entries[0].Line
-	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg)
+	s, err := newStream(fp, sortedLabels, i.metrics, i.logger, drain.DetectLogFormat(firstEntryLine), i.instanceID, i.drainCfg, i.drainLimits)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
@@ -250,9 +253,21 @@ func (i *instance) removeStream(s *stream) {
 	}
 }
 
-func (i *instance) Observe(stream string, entries []logproto.Entry) {
+func (i *instance) Observe(ctx context.Context, stream string, entries []logproto.Entry) {
 	i.aggMetricsLock.Lock()
 	defer i.aggMetricsLock.Unlock()
+
+	sp, _ := opentracing.StartSpanFromContext(
+		ctx,
+		"patternIngester.Observe",
+	)
+	defer sp.Finish()
+
+	sp.LogKV(
+		"event", "observe stream for metrics",
+		"stream", stream,
+		"entries", len(entries),
+	)
 
 	for _, entry := range entries {
 		lvl := constants.LogLevelUnknown
@@ -264,20 +279,11 @@ func (i *instance) Observe(stream string, entries []logproto.Entry) {
 		streamMetrics, ok := i.aggMetricsByStreamAndLevel[stream]
 
 		if !ok {
-			streamMetrics = make(map[string]*aggregatedMetrics, len(constants.LogLevels))
-			for _, l := range constants.LogLevels {
-				streamMetrics[l] = &aggregatedMetrics{}
-			}
+			streamMetrics = map[string]*aggregatedMetrics{}
 		}
 
 		if _, ok := streamMetrics[lvl]; !ok {
-			level.Warn(i.logger).Log(
-				"msg", "unknown log level while observing stream",
-				"level", lvl,
-				"stream", stream,
-			)
-
-			lvl = constants.LogLevelUnknown
+			streamMetrics[lvl] = &aggregatedMetrics{}
 		}
 
 		streamMetrics[lvl].bytes += uint64(len(entry.Line))

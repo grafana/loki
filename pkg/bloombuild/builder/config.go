@@ -3,6 +3,7 @@ package builder
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
@@ -38,8 +39,8 @@ func (cfg *Config) Validate() error {
 
 type Limits interface {
 	BloomBlockEncoding(tenantID string) string
-	BloomNGramLength(tenantID string) int
-	BloomNGramSkip(tenantID string) int
 	BloomMaxBlockSize(tenantID string) int
 	BloomMaxBloomSize(tenantID string) int
+	BuilderResponseTimeout(tenantID string) time.Duration
+	PrefetchBloomBlocks(tenantID string) bool
 }

@@ -21,13 +21,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	ring_client "github.com/grafana/dskit/ring/client"
 )
 
 type TeeService struct {
 	cfg        Config
+	limits     Limits
+	tenantCfgs *runtime.TenantConfigs
 	logger     log.Logger
 	ringClient RingClient
 	wg         *sync.WaitGroup
@@ -49,7 +52,9 @@ type TeeService struct {
 
 func NewTeeService(
 	cfg Config,
+	limits Limits,
 	ringClient RingClient,
+	tenantCfgs *runtime.TenantConfigs,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
 	logger log.Logger,
@@ -77,14 +82,15 @@ func NewTeeService(
 		sendDuration: instrument.NewHistogramCollector(
 			promauto.With(registerer).NewHistogramVec(
 				prometheus.HistogramOpts{
-					Namespace: constants.Loki,
-					Name:      "pattern_ingester_tee_send_duration_seconds",
-					Help:      "Time spent sending batches from the tee to the pattern ingester",
-					Buckets:   prometheus.DefBuckets,
+					Name:    "pattern_ingester_tee_send_duration_seconds",
+					Help:    "Time spent sending batches from the tee to the pattern ingester",
+					Buckets: prometheus.DefBuckets,
 				}, instrument.HistogramCollectorBuckets,
 			),
 		),
 		cfg:        cfg,
+		limits:     limits,
+		tenantCfgs: tenantCfgs,
 		ringClient: ringClient,
 
 		wg:           &sync.WaitGroup{},
@@ -292,10 +298,11 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 		// are gathered by this request
 		_ = instrument.CollectedRequest(
 			ctx,
-			"FlushTeedLogsToPatternIngested",
+			"FlushTeedLogsToPatternIngester",
 			ts.sendDuration,
 			instrument.ErrorCode,
 			func(ctx context.Context) error {
+				sp := spanlogger.FromContext(ctx)
 				client, err := ts.ringClient.GetClientFor(clientRequest.ingesterAddr)
 				if err != nil {
 					return err
@@ -312,6 +319,41 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 					// Success here means the stream will be processed for both metrics and patterns
 					ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "success").Inc()
 					ts.ingesterMetricAppends.WithLabelValues("success").Inc()
+
+					// limit logged labels to 1000
+					labelsLimit := len(req.Streams)
+					if labelsLimit > 1000 {
+						labelsLimit = 1000
+					}
+
+					labels := make([]string, 0, labelsLimit)
+					for _, stream := range req.Streams {
+						if len(labels) >= 1000 {
+							break
+						}
+
+						labels = append(labels, stream.Labels)
+					}
+
+					sp.LogKV(
+						"event", "forwarded push request to pattern ingester",
+						"num_streams", len(req.Streams),
+						"first_1k_labels", strings.Join(labels, ", "),
+						"tenant", clientRequest.tenant,
+					)
+
+					// this is basically the same as logging push request streams,
+					// so put it behind the same flag
+					if ts.tenantCfgs.LogPushRequestStreams(clientRequest.tenant) {
+						level.Debug(ts.logger).
+							Log(
+								"msg", "forwarded push request to pattern ingester",
+								"num_streams", len(req.Streams),
+								"first_1k_labels", strings.Join(labels, ", "),
+								"tenant", clientRequest.tenant,
+							)
+					}
+
 					return nil
 				}
 
@@ -319,14 +361,15 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 				ts.ingesterAppends.WithLabelValues(clientRequest.ingesterAddr, "fail").Inc()
 				level.Error(ts.logger).Log("msg", "failed to send patterns to pattern ingester", "err", err)
 
-				if !ts.cfg.MetricAggregation.Enabled {
-					return err
-				}
-
 				// Pattern ingesters serve 2 functions, processing patterns and aggregating metrics.
 				// Only owned streams are processed for patterns, however any pattern ingester can
 				// aggregate metrics for any stream. Therefore, if we can't send the owned stream,
 				// try to forward request to any pattern ingester so we at least capture the metrics.
+
+				if !ts.limits.MetricAggregationEnabled(clientRequest.tenant) {
+					return err
+				}
+
 				replicationSet, err := ts.ringClient.Ring().
 					GetReplicationSetForOperation(ring.WriteNoExtend)
 				if err != nil || len(replicationSet.Instances) == 0 {

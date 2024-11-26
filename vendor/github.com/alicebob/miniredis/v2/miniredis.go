@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alicebob/miniredis/v2/proto"
 	"github.com/alicebob/miniredis/v2/server"
 )
 
@@ -47,6 +48,7 @@ type RedisDB struct {
 	sortedsetKeys map[string]sortedSet     // ZADD &c. keys
 	streamKeys    map[string]*streamKey    // XADD &c. keys
 	ttl           map[string]time.Duration // effective TTL values
+	lru           map[string]time.Time     // last recently used ( read or written to )
 	keyVersion    map[string]uint          // used to watch values
 }
 
@@ -105,6 +107,7 @@ func newRedisDB(id int, m *Miniredis) RedisDB {
 		id:            id,
 		master:        m,
 		keys:          map[string]string{},
+		lru:           map[string]time.Time{},
 		stringKeys:    map[string]string{},
 		hashKeys:      map[string]hashKey{},
 		listKeys:      map[string]listKey{},
@@ -133,6 +136,7 @@ func RunTLS(cfg *tls.Config) (*Miniredis, error) {
 type Tester interface {
 	Fatalf(string, ...interface{})
 	Cleanup(func())
+	Logf(format string, args ...interface{})
 }
 
 // RunT start a new miniredis, pass it a testing.T. It also registers the cleanup after your test is done.
@@ -144,6 +148,22 @@ func RunT(t Tester) *Miniredis {
 	}
 	t.Cleanup(m.Close)
 	return m
+}
+
+func runWithClient(t Tester) (*Miniredis, *proto.Client) {
+	m := RunT(t)
+
+	c, err := proto.Dial(m.Addr())
+	if err != nil {
+		t.Fatalf("could not connect to miniredis: %s", err)
+	}
+	t.Cleanup(func() {
+		if err = c.Close(); err != nil {
+			t.Logf("error closing connection to miniredis: %s", err)
+		}
+	})
+
+	return m, c
 }
 
 // Start starts a server. It listens on a random port on localhost. See also
@@ -175,6 +195,15 @@ func (m *Miniredis) StartAddr(addr string) error {
 	return m.start(s)
 }
 
+// StartAddrTLS runs miniredis with a given addr, TLS version.
+func (m *Miniredis) StartAddrTLS(addr string, cfg *tls.Config) error {
+	s, err := server.NewServerTLS(addr, cfg)
+	if err != nil {
+		return err
+	}
+	return m.start(s)
+}
+
 func (m *Miniredis) start(s *server.Server) error {
 	m.Lock()
 	defer m.Unlock()
@@ -196,6 +225,8 @@ func (m *Miniredis) start(s *server.Server) error {
 	commandsGeo(m)
 	commandsCluster(m)
 	commandsHll(m)
+	commandsClient(m)
+	commandsObject(m)
 
 	return nil
 }
@@ -690,7 +721,7 @@ func (m *Miniredis) copy(
 		panic("missing case")
 	}
 	destDB.keys[dst] = srcDB.keys[src]
-	destDB.keyVersion[dst]++
+	destDB.incr(dst)
 	if v, ok := srcDB.ttl[src]; ok {
 		destDB.ttl[dst] = v
 	}

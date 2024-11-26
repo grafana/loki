@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -28,11 +29,13 @@ var errInvalidGeneration = errors.New("invalid generation ID")
 
 // ObjectAttrs returns only the meta-data about an object without its contents.
 type ObjectAttrs struct {
-	BucketName      string
-	Name            string
-	Size            int64
-	ContentType     string
-	ContentEncoding string
+	BucketName         string
+	Name               string
+	Size               int64
+	ContentType        string
+	ContentEncoding    string
+	ContentDisposition string
+	CacheControl       string
 	// Crc32c checksum of Content. calculated by server when it's upload methods are used.
 	Crc32c  string
 	Md5Hash string
@@ -53,40 +56,42 @@ func (o *ObjectAttrs) id() string {
 }
 
 type jsonObject struct {
-	BucketName      string            `json:"bucket"`
-	Name            string            `json:"name"`
-	Size            int64             `json:"size,string"`
-	ContentType     string            `json:"contentType"`
-	ContentEncoding string            `json:"contentEncoding"`
-	Crc32c          string            `json:"crc32c,omitempty"`
-	Md5Hash         string            `json:"md5Hash,omitempty"`
-	Etag            string            `json:"etag,omitempty"`
-	ACL             []aclRule         `json:"acl,omitempty"`
-	Created         time.Time         `json:"created,omitempty"`
-	Updated         time.Time         `json:"updated,omitempty"`
-	Deleted         time.Time         `json:"deleted,omitempty"`
-	CustomTime      time.Time         `json:"customTime,omitempty"`
-	Generation      int64             `json:"generation,omitempty,string"`
-	Metadata        map[string]string `json:"metadata,omitempty"`
+	BucketName         string            `json:"bucket"`
+	Name               string            `json:"name"`
+	Size               int64             `json:"size,string"`
+	ContentType        string            `json:"contentType"`
+	ContentEncoding    string            `json:"contentEncoding"`
+	ContentDisposition string            `json:"contentDisposition"`
+	Crc32c             string            `json:"crc32c,omitempty"`
+	Md5Hash            string            `json:"md5Hash,omitempty"`
+	Etag               string            `json:"etag,omitempty"`
+	ACL                []aclRule         `json:"acl,omitempty"`
+	Created            time.Time         `json:"created,omitempty"`
+	Updated            time.Time         `json:"updated,omitempty"`
+	Deleted            time.Time         `json:"deleted,omitempty"`
+	CustomTime         time.Time         `json:"customTime,omitempty"`
+	Generation         int64             `json:"generation,omitempty,string"`
+	Metadata           map[string]string `json:"metadata,omitempty"`
 }
 
 // MarshalJSON for ObjectAttrs to use ACLRule instead of storage.ACLRule
 func (o ObjectAttrs) MarshalJSON() ([]byte, error) {
 	temp := jsonObject{
-		BucketName:      o.BucketName,
-		Name:            o.Name,
-		ContentType:     o.ContentType,
-		ContentEncoding: o.ContentEncoding,
-		Size:            o.Size,
-		Crc32c:          o.Crc32c,
-		Md5Hash:         o.Md5Hash,
-		Etag:            o.Etag,
-		Created:         o.Created,
-		Updated:         o.Updated,
-		Deleted:         o.Deleted,
-		CustomTime:      o.CustomTime,
-		Generation:      o.Generation,
-		Metadata:        o.Metadata,
+		BucketName:         o.BucketName,
+		Name:               o.Name,
+		ContentType:        o.ContentType,
+		ContentEncoding:    o.ContentEncoding,
+		ContentDisposition: o.ContentDisposition,
+		Size:               o.Size,
+		Crc32c:             o.Crc32c,
+		Md5Hash:            o.Md5Hash,
+		Etag:               o.Etag,
+		Created:            o.Created,
+		Updated:            o.Updated,
+		Deleted:            o.Deleted,
+		CustomTime:         o.CustomTime,
+		Generation:         o.Generation,
+		Metadata:           o.Metadata,
 	}
 	temp.ACL = make([]aclRule, len(o.ACL))
 	for i, ACL := range o.ACL {
@@ -105,6 +110,7 @@ func (o *ObjectAttrs) UnmarshalJSON(data []byte) error {
 	o.Name = temp.Name
 	o.ContentType = temp.ContentType
 	o.ContentEncoding = temp.ContentEncoding
+	o.ContentDisposition = temp.ContentDisposition
 	o.Size = temp.Size
 	o.Crc32c = temp.Crc32c
 	o.Md5Hash = temp.Md5Hash
@@ -241,21 +247,6 @@ func (team *projectTeam) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type objectAttrsList []ObjectAttrs
-
-func (o objectAttrsList) Len() int {
-	return len(o)
-}
-
-func (o objectAttrsList) Less(i int, j int) bool {
-	return o[i].Name < o[j].Name
-}
-
-func (o *objectAttrsList) Swap(i int, j int) {
-	d := *o
-	d[i], d[j] = d[j], d[i]
-}
-
 // CreateObject is the non-streaming version of CreateObjectStreaming.
 //
 // In addition to streaming, CreateObjectStreaming returns an error instead of
@@ -344,11 +335,12 @@ func (s *Server) ListObjectsWithOptions(bucketName string, options ListOptions) 
 		return nil, nil, err
 	}
 	objects := fromBackendObjectsAttrs(backendObjects)
-	olist := objectAttrsList(objects)
-	sort.Sort(&olist)
+	slices.SortFunc(objects, func(left, right ObjectAttrs) int {
+		return strings.Compare(left.Name, right.Name)
+	})
 	var respObjects []ObjectAttrs
 	prefixes := make(map[string]bool)
-	for _, obj := range olist {
+	for _, obj := range objects {
 		if !strings.HasPrefix(obj.Name, options.Prefix) {
 			continue
 		}
@@ -400,17 +392,19 @@ func toBackendObjects(objects []StreamingObject) []backend.StreamingObject {
 	for _, o := range objects {
 		backendObjects = append(backendObjects, backend.StreamingObject{
 			ObjectAttrs: backend.ObjectAttrs{
-				BucketName:      o.BucketName,
-				Name:            o.Name,
-				ContentType:     o.ContentType,
-				ContentEncoding: o.ContentEncoding,
-				ACL:             o.ACL,
-				Created:         getCurrentIfZero(o.Created).Format(timestampFormat),
-				Deleted:         o.Deleted.Format(timestampFormat),
-				Updated:         getCurrentIfZero(o.Updated).Format(timestampFormat),
-				CustomTime:      o.CustomTime.Format(timestampFormat),
-				Generation:      o.Generation,
-				Metadata:        o.Metadata,
+				BucketName:         o.BucketName,
+				Name:               o.Name,
+				ContentType:        o.ContentType,
+				ContentEncoding:    o.ContentEncoding,
+				ContentDisposition: o.ContentDisposition,
+				CacheControl:       o.CacheControl,
+				ACL:                o.ACL,
+				Created:            getCurrentIfZero(o.Created).Format(timestampFormat),
+				Deleted:            o.Deleted.Format(timestampFormat),
+				Updated:            getCurrentIfZero(o.Updated).Format(timestampFormat),
+				CustomTime:         o.CustomTime.Format(timestampFormat),
+				Generation:         o.Generation,
+				Metadata:           o.Metadata,
 			},
 			Content: o.Content,
 		})
@@ -424,21 +418,22 @@ func bufferedObjectsToBackendObjects(objects []Object) []backend.StreamingObject
 		o := bufferedObject.StreamingObject()
 		backendObjects = append(backendObjects, backend.StreamingObject{
 			ObjectAttrs: backend.ObjectAttrs{
-				BucketName:      o.BucketName,
-				Name:            o.Name,
-				ContentType:     o.ContentType,
-				ContentEncoding: o.ContentEncoding,
-				ACL:             o.ACL,
-				Created:         getCurrentIfZero(o.Created).Format(timestampFormat),
-				Deleted:         o.Deleted.Format(timestampFormat),
-				Updated:         getCurrentIfZero(o.Updated).Format(timestampFormat),
-				CustomTime:      o.CustomTime.Format(timestampFormat),
-				Generation:      o.Generation,
-				Metadata:        o.Metadata,
-				Crc32c:          o.Crc32c,
-				Md5Hash:         o.Md5Hash,
-				Size:            o.Size,
-				Etag:            o.Etag,
+				BucketName:         o.BucketName,
+				Name:               o.Name,
+				ContentType:        o.ContentType,
+				ContentEncoding:    o.ContentEncoding,
+				ContentDisposition: o.ContentDisposition,
+				ACL:                o.ACL,
+				Created:            getCurrentIfZero(o.Created).Format(timestampFormat),
+				Deleted:            o.Deleted.Format(timestampFormat),
+				Updated:            getCurrentIfZero(o.Updated).Format(timestampFormat),
+				CustomTime:         o.CustomTime.Format(timestampFormat),
+				Generation:         o.Generation,
+				Metadata:           o.Metadata,
+				Crc32c:             o.Crc32c,
+				Md5Hash:            o.Md5Hash,
+				Size:               o.Size,
+				Etag:               o.Etag,
 			},
 			Content: o.Content,
 		})
@@ -451,21 +446,23 @@ func fromBackendObjects(objects []backend.StreamingObject) []StreamingObject {
 	for _, o := range objects {
 		backendObjects = append(backendObjects, StreamingObject{
 			ObjectAttrs: ObjectAttrs{
-				BucketName:      o.BucketName,
-				Name:            o.Name,
-				Size:            o.Size,
-				ContentType:     o.ContentType,
-				ContentEncoding: o.ContentEncoding,
-				Crc32c:          o.Crc32c,
-				Md5Hash:         o.Md5Hash,
-				Etag:            o.Etag,
-				ACL:             o.ACL,
-				Created:         convertTimeWithoutError(o.Created),
-				Deleted:         convertTimeWithoutError(o.Deleted),
-				Updated:         convertTimeWithoutError(o.Updated),
-				CustomTime:      convertTimeWithoutError(o.CustomTime),
-				Generation:      o.Generation,
-				Metadata:        o.Metadata,
+				BucketName:         o.BucketName,
+				Name:               o.Name,
+				Size:               o.Size,
+				ContentType:        o.ContentType,
+				ContentEncoding:    o.ContentEncoding,
+				ContentDisposition: o.ContentDisposition,
+				CacheControl:       o.CacheControl,
+				Crc32c:             o.Crc32c,
+				Md5Hash:            o.Md5Hash,
+				Etag:               o.Etag,
+				ACL:                o.ACL,
+				Created:            convertTimeWithoutError(o.Created),
+				Deleted:            convertTimeWithoutError(o.Deleted),
+				Updated:            convertTimeWithoutError(o.Updated),
+				CustomTime:         convertTimeWithoutError(o.CustomTime),
+				Generation:         o.Generation,
+				Metadata:           o.Metadata,
 			},
 			Content: o.Content,
 		})
@@ -477,21 +474,23 @@ func fromBackendObjectsAttrs(objectAttrs []backend.ObjectAttrs) []ObjectAttrs {
 	oattrs := make([]ObjectAttrs, 0, len(objectAttrs))
 	for _, o := range objectAttrs {
 		oattrs = append(oattrs, ObjectAttrs{
-			BucketName:      o.BucketName,
-			Name:            o.Name,
-			Size:            o.Size,
-			ContentType:     o.ContentType,
-			ContentEncoding: o.ContentEncoding,
-			Crc32c:          o.Crc32c,
-			Md5Hash:         o.Md5Hash,
-			Etag:            o.Etag,
-			ACL:             o.ACL,
-			Created:         convertTimeWithoutError(o.Created),
-			Deleted:         convertTimeWithoutError(o.Deleted),
-			Updated:         convertTimeWithoutError(o.Updated),
-			CustomTime:      convertTimeWithoutError(o.CustomTime),
-			Generation:      o.Generation,
-			Metadata:        o.Metadata,
+			BucketName:         o.BucketName,
+			Name:               o.Name,
+			Size:               o.Size,
+			ContentType:        o.ContentType,
+			ContentEncoding:    o.ContentEncoding,
+			ContentDisposition: o.ContentDisposition,
+			CacheControl:       o.CacheControl,
+			Crc32c:             o.Crc32c,
+			Md5Hash:            o.Md5Hash,
+			Etag:               o.Etag,
+			ACL:                o.ACL,
+			Created:            convertTimeWithoutError(o.Created),
+			Deleted:            convertTimeWithoutError(o.Deleted),
+			Updated:            convertTimeWithoutError(o.Updated),
+			CustomTime:         convertTimeWithoutError(o.CustomTime),
+			Generation:         o.Generation,
+			Metadata:           o.Metadata,
 		})
 	}
 	return oattrs
@@ -569,7 +568,7 @@ func (s *Server) listObjects(r *http.Request) jsonResponse {
 	if err != nil {
 		return jsonResponse{status: http.StatusNotFound}
 	}
-	return jsonResponse{data: newListObjectsResponse(objs, prefixes)}
+	return jsonResponse{data: newListObjectsResponse(objs, prefixes, s.externalURL)}
 }
 
 func (s *Server) xmlListObjects(r *http.Request) xmlResponse {
@@ -635,6 +634,21 @@ func (s *Server) getObject(w http.ResponseWriter, r *http.Request) {
 	handler := jsonToHTTPHandler(func(r *http.Request) jsonResponse {
 		vars := unescapeMuxVars(mux.Vars(r))
 
+		projection := storage.ProjectionNoACL
+		if r.URL.Query().Has("projection") {
+			switch value := strings.ToLower(r.URL.Query().Get("projection")); value {
+			case "full":
+				projection = storage.ProjectionFull
+			case "noacl":
+				projection = storage.ProjectionNoACL
+			default:
+				return jsonResponse{
+					status:       http.StatusBadRequest,
+					errorMessage: fmt.Sprintf("invalid projection: %q", value),
+				}
+			}
+		}
+
 		obj, err := s.objectWithGenerationOnValidGeneration(vars["bucketName"], vars["objectName"], r.FormValue("generation"))
 		// Calling Close before checking err is okay on objects, and the object
 		// may need to be closed whether or not there's an error.
@@ -655,7 +669,7 @@ func (s *Server) getObject(w http.ResponseWriter, r *http.Request) {
 		header.Set("Accept-Ranges", "bytes")
 		return jsonResponse{
 			header: header,
-			data:   newObjectResponse(obj.ObjectAttrs),
+			data:   newProjectedObjectResponse(obj.ObjectAttrs, s.externalURL, projection),
 		}
 	})
 
@@ -766,16 +780,20 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 	if metadata.ContentEncoding == "" {
 		metadata.ContentEncoding = obj.ContentEncoding
 	}
+	if metadata.ContentDisposition == "" {
+		metadata.ContentDisposition = obj.ContentDisposition
+	}
 
 	dstBucket := vars["destinationBucket"]
 	newObject := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
-			BucketName:      dstBucket,
-			Name:            vars["destinationObject"],
-			ACL:             obj.ACL,
-			ContentType:     metadata.ContentType,
-			ContentEncoding: metadata.ContentEncoding,
-			Metadata:        metadata.Metadata,
+			BucketName:         dstBucket,
+			Name:               vars["destinationObject"],
+			ACL:                obj.ACL,
+			ContentType:        metadata.ContentType,
+			ContentEncoding:    metadata.ContentEncoding,
+			ContentDisposition: metadata.ContentDisposition,
+			Metadata:           metadata.Metadata,
 		},
 		Content: obj.Content,
 	}
@@ -787,9 +805,9 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 	defer created.Close()
 
 	if vars["copyType"] == "copyTo" {
-		return jsonResponse{data: newObjectResponse(created.ObjectAttrs)}
+		return jsonResponse{data: newObjectResponse(created.ObjectAttrs, s.externalURL)}
 	}
-	return jsonResponse{data: newObjectRewriteResponse(created.ObjectAttrs)}
+	return jsonResponse{data: newObjectRewriteResponse(created.ObjectAttrs, s.externalURL)}
 }
 
 func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
@@ -867,7 +885,7 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Goog-Generation", strconv.FormatInt(obj.Generation, 10))
 	w.Header().Set("X-Goog-Hash", fmt.Sprintf("crc32c=%s,md5=%s", obj.Crc32c, obj.Md5Hash))
 	w.Header().Set("Last-Modified", obj.Updated.Format(http.TimeFormat))
-	w.Header().Set("ETag", obj.Etag)
+	w.Header().Set("ETag", fmt.Sprintf("%q", obj.Etag))
 	for name, value := range obj.Metadata {
 		w.Header().Set("X-Goog-Meta-"+name, value)
 	}
@@ -884,9 +902,15 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 		if obj.ContentType != "" {
 			w.Header().Set(contentTypeHeader, obj.ContentType)
 		}
+		if obj.CacheControl != "" {
+			w.Header().Set(cacheControlHeader, obj.CacheControl)
+		}
 		// If content was transcoded, the underlying encoding was removed so we shouldn't report it.
 		if obj.ContentEncoding != "" && !transcoded {
 			w.Header().Set("Content-Encoding", obj.ContentEncoding)
+		}
+		if obj.ContentDisposition != "" {
+			w.Header().Set("Content-Disposition", obj.ContentDisposition)
 		}
 		// X-Goog-Stored-Content-Encoding must be set to the original encoding,
 		// defaulting to "identity" if no encoding was set.
@@ -1010,11 +1034,12 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 	}
 
 	var payload struct {
-		ContentType     string
-		ContentEncoding string
-		Metadata        map[string]string `json:"metadata"`
-		CustomTime      string
-		Acl             []acls
+		ContentType        string
+		ContentEncoding    string
+		ContentDisposition string
+		Metadata           map[string]string `json:"metadata"`
+		CustomTime         string
+		Acl                []acls
 	}
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
@@ -1028,6 +1053,7 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 
 	attrsToUpdate.ContentType = payload.ContentType
 	attrsToUpdate.ContentEncoding = payload.ContentEncoding
+	attrsToUpdate.ContentDisposition = payload.ContentDisposition
 	attrsToUpdate.Metadata = payload.Metadata
 	attrsToUpdate.CustomTime = payload.CustomTime
 
@@ -1063,10 +1089,11 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 	}
 
 	var payload struct {
-		Metadata    map[string]string `json:"metadata"`
-		ContentType string            `json:"contentType"`
-		CustomTime  string
-		Acl         []acls
+		Metadata           map[string]string `json:"metadata"`
+		ContentType        string            `json:"contentType"`
+		ContentDisposition string            `json:"contentDisposition"`
+		CustomTime         string
+		Acl                []acls
 	}
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
@@ -1081,6 +1108,7 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 	attrsToUpdate.Metadata = payload.Metadata
 	attrsToUpdate.CustomTime = payload.CustomTime
 	attrsToUpdate.ContentType = payload.ContentType
+	attrsToUpdate.ContentDisposition = payload.ContentDisposition
 	if len(payload.Acl) > 0 {
 		attrsToUpdate.ACL = []storage.ACLRule{}
 		for _, aclData := range payload.Acl {
@@ -1111,9 +1139,10 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 			Name string
 		}
 		Destination struct {
-			Bucket      string
-			ContentType string
-			Metadata    map[string]string
+			Bucket             string
+			ContentType        string
+			ContentDisposition string
+			Metadata           map[string]string
 		}
 	}
 
@@ -1152,5 +1181,5 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 
 	s.eventManager.Trigger(&backendObj, notification.EventFinalize, nil)
 
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
 }

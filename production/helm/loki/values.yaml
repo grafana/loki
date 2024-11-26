@@ -1,3 +1,9 @@
+# -- Overrides the version used to determine compatibility of resources with the target Kubernetes cluster.
+# This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version,
+# which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm
+# devises.
+kubeVersionOverride: null
+
 global:
   image:
     # -- Overrides the Docker registry globally for all images
@@ -50,9 +56,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    # TODO: needed for 3rd target backend functionality
-    # revert to null or latest once this behavior is relased
-    tag: null
+    tag: 3.3.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -279,6 +283,16 @@ loki:
 
     tracing:
       enabled: {{ .Values.loki.tracing.enabled }}
+
+    {{- with .Values.loki.bloom_build }}
+    bloom_build:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
+
+    {{- with .Values.loki.bloom_gateway }}
+    bloom_gateway:
+      {{- tpl (. | toYaml) $ | nindent 4 }}
+    {{- end }}
   # Should authentication be enabled
   auth_enabled: true
   # -- memberlist configuration (overrides embedded default)
@@ -343,6 +357,7 @@ loki:
       userAssignedId: null
       requestTimeout: null
       endpointSuffix: null
+      chunkDelimiter: null
     swift:
       auth_version: null
       auth_url: null
@@ -410,6 +425,8 @@ loki:
     tsdb_shipper:
       index_gateway_client:
         server_address: '{{ include "loki.indexGatewayAddress" . }}'
+    bloom_shipper:
+      working_directory: /var/loki/data/bloomshipper
     hedging:
       at: "250ms"
       max_per_second: 20
@@ -442,8 +459,12 @@ loki:
     enabled: false
   bloom_build:
     enabled: false
+    builder:
+      planner_address: '{{ include "loki.bloomPlannerAddress" . }}'
   bloom_gateway:
     enabled: false
+    client:
+      addresses: '{{ include "loki.bloomGatewayAddresses" . }}'
 ######################################################################################################################
 #
 # Enterprise Loki Configs
@@ -497,7 +518,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: null
+    tag: 3.3.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -524,6 +545,10 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `tokengen` Job
     annotations: {}
+    # -- Affinity for tokengen Pods
+    affinity: {}
+    # -- Node selector for tokengen Pods
+    nodeSelector: {}
     # -- Tolerations for tokengen Job
     tolerations: []
     # -- Additional volumes for Pods
@@ -559,6 +584,12 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `provisioner` Job
     annotations: {}
+    # -- Affinity for tokengen Pods
+    affinity: {}
+    # -- Node selector for tokengen Pods
+    nodeSelector: {}
+    # -- Tolerations for tokengen Pods
+    tolerations: []
     # -- The name of the PriorityClass for provisioner Job
     priorityClassName: null
     # -- Run containers as user `enterprise-logs(uid=10001)`
@@ -778,6 +809,7 @@ networkPolicy:
 memberlist:
   service:
     publishNotReadyAddresses: false
+    annotations: {}
 ######################################################################################################################
 #
 # adminAPI configuration, enterprise only.
@@ -795,6 +827,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the admin-api pods
+  extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
@@ -842,6 +876,8 @@ adminApi:
   affinity: {}
   # -- Node selector for admin-api Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for admin-api pods
+  topologySpreadConstraints: []
   # -- Tolerations for admin-api Pods
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
@@ -1048,6 +1084,8 @@ gateway:
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
     httpSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    # -- Allows customizing the `client_max_body_size` directive
+    clientMaxBodySize: 4M
     # -- Whether ssl should be appended to the listen directive of the server block or not.
     ssl: false
     # -- Override Read URL
@@ -1073,6 +1111,8 @@ enterpriseGateway:
   #      - domain.tld
   # -- Additional CLI arguments for the `gateway` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the enterprise gateway pods
+  extraEnvFrom: []
   # -- Additional labels for the `gateway` Pod
   labels: {}
   # -- Additional annotations for the `gateway` Pod
@@ -1123,6 +1163,8 @@ enterpriseGateway:
   affinity: {}
   # -- Node selector for gateway Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for enterprise-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway Pods
   tolerations: []
   # -- Grace period to allow the gateway to shutdown before it is killed
@@ -1171,6 +1213,7 @@ ingress:
       - /loki/api/v1/index/volume
       - /loki/api/v1/index/volume_range
       - /loki/api/v1/format_query
+      - /loki/api/v1/detected_field
       - /loki/api/v1/detected_fields
       - /loki/api/v1/detected_labels
       - /loki/api/v1/patterns
@@ -1717,6 +1760,8 @@ ingester:
   # -- The name of the PriorityClass for ingester pods
   # -- Labels for ingestor service
   serviceLabels: {}
+  # -- Annotations for ingestor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the ingester
   extraArgs: []
   # -- Environment variables to add to the ingester pods
@@ -1767,6 +1812,13 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- UpdateStrategy for the ingester StatefulSets.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
@@ -1892,6 +1944,8 @@ distributor:
   podAnnotations: {}
   # -- Labels for distributor service
   serviceLabels: {}
+  # -- Annotations for distributor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the distributor
   extraArgs: []
   # -- Environment variables to add to the distributor pods
@@ -1923,6 +1977,8 @@ distributor:
   maxSurge: 0
   # -- Node selector for distributor pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for distributor pods
+  topologySpreadConstraints: []
   # -- Tolerations for distributor pods
   tolerations: []
   # -- Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.
@@ -1982,6 +2038,8 @@ querier:
   podAnnotations: {}
   # -- Labels for querier service
   serviceLabels: {}
+  # -- Annotations for querier service
+  serviceAnnotations: {}
   # -- Additional CLI args for the querier
   extraArgs: []
   # -- Environment variables to add to the querier pods
@@ -2098,6 +2156,8 @@ queryFrontend:
   podAnnotations: {}
   # -- Labels for query-frontend service
   serviceLabels: {}
+  # -- Annotations for query-frontend service
+  serviceAnnotations: {}
   # -- Additional CLI args for the query-frontend
   extraArgs: []
   # -- Environment variables to add to the query-frontend pods
@@ -2127,6 +2187,8 @@ queryFrontend:
   maxUnavailable: null
   # -- Node selector for query-frontend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-frontend pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-frontend pods
   tolerations: []
   # -- Adds the appProtocol field to the queryFrontend service. This allows queryFrontend to work with istio protocol selection.
@@ -2159,6 +2221,8 @@ queryScheduler:
   podAnnotations: {}
   # -- Labels for query-scheduler service
   serviceLabels: {}
+  # -- Annotations for query-scheduler service
+  serviceAnnotations: {}
   # -- Additional CLI args for the query-scheduler
   extraArgs: []
   # -- Environment variables to add to the query-scheduler pods
@@ -2188,6 +2252,8 @@ queryScheduler:
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-scheduler pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-scheduler pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2219,6 +2285,8 @@ indexGateway:
   podAnnotations: {}
   # -- Labels for index-gateway service
   serviceLabels: {}
+  # -- Annotations for index-gateway service
+  serviceAnnotations: {}
   # -- Additional CLI args for the index-gateway
   extraArgs: []
   # -- Environment variables to add to the index-gateway pods
@@ -2250,6 +2318,8 @@ indexGateway:
   maxUnavailable: null
   # -- Node selector for index-gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for index-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for index-gateway pods
   tolerations: []
   persistence:
@@ -2274,6 +2344,13 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- UpdateStrategy for the indexGateway StatefulSet.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor
@@ -2309,6 +2386,8 @@ compactor:
           topologyKey: kubernetes.io/hostname
   # -- Labels for compactor service
   serviceLabels: {}
+  # -- Annotations for compactor service
+  serviceAnnotations: {}
   # -- Additional CLI args for the compactor
   extraArgs: []
   # -- Environment variables to add to the compactor pods
@@ -2415,6 +2494,8 @@ bloomGateway:
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-gateway service
   serviceLabels: {}
+  # -- Annotations for bloom-gateway service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-gateway
   extraArgs: []
   # -- Environment variables to add to the bloom-gateway pods
@@ -2447,20 +2528,13 @@ bloomGateway:
   persistence:
     # -- Enable creating PVCs for the bloom-gateway
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- Annotations for bloom-gateway PVCs
     annotations: {}
     # -- List of the bloom-gateway PVCs
     # @notationType -- list
     claims:
       - name: data
+        # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2468,8 +2542,6 @@ bloomGateway:
         #   If empty or set to null, no storageClassName spec is
         #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
         storageClass: null
-        # - name: wal
-        #   size: 150Gi
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2521,6 +2593,8 @@ bloomPlanner:
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-planner service
   serviceLabels: {}
+  # -- Annotations for bloom-planner service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-planner
   extraArgs: []
   # -- Environment variables to add to the bloom-planner pods
@@ -2553,19 +2627,20 @@ bloomPlanner:
   persistence:
     # -- Enable creating PVCs for the bloom-planner
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- Annotations for bloom-planner PVCs
     annotations: {}
     # -- List of the bloom-planner PVCs
     # @notationType -- list
-    claims: []
+    claims:
+      - name: data
+        # -- Size of persistent disk
+        size: 10Gi
+        #   -- Storage class to be used.
+        #   If defined, storageClassName: <storageClass>.
+        #   If set to "-", storageClassName: "", which disables dynamic provisioning.
+        #   If empty or set to null, no storageClassName spec is
+        #   set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
+        storageClass: null
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     whenDeleted: Retain
@@ -2635,6 +2710,8 @@ bloomBuilder:
   podAnnotations: {}
   # -- Labels for bloom-builder service
   serviceLabels: {}
+  # -- Annotations for bloom-builder service
+  serviceAnnotations: {}
   # -- Additional CLI args for the bloom-builder
   extraArgs: []
   # -- Environment variables to add to the bloom-builder pods
@@ -2705,6 +2782,8 @@ patternIngester:
           topologyKey: kubernetes.io/hostname
   # -- Labels for pattern ingester service
   serviceLabels: {}
+  # -- Annotations for pattern ingester service
+  serviceAnnotations: {}
   # -- Additional CLI args for the pattern ingester
   extraArgs: []
   # -- Environment variables to add to the pattern ingester pods
@@ -2729,6 +2808,8 @@ patternIngester:
   terminationGracePeriodSeconds: 30
   # -- Node selector for pattern ingester pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for pattern ingester pods
+  topologySpreadConstraints: []
   # -- Tolerations for pattern ingester pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2804,6 +2885,8 @@ ruler:
   podAnnotations: {}
   # -- Labels for ruler service
   serviceLabels: {}
+  # -- Annotations for ruler service
+  serviceAnnotations: {}
   # -- Additional CLI args for the ruler
   extraArgs: []
   # -- Environment variables to add to the ruler pods
@@ -2835,6 +2918,8 @@ ruler:
   maxUnavailable: null
   # -- Node selector for ruler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for ruler pods
+  topologySpreadConstraints: []
   # -- Tolerations for ruler pods
   tolerations: []
   # -- DNSConfig for ruler pods
@@ -2926,11 +3011,15 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.23-alpine
+    tag: 1.6.32-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
-  podSecurityContext: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 11211
+    runAsGroup: 11211
+    fsGroup: 11211
   # -- The name of the PriorityClass for memcached pods
   priorityClassName: null
   # -- The SecurityContext for memcached containers
@@ -2944,7 +3033,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.14.2
+    tag: v0.15.0
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3053,7 +3142,7 @@ resultsCache:
   persistence:
     # -- Enable creating PVCs for the results-cache
     enabled: false
-    # -- Size of persistent disk
+    # -- Size of persistent disk, must be in G or Gi
     storageSize: 10G
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
@@ -3155,7 +3244,7 @@ chunksCache:
   persistence:
     # -- Enable creating PVCs for the chunks-cache
     enabled: false
-    # -- Size of persistent disk
+    # -- Size of persistent disk, must be in G or Gi
     storageSize: 10G
     # -- Storage class to be used.
     # If defined, storageClassName: <storageClass>.
@@ -3260,7 +3349,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.27.5
+    tag: 1.28.0
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

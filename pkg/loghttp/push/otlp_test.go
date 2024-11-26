@@ -4,14 +4,19 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -508,7 +513,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			stats := newPushStats()
 			tracker := NewMockTracker()
-			pushReq := otlpToLokiPushRequest(context.Background(), tc.generateLogs(), "foo", fakeRetention{}, tc.otlpConfig, defaultServiceDetection, tracker, stats)
+			pushReq := otlpToLokiPushRequest(
+				context.Background(),
+				tc.generateLogs(),
+				"foo",
+				fakeRetention{},
+				tc.otlpConfig,
+				defaultServiceDetection,
+				tracker,
+				stats,
+				false,
+				log.NewNopLogger(),
+			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 
@@ -720,4 +736,42 @@ type fakeRetention struct{}
 
 func (f fakeRetention) RetentionPeriodFor(_ string, _ labels.Labels) time.Duration {
 	return time.Hour
+}
+
+func TestOtlpError(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		msg          string
+		inCode       int
+		expectedCode int
+	}{
+		{
+			name:         "500 error maps 503",
+			msg:          "test error 500 to 503",
+			inCode:       http.StatusInternalServerError,
+			expectedCode: http.StatusServiceUnavailable,
+		},
+		{
+			name:         "other error",
+			msg:          "test error",
+			inCode:       http.StatusForbidden,
+			expectedCode: http.StatusForbidden,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := log.NewNopLogger()
+
+			r := httptest.NewRecorder()
+			OTLPError(r, tc.msg, tc.inCode, logger)
+
+			require.Equal(t, tc.expectedCode, r.Code)
+			require.Equal(t, "application/octet-stream", r.Header().Get("Content-Type"))
+
+			respStatus := &status.Status{}
+			require.NoError(t, proto.Unmarshal(r.Body.Bytes(), respStatus))
+
+			require.Equal(t, tc.msg, respStatus.Message)
+			require.EqualValues(t, 0, respStatus.Code)
+		})
+	}
 }

@@ -52,7 +52,13 @@ type Config struct {
 	// ChunkSizeBytes controls the maximum number of bytes of the object that the
 	// Writer will attempt to send to the server in a single request
 	// Used as storage.Writer.ChunkSize of https://pkg.go.dev/google.golang.org/cloud/storage#Writer
-	ChunkSizeBytes int `yaml:"chunk_size_bytes"`
+	ChunkSizeBytes int  `yaml:"chunk_size_bytes"`
+	noAuth         bool `yaml:"no_auth"`
+
+	// MaxRetries controls the number of retries for idempotent operations.
+	// Overrides the default gcs storage client behavior if this value is greater than 0.
+	// Set this to 1 to disable retries.
+	MaxRetries int `yaml:"max_retries"`
 }
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
@@ -76,16 +82,16 @@ func parseConfig(conf []byte) (Config, error) {
 }
 
 // NewBucket returns a new Bucket against the given bucket handle.
-func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string) (*Bucket, error) {
+func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	config, err := parseConfig(conf)
 	if err != nil {
 		return nil, err
 	}
-	return NewBucketWithConfig(ctx, logger, config, component)
+	return NewBucketWithConfig(ctx, logger, config, component, wrapRoundtripper)
 }
 
 // NewBucketWithConfig returns a new Bucket with gcs Config struct.
-func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string) (*Bucket, error) {
+func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	if gc.Bucket == "" {
 		return nil, errors.New("missing Google Cloud Storage bucket name for stored blocks")
 	}
@@ -100,14 +106,16 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 		}
 		opts = append(opts, option.WithCredentials(credentials))
 	}
-
+	if gc.noAuth {
+		opts = append(opts, option.WithoutAuthentication())
+	}
 	opts = append(opts,
 		option.WithUserAgent(fmt.Sprintf("thanos-%s/%s (%s)", component, version.Version, runtime.Version())),
 	)
 
 	if !gc.UseGRPC {
 		var err error
-		opts, err = appendHttpOptions(gc, opts)
+		opts, err = appendHttpOptions(gc, opts, wrapRoundtripper)
 		if err != nil {
 			return nil, err
 		}
@@ -116,18 +124,19 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 	return newBucket(ctx, logger, gc, opts)
 }
 
-func appendHttpOptions(gc Config, opts []option.ClientOption) ([]option.ClientOption, error) {
+func appendHttpOptions(gc Config, opts []option.ClientOption, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) ([]option.ClientOption, error) {
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
 	var rt http.RoundTripper
+	rt, err := exthttp.DefaultTransport(gc.HTTPConfig)
+	if err != nil {
+		return nil, err
+	}
 	if gc.HTTPConfig.Transport != nil {
 		rt = gc.HTTPConfig.Transport
-	} else {
-		var err error
-		rt, err = exthttp.DefaultTransport(gc.HTTPConfig)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if wrapRoundtripper != nil {
+		rt = wrapRoundtripper(rt)
 	}
 
 	// GCS uses some defaults when "options.WithHTTPClient" is not used that are important when we call
@@ -169,6 +178,11 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 		name:      gc.Bucket,
 		chunkSize: gc.ChunkSizeBytes,
 	}
+
+	if gc.MaxRetries > 0 {
+		bkt.bkt = bkt.bkt.Retryer(storage.WithMaxAttempts(gc.MaxRetries))
+	}
+
 	return bkt, nil
 }
 
@@ -177,18 +191,26 @@ func (b *Bucket) Name() string {
 	return b.name
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, DirDelim) + DirDelim
 	}
 
+	appliedOpts := objstore.ApplyIterOptions(options...)
+
 	// If recursive iteration is enabled we should pass an empty delimiter.
 	delimiter := DirDelim
-	if objstore.ApplyIterOptions(options...).Recursive {
+	if appliedOpts.Recursive {
 		delimiter = ""
 	}
 
@@ -196,11 +218,15 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		Prefix:    dir,
 		Delimiter: delimiter,
 	}
-	err := query.SetAttrSelection([]string{"Name"})
-	if err != nil {
-		return err
+	if appliedOpts.LastModified {
+		if err := query.SetAttrSelection([]string{"Name", "Updated"}); err != nil {
+			return err
+		}
+	} else {
+		if err := query.SetAttrSelection([]string{"Name"}); err != nil {
+			return err
+		}
 	}
-
 	it := b.bkt.Objects(ctx, query)
 	for {
 		select {
@@ -215,20 +241,63 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		if err != nil {
 			return err
 		}
-		if err := f(attrs.Prefix + attrs.Name); err != nil {
+
+		objAttrs := objstore.IterObjectAttributes{Name: attrs.Prefix + attrs.Name}
+		if appliedOpts.LastModified {
+			objAttrs.SetLastModified(attrs.Updated)
+		}
+		if err := f(objAttrs); err != nil {
 			return err
 		}
 	}
 }
 
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
+}
+
 // Get returns a reader for the given object name.
 func (b *Bucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	return b.bkt.Object(name).NewReader(ctx)
+	r, err := b.bkt.Object(name).NewReader(ctx)
+	if err != nil {
+		return r, err
+	}
+
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			return r.Attrs.Size, nil
+		},
+	}, nil
 }
 
 // GetRange returns a new range reader for the given object name and range.
 func (b *Bucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
-	return b.bkt.Object(name).NewRangeReader(ctx, off, length)
+	r, err := b.bkt.Object(name).NewRangeReader(ctx, off, length)
+	if err != nil {
+		return r, err
+	}
+
+	sz := r.Remain()
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			return sz, nil
+		},
+	}, nil
 }
 
 // Attributes returns information about the specified object.
@@ -312,7 +381,7 @@ func NewTestBucket(t testing.TB, project string) (objstore.Bucket, func(), error
 		return nil, nil, err
 	}
 
-	b, err := NewBucket(ctx, log.NewNopLogger(), bc, "thanos-e2e-test")
+	b, err := NewBucket(ctx, log.NewNopLogger(), bc, "thanos-e2e-test", nil)
 	if err != nil {
 		return nil, nil, err
 	}

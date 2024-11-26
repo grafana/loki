@@ -1,11 +1,11 @@
-version: "3"
+version: "3.3"
 
 networks:
   loki:
 
 services:
   loki:
-    image: grafana/loki:2.9.10
+    image: grafana/loki:latest
     ports:
       - "3100:3100"
     command: -config.file=/etc/loki/local-config.yaml
@@ -13,7 +13,7 @@ services:
       - loki
 
   promtail:
-    image: grafana/promtail:2.9.10
+    image: grafana/promtail:latest
     volumes:
       - /var/log:/var/log
     command: -config.file=/etc/promtail/config.yml
@@ -25,6 +25,7 @@ services:
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_FEATURE_TOGGLES_ENABLE=alertingSimplifiedRouting,alertingQueryAndExpressionsStepMode
     entrypoint:
       - sh
       - -euc

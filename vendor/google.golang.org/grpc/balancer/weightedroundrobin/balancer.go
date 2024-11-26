@@ -440,7 +440,7 @@ func (p *picker) start(ctx context.Context) {
 	}()
 }
 
-func (p *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
+func (p *picker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
 	// Read the scheduler atomically.  All scheduler operations are threadsafe,
 	// and if the scheduler is replaced during this usage, we want to use the
 	// scheduler that was live when the pick started.
@@ -513,7 +513,7 @@ func (w *weightedSubConn) OnLoadReport(load *v3orcapb.OrcaLoadReport) {
 	}
 
 	w.lastUpdated = internal.TimeNow()
-	if w.nonEmptySince == (time.Time{}) {
+	if w.nonEmptySince.Equal(time.Time{}) {
 		w.nonEmptySince = w.lastUpdated
 	}
 }
@@ -526,17 +526,21 @@ func (w *weightedSubConn) updateConfig(cfg *lbConfig) {
 	w.cfg = cfg
 	w.mu.Unlock()
 
-	newPeriod := cfg.OOBReportingPeriod
 	if cfg.EnableOOBLoadReport == oldCfg.EnableOOBLoadReport &&
-		newPeriod == oldCfg.OOBReportingPeriod {
+		cfg.OOBReportingPeriod == oldCfg.OOBReportingPeriod {
 		// Load reporting wasn't enabled before or after, or load reporting was
 		// enabled before and after, and had the same period.  (Note that with
 		// load reporting disabled, OOBReportingPeriod is always 0.)
 		return
 	}
-	// (Optionally stop and) start the listener to use the new config's
-	// settings for OOB reporting.
+	if w.connectivityState == connectivity.Ready {
+		// (Re)start the listener to use the new config's settings for OOB
+		// reporting.
+		w.updateORCAListener(cfg)
+	}
+}
 
+func (w *weightedSubConn) updateORCAListener(cfg *lbConfig) {
 	if w.stopORCAListener != nil {
 		w.stopORCAListener()
 	}
@@ -545,9 +549,9 @@ func (w *weightedSubConn) updateConfig(cfg *lbConfig) {
 		return
 	}
 	if w.logger.V(2) {
-		w.logger.Infof("Registering ORCA listener for %v with interval %v", w.SubConn, newPeriod)
+		w.logger.Infof("Registering ORCA listener for %v with interval %v", w.SubConn, cfg.OOBReportingPeriod)
 	}
-	opts := orca.OOBListenerOptions{ReportInterval: time.Duration(newPeriod)}
+	opts := orca.OOBListenerOptions{ReportInterval: time.Duration(cfg.OOBReportingPeriod)}
 	w.stopORCAListener = orca.RegisterOOBListener(w.SubConn, w, opts)
 }
 
@@ -569,11 +573,9 @@ func (w *weightedSubConn) updateConnectivityState(cs connectivity.State) connect
 		w.mu.Lock()
 		w.nonEmptySince = time.Time{}
 		w.lastUpdated = time.Time{}
+		cfg := w.cfg
 		w.mu.Unlock()
-	case connectivity.Shutdown:
-		if w.stopORCAListener != nil {
-			w.stopORCAListener()
-		}
+		w.updateORCAListener(cfg)
 	}
 
 	oldCS := w.connectivityState
@@ -608,7 +610,7 @@ func (w *weightedSubConn) weight(now time.Time, weightExpirationPeriod, blackout
 
 	// The SubConn has not received a load report (i.e. just turned READY with
 	// no load report).
-	if w.lastUpdated == (time.Time{}) {
+	if w.lastUpdated.Equal(time.Time{}) {
 		endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
 		return 0
 	}
@@ -625,7 +627,7 @@ func (w *weightedSubConn) weight(now time.Time, weightExpirationPeriod, blackout
 	}
 
 	// If we don't have at least blackoutPeriod worth of data, return 0.
-	if blackoutPeriod != 0 && (w.nonEmptySince == (time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
+	if blackoutPeriod != 0 && (w.nonEmptySince.Equal(time.Time{}) || now.Sub(w.nonEmptySince) < blackoutPeriod) {
 		if recordMetrics {
 			endpointWeightNotYetUsableMetric.Record(w.metricsRecorder, 1, w.target, w.locality)
 		}

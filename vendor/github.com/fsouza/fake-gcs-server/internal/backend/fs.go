@@ -251,7 +251,7 @@ func (s *storageFS) CreateObject(obj StreamingObject, conditions Conditions) (St
 		obj.Md5Hash = hasher.EncodedMd5Hash()
 	}
 	if obj.Etag == "" {
-		obj.Etag = fmt.Sprintf("%q", obj.Md5Hash)
+		obj.Etag = obj.Md5Hash
 	}
 
 	// TODO: Handle if metadata is not present more gracefully?

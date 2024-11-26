@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
@@ -14,135 +15,167 @@ import (
 
 // smallBlockOpts returns a set of block options that are suitable for testing
 // characterized by small page sizes
-func smallBlockOpts(v Version, enc chunkenc.Encoding) BlockOptions {
+func smallBlockOpts(v Version, enc compression.Codec) BlockOptions {
 	return BlockOptions{
-		Schema: Schema{
-			version:     v,
-			encoding:    enc,
-			nGramLength: 4,
-			nGramSkip:   0,
-		},
-		SeriesPageSize: 100,
+		Schema:         NewSchema(v, enc),
+		SeriesPageSize: 4 << 10,
 		BloomPageSize:  2 << 10,
 		BlockSize:      0, // unlimited
 	}
 }
 
-func setup(v Version) (BlockOptions, []SeriesWithLiteralBlooms, BlockWriter, BlockReader) {
+func setup(v Version) (BlockOptions, []SeriesWithBlooms, BlockWriter, BlockReader) {
 	numSeries := 100
-	data, _ := MkBasicSeriesWithLiteralBlooms(numSeries, 0, 0xffff, 0, 10000)
+	data, _ := MkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
 	indexBuf := bytes.NewBuffer(nil)
 	bloomsBuf := bytes.NewBuffer(nil)
 	writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
 	reader := NewByteReader(indexBuf, bloomsBuf)
-	return smallBlockOpts(v, chunkenc.EncNone), data, writer, reader
+	return smallBlockOpts(v, compression.None), data, writer, reader
 }
 
-// Tests v1 format by encoding a block into v1 then decoding it back and comparing the results
-// to the source data.
-// NB(owen-d): This also tests that the block querier can "up cast" the v1 format to the v2 format
-// in the sense that v1 uses a single bloom per series and v2 uses multiple blooms per series and therefore
-// v1 can be interpreted as v2 with a single bloom per series.
-func TestV1RoundTrip(t *testing.T) {
-	opts, data, writer, reader := setup(V1)
-	b, err := NewBlockBuilderV1(opts, writer)
+func TestV3Roundtrip(t *testing.T) {
+	opts, sourceData, writer, reader := setup(V3)
+
+	// SeriesWithBlooms holds an interator of blooms,
+	// which will be exhausted after being consumed by the block builder
+	// therefore we need a deepcopy of the original data, or - and that's easier to achieve -
+	// we simply create the same data twice.
+	_, unmodifiedData, _, _ := setup(V3)
+
+	b, err := NewBlockBuilderV3(opts, writer)
 	require.NoError(t, err)
 
-	mapped := v2.NewMapIter[SeriesWithLiteralBlooms](
-		v2.NewSliceIter(data),
-		func(s SeriesWithLiteralBlooms) SeriesWithBloom {
-			return SeriesWithBloom{
-				Series: s.Series,
-				Bloom:  s.Blooms[0],
-			}
-		},
-	)
-
-	_, err = b.BuildFrom(mapped)
+	_, err = b.BuildFrom(v2.NewSliceIter(sourceData))
 	require.NoError(t, err)
 
 	// Ensure Equality
 	block := NewBlock(reader, NewMetrics(nil))
 	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
 
-	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
+	CompareIterators(
 		t,
-		func(t *testing.T, a SeriesWithLiteralBlooms, b *SeriesWithBlooms) {
-			require.Equal(t, a.Series, b.Series) // ensure series equality
-			bs, err := v2.Collect(b.Blooms)
+		func(t *testing.T, a SeriesWithBlooms, b *SeriesWithBlooms) {
+			require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
+			require.ElementsMatch(t, a.Series.Chunks, b.Series.Chunks)
+			bloomsA, err := v2.Collect(a.Blooms)
+			require.NoError(t, err)
+			bloomsB, err := v2.Collect(b.Blooms)
 			require.NoError(t, err)
 
-			// ensure we only have one bloom in v1
-			require.Equal(t, 1, len(a.Blooms))
-			require.Equal(t, 1, len(bs))
+			require.Equal(t, 2, len(bloomsA))
+			require.Equal(t, 2, len(bloomsB))
 
 			var encA, encB encoding.Encbuf
-			require.NoError(t, a.Blooms[0].Encode(&encA))
-			require.NoError(t, bs[0].Encode(&encB))
-
-			require.Equal(t, encA.Get(), encB.Get())
-		},
-		v2.NewSliceIter(data),
-		querier,
-	)
-}
-
-func TestV2Roundtrip(t *testing.T) {
-	opts, data, writer, reader := setup(V2)
-
-	data, err := v2.Collect(
-		v2.NewMapIter[SeriesWithLiteralBlooms, SeriesWithLiteralBlooms](
-			v2.NewSliceIter(data),
-			func(swlb SeriesWithLiteralBlooms) SeriesWithLiteralBlooms {
-				return SeriesWithLiteralBlooms{
-					Series: swlb.Series,
-					// hack(owen-d): data currently only creates one bloom per series, but I want to test multiple.
-					// we're not checking the contents here, so ensuring the same bloom is used twice is fine.
-					Blooms: []*Bloom{swlb.Blooms[0], swlb.Blooms[0]},
-				}
-			},
-		),
-	)
-	require.NoError(t, err)
-
-	b, err := NewBlockBuilderV2(opts, writer)
-	require.NoError(t, err)
-
-	mapped := v2.NewMapIter[SeriesWithLiteralBlooms](
-		v2.NewSliceIter(data),
-		func(s SeriesWithLiteralBlooms) SeriesWithBlooms {
-			return s.SeriesWithBlooms()
-		},
-	)
-
-	_, err = b.BuildFrom(mapped)
-	require.NoError(t, err)
-
-	// Ensure Equality
-	block := NewBlock(reader, NewMetrics(nil))
-	querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
-
-	CompareIterators[SeriesWithLiteralBlooms, *SeriesWithBlooms](
-		t,
-		func(t *testing.T, a SeriesWithLiteralBlooms, b *SeriesWithBlooms) {
-			require.Equal(t, a.Series, b.Series) // ensure series equality
-			bs, err := v2.Collect(b.Blooms)
-			require.NoError(t, err)
-
-			// ensure we only have one bloom in v1
-			require.Equal(t, 2, len(a.Blooms))
-			require.Equal(t, 2, len(bs))
-
-			var encA, encB encoding.Encbuf
-			for i := range a.Blooms {
-				require.NoError(t, a.Blooms[i].Encode(&encA))
-				require.NoError(t, bs[i].Encode(&encB))
+			for i := range bloomsA {
+				require.NoError(t, bloomsA[i].Encode(&encA))
+				require.NoError(t, bloomsB[i].Encode(&encB))
 				require.Equal(t, encA.Get(), encB.Get())
 				encA.Reset()
 				encB.Reset()
 			}
 		},
-		v2.NewSliceIter(data),
+		v2.NewSliceIter(unmodifiedData),
 		querier,
 	)
+}
+
+func seriesWithBlooms(nSeries int, fromFp, throughFp model.Fingerprint) []SeriesWithBlooms {
+	series, _ := MkBasicSeriesWithBlooms(nSeries, fromFp, throughFp, 0, 10000)
+	return series
+}
+
+func seriesWithoutBlooms(nSeries int, fromFp, throughFp model.Fingerprint) []SeriesWithBlooms {
+	series := seriesWithBlooms(nSeries, fromFp, throughFp)
+
+	// remove blooms from series
+	for i := range series {
+		series[i].Blooms = v2.NewEmptyIter[*Bloom]()
+	}
+
+	return series
+}
+func TestFullBlock(t *testing.T) {
+	opts := smallBlockOpts(V3, compression.None)
+	minBlockSize := opts.SeriesPageSize // 1 index page, 4KB
+	const maxEmptySeriesPerBlock = 47
+	for _, tc := range []struct {
+		name         string
+		maxBlockSize uint64
+		series       []SeriesWithBlooms
+		expected     []SeriesWithBlooms
+	}{
+		{
+			name:         "only series without blooms",
+			maxBlockSize: minBlockSize,
+			// +1 so we test adding the last series that fills the block
+			series:   seriesWithoutBlooms(maxEmptySeriesPerBlock+1, 0, 0xffff),
+			expected: seriesWithoutBlooms(maxEmptySeriesPerBlock+1, 0, 0xffff),
+		},
+		{
+			name:         "series without blooms and one with blooms",
+			maxBlockSize: minBlockSize,
+			series: append(
+				seriesWithoutBlooms(maxEmptySeriesPerBlock, 0, 0x7fff),
+				seriesWithBlooms(50, 0x8000, 0xffff)...,
+			),
+			expected: append(
+				seriesWithoutBlooms(maxEmptySeriesPerBlock, 0, 0x7fff),
+				seriesWithBlooms(1, 0x8000, 0x8001)...,
+			),
+		},
+		{
+			name:         "only one series with bloom",
+			maxBlockSize: minBlockSize,
+			series:       seriesWithBlooms(10, 0, 0xffff),
+			expected:     seriesWithBlooms(1, 0, 1),
+		},
+		{
+			name:         "one huge series with bloom and then series without",
+			maxBlockSize: minBlockSize,
+			series: append(
+				seriesWithBlooms(1, 0, 1),
+				seriesWithoutBlooms(100, 1, 0xffff)...,
+			),
+			expected: seriesWithBlooms(1, 0, 1),
+		},
+		{
+			name:         "big block",
+			maxBlockSize: 1 << 20, // 1MB
+			series:       seriesWithBlooms(100, 0, 0xffff),
+			expected:     seriesWithBlooms(100, 0, 0xffff),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			indexBuf := bytes.NewBuffer(nil)
+			bloomsBuf := bytes.NewBuffer(nil)
+			writer := NewMemoryBlockWriter(indexBuf, bloomsBuf)
+			reader := NewByteReader(indexBuf, bloomsBuf)
+			opts.BlockSize = tc.maxBlockSize
+
+			b, err := NewBlockBuilderV3(opts, writer)
+			require.NoError(t, err)
+
+			_, err = b.BuildFrom(v2.NewSliceIter(tc.series))
+			require.NoError(t, err)
+
+			block := NewBlock(reader, NewMetrics(nil))
+			querier := NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, DefaultMaxPageSize).Iter()
+
+			CompareIterators(
+				t,
+				func(t *testing.T, a SeriesWithBlooms, b *SeriesWithBlooms) {
+					require.Equal(t, a.Series.Fingerprint, b.Series.Fingerprint)
+					require.ElementsMatch(t, a.Series.Chunks, b.Series.Chunks)
+					bloomsA, err := v2.Collect(a.Blooms)
+					require.NoError(t, err)
+					bloomsB, err := v2.Collect(b.Blooms)
+					require.NoError(t, err)
+					require.Equal(t, len(bloomsB), len(bloomsA))
+				},
+				v2.NewSliceIter(tc.expected),
+				querier,
+			)
+		})
+	}
 }

@@ -2,7 +2,6 @@ package log
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"unsafe"
 
@@ -69,7 +68,7 @@ func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	}
 	n.mu.RUnlock()
 
-	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h), make([]int, 0, 10)}
+	sp := &noopStreamPipeline{n.baseBuilder.ForLabels(labels, h)}
 
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -94,8 +93,7 @@ func IsNoopPipeline(p Pipeline) bool {
 }
 
 type noopStreamPipeline struct {
-	builder    *LabelsBuilder
-	offsetsBuf []int
+	builder *LabelsBuilder
 }
 
 func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
@@ -182,13 +180,12 @@ func NewPipeline(stages []Stage) Pipeline {
 }
 
 type streamPipeline struct {
-	stages     []Stage
-	builder    *LabelsBuilder
-	offsetsBuf []int
+	stages  []Stage
+	builder *LabelsBuilder
 }
 
 func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipeline {
-	return &streamPipeline{stages, labelsBuilder, make([]int, 0, 10)}
+	return &streamPipeline{stages, labelsBuilder}
 }
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -383,11 +380,7 @@ func ReduceStages(stages []Stage) Stage {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
 func unsafeGetString(buf []byte) string {

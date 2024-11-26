@@ -21,11 +21,14 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	awscommon "github.com/grafana/dskit/aws"
+
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -124,7 +127,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.BackoffConfig.MinBackoff, prefix+"s3.min-backoff", 100*time.Millisecond, "Minimum backoff time when s3 get Object")
 	f.DurationVar(&cfg.BackoffConfig.MaxBackoff, prefix+"s3.max-backoff", 3*time.Second, "Maximum backoff time when s3 get Object")
-	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry when s3 get Object")
+	f.IntVar(&cfg.BackoffConfig.MaxRetries, prefix+"s3.max-retries", 5, "Maximum number of times to retry for s3 GetObject or ObjectExists")
 }
 
 // Validate config and returns error on failure
@@ -307,19 +310,54 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	err := instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-		headObjectInput := &s3.HeadObjectInput{
-			Bucket: aws.String(a.bucketFromKey(objectKey)),
-			Key:    aws.String(objectKey),
+	if _, err := a.objectAttributes(ctx, objectKey, "S3.ObjectExists"); err != nil {
+		if a.IsObjectNotFoundErr(err) {
+			return false, nil
 		}
-		_, err := a.S3.HeadObject(headObjectInput)
-		return err
-	})
-	if err != nil {
 		return false, err
 	}
-
 	return true, nil
+}
+
+func (a *S3ObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return a.objectAttributes(ctx, objectKey, "S3.GetAttributes")
+}
+
+func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method string) (client.ObjectAttributes, error) {
+	var lastErr error
+	var objectSize int64
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
+	for retries.Ongoing() {
+		if ctx.Err() != nil {
+			return client.ObjectAttributes{}, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
+		}
+		lastErr = instrument.CollectedRequest(ctx, method, s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+			headObjectInput := &s3.HeadObjectInput{
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
+				Key:    aws.String(objectKey),
+			}
+			headOutput, requestErr := a.S3.HeadObject(headObjectInput)
+			if requestErr != nil {
+				return requestErr
+			}
+			if headOutput != nil && headOutput.ContentLength != nil {
+				objectSize = *headOutput.ContentLength
+			}
+			return nil
+		})
+		if lastErr == nil {
+			return client.ObjectAttributes{Size: objectSize}, nil
+		}
+
+		if a.IsObjectNotFoundErr(lastErr) {
+			return client.ObjectAttributes{}, lastErr
+		}
+
+		retries.Wait()
+	}
+
+	return client.ObjectAttributes{}, lastErr
 }
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
@@ -355,7 +393,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	// Map the key into a bucket
 	bucket := a.bucketFromKey(objectKey)
 
-	var lastErr error
+	lastErr := ctx.Err()
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
@@ -514,5 +552,68 @@ func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
 	return false
 }
 
-// TODO(dannyk): implement for client
-func (a *S3ObjectClient) IsRetryableErr(error) bool { return false }
+func isTimeoutError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isContextErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled)
+}
+
+// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func IsStorageTimeoutErr(err error) bool {
+	// TODO(dannyk): move these out to be generic
+	// context errors are all client-side
+	if isContextErr(err) {
+		// Go 1.23 changed the type of the error returned by the http client when a timeout occurs
+		// while waiting for headers.  This is a server side timeout.
+		return strings.Contains(err.Error(), "Client.Timeout")
+	}
+
+	// connection misconfiguration, or writing on a closed connection
+	// do NOT retry; this is not a server-side issue
+	if errors.Is(err, net.ErrClosed) || amnet.IsConnectionRefused(err) {
+		return false
+	}
+
+	// this is a server-side timeout
+	if isTimeoutError(err) {
+		return true
+	}
+
+	// connection closed (closed before established) or reset (closed after established)
+	// this is a server-side issue
+	if errors.Is(err, io.EOF) || amnet.IsConnectionReset(err) {
+		return true
+	}
+
+	if rerr, ok := err.(awserr.RequestFailure); ok {
+		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+		return rerr.StatusCode() == http.StatusRequestTimeout ||
+			rerr.StatusCode() == http.StatusGatewayTimeout
+	}
+
+	return false
+}
+
+// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func IsStorageThrottledErr(err error) bool {
+	if rerr, ok := err.(awserr.RequestFailure); ok {
+
+		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
+		return rerr.StatusCode() == http.StatusTooManyRequests ||
+			(rerr.StatusCode()/100 == 5) // all 5xx errors are retryable
+	}
+
+	return false
+}
+
+func IsRetryableErr(err error) bool {
+	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+}
+
+func (a *S3ObjectClient) IsRetryableErr(err error) bool {
+	return IsRetryableErr(err)
+}

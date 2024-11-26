@@ -31,7 +31,8 @@ func TestJumpHashClientPool_UpdateLoop(t *testing.T) {
 
 	provider := &provider{}
 	provider.UpdateAddresses([]string{"localhost:9095"})
-	pool := NewJumpHashClientPool(nil, provider, interval, log.NewNopLogger())
+	pool, err := NewJumpHashClientPool(nil, provider, interval, log.NewNopLogger())
+	require.NoError(t, err)
 	require.Len(t, pool.Addrs(), 1)
 	require.Equal(t, "127.0.0.1:9095", pool.Addrs()[0].String())
 

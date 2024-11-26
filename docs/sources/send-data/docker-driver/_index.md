@@ -12,9 +12,9 @@ Grafana Loki officially supports a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](/oss/loki).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Docker plugins are not supported on Windows; see the [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Documentation on configuring the Loki Docker Driver can be found on the
 [configuration page]({{< relref "./configuration" >}}).
@@ -31,6 +31,9 @@ Run the following command to install the plugin, updating the release version if
 ```bash
 docker plugin install grafana/loki-docker-driver:2.9.2 --alias loki --grant-all-permissions
 ```
+{{% admonition type="note" %}}
+Add `-arm64` to the image tag for AMR64 hosts.
+{{% /admonition %}}
 
 To check installed plugins, use the `docker plugin ls` command. 
 Plugins that have started successfully are listed as enabled:
@@ -58,9 +61,9 @@ docker plugin upgrade loki grafana/loki-docker-driver:2.9.2 --grant-all-permissi
 docker plugin enable loki
 systemctl restart docker
 ```
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Update the version number to the appropriate version.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Uninstall the Docker driver client
 

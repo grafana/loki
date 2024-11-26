@@ -12,7 +12,7 @@ help:
 .PHONY: fluentd-image, fluentd-push, fluentd-test
 .PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image build-image-push
 .PHONY: bigtable-backup, push-bigtable-backup
-.PHONY: benchmark-store, drone, check-drone-drift, check-mod
+.PHONY: benchmark-store, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
 .PHONY: doc check-doc
 .PHONY: validate-example-configs generate-example-config-doc check-example-config-doc
@@ -36,9 +36,9 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 # or you can override this with an environment variable
 BUILD_IN_CONTAINER ?= true
 
-# ensure you run `make drone` and `make release-workflows` after changing this
-BUILD_IMAGE_VERSION ?= 0.33.6
-GO_VERSION := 1.22.6
+# ensure you run `make release-workflows` after changing this
+BUILD_IMAGE_VERSION ?= 0.34.1
+GO_VERSION := 1.23.1
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -339,7 +339,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --timeout 15m
+	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
 	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
 endif
 
@@ -458,13 +458,17 @@ endif
 LOKI_DOCKER_DRIVER ?= "grafana/loki-docker-driver"
 PLUGIN_TAG ?= $(IMAGE_TAG)
 PLUGIN_ARCH ?=
+PLUGIN_BUILD_ARGS ?=
+ifeq ("$(PLUGIN_ARCH)", "-arm64")
+	PLUGIN_BUILD_ARGS = --build-arg GOARCH=arm64
+endif
 
 # build-rootfs
 # builds the plugin rootfs
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	docker build $(PLUGIN_BUILD_ARGS) --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -481,7 +485,7 @@ docker-driver: docker-driver-clean ## build the docker-driver executable
 	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
 clients/cmd/docker-driver/docker-driver:
-	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 GOARCH=$(GOARCH) go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
 ifndef DOCKER_PASSWORD
@@ -664,7 +668,7 @@ else
 endif
 
 build-image: ensure-buildx-builder
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
+	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
@@ -698,27 +702,6 @@ documentation-helm-reference-check:
 benchmark-store:
 	go run ./pkg/storage/hack/main.go
 	$(GOTEST) ./pkg/storage/ -bench=.  -benchmem -memprofile memprofile.out -cpuprofile cpuprofile.out -trace trace.out
-
-# regenerate drone yaml
-drone:
-ifeq ($(BUILD_IN_CONTAINER),true)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-e DRONE_SERVER -e DRONE_TOKEN \
-		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
-		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
-else
-	drone jsonnet --stream --format -V __build-image-version=$(BUILD_IMAGE_VERSION) --source .drone/drone.jsonnet --target .drone/drone.yml
-	drone lint .drone/drone.yml --trusted
-	drone sign --save grafana/loki .drone/drone.yml || echo "You must set DRONE_SERVER and DRONE_TOKEN. These values can be found on your [drone account](http://drone.grafana.net/account) page."
-endif
-
-check-drone-drift:
-	./tools/check-drone-drift.sh $(BUILD_IMAGE_VERSION)
-
 
 # support go modules
 check-mod:
@@ -915,5 +898,5 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 else
 	@$(MAKE) release-workflows
 	@echo "Checking diff"
-	@git diff --exit-code -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
+	@git diff --exit-code --ignore-space-at-eol -- ".github/workflows/*release*" || (echo "Please build release workflows by running 'make release-workflows'" && false)
 endif

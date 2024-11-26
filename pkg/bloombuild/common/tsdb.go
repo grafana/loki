@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	baseStore "github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -102,7 +102,7 @@ func (b *BloomTSDBStore) LoadTSDB(
 	}
 	defer data.Close()
 
-	decompressorPool := chunkenc.GetReaderPool(chunkenc.EncGZIP)
+	decompressorPool := compression.GetReaderPool(compression.GZIP)
 	decompressor, err := decompressorPool.GetReader(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get decompressor")
@@ -163,7 +163,7 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 	case <-ctx.Done():
 		return iter.NewEmptyIter[*v1.Series](), ctx.Err()
 	default:
-		return iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](series)), nil
+		return iter.NewCancelableIter(ctx, iter.NewSliceIter(series)), nil
 	}
 }
 
@@ -173,6 +173,7 @@ type TSDBStores struct {
 }
 
 func NewTSDBStores(
+	component string,
 	schemaCfg config.SchemaConfig,
 	storeCfg baseStore.Config,
 	clientMetrics baseStore.ClientMetrics,
@@ -185,8 +186,7 @@ func NewTSDBStores(
 
 	for i, cfg := range schemaCfg.Configs {
 		if cfg.IndexType == types.TSDBType {
-
-			c, err := baseStore.NewObjectClient(cfg.ObjectType, storeCfg, clientMetrics)
+			c, err := baseStore.NewObjectClient(cfg.ObjectType, component, storeCfg, clientMetrics)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create object client")
 			}

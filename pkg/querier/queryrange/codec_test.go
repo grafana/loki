@@ -47,7 +47,6 @@ var (
 )
 
 func Test_codec_EncodeDecodeRequest(t *testing.T) {
-
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	tests := []struct {
@@ -113,18 +112,22 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			StartTs: start,
 			EndTs:   end,
 		}, false},
-		{"labels", func() (*http.Request, error) {
-			return http.NewRequest(http.MethodGet,
-				fmt.Sprintf(`/label?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
-		}, NewLabelRequest(start, end, `{foo="bar"}`, "", "/label"),
-			false},
-		{"label_values", func() (*http.Request, error) {
-			req, err := http.NewRequest(http.MethodGet,
-				fmt.Sprintf(`/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
-			req = mux.SetURLVars(req, map[string]string{"name": "test"})
-			return req, err
-		}, NewLabelRequest(start, end, `{foo="bar"}`, "test", "/label/test/values"),
-			false},
+		{
+			"labels", func() (*http.Request, error) {
+				return http.NewRequest(http.MethodGet,
+					fmt.Sprintf(`/loki/api/v1/labels?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
+			}, NewLabelRequest(start, end, `{foo="bar"}`, "", "/loki/api/v1/labels"),
+			false,
+		},
+		{
+			"label_values", func() (*http.Request, error) {
+				req, err := http.NewRequest(http.MethodGet,
+					fmt.Sprintf(`/loki/api/v1/label/test/values?start=%d&end=%d&query={foo="bar"}`, start.UnixNano(), end.UnixNano()), nil)
+				req = mux.SetURLVars(req, map[string]string{"name": "test"})
+				return req, err
+			}, NewLabelRequest(start, end, `{foo="bar"}`, "test", "/loki/api/v1/label/test/values"),
+			false,
+		},
 		{"index_stats", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(ctx, &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
@@ -205,25 +208,56 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 		{"detected_fields", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(ctx, &DetectedFieldsRequest{
 				logproto.DetectedFieldsRequest{
-					Query:      `{foo="bar"}`,
-					Start:      start,
-					End:        end,
-					Step:       30 * 1e3, // step is expected in ms; default is 0 or no step
-					LineLimit:  100,
-					FieldLimit: 100,
+					Query:     `{foo="bar"}`,
+					Start:     start,
+					End:       end,
+					Step:      30 * 1e3, // step is expected in ms; default is 0 or no step
+					LineLimit: 100,
+					Limit:     100,
 				},
 				"/loki/api/v1/detected_fields",
 			})
 		}, &DetectedFieldsRequest{
 			logproto.DetectedFieldsRequest{
-				Query:      `{foo="bar"}`,
-				Start:      start,
-				End:        end,
-				Step:       30 * 1e3, // step is expected in ms; default is 0 or no step
-				LineLimit:  100,
-				FieldLimit: 100,
+				Query:     `{foo="bar"}`,
+				Start:     start,
+				End:       end,
+				Step:      30 * 1e3, // step is expected in ms; default is 0 or no step
+				LineLimit: 100,
+				Limit:     100,
 			},
 			"/loki/api/v1/detected_fields",
+		}, false},
+		{"detected field values", func() (*http.Request, error) {
+			req, err := DefaultCodec.EncodeRequest(ctx, &DetectedFieldsRequest{
+				logproto.DetectedFieldsRequest{
+					Query:     `{baz="bar"}`,
+					Start:     start,
+					End:       end,
+					Step:      30 * 1e3, // step is expected in ms; default is 0 or no step
+					LineLimit: 100,
+					Limit:     100,
+				},
+				"/loki/api/v1/detected_field/foo/values",
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			req = mux.SetURLVars(req, map[string]string{"name": "foo"})
+			return req, nil
+		}, &DetectedFieldsRequest{
+			logproto.DetectedFieldsRequest{
+				Query:     `{baz="bar"}`,
+				Start:     start,
+				End:       end,
+				Step:      30 * 1e3, // step is expected in ms; default is 0 or no step
+				LineLimit: 100,
+				Limit:     100,
+				Values:    true,
+				Name:      "foo",
+			},
+			"/loki/api/v1/detected_field/foo/values",
 		}, false},
 		{"patterns", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(ctx, &logproto.QueryPatternsRequest{
@@ -586,7 +620,6 @@ func TestLokiSeriesRequestSpanLogging(t *testing.T) {
 			}
 			if field.Key == "end" {
 				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-
 			}
 		}
 	}
@@ -619,7 +652,7 @@ func TestLabelRequestSpanLogging(t *testing.T) {
 
 func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 	// test fixtures from pkg/util/marshal_test
-	var queryTests = []struct {
+	queryTests := []struct {
 		name     string
 		actual   parser.Value
 		expected string
@@ -804,7 +837,6 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 	}
 	codec := RequestProtobufCodec{}
 	for i, queryTest := range queryTests {
-		i := i
 		t.Run(queryTest.name, func(t *testing.T) {
 			params := url.Values{
 				"query": []string{`{app="foo"}`},
@@ -1049,7 +1081,6 @@ func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 func Test_codec_seriesVolume_DecodeRequest(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	t.Run("instant queries set a step of 0", func(t *testing.T) {
-
 		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/index/volume"+
 			"?start=0"+
 			"&end=1"+
@@ -1106,7 +1137,8 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					},
 				},
 				Statistics: statsResult,
-			}, matrixString, false, nil},
+			}, matrixString, false, nil,
+		},
 		{
 			"loki v1", "/loki/api/v1/query_range",
 			&LokiResponse{
@@ -1774,7 +1806,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 					Fields: []*logproto.DetectedField{
 						buildDetctedField("foo", 1),
 					},
-					FieldLimit: 2,
+					Limit: 2,
 				},
 			},
 			&DetectedFieldsResponse{
@@ -1782,7 +1814,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 					Fields: []*logproto.DetectedField{
 						buildDetctedField("foo", 3),
 					},
-					FieldLimit: 2,
+					Limit: 2,
 				},
 			},
 		}
@@ -1806,7 +1838,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 						buildDetctedField("foo", 1),
 						buildDetctedField("bar", 42),
 					},
-					FieldLimit: 2,
+					Limit: 2,
 				},
 			},
 			&DetectedFieldsResponse{
@@ -1815,7 +1847,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 						buildDetctedField("foo", 27),
 						buildDetctedField("baz", 3),
 					},
-					FieldLimit: 2,
+					Limit: 2,
 				},
 			},
 		}
@@ -1842,7 +1874,6 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 
 		require.Nil(t, baz)
 	})
-
 }
 
 type badResponse struct{}
@@ -1915,7 +1946,8 @@ var (
 		"index": {
 			"postFilterChunks": 0,
 			"totalChunks": 0,
-			"shardsDuration": 0
+			"shardsDuration": 0,
+			"usedBloomFilters": false
 		},
 		"cache": {
 			"chunk": {
@@ -2593,7 +2625,6 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 			}
 		})
 	}
-
 }
 
 func Benchmark_MergeResponses(b *testing.B) {

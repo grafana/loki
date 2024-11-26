@@ -312,8 +312,8 @@ func (r *DetectedLabelsRequest) WithQuery(query string) queryrangebase.Request {
 
 func (r *DetectedLabelsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 	)
 }
 
@@ -327,11 +327,10 @@ func (*DetectedLabelsRequest) GetCachingOptions() (res queryrangebase.CachingOpt
 
 func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	disableCacheReq := false
-
 	if strings.ToLower(strings.TrimSpace(r.Header.Get(cacheControlHeader))) == noCacheVal {
 		disableCacheReq = true
 	}
@@ -340,13 +339,13 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case QueryRangeOp:
 		req, err := parseRangeQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		return req, nil
 	case InstantQueryOp:
 		req, err := parseInstantQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		req.CachingOptions = queryrangebase.CachingOptions{
@@ -357,7 +356,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		return &LokiSeriesRequest{
 			Match:   req.Groups,
@@ -369,7 +368,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case LabelNamesOp:
 		req, err := loghttp.ParseLabelQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		return &LabelRequest{
@@ -379,7 +378,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.IndexStatsRequest{
@@ -390,7 +389,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case IndexShardsOp:
 		req, targetBytes, err := loghttp.ParseIndexShardsQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.ShardsRequest{
@@ -402,7 +401,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case VolumeOp:
 		req, err := loghttp.ParseVolumeInstantQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
@@ -420,7 +419,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case VolumeRangeOp:
 		req, err := loghttp.ParseVolumeRangeQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
@@ -438,12 +437,12 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case DetectedFieldsOp:
 		req, err := loghttp.ParseDetectedFieldsQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		_, err = syntax.ParseExpr(req.Query)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		return &DetectedFieldsRequest{
@@ -453,20 +452,20 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	case PatternsQueryOp:
 		req, err := loghttp.ParsePatternsQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		return req, nil
 	case DetectedLabelsOp:
 		req, err := loghttp.ParseDetectedLabelsQuery(r)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		return &DetectedLabelsRequest{
 			DetectedLabelsRequest: *req,
 			path:                  r.URL.Path,
 		}, nil
 	default:
-		return nil, httpgrpc.Errorf(http.StatusNotFound, fmt.Sprintf("unknown request path: %s", r.URL.Path))
+		return nil, httpgrpc.Errorf(http.StatusNotFound, "%s", fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
 }
 
@@ -477,7 +476,7 @@ var labelNamesRoutes = regexp.MustCompile(`/loki/api/v1/label/(?P<name>[^/]+)/va
 func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest) (queryrangebase.Request, context.Context, error) {
 	httpReq, err := http.NewRequest(r.Method, r.Url, io.NopCloser(bytes.NewBuffer(r.Body)))
 	if err != nil {
-		return nil, ctx, httpgrpc.Errorf(http.StatusInternalServerError, err.Error())
+		return nil, ctx, httpgrpc.Errorf(http.StatusInternalServerError, "%s", err.Error())
 	}
 	httpReq = httpReq.WithContext(ctx)
 	httpReq.RequestURI = r.Url
@@ -524,28 +523,28 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	}
 
 	if err := httpReq.ParseForm(); err != nil {
-		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	switch op := getOperation(httpReq.URL.Path); op {
 	case QueryRangeOp:
 		req, err := parseRangeQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		return req, ctx, nil
 	case InstantQueryOp:
 		req, err := parseInstantQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		return req, ctx, nil
 	case SeriesOp:
 		req, err := loghttp.ParseAndValidateSeriesQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		return &LokiSeriesRequest{
 			Match:   req.Groups,
@@ -557,7 +556,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	case LabelNamesOp:
 		req, err := loghttp.ParseLabelQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		if req.Name == "" {
@@ -574,7 +573,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.IndexStatsRequest{
@@ -585,7 +584,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	case IndexShardsOp:
 		req, targetBytes, err := loghttp.ParseIndexShardsQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.ShardsRequest{
@@ -598,7 +597,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	case VolumeOp:
 		req, err := loghttp.ParseVolumeInstantQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
@@ -613,7 +612,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	case VolumeRangeOp:
 		req, err := loghttp.ParseVolumeRangeQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
@@ -628,7 +627,7 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	case DetectedFieldsOp:
 		req, err := loghttp.ParseDetectedFieldsQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 
 		return &DetectedFieldsRequest{
@@ -638,27 +637,27 @@ func (Codec) DecodeHTTPGrpcRequest(ctx context.Context, r *httpgrpc.HTTPRequest)
 	case PatternsQueryOp:
 		req, err := loghttp.ParsePatternsQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		return req, ctx, nil
 	case DetectedLabelsOp:
 		req, err := loghttp.ParseDetectedLabelsQuery(httpReq)
 		if err != nil {
-			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		return &DetectedLabelsRequest{
 			DetectedLabelsRequest: *req,
 			path:                  httpReq.URL.Path,
 		}, ctx, err
 	default:
-		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path in HTTP gRPC decode: %s", r.Url))
+		return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", fmt.Sprintf("unknown request path in HTTP gRPC decode: %s", r.Url))
 	}
 }
 
 // DecodeHTTPGrpcResponse decodes an httpgrp.HTTPResponse to queryrangebase.Response.
 func (Codec) DecodeHTTPGrpcResponse(r *httpgrpc.HTTPResponse, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.Code/100 != 2 {
-		return nil, httpgrpc.Errorf(int(r.Code), string(r.Body))
+		return nil, httpgrpc.Errorf(int(r.Code), "%s", string(r.Body))
 	}
 
 	headers := make(http.Header)
@@ -920,11 +919,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *DetectedFieldsRequest:
 		params := url.Values{
-			"query":       []string{request.GetQuery()},
-			"start":       []string{fmt.Sprintf("%d", request.Start.UnixNano())},
-			"end":         []string{fmt.Sprintf("%d", request.End.UnixNano())},
-			"line_limit":  []string{fmt.Sprintf("%d", request.GetLineLimit())},
-			"field_limit": []string{fmt.Sprintf("%d", request.GetFieldLimit())},
+			"query":      []string{request.GetQuery()},
+			"start":      []string{fmt.Sprintf("%d", request.Start.UnixNano())},
+			"end":        []string{fmt.Sprintf("%d", request.End.UnixNano())},
+			"line_limit": []string{fmt.Sprintf("%d", request.GetLineLimit())},
+			"limit":      []string{fmt.Sprintf("%d", request.GetLimit())},
 		}
 
 		if request.Step != 0 {
@@ -932,7 +931,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 
 		u := &url.URL{
-			Path:     "/loki/api/v1/detected_fields",
+			Path:     request.Path(),
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -989,7 +988,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 
 		return req.WithContext(ctx), nil
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "%s", fmt.Sprintf("invalid request format, got (%T)", r))
 	}
 }
 
@@ -1014,6 +1013,10 @@ func (c Codec) Path(r queryrangebase.Request) string {
 	case *logproto.VolumeRequest:
 		return "/loki/api/v1/index/volume_range"
 	case *DetectedFieldsRequest:
+		if request.Values {
+			// This request contains user-generated input in the URL, which is not safe to reflect in the route path.
+			return "loki/api/v1/detected_field/values"
+		}
 		return "/loki/api/v1/detected_fields"
 	case *logproto.QueryPatternsRequest:
 		return "/loki/api/v1/patterns"
@@ -1041,7 +1044,7 @@ type Buffer interface {
 func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(r.Body)
-		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
+		return nil, httpgrpc.Errorf(r.StatusCode, "%s", string(body))
 	}
 
 	if r.Header.Get("Content-Type") == ProtobufType {
@@ -1377,7 +1380,7 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 			return err
 		}
 	default:
-		return httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
+		return httpgrpc.Errorf(http.StatusInternalServerError, "%s", fmt.Sprintf("invalid response format, got (%T)", res))
 	}
 
 	return nil
@@ -1389,7 +1392,7 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 
 	p, err := QueryResponseWrap(res)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "%s", err.Error())
 	}
 
 	buf, err := p.Marshal()
@@ -1548,23 +1551,30 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	case *DetectedFieldsResponse:
 		resp0 := responses[0].(*DetectedFieldsResponse)
 		headers := resp0.Headers
-		fieldLimit := resp0.Response.GetFieldLimit()
+		limit := resp0.Response.GetLimit()
 
 		fields := []*logproto.DetectedField{}
+		values := []string{}
 		for _, r := range responses {
 			fields = append(fields, r.(*DetectedFieldsResponse).Response.Fields...)
+			values = append(values, r.(*DetectedFieldsResponse).Response.Values...)
 		}
 
-		mergedFields, err := detected.MergeFields(fields, fieldLimit)
+		mergedFields, err := detected.MergeFields(fields, limit)
+		if err != nil {
+			return nil, err
+		}
 
+		mergedValues, err := detected.MergeValues(values, limit)
 		if err != nil {
 			return nil, err
 		}
 
 		return &DetectedFieldsResponse{
 			Response: &logproto.DetectedFieldsResponse{
-				Fields:     mergedFields,
-				FieldLimit: 0,
+				Fields: mergedFields,
+				Values: mergedValues,
+				Limit:  limit,
 			},
 			Headers: headers,
 		}, nil
@@ -2130,7 +2140,7 @@ func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error)
 		// range query can either be metrics or logs
 		expr, err := syntax.ParseExpr(req.Query)
 		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		if _, ok := expr.(syntax.SampleExpr); ok {
 			return &LokiPromResponse{
@@ -2292,12 +2302,12 @@ type DetectedFieldsRequest struct {
 func NewDetectedFieldsRequest(start, end time.Time, lineLimit, fieldLimit uint32, step int64, query, path string) *DetectedFieldsRequest {
 	return &DetectedFieldsRequest{
 		DetectedFieldsRequest: logproto.DetectedFieldsRequest{
-			Start:      start,
-			End:        end,
-			Query:      query,
-			LineLimit:  lineLimit,
-			FieldLimit: fieldLimit,
-			Step:       step,
+			Start:     start,
+			End:       end,
+			Query:     query,
+			LineLimit: lineLimit,
+			Limit:     fieldLimit,
+			Step:      step,
 		},
 		path: path,
 	}
@@ -2331,8 +2341,8 @@ func (r *DetectedFieldsRequest) GetLineLimit() uint32 {
 	return r.LineLimit
 }
 
-func (r *DetectedFieldsRequest) GetFieldLimit() uint32 {
-	return r.FieldLimit
+func (r *DetectedFieldsRequest) GetLimit() uint32 {
+	return r.Limit
 }
 
 func (r *DetectedFieldsRequest) Path() string {
@@ -2359,12 +2369,12 @@ func (r *DetectedFieldsRequest) WithQuery(query string) queryrangebase.Request {
 
 func (r *DetectedFieldsRequest) LogToSpan(sp opentracing.Span) {
 	sp.LogFields(
-		otlog.String("start", timestamp.Time(r.GetStart().UnixNano()).String()),
-		otlog.String("end", timestamp.Time(r.GetEnd().UnixNano()).String()),
+		otlog.String("start", timestamp.Time(r.GetStart().UnixMilli()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd().UnixMilli()).String()),
 		otlog.String("query", r.GetQuery()),
 		otlog.Int64("step (ms)", r.GetStep()),
 		otlog.Int64("line_limit", int64(r.GetLineLimit())),
-		otlog.Int64("field_limit", int64(r.GetFieldLimit())),
+		otlog.Int64("limit", int64(r.GetLimit())),
 		otlog.String("step", fmt.Sprintf("%d", r.GetStep())),
 	)
 }
