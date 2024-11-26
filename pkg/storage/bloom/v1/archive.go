@@ -124,13 +124,21 @@ func UnTar(dst string, r io.Reader) error {
 				return errors.Wrapf(err, "error creating file %s", target)
 			}
 
-			// copy over contents
-			if _, err := io.Copy(f, tarballer); err != nil {
+			// Use LimitReader to prevent reading more than declared size
+			limited := io.LimitReader(tarballer, header.Size)
+			written, err := io.Copy(f, limited)
+			if err != nil {
+				f.Close()
 				return errors.Wrapf(err, "error copying contents of file %s", target)
 			}
 
-			// manually close here after each file operation; defering would cause each file close
-			// to wait until all operations have completed.
+			// Verify the actual bytes written match the header size
+			if written != header.Size {
+				f.Close()
+				return errors.Errorf("size mismatch for %s: header claimed %d bytes but got %d bytes",
+					header.Name, header.Size, written)
+			}
+
 			if err := f.Close(); err != nil {
 				return errors.Wrapf(err, "error closing file %s", target)
 			}
