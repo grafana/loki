@@ -5,6 +5,7 @@ description: Describes LogCLI, the Grafana Loki command-line interface.
 aliases:
 - ../getting-started/logcli/
 - ../tools/logcli/
+- ../query
 weight: 700
 ---
 
