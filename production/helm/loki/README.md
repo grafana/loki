@@ -1,6 +1,6 @@
 # loki
 
-![Version: 6.21.0](https://img.shields.io/badge/Version-6.21.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 3.3.0](https://img.shields.io/badge/AppVersion-3.3.0-informational?style=flat-square)
+![Version: 6.22.0-weekly.230](https://img.shields.io/badge/Version-6.22.0--weekly.230-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: k230](https://img.shields.io/badge/AppVersion-k230-informational?style=flat-square)
 
 Helm chart for Grafana Loki and Grafana Enterprise Logs supporting both simple, scalable and distributed modes.
 
