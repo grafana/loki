@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -73,7 +74,16 @@ func UnTarCompress(enc compression.Codec, dst string, r io.Reader) error {
 }
 
 func UnTar(dst string, r io.Reader) error {
+	// Add safety checks for destination
+	dst = filepath.Clean(dst)
+	if !filepath.IsAbs(dst) {
+		return errors.New("destination path must be absolute")
+	}
 	tarballer := tar.NewReader(r)
+
+	// Track total size to prevent decompression bombs
+	var totalSize int64
+	const maxSize = 20 << 30 // 20GB limit
 
 	for {
 		header, err := tarballer.Next()
@@ -84,7 +94,17 @@ func UnTar(dst string, r io.Reader) error {
 			return errors.Wrap(err, "error reading tarball header")
 		}
 
+		// Check for path traversal
 		target := filepath.Join(dst, header.Name)
+		if !isWithinDir(target, dst) {
+			return errors.Errorf("invalid path %q: path traversal attempt", header.Name)
+		}
+
+		// Update and check total size
+		totalSize += header.Size
+		if totalSize > maxSize {
+			return errors.New("decompression bomb: extracted content too large")
+		}
 
 		// check the file type
 		switch header.Typeflag {
@@ -119,4 +139,17 @@ func UnTar(dst string, r io.Reader) error {
 	}
 
 	return nil
+}
+
+// Helper function to check for path traversal
+func isWithinDir(target, dir string) bool {
+	targetPath := filepath.Clean(target)
+	dirPath := filepath.Clean(dir)
+
+	relative, err := filepath.Rel(dirPath, targetPath)
+	if err != nil {
+		return false
+	}
+
+	return !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
