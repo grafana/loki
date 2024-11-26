@@ -74,7 +74,7 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 		RouteRandomly:   cfg.RouteRandomly,
 	}
 	if cfg.EnableTLS {
-		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
+		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}  //#nosec G402 -- User has explicitly requested to disable TLS
 	}
 	return &RedisClient{
 		expiration: cfg.Expiration,
