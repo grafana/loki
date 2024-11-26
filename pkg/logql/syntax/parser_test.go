@@ -2,7 +2,6 @@ package syntax
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
