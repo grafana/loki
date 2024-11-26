@@ -1,8 +1,11 @@
 package log
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"sync"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
@@ -227,6 +230,9 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 
 	for i, lb := range structuredMetadata {
 		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+		if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
+			structuredMetadata[i].Value = string(bytes.Map(removeInvalidUtf, []byte(structuredMetadata[i].Value)))
+		}
 	}
 
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)

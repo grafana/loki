@@ -194,6 +194,17 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
+	// test structured metadata with disallowed label values
+	withBadLabelValue := append(structuredMetadata, labels.Label{Name: "z_badValue", Value: "test�"})
+	expectedStructuredMetadata = append(structuredMetadata, labels.Label{Name: "z_badValue", Value: "test "})
+	expectedLabelsResults = append(lbs, expectedStructuredMetadata...)
+
+	_, lbr, matches = p.ForStream(lbs).Process(0, []byte(""), withBadLabelValue...)
+	require.Equal(t, NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, expectedStructuredMetadata, labels.EmptyLabels()), lbr)
+	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
+	require.Equal(t, true, matches)
+
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
 	p.baseBuilder.add = [numValidCategories]labels.Labels{
