@@ -1,7 +1,6 @@
 package log
 
 import (
-	"bytes"
 	"context"
 	"strings"
 	"sync"
@@ -231,7 +230,7 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 	for i, lb := range structuredMetadata {
 		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
 		if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
-			structuredMetadata[i].Value = string(bytes.Map(removeInvalidUtf, []byte(structuredMetadata[i].Value)))
+			structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
 		}
 	}
 
