@@ -3611,7 +3611,6 @@ func TestParseLabels_StructuredMetadata(t *testing.T) {
 	})
 
 	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"), structuredMetadata...)
-	fmt.Println("l :", string(l))
 	require.Equal(t, []byte("lbs bar asdf bob "), l)
 	require.Equal(t, log.NewLabelsResult(expectedLabelsResults.String(), expectedLabelsResults.Hash(), lbs, structuredMetadata, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
