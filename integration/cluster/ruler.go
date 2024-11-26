@@ -43,7 +43,7 @@ func (c *Component) WithTenantRules(tenantFilesMap map[string]map[string]string)
 			if err := os.Mkdir(path, 0755); err != nil {
 				return fmt.Errorf("error creating tenant %s rules path: %w", tenant, err)
 			}
-			if err := os.WriteFile(filepath.Join(path, filename), []byte(strings.TrimSpace(file)), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(path, filename), []byte(strings.TrimSpace(file)), 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
 				return fmt.Errorf("error creating rule file at path %s: %w", path, err)
 			}
 		}
