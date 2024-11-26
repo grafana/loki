@@ -480,7 +480,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 		context.Background(),
 		time.Unix(0, 0),
 		time.Unix(100, 0),
-		countExtractor, false,
+		countExtractor,
 	)
 
 	for i := 0; i < 100; i++ {
@@ -545,7 +545,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
-					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor, false)
+					iterator := tc.c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 					for iterator.Next() {
 						_ = iterator.At()
 					}
@@ -581,7 +581,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 
 	ct = 0
 	i = 0
-	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor, false)
+	smpl := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 	for smpl.Next() {
 		next := smpl.At().Timestamp
 		require.GreaterOrEqual(t, next, i)
@@ -722,7 +722,7 @@ func TestReorderAcrossBlocks(t *testing.T) {
 
 func Test_HeadIteratorHash(t *testing.T) {
 	lbs := labels.Labels{labels.Label{Name: "foo", Value: "bar"}}
-	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+	ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false, log.DefaultMode)
 	if err != nil {
 		panic(err)
 	}

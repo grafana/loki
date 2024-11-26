@@ -36,16 +36,10 @@ type StepEvaluator interface {
 	Error() error
 	// Explain returns a print of the step evaluation tree
 	Explain(Node)
-
-	Mode() EvaluatorMode
 }
 
 type EmptyEvaluator[R StepResult] struct {
 	value R
-}
-
-func (e EmptyEvaluator[R]) Mode() EvaluatorMode {
-	return ModeDefault
 }
 
 var _ StepEvaluator = EmptyEvaluator[SampleVector]{}

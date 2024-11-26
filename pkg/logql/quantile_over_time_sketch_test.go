@@ -94,10 +94,6 @@ func (e errorRangeVectorIterator) Error() error {
 	return e.err
 }
 
-func (e errorRangeVectorIterator) Mode() EvaluatorMode {
-	return ModeDefault
-}
-
 type errorStepEvaluator struct {
 	err error
 }
@@ -115,10 +111,6 @@ func (e errorStepEvaluator) Error() error {
 }
 
 func (e errorStepEvaluator) Explain(Node) {}
-
-func (errorStepEvaluator) Mode() EvaluatorMode {
-	return ModeDefault
-}
 
 func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	selRange := (5 * time.Second).Nanoseconds()

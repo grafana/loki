@@ -940,6 +940,10 @@ func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
 	return false
 }
 
+func (p *mockStreamExtractor) Mode() log.ExtractionMode {
+	return log.DefaultMode
+}
+
 func (p *mockStreamExtractor) BaseLabels() log.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }

@@ -576,7 +576,7 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 	}
 
 	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers,
-		extractor, req.Start, req.End, chunkFilterer, req.EvaluatorMode == logql.ModeMetricsOnly)
+		extractor, req.Start, req.End, chunkFilterer)
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {

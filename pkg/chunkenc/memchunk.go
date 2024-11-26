@@ -1175,7 +1175,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor, queryMetricsOnly bool) iter.SampleIterator {
+func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
@@ -1199,7 +1199,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 			ordered = false
 		}
 		lastMax = b.maxt
-		its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor, queryMetricsOnly))
+		its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor))
 	}
 
 	if !c.head.IsEmpty() {
@@ -1299,11 +1299,12 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
-func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor, queryMetricsOnly bool) iter.SampleIterator {
+func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
 	}
 	if b.format >= ChunkFormatV5 {
+		queryMetricsOnly := extractor.Mode() == log.MetricsOnlyMode
 		return newOrganizedSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer, b.sm, b.ts, queryMetricsOnly)
 	}
 	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)

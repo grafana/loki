@@ -72,13 +72,26 @@ func (r RangeAggregationExpr) extractor(override *Grouping) (log.SampleExtractor
 			log.ReduceAndLabelFilter(r.Left.Unwrap.PostFilters),
 		)
 	}
+
 	// otherwise we extract metrics from the log line.
 	switch r.Operation {
 	case OpRangeTypeRate, OpRangeTypeCount, OpRangeTypeAbsent:
-		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, noLabels)
+		return log.NewLineSampleExtractor(log.CountExtractor, stages, groups, without, noLabels, r.extractionMode())
 	case OpRangeTypeBytes, OpRangeTypeBytesRate:
-		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, noLabels)
+		return log.NewLineSampleExtractor(log.BytesExtractor, stages, groups, without, noLabels, r.extractionMode())
 	default:
 		return nil, fmt.Errorf(UnsupportedErr, r.Operation)
 	}
+}
+
+func (r RangeAggregationExpr) extractionMode() log.ExtractionMode {
+	if r.Operation == OpRangeTypeCount || r.Operation == OpRangeTypeRate {
+		if r.Left.Unwrap == nil {
+			if p, ok := r.Left.Left.(*PipelineExpr); !ok || len(p.MultiStages) == 0 {
+				return log.MetricsOnlyMode
+			}
+		}
+	}
+
+	return log.DefaultMode
 }

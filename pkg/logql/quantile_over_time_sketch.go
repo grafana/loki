@@ -151,10 +151,6 @@ type QuantileSketchStepEvaluator struct {
 	err error
 }
 
-func (e *QuantileSketchStepEvaluator) Mode() EvaluatorMode {
-	return ModeDefault
-}
-
 func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 	next := e.iter.Next()
 	if !next {
@@ -354,19 +350,11 @@ func (*QuantileSketchMatrixStepEvaluator) Explain(parent Node) {
 	parent.Child("QuantileSketchMatrix")
 }
 
-func (*QuantileSketchMatrixStepEvaluator) Mode() EvaluatorMode {
-	return ModeDefault
-}
-
 // QuantileSketchVectorStepEvaluator evaluates a quantile sketch into a
 // promql.Vector.
 type QuantileSketchVectorStepEvaluator struct {
 	inner    StepEvaluator
 	quantile float64
-}
-
-func (e *QuantileSketchVectorStepEvaluator) Mode() EvaluatorMode {
-	return ModeDefault
 }
 
 var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)

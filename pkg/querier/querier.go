@@ -248,7 +248,6 @@ func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.Se
 		queryRequestCopy := *params.SampleQueryRequest
 		newParams := logql.SelectSampleParams{
 			SampleQueryRequest: &queryRequestCopy,
-			EvaluatorMode:      params.EvaluatorMode,
 		}
 		newParams.Start = ingesterQueryInterval.start
 		newParams.End = ingesterQueryInterval.end

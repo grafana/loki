@@ -492,7 +492,7 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 		NewJSONParser(),
 		filter,
 	}
-	ex, err := NewLineSampleExtractor(CountExtractor, stages, []string{}, false, false)
+	ex, err := NewLineSampleExtractor(CountExtractor, stages, []string{}, false, false, DefaultMode)
 	require.NoError(b, err)
 	streamEx := ex.ForStream(baseLabels)
 	b.ReportAllocs()

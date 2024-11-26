@@ -96,13 +96,12 @@ func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
 
 type SelectSampleParams struct {
 	*logproto.SampleQueryRequest
-	EvaluatorMode EvaluatorMode
 }
 
 func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGroup) SelectSampleParams {
 	cpy := *s.SampleQueryRequest
 	cpy.StoreChunks = chunkRefGroup
-	return SelectSampleParams{&cpy, ModeDefault}
+	return SelectSampleParams{&cpy}
 }
 
 // Expr returns the SampleExpr from the SelectSampleParams.

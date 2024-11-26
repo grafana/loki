@@ -328,7 +328,7 @@ func mustSampleExtractor(ex SampleExtractor, err error) SampleExtractor {
 }
 
 func TestNewLineSampleExtractor(t *testing.T) {
-	se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false)
+	se, err := NewLineSampleExtractor(CountExtractor, nil, nil, false, false, DefaultMode)
 	require.NoError(t, err)
 
 	lbs := labels.FromStrings("namespace", "dev",
@@ -347,7 +347,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	assertLabelResult(t, lbs, l)
 
 	stage := mustFilter(NewFilter("foo", LineMatchEqual)).ToStage()
-	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{stage}, []string{"namespace"}, false, false)
+	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{stage}, []string{"namespace"}, false, false, DefaultMode)
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
@@ -368,7 +368,7 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	se, err := NewLineSampleExtractor(CountExtractor, []Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),
-	}, nil, false, false)
+	}, nil, false, false, DefaultMode)
 	require.NoError(t, err)
 
 	sse := se.ForStream(lbs)
@@ -405,7 +405,7 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),
 		mustFilter(NewFilter("foo", LineMatchEqual)).ToStage(),
-	}, []string{"foo"}, false, false)
+	}, []string{"foo"}, false, false, DefaultMode)
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
@@ -488,4 +488,8 @@ func (p *stubStreamExtractor) ProcessString(_ int64, _ string, _ ...labels.Label
 
 func (p *stubStreamExtractor) ReferencedStructuredMetadata() bool {
 	return false
+}
+
+func (p *stubStreamExtractor) Mode() ExtractionMode {
+	return DefaultMode
 }

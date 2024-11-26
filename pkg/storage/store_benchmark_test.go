@@ -42,7 +42,6 @@ func benchmarkSelectSamples(b *testing.B, version string) {
 
 				params := logql.SelectSampleParams{
 					SampleQueryRequest: newSampleQuery(q, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil, nil),
-					EvaluatorMode:      logql.ModeMetricsOnly,
 				}
 				st := storeFor(version)
 				it, err := st.SelectSamples(ctx, params)
@@ -92,7 +91,6 @@ func benchmarkWithStructuredMetadata(b *testing.B, version string) {
 			q := `sum by (detected_level) (count_over_time({foo="bar"} [1m]))`
 			params := logql.SelectSampleParams{
 				SampleQueryRequest: newSampleQuery(q, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil, nil),
-				EvaluatorMode:      logql.ModeMetricsOnly,
 			}
 
 			it, err := st.SelectSamples(ctx, params)

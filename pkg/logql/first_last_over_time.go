@@ -129,10 +129,6 @@ type mergeOverTimeStepEvaluator struct {
 	merge          func(promql.Vector, int, int, promql.Series) promql.Vector
 }
 
-func (e *mergeOverTimeStepEvaluator) Mode() EvaluatorMode {
-	return ModeDefault
-}
-
 // Next returns the first or last element within one step of each matrix.
 func (e *mergeOverTimeStepEvaluator) Next() (bool, int64, StepResult) {
 	vec := promql.Vector{}

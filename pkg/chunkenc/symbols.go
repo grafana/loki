@@ -105,6 +105,11 @@ func (s *symbolizer) Lookup(syms symbols, buf labels.Labels) labels.Labels {
 		buf = structuredMetadataPool.Get().(labels.Labels)
 	}
 	buf = buf[:0]
+	// take a read lock only if we will be getting new entries
+	if s.symbolsMap != nil {
+		s.mtx.RLock()
+		defer s.mtx.RUnlock()
+	}
 
 	for _, symbol := range syms {
 		buf = append(buf, labels.Label{Name: s.lookup(symbol.Name), Value: s.lookup(symbol.Value)})
@@ -114,12 +119,6 @@ func (s *symbolizer) Lookup(syms symbols, buf labels.Labels) labels.Labels {
 }
 
 func (s *symbolizer) lookup(idx uint32) string {
-	// take a read lock only if we will be getting new entries
-	if s.symbolsMap != nil {
-		s.mtx.RLock()
-		defer s.mtx.RUnlock()
-	}
-
 	if idx >= uint32(len(s.labels)) {
 		return ""
 	}

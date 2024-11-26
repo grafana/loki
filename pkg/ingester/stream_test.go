@@ -34,7 +34,7 @@ import (
 
 var (
 	countExtractor = func() log.StreamSampleExtractor {
-		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false, log.DefaultMode)
 		if err != nil {
 			panic(err)
 		}

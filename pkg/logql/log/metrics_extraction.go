@@ -18,6 +18,14 @@ const (
 	ConvertFloat    = "float"
 )
 
+type ExtractionMode int
+
+const (
+	DefaultMode ExtractionMode = iota
+	MetricsOnlyMode
+	BytesOnlyMode
+)
+
 // LineExtractor extracts a float64 from a log line.
 type LineExtractor func([]byte) float64
 
@@ -38,6 +46,7 @@ type StreamSampleExtractor interface {
 	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool)
 	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool)
 	ReferencedStructuredMetadata() bool
+	Mode() ExtractionMode
 }
 
 // SampleExtractorWrapper takes an extractor, wraps it is some desired functionality
@@ -52,11 +61,12 @@ type lineSampleExtractor struct {
 
 	baseBuilder      *BaseLabelsBuilder
 	streamExtractors map[uint64]StreamSampleExtractor
+	extractionMode   ExtractionMode
 }
 
 // NewLineSampleExtractor creates a SampleExtractor from a LineExtractor.
 // Multiple log stages are run before converting the log line.
-func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
+func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool, extractionMode ExtractionMode) (SampleExtractor, error) {
 	s := ReduceStages(stages)
 	hints := NewParserHint(s.RequiredLabelNames(), groups, without, noLabels, "", stages)
 	return &lineSampleExtractor{
@@ -64,6 +74,7 @@ func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, w
 		LineExtractor:    ex,
 		baseBuilder:      NewBaseLabelsBuilderWithGrouping(groups, hints, without, noLabels),
 		streamExtractors: make(map[uint64]StreamSampleExtractor),
+		extractionMode:   extractionMode,
 	}, nil
 }
 
@@ -85,7 +96,12 @@ func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtrac
 type streamLineSampleExtractor struct {
 	Stage
 	LineExtractor
-	builder *LabelsBuilder
+	builder        *LabelsBuilder
+	extractionMode ExtractionMode
+}
+
+func (l *streamLineSampleExtractor) Mode() ExtractionMode {
+	return l.extractionMode
 }
 
 func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
@@ -166,7 +182,12 @@ func LabelExtractorWithStages(
 
 type streamLabelSampleExtractor struct {
 	*labelSampleExtractor
-	builder *LabelsBuilder
+	builder        *LabelsBuilder
+	extractionMode ExtractionMode
+}
+
+func (l *streamLabelSampleExtractor) Mode() ExtractionMode {
+	return l.extractionMode
 }
 
 func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
@@ -240,6 +261,7 @@ type filteringSampleExtractor struct {
 	extractor SampleExtractor
 }
 
+// (shantanu) this is where its called --
 func (p *filteringSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
 	var streamFilters []streamFilter
 	for _, f := range p.filters {
@@ -259,8 +281,13 @@ func (p *filteringSampleExtractor) ForStream(labels labels.Labels) StreamSampleE
 }
 
 type filteringStreamExtractor struct {
-	filters   []streamFilter
-	extractor StreamSampleExtractor
+	filters        []streamFilter
+	extractor      StreamSampleExtractor
+	extractionMode ExtractionMode
+}
+
+func (sp *filteringStreamExtractor) Mode() ExtractionMode {
+	return sp.extractionMode
 }
 
 func (sp *filteringStreamExtractor) ReferencedStructuredMetadata() bool {

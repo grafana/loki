@@ -73,7 +73,6 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 							AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
 						},
 					},
-					ModeDefault,
 				},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
@@ -100,7 +99,6 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
 					},
 				},
-					ModeDefault,
 				},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
@@ -126,7 +124,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(`rate_counter({app="foo"} | unwrap foo[30s])`),
 					},
-				}, ModeDefault,
+				},
 				},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
@@ -144,7 +142,7 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 				{newSeries(testSize, offset(46, incValue(1)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate_counter({app="foo"} | unwrap foo[30s])`}},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// (61 - 47) / 30 = 0.4666
@@ -192,7 +190,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 1, Metric: labels.FromStrings("app", "foo")}},
 		},
@@ -203,7 +201,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, offset(46, identity), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"}[30s])`}},
 			},
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.5, Metric: labels.FromStrings("app", "foo")}},
 		},
@@ -214,7 +212,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, offset(46, constantValue(2)), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"} | unwrap foo[30s])`}},
 			},
 			// SUM(n=46, 61, 2) = 30
 			// 30 / 30 = 1
@@ -226,7 +224,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 6, Metric: labels.FromStrings("app", "foo")}},
 		},
@@ -236,7 +234,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `first_over_time({app="foo"}|~".+bar"| unwrap foo [1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `first_over_time({app="foo"}|~".+bar"| unwrap foo [1m])`}},
 			},
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 1, Metric: labels.FromStrings("app", "foo")}},
 		},
@@ -246,7 +244,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m] offset 30s)`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m] offset 30s)`}},
 			},
 			promql.Vector{promql.Sample{T: 90 * 1000, F: 6, Metric: labels.FromStrings("app", "foo")}},
 		},
@@ -256,7 +254,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[5m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*60, 0), Selector: `count_over_time({app="foo"}|~".+bar"[5m])`}},
 			},
 			promql.Vector{promql.Sample{T: 5 * 60 * 1000, F: 30, Metric: labels.FromStrings("app", "foo")}},
 		},
@@ -266,7 +264,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*60, 0), Selector: `absent_over_time({app="foo"}|~".+bar"[5m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*60, 0), Selector: `absent_over_time({app="foo"}|~".+bar"[5m])`}},
 			},
 			promql.Vector{},
 		},
@@ -285,7 +283,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				promql.Sample{T: 60 * 1000, F: 6, Metric: labels.EmptyLabels()},
@@ -297,7 +295,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				promql.Sample{T: 60 * 1000, F: 0.1, Metric: labels.EmptyLabels()},
@@ -309,7 +307,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				promql.Sample{T: 60 * 1000, F: 0.2, Metric: labels.FromStrings("app", "bar")},
@@ -322,7 +320,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				promql.Sample{T: 60 * 1000, F: 0.2, Metric: labels.EmptyLabels()},
@@ -334,7 +332,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(5, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Vector{
 				promql.Sample{T: 60 * 1000, F: 0.4, Metric: labels.EmptyLabels()},
@@ -346,7 +344,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app)(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app)(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Vector{
 				promql.Sample{T: 60 * 1000, F: 6, Metric: labels.FromStrings("app", "bar")},
@@ -362,7 +360,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])) `}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])) `}},
 			},
 			promql.Vector{
 				promql.Sample{
@@ -390,7 +388,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) `}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m] offset 30s)) `}},
 			},
 			promql.Vector{
 				promql.Sample{
@@ -422,7 +420,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])) `}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (namespace,app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m])) `}},
 			},
 			promql.Vector{
 				promql.Sample{
@@ -446,7 +444,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 2, Metric: labels.EmptyLabels()},
@@ -458,7 +456,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 9, Metric: labels.EmptyLabels()},
@@ -470,7 +468,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(2, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 12, Metric: labels.EmptyLabels()},
@@ -482,7 +480,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0.25, Metric: labels.FromStrings("app", "bar")},
@@ -495,7 +493,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0.25, Metric: labels.FromStrings("app", "bar")},
@@ -508,7 +506,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, offset(46, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0.25, Metric: labels.FromStrings("app", "bar")},
@@ -524,7 +522,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0.25, Metric: labels.FromStrings("app", "bar")},
@@ -542,7 +540,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0.1, Metric: labels.FromStrings("app", "foo")},
@@ -558,7 +556,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0.25, Metric: labels.FromStrings("app", "bar")},
@@ -575,7 +573,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 1.25, Metric: labels.FromStrings("app", "bar")},
@@ -593,7 +591,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 1.1, Metric: labels.FromStrings("app", "foo")},
@@ -611,7 +609,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 2, Metric: labels.FromStrings("app", "buzz")},
@@ -671,7 +669,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 60, Metric: labels.FromStrings("app", "foo")},
@@ -690,7 +688,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 60, Metric: labels.FromStrings("app", "foo")},
@@ -706,8 +704,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="bar"}[1m])`}},
 			},
 			promql.Vector{},
 		},
@@ -721,8 +719,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="foo"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `count_over_time({app="bar"}[1m])`}},
 			},
 			promql.Vector{},
 		},
@@ -736,8 +734,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without (app) (count_over_time({app="bar"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without (app) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without (app) (count_over_time({app="bar"}[1m]))`}},
 			},
 			promql.Vector{},
 		},
@@ -751,8 +749,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without(app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without(app) (count_over_time({app="bar"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without(app) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum without(app) (count_over_time({app="bar"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 60, Metric: labels.EmptyLabels()},
@@ -782,7 +780,7 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `rate({app="foo"}|~".+bar"[1m])`}},
 			},
 			promql.Vector{{T: 60 * 1000, F: 50, Metric: labels.FromStrings("app", "foo")}},
 		},
@@ -796,8 +794,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="bar"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="bar"}[1m]))`}},
 			},
 			promql.Vector{},
 		},
@@ -811,8 +809,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 120, Metric: labels.FromStrings("app", "foo")},
@@ -828,8 +826,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 120, Metric: labels.EmptyLabels()},
@@ -845,8 +843,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 120, Metric: labels.FromStrings("app", "foo")},
@@ -862,8 +860,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0, Metric: labels.FromStrings("app", "foo")},
@@ -879,8 +877,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
 			},
 			errors.New("multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)"),
 		},
@@ -894,8 +892,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0, Metric: labels.FromStrings("app", "foo", "machine", "buzz")},
@@ -912,8 +910,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0, Metric: labels.FromStrings("app", "foo", "machine", "buzz")},
@@ -930,8 +928,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo",pool="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,pool) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,pool) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0, Metric: labels.FromStrings("app", "foo", "machine", "buzz", "pool", "foo")},
@@ -948,8 +946,8 @@ func TestEngine_InstantQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo",machine="fuzz"}`), newSeries(testSize, identity, `{app="foo",machine="buzz"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,pool) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,pool) (count_over_time({app="foo"}[1m]))`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(60, 0), Selector: `sum by (app,machine) (count_over_time({app="foo"}[1m]))`}},
 			},
 			promql.Vector{
 				{T: 60 * 1000, F: 0, Metric: labels.FromStrings("app", "foo", "machine", "buzz", "pool", "foo")},
@@ -1050,7 +1048,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, identity, `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `rate({app="foo"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `rate({app="foo"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1065,7 +1063,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(2, identity), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `rate({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `rate({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1080,7 +1078,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1095,7 +1093,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*120, 0), Selector: `count_over_time({app="foo"}|~".+bar"[5m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*120, 0), Selector: `count_over_time({app="foo"}|~".+bar"[5m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1122,7 +1120,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 300 = 30 total
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*120, 0), Selector: `last_over_time({app="foo"}|~".+bar"| unwrap foo[5m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(5*120, 0), Selector: `last_over_time({app="foo"}|~".+bar"| unwrap foo[5m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1149,7 +1147,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1164,7 +1162,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1179,7 +1177,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1198,7 +1196,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1213,7 +1211,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(5, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum(rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1228,7 +1226,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1252,7 +1250,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (namespace,cluster, app)(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (namespace,cluster, app)(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1284,7 +1282,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (cluster, namespace, app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (cluster, namespace, app) (count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1316,7 +1314,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (namespace, app)(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (namespace, app)(count_over_time({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1335,7 +1333,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(10, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1350,7 +1348,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1365,7 +1363,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(2, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1380,7 +1378,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1399,7 +1397,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(1, constant(50), `{app="foo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `absent_over_time({app="foo"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `absent_over_time({app="foo"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1419,7 +1417,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"|unwrap bar[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"|unwrap bar[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1438,7 +1436,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`), newSeries(testSize, factor(15, identity), `{app="boo"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1457,7 +1455,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1475,7 +1473,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1501,7 +1499,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1525,7 +1523,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar|fuzz|buzz"}|~".+bar"[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar|fuzz|buzz"}|~".+bar"[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1555,8 +1553,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="foo"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="foo"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1586,7 +1584,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="foo"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="foo"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1616,8 +1614,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1642,8 +1640,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1668,8 +1666,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1694,8 +1692,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1720,8 +1718,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1746,8 +1744,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1772,8 +1770,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1798,8 +1796,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}, ModeDefault},
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app=~"foo|bar"}[1m])`}},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1823,7 +1821,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1851,7 +1849,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1885,7 +1883,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1913,7 +1911,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `sum by (app) (rate({app=~"foo|bar"} |~".+bar" [1m]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1942,7 +1940,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1960,7 +1958,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1978,7 +1976,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -1996,7 +1994,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `count_over_time({app="bar"}[1m])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2043,7 +2041,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_rate({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_rate({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2067,7 +2065,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2091,7 +2089,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2115,7 +2113,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2143,7 +2141,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2167,7 +2165,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2201,7 +2199,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				}},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `bytes_over_time({app="foo"}[30s])`}},
 			},
 			promql.Matrix{
 				promql.Series{
@@ -2244,7 +2242,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 			[]SelectSampleParams{
-				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `sum(rate({job="foo"} | logfmt | bar > 0  | unwrap bazz [30s]))`}, ModeDefault},
+				{&logproto.SampleQueryRequest{Start: time.Unix(30, 0), End: time.Unix(120, 0), Selector: `sum(rate({job="foo"} | logfmt | bar > 0  | unwrap bazz [30s]))`}},
 			},
 			promql.Matrix{
 				promql.Series{
