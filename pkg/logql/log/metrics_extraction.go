@@ -85,9 +85,10 @@ func (l *lineSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtrac
 	}
 
 	res := &streamLineSampleExtractor{
-		Stage:         l.Stage,
-		LineExtractor: l.LineExtractor,
-		builder:       l.baseBuilder.ForLabels(labels, hash),
+		Stage:          l.Stage,
+		LineExtractor:  l.LineExtractor,
+		builder:        l.baseBuilder.ForLabels(labels, hash),
+		extractionMode: l.extractionMode,
 	}
 	l.streamExtractors[hash] = res
 	return res
