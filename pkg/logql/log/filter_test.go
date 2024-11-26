@@ -112,7 +112,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 			// tests all lines with both filter, they should have the same result.
 			for _, line := range fixtures {
 				l := []byte(line)
-				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s", test.re, line)
+				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s re:%v simplified:%v", test.re, line, d.Filter(l), f.Filter(l))
 			}
 		})
 	}

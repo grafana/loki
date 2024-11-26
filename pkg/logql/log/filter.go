@@ -465,26 +465,43 @@ func containsLower(line, substr []byte) bool {
 
 		// Found potential match, check rest of substr
 		matched := true
-		for j := 1; j < len(substr); j++ {
-			c = line[i+j]
-			s := substr[j]
+		linePos := i
+		substrPos := 0
+
+		for linePos < len(line) && substrPos < len(substr) {
+			c := line[linePos]
+			s := substr[substrPos]
+
 			// Fast ASCII comparison
 			if c < utf8.RuneSelf && s < utf8.RuneSelf {
 				if c != s && c+'a'-'A' != s && c != s+'a'-'A' {
 					matched = false
 					break
 				}
+				linePos++
+				substrPos++
 				continue
 			}
+
 			// Slower Unicode path only when needed
-			lr, _ := utf8.DecodeRune(line[i+j:])
-			mr, _ := utf8.DecodeRune(substr[j:])
-			if lr != mr && mr != unicode.To(unicode.LowerCase, lr) {
+			lr, lineSize := utf8.DecodeRune(line[linePos:])
+			mr, substrSize := utf8.DecodeRune(substr[substrPos:])
+
+			if lr == utf8.RuneError || mr == utf8.RuneError {
 				matched = false
 				break
 			}
+
+			if unicode.ToLower(lr) != mr {
+				matched = false
+				break
+			}
+
+			linePos += lineSize
+			substrPos += substrSize
 		}
-		if matched {
+
+		if matched && substrPos == len(substr) {
 			return true
 		}
 		i++
