@@ -58,9 +58,10 @@ type WebIdentityResult struct {
 
 // WebIdentityToken - web identity token with expiry.
 type WebIdentityToken struct {
-	Token       string
-	AccessToken string
-	Expiry      int
+	Token        string
+	AccessToken  string
+	RefreshToken string
+	Expiry       int
 }
 
 // A STSWebIdentity retrieves credentials from MinIO service, and keeps track if
