@@ -17,7 +17,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -112,7 +111,7 @@ func NewPush(
 	useTLS bool,
 	backoffCfg *backoff.Config,
 	logger log.Logger,
-	registrer prometheus.Registerer,
+	metrics *Metrics,
 ) (*Push, error) {
 	client, err := config.NewClientFromConfig(cfg, "pattern-ingester-push", config.WithHTTP2Disabled())
 	if err != nil {
@@ -147,7 +146,7 @@ func NewPush(
 		entries: entries{
 			entries: make([]entry, 0),
 		},
-		metrics: NewMetrics(registrer),
+		metrics: metrics,
 	}
 
 	go p.run(pushPeriod)
@@ -284,12 +283,12 @@ func (p *Push) run(pushPeriod time.Duration) {
 				}
 
 				if !backoff.Ongoing() {
-					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "entry", "status", status, "error", err)
+					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
 					pushTicker.Reset(pushPeriod)
 					break
 				}
 				level.Warn(p.logger).
-					Log("msg", "failed to send entry, retrying", "entry", "status", status, "error", err)
+					Log("msg", "failed to send entry, retrying", "status", status, "error", err)
 				backoff.Wait()
 			}
 
