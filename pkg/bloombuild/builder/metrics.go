@@ -3,10 +3,11 @@ package builder
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
-	metricsNamespace = "loki"
 	metricsSubsystem = "bloombuilder"
 
 	statusSuccess = "success"
@@ -34,32 +35,32 @@ type Metrics struct {
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		running: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "running",
 			Help:      "Value will be 1 if the bloom builder is currently running on this instance",
 		}),
 		processingTask: promauto.With(r).NewGauge(prometheus.GaugeOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "processing_task",
 			Help:      "Value will be 1 if the bloom builder is currently processing a task",
 		}),
 
 		taskStarted: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "task_started_total",
 			Help:      "Total number of task started",
 		}),
 		taskCompleted: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "task_completed_total",
 			Help:      "Total number of task completed",
 		}, []string{"status"}),
 		taskDuration: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "task_duration_seconds",
 			Help:      "Time spent processing a task.",
@@ -73,26 +74,26 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		}, []string{"status"}),
 
 		blocksReused: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "blocks_reused_total",
 			Help:      "Number of overlapping bloom blocks reused when creating new blocks",
 		}),
 		blocksCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "blocks_created_total",
 			Help:      "Number of blocks created",
 		}),
 		metasCreated: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "metas_created_total",
 			Help:      "Number of metas created",
 		}),
 
 		seriesPerTask: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "series_per_task",
 			Help:      "Number of series during task processing. Includes series which copied from other blocks and don't need to be indexed",
@@ -100,7 +101,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Buckets: prometheus.ExponentialBucketsRange(1, 10e6, 10),
 		}),
 		bytesPerTask: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "bytes_per_task",
 			Help:      "Number of source bytes from chunks added during a task processing.",
@@ -109,7 +110,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		}),
 
 		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Namespace: metricsNamespace,
+			Namespace: constants.Loki,
 			Subsystem: metricsSubsystem,
 			Name:      "chunk_series_size",
 			Help:      "Uncompressed size of chunks in a series",

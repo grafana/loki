@@ -295,8 +295,8 @@ type Config struct {
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
 
-	UseThanosObjstore bool          `yaml:"use_thanos_objstore" doc:"hidden"`
-	ObjectStore       bucket.Config `yaml:"object_store" doc:"hidden"`
+	UseThanosObjstore bool                         `yaml:"use_thanos_objstore" doc:"hidden"`
+	ObjectStore       bucket.ConfigWithNamedStores `yaml:"object_store" doc:"hidden"`
 
 	MaxChunkBatchSize   int                       `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig boltdb.IndexCfg           `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
@@ -311,6 +311,7 @@ type Config struct {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.AlibabaStorageConfig.RegisterFlags(f)
 	cfg.AWSStorageConfig.RegisterFlags(f)
 	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.BOSStorageConfig.RegisterFlags(f)
@@ -367,6 +368,9 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.ObjectStore.Validate(); err != nil {
 		return errors.Wrap(err, "invalid object store config")
+	}
+	if err := cfg.AlibabaStorageConfig.Validate(); err != nil {
+		return errors.Wrap(err, "invalid Alibaba Storage config")
 	}
 
 	return cfg.NamedStores.Validate()
@@ -467,6 +471,32 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 // NewChunkClient makes a new chunk.Client of the desired types.
 func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
 	var storeType = name
+
+	if cfg.UseThanosObjstore {
+		// Check if this is a named store and get its type
+		if st, ok := cfg.ObjectStore.NamedStores.LookupStoreType(name); ok {
+			storeType = st
+		}
+
+		var (
+			c   client.ObjectClient
+			err error
+		)
+		c, err = NewObjectClient(name, component, cfg, clientMetrics)
+		if err != nil {
+			return nil, err
+		}
+
+		var encoder client.KeyEncoder
+		if storeType == bucket.Filesystem {
+			encoder = client.FSEncoder
+		} else if cfg.CongestionControl.Enabled {
+			// Apply congestion control wrapper for non-filesystem storage
+			c = cc.Wrap(c)
+		}
+
+		return client.NewClientWithMaxParallel(c, encoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+	}
 
 	// lookup storeType for named stores
 	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
@@ -611,12 +641,16 @@ func (c *ClientMetrics) Unregister() {
 
 // NewObjectClient makes a new StorageClient with the prefix in the front.
 func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
-	actual, err := internalNewObjectClient(name, component, cfg, clientMetrics)
+	if cfg.UseThanosObjstore {
+		return bucket.NewObjectClient(context.Background(), name, cfg.ObjectStore, component, cfg.Hedging, false, util_log.Logger)
+	}
+
+	actual, err := internalNewObjectClient(name, cfg, clientMetrics)
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.UseThanosObjstore || cfg.ObjectPrefix == "" {
+	if cfg.ObjectPrefix == "" {
 		return actual, nil
 	} else {
 		prefix := strings.Trim(cfg.ObjectPrefix, "/") + "/"
@@ -625,7 +659,7 @@ func NewObjectClient(name, component string, cfg Config, clientMetrics ClientMet
 }
 
 // internalNewObjectClient makes the underlying StorageClient of the desired types.
-func internalNewObjectClient(storeName, component string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
+func internalNewObjectClient(storeName string, cfg Config, clientMetrics ClientMetrics) (client.ObjectClient, error) {
 	var (
 		namedStore string
 		storeType  = storeName
@@ -654,6 +688,7 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		if cfg.CongestionControl.Enabled {
 			s3Cfg.BackoffConfig.MaxRetries = 1
 		}
+
 		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
 
 	case types.StorageTypeAlibabaCloud:
@@ -682,9 +717,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		// TODO(dannyk): implement hedging in controller
 		if cfg.CongestionControl.Enabled {
 			gcsCfg.EnableRetries = false
-		}
-		if cfg.UseThanosObjstore {
-			return gcp.NewGCSThanosObjectClient(context.Background(), cfg.ObjectStore, component, util_log.Logger, cfg.Hedging)
 		}
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 
@@ -746,10 +778,6 @@ func internalNewObjectClient(storeName, component string, cfg Config, clientMetr
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 
 	default:
-		if cfg.UseThanosObjstore {
-			return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %s", storeName, strings.Join(cfg.ObjectStore.SupportedBackends(), ", "))
-		}
-
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", storeName, types.StorageTypeAWS, types.StorageTypeS3, types.StorageTypeGCS, types.StorageTypeAzure, types.StorageTypeAlibabaCloud, types.StorageTypeSwift, types.StorageTypeBOS, types.StorageTypeCOS, types.StorageTypeFileSystem)
 	}
 }

@@ -30,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/hashicorp/golang-lru/v2/simplelru"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -211,12 +212,29 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 	if !d.limiter.Allow() {
 		return nil
 	}
-	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state)
+	var linesSkipped *prometheus.CounterVec
+	if d.metrics != nil {
+		linesSkipped = d.metrics.LinesSkipped
+	}
+	d.tokens, d.state = d.tokenizer.Tokenize(content, d.tokens, d.state, linesSkipped)
+	if d.tokens == nil && d.state == nil {
+		return nil
+	}
+
 	return d.train(d.tokens, d.state, ts)
 }
 
 func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster {
 	if len(tokens) < 4 {
+		if d.metrics != nil && d.metrics.LinesSkipped != nil {
+			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
+		}
+		return nil
+	}
+	if len(tokens) > 80 {
+		if d.metrics != nil && d.metrics.LinesSkipped != nil {
+			d.metrics.LinesSkipped.WithLabelValues(TooManyTokens).Inc()
+		}
 		return nil
 	}
 	if d.metrics != nil {
@@ -255,7 +273,7 @@ func (d *Drain) train(tokens []string, state interface{}, ts int64) *LogCluster 
 }
 
 func (d *Drain) TrainPattern(content string, samples []*logproto.PatternSample) *LogCluster {
-	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state)
+	tokens, state := d.tokenizer.Tokenize(content, d.tokens, d.state, d.metrics.LinesSkipped)
 	matchCluster := d.treeSearch(d.rootNode, tokens, d.config.SimTh, true)
 	// Match no existing log cluster
 	if matchCluster == nil {

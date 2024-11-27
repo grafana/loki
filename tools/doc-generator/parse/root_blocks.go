@@ -4,6 +4,7 @@ package parse
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/grpcclient"
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	querier_worker "github.com/grafana/loki/v3/pkg/querier/worker"
 	"github.com/grafana/loki/v3/pkg/ruler"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -300,6 +301,13 @@ Named store from this example can be used by setting object_store to store-1 in 
 			Name:       "gcs_storage_backend",
 			StructType: []reflect.Type{reflect.TypeOf(gcs.Config{})},
 			Desc:       "The gcs_storage_backend block configures the connection to Google Cloud Storage object storage backend.",
+		},
+		{
+			Name:       "ruler_storage_config",
+			StructType: []reflect.Type{reflect.TypeOf(rulestore.Config{})},
+			Desc: `The ruler_storage_config configures ruler storage backend.
+It uses thanos-io/objstore clients for connecting to object storage backends. This will become the default way of configuring object store clients in future releases.
+Currently this is opt-in and takes effect only when ` + "`-use-thanos-objstore` " + "is set to true.",
 		},
 	}
 )

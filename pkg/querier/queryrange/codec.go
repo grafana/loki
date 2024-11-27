@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -21,7 +23,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
-	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -2194,8 +2195,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		}
 	}
 
-	warnings := maps.Keys(uniqueWarnings)
-	sort.Strings(warnings)
+	warnings := slices.Sorted(maps.Keys(uniqueWarnings))
 
 	if len(warnings) == 0 {
 		// When there are no warnings, keep it nil so it can be compared against

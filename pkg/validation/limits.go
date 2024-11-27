@@ -86,6 +86,7 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 	DiscoverServiceName         []string         `yaml:"discover_service_name" json:"discover_service_name"`
 	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
+	LogLevelFields              []string         `yaml:"log_level_fields" json:"log_level_fields"`
 
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
@@ -213,6 +214,7 @@ type Limits struct {
 	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
 	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size" category:"experimental"`
 	BloomBlockEncoding             string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
+	BloomPrefetchBlocks            bool             `yaml:"bloom_prefetch_blocks" json:"bloom_prefetch_blocks" category:"experimental"`
 
 	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size" category:"experimental"`
 	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size" category:"experimental"`
@@ -228,9 +230,18 @@ type Limits struct {
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
+	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
+
 	PatternIngesterTokenizableJSONFieldsDefault dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_default" json:"pattern_ingester_tokenizable_json_fields_default" doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append" json:"pattern_ingester_tokenizable_json_fields_append" doc:"hidden"`
-	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete" json:"pattern_ingester_tokenizable_json_fields_delete" doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
+	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
+	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
+
+	// This config doesn't have a CLI flag registered here because they're registered in
+	// their own original config struct.
+	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
+	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
+	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
 }
 
 type StreamRetention struct {
@@ -250,7 +261,7 @@ func (e LimitError) Error() string {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "global", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global). The ingestion rate strategy cannot be overridden on a per-tenant basis.\n- local: enforces the limit on a per distributor basis. The actual effective rate limit will be N times higher, where N is the number of distributor replicas.\n- global: enforces the limit globally, configuring a per-distributor local rate limiter as 'ingestion_rate / N', where N is the number of distributor replicas (it's automatically adjusted if the number of replicas change). The global strategy requires the distributors to form their own ring, which is used to keep track of the current number of healthy distributor replicas.")
-	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Units in MB.")
+	f.Float64Var(&l.IngestionRateMB, "distributor.ingestion-rate-limit-mb", 4, "Per-user ingestion rate limit in sample size per second. Sample size includes size of the logs line and the size of structured metadata labels. Units in MB.")
 	f.Float64Var(&l.IngestionBurstSizeMB, "distributor.ingestion-burst-size-mb", 6, "Per-user allowed ingestion burst size (in sample size). Units in MB. The burst size refers to the per-distributor local rate limiter even in the case of the 'global' strategy, and should be set at least to the maximum logs size expected in a single push request.")
 
 	_ = l.MaxLineSize.Set("256KB")
@@ -265,6 +276,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		"service",
 		"app",
 		"application",
+		"app_name",
 		"name",
 		"app_kubernetes_io_name",
 		"container",
@@ -277,6 +289,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
+	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl"}
+	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -386,6 +400,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
 
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
+	f.BoolVar(&l.BloomPrefetchBlocks, "bloom-build.prefetch-blocks", false, "Experimental. Prefetch blocks on bloom gateways as soon as they are built.")
 
 	_ = l.BloomMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
 	f.Var(&l.BloomMaxBlockSize, "bloom-build.max-block-size",
@@ -431,6 +446,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDefault, "limits.pattern-ingester-tokenizable-json-fields", "List of JSON fields that should be tokenized in the pattern ingester.")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsAppend, "limits.pattern-ingester-tokenizable-json-fields-append", "List of JSON fields that should be appended to the default list of tokenizable fields in the pattern ingester.")
 	f.Var(&l.PatternIngesterTokenizableJSONFieldsDelete, "limits.pattern-ingester-tokenizable-json-fields-delete", "List of JSON fields that should be deleted from the (default U append) list of tokenizable fields in the pattern ingester.")
+
+	f.BoolVar(
+		&l.MetricAggregationEnabled,
+		"limits.metric-aggregation-enabled",
+		false,
+		"Enable metric aggregation. When enabled, pushed streams will be sampled for bytes and count, and these metric will be written back into Loki as a special __aggregated_metric__ stream, which can be queried for faster histogram queries.",
+	)
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -982,6 +1004,10 @@ func (o *Overrides) DiscoverLogLevels(userID string) bool {
 	return o.getOverridesForUser(userID).DiscoverLogLevels
 }
 
+func (o *Overrides) LogLevelFields(userID string) []string {
+	return o.getOverridesForUser(userID).LogLevelFields
+}
+
 // VolumeEnabled returns whether volume endpoints are enabled for a user.
 func (o *Overrides) VolumeEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).VolumeEnabled
@@ -1031,6 +1057,10 @@ func (o *Overrides) BuilderResponseTimeout(userID string) time.Duration {
 	return o.getOverridesForUser(userID).BloomBuilderResponseTimeout
 }
 
+func (o *Overrides) PrefetchBloomBlocks(userID string) bool {
+	return o.getOverridesForUser(userID).BloomPrefetchBlocks
+}
+
 func (o *Overrides) BloomTaskMaxRetries(userID string) int {
 	return o.getOverridesForUser(userID).BloomBuildTaskMaxRetries
 }
@@ -1071,6 +1101,10 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
 }
 
+func (o *Overrides) ShardAggregations(userID string) []string {
+	return o.getOverridesForUser(userID).ShardAggregations
+}
+
 func (o *Overrides) PatternIngesterTokenizableJSONFields(userID string) []string {
 	defaultFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDefault
 	appendFields := o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsAppend
@@ -1104,6 +1138,25 @@ func (o *Overrides) PatternIngesterTokenizableJSONFieldsAppend(userID string) []
 
 func (o *Overrides) PatternIngesterTokenizableJSONFieldsDelete(userID string) []string {
 	return o.getOverridesForUser(userID).PatternIngesterTokenizableJSONFieldsDelete
+}
+
+func (o *Overrides) MetricAggregationEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).MetricAggregationEnabled
+}
+
+// S3SSEType returns the per-tenant S3 SSE type.
+func (o *Overrides) S3SSEType(user string) string {
+	return o.getOverridesForUser(user).S3SSEType
+}
+
+// S3SSEKMSKeyID returns the per-tenant S3 KMS-SSE key id.
+func (o *Overrides) S3SSEKMSKeyID(user string) string {
+	return o.getOverridesForUser(user).S3SSEKMSKeyID
+}
+
+// S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
+func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
+	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

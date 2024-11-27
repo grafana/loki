@@ -6,15 +6,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-
-	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -374,14 +371,9 @@ func TestMergeShardsFromIngestersAndStore(t *testing.T) {
 	}
 
 	// creates n shards with bytesPerShard * n bytes and chks chunks
-	mkShards := func(n int, bytesPerShard uint64, chks int64) logproto.ShardsResponse {
+	mkShards := func(n int, bytesPerShard uint64) logproto.ShardsResponse {
 		return logproto.ShardsResponse{
 			Shards: sharding.LinearShards(n, bytesPerShard*uint64(n)),
-			Statistics: stats.Result{
-				Index: stats.Index{
-					TotalChunks: chks,
-				},
-			},
 		}
 	}
 
@@ -396,32 +388,32 @@ func TestMergeShardsFromIngestersAndStore(t *testing.T) {
 		{
 			desc:     "zero bytes returns one full shard",
 			ingester: mkStats(0, 0),
-			store:    mkShards(0, 0, 0),
-			exp:      mkShards(1, 0, 0),
+			store:    mkShards(0, 0),
+			exp:      mkShards(1, 0),
 		},
 		{
 			desc:     "zero ingester bytes honors store",
 			ingester: mkStats(0, 0),
-			store:    mkShards(10, uint64(targetBytesPerShard), 10),
-			exp:      mkShards(10, uint64(targetBytesPerShard), 10),
+			store:    mkShards(10, uint64(targetBytesPerShard)),
+			exp:      mkShards(10, uint64(targetBytesPerShard)),
 		},
 		{
 			desc:     "zero store bytes honors ingester",
 			ingester: mkStats(uint64(targetBytesPerShard*10), 10),
-			store:    mkShards(0, 0, 0),
-			exp:      mkShards(10, uint64(targetBytesPerShard), 10),
+			store:    mkShards(0, 0),
+			exp:      mkShards(10, uint64(targetBytesPerShard)),
 		},
 		{
 			desc:     "ingester bytes below threshold ignored",
-			ingester: mkStats(uint64(targetBytesPerShard*2), 10),    // 2 shards worth from ingesters
-			store:    mkShards(10, uint64(targetBytesPerShard), 10), // 10 shards worth from store
-			exp:      mkShards(10, uint64(targetBytesPerShard), 10), // use the store's resp
+			ingester: mkStats(uint64(targetBytesPerShard*2), 10), // 2 shards worth from ingesters
+			store:    mkShards(10, uint64(targetBytesPerShard)),  // 10 shards worth from store
+			exp:      mkShards(10, uint64(targetBytesPerShard)),  // use the store's resp
 		},
 		{
 			desc:     "ingester bytes above threshold recreate shards",
-			ingester: mkStats(uint64(targetBytesPerShard*4), 10),    // 4 shards worth from ingesters
-			store:    mkShards(10, uint64(targetBytesPerShard), 10), // 10 shards worth from store
-			exp:      mkShards(14, uint64(targetBytesPerShard), 20), // regenerate 14 shards
+			ingester: mkStats(uint64(targetBytesPerShard*4), 10), // 4 shards worth from ingesters
+			store:    mkShards(10, uint64(targetBytesPerShard)),  // 10 shards worth from store
+			exp:      mkShards(14, uint64(targetBytesPerShard)),  // regenerate 14 shards
 		},
 	} {
 
@@ -434,7 +426,6 @@ func TestMergeShardsFromIngestersAndStore(t *testing.T) {
 			)
 			require.Equal(t, tc.exp.Statistics, got.Statistics)
 			require.Equal(t, tc.exp.ChunkGroups, got.ChunkGroups)
-			require.Equal(t, tc.exp.Statistics.Index.TotalChunks, got.Statistics.Index.TotalChunks)
 			for i, shard := range tc.exp.Shards {
 				require.Equal(t, shard, got.Shards[i], "shard %d", i)
 			}

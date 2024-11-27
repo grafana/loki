@@ -54,6 +54,11 @@ type Config struct {
 	// Used as storage.Writer.ChunkSize of https://pkg.go.dev/google.golang.org/cloud/storage#Writer
 	ChunkSizeBytes int  `yaml:"chunk_size_bytes"`
 	noAuth         bool `yaml:"no_auth"`
+
+	// MaxRetries controls the number of retries for idempotent operations.
+	// Overrides the default gcs storage client behavior if this value is greater than 0.
+	// Set this to 1 to disable retries.
+	MaxRetries int `yaml:"max_retries"`
 }
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
@@ -77,22 +82,20 @@ func parseConfig(conf []byte) (Config, error) {
 }
 
 // NewBucket returns a new Bucket against the given bucket handle.
-func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucket(ctx context.Context, logger log.Logger, conf []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	config, err := parseConfig(conf)
 	if err != nil {
 		return nil, err
 	}
-	return NewBucketWithConfig(ctx, logger, config, component, rt)
+	return NewBucketWithConfig(ctx, logger, config, component, wrapRoundtripper)
 }
 
 // NewBucketWithConfig returns a new Bucket with gcs Config struct.
-func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string, rt http.RoundTripper) (*Bucket, error) {
+func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	if gc.Bucket == "" {
 		return nil, errors.New("missing Google Cloud Storage bucket name for stored blocks")
 	}
-	if rt != nil {
-		gc.HTTPConfig.Transport = rt
-	}
+
 	var opts []option.ClientOption
 
 	// If ServiceAccount is provided, use them in GCS client, otherwise fallback to Google default logic.
@@ -112,7 +115,7 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 
 	if !gc.UseGRPC {
 		var err error
-		opts, err = appendHttpOptions(gc, opts)
+		opts, err = appendHttpOptions(gc, opts, wrapRoundtripper)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +124,7 @@ func NewBucketWithConfig(ctx context.Context, logger log.Logger, gc Config, comp
 	return newBucket(ctx, logger, gc, opts)
 }
 
-func appendHttpOptions(gc Config, opts []option.ClientOption) ([]option.ClientOption, error) {
+func appendHttpOptions(gc Config, opts []option.ClientOption, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) ([]option.ClientOption, error) {
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
 	var rt http.RoundTripper
@@ -131,6 +134,9 @@ func appendHttpOptions(gc Config, opts []option.ClientOption) ([]option.ClientOp
 	}
 	if gc.HTTPConfig.Transport != nil {
 		rt = gc.HTTPConfig.Transport
+	}
+	if wrapRoundtripper != nil {
+		rt = wrapRoundtripper(rt)
 	}
 
 	// GCS uses some defaults when "options.WithHTTPClient" is not used that are important when we call
@@ -172,6 +178,11 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 		name:      gc.Bucket,
 		chunkSize: gc.ChunkSizeBytes,
 	}
+
+	if gc.MaxRetries > 0 {
+		bkt.bkt = bkt.bkt.Retryer(storage.WithMaxAttempts(gc.MaxRetries))
+	}
+
 	return bkt, nil
 }
 
@@ -180,18 +191,26 @@ func (b *Bucket) Name() string {
 	return b.name
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, DirDelim) + DirDelim
 	}
 
+	appliedOpts := objstore.ApplyIterOptions(options...)
+
 	// If recursive iteration is enabled we should pass an empty delimiter.
 	delimiter := DirDelim
-	if objstore.ApplyIterOptions(options...).Recursive {
+	if appliedOpts.Recursive {
 		delimiter = ""
 	}
 
@@ -199,11 +218,15 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		Prefix:    dir,
 		Delimiter: delimiter,
 	}
-	err := query.SetAttrSelection([]string{"Name"})
-	if err != nil {
-		return err
+	if appliedOpts.LastModified {
+		if err := query.SetAttrSelection([]string{"Name", "Updated"}); err != nil {
+			return err
+		}
+	} else {
+		if err := query.SetAttrSelection([]string{"Name"}); err != nil {
+			return err
+		}
 	}
-
 	it := b.bkt.Objects(ctx, query)
 	for {
 		select {
@@ -218,10 +241,32 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		if err != nil {
 			return err
 		}
-		if err := f(attrs.Prefix + attrs.Name); err != nil {
+
+		objAttrs := objstore.IterObjectAttributes{Name: attrs.Prefix + attrs.Name}
+		if appliedOpts.LastModified {
+			objAttrs.SetLastModified(attrs.Updated)
+		}
+		if err := f(objAttrs); err != nil {
 			return err
 		}
 	}
+}
+
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
 }
 
 // Get returns a reader for the given object name.

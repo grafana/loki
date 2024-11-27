@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.10.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.1...auth/v0.10.2) (2024-11-12)
+
+
+### Bug Fixes
+
+* **auth:** Restore use of grpc.Dial ([#11118](https://github.com/googleapis/google-cloud-go/issues/11118)) ([2456b94](https://github.com/googleapis/google-cloud-go/commit/2456b943b7b8aaabd4d8bfb7572c0f477ae0db45)), refs [#7556](https://github.com/googleapis/google-cloud-go/issues/7556)
+
+## [0.10.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.0...auth/v0.10.1) (2024-11-06)
+
+
+### Bug Fixes
+
+* **auth:** Restore Application Default Credentials support to idtoken ([#11083](https://github.com/googleapis/google-cloud-go/issues/11083)) ([8771f2e](https://github.com/googleapis/google-cloud-go/commit/8771f2ea9807ab822083808e0678392edff3b4f2))
+* **auth:** Skip impersonate universe domain check if empty ([#11086](https://github.com/googleapis/google-cloud-go/issues/11086)) ([87159c1](https://github.com/googleapis/google-cloud-go/commit/87159c1059d4a18d1367ce62746a838a94964ab6))
+
+## [0.10.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.9...auth/v0.10.0) (2024-10-30)
+
+
+### Features
+
+* **auth:** Add universe domain support to credentials/impersonate ([#10953](https://github.com/googleapis/google-cloud-go/issues/10953)) ([e06cb64](https://github.com/googleapis/google-cloud-go/commit/e06cb6499f7eda3aef08ab18ff197016f667684b))
+
+## [0.9.9](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.8...auth/v0.9.9) (2024-10-22)
+
+
+### Bug Fixes
+
+* **auth:** Fallback cert lookups for missing files ([#11013](https://github.com/googleapis/google-cloud-go/issues/11013)) ([bd76695](https://github.com/googleapis/google-cloud-go/commit/bd766957ec238b7c40ddbabb369e612dc9b07313)), refs [#10844](https://github.com/googleapis/google-cloud-go/issues/10844)
+* **auth:** Replace MDS endpoint universe_domain with universe-domain ([#11000](https://github.com/googleapis/google-cloud-go/issues/11000)) ([6a1586f](https://github.com/googleapis/google-cloud-go/commit/6a1586f2ce9974684affaea84e7b629313b4d114))
+
 ## [0.9.8](https://github.com/googleapis/google-cloud-go/compare/auth/v0.9.7...auth/v0.9.8) (2024-10-09)
 
 

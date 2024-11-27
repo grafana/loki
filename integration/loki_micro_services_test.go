@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -15,7 +16,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/grafana/loki/v3/integration/client"
@@ -94,7 +94,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-querier.per-request-limits-enabled=true",
 			"-frontend.encoding=protobuf",
-			"-querier.shard-aggregations=quantile_over_time",
+			"-querier.shard-aggregations=quantile_over_time,approx_topk",
 			"-frontend.tail-proxy-url="+tQuerier.HTTPURL(),
 		)
 	)
@@ -781,6 +781,115 @@ func TestOTLPLogsIngestQuery(t *testing.T) {
 			}
 		}
 		require.Equal(t, 4, numLinesReceived)
+	})
+}
+
+func TestProbabilisticQuery(t *testing.T) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDBAndTSDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	// run initially the compactor, indexgateway, and distributor.
+	var (
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-compactor.compaction-interval=1s",
+			"-compactor.retention-delete-delay=1s",
+			// By default, a minute is added to the delete request start time. This compensates for that.
+			"-compactor.delete-request-cancel-period=-60s",
+			"-compactor.deletion-mode=filter-and-delete",
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+		)
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// then, run only the ingester and query scheduler.
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			"-target=ingester",
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// the run querier.
+	var (
+		tQuerier = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend.
+	var (
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-querier.per-request-limits-enabled=true",
+			"-frontend.encoding=protobuf",
+			"-querier.shard-aggregations=quantile_over_time,approx_topk",
+			"-frontend.tail-proxy-url="+tQuerier.HTTPURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	tenantID := randStringRunes()
+
+	now := time.Now()
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+
+	t.Run("ingest-logs", func(t *testing.T) {
+		// ingest some log lines
+		require.NoError(t, cliDistributor.PushLogLine("lineA", now.Add(-45*time.Minute), nil, map[string]string{"job": "one"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineB", now.Add(-45*time.Minute), nil, map[string]string{"job": "one"}))
+
+		require.NoError(t, cliDistributor.PushLogLine("lineC", now, nil, map[string]string{"job": "one"}))
+		require.NoError(t, cliDistributor.PushLogLine("lineD", now, nil, map[string]string{"job": "two"}))
+	})
+
+	t.Run("query", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunQuery(context.Background(), `approx_topk(1, count_over_time({job=~".+"}[1h]))`)
+		require.NoError(t, err)
+		assert.Equal(t, "vector", resp.Data.ResultType)
+
+		var values []string
+		var labels []string
+		for _, value := range resp.Data.Vector {
+			values = append(values, value.Value)
+			labels = append(labels, value.Metric["job"])
+		}
+		assert.ElementsMatch(t, []string{"3"}, values)
+		assert.ElementsMatch(t, []string{"one"}, labels)
 	})
 }
 

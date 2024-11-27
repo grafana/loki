@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.indexGatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.indexGatewayLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -130,6 +131,10 @@ spec:
       {{- end }}
       {{- with .Values.indexGateway.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.indexGateway.topologySpreadConstraints }}
+      topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.indexGateway.tolerations }}
