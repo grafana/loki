@@ -1,7 +1,16 @@
 ## Main
 
-## [0.7.0](https://github.com/grafana/loki/compare/operator/v0.6.2...operator/v0.7.0) (2024-11-01)
+## Release 6.1.1
 
+- [14752](https://github.com/grafana/loki/pull/14752) **periklis**: Add support for managed GCP WorkloadIdentity
+
+## Release 6.1.0
+
+- [14407](https://github.com/grafana/loki/issues/14407) **JoaoBraveCoding**: Introduce 1x.pico size
+- [14410](https://github.com/grafana/loki/issues/14410) **xperimental**: Provide default OTLP attribute configuration
+- [14526](https://github.com/grafana/loki/issues/14526) **periklis**: Update Loki operand to v3.2.1
+
+## [0.7.0](https://github.com/grafana/loki/compare/operator/v0.6.2...operator/v0.7.0) (2024-11-01)
 
 ### ⚠ BREAKING CHANGES
 

@@ -97,6 +97,8 @@ const (
 	KeyGCPStorageBucketName = "bucketname"
 	// KeyGCPServiceAccountKeyFilename is the service account key filename containing the Google authentication credentials.
 	KeyGCPServiceAccountKeyFilename = "key.json"
+	// KeyGCPManagedServiceAccountKeyFilename is the service account key filename for the managed Google service account.
+	KeyGCPManagedServiceAccountKeyFilename = "service_account.json"
 
 	// KeySwiftAuthURL is the secret data key for the OpenStack Swift authentication URL.
 	KeySwiftAuthURL = "auth_url"
@@ -140,9 +142,9 @@ const (
 	tokenAuthConfigVolumeName = "token-auth-config"
 	tokenAuthConfigDirectory  = "/etc/storage/token-auth"
 
-	awsDefaultAudience = "sts.amazonaws.com"
-
+	awsDefaultAudience   = "sts.amazonaws.com"
 	azureDefaultAudience = "api://AzureADTokenExchange"
+	gcpDefaultAudience   = "openshift"
 
 	azureManagedCredentialKeyClientID       = "azure_client_id"
 	azureManagedCredentialKeyTenantID       = "azure_tenant_id"
