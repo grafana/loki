@@ -1,10 +1,97 @@
-# Adapted from https://www.thapaliya.com/en/writings/well-documented-makefiles/
-.PHONY: help
-help: ## Display this help and any documented user-facing targets. Other undocumented targets may be present in the Makefile.
-help:
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-45s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+# Loki Project Makefile
+#
+
+SHELL = /usr/bin/env bash -o pipefail
 
 .DEFAULT_GOAL := all
+
+# Certain aspects of the build are done in containers for consistency (e.g.
+# yacc/protobuf generation) If you have the correct tools installed and you
+# want to speed up development you can run make BUILD_IN_CONTAINER=false target
+# or you can override this with an environment variable.
+BUILD_IN_CONTAINER ?= true
+CI                 ?= false
+
+# Ensure you run `make release-workflows` after changing this
+GO_VERSION         := 1.23.1
+BUILD_IMAGE_TAG    := 0.34.1
+
+IMAGE_TAG          ?= $(shell ./tools/image-tag)
+GIT_REVISION       := $(shell git rev-parse --short HEAD)
+GIT_BRANCH         := $(shell git rev-parse --abbrev-ref HEAD)
+
+# Golang environment
+GOOS               ?= $(shell go env GOOS)
+GOHOSTOS           ?= $(shell go env GOHOSTOS)
+GOARCH             ?= $(shell go env GOARCH)
+GOARM              ?= $(shell go env GOARM)
+GOEXPERIMENT       ?= $(shell go env GOEXPERIMENT)
+CGO_ENABLED        := 0
+GO_ENV             := GOEXPERIMENT=$(GOEXPERIMENT) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) CGO_ENABLED=$(CGO_ENABLED)
+
+GOTEST             ?= go test
+
+# Build flags
+VPREFIX            := github.com/grafana/loki/v3/pkg/util/build
+GO_LDFLAGS         := -X $(VPREFIX).Branch=$(GIT_BRANCH) \
+                      -X $(VPREFIX).Version=$(IMAGE_TAG) \
+                      -X $(VPREFIX).Revision=$(GIT_REVISION) \
+                      -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) \
+                      -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+GO_FLAGS           := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
+DYN_GO_FLAGS       := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
+
+# Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
+# the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
+# Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
+DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
+DEBUG_DYN_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
+
+# Image names
+IMAGE_PREFIX           ?= grafana
+BUILD_IMAGE            := $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG)
+LOKI_IMAGE             := $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)
+CANARY_IMAGE           := $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+QUERY_TEE_IMAGE        := $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
+LOGCLI_IMAGE           := $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG)
+PROMTAIL_IMAGE         := $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)
+LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
+OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+
+# OCI (Docker) setup
+OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
+OCI_BUILD_ARGS := --build-arg GO_VERSION=$(GO_VERSION) --build-arg BUILD_IMAGE=$(BUILD_IMAGE)
+OCI_PUSH_ARGS  := -o type=registry
+OCI_PUSH       := docker push
+OCI_TAG        := docker tag
+
+ifeq ($(CI), true)
+	OCI_BUILD       := DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS)
+else
+	OCI_BUILD       := DOCKER_BUILDKIT=1 docker build $(OCI_BUILD_ARGS)
+endif
+
+BUILD_OCI_PUSH  := $(OCI_BUILD) $(OCI_PUSH_ARGS)
+
+# Docker mount flag, ignored on native docker host.
+# See https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated
+MOUNT_FLAGS    := :delegated
+
+define run_in_container
+	@mkdir -p $(shell pwd)/.pkg $(shell pwd)/.cache
+	@echo ">>> Running make $@ in container ..."
+	docker run --rm --tty --interactive \
+		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
+		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
+		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
+		$(BUILD_IMAGE) -f Makefile $@;
+endef
+
+# Adapted from https://www.thapaliya.com/en/writings/well-documented-makefiles/
+help: ## Display this help
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-45s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
 .PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
 .PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
@@ -20,53 +107,15 @@ help:
 .PHONY: k3d-loki k3d-enterprise-logs k3d-down
 .PHONY: helm-test helm-lint
 
-SHELL = /usr/bin/env bash -o pipefail
-
-GOTEST ?= go test
-
 #############
 # Variables #
 #############
 
 DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 
-# Certain aspects of the build are done in containers for consistency (e.g. yacc/protobuf generation)
-# If you have the correct tools installed and you want to speed up development you can run
-# make BUILD_IN_CONTAINER=false target
-# or you can override this with an environment variable
-BUILD_IN_CONTAINER ?= true
-
-# ensure you run `make release-workflows` after changing this
-BUILD_IMAGE_VERSION ?= 0.34.1
-GO_VERSION := 1.23.1
-
-# Docker image info
-IMAGE_PREFIX ?= grafana
-
-BUILD_IMAGE_PREFIX ?= grafana
-
-IMAGE_TAG ?= $(shell ./tools/image-tag)
-
-# Version info for binaries
-GIT_REVISION := $(shell git rev-parse --short HEAD)
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
-
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
 DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
-
-# Build flags
-VPREFIX := github.com/grafana/loki/v3/pkg/util/build
-GO_LDFLAGS   := -X $(VPREFIX).Branch=$(GIT_BRANCH) -X $(VPREFIX).Version=$(IMAGE_TAG) -X $(VPREFIX).Revision=$(GIT_REVISION) -X $(VPREFIX).BuildUser=$(shell whoami)@$(shell hostname) -X $(VPREFIX).BuildDate=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-GO_FLAGS     := -ldflags "-extldflags \"-static\" -s -w $(GO_LDFLAGS)" -tags netgo
-DYN_GO_FLAGS := -ldflags "-s -w $(GO_LDFLAGS)" -tags netgo
-# Per some websites I've seen to add `-gcflags "all=-N -l"`, the gcflags seem poorly if at all documented
-# the best I could dig up is -N disables optimizations and -l disables inlining which should make debugging match source better.
-# Also remove the -s and -w flags present in the normal build which strip the symbol table and the DWARF symbol table.
-DEBUG_GO_FLAGS     := -gcflags "all=-N -l" -ldflags "-extldflags \"-static\" $(GO_LDFLAGS)" -tags netgo
-DYN_DEBUG_GO_FLAGS := -gcflags "all=-N -l" -ldflags "$(GO_LDFLAGS)" -tags netgo
-# Docker mount flag, ignored on native docker host. see (https://docs.docker.com/docker-for-mac/osxfs-caching/#delegated)
-MOUNT_FLAGS := :delegated
 
 # Protobuf files
 PROTO_DEFS := $(shell find . $(DONT_FIND) -type f -name '*.proto' -print)
@@ -105,19 +154,8 @@ RM := --rm
 # in any custom cloudbuild.yaml files
 TTY := --tty
 
-DOCKER_BUILDKIT ?= 1
-BUILD_IMAGE = BUILD_IMAGE=$(BUILD_IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION)
-PUSH_OCI=docker push
-TAG_OCI=docker tag
-ifeq ($(CI), true)
-	OCI_PLATFORMS=--platform=linux/amd64,linux/arm64
-	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) --build-arg $(BUILD_IMAGE)
-else
-	BUILD_OCI=DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg $(BUILD_IMAGE)
-endif
-
 binfmt:
-	$(SUDO) docker run --privileged linuxkit/binfmt:v0.6
+	 docker run --privileged linuxkit/binfmt:v0.6
 
 ################
 # Main Targets #
@@ -142,13 +180,14 @@ logcli: cmd/logcli/logcli ## build logcli executable
 logcli-debug: cmd/logcli/logcli-debug ## build debug logcli executable
 
 logcli-image: ## build logcli docker image
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
 
 cmd/logcli/logcli-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o ./cmd/logcli/logcli-debug ./cmd/logcli
+
 ########
 # Loki #
 ########
@@ -171,7 +210,6 @@ loki-canary: cmd/loki-canary/loki-canary ## build loki-canary executable
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
-
 ###############
 # Loki-Canary (BoringCrypto)#
 ###############
@@ -180,6 +218,7 @@ loki-canary-boringcrypto: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto 
 
 cmd/loki-canary-boringcrypto/loki-canary-boringcrypto:
 	CGO_ENABLED=1 GOOS=linux GOARCH=$(GOARCH) GOEXPERIMENT=boringcrypto go build $(GO_FLAGS) -o $@ ./$(@D)/../loki-canary
+
 ###############
 # Helm #
 ###############
@@ -223,13 +262,13 @@ PROMTAIL_GO_FLAGS := $(GO_FLAGS)
 PROMTAIL_DEBUG_GO_FLAGS := $(DEBUG_GO_FLAGS)
 
 # Validate GOHOSTOS=linux && GOOS=linux to use CGO.
-ifeq ($(shell go env GOHOSTOS),linux)
-ifeq ($(shell go env GOOS),linux)
+ifeq ($(GOHOSTOS),linux)
+ifeq ($(GOOS),linux)
 ifneq ($(CGO_ENABLED), 0)
 PROMTAIL_CGO = 1
 endif
 PROMTAIL_GO_FLAGS = $(DYN_GO_FLAGS)
-PROMTAIL_DEBUG_GO_FLAGS = $(DYN_DEBUG_GO_FLAGS)
+PROMTAIL_DEBUG_GO_FLAGS = $(DEBUG_DYN_GO_FLAGS)
 endif
 endif
 ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
@@ -263,9 +302,7 @@ MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
 loki-mixin: ## compile the loki mixin
 ifeq ($(BUILD_IN_CONTAINER),true)
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	@rm -rf $(MIXIN_OUT_PATH) && mkdir $(MIXIN_OUT_PATH)
 	@cd $(MIXIN_PATH) && jb install
@@ -332,10 +369,7 @@ publish: packages
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
 lint: ## run linters
 ifeq ($(BUILD_IN_CONTAINER),true)
-	$(SUDO) docker run  $(RM) $(TTY) -i \
-		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	go version
 	golangci-lint version
@@ -365,18 +399,18 @@ clean-protos:
 	rm -rf $(PROTO_GOS)
 
 clean: ## clean the generated files
-	rm -rf clients/cmd/promtail/promtail
-	rm -rf cmd/loki/loki
-	rm -rf cmd/logcli/logcli
-	rm -rf cmd/loki-canary/loki-canary
-	rm -rf cmd/querytee/querytee
 	rm -rf .cache
 	rm -rf clients/cmd/docker-driver/rootfs
-	rm -rf dist/
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.h
 	rm -rf clients/cmd/fluent-bit/out_grafana_loki.so
-	rm -rf cmd/migrate/migrate
+	rm -rf clients/cmd/promtail/promtail
+	rm -rf cmd/logcli/logcli
 	rm -rf cmd/logql-analyzer/logql-analyzer
+	rm -rf cmd/loki-canary/loki-canary
+	rm -rf cmd/loki/loki
+	rm -rf cmd/migrate/migrate
+	rm -rf cmd/querytee/querytee
+	rm -rf dist/
 	$(MAKE) -BC clients/cmd/fluentd $@
 	go clean ./...
 
@@ -388,14 +422,7 @@ yacc: $(YACC_GOS)
 
 %.y.go: %.y
 ifeq ($(BUILD_IN_CONTAINER),true)
-	# I wish we could make this a multiline variable however you can't pass more than simple arguments to them
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
-		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	goyacc -p $(basename $(notdir $<)) -o $@ $<
 	sed -i.back '/^\/\/line/ d' $@
@@ -410,13 +437,7 @@ ragel: $(RAGEL_GOS)
 
 %.rl.go: %.rl
 ifeq ($(BUILD_IN_CONTAINER),true)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
-		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	ragel -Z $< -o $@
 endif
@@ -429,13 +450,7 @@ protos: clean-protos $(PROTO_GOS)
 
 %.pb.go:
 ifeq ($(BUILD_IN_CONTAINER),true)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
-		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	@# The store-gateway RPC is based on Thanos which uses relative references to other protos, so we need
 	@# to configure all such relative paths. `gogo/protobuf` is used by it.
@@ -468,7 +483,7 @@ endif
 define build-rootfs
 	rm -rf clients/cmd/docker-driver/rootfs || true
 	mkdir clients/cmd/docker-driver/rootfs
-	docker build $(PLUGIN_BUILD_ARGS) --build-arg $(BUILD_IMAGE) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
+	$(OCI_BUILD) $(PLUGIN_BUILD_ARGS) -t rootfsimage -f clients/cmd/docker-driver/Dockerfile .
 
 	ID=$$(docker create rootfsimage true) && \
 	(docker export $$ID | tar -x -C clients/cmd/docker-driver/rootfs) && \
@@ -485,7 +500,7 @@ docker-driver: docker-driver-clean ## build the docker-driver executable
 	docker plugin create $(LOKI_DOCKER_DRIVER):main$(PLUGIN_ARCH) clients/cmd/docker-driver
 
 clients/cmd/docker-driver/docker-driver:
-	CGO_ENABLED=0 GOARCH=$(GOARCH) go build $(GO_FLAGS) -o $@ ./$(@D)
+	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
 docker-driver-push: docker-driver
 ifndef DOCKER_PASSWORD
@@ -514,17 +529,16 @@ fluent-bit-plugin: ## build the fluent-bit plugin
 	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o clients/cmd/fluent-bit/out_grafana_loki.so ./clients/cmd/fluent-bit/
 
 fluent-bit-image: ## build the fluent-bit plugin docker image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 fluent-bit-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 
 fluent-bit-push: fluent-bit-image-cross ## push the fluent-bit plugin docker image
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
 fluent-bit-test:
-	docker run -v /var/log:/var/log -e LOG_PATH="/var/log/*.log" -e LOKI_URL="$(LOKI_URL)" \
-	 $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
+	docker run -v /var/log:/var/log -e LOG_PATH="/var/log/*.log" -e LOKI_URL="$(LOKI_URL)" $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 
 ##################
@@ -537,11 +551,11 @@ fluentd-plugin-push: ## push the fluentd plugin
 	$(MAKE) -BC clients/cmd/fluentd $@
 
 fluentd-image: ## build the fluentd docker image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
 
 fluentd-push:
 fluentd-image-push: ## push the fluentd docker image
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 fluentd-test: LOKI_URL ?= http://loki:3100
 fluentd-test:
@@ -551,20 +565,21 @@ fluentd-test:
 # logstash plugin #
 ##################
 logstash-image: ## build the logstash image
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f clients/cmd/logstash/Dockerfile ./
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f clients/cmd/logstash/Dockerfile ./
 
 # Send 10 lines to the local Loki instance.
 logstash-push-test-logs: LOKI_URL ?= http://host.docker.internal:3100/loki/api/v1/push
 logstash-push-test-logs:
-	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/clients/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
+	docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/clients/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
 		$(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f loki.conf
 
 logstash-push: ## push the logstash image
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
 # Enter an env already configure to build and test logstash output plugin.
 logstash-env:
-	$(SUDO) docker run -v  `pwd`/clients/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
+	 docker run -v  `pwd`/clients/cmd/logstash:/home/logstash/ -it --rm --entrypoint /bin/sh \
+		 $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
 ########################
 # Bigtable Backup Tool #
@@ -574,11 +589,11 @@ BIGTABLE_BACKUP_TOOL_FOLDER = ./tools/bigtable-backup
 BIGTABLE_BACKUP_TOOL_TAG ?= $(IMAGE_TAG)
 
 bigtable-backup:
-	docker build -t $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(BIGTABLE_BACKUP_TOOL_FOLDER)
-	docker tag $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(BIGTABLE_BACKUP_TOOL_FOLDER)
+	$(OCI_TAG) $(IMAGE_PREFIX)/$(shell basename $(BIGTABLE_BACKUP_TOOL_FOLDER)) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
 
 push-bigtable-backup: bigtable-backup
-	docker push $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-bigtable-backup:$(BIGTABLE_BACKUP_TOOL_TAG)
 
 ##########
 # Images #
@@ -589,8 +604,8 @@ images: promtail-image loki-image loki-canary-image helm-test-image docker-drive
 # push(app, optional tag)
 # pushes the app, optionally tagging it differently before
 define push
-	$(SUDO) $(TAG_OCI)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(2)
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/$(1):$(2)
+	 $(OCI_TAG)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(2)
+	 $(OCI_PUSH) $(IMAGE_PREFIX)/$(1):$(2)
 endef
 
 # push-image(app)
@@ -602,59 +617,59 @@ endef
 
 # promtail
 promtail-image: ## build the promtail docker image
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile .
 promtail-image-cross:
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
 promtail-debug-image: ## build the promtail debug docker image
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
 
 promtail-push: promtail-image-cross
 	$(call push-image,promtail)
 
 # loki
 loki-image: ## build the loki docker image
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
 loki-image-cross:
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: ## build the debug loki docker image
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
 loki-push: loki-image-cross
 	$(call push-image,loki)
 
 # loki-canary
 loki-canary-image: ## build the loki canary docker image
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
 loki-canary-image-cross:
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-image-cross-boringcrypto:
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
 loki-canary-push: loki-canary-image-cross
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 loki-canary-push-boringcrypto: loki-canary-image-cross-boringcrypto
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
 helm-test-image: ## build the helm test image
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
+	$(OCI_BUIILD) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
 helm-test-push: helm-test-image ## push the helm test image
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
 # loki-querytee
 loki-querytee-image:
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
 loki-querytee-image-cross:
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
 loki-querytee-push: loki-querytee-image-cross
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
 
 # migrate-image
 migrate-image:
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
 
 # LogQL Analyzer
 logql-analyzer-image: ## build the LogQL Analyzer image
-	$(SUDO) docker build --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
 logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 
@@ -668,23 +683,22 @@ else
 endif
 
 build-image: ensure-buildx-builder
-	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
+	$(OCI_BUILD) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG) ./loki-build-image
 build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
 	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
-	$(SUDO) DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker buildx build $(OCI_PLATFORMS) \
-		-o type=registry -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) ./loki-build-image
+	$(OCI_BUILD_PUSH) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG) ./loki-build-image
 
 # loki-operator
 loki-operator-image:
-	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile operator/
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile operator/
 loki-operator-image-cross:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
+	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
 loki-operator-push: loki-operator-image-cross
-	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
 #################
 # Documentation #
@@ -706,10 +720,7 @@ benchmark-store:
 # support go modules
 check-mod:
 ifeq ($(BUILD_IN_CONTAINER),true)
-	$(SUDO) docker run  $(RM) $(TTY) -i \
-		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod download
 	GO111MODULE=on GOPROXY=https://proxy.golang.org go mod verify
@@ -747,14 +758,7 @@ fmt-jsonnet:
 
 fmt-proto:
 ifeq ($(BUILD_IN_CONTAINER),true)
-	# I wish we could make this a multiline variable however you can't pass more than simple arguments to them
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd)/.cache:/go/cache$(MOUNT_FLAGS) \
-		-v $(shell pwd)/.pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	echo '$(PROTO_DEFS)' | \
 		xargs -n 1 -- buf format -w
@@ -772,9 +776,7 @@ lint-scripts:
 # see https://github.com/settings/tokens
 lint-markdown:
 ifeq ($(BUILD_IN_CONTAINER),true)
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	lychee --verbose --config .lychee.toml ./*.md  ./docs/**/*.md  ./production/**/*.md ./cmd/**/*.md ./clients/**/*.md ./tools/**/*.md
 endif
@@ -802,9 +804,7 @@ check-format: format
 
 doc: ## Generates the config file documentation
 ifeq ($(BUILD_IN_CONTAINER),true)
-	$(SUDO) docker run $(RM) $(TTY) -i \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	go run ./tools/doc-generator $(DOC_FLAGS_TEMPLATE) > $(DOC_FLAGS)
 endif
@@ -886,15 +886,12 @@ scan-vulnerabilities: trivy snyk
 .PHONY: release-workflows
 release-workflows:
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_VERSION) .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) .github/release-workflows.jsonnet
 
 .PHONY: release-workflows-check
 release-workflows-check:
 ifeq ($(BUILD_IN_CONTAINER),true)
-	$(SUDO) docker run  $(RM) $(TTY) -i \
-		-v $(shell go env GOPATH)/pkg:/go/pkg$(MOUNT_FLAGS) \
-		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
-		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
+	$(run_in_container)
 else
 	@$(MAKE) release-workflows
 	@echo "Checking diff"
