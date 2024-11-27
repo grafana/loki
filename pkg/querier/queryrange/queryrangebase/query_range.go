@@ -5,13 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/httpgrpc"
@@ -173,8 +173,7 @@ func (p prometheusCodec) MergeResponse(responses ...Response) (Response, error) 
 		}
 	}
 
-	warnings := maps.Keys(uniqueWarnings)
-	sort.Strings(warnings)
+	warnings := slices.Sorted(maps.Keys(uniqueWarnings))
 
 	if len(warnings) == 0 {
 		// When there are no warnings, keep it nil so it can be compared against

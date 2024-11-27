@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
