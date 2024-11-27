@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/push"
 	"math"
 	"math/rand"
 	"net/http"
@@ -12,6 +11,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
@@ -45,6 +49,13 @@ import (
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
 	"github.com/grafana/loki/v3/pkg/util/test"
 	"github.com/grafana/loki/v3/pkg/validation"
+)
+
+const (
+	smValidName    = "valid_name"
+	smInvalidName  = "invalid-name"
+	smValidValue   = "valid-value私"
+	smInvalidValue = "valid-value�"
 )
 
 var (
@@ -429,7 +440,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 				[]string{
 					fmt.Sprintf(`{app="foo-%d"}`, n),
 					fmt.Sprintf(`{instance="bar-%d"}`, n),
-				},
+				}, false, false, false,
 			)
 			response, err := distributors[n%len(distributors)].Push(ctx, request)
 			assert.NoError(t, err)
@@ -1227,7 +1238,7 @@ func Benchmark_Push(b *testing.B) {
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 	limits.CreationGracePeriod = model.Duration(24 * time.Hour)
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
-	request := makeWriteRequest(100000, 100)
+	request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, false)
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -1697,7 +1708,7 @@ func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level
 	}
 }
 
-func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.PushRequest {
+func makeWriteRequestWithLabels(lines, size int, labels []string, addStructuredMetadata, invalidName, invalidValue bool) *logproto.PushRequest {
 	streams := make([]logproto.Stream, len(labels))
 	for i := 0; i < len(labels); i++ {
 		stream := logproto.Stream{Labels: labels[i]}
@@ -1706,12 +1717,25 @@ func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.Push
 			// Construct the log line, honoring the input size
 			line := strconv.Itoa(j) + strings.Repeat("0", size)
 			line = line[:size]
-
-			stream.Entries = append(stream.Entries, logproto.Entry{
+			entry := logproto.Entry{
 				Timestamp:          time.Now().Add(time.Duration(j) * time.Millisecond),
 				Line:               line,
 				StructuredMetadata: push.LabelsAdapter{{"test", "test"}},
-			})
+			}
+			if addStructuredMetadata {
+				name := smValidName
+				value := smValidValue
+				if invalidName {
+					name = smInvalidName
+				}
+				if invalidValue {
+					value = smInvalidValue
+				}
+				entry.StructuredMetadata = push.LabelsAdapter{
+					{Name: name, Value: value},
+				}
+			}
+			stream.Entries = append(stream.Entries, entry)
 		}
 
 		streams[i] = stream
@@ -1723,7 +1747,7 @@ func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.Push
 }
 
 func makeWriteRequest(lines, size int) *logproto.PushRequest {
-	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`})
+	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`}, false, false, false)
 }
 
 type mockKafkaWriter struct {
@@ -1779,6 +1803,19 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	for _, s := range in.Streams {
+		for _, e := range s.Entries {
+			for _, sm := range e.StructuredMetadata {
+				if strings.ContainsRune(sm.Value, utf8.RuneError) {
+					return nil, fmt.Errorf("sm value was not sanitized before being pushed to ignester, invalid utf 8 rune %d", utf8.RuneError)
+				}
+				if sm.Name != otlptranslate.NormalizeLabel(sm.Name) {
+					return nil, fmt.Errorf("sm name was not sanitized before being sent to ingester, contained characters %s", sm.Name)
+
+				}
+			}
+		}
+	}
 
 	i.pushed = append(i.pushed, in)
 	return nil, nil
@@ -1875,5 +1912,41 @@ func TestDistributorTee(t *testing.T) {
 		}
 
 		require.Equal(t, "test", tee.tenant)
+	}
+}
+
+func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	for _, tc := range []struct {
+		req              *logproto.PushRequest
+		expectedResponse *logproto.PushResponse
+	}{
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, false),
+			success,
+		},
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, false),
+			success,
+		},
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, true),
+			success,
+		},
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, true),
+			success,
+		},
+	} {
+		distributors, _ := prepare(t, 1, 5, limits, nil)
+
+		var request logproto.PushRequest
+		request.Streams = append(request.Streams, tc.req.Streams[0])
+
+		// the error would happen in the ingester mock, it's set to reject SM that has not been sanitized
+		response, err := distributors[0].Push(ctx, &request)
+		require.NoError(t, err)
+		assert.Equal(t, tc.expectedResponse, response)
 	}
 }

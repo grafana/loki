@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 	"math"
 	"net/http"
 	"slices"
@@ -14,6 +13,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
