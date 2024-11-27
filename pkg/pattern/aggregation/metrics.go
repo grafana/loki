@@ -28,10 +28,7 @@ type Metrics struct {
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
-	var m Metrics
-	m.reg = r
-
-	m = Metrics{
+	return &Metrics{
 		chunks: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: constants.Loki,
 			Subsystem: "pattern_ingester",
@@ -103,21 +100,4 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Help:      "Total number of write timeouts.",
 		}, []string{"tenant_id"}),
 	}
-
-	if m.reg != nil {
-		m.reg.MustRegister(
-			m.chunks,
-			m.samples,
-			m.pushErrors,
-			m.pushRetries,
-			m.pushSuccesses,
-			m.payloadSize,
-			m.streamsPerPush,
-			m.entriesPerPush,
-			m.servicesTracked,
-			m.writeTimeout,
-		)
-	}
-
-	return &m
 }
