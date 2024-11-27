@@ -33,6 +33,11 @@ func (s *structuredMetadataStage) Name() string {
 	return StageTypeStructuredMetadata
 }
 
+// Cleanup implements Stage.
+func (*structuredMetadataStage) Cleanup() {
+	// no-op
+}
+
 func (s *structuredMetadataStage) Run(in chan Entry) chan Entry {
 	return RunWith(in, func(e Entry) Entry {
 		processLabelsConfigs(s.logger, e.Extracted, s.cfgs, func(labelName model.LabelName, labelValue model.LabelValue) {

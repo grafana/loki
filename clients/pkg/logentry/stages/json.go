@@ -188,3 +188,8 @@ func (j *jsonStage) processEntry(extracted map[string]interface{}, entry *string
 func (j *jsonStage) Name() string {
 	return StageTypeJSON
 }
+
+// Cleanup implements Stage.
+func (*jsonStage) Cleanup() {
+	// no-op
+}

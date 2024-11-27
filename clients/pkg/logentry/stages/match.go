@@ -206,3 +206,8 @@ func (m *matcherStage) processLogQL(e Entry) (Entry, bool) {
 func (m *matcherStage) Name() string {
 	return StageTypeMatch
 }
+
+// Cleanup implements Stage.
+func (*matcherStage) Cleanup() {
+	// no-op
+}
