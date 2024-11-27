@@ -23,6 +23,13 @@ import (
 
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
 
+const (
+	HTTPRateLimited  = "rate_limited"
+	HTTPServerError  = "server_error"
+	HTTPErrorUnknown = "unknown"
+	HTTPClientError  = "client_error"
+)
+
 // IsRequestBodyTooLarge returns true if the error is "http: request body too large".
 func IsRequestBodyTooLarge(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "http: request body too large")
@@ -306,4 +313,29 @@ func IsValidURL(endpoint string) bool {
 	}
 
 	return u.Scheme != "" && u.Host != ""
+}
+
+func ErrorTypeFromHTTPStatus(status int) string {
+	errorType := HTTPErrorUnknown
+	if status == 429 {
+		errorType = HTTPRateLimited
+	} else if status/100 == 5 {
+		errorType = HTTPServerError
+	} else if status/100 != 2 {
+		errorType = HTTPClientError
+	}
+
+	return errorType
+}
+
+func IsError(status int) bool {
+	return status/200 != 0
+}
+
+func IsServerError(status int) bool {
+	return status/100 == 5
+}
+
+func IsRateLimited(status int) bool {
+	return status == 429
 }
