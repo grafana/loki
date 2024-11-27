@@ -168,7 +168,6 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 	producer.ProduceSync(context.Background(), records...)
 
 	// Enable the catch up logic so starting the reader will read any existing records.
-	kafkaCfg.TargetConsumerLagAtStartup = time.Second * 1
 	kafkaCfg.MaxConsumerLagAtStartup = time.Second * 2
 
 	err = services.StartAndAwaitRunning(context.Background(), partitionReader)
@@ -246,7 +245,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 		return targetLag - 1
 	}
 
-	_, err = readerSvc.processNextFetchesUntilLagHonored(ctx, targetLag, log.NewNopLogger(), recordsChan, timeSince)
+	_, err = readerSvc.fetchUntilLagSatisfied(ctx, targetLag, log.NewNopLogger(), recordsChan, timeSince)
 	assert.NoError(t, err)
 
 	// Wait to process all the records
