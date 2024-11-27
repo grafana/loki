@@ -83,7 +83,7 @@ func Test_Push(t *testing.T) {
 			"user", "secret",
 			false,
 			&backoff,
-			log.NewNopLogger(), nil,
+			log.NewNopLogger(), NewMetrics(nil),
 		)
 		require.NoError(t, err)
 		ts, payload := testPayload()
