@@ -1,18 +1,18 @@
 ---
-title: LogCLI
-menuTItle:
-description: Describes LogCLI, the Grafana Loki command-line interface.
+title: LogCLI Getting Started
+menuTItle: Getting Started
+description: Installation and reference for LogCLI, a command-line tool for querying and exploring logs in Grafana Loki.
 aliases:
 - ../getting-started/logcli/
 - ../tools/logcli/
 - ../query
-weight: 700
+weight: 150
 ---
 
 # LogCLI
 
 LogCLI is the command-line interface to Grafana Loki.
-It facilitates running [LogQL]({{< relref "../query/_index.md" >}})
+It facilitates running [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query)
 queries against a Loki instance.
 
 ## Installation
@@ -853,6 +853,77 @@ Flags:
 
 Args:
   <query>  eg '{foo="bar",baz=~".*blip"}
+```
+
+### `detected-fields` command reference
+
+The output of `logcli help detected-fields`:
+
+```
+usage: logcli detected-fields [<flags>] <query> [<field>]
+
+Run a query for detected fields..
+
+The "detected-fields" command will return information about fields detected using either the "logfmt" or "json" parser against the log lines returned by the provided query for the provided time range.
+
+The "detected-fields" command will output extra information about the query and its results, such as the API URL, set of common labels, and set of excluded labels. This extra information can be suppressed with the
+--quiet flag.
+
+By default we look over the last hour of data; use --since to modify or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano time format, but without timezone at the end. The local timezone will be added automatically or if using --timezone flag.
+
+Example:
+
+  logcli detected-fields
+     --timezone=UTC
+     --from="2021-01-19T10:00:00Z"
+     --to="2021-01-19T20:00:00Z"
+     --output=jsonl
+     'my-query'
+
+The output is limited to 100 fields by default; use --field-limit to increase. The query is limited to processing 1000 lines per subquery; use --line-limit to increase.
+
+Flags:
+      --help                  Show context-sensitive help (also try --help-long and --help-man).
+      --version               Show application version.
+  -q, --quiet                 Suppress query metadata
+      --stats                 Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output timestamps [Local, UTC]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --stdin                 Take input logs from stdin
+      --addr="http://localhost:3100"
+                              Server address. Can also be set using LOKI_ADDR env var.
+      --username=""           Username for HTTP basic auth. Can also be set using LOKI_USERNAME env var.
+      --password=""           Password for HTTP basic auth. Can also be set using LOKI_PASSWORD env var.
+      --ca-cert=""            Path to the server Certificate Authority. Can also be set using LOKI_CA_CERT_PATH env var.
+      --tls-skip-verify       Server certificate TLS skip verify. Can also be set using LOKI_TLS_SKIP_VERIFY env var.
+      --cert=""               Path to the client certificate. Can also be set using LOKI_CLIENT_CERT_PATH env var.
+      --key=""                Path to the client certificate key. Can also be set using LOKI_CLIENT_KEY_PATH env var.
+      --org-id=""             adds X-Scope-OrgID to API requests for representing tenant ID. Useful for requesting tenant data when bypassing an auth gateway. Can also be set using LOKI_ORG_ID env var.
+      --query-tags=""         adds X-Query-Tags http header to API requests. This header value will be part of `metrics.go` statistics. Useful for tracking the query. Can also be set using LOKI_QUERY_TAGS env var.
+      --nocache               adds Cache-Control: no-cache http header to API requests. Can also be set using LOKI_NO_CACHE env var.
+      --bearer-token=""       adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN env var.
+      --bearer-token-file=""  adds the Authorization header to API requests for authentication purposes. Can also be set using LOKI_BEARER_TOKEN_FILE env var.
+      --retries=0             How many times to retry each query when getting an error response from Loki. Can also be set using LOKI_CLIENT_RETRIES env var.
+      --min-backoff=0         Minimum backoff time between retries. Can also be set using LOKI_CLIENT_MIN_BACKOFF env var.
+      --max-backoff=0         Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.
+      --auth-header="Authorization"
+                              The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
+      --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
+      --limit=100             Limit on number of fields or values to return.
+      --line-limit=1000       Limit the number of lines each subquery is allowed to process.
+      --since=1h              Lookback window.
+      --from=FROM             Start looking for logs at this absolute time (inclusive)
+      --to=TO                 Stop looking for logs at this absolute time (exclusive)
+      --step=10s              Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.
+
+Args:
+  <query>    eg '{foo="bar",baz=~".*blip"} |~ ".*error.*"'
+  [<field>]  The name of the field.
 ```
 
 ### `--stdin` usage
