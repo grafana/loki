@@ -54,7 +54,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else '%sdistributor.*' % $._config.pod_prefix_matcher))],
                                  ingester: if $._config.meta_monitoring.enabled
                                  then [utils.selector.re('pod', '(partition-ingester.*|%singester|%s-write|loki-single-binary)' % [$._config.pod_prefix_matcher, $._config.ssd.pod_prefix_matcher])]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else '%singester.*|partition-ingester.*' % $._config.pod_prefix_matcher))],
+                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else '(%singester.*|partition-ingester.*)' % $._config.pod_prefix_matcher))],
                                  querier: if $._config.meta_monitoring.enabled
                                  then [utils.selector.re('pod', '(%squerier|%s-read|loki-single-binary)' % [$._config.pod_prefix_matcher, $._config.ssd.pod_prefix_matcher])]
                                  else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else '%squerier.*' % $._config.pod_prefix_matcher))],
