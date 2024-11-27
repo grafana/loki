@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/push"
 	"math"
 	"math/rand"
 	"net/http"
@@ -1707,8 +1708,9 @@ func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.Push
 			line = line[:size]
 
 			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp: time.Now().Add(time.Duration(j) * time.Millisecond),
-				Line:      line,
+				Timestamp:          time.Now().Add(time.Duration(j) * time.Millisecond),
+				Line:               line,
+				StructuredMetadata: push.LabelsAdapter{{"test", "test"}},
 			})
 		}
 
