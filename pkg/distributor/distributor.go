@@ -460,7 +460,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	now := time.Now()
 	validationContext := d.validator.getValidationContextForTime(now, tenantID)
-	levelDetector := newLevelDetector(validationContext)
+	levelDetector := newFieldDetector(validationContext)
 	shouldDiscoverLevels := levelDetector.shouldDiscoverLogLevels()
 
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)

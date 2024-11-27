@@ -120,7 +120,7 @@ func Test_DetectLogLevels(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -285,7 +285,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -391,7 +391,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 		"Wm3 S7if5qCXPzvuMZ2 gNHdst Z39s9uNc58QBDeYRW umyIF BDqEdqhE tAs2gidkqee3aux8b NLDb7 ZZLekc0cQZ GUKQuBg2pL2y1S " +
 		"RJtBuW ABOqQHLSlNuUw ZlM2nGS2 jwA7cXEOJhY 3oPv4gGAz  Uqdre16MF92C06jOH dayqTCK8XmIilT uvgywFSfNadYvRDQa " +
 		"iUbswJNcwqcr6huw LAGrZS8NGlqqzcD2wFU rm Uqcrh3TKLUCkfkwLm  5CIQbxMCUz boBrEHxvCBrUo YJoF2iyif4xq3q yk "
-	ld := &LevelDetector{
+	ld := &FieldDetector{
 		validationContext: validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -407,7 +407,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
 
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -422,7 +422,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 
 func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,

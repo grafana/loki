@@ -48,24 +48,24 @@ func allowedLabelsForLevel(allowedFields []string) map[string]struct{} {
 	return allowedFieldsMap
 }
 
-type LevelDetector struct {
+type FieldDetector struct {
 	validationContext validationContext
 	allowedLabels     map[string]struct{}
 }
 
-func newLevelDetector(validationContext validationContext) *LevelDetector {
+func newFieldDetector(validationContext validationContext) *FieldDetector {
 	logLevelFields := validationContext.logLevelFields
-	return &LevelDetector{
+	return &FieldDetector{
 		validationContext: validationContext,
 		allowedLabels:     allowedLabelsForLevel(logLevelFields),
 	}
 }
 
-func (l *LevelDetector) shouldDiscoverLogLevels() bool {
+func (l *FieldDetector) shouldDiscoverLogLevels() bool {
 	return l.validationContext.allowStructuredMetadata && l.validationContext.discoverLogLevels
 }
 
-func (l *LevelDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
+func (l *FieldDetector) extractLogLevel(labels labels.Labels, structuredMetadata labels.Labels, entry logproto.Entry) (logproto.LabelAdapter, bool) {
 	levelFromLabel, hasLevelLabel := l.hasAnyLevelLabels(labels)
 	var logLevel string
 	if hasLevelLabel {
@@ -85,7 +85,7 @@ func (l *LevelDetector) extractLogLevel(labels labels.Labels, structuredMetadata
 	}, true
 }
 
-func (l *LevelDetector) hasAnyLevelLabels(labels labels.Labels) (string, bool) {
+func (l *FieldDetector) hasAnyLevelLabels(labels labels.Labels) (string, bool) {
 	for lbl := range l.allowedLabels {
 		if labels.Has(lbl) {
 			return labels.Get(lbl), true
@@ -94,7 +94,7 @@ func (l *LevelDetector) hasAnyLevelLabels(labels labels.Labels) (string, bool) {
 	return "", false
 }
 
-func (l *LevelDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
+func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structuredMetadata labels.Labels) string {
 	// otlp logs have a severity number, using which we are defining the log levels.
 	// Significance of severity number is explained in otel docs here https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
 	if otlpSeverityNumberTxt := structuredMetadata.Get(push.OTLPSeverityNumber); otlpSeverityNumberTxt != "" {
@@ -123,7 +123,7 @@ func (l *LevelDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structu
 	return l.extractLogLevelFromLogLine(entry.Line)
 }
 
-func (l *LevelDetector) extractLogLevelFromLogLine(log string) string {
+func (l *FieldDetector) extractLogLevelFromLogLine(log string) string {
 	logSlice := unsafe.Slice(unsafe.StringData(log), len(log))
 	var v []byte
 	if isJSON(log) {
@@ -154,7 +154,7 @@ func (l *LevelDetector) extractLogLevelFromLogLine(log string) string {
 	}
 }
 
-func (l *LevelDetector) getValueUsingLogfmtParser(line []byte) []byte {
+func (l *FieldDetector) getValueUsingLogfmtParser(line []byte) []byte {
 	d := logfmt.NewDecoder(line)
 	for !d.EOL() && d.ScanKeyval() {
 		if _, ok := l.allowedLabels[string(d.Key())]; ok {
@@ -164,7 +164,7 @@ func (l *LevelDetector) getValueUsingLogfmtParser(line []byte) []byte {
 	return nil
 }
 
-func (l *LevelDetector) getValueUsingJSONParser(log []byte) []byte {
+func (l *FieldDetector) getValueUsingJSONParser(log []byte) []byte {
 	for allowedLabel := range l.allowedLabels {
 		l, _, _, err := jsonparser.Get(log, allowedLabel)
 		if err == nil {
