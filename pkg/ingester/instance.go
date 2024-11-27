@@ -341,6 +341,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
 	}
+	i.writeFailures.Log(i.instanceID, fmt.Errorf(validation.StreamLimitErrorMsg, labels, i.instanceID))
 	return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
 }
 
