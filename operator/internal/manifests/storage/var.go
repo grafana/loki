@@ -139,7 +139,7 @@ const (
 	storageTLSVolume = "storage-tls"
 	caDirectory      = "/etc/storage/ca"
 
-	tokenAuthConfigVolumeName = "token-auth-config" //#nosec G101 -- False positive
+	tokenAuthConfigVolumeName = "token-auth-config"       //#nosec G101 -- False positive
 	tokenAuthConfigDirectory  = "/etc/storage/token-auth" //#nosec G101 -- False positive
 
 	awsDefaultAudience   = "sts.amazonaws.com"
