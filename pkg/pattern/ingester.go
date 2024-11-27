@@ -392,6 +392,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 
 		aggCfg := i.cfg.MetricAggregation
 		if i.limits.MetricAggregationEnabled(instanceID) {
+			metricAggregationMetrics := aggregation.NewMetrics(i.registerer)
 			writer, err = aggregation.NewPush(
 				aggCfg.LokiAddr,
 				instanceID,
@@ -403,6 +404,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 				aggCfg.UseTLS,
 				&aggCfg.BackoffConfig,
 				i.logger,
+				metricAggregationMetrics,
 			)
 			if err != nil {
 				return nil, err

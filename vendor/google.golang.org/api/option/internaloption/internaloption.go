@@ -6,6 +6,9 @@
 package internaloption
 
 import (
+	"log/slog"
+
+	"github.com/googleapis/gax-go/v2/internallog"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/internal"
 	"google.golang.org/api/option"
@@ -212,3 +215,16 @@ func (w enableNewAuthLibrary) Apply(o *internal.DialSettings) {
 type EmbeddableAdapter struct{}
 
 func (*EmbeddableAdapter) Apply(_ *internal.DialSettings) {}
+
+// GetLogger is a helper for client libraries to extract the [slog.Logger] from
+// the provided options or return a default logger if one is not found.
+//
+// It should only be used internally by generated clients. This is an EXPERIMENTAL API
+// and may be changed or removed in the future.
+func GetLogger(opts []option.ClientOption) *slog.Logger {
+	var ds internal.DialSettings
+	for _, opt := range opts {
+		opt.Apply(&ds)
+	}
+	return internallog.New(ds.Logger)
+}
