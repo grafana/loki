@@ -270,12 +270,12 @@ you'd still need to process a lot of data in addition to the data from the resul
 #### Index stats queries
 
 The query frontend caches index stats query results similar to the [metric query](#metric-queries) results.
-This cache is only applicable when using single-store TSDB.
+This cache is only applicable when using single store TSDB.
 
 #### Log volume queries
 
 The query frontend caches log volume query results similar to the [metric query](#metric-queries) results.
-This cache is only applicable when using single-store TSDB.
+This cache is only applicable when using single store TSDB.
 
 
 ## Query scheduler
@@ -305,7 +305,7 @@ timestamp, label set, and log message.
 ## Index Gateway
 
 The **index gateway** service is responsible for handling and serving metadata queries.
-Metadata queries are queries that lookup data from the index. The index gateway is only used by "shipper stores",
+Metadata queries are queries that look up data from the index. The index gateway is only used by "shipper stores",
 such as [single store TSDB]({{< relref "../operations/storage/tsdb" >}}) or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}).
 
 The query frontend queries the index gateway for the log volume of queries so it can make a decision on how to shard the queries.
