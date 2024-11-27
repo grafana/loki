@@ -17,7 +17,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	"github.com/opentracing/opentracing-go"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -112,7 +111,7 @@ func NewPush(
 	useTLS bool,
 	backoffCfg *backoff.Config,
 	logger log.Logger,
-	registrer prometheus.Registerer,
+	metrics *Metrics,
 ) (*Push, error) {
 	client, err := config.NewClientFromConfig(cfg, "pattern-ingester-push", config.WithHTTP2Disabled())
 	if err != nil {
@@ -147,7 +146,7 @@ func NewPush(
 		entries: entries{
 			entries: make([]entry, 0),
 		},
-		metrics: NewMetrics(registrer),
+		metrics: metrics,
 	}
 
 	go p.run(pushPeriod)

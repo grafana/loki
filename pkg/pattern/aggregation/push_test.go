@@ -58,7 +58,7 @@ func Test_Push(t *testing.T) {
 			false,
 			&backoff,
 			log.NewNopLogger(),
-			nil,
+			NewMetrics(nil),
 		)
 		require.NoError(t, err)
 		ts, payload := testPayload()
