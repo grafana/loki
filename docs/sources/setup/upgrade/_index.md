@@ -133,6 +133,7 @@ Loki 3.0 will automatically assign a `service_name` label to all ingested logs b
 
 Loki will attempt to create the `service_name` label by looking for the following labels in this order:
 
+  - service_name
   - service
   - app
   - application
