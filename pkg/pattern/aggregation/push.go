@@ -283,12 +283,12 @@ func (p *Push) run(pushPeriod time.Duration) {
 				}
 
 				if !backoff.Ongoing() {
-					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "entry", "status", status, "error", err)
+					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "status", status, "error", err)
 					pushTicker.Reset(pushPeriod)
 					break
 				}
 				level.Warn(p.logger).
-					Log("msg", "failed to send entry, retrying", "entry", "status", status, "error", err)
+					Log("msg", "failed to send entry, retrying", "status", status, "error", err)
 				backoff.Wait()
 			}
 
