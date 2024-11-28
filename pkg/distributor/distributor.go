@@ -528,14 +528,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-				if shouldDiscoverLevels {
-					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
+				if len(entry.StructuredMetadata) > 0 {
 					for i := range entry.StructuredMetadata {
 						structuredMetadata[i].Name = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
 						if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
 							structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
 						}
 					}
+				}
+				if shouldDiscoverLevels {
+					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
 					if ok {
 						entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
 					}
