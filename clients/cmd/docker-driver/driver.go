@@ -81,14 +81,14 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 		return err
 	}
 
-	keepFile, err := parseBoolean(cfgKeepFile, logCtx, false)
+	keepFile, err := parseBoolean(cfgKeepFile, logCtx, true)
 	if err != nil {
 		return err
 	}
 
 	var jsonl logger.Logger
 	if !noFile {
-		if err := os.MkdirAll(folder, 0755); err != nil {
+		if err := os.MkdirAll(folder, 0o755); err != nil {
 			return errors.Wrap(err, "error setting up logger dir")
 		}
 
@@ -102,7 +102,7 @@ func (d *driver) StartLogging(file string, logCtx logger.Info) error {
 	if err != nil {
 		return errors.Wrap(err, "error creating loki logger")
 	}
-	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0700)
+	f, err := fifo.OpenFifo(context.Background(), file, syscall.O_RDONLY, 0o700)
 	if err != nil {
 		return errors.Wrapf(err, "error opening logger fifo: %q", file)
 	}
