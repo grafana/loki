@@ -24,7 +24,7 @@ const (
 	phaseRunning  = "running"
 )
 
-type ConsumerFactory func(committer Committer) (Consumer, error)
+type ConsumerFactory func(committer Committer, logger log.Logger) (Consumer, error)
 
 type Consumer interface {
 	Start(ctx context.Context, recordsChan <-chan []Record) func()
@@ -126,6 +126,8 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	s.metrics.reportOwnerOfPartition(s.reader.Partition())
 	s.metrics.reportStarting()
 
+	logger := log.With(s.logger, "phase", phaseStarting)
+
 	// Fetch the last committed offset to determine where to start reading
 	lastCommittedOffset, err := s.reader.FetchLastCommittedOffset(ctx)
 	if err != nil {
@@ -133,9 +135,9 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	}
 
 	if lastCommittedOffset == int64(KafkaEndOffset) {
-		level.Warn(s.logger).Log("msg", fmt.Sprintf("no committed offset found, starting from %d", kafkaStartOffset))
+		level.Warn(logger).Log("msg", fmt.Sprintf("no committed offset found, starting from %d", kafkaStartOffset))
 	} else {
-		level.Debug(s.logger).Log("msg", "last committed offset", "offset", lastCommittedOffset)
+		level.Debug(logger).Log("msg", "last committed offset", "offset", lastCommittedOffset)
 	}
 
 	consumeOffset := int64(kafkaStartOffset)
@@ -143,10 +145,10 @@ func (s *ReaderService) starting(ctx context.Context) error {
 		// Read from the next offset.
 		consumeOffset = lastCommittedOffset + 1
 	}
-	level.Debug(s.logger).Log("msg", "consuming from offset", "offset", consumeOffset)
+	level.Debug(logger).Log("msg", "consuming from offset", "offset", consumeOffset)
 	s.reader.SetOffsetForConsumption(consumeOffset)
 
-	if err = s.processConsumerLagAtStartup(ctx); err != nil {
+	if err = s.processConsumerLagAtStartup(ctx, logger); err != nil {
 		return fmt.Errorf("failed to process consumer lag at startup: %w", err)
 	}
 
@@ -157,7 +159,7 @@ func (s *ReaderService) running(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "reader service running")
 	s.metrics.reportRunning()
 
-	consumer, err := s.consumerFactory(s.committer)
+	consumer, err := s.consumerFactory(s.committer, log.With(s.logger, "phase", phaseRunning))
 	if err != nil {
 		return fmt.Errorf("creating consumer: %w", err)
 	}
@@ -172,13 +174,13 @@ func (s *ReaderService) running(ctx context.Context) error {
 	return nil
 }
 
-func (s *ReaderService) processConsumerLagAtStartup(ctx context.Context) error {
+func (s *ReaderService) processConsumerLagAtStartup(ctx context.Context, logger log.Logger) error {
 	if s.cfg.MaxConsumerLagAtStartup <= 0 {
-		level.Debug(s.logger).Log("msg", "processing consumer lag at startup is disabled")
+		level.Debug(logger).Log("msg", "processing consumer lag at startup is disabled")
 		return nil
 	}
 
-	consumer, err := s.consumerFactory(s.committer)
+	consumer, err := s.consumerFactory(s.committer, logger)
 	if err != nil {
 		return fmt.Errorf("failed to create consumer: %w", err)
 	}
@@ -192,13 +194,13 @@ func (s *ReaderService) processConsumerLagAtStartup(ctx context.Context) error {
 		wait()
 	}()
 
-	level.Debug(s.logger).Log("msg", "processing consumer lag at startup")
-	_, err = s.fetchUntilLagSatisfied(ctx, s.cfg.MaxConsumerLagAtStartup, s.logger, recordsCh, time.Since)
+	level.Debug(logger).Log("msg", "processing consumer lag at startup")
+	_, err = s.fetchUntilLagSatisfied(ctx, s.cfg.MaxConsumerLagAtStartup, logger, recordsCh, time.Since)
 	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to catch up", "err", err)
+		level.Error(logger).Log("msg", "failed to catch up", "err", err)
 		return err
 	}
-	level.Debug(s.logger).Log("msg", "processing consumer lag at startup finished")
+	level.Debug(logger).Log("msg", "processing consumer lag at startup finished")
 
 	return nil
 }
