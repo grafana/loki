@@ -157,7 +157,7 @@ log_attributes:
 			decoder := yaml.NewDecoder(bytes.NewReader(tc.yamlConfig))
 			decoder.KnownFields(true)
 
-			err := decoder.Decode(cfg)
+			err := decoder.Decode(&cfg)
 			if tc.expectedErr != nil {
 				require.ErrorIs(t, err, tc.expectedErr)
 				return

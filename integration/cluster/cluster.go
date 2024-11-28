@@ -27,7 +27,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -363,8 +362,9 @@ func (c *Component) writeConfig() error {
 func (c *Component) MergedConfig() ([]byte, error) {
 	var sb bytes.Buffer
 
-	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
-	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
+	// Quote the time strings to ensure they're treated as strings in YAML 1.2
+	periodStart := fmt.Sprintf("%q", time.Unix(int64(c.cluster.initedAt)/1000, 0).Format("2006-01-02"))
+	additionalPeriodStart := fmt.Sprintf("%q", time.Unix(int64(c.cluster.initedAt)/1000, 0).Add(-6*24*time.Hour).Format("2006-01-02"))
 
 	if err := configTemplate.Execute(&sb, map[string]interface{}{
 		"dataPath":       c.dataPath,
@@ -385,8 +385,8 @@ func (c *Component) MergedConfig() ([]byte, error) {
 		var buf bytes.Buffer
 		if err := template.Must(template.New("schema").Parse(periodCfg)).
 			Execute(&buf, map[string]interface{}{
-				"curPeriodStart":        periodStart.String(),
-				"additionalPeriodStart": additionalPeriodStart.String(),
+				"curPeriodStart":        periodStart,
+				"additionalPeriodStart": additionalPeriodStart,
 				"schemaVer":             c.cluster.schemaVer,
 			}); err != nil {
 			return nil, errors.New("error building schema_config")
