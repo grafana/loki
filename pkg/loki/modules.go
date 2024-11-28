@@ -33,9 +33,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
+	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/blockbuilder"
+	"github.com/grafana/loki/v3/pkg/blockscheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -48,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	kclient "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -138,6 +141,7 @@ const (
 	InitCodec                string = "init-codec"
 	PartitionRing            string = "partition-ring"
 	BlockBuilder             string = "block-builder"
+	BlockScheduler           string = "block-scheduler"
 )
 
 const (
@@ -1851,6 +1855,23 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 
 	t.blockBuilder = bb
 	return t.blockBuilder, nil
+}
+
+func (t *Loki) initBlockScheduler() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "block_scheduler")
+
+	clientMetrics := kclient.NewReaderClientMetrics("block-scheduler", prometheus.DefaultRegisterer)
+	c, err := kclient.NewReaderClient(
+		t.Cfg.KafkaConfig,
+		clientMetrics,
+		log.With(logger, "component", "kafka-client"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating kafka client: %w", err)
+	}
+
+	t.Cfg.BlockScheduler.Topic = t.Cfg.KafkaConfig.Topic
+	return blockscheduler.New(t.Cfg.BlockScheduler, kadm.NewClient(c), logger, prometheus.DefaultRegisterer)
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
