@@ -1241,13 +1241,55 @@ func Benchmark_Push(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
-		request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, false)
-		_, err := distributors[0].Push(ctx, request)
-		if err != nil {
-			require.NoError(b, err)
+	b.Run("no structured metadata", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, false, false, false)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
 		}
-	}
+	})
+
+	b.Run("all valid structured metadata", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, false)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
+
+	b.Run("structured metadata with invalid names", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, true, false)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
+
+	b.Run("structured metadata with invalid values", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, true)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
+
+	b.Run("structured metadata with invalid names and values", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, true, true)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
 }
 
 func TestShardCalculation(t *testing.T) {
