@@ -478,6 +478,18 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 			return errors.Wrap(err, "cloning limits (unmarshaling)")
 		}
 	}
+
+	// Check if we're getting an empty map for RulerRemoteWriteHeaders
+	var raw map[string]interface{}
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	if v, ok := raw["ruler_remote_write_headers"]; ok && v == nil {
+		l.RulerRemoteWriteHeaders = OverwriteMarshalingStringMap{m: nil}
+	}
+
+	// Now unmarshal the full config
 	if err := unmarshal((*plain)(l)); err != nil {
 		return err
 	}
@@ -1205,14 +1217,38 @@ func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
 	return sm.m, nil
 }
 
+// UnmarshalYAML implements yaml.Unmarshaler.
 func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var def map[string]string
+	var raw interface{}
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
 
-	err := unmarshal(&def)
-	if err != nil {
+	// If we get a nil value or empty map, set a nil map
+	if raw == nil {
+		sm.m = nil
+		return nil
+	}
+
+	// Check for empty map in different YAML representations
+	switch v := raw.(type) {
+	case map[interface{}]interface{}:
+		if len(v) == 0 {
+			sm.m = nil
+			return nil
+		}
+	case map[string]interface{}:
+		if len(v) == 0 {
+			sm.m = nil
+			return nil
+		}
+	}
+
+	// Otherwise try to unmarshal as a map
+	var def map[string]string
+	if err := unmarshal(&def); err != nil {
 		return err
 	}
 	sm.m = def
-
 	return nil
 }

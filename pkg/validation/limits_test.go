@@ -248,6 +248,24 @@ ruler_remote_write_headers:
 			},
 		},
 		{
+			desc: "explicitly set empty map overrides defaults",
+			yaml: `
+ruler_remote_write_headers: {} # Explicitly set an empty map
+`,
+			exp: Limits{
+				DiscoverServiceName: []string{},
+				LogLevelFields:      []string{},
+				// Rest from new defaults
+				StreamRetention: []StreamRetention{
+					{
+						Period:   model.Duration(24 * time.Hour),
+						Selector: `{a="b"}`,
+					},
+				},
+				OTLPConfig: defaultOTLPConfig,
+			},
+		},
+		{
 			desc: "slice",
 			yaml: `
 retention_stream:
@@ -318,7 +336,7 @@ query_timeout: 5m
 			var out Limits
 			decoder := yaml.NewDecoder(bytes.NewReader([]byte(tc.yaml)))
 			decoder.KnownFields(true)
-			err := decoder.Decode(out)
+			err := decoder.Decode(&out)
 			require.NoError(t, err)
 			require.Equal(t, tc.exp, out)
 		})
