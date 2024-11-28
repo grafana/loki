@@ -1238,12 +1238,11 @@ func Benchmark_Push(b *testing.B) {
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 	limits.CreationGracePeriod = model.Duration(24 * time.Hour)
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
-	request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, false)
-
 	b.ResetTimer()
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
+		request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, false)
 		_, err := distributors[0].Push(ctx, request)
 		if err != nil {
 			require.NoError(b, err)
@@ -1718,9 +1717,8 @@ func makeWriteRequestWithLabels(lines, size int, labels []string, addStructuredM
 			line := strconv.Itoa(j) + strings.Repeat("0", size)
 			line = line[:size]
 			entry := logproto.Entry{
-				Timestamp:          time.Now().Add(time.Duration(j) * time.Millisecond),
-				Line:               line,
-				StructuredMetadata: push.LabelsAdapter{{"test", "test"}},
+				Timestamp: time.Now().Add(time.Duration(j) * time.Millisecond),
+				Line:      line,
 			}
 			if addStructuredMetadata {
 				name := smValidName
