@@ -83,7 +83,7 @@ func newIngesterQuerier(querierConfig Config, clientCfg client.Config, ring ring
 }
 
 // forAllIngesters runs f, in parallel, for all ingesters
-// - waitForAllResponses can be used to require results from all ingesters in the replication set. If this is set to false, the call will return as soon as we have a quorum for a zone. Only valid for partition-ingesters.
+// waitForAllResponses param can be used to require results from all ingesters in the replication set. If this is set to false, the call will return as soon as we have a quorum by zone. Only valid for partition-ingesters.
 func (q *IngesterQuerier) forAllIngesters(ctx context.Context, waitForAllResponses bool, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
 	if q.querierConfig.QueryPartitionIngesters {
 		tenantID, err := user.ExtractOrgID(ctx)
@@ -110,8 +110,8 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, waitForAllRespons
 	return q.forGivenIngesters(ctx, replicationSet, defaultQuorumConfig, f)
 }
 
-// forGivenIngesterSets runs f, in parallel, for given ingester sets until a quorum of responses are received
-// - waitForAllResponses can be used to require results from all ingesters in the replication set. If this is set to false, the call will return as soon as we have a quorum for a zone.
+// forGivenIngesterSets runs f, in parallel, for given ingester sets
+// waitForAllResponses param can be used to require results from all ingesters in all replication sets. If this is set to false, the call will return as soon as we have a quorum by zone.
 func (q *IngesterQuerier) forGivenIngesterSets(ctx context.Context, waitForAllResponses bool, replicationSet []ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
 	// Enable minimize requests if we can, so we initially query a single ingester per replication set, as each replication-set is one partition.
 	// Ingesters must supply zone information for this to have an effect.
