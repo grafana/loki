@@ -53,7 +53,7 @@ func main() {
 	flag.Parse()
 
 	go func() {
-		log.Println(http.ListenAndServe("localhost:8080", nil))
+		log.Println(http.ListenAndServe("localhost:8080", nil)) //#nosec G114 -- This is only bound to localhost, not a plausible DOS vector.
 	}()
 
 	// Create a set of defaults

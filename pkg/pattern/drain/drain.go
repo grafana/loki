@@ -548,9 +548,9 @@ func (d *Drain) createTemplate(tokens, matchClusterTokens []string) []string {
 }
 
 func unsafeString(s []byte) string {
-	return unsafe.String(unsafe.SliceData(s), len(s))
+	return unsafe.String(unsafe.SliceData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 func unsafeBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }

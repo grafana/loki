@@ -112,7 +112,7 @@ func (cfg *Config) GetUniqueUploaderName() (string, error) {
 		if !os.IsNotExist(err) {
 			return "", err
 		}
-		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
+		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
 			return "", err
 		}
 	} else {

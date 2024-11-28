@@ -2520,7 +2520,7 @@ func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *C
 }
 
 func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b)))
+	return *((*string)(unsafe.Pointer(&b))) // #nosec G103 -- we know the string is not mutated
 }
 
 func overlap(from, through, chkFrom, chkThrough int64) bool {
