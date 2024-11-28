@@ -5752,7 +5752,7 @@ boltdb_shipper:
     # lookup, or a DNS SRV record without a followup A record lookup,
     # respectively.
     # CLI flag: -boltdb.shipper.index-gateway-client.server-address
-    [server_address: <string> | default = "localhost:9100"]
+    [server_address: <string> | default = ""]
 
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
@@ -5807,7 +5807,7 @@ tsdb_shipper:
     # lookup, or a DNS SRV record without a followup A record lookup,
     # respectively.
     # CLI flag: -tsdb.shipper.index-gateway-client.server-address
-    [server_address: <string> | default = "localhost:9100"]
+    [server_address: <string> | default = ""]
 
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
