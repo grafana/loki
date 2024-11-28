@@ -241,10 +241,11 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		method string
-		testFn func(*IngesterQuerier) error
-		retVal interface{}
-		shards int
+		method             string
+		testFn             func(*IngesterQuerier) error
+		retVal             interface{}
+		shards             int
+		expectAllResponses bool
 	}{
 		"label": {
 			method: "Label",
@@ -268,7 +269,8 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 				_, err := ingesterQuerier.GetChunkIDs(ctx, model.Time(0), model.Time(0))
 				return err
 			},
-			retVal: new(logproto.GetChunkIDsResponse),
+			retVal:             new(logproto.GetChunkIDsResponse),
+			expectAllResponses: true,
 		},
 		"select_logs": {
 			method: "Query",
@@ -314,7 +316,7 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 				select {
 				case <-ctx.Done():
 					// should not be cancelled by the tracker
-					require.NoError(t, ctx.Err())
+					require.NoErrorf(t, ctx.Err(), "tracker should not cancel ctx: %v", context.Cause(ctx))
 				default:
 					cnt.Add(1)
 				}
@@ -340,6 +342,9 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 				testData.shards = partitions
 			}
 			expectedCalls := min(testData.shards, partitions)
+			if testData.expectAllResponses {
+				expectedCalls = expectedCalls * ingestersPerPartition
+			}
 			// Wait for responses: We expect one request per queried partition because we have request minimization enabled & ingesters are in multiple zones.
 			// If shuffle sharding is enabled, we expect one query per shard as we write to a subset of partitions.
 			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*100, time.Millisecond*1, "expected all ingesters to respond")

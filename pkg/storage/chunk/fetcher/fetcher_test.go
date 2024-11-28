@@ -3,6 +3,7 @@ package fetcher
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"

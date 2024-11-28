@@ -42,7 +42,7 @@ func (s *slab) init() {
 	s.buffer = make(chan unsafe.Pointer, s.count)
 	for i := 0; i < s.count; i++ {
 		buf := make([]byte, 0, s.size)
-		ptr := unsafe.Pointer(unsafe.SliceData(buf))
+		ptr := unsafe.Pointer(unsafe.SliceData(buf)) //#nosec G103 -- Simple arena allocator implementation, does not appear to allow for any unsafe operations.
 		s.buffer <- ptr
 	}
 	s.metrics.availableBuffersPerSlab.WithLabelValues(s.name).Set(float64(s.count))
@@ -55,7 +55,7 @@ func (s *slab) get(size int) ([]byte, error) {
 	waitStart := time.Now()
 	// wait for available buffer on channel
 	ptr := <-s.buffer
-	buf := unsafe.Slice((*byte)(ptr), s.size)
+	buf := unsafe.Slice((*byte)(ptr), s.size) //#nosec G103 -- Simple arena allocator implementation, does not appear to allow for any unsafe operations.
 	s.metrics.waitDuration.WithLabelValues(s.name).Observe(time.Since(waitStart).Seconds())
 
 	return buf[:size], nil
@@ -67,7 +67,8 @@ func (s *slab) put(buf []byte) {
 		panic("slab is not initialized")
 	}
 
-	ptr := unsafe.Pointer(unsafe.SliceData(buf))
+	ptr := unsafe.Pointer(unsafe.SliceData(buf)) //#nosec G103 -- Simple arena allocator implementation, does not appear to allow for any unsafe operations.
+	// Note that memory is NOT zero'd on return, but since all allocations are of defined widths and we only ever then read a record of exactly that width into the allocation, it will always be overwritten before use and can't leak.
 	s.buffer <- ptr
 }
 

@@ -2,8 +2,7 @@ package cloudflare
 
 import (
 	"fmt"
-
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 type FieldsType string
