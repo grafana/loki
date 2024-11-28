@@ -153,3 +153,14 @@ Examples:
       or
     vector(0) # will return 0
     ```
+
+## Probabilistic aggregation
+
+LogQL also supports a probabilistic `topk` approximation that is a drop-in replacement when `topk` hits the maximum series limit.
+
+```logql
+approx_topk(k, <vector expression>)
+```
+
+It is only supported for instant queries and does not support grouping. It is useful when the cardinality of the inner
+vector is too high, e.g. when it uses an aggregation by a structured metadata label.
