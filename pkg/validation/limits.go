@@ -214,6 +214,7 @@ type Limits struct {
 	BloomSplitSeriesKeyspaceBy     int              `yaml:"bloom_split_series_keyspace_by" json:"bloom_split_series_keyspace_by" category:"experimental"`
 	BloomTaskTargetSeriesChunkSize flagext.ByteSize `yaml:"bloom_task_target_series_chunk_size" json:"bloom_task_target_series_chunk_size" category:"experimental"`
 	BloomBlockEncoding             string           `yaml:"bloom_block_encoding" json:"bloom_block_encoding" category:"experimental"`
+	BloomPrefetchBlocks            bool             `yaml:"bloom_prefetch_blocks" json:"bloom_prefetch_blocks" category:"experimental"`
 
 	BloomMaxBlockSize flagext.ByteSize `yaml:"bloom_max_block_size" json:"bloom_max_block_size" category:"experimental"`
 	BloomMaxBloomSize flagext.ByteSize `yaml:"bloom_max_bloom_size" json:"bloom_max_bloom_size" category:"experimental"`
@@ -399,6 +400,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
 
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
+	f.BoolVar(&l.BloomPrefetchBlocks, "bloom-build.prefetch-blocks", false, "Experimental. Prefetch blocks on bloom gateways as soon as they are built.")
 
 	_ = l.BloomMaxBlockSize.Set(defaultBloomBuildMaxBlockSize)
 	f.Var(&l.BloomMaxBlockSize, "bloom-build.max-block-size",
@@ -1053,6 +1055,10 @@ func (o *Overrides) BloomBuildMaxBuilders(userID string) int {
 
 func (o *Overrides) BuilderResponseTimeout(userID string) time.Duration {
 	return o.getOverridesForUser(userID).BloomBuilderResponseTimeout
+}
+
+func (o *Overrides) PrefetchBloomBlocks(userID string) bool {
+	return o.getOverridesForUser(userID).BloomPrefetchBlocks
 }
 
 func (o *Overrides) BloomTaskMaxRetries(userID string) int {
