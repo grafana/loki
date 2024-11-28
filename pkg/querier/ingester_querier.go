@@ -198,6 +198,7 @@ func (q *IngesterQuerier) forGivenIngesterSets(ctx context.Context, replicationS
 	// Ingesters must supply zone information for this to have an effect.
 	config := ring.DoUntilQuorumConfig{
 		MinimizeRequests: true,
+		HedgingDelay:     250 * time.Millisecond,
 	}
 	return concurrency.ForEachJobMergeResults[ring.ReplicationSet, responseFromIngesters](ctx, replicationSet, 0, func(ctx context.Context, set ring.ReplicationSet) ([]responseFromIngesters, error) {
 		return q.forGivenIngesters(ctx, set, config, f)
