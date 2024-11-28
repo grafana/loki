@@ -55,6 +55,7 @@ type Query struct {
 	LocalConfig            string
 	FetchSchemaFromStorage bool
 	SchemaStore            string
+	TimestampNano          bool
 
 	// Parallelization parameters.
 
