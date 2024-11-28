@@ -72,9 +72,8 @@ spec:
             - -target={{ .Values.read.targetModule }}
             - -legacy-read-mode=false
             - -common.compactor-grpc-address={{ include "loki.backendFullname" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.grpc_listen_port }}
-            {{- with .Values.read.extraArgs }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
+            {{ include "loki.templateArgs" .Values.loki.extraArgs }}
+            {{ include "loki.templateArgs" .Values.read.extraArgs }}
           ports:
             - name: http-metrics
               containerPort: {{ .Values.loki.server.http_listen_port }}
@@ -85,14 +84,12 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.read.extraEnv }}
           env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with .Values.read.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnv }}
+            {{ include "loki.templateEnv" .Values.read.extraEnv }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{ include "loki.templateEnv" .Values.loki.extraEnvFrom }}
+            {{ include "loki.templateEnv" .Values.read.extraEnvFrom }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
