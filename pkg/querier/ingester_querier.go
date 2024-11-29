@@ -123,6 +123,10 @@ func (p *PartitionContext) forQueriedIngesters(ctx context.Context, f func(conte
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	return concurrency.ForEachJobMergeResults(ctx, p.ingestersUsed, 0, func(ctx context.Context, job PartitionIngesterUsed) ([]responseFromIngesters, error) {
 		resp, err := f(ctx, job.client)
 		if err != nil {
