@@ -48,7 +48,6 @@ func TestSliceIterator(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			got := slice(NewSlice(tt.pattern, tt.samples))
 			require.Equal(t, tt.want, got)

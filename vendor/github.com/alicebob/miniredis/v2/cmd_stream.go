@@ -50,6 +50,11 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		maxlen := -1
 		minID := ""
+		makeStream := true
+		if strings.ToLower(args[0]) == "nomkstream" {
+			args = args[1:]
+			makeStream = false
+		}
 		if strings.ToLower(args[0]) == "maxlen" {
 			args = args[1:]
 			// we don't treat "~" special
@@ -101,7 +106,10 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 			return
 		}
 		if s == nil {
-			// TODO: NOMKSTREAM
+			if !makeStream {
+				c.WriteNull()
+				return
+			}
 			s, _ = db.newStream(key)
 		}
 
@@ -121,7 +129,7 @@ func (m *Miniredis) cmdXadd(c *server.Peer, cmd string, args []string) {
 		if minID != "" {
 			s.trimBefore(minID)
 		}
-		db.keyVersion[key]++
+		db.incr(key)
 
 		c.WriteBulk(newID)
 	})
@@ -620,8 +628,7 @@ func (m *Miniredis) cmdXinfoConsumers(c *server.Peer, args []string) {
 		c.WriteError(errWrongNumber("CONSUMERS"))
 		return
 	}
-	key := args[0]
-	groupName := args[1]
+	key, groupName := args[0], args[1]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
@@ -643,7 +650,7 @@ func (m *Miniredis) cmdXinfoConsumers(c *server.Peer, args []string) {
 			return
 		}
 
-		consumerNames := make([]string, 0)
+		var consumerNames []string
 		for name := range g.consumers {
 			consumerNames = append(consumerNames, name)
 		}
@@ -651,15 +658,27 @@ func (m *Miniredis) cmdXinfoConsumers(c *server.Peer, args []string) {
 
 		c.WriteLen(len(consumerNames))
 		for _, name := range consumerNames {
-			c.WriteMapLen(2)
+			cons := g.consumers[name]
 
+			c.WriteMapLen(4)
 			c.WriteBulk("name")
 			c.WriteBulk(name)
-
 			c.WriteBulk("pending")
-			c.WriteInt(g.consumers[name].numPendingEntries)
+			c.WriteInt(cons.numPendingEntries)
+			// TODO: these times aren't set for all commands
+			c.WriteBulk("idle")
+			c.WriteInt(m.sinceMilli(cons.lastSeen))
+			c.WriteBulk("inactive")
+			c.WriteInt(m.sinceMilli(cons.lastSuccess))
 		}
 	})
+}
+
+func (m *Miniredis) sinceMilli(t time.Time) int {
+	if t.IsZero() {
+		return -1
+	}
+	return int(m.effectiveNow().Sub(t).Milliseconds())
 }
 
 // XREADGROUP
@@ -920,7 +939,7 @@ func (m *Miniredis) cmdXdel(c *server.Peer, cmd string, args []string) {
 			c.WriteError(err.Error())
 			return
 		}
-		db.keyVersion[stream]++
+		db.incr(stream)
 		c.WriteInt(n)
 	})
 }
@@ -1654,7 +1673,7 @@ func (m *Miniredis) cmdXclaim(c *server.Peer, cmd string, args []string) {
 				c.WriteError("ERR Invalid TIME option argument for XCLAIM")
 				return
 			}
-			opts.newLastDelivery = unixMilli(timeMs)
+			opts.newLastDelivery = time.UnixMilli(timeMs)
 			args = args[2:]
 		case "RETRYCOUNT":
 			retryCount, err := strconv.Atoi(args[1])
@@ -1708,6 +1727,7 @@ func (m *Miniredis) xclaim(
 	for _, id := range ids {
 		pelPos, pelEntry := group.searchPending(id)
 		if pelEntry == nil {
+			group.setLastSeen(consumerName, m.effectiveNow())
 			if !force {
 				continue
 			}
@@ -1724,6 +1744,7 @@ func (m *Miniredis) xclaim(
 				consumer:      consumerName,
 				deliveryCount: 1,
 			}
+			group.setLastSuccess(consumerName, m.effectiveNow())
 		} else {
 			group.consumers[pelEntry.consumer].numPendingEntries--
 			pelEntry.consumer = consumerName
@@ -1744,6 +1765,7 @@ func (m *Miniredis) xclaim(
 		claimedEntryIDs = append(claimedEntryIDs, id)
 	}
 	if len(claimedEntryIDs) == 0 {
+		group.setLastSeen(consumerName, m.effectiveNow())
 		return
 	}
 
@@ -1753,6 +1775,7 @@ func (m *Miniredis) xclaim(
 	consumer := group.consumers[consumerName]
 	consumer.numPendingEntries += len(claimedEntryIDs)
 
+	group.setLastSuccess(consumerName, m.effectiveNow())
 	return
 }
 
@@ -1790,9 +1813,4 @@ func parseBlock(cmd string, args []string, block *bool, timeout *time.Duration) 
 	}
 	(*timeout) = time.Millisecond * time.Duration(ms)
 	return nil
-}
-
-// taken from Go's time package. Can be dropped if miniredis supports >= 1.17
-func unixMilli(msec int64) time.Time {
-	return time.Unix(msec/1e3, (msec%1e3)*1e6)
 }

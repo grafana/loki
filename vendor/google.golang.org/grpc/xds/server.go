@@ -43,8 +43,8 @@ const serverPrefix = "[xds-server %p] "
 
 var (
 	// These new functions will be overridden in unit tests.
-	newXDSClient = func() (xdsclient.XDSClient, func(), error) {
-		return xdsclient.New()
+	newXDSClient = func(name string) (xdsclient.XDSClient, func(), error) {
+		return xdsclient.New(name)
 	}
 	newGRPCServer = func(opts ...grpc.ServerOption) grpcServer {
 		return grpc.NewServer(opts...)
@@ -95,11 +95,14 @@ func NewGRPCServer(opts ...grpc.ServerOption) (*GRPCServer, error) {
 	newXDSClient := newXDSClient
 	if s.opts.bootstrapContentsForTesting != nil {
 		// Bootstrap file contents may be specified as a server option for tests.
-		newXDSClient = func() (xdsclient.XDSClient, func(), error) {
-			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{Contents: s.opts.bootstrapContentsForTesting})
+		newXDSClient = func(name string) (xdsclient.XDSClient, func(), error) {
+			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{
+				Name:     name,
+				Contents: s.opts.bootstrapContentsForTesting,
+			})
 		}
 	}
-	xdsClient, xdsClientClose, err := newXDSClient()
+	xdsClient, xdsClientClose, err := newXDSClient(xdsclient.NameForServer)
 	if err != nil {
 		return nil, fmt.Errorf("xDS client creation failed: %v", err)
 	}
@@ -108,7 +111,7 @@ func NewGRPCServer(opts ...grpc.ServerOption) (*GRPCServer, error) {
 
 	// Listener resource name template is mandatory on the server side.
 	cfg := xdsClient.BootstrapConfig()
-	if cfg.ServerListenerResourceNameTemplate == "" {
+	if cfg.ServerListenerResourceNameTemplate() == "" {
 		xdsClientClose()
 		return nil, errors.New("missing server_listener_resource_name_template in the bootstrap configuration")
 	}
@@ -191,7 +194,7 @@ func (s *GRPCServer) Serve(lis net.Listener) error {
 	// string, it will be replaced with the server's listening "IP:port" (e.g.,
 	// "0.0.0.0:8080", "[::]:8080").
 	cfg := s.xdsC.BootstrapConfig()
-	name := bootstrap.PopulateResourceTemplate(cfg.ServerListenerResourceNameTemplate, lis.Addr().String())
+	name := bootstrap.PopulateResourceTemplate(cfg.ServerListenerResourceNameTemplate(), lis.Addr().String())
 
 	// Create a listenerWrapper which handles all functionality required by
 	// this particular instance of Serve().

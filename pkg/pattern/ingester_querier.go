@@ -52,7 +52,7 @@ func NewIngesterQuerier(
 func (q *IngesterQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
 	_, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.PatternClient) (interface{}, error) {
 		return client.Query(ctx, req)
@@ -146,8 +146,6 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 	responses := make([]ResponseFromIngesters, len(replicationSet.Instances))
 
 	for i, ingester := range replicationSet.Instances {
-		ingester := ingester
-		i := i
 		g.Go(func() error {
 			client, err := q.ringClient.GetClientFor(ingester.Addr)
 			if err != nil {

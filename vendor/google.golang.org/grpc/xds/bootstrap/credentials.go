@@ -58,7 +58,7 @@ func (t *tlsCredsBuilder) Name() string {
 }
 
 // googleDefaultCredsBuilder implements the `Credentials` interface defined in
-// package `xds/boostrap` and encapsulates a Google Default credential.
+// package `xds/bootstrap` and encapsulates a Google Default credential.
 type googleDefaultCredsBuilder struct{}
 
 func (d *googleDefaultCredsBuilder) Build(json.RawMessage) (credentials.Bundle, func(), error) {

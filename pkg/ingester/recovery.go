@@ -196,9 +196,6 @@ func (r *ingesterRecoverer) Close() {
 			s.chunkMtx.Lock()
 			defer s.chunkMtx.Unlock()
 
-			// reset all the incrementing stream counters after a successful WAL replay.
-			s.resetCounter()
-
 			if len(s.chunks) == 0 {
 				inst.removeStream(s)
 				return nil

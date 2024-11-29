@@ -16,7 +16,8 @@ var emptyStats = `"stats": {
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
-		"shardsDuration": 0
+		"shardsDuration": 0,
+		"usedBloomFilters": false
 	},
 	"ingester" : {
 		"store": {
@@ -269,7 +270,6 @@ func Test_encodePromResponse(t *testing.T) {
 			}`,
 		},
 	} {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			r, err := tt.resp.encode(context.Background())
 			require.NoError(t, err)

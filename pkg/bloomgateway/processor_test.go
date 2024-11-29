@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -129,7 +128,7 @@ func TestProcessor(t *testing.T) {
 		refs, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		mockStore := newMockBloomStore(refs, queriers, metas)
-		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, false, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -140,17 +139,16 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+
+		matchers := []v1.LabelMatcher{
+			v1.KeyValueMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -181,7 +179,7 @@ func TestProcessor(t *testing.T) {
 		}
 
 		mockStore := newMockBloomStore(refs, queriers, metas)
-		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, false, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -192,17 +190,15 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+		matchers := []v1.LabelMatcher{
+			v1.KeyValueMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, blocks)
+		task := newTask(ctx, "fake", swb, matchers, blocks)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -230,7 +226,7 @@ func TestProcessor(t *testing.T) {
 		mockStore := newMockBloomStore(refs, queriers, metas)
 		mockStore.err = errors.New("store failed")
 
-		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, false, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -241,17 +237,15 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+		matchers := []v1.LabelMatcher{
+			v1.KeyValueMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)

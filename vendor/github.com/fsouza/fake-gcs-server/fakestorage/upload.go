@@ -26,7 +26,10 @@ import (
 	"github.com/gorilla/mux"
 )
 
-const contentTypeHeader = "Content-Type"
+const (
+	contentTypeHeader  = "Content-Type"
+	cacheControlHeader = "Cache-Control"
+)
 
 const (
 	uploadTypeMedia     = "media"
@@ -48,11 +51,13 @@ const (
 var gsutilBoundary = regexp.MustCompile(`boundary='([^']*[()<>@,;:"/\[\]?= ]+[^']*)'`)
 
 type multipartMetadata struct {
-	ContentType     string            `json:"contentType"`
-	ContentEncoding string            `json:"contentEncoding"`
-	CustomTime      time.Time         `json:"customTime,omitempty"`
-	Name            string            `json:"name"`
-	Metadata        map[string]string `json:"metadata"`
+	ContentType        string            `json:"contentType"`
+	ContentEncoding    string            `json:"contentEncoding"`
+	ContentDisposition string            `json:"contentDisposition"`
+	CacheControl       string            `json:"cacheControl"`
+	CustomTime         time.Time         `json:"customTime,omitempty"`
+	Name               string            `json:"name"`
+	Metadata           map[string]string `json:"metadata"`
 }
 
 type contentRange struct {
@@ -238,6 +243,7 @@ func (s *Server) simpleUpload(bucketName string, r *http.Request) jsonResponse {
 			BucketName:      bucketName,
 			Name:            name,
 			ContentType:     r.Header.Get(contentTypeHeader),
+			CacheControl:    r.Header.Get(cacheControlHeader),
 			ContentEncoding: contentEncoding,
 			CustomTime:      convertTimeWithoutError(customTime),
 			ACL:             getObjectACL(predefinedACL),
@@ -249,7 +255,7 @@ func (s *Server) simpleUpload(bucketName string, r *http.Request) jsonResponse {
 		return errToJsonResponse(err)
 	}
 	obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
 }
 
 type notImplementedSeeker struct {
@@ -297,7 +303,7 @@ func (s *Server) signedUpload(bucketName string, r *http.Request) jsonResponse {
 		return errToJsonResponse(err)
 	}
 	obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
 }
 
 func getObjectACL(predefinedACL string) []storage.ACLRule {
@@ -370,13 +376,15 @@ func (s *Server) multipartUpload(bucketName string, r *http.Request) jsonRespons
 
 	obj := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
-			BucketName:      bucketName,
-			Name:            objName,
-			ContentType:     contentType,
-			ContentEncoding: metadata.ContentEncoding,
-			CustomTime:      metadata.CustomTime,
-			ACL:             getObjectACL(predefinedACL),
-			Metadata:        metadata.Metadata,
+			BucketName:         bucketName,
+			Name:               objName,
+			ContentType:        contentType,
+			CacheControl:       metadata.CacheControl,
+			ContentEncoding:    metadata.ContentEncoding,
+			ContentDisposition: metadata.ContentDisposition,
+			CustomTime:         metadata.CustomTime,
+			ACL:                getObjectACL(predefinedACL),
+			Metadata:           metadata.Metadata,
 		},
 		Content: notImplementedSeeker{io.NopCloser(io.MultiReader(partReaders...))},
 	}
@@ -386,7 +394,7 @@ func (s *Server) multipartUpload(bucketName string, r *http.Request) jsonRespons
 		return errToJsonResponse(err)
 	}
 	defer obj.Close()
-	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs)}
+	return jsonResponse{data: newObjectResponse(obj.ObjectAttrs, s.externalURL)}
 }
 
 func parseContentTypeParams(requestContentType string) (map[string]string, error) {
@@ -421,6 +429,7 @@ func (s *Server) resumableUpload(bucketName string, r *http.Request) jsonRespons
 			BucketName:      bucketName,
 			Name:            objName,
 			ContentType:     metadata.ContentType,
+			CacheControl:    metadata.CacheControl,
 			ContentEncoding: contentEncoding,
 			CustomTime:      metadata.CustomTime,
 			ACL:             getObjectACL(predefinedACL),
@@ -446,7 +455,7 @@ func (s *Server) resumableUpload(bucketName string, r *http.Request) jsonRespons
 		header.Set("X-Goog-Upload-Status", "active")
 	}
 	return jsonResponse{
-		data:   newObjectResponse(obj.ObjectAttrs),
+		data:   newObjectResponse(obj.ObjectAttrs, s.externalURL),
 		header: header,
 	}
 }
@@ -504,7 +513,7 @@ func (s *Server) uploadFileContent(r *http.Request) jsonResponse {
 	obj.Content = append(obj.Content, content...)
 	obj.Crc32c = checksum.EncodedCrc32cChecksum(obj.Content)
 	obj.Md5Hash = checksum.EncodedMd5Hash(obj.Content)
-	obj.Etag = fmt.Sprintf("%q", obj.Md5Hash)
+	obj.Etag = obj.Md5Hash
 	contentTypeHeader := r.Header.Get(contentTypeHeader)
 	if contentTypeHeader != "" {
 		obj.ContentType = contentTypeHeader
@@ -553,7 +562,7 @@ func (s *Server) uploadFileContent(r *http.Request) jsonResponse {
 	}
 	return jsonResponse{
 		status: status,
-		data:   newObjectResponse(obj.ObjectAttrs),
+		data:   newObjectResponse(obj.ObjectAttrs, s.externalURL),
 		header: responseHeader,
 	}
 }

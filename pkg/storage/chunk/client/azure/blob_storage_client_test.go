@@ -66,7 +66,7 @@ func (suite *FederatedTokenTestSuite) TestGetServicePrincipalToken() {
 		return suite.mockOAuthConfig, nil
 	}
 
-	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
 		require.True(suite.T(), *suite.mockOAuthConfig == oauthConfig, "should return the mocked object")
 		require.Equal(suite.T(), "myClientId", clientID)
 		require.Equal(suite.T(), "myJwtToken", jwt)
@@ -118,7 +118,6 @@ func Test_Hedging(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			count := atomic.NewInt32(0)
 			// hijack the client to count the number of calls

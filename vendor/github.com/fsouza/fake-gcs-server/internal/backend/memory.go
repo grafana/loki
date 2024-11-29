@@ -44,7 +44,7 @@ func (bm *bucketInMemory) addObject(obj Object) Object {
 		obj.Md5Hash = checksum.EncodedMd5Hash(obj.Content)
 	}
 	if obj.Etag == "" {
-		obj.Etag = fmt.Sprintf("%q", obj.Md5Hash)
+		obj.Etag = obj.Md5Hash
 	}
 	if obj.Size == 0 {
 		obj.Size = int64(len(obj.Content))

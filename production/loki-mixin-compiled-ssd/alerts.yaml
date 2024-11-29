@@ -4,12 +4,12 @@ groups:
         - alert: LokiRequestErrors
           annotations:
             description: |
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
             summary: Loki request error rate is high.
           expr: |
-            100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
+            100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (cluster, namespace, job, route)
               /
-            sum(rate(loki_request_duration_seconds_count[2m])) by (namespace, job, route)
+            sum(rate(loki_request_duration_seconds_count[2m])) by (cluster, namespace, job, route)
               > 10
           for: 15m
           labels:
@@ -17,16 +17,16 @@ groups:
         - alert: LokiRequestPanics
           annotations:
             description: |
-                {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
+                {{ $labels.cluster }} {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
             summary: Loki requests are causing code panics.
           expr: |
-            sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
+            sum(increase(loki_panic_total[10m])) by (cluster, namespace, job) > 0
           labels:
             severity: critical
         - alert: LokiRequestLatency
           annotations:
             description: |
-                {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
+                {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
             summary: Loki request error latency is high.
           expr: |
             cluster_namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*|/schedulerpb.SchedulerForQuerier/QuerierLoop"} > 1
@@ -39,7 +39,40 @@ groups:
                 {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
             summary: Loki deployment is running more than one compactor.
           expr: |
-            sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
+            sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
           for: 5m
           labels:
             severity: warning
+        - alert: LokiCompactorHasNotSuccessfullyRunCompaction
+          annotations:
+            description: |
+                {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 3 hours since the last compaction. This may indicate a problem with the compactor.
+            summary: Loki compaction has not run in the last 3 hours since the last compaction.
+          expr: |
+            # The "last successful run" metric is updated even if the compactor owns no tenants,
+            # so this alert correctly doesn't fire if compactor has nothing to do.
+            min (
+              time() - (loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{} > 0)
+            )
+            by (cluster, namespace)
+            > 60 * 60 * 3
+          for: 1h
+          labels:
+            severity: critical
+        - alert: LokiCompactorHasNotSuccessfullyRunCompaction
+          annotations:
+            description: |
+                {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 3h since startup. This may indicate a problem with the compactor.
+            summary: Loki compaction has not run in the last 3h since startup.
+          expr: |
+            # The "last successful run" metric is updated even if the compactor owns no tenants,
+            # so this alert correctly doesn't fire if compactor has nothing to do.
+            max(
+              max_over_time(
+                loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{}[3h]
+              )
+            ) by (cluster, namespace)
+            == 0
+          for: 1h
+          labels:
+            severity: critical

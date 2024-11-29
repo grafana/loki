@@ -892,7 +892,7 @@ func (bucket Bucket) RestoreObjectXML(objectKey, configXML string, options ...Op
 // string    returns the signed URL, when error is nil.
 // error    it's nil if no error, otherwise it's an error object.
 func (bucket Bucket) SignURL(objectKey string, method HTTPMethod, expiredInSec int64, options ...Option) (string, error) {
-	err := CheckObjectName(objectKey)
+	err := CheckObjectNameEx(objectKey, isVerifyObjectStrict(bucket.GetConfig()))
 	if err != nil {
 		return "", err
 	}
@@ -913,7 +913,7 @@ func (bucket Bucket) SignURL(objectKey string, method HTTPMethod, expiredInSec i
 		return "", err
 	}
 
-	return bucket.Client.Conn.signURL(method, bucket.BucketName, objectKey, expiration, params, headers), nil
+	return bucket.Client.Conn.signURL(method, bucket.BucketName, objectKey, expiration, params, headers)
 }
 
 // PutObjectWithURL uploads an object with the URL. If the object exists, it will be overwritten.

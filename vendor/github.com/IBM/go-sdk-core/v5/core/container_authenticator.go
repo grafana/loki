@@ -17,6 +17,7 @@ package core
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -35,7 +36,6 @@ import (
 //
 //	Authorization: Bearer <access-token>
 type ContainerAuthenticator struct {
-
 	// [optional] The name of the file containing the injected CR token value (applies to
 	// IKS-managed compute resources).
 	// Default value: (1) "/var/run/secrets/tokens/vault-token" or (2) "/var/run/secrets/tokens/sa-token",
@@ -173,7 +173,6 @@ func (builder *ContainerAuthenticatorBuilder) SetClient(client *http.Client) *Co
 
 // Build() returns a validated instance of the ContainerAuthenticator with the config that was set in the builder.
 func (builder *ContainerAuthenticatorBuilder) Build() (*ContainerAuthenticator, error) {
-
 	// Make sure the config is valid.
 	err := builder.ContainerAuthenticator.Validate()
 	if err != nil {
@@ -215,7 +214,7 @@ func (authenticator *ContainerAuthenticator) getUserAgent() string {
 // configuration properties.
 func newContainerAuthenticatorFromMap(properties map[string]string) (authenticator *ContainerAuthenticator, err error) {
 	if properties == nil {
-		err = fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
+		err := errors.New(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 
@@ -255,6 +254,7 @@ func (authenticator *ContainerAuthenticator) Authenticate(request *http.Request)
 	}
 
 	request.Header.Set("Authorization", "Bearer "+token)
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
@@ -293,7 +293,6 @@ func (authenticator *ContainerAuthenticator) setTokenData(tokenData *iamTokenDat
 // Ensures that one of IAMProfileName or IAMProfileID are specified, and the ClientId and ClientSecret pair are
 // mutually inclusive.
 func (authenticator *ContainerAuthenticator) Validate() error {
-
 	// Check to make sure that one of IAMProfileName or IAMProfileID are specified.
 	if authenticator.IAMProfileName == "" && authenticator.IAMProfileID == "" {
 		err := fmt.Errorf(ERRORMSG_ATLEAST_ONE_PROP_ERROR, "IAMProfileName", "IAMProfileID")
@@ -482,8 +481,7 @@ func (authenticator *ContainerAuthenticator) RequestToken() (*IamTokenServerResp
 			iamErrorMsg = string(detailedResponse.RawResult)
 		}
 
-		authError.Summary =
-			fmt.Sprintf(ERRORMSG_IAM_GETTOKEN_ERROR, detailedResponse.StatusCode, builder.URL, iamErrorMsg)
+		authError.Summary = fmt.Sprintf(ERRORMSG_IAM_GETTOKEN_ERROR, detailedResponse.StatusCode, builder.URL, iamErrorMsg)
 
 		return nil, authError
 	}
@@ -498,7 +496,6 @@ func (authenticator *ContainerAuthenticator) RequestToken() (*IamTokenServerResp
 
 // retrieveCRToken tries to read the CR token value from the local file system.
 func (authenticator *ContainerAuthenticator) retrieveCRToken() (crToken string, err error) {
-
 	if authenticator.CRTokenFilename != "" {
 		// Use the file specified by the user.
 		crToken, err = authenticator.readFile(authenticator.CRTokenFilename)

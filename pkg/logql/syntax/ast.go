@@ -47,7 +47,7 @@ func Clone[T Expr](e T) (T, error) {
 }
 
 func MustClone[T Expr](e T) T {
-	copied, err := Clone[T](e)
+	copied, err := Clone(e)
 	if err != nil {
 		panic(err)
 	}
@@ -60,7 +60,7 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	var filters []LineFilterExpr
 	visitor := &DepthFirstTraversal{
-		VisitLineFilterFn: func(v RootVisitor, e *LineFilterExpr) {
+		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
 			if e != nil {
 				filters = append(filters, *e)
 			}
@@ -68,6 +68,55 @@ func ExtractLineFilters(e Expr) []LineFilterExpr {
 	}
 	e.Accept(visitor)
 	return filters
+}
+
+func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
+	if e == nil {
+		return nil
+	}
+	var (
+		filters         []*LabelFilterExpr
+		foundParseStage bool
+	)
+
+	visitor := &DepthFirstTraversal{
+		VisitLabelFilterFn: func(_ RootVisitor, e *LabelFilterExpr) {
+			if !foundParseStage {
+				filters = append(filters, e)
+			}
+		},
+
+		// TODO(rfratto): Find a way to generically represent or test for an
+		// expression that modifies extracted labels (parsers, keep, drop, etc.).
+		//
+		// As the AST is now, we can't prove at compile time that the list of
+		// visitors below is complete. For example, if a new parser stage
+		// expression is added without updating this list, blooms can silently
+		// misbehave.
+
+		VisitLogfmtParserFn:           func(_ RootVisitor, _ *LogfmtParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(_ RootVisitor, _ *LabelParserExpr) { foundParseStage = true },
+		VisitJSONExpressionParserFn:   func(_ RootVisitor, _ *JSONExpressionParser) { foundParseStage = true },
+		VisitLogfmtExpressionParserFn: func(_ RootVisitor, _ *LogfmtExpressionParser) { foundParseStage = true },
+		VisitLabelFmtFn:               func(_ RootVisitor, _ *LabelFmtExpr) { foundParseStage = true },
+		VisitKeepLabelFn:              func(_ RootVisitor, _ *KeepLabelsExpr) { foundParseStage = true },
+		VisitDropLabelsFn:             func(_ RootVisitor, _ *DropLabelsExpr) { foundParseStage = true },
+	}
+	e.Accept(visitor)
+	return filters
+}
+
+func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
+	switch filter := filterer.(type) {
+	case *log.LineFilterLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.StringLabelFilter:
+		return filter.Type == labels.MatchEqual
+	case *log.BinaryLabelFilter:
+		return IsMatchEqualFilterer(filter.Left) && IsMatchEqualFilterer(filter.Right)
+	default:
+		return false
+	}
 }
 
 // implicit holds default implementations
@@ -751,6 +800,7 @@ func (e *DecolorizeExpr) Shardable(_ bool) bool { return true }
 func (e *DecolorizeExpr) Stage() (log.Stage, error) {
 	return log.NewDecolorizer()
 }
+
 func (e *DecolorizeExpr) String() string {
 	return fmt.Sprintf("%s %s", OpPipe, OpDecolorize)
 }
@@ -774,6 +824,7 @@ func (e *DropLabelsExpr) Shardable(_ bool) bool { return true }
 func (e *DropLabelsExpr) Stage() (log.Stage, error) {
 	return log.NewDropLabels(e.dropLabels), nil
 }
+
 func (e *DropLabelsExpr) String() string {
 	var sb strings.Builder
 
@@ -1185,7 +1236,7 @@ const (
 	OpRangeTypeLast        = "last_over_time"
 	OpRangeTypeAbsent      = "absent_over_time"
 
-	//vector
+	// vector
 	OpTypeVector = "vector"
 
 	// binops - logical/set
@@ -1256,6 +1307,11 @@ const (
 	OpRangeTypeQuantileSketch     = "__quantile_sketch_over_time__"
 	OpRangeTypeFirstWithTimestamp = "__first_over_time_ts__"
 	OpRangeTypeLastWithTimestamp  = "__last_over_time_ts__"
+
+	OpTypeCountMinSketch = "__count_min_sketch__"
+
+	// probabilistic aggregations
+	OpTypeApproxTopK = "approx_topk"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1484,7 +1540,7 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 	var p int
 	var err error
 	switch operation {
-	case OpTypeBottomK, OpTypeTopK:
+	case OpTypeBottomK, OpTypeTopK, OpTypeApproxTopK:
 		if params == nil {
 			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0)}
 		}
@@ -1494,6 +1550,9 @@ func mustNewVectorAggregationExpr(left SampleExpr, operation string, gr *Groupin
 		}
 		if p <= 0 {
 			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("invalid parameter (must be greater than 0) %s(%s", operation, *params), 0, 0)}
+		}
+		if operation == OpTypeApproxTopK && gr != nil {
+			return &VectorAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("grouping not allowed for %s aggregation", operation), 0, 0)}
 		}
 
 	default:
@@ -1560,7 +1619,7 @@ func (e *VectorAggregationExpr) String() string {
 	var params []string
 	switch e.Operation {
 	// bottomK and topk can have first parameter as 0
-	case OpTypeBottomK, OpTypeTopK:
+	case OpTypeBottomK, OpTypeTopK, OpTypeApproxTopK:
 		params = []string{fmt.Sprintf("%d", e.Params), e.Left.String()}
 	default:
 		if e.Params != 0 {
@@ -2228,6 +2287,8 @@ var shardableOps = map[string]bool{
 	OpTypeCount: true,
 	OpTypeMax:   true,
 	OpTypeMin:   true,
+
+	OpTypeApproxTopK: true,
 
 	// range vector ops
 	OpRangeTypeAvg:       true,

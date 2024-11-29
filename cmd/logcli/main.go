@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
-	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logcli/detected"
@@ -450,7 +450,7 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	}
 
 	// extract host
-	addressAction := func(c *kingpin.ParseContext) error {
+	addressAction := func(_ *kingpin.ParseContext) error {
 		// If a proxy is to be used do not set TLS ServerName. In the case of HTTPS proxy this ensures
 		// the http client validates both the proxy's cert and the cert used by loki behind the proxy
 		// using the ServerName's from the provided --addr and --proxy-url flags.
@@ -483,6 +483,8 @@ func newQueryClient(app *kingpin.Application) client.Client {
 	app.Flag("max-backoff", "Maximum backoff time between retries. Can also be set using LOKI_CLIENT_MAX_BACKOFF env var.").Default("0").Envar("LOKI_CLIENT_MAX_BACKOFF").IntVar(&client.BackoffConfig.MaxBackoff)
 	app.Flag("auth-header", "The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.").Default("Authorization").Envar("LOKI_AUTH_HEADER").StringVar(&client.AuthHeader)
 	app.Flag("proxy-url", "The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.").Default("").Envar("LOKI_HTTP_PROXY_URL").StringVar(&client.ProxyURL)
+	app.Flag("compress", "Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.").Default("false").Envar("LOKI_HTTP_COMPRESSION").BoolVar(&client.Compression)
+	app.Flag("envproxy", "Use ProxyFromEnvironment to use net/http ProxyFromEnvironment configuration, eg HTTP_PROXY").Default("false").Envar("LOKI_ENV_PROXY").BoolVar(&client.EnvironmentProxy)
 
 	return client
 }
@@ -494,7 +496,7 @@ func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
 	q := &labelquery.LabelQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -522,7 +524,7 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 	q := &seriesquery.SeriesQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
@@ -550,7 +552,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	q := &query.Query{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 
 		if instant {
 			q.SetInstant(mustParse(now, time.Now()))
@@ -692,37 +694,41 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 
 func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	// calculate query range from cli params
-	var from, to string
+	var fieldName, from, to string
 	var since time.Duration
 
 	q := &detected.FieldsQuery{}
 
 	// executed after all command flags are parsed
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
 
 		q.Start = mustParse(from, defaultStart)
 		q.End = mustParse(to, defaultEnd)
 
+		q.FieldName = fieldName
+
 		q.Quiet = *quiet
 
 		return nil
 	})
 
-	cmd.Flag("field-limit", "Limit on number of fields to return.").
+	cmd.Flag("limit", "Limit on number of fields or values to return.").
 		Default("100").
-		IntVar(&q.FieldLimit)
+		IntVar(&q.Limit)
 	cmd.Flag("line-limit", "Limit the number of lines each subquery is allowed to process.").
 		Default("1000").
 		IntVar(&q.LineLimit)
 	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").
 		Required().
 		StringVar(&q.QueryString)
+	cmd.Arg("field", "The name of the field.").Default("").StringVar(&fieldName)
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
+		Default("10s").
 		DurationVar(&q.Step)
 
 	return q

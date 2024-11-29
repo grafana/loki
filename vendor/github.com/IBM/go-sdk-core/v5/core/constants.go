@@ -20,6 +20,7 @@ const (
 	AUTHTYPE_BEARER_TOKEN = "bearerToken"
 	AUTHTYPE_NOAUTH       = "noAuth"
 	AUTHTYPE_IAM          = "iam"
+	AUTHTYPE_IAM_ASSUME   = "iamAssume"
 	AUTHTYPE_CP4D         = "cp4d"
 	AUTHTYPE_CONTAINER    = "container"
 	AUTHTYPE_VPC          = "vpc"
@@ -52,6 +53,7 @@ const (
 	PROPNAME_IAM_PROFILE_CRN  = "IAM_PROFILE_CRN"
 	PROPNAME_IAM_PROFILE_NAME = "IAM_PROFILE_NAME"
 	PROPNAME_IAM_PROFILE_ID   = "IAM_PROFILE_ID"
+	PROPNAME_IAM_ACCOUNT_ID   = "IAM_ACCOUNT_ID"
 
 	// SSL error
 	SSL_CERTIFICATION_ERROR = "x509: certificate"
@@ -83,6 +85,7 @@ const (
 	ERRORMSG_IAM_GETTOKEN_ERROR      = "IAM 'get token' error, status code %d received from '%s': %s" // #nosec G101
 	ERRORMSG_UNABLE_RETRIEVE_IITOKEN = "unable to retrieve instance identity token value: %s"         // #nosec G101
 	ERRORMSG_VPCMDS_OPERATION_ERROR  = "VPC metadata service error, status code %d received from '%s': %s"
+	ERRORMSG_ACCOUNTID_PROP_ERROR    = "IAMAccountID must be specified if and only if IAMProfileName is specified"
 
 	// The name of this module - matches the value in the go.mod file.
 	MODULE_NAME = "github.com/IBM/go-sdk-core/v5"

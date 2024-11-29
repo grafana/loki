@@ -159,28 +159,3 @@ func nextSkippingDuplicates(ring *ring, entry *ringEntry) *ringEntry {
 	// There's no qualifying next entry.
 	return nil
 }
-
-// nextSkippingDuplicatesSubConn finds the next subconn in the ring, that's
-// different from the given subconn.
-func nextSkippingDuplicatesSubConn(ring *ring, sc *subConn) *subConn {
-	var entry *ringEntry
-	for _, it := range ring.items {
-		if it.sc == sc {
-			entry = it
-			break
-		}
-	}
-	if entry == nil {
-		// If the given subconn is not in the ring (e.g. it was deleted), return
-		// the first one.
-		if len(ring.items) > 0 {
-			return ring.items[0].sc
-		}
-		return nil
-	}
-	ee := nextSkippingDuplicates(ring, entry)
-	if ee == nil {
-		return nil
-	}
-	return ee.sc
-}

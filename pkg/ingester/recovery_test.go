@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
@@ -229,7 +230,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -263,7 +264,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock)
+	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	// recover the checkpointed series
@@ -301,4 +302,43 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		},
 	}
 	require.Equal(t, expected, result.resps[0].Streams)
+}
+
+func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	store := &mockStore{
+		chunks: map[string][]chunk.Chunk{},
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+
+	var (
+		users            = 10
+		streamsCt        = 1000
+		entriesPerStream = 50
+	)
+
+	reader, _ := buildMemoryReader(users, streamsCt, entriesPerStream, true)
+
+	recoverer := newIngesterRecoverer(i)
+
+	err = RecoverWAL(context.Background(), reader, recoverer)
+	require.NoError(t, err)
+
+	recoverer.Close()
+
+	// Check that the entry count continues counting from the last WAL entry to avoid overwriting existing entries in the WAL on future replays.
+	for _, inst := range i.getInstances() {
+		err := inst.forAllStreams(context.Background(), func(s *stream) error {
+			assert.Equal(t, int64(entriesPerStream), s.entryCt)
+			return nil
+		})
+		require.NoError(t, err)
+	}
 }

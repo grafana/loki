@@ -17,6 +17,7 @@ package core
 import (
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -99,7 +100,6 @@ func NewCloudPakForDataAuthenticatorUsingAPIKey(url string, username string, api
 
 func newAuthenticator(url string, username string, password string, apikey string,
 	disableSSLVerification bool, headers map[string]string) (authenticator *CloudPakForDataAuthenticator, err error) {
-
 	authenticator = &CloudPakForDataAuthenticator{
 		Username:               username,
 		Password:               password,
@@ -121,7 +121,7 @@ func newAuthenticator(url string, username string, password string, apikey strin
 // newCloudPakForDataAuthenticatorFromMap : Constructs a new CloudPakForDataAuthenticator instance from a map.
 func newCloudPakForDataAuthenticatorFromMap(properties map[string]string) (*CloudPakForDataAuthenticator, error) {
 	if properties == nil {
-		err := fmt.Errorf(ERRORMSG_PROPS_MAP_NIL)
+		err := errors.New(ERRORMSG_PROPS_MAP_NIL)
 		return nil, SDKErrorf(err, "", "missing-props", getComponentInfo())
 	}
 
@@ -145,7 +145,6 @@ func (*CloudPakForDataAuthenticator) AuthenticationType() string {
 // Ensures the username, password, and url are not Nil. Additionally, ensures
 // they do not contain invalid characters.
 func (authenticator *CloudPakForDataAuthenticator) Validate() error {
-
 	if authenticator.Username == "" {
 		err := fmt.Errorf(ERRORMSG_PROP_MISSING, "Username")
 		return SDKErrorf(err, "", "no-user", getComponentInfo())
@@ -207,6 +206,7 @@ func (authenticator *CloudPakForDataAuthenticator) Authenticate(request *http.Re
 	}
 
 	request.Header.Set("Authorization", fmt.Sprintf(`Bearer %s`, token))
+	GetLogger().Debug("Authenticated outbound request (type=%s)\n", authenticator.AuthenticationType())
 	return nil
 }
 
@@ -231,15 +231,19 @@ func (authenticator *CloudPakForDataAuthenticator) setTokenData(tokenData *cp4dT
 // or the existing token has expired), a new access token is fetched from the token server.
 func (authenticator *CloudPakForDataAuthenticator) GetToken() (string, error) {
 	if authenticator.getTokenData() == nil || !authenticator.getTokenData().isTokenValid() {
+		GetLogger().Debug("Performing synchronous token fetch...")
 		// synchronously request the token
 		err := authenticator.synchronizedRequestToken()
 		if err != nil {
 			return "", RepurposeSDKProblem(err, "request-token-fail")
 		}
 	} else if authenticator.getTokenData().needsRefresh() {
+		GetLogger().Debug("Performing background asynchronous token fetch...")
 		// If refresh needed, kick off a go routine in the background to get a new token
 		//nolint: errcheck
 		go authenticator.invokeRequestTokenData()
+	} else {
+		GetLogger().Debug("Using cached access token...")
 	}
 
 	// return an error if the access token is not valid or was not fetched
@@ -296,7 +300,6 @@ type cp4dRequestBody struct {
 
 // requestToken: fetches a new access token from the token server.
 func (authenticator *CloudPakForDataAuthenticator) requestToken() (tokenResponse *cp4dTokenServerResponse, err error) {
-
 	// Create the request body (only one of APIKey or Password should be set
 	// on the authenticator so only one of them should end up in the serialized JSON).
 	body := &cp4dRequestBody{

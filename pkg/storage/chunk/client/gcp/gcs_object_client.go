@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -126,12 +127,25 @@ func (s *GCSObjectClient) Stop() {
 }
 
 func (s *GCSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
-	_, err := s.getsBuckets.Object(objectKey).Attrs(ctx)
-	if err != nil {
+	if _, err := s.GetAttributes(ctx, objectKey); err != nil {
+		if s.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
-
 	return true, nil
+}
+
+func (s *GCSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	attrs, err := s.getsBuckets.Object(objectKey).Attrs(ctx)
+	if err != nil {
+		return client.ObjectAttributes{}, err
+	}
+
+	if attrs != nil {
+		return client.ObjectAttributes{Size: attrs.Size}, nil
+	}
+	return client.ObjectAttributes{}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured GCS bucket.
@@ -265,11 +279,13 @@ func isContextErr(err error) bool {
 }
 
 // IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
-func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
+func IsStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
-		return false
+		// Go 1.23 changed the type of the error returned by the http client when a timeout occurs
+		// while waiting for headers.  This is a server side timeout.
+		return strings.Contains(err.Error(), "Client.Timeout")
 	}
 
 	// connection misconfiguration, or writing on a closed connection
@@ -299,7 +315,7 @@ func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
 }
 
 // IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
-func (s *GCSObjectClient) IsStorageThrottledErr(err error) bool {
+func IsStorageThrottledErr(err error) bool {
 	if gerr, ok := err.(*googleapi.Error); ok {
 		// https://cloud.google.com/storage/docs/retry-strategy
 		return gerr.Code == http.StatusTooManyRequests ||
@@ -310,8 +326,13 @@ func (s *GCSObjectClient) IsStorageThrottledErr(err error) bool {
 }
 
 // IsRetryableErr returns true if the request failed due to some retryable server-side scenario
+func IsRetryableErr(err error) bool {
+	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+}
+
+// IsRetryableErr returns true if the request failed due to some retryable server-side scenario
 func (s *GCSObjectClient) IsRetryableErr(err error) bool {
-	return s.IsStorageTimeoutErr(err) || s.IsStorageThrottledErr(err)
+	return IsRetryableErr(err)
 }
 
 func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, serviceAccount flagext.Secret) (http.RoundTripper, error) {
@@ -336,7 +357,7 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 	}
 	transportOptions := []option.ClientOption{option.WithScopes(scope)}
 	if insecure {
-		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS
 		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {

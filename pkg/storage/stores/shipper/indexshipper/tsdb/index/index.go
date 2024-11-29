@@ -14,7 +14,6 @@
 package index
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -37,6 +36,8 @@ import (
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
+
+	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
@@ -61,6 +62,10 @@ const (
 	fingerprintInterval = 1 << 10
 
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
+
+	// reserved; used in multitenant indices to signal the tenant. Eventually compacted away when
+	// single tenant indices are created.
+	TenantLabel = "__loki_tenant__"
 )
 
 type indexWriterStage uint8
@@ -107,18 +112,18 @@ type symbolCacheEntry struct {
 	lastValueIndex uint32
 }
 
-// Writer implements the IndexWriter interface for the standard
+// Creator implements the IndexWriter interface for the standard
 // serialization format.
-type Writer struct {
+type Creator struct {
 	ctx context.Context
 
-	// For the main index file.
-	f *FileWriter
+	// For the main index.
+	f writer
 
-	// Temporary file for postings.
-	fP *FileWriter
-	// Temporary file for posting offsets table.
-	fPO   *FileWriter
+	// Temporary writer for postings.
+	fP writer
+	// Temporary writer for posting offsets table.
+	fPO   writer
 	cntPO uint64
 
 	toc           TOC
@@ -131,7 +136,6 @@ type Writer struct {
 
 	numSymbols  int
 	symbols     *Symbols
-	symbolFile  *fileutil.MmapFile
 	lastSymbol  string
 	symbolCache map[string]symbolCacheEntry
 
@@ -211,7 +215,8 @@ func NewTOCFromByteSlice(bs ByteSlice) (*TOC, error) {
 	}, nil
 }
 
-func NewWriterWithVersion(ctx context.Context, version int, fn string) (*Writer, error) {
+// For writing TSDBs using temporary files
+func NewFileWriterWithVersion(ctx context.Context, version int, fn string) (*Creator, error) {
 	dir := filepath.Dir(fn)
 
 	df, err := fileutil.OpenDir(dir)
@@ -243,12 +248,39 @@ func NewWriterWithVersion(ctx context.Context, version int, fn string) (*Writer,
 		return nil, errors.Wrap(err, "sync dir")
 	}
 
-	iw := &Writer{
+	return newWriter(
+		ctx,
+		version,
+		f,
+		fP,
+		fPO,
+	)
+}
+
+// For writing TSDBs in memory
+func NewMemWriterWithVersion(ctx context.Context, version int) (*Creator, error) {
+	return newWriter(
+		ctx,
+		version,
+		NewBufferWriter(),
+		NewBufferWriter(),
+		NewBufferWriter(),
+	)
+}
+
+func newWriter(
+	ctx context.Context,
+	version int,
+	fWriter writer,
+	postingsWriter writer,
+	postingOffsetsWriter writer,
+) (*Creator, error) {
+	iw := &Creator{
 		Version: version,
 		ctx:     ctx,
-		f:       f,
-		fP:      fP,
-		fPO:     fPO,
+		f:       fWriter,
+		fP:      postingsWriter,
+		fPO:     postingOffsetsWriter,
 		stage:   idxStageNone,
 
 		// Reusable memory.
@@ -266,107 +298,26 @@ func NewWriterWithVersion(ctx context.Context, version int, fn string) (*Writer,
 }
 
 // NewWriter returns a new Writer to the given filename.
-func NewWriter(ctx context.Context, indexFormat int, fn string) (*Writer, error) {
-	return NewWriterWithVersion(ctx, indexFormat, fn)
+func NewWriter(ctx context.Context, indexFormat int, fn string) (*Creator, error) {
+	return NewFileWriterWithVersion(ctx, indexFormat, fn)
 }
 
-func (w *Writer) write(bufs ...[]byte) error {
-	return w.f.Write(bufs...)
+func (w *Creator) write(bufs ...[]byte) error {
+	return w.f.WriteBufs(bufs...)
 }
 
-func (w *Writer) writeAt(buf []byte, pos uint64) error {
-	return w.f.WriteAt(buf, pos)
-}
-
-func (w *Writer) addPadding(size int) error {
-	return w.f.AddPadding(size)
-}
-
-type FileWriter struct {
-	f    *os.File
-	fbuf *bufio.Writer
-	pos  uint64
-	name string
-}
-
-func NewFileWriter(name string) (*FileWriter, error) {
-	f, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o666)
-	if err != nil {
-		return nil, err
-	}
-	return &FileWriter{
-		f:    f,
-		fbuf: bufio.NewWriterSize(f, 1<<22),
-		pos:  0,
-		name: name,
-	}, nil
-}
-
-func (fw *FileWriter) Pos() uint64 {
-	return fw.pos
-}
-
-func (fw *FileWriter) Write(bufs ...[]byte) error {
-	for _, b := range bufs {
-		n, err := fw.fbuf.Write(b)
-		fw.pos += uint64(n)
-		if err != nil {
-			return err
-		}
-		// For now the index file must not grow beyond 64GiB. Some of the fixed-sized
-		// offset references in v1 are only 4 bytes large.
-		// Once we move to compressed/varint representations in those areas, this limitation
-		// can be lifted.
-		if fw.pos > 16*math.MaxUint32 {
-			return errors.Errorf("%q exceeding max size of 64GiB", fw.name)
-		}
-	}
-	return nil
-}
-
-func (fw *FileWriter) Flush() error {
-	return fw.fbuf.Flush()
-}
-
-func (fw *FileWriter) WriteAt(buf []byte, pos uint64) error {
-	if err := fw.Flush(); err != nil {
-		return err
-	}
-	_, err := fw.f.WriteAt(buf, int64(pos))
+func (w *Creator) writeAt(buf []byte, pos int64) error {
+	_, err := w.f.WriteAt(buf, pos)
 	return err
 }
 
-// AddPadding adds zero byte padding until the file size is a multiple size.
-func (fw *FileWriter) AddPadding(size int) error {
-	p := fw.pos % uint64(size)
-	if p == 0 {
-		return nil
-	}
-	p = uint64(size) - p
-
-	if err := fw.Write(make([]byte, p)); err != nil {
-		return errors.Wrap(err, "add padding")
-	}
-	return nil
-}
-
-func (fw *FileWriter) Close() error {
-	if err := fw.Flush(); err != nil {
-		return err
-	}
-	if err := fw.f.Sync(); err != nil {
-		return err
-	}
-	return fw.f.Close()
-}
-
-func (fw *FileWriter) Remove() error {
-	return os.Remove(fw.name)
+func (w *Creator) addPadding(size int) error {
+	return w.f.AddPadding(size)
 }
 
 // ensureStage handles transitions between write stages and ensures that IndexWriter
 // methods are called in an order valid for the implementation.
-func (w *Writer) ensureStage(s indexWriterStage) error {
+func (w *Creator) ensureStage(s indexWriterStage) error {
 	select {
 	case <-w.ctx.Done():
 		return w.ctx.Err()
@@ -389,7 +340,7 @@ func (w *Writer) ensureStage(s indexWriterStage) error {
 	// Mark start of sections in table of contents.
 	switch s {
 	case idxStageSymbols:
-		w.toc.Symbols = w.f.pos
+		w.toc.Symbols = w.f.Pos()
 		if err := w.startSymbols(); err != nil {
 			return err
 		}
@@ -397,10 +348,10 @@ func (w *Writer) ensureStage(s indexWriterStage) error {
 		if err := w.finishSymbols(); err != nil {
 			return err
 		}
-		w.toc.Series = w.f.pos
+		w.toc.Series = w.f.Pos()
 
 	case idxStageDone:
-		w.toc.LabelIndices = w.f.pos
+		w.toc.LabelIndices = w.f.Pos()
 		// LabelIndices generation depends on the posting offset
 		// table produced at this stage.
 		if err := w.writePostingsToTmpFiles(); err != nil {
@@ -410,22 +361,22 @@ func (w *Writer) ensureStage(s indexWriterStage) error {
 			return err
 		}
 
-		w.toc.Postings = w.f.pos
+		w.toc.Postings = w.f.Pos()
 		if err := w.writePostings(); err != nil {
 			return err
 		}
 
-		w.toc.LabelIndicesTable = w.f.pos
+		w.toc.LabelIndicesTable = w.f.Pos()
 		if err := w.writeLabelIndexesOffsetTable(); err != nil {
 			return err
 		}
 
-		w.toc.PostingsTable = w.f.pos
+		w.toc.PostingsTable = w.f.Pos()
 		if err := w.writePostingsOffsetTable(); err != nil {
 			return err
 		}
 
-		w.toc.FingerprintOffsets = w.f.pos
+		w.toc.FingerprintOffsets = w.f.Pos()
 		if err := w.writeFingerprintOffsetsTable(); err != nil {
 			return err
 		}
@@ -439,7 +390,7 @@ func (w *Writer) ensureStage(s indexWriterStage) error {
 	return nil
 }
 
-func (w *Writer) writeMeta() error {
+func (w *Creator) writeMeta() error {
 	w.buf1.Reset()
 	w.buf1.PutBE32(MagicIndex)
 	w.buf1.PutByte(byte(w.Version))
@@ -452,7 +403,7 @@ func (w *Writer) writeMeta() error {
 // fingerprint differs from what labels.Hash() produces. For example,
 // multitenant TSDBs embed a tenant label, but the actual series has no such
 // label and so the derived fingerprint differs.
-func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks ...ChunkMeta) error {
+func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks ...ChunkMeta) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -478,8 +429,8 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 		return errors.Errorf("failed to write padding bytes: %v", err)
 	}
 
-	if w.f.pos%16 != 0 {
-		return errors.Errorf("series write not 16-byte aligned at %d", w.f.pos)
+	if w.f.Pos()%16 != 0 {
+		return errors.Errorf("series write not 16-byte aligned at %d", w.f.Pos())
 	}
 
 	w.buf2.Reset()
@@ -528,7 +479,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 	if ref%fingerprintInterval == 0 {
 		// series references are the 16-byte aligned offsets
 		// Do NOT ask me how long I debugged this particular bit >:O
-		sRef := w.f.pos / 16
+		sRef := w.f.Pos() / 16
 		w.fingerprintOffsets = append(w.fingerprintOffsets, [2]uint64{sRef, labelHash})
 	}
 
@@ -539,7 +490,7 @@ func (w *Writer) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.F
 	return nil
 }
 
-func (w *Writer) addChunks(chunks []ChunkMeta, primary, scratch *encoding.Encbuf, pageSize int) {
+func (w *Creator) addChunks(chunks []ChunkMeta, primary, scratch *encoding.Encbuf, pageSize int) {
 	if w.Version > FormatV2 {
 		w.addChunksV3(chunks, primary, scratch, pageSize)
 		return
@@ -547,7 +498,7 @@ func (w *Writer) addChunks(chunks []ChunkMeta, primary, scratch *encoding.Encbuf
 	w.addChunksPriorV3(chunks, primary, scratch)
 }
 
-func (w *Writer) addChunksPriorV3(chunks []ChunkMeta, primary, _ *encoding.Encbuf) {
+func (w *Creator) addChunksPriorV3(chunks []ChunkMeta, primary, _ *encoding.Encbuf) {
 	primary.PutUvarint(len(chunks))
 
 	if len(chunks) > 0 {
@@ -576,7 +527,7 @@ func (w *Writer) addChunksPriorV3(chunks []ChunkMeta, primary, _ *encoding.Encbu
 	}
 }
 
-func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encbuf, chunkPageSize int) {
+func (w *Creator) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encbuf, chunkPageSize int) {
 	scratch.Reset()
 
 	primary.PutUvarint(len(chunks))
@@ -645,14 +596,14 @@ func (w *Writer) addChunksV3(chunks []ChunkMeta, primary, scratch *encoding.Encb
 	primary.PutBytes(scratch.Get())
 }
 
-func (w *Writer) startSymbols() error {
+func (w *Creator) startSymbols() error {
 	// We are at w.toc.Symbols.
 	// Leave 4 bytes of space for the length, and another 4 for the number of symbols
 	// which will both be calculated later.
 	return w.write([]byte("alenblen"))
 }
 
-func (w *Writer) AddSymbol(sym string) error {
+func (w *Creator) AddSymbol(sym string) error {
 	if err := w.ensureStage(idxStageSymbols); err != nil {
 		return err
 	}
@@ -666,8 +617,8 @@ func (w *Writer) AddSymbol(sym string) error {
 	return w.write(w.buf1.Get())
 }
 
-func (w *Writer) finishSymbols() error {
-	symbolTableSize := w.f.pos - w.toc.Symbols - 4
+func (w *Creator) finishSymbols() error {
+	symbolTableSize := w.f.Pos() - w.toc.Symbols - 4
 	// The symbol table's <len> part is 4 bytes. So the total symbol table size must be less than or equal to 2^32-1
 	if symbolTableSize > math.MaxUint32 {
 		return errors.Errorf("symbol table size exceeds 4 bytes: %d", symbolTableSize)
@@ -677,11 +628,11 @@ func (w *Writer) finishSymbols() error {
 	w.buf1.Reset()
 	w.buf1.PutBE32int(int(symbolTableSize))
 	w.buf1.PutBE32int(w.numSymbols)
-	if err := w.writeAt(w.buf1.Get(), w.toc.Symbols); err != nil {
+	if err := w.writeAt(w.buf1.Get(), int64(w.toc.Symbols)); err != nil {
 		return err
 	}
 
-	hashPos := w.f.pos
+	hashPos := w.f.Pos()
 	// Leave space for the hash. We can only calculate it
 	// now that the number of symbols is known, so mmap and do it from there.
 	if err := w.write([]byte("hash")); err != nil {
@@ -691,39 +642,39 @@ func (w *Writer) finishSymbols() error {
 		return err
 	}
 
-	sf, err := fileutil.OpenMmapFile(w.f.name)
+	symbolBytes, err := w.f.Bytes()
 	if err != nil {
 		return err
 	}
-	w.symbolFile = sf
-	hash := crc32.Checksum(w.symbolFile.Bytes()[w.toc.Symbols+4:hashPos], castagnoliTable)
+	hash := crc32.Checksum(symbolBytes[w.toc.Symbols+4:hashPos], castagnoliTable)
 	w.buf1.Reset()
 	w.buf1.PutBE32(hash)
-	if err := w.writeAt(w.buf1.Get(), hashPos); err != nil {
+	if err := w.writeAt(w.buf1.Get(), int64(hashPos)); err != nil {
 		return err
 	}
 
-	// Load in the symbol table efficiently for the rest of the index writing.
-	w.symbols, err = NewSymbols(RealByteSlice(w.symbolFile.Bytes()), w.Version, int(w.toc.Symbols))
+	// Now that we've calculated and added the checksum on disk, add it to the
+	// pre-checksummed bytes in memory so we can use this later,
+	// loading the symbol table efficiently for the rest of the index writing.
+	copy(symbolBytes[hashPos:], w.buf1.Get())
+	w.symbols, err = NewSymbols(RealByteSlice(symbolBytes), w.Version, int(w.toc.Symbols))
 	if err != nil {
 		return errors.Wrap(err, "read symbols")
 	}
 	return nil
 }
 
-func (w *Writer) writeLabelIndices() error {
+func (w *Creator) writeLabelIndices() error {
 	if err := w.fPO.Flush(); err != nil {
 		return err
 	}
 
-	// Find all the label values in the tmp posting offset table.
-	f, err := fileutil.OpenMmapFile(w.fPO.name)
+	pOffsets, err := w.fPO.Bytes()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.fPO.pos)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(pOffsets), int(w.fPO.Pos())))
 	cnt := w.cntPO
 	current := []byte{}
 	values := []uint32{}
@@ -764,7 +715,7 @@ func (w *Writer) writeLabelIndices() error {
 	return nil
 }
 
-func (w *Writer) writeLabelIndex(name string, values []uint32) error {
+func (w *Creator) writeLabelIndex(name string, values []uint32) error {
 	// Align beginning to 4 bytes for more efficient index list scans.
 	if err := w.addPadding(4); err != nil {
 		return err
@@ -772,10 +723,10 @@ func (w *Writer) writeLabelIndex(name string, values []uint32) error {
 
 	w.labelIndexes = append(w.labelIndexes, labelIndexHashEntry{
 		keys:   []string{name},
-		offset: w.f.pos,
+		offset: w.f.Pos(),
 	})
 
-	startPos := w.f.pos
+	startPos := w.f.Pos()
 	// Leave 4 bytes of space for the length, which will be calculated later.
 	if err := w.write([]byte("alen")); err != nil {
 		return err
@@ -801,12 +752,12 @@ func (w *Writer) writeLabelIndex(name string, values []uint32) error {
 
 	// Write out the length.
 	w.buf1.Reset()
-	l := w.f.pos - startPos - 4
+	l := w.f.Pos() - startPos - 4
 	if l > math.MaxUint32 {
 		return errors.Errorf("label index size exceeds 4 bytes: %d", l)
 	}
 	w.buf1.PutBE32int(int(l))
-	if err := w.writeAt(w.buf1.Get(), startPos); err != nil {
+	if err := w.writeAt(w.buf1.Get(), int64(startPos)); err != nil {
 		return err
 	}
 
@@ -816,8 +767,8 @@ func (w *Writer) writeLabelIndex(name string, values []uint32) error {
 }
 
 // writeLabelIndexesOffsetTable writes the label indices offset table.
-func (w *Writer) writeLabelIndexesOffsetTable() error {
-	startPos := w.f.pos
+func (w *Creator) writeLabelIndexesOffsetTable() error {
+	startPos := w.f.Pos()
 	// Leave 4 bytes of space for the length, which will be calculated later.
 	if err := w.write([]byte("alen")); err != nil {
 		return err
@@ -845,12 +796,12 @@ func (w *Writer) writeLabelIndexesOffsetTable() error {
 	}
 	// Write out the length.
 	w.buf1.Reset()
-	l := w.f.pos - startPos - 4
+	l := w.f.Pos() - startPos - 4
 	if l > math.MaxUint32 {
 		return errors.Errorf("label indexes offset table size exceeds 4 bytes: %d", l)
 	}
 	w.buf1.PutBE32int(int(l))
-	if err := w.writeAt(w.buf1.Get(), startPos); err != nil {
+	if err := w.writeAt(w.buf1.Get(), int64(startPos)); err != nil {
 		return err
 	}
 
@@ -860,13 +811,13 @@ func (w *Writer) writeLabelIndexesOffsetTable() error {
 }
 
 // writePostingsOffsetTable writes the postings offset table.
-func (w *Writer) writePostingsOffsetTable() error {
+func (w *Creator) writePostingsOffsetTable() error {
 	// Ensure everything is in the temporary file.
 	if err := w.fPO.Flush(); err != nil {
 		return err
 	}
 
-	startPos := w.f.pos
+	startPos := w.f.Pos()
 	// Leave 4 bytes of space for the length, which will be calculated later.
 	if err := w.write([]byte("alen")); err != nil {
 		return err
@@ -884,16 +835,12 @@ func (w *Writer) writePostingsOffsetTable() error {
 		return err
 	}
 
-	f, err := fileutil.OpenMmapFile(w.fPO.name)
+	pOffsets, err := w.fPO.Bytes()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if f != nil {
-			f.Close()
-		}
-	}()
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.fPO.pos)))
+
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(pOffsets), int(w.fPO.Pos())))
 	cnt := w.cntPO
 	for d.Err() == nil && cnt > 0 {
 		w.buf1.Reset()
@@ -911,11 +858,6 @@ func (w *Writer) writePostingsOffsetTable() error {
 		return d.Err()
 	}
 
-	// Cleanup temporary file.
-	if err := f.Close(); err != nil {
-		return err
-	}
-	f = nil
 	if err := w.fPO.Close(); err != nil {
 		return err
 	}
@@ -926,12 +868,12 @@ func (w *Writer) writePostingsOffsetTable() error {
 
 	// Write out the length.
 	w.buf1.Reset()
-	l := w.f.pos - startPos - 4
+	l := w.f.Pos() - startPos - 4
 	if l > math.MaxUint32 {
 		return errors.Errorf("postings offset table size exceeds 4 bytes: %d", l)
 	}
 	w.buf1.PutBE32int(int(l))
-	if err := w.writeAt(w.buf1.Get(), startPos); err != nil {
+	if err := w.writeAt(w.buf1.Get(), int64(startPos)); err != nil {
 		return err
 	}
 
@@ -941,7 +883,7 @@ func (w *Writer) writePostingsOffsetTable() error {
 	return w.write(w.buf1.Get())
 }
 
-func (w *Writer) writeFingerprintOffsetsTable() error {
+func (w *Creator) writeFingerprintOffsetsTable() error {
 	w.buf1.Reset()
 	w.buf2.Reset()
 
@@ -975,7 +917,7 @@ func (w *Writer) writeFingerprintOffsetsTable() error {
 
 const indexTOCLen = 8*9 + crc32.Size
 
-func (w *Writer) writeTOC() error {
+func (w *Creator) writeTOC() error {
 	w.buf1.Reset()
 
 	w.buf1.PutBE64(w.toc.Symbols)
@@ -995,7 +937,7 @@ func (w *Writer) writeTOC() error {
 	return w.write(w.buf1.Get())
 }
 
-func (w *Writer) writePostingsToTmpFiles() error {
+func (w *Creator) writePostingsToTmpFiles() error {
 	names := make([]string, 0, len(w.labelNames))
 	for n := range w.labelNames {
 		names = append(names, n)
@@ -1005,15 +947,15 @@ func (w *Writer) writePostingsToTmpFiles() error {
 	if err := w.f.Flush(); err != nil {
 		return err
 	}
-	f, err := fileutil.OpenMmapFile(w.f.name)
+
+	b, err := w.f.Bytes()
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	// Write out the special all posting.
 	offsets := []uint32{}
-	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
+	d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(b), int(w.toc.LabelIndices)))
 	d.Skip(int(w.toc.Series))
 	for d.Len() > 0 {
 		d.ConsumePadding()
@@ -1059,7 +1001,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 		// Label name -> label value -> positions.
 		postings := map[uint32]map[uint32][]uint32{}
 
-		d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(f.Bytes()), int(w.toc.LabelIndices)))
+		d := encoding.DecWrap(tsdb_enc.NewDecbufRaw(RealByteSlice(b), int(w.toc.LabelIndices)))
 		d.Skip(int(w.toc.Series))
 		for d.Len() > 0 {
 			d.ConsumePadding()
@@ -1120,7 +1062,7 @@ func (w *Writer) writePostingsToTmpFiles() error {
 	return nil
 }
 
-func (w *Writer) writePosting(name, value string, offs []uint32) error {
+func (w *Creator) writePosting(name, value string, offs []uint32) error {
 	// Align beginning to 4 bytes for more efficient postings list scans.
 	if err := w.fP.AddPadding(4); err != nil {
 		return err
@@ -1131,8 +1073,8 @@ func (w *Writer) writePosting(name, value string, offs []uint32) error {
 	w.buf1.PutUvarint(2)
 	w.buf1.PutUvarintStr(name)
 	w.buf1.PutUvarintStr(value)
-	w.buf1.PutUvarint64(w.fP.pos) // This is relative to the postings tmp file, not the final index file.
-	if err := w.fPO.Write(w.buf1.Get()); err != nil {
+	w.buf1.PutUvarint64(w.fP.Pos()) // This is relative to the postings tmp file, not the final index file.
+	if err := w.fPO.WriteBufs(w.buf1.Get()); err != nil {
 		return err
 	}
 	w.cntPO++
@@ -1155,32 +1097,34 @@ func (w *Writer) writePosting(name, value string, offs []uint32) error {
 	}
 	w.buf2.PutBE32int(l)
 	w.buf1.PutHash(w.crc32)
-	return w.fP.Write(w.buf2.Get(), w.buf1.Get())
+	return w.fP.WriteBufs(w.buf2.Get(), w.buf1.Get())
 }
 
-func (w *Writer) writePostings() error {
+func (w *Creator) writePostings() error {
 	// There's padding in the tmp file, make sure it actually works.
 	if err := w.f.AddPadding(4); err != nil {
 		return err
 	}
-	w.postingsStart = w.f.pos
+	w.postingsStart = w.f.Pos()
 
 	// Copy temporary file into main index.
 	if err := w.fP.Flush(); err != nil {
 		return err
 	}
-	if _, err := w.fP.f.Seek(0, 0); err != nil {
-		return err
-	}
-	// Don't need to calculate a checksum, so can copy directly.
-	n, err := io.CopyBuffer(w.f.fbuf, w.fP.f, make([]byte, 1<<20))
+	// NB(owen-d): inefficient, but avoids complexity `Pos()` altering `Seek` logic.
+	postings, err := w.fP.Bytes()
 	if err != nil {
 		return err
 	}
-	if uint64(n) != w.fP.pos {
-		return errors.Errorf("wrote %d bytes to posting temporary file, but only read back %d", w.fP.pos, n)
+
+	// Don't need to calculate a checksum, so can copy directly.
+	n, err := io.CopyBuffer(w.f, bytes.NewReader(postings), make([]byte, 1<<20))
+	if err != nil {
+		return err
 	}
-	w.f.pos += uint64(n)
+	if uint64(n) != w.fP.Pos() {
+		return errors.Errorf("wrote %d bytes to posting temporary file, but only read back %d", w.fP.Pos(), n)
+	}
 
 	if err := w.fP.Close(); err != nil {
 		return err
@@ -1203,29 +1147,38 @@ type labelIndexHashEntry struct {
 	offset uint64
 }
 
-func (w *Writer) Close() error {
-	// Even if this fails, we need to close all the files.
-	ensureErr := w.ensureStage(idxStageDone)
+// if reader is true, return an io.ReadCloser of the underlying index. Otherwise, it returns nil.
+func (w *Creator) Close(reader bool) (db io.ReadCloser, err error) {
+	var errs multierror.MultiError
 
-	if w.symbolFile != nil {
-		if err := w.symbolFile.Close(); err != nil {
-			return err
-		}
+	if ensureErr := w.ensureStage(idxStageDone); ensureErr != nil {
+		errs.Add(ensureErr)
 	}
+
 	if w.fP != nil {
 		if err := w.fP.Close(); err != nil {
-			return err
+			errs.Add(err)
 		}
 	}
+
 	if w.fPO != nil {
 		if err := w.fPO.Close(); err != nil {
-			return err
+			errs.Add(err)
 		}
 	}
+
 	if err := w.f.Close(); err != nil {
-		return err
+		errs.Add(err)
 	}
-	return ensureErr
+
+	if err := errs.Err(); err != nil {
+		return nil, err
+	}
+
+	if reader {
+		return w.f.Load()
+	}
+	return nil, nil
 }
 
 // StringIter iterates over a sorted list of strings.
@@ -1347,44 +1300,37 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		// Earlier V1 formats don't have a sorted postings offset table, so
 		// load the whole offset table into memory.
 		r.postingsV1 = map[string]map[string]uint64{}
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(key []string, off uint64, _ int) error {
-			if len(key) != 2 {
-				return errors.Errorf("unexpected key length for posting table %d", len(key))
+		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
+			if _, ok := r.postingsV1[string(name)]; !ok {
+				r.postingsV1[string(name)] = map[string]uint64{}
+				r.postings[string(name)] = nil // Used to get a list of labelnames in places.
 			}
-			if _, ok := r.postingsV1[key[0]]; !ok {
-				r.postingsV1[key[0]] = map[string]uint64{}
-				r.postings[key[0]] = nil // Used to get a list of labelnames in places.
-			}
-			r.postingsV1[key[0]][key[1]] = off
+			r.postingsV1[string(name)][string(value)] = off
 			return nil
 		}); err != nil {
 			return nil, errors.Wrap(err, "read postings table")
 		}
 	} else {
-		var lastKey []string
+		var lastName, lastValue []byte
 		lastOff := 0
 		valueCount := 0
 		// For the postings offset table we keep every label name but only every nth
 		// label value (plus the first and last one), to save memory.
-		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(key []string, _ uint64, off int) error {
-			if len(key) != 2 {
-				return errors.Errorf("unexpected key length for posting table %d", len(key))
-			}
-			if _, ok := r.postings[key[0]]; !ok {
+		if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, _ uint64, off int) error {
+			if _, ok := r.postings[string(name)]; !ok {
 				// Next label name.
-				r.postings[key[0]] = []postingOffset{}
-				if lastKey != nil {
+				r.postings[string(name)] = []postingOffset{}
+				if lastName != nil {
 					// Always include last value for each label name.
-					r.postings[lastKey[0]] = append(r.postings[lastKey[0]], postingOffset{value: lastKey[1], off: lastOff})
+					r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
 				}
-				lastKey = nil
 				valueCount = 0
 			}
 			if valueCount%symbolFactor == 0 {
-				r.postings[key[0]] = append(r.postings[key[0]], postingOffset{value: key[1], off: off})
-				lastKey = nil
+				r.postings[string(name)] = append(r.postings[string(name)], postingOffset{value: string(value), off: off})
+				lastName, lastValue = nil, nil
 			} else {
-				lastKey = key
+				lastName, lastValue = name, value
 				lastOff = off
 			}
 			valueCount++
@@ -1392,8 +1338,8 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		}); err != nil {
 			return nil, errors.Wrap(err, "read postings table")
 		}
-		if lastKey != nil {
-			r.postings[lastKey[0]] = append(r.postings[lastKey[0]], postingOffset{value: lastKey[1], off: lastOff})
+		if lastName != nil {
+			r.postings[string(lastName)] = append(r.postings[string(lastName)], postingOffset{value: string(lastValue), off: lastOff})
 		}
 		// Trim any extra space in the slices.
 		for k, v := range r.postings {
@@ -1443,15 +1389,12 @@ type Range struct {
 // for all postings lists.
 func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
 	m := map[labels.Label]Range{}
-	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(key []string, off uint64, _ int) error {
-		if len(key) != 2 {
-			return errors.Errorf("unexpected key length for posting table %d", len(key))
-		}
+	if err := ReadOffsetTable(r.b, r.toc.PostingsTable, func(name, value []byte, off uint64, _ int) error {
 		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable))
 		if d.Err() != nil {
 			return d.Err()
 		}
-		m[labels.Label{Name: key[0], Value: key[1]}] = Range{
+		m[labels.Label{Name: string(name), Value: string(value)}] = Range{
 			Start: int64(off) + 4,
 			End:   int64(off) + 4 + int64(d.Len()),
 		}
@@ -1606,27 +1549,24 @@ func (s symbolsIter) Err() error { return s.err }
 
 // ReadOffsetTable reads an offset table and at the given position calls f for each
 // found entry. If f returns an error it stops decoding and returns the received error.
-func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) error) error {
+func ReadOffsetTable(bs ByteSlice, off uint64, f func(name, value []byte, postingsOffset uint64, labelOffset int) error) error {
 	d := encoding.DecWrap(tsdb_enc.NewDecbufAt(bs, int(off), castagnoliTable))
 	startLen := d.Len()
 	cnt := d.Be32()
 
 	for d.Err() == nil && d.Len() > 0 && cnt > 0 {
 		offsetPos := startLen - d.Len()
-		keyCount := d.Uvarint()
-		// The Postings offset table takes only 2 keys per entry (name and value of label),
-		// and the LabelIndices offset table takes only 1 key per entry (a label name).
-		// Hence setting the size to max of both, i.e. 2.
-		keys := make([]string, 0, 2)
-
-		for i := 0; i < keyCount; i++ {
-			keys = append(keys, d.UvarintStr())
+		if keyCount := d.Uvarint(); keyCount != 2 {
+			return fmt.Errorf("unexpected number of keys for postings offset table %d", keyCount)
 		}
+
+		name := d.UvarintBytes()
+		value := d.UvarintBytes()
 		o := d.Uvarint64()
 		if d.Err() != nil {
 			break
 		}
-		if err := f(keys, o, offsetPos); err != nil {
+		if err := f(name, value, o, offsetPos); err != nil {
 			return err
 		}
 		cnt--
@@ -2580,7 +2520,7 @@ func readChunkMetaWithForcedMintime(d *encoding.Decbuf, mint int64, chunkMeta *C
 }
 
 func yoloString(b []byte) string {
-	return *((*string)(unsafe.Pointer(&b)))
+	return *((*string)(unsafe.Pointer(&b))) // #nosec G103 -- we know the string is not mutated
 }
 
 func overlap(from, through, chkFrom, chkThrough int64) bool {

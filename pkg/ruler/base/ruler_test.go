@@ -108,12 +108,12 @@ func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManage
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
 	if q != nil {
-		return func(mint, maxt int64) (storage.Querier, error) {
+		return func(_, _ int64) (storage.Querier, error) {
 			return q, nil
 		}
 	}
 
-	return func(mint, maxt int64) (storage.Querier, error) {
+	return func(_, _ int64) (storage.Querier, error) {
 		return storage.NoopQuerier(), nil
 	}
 }
@@ -245,7 +245,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	// We do expect 1 API call for the user create with the getOrCreateNotifier()
 	wg.Add(1)
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, "1")
@@ -290,7 +290,7 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 
 	// We do expect 2 API calls for the users create with the getOrCreateNotifier()
 	wg.Add(2)
-	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts1 := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, tenant1)
@@ -298,7 +298,7 @@ func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
 	}))
 	defer ts1.Close()
 
-	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts2 := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, tenant2)
@@ -1763,7 +1763,6 @@ func TestSendAlerts(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		tc := tc
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			senderFunc := senderFunc(func(alerts ...*notifier.Alert) {
 				if len(tc.in) == 0 {
@@ -1836,7 +1835,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	defer m.Unregister()
 	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
 	r := buildRuler(t, rulerCfg, &fakeQuerier{
-		fn: func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+		fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 			return series.NewConcreteSeriesSet([]storage.Series{
 				series.NewConcreteSeries(
 					labels.Labels{
@@ -1978,7 +1977,7 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 			defer m.Unregister()
 
 			r := buildRuler(tt, rulerCfg, &fakeQuerier{
-				fn: func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+				fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 					return series.NewConcreteSeriesSet([]storage.Series{
 						series.NewConcreteSeries(
 							labels.Labels{

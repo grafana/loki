@@ -58,6 +58,7 @@ func Test_Push(t *testing.T) {
 			false,
 			&backoff,
 			log.NewNopLogger(),
+			NewMetrics(nil),
 		)
 		require.NoError(t, err)
 		ts, payload := testPayload()
@@ -82,7 +83,7 @@ func Test_Push(t *testing.T) {
 			"user", "secret",
 			false,
 			&backoff,
-			log.NewNopLogger(),
+			log.NewNopLogger(), NewMetrics(nil),
 		)
 		require.NoError(t, err)
 		ts, payload := testPayload()
@@ -123,6 +124,7 @@ func Test_Push(t *testing.T) {
 			quit:        make(chan struct{}),
 			backoff:     &backoff,
 			entries:     entries{},
+			metrics:     NewMetrics(nil),
 		}
 
 		lbls1 := labels.New(labels.Label{Name: "test", Value: "test"})
@@ -228,6 +230,9 @@ func Test_Push(t *testing.T) {
 				AggregatedMetricEntry(model.TimeFromUnix(now.Unix()), 3, 3, "test2_service", lbls2),
 				stream2.Entries[2].Line,
 			)
+
+			// sanity check that bytes are logged in humanized form without whitespaces
+			assert.Contains(t, stream1.Entries[0].Line, "bytes=1B")
 
 		case <-time.After(5 * time.Second):
 			t.Fatal("timeout")

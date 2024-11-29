@@ -254,7 +254,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"ingester error",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
@@ -268,7 +268,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"store error",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1"},
 				}), nil)
@@ -284,7 +284,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"no matches",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
@@ -298,7 +298,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"returns series",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1", "b": "2"},
 					{"a": "1", "b": "3"},
@@ -344,7 +344,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"dedupes",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1", "b": "2"},
 				}), nil)
@@ -529,8 +529,6 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			// For this test's purpose, whenever a new ingester client needs to
 			// be created, the factory will always return the same mock instance
@@ -1164,7 +1162,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("SelectLogs", mock.Anything, mock.Anything).Return(mockStreamIterator(0, 1), nil)
 	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
-	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
+	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
 	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 		{Labels: []logproto.SeriesIdentifier_LabelsEntry{{Key: "foo", Value: "1"}}},
 	}, nil)
@@ -1362,7 +1360,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 }
 
 func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {
-	iq, err := newIngesterQuerier(clientCfg, ring, cfg.ExtraQueryDelay, clientFactory, constants.Loki, util_log.Logger)
+	iq, err := newIngesterQuerier(cfg, clientCfg, ring, nil, nil, clientFactory, constants.Loki, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -1411,7 +1409,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
 			Return([]string{"val1", "val2"}, nil)
@@ -1452,7 +1450,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel", "commonLabel"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel", mock.Anything).
 			Return([]string{"val1", "val2"}, nil).
@@ -1490,7 +1488,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&logproto.LabelToValuesResponse{}, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel1", "storeLabel2"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel1", mock.Anything).
 			Return([]string{"val1", "val2"}, nil).
@@ -1524,7 +1522,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&logproto.LabelToValuesResponse{}, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{"storeLabel1", "pod"}, nil).
 			On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, "storeLabel1", mock.Anything).
 			Return([]string{"val1", "val2"}, nil).
@@ -1563,7 +1561,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 
 		querier, err := newQuerier(
@@ -1599,7 +1597,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 
 		querier, err := newQuerier(
@@ -1630,7 +1628,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(&ingesterResponse, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 		request := logproto.DetectedLabelsRequest{
 			Start: now,
@@ -1665,7 +1663,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 
 		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, nil)
-		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		storeClient.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return([]string{}, nil)
 		request := logproto.DetectedLabelsRequest{
 			Start: now,
@@ -1729,275 +1727,6 @@ func BenchmarkQuerierDetectedLabels(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, err := querier.DetectedLabels(ctx, &request)
-		assert.NoError(b, err)
-	}
-}
-
-func TestQuerier_DetectedFields(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	require.NoError(t, err)
-	ctx := user.InjectOrgID(context.Background(), "test")
-
-	conf := mockQuerierConfig()
-	conf.IngesterQueryStoreMaxLookback = 0
-
-	request := logproto.DetectedFieldsRequest{
-		Start:      time.Now().Add(-1 * time.Minute),
-		End:        time.Now(),
-		Query:      `{type="test"}`,
-		LineLimit:  1000,
-		FieldLimit: 1000,
-	}
-
-	t.Run("returns detected fields from queried logs", func(t *testing.T) {
-		store := newStoreMock()
-		store.On("SelectLogs", mock.Anything, mock.Anything).
-			Return(mockLogfmtStreamIterator(1, 5), nil)
-
-		queryClient := newQueryClientMock()
-		queryClient.On("Recv").
-			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 5)}), nil)
-
-		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
-			Return(queryClient, nil)
-
-		querier, err := newQuerier(
-			conf,
-			mockIngesterClientConfig(),
-			newIngesterClientMockFactory(ingesterClient),
-			mockReadRingWithOneActiveIngester(),
-			&mockDeleteGettter{},
-			store, limits)
-		require.NoError(t, err)
-
-		resp, err := querier.DetectedFields(ctx, &request)
-		require.NoError(t, err)
-
-		detectedFields := resp.Fields
-		// log lines come from querier_mock_test.go
-		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 7)
-		expectedCardinality := map[string]uint64{
-			"message":  5,
-			"count":    5,
-			"fake":     1,
-			"bytes":    5,
-			"duration": 5,
-			"percent":  5,
-			"even":     2,
-		}
-		for _, d := range detectedFields {
-			card := expectedCardinality[d.Label]
-			assert.Equal(t, card, d.Cardinality, "Expected cardinality mismatch for: %s", d.Label)
-		}
-	})
-
-	t.Run("returns detected fields with structured metadata from queried logs", func(t *testing.T) {
-		store := newStoreMock()
-		store.On("SelectLogs", mock.Anything, mock.Anything).
-			Return(mockLogfmtStreamIterator(1, 5), nil)
-
-		queryClient := newQueryClientMock()
-		queryClient.On("Recv").
-			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStreamWithStructuredMetadata(1, 5)}), nil)
-
-		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
-			Return(queryClient, nil)
-
-		querier, err := newQuerier(
-			conf,
-			mockIngesterClientConfig(),
-			newIngesterClientMockFactory(ingesterClient),
-			mockReadRingWithOneActiveIngester(),
-			&mockDeleteGettter{},
-			store, limits)
-		require.NoError(t, err)
-
-		resp, err := querier.DetectedFields(ctx, &request)
-		require.NoError(t, err)
-
-		detectedFields := resp.Fields
-		// log lines come from querier_mock_test.go
-		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 9)
-		expectedCardinality := map[string]uint64{
-			"variable": 5,
-			"constant": 1,
-			"message":  5,
-			"count":    5,
-			"fake":     1,
-			"bytes":    5,
-			"duration": 5,
-			"percent":  5,
-			"even":     2,
-		}
-		for _, d := range detectedFields {
-			card := expectedCardinality[d.Label]
-			assert.Equal(t, card, d.Cardinality, "Expected cardinality mismatch for: %s", d.Label)
-		}
-	})
-
-	t.Run("correctly identifies different field types", func(t *testing.T) {
-		store := newStoreMock()
-		store.On("SelectLogs", mock.Anything, mock.Anything).
-			Return(mockLogfmtStreamIterator(1, 2), nil)
-
-		queryClient := newQueryClientMock()
-		queryClient.On("Recv").
-			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 2)}), nil)
-
-		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
-			Return(queryClient, nil)
-
-		querier, err := newQuerier(
-			conf,
-			mockIngesterClientConfig(),
-			newIngesterClientMockFactory(ingesterClient),
-			mockReadRingWithOneActiveIngester(),
-			&mockDeleteGettter{},
-			store, limits)
-		require.NoError(t, err)
-
-		resp, err := querier.DetectedFields(ctx, &request)
-		require.NoError(t, err)
-
-		detectedFields := resp.Fields
-		// log lines come from querier_mock_test.go
-		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 7)
-
-		var messageField, countField, bytesField, durationField, floatField, evenField *logproto.DetectedField
-		for _, field := range detectedFields {
-			switch field.Label {
-			case "message":
-				messageField = field
-			case "count":
-				countField = field
-			case "bytes":
-				bytesField = field
-			case "duration":
-				durationField = field
-			case "percent":
-				floatField = field
-			case "even":
-				evenField = field
-			}
-		}
-
-		assert.Equal(t, logproto.DetectedFieldString, messageField.Type)
-		assert.Equal(t, logproto.DetectedFieldInt, countField.Type)
-		assert.Equal(t, logproto.DetectedFieldBytes, bytesField.Type)
-		assert.Equal(t, logproto.DetectedFieldDuration, durationField.Type)
-		assert.Equal(t, logproto.DetectedFieldFloat, floatField.Type)
-		assert.Equal(t, logproto.DetectedFieldBoolean, evenField.Type)
-	})
-
-	t.Run("correctly identifies parser to use with logfmt and structured metadata", func(t *testing.T) {
-		store := newStoreMock()
-		store.On("SelectLogs", mock.Anything, mock.Anything).
-			Return(mockLogfmtStreamIterator(1, 2), nil)
-
-		queryClient := newQueryClientMock()
-		queryClient.On("Recv").
-			Return(mockQueryResponse([]logproto.Stream{mockLogfmtStreamWithStructuredMetadata(1, 2)}), nil)
-
-		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
-			Return(queryClient, nil)
-
-		querier, err := newQuerier(
-			conf,
-			mockIngesterClientConfig(),
-			newIngesterClientMockFactory(ingesterClient),
-			mockReadRingWithOneActiveIngester(),
-			&mockDeleteGettter{},
-			store, limits)
-		require.NoError(t, err)
-
-		resp, err := querier.DetectedFields(ctx, &request)
-		require.NoError(t, err)
-
-		detectedFields := resp.Fields
-		// log lines come from querier_mock_test.go
-		// message="line %d" count=%d fake=true bytes=%dMB duration=%dms percent=%f even=%t
-		assert.Len(t, detectedFields, 9)
-
-		var messageField, countField, bytesField, durationField, floatField, evenField, constantField, variableField *logproto.DetectedField
-		for _, field := range detectedFields {
-			switch field.Label {
-			case "message":
-				messageField = field
-			case "count":
-				countField = field
-			case "bytes":
-				bytesField = field
-			case "duration":
-				durationField = field
-			case "percent":
-				floatField = field
-			case "even":
-				evenField = field
-			case "constant":
-				constantField = field
-			case "variable":
-				variableField = field
-			}
-		}
-
-		assert.Equal(t, []string{"logfmt"}, messageField.Parsers)
-		assert.Equal(t, []string{"logfmt"}, countField.Parsers)
-		assert.Equal(t, []string{"logfmt"}, bytesField.Parsers)
-		assert.Equal(t, []string{"logfmt"}, durationField.Parsers)
-		assert.Equal(t, []string{"logfmt"}, floatField.Parsers)
-		assert.Equal(t, []string{"logfmt"}, evenField.Parsers)
-		assert.Equal(t, []string{""}, constantField.Parsers)
-		assert.Equal(t, []string{""}, variableField.Parsers)
-	})
-}
-
-func BenchmarkQuerierDetectedFields(b *testing.B) {
-	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
-	ctx := user.InjectOrgID(context.Background(), "test")
-
-	conf := mockQuerierConfig()
-	conf.IngesterQueryStoreMaxLookback = 0
-
-	request := logproto.DetectedFieldsRequest{
-		Start:      time.Now().Add(-1 * time.Minute),
-		End:        time.Now(),
-		Query:      `{type="test"}`,
-		LineLimit:  1000,
-		FieldLimit: 1000,
-	}
-
-	store := newStoreMock()
-	store.On("SelectLogs", mock.Anything, mock.Anything).
-		Return(mockLogfmtStreamIterator(1, 2), nil)
-
-	queryClient := newQueryClientMock()
-	queryClient.On("Recv").
-		Return(mockQueryResponse([]logproto.Stream{mockLogfmtStream(1, 2)}), nil)
-
-	ingesterClient := newQuerierClientMock()
-	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).
-		Return(queryClient, nil)
-
-	querier, _ := newQuerier(
-		conf,
-		mockIngesterClientConfig(),
-		newIngesterClientMockFactory(ingesterClient),
-		mockReadRingWithOneActiveIngester(),
-		&mockDeleteGettter{},
-		store, limits)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		_, err := querier.DetectedFields(ctx, &request)
 		assert.NoError(b, err)
 	}
 }

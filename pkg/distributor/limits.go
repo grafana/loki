@@ -24,6 +24,7 @@ type Limits interface {
 	IncrementDuplicateTimestamps(userID string) bool
 	DiscoverServiceName(userID string) []string
 	DiscoverLogLevels(userID string) bool
+	LogLevelFields(userID string) []string
 
 	ShardStreams(userID string) shardstreams.Config
 	IngestionRateStrategy() string
@@ -36,4 +37,6 @@ type Limits interface {
 
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int
+
+	IngestionPartitionsTenantShardSize(userID string) int
 }

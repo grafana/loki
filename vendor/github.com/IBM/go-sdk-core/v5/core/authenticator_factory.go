@@ -1,6 +1,6 @@
 package core
 
-// (C) Copyright IBM Corp. 2019, 2023.
+// (C) Copyright IBM Corp. 2019, 2024.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import (
 // GetAuthenticatorFromEnvironment instantiates an Authenticator using service properties
 // retrieved from external config sources.
 func GetAuthenticatorFromEnvironment(credentialKey string) (authenticator Authenticator, err error) {
+	GetLogger().Debug("Get authenticator from environment, key=%s\n", credentialKey)
 	properties, err := getServiceProperties(credentialKey)
 	if len(properties) == 0 {
 		return
@@ -52,6 +53,8 @@ func GetAuthenticatorFromEnvironment(credentialKey string) (authenticator Authen
 		authenticator, err = newBearerTokenAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_IAM) {
 		authenticator, err = newIamAuthenticatorFromMap(properties)
+	} else if strings.EqualFold(authType, AUTHTYPE_IAM_ASSUME) {
+		authenticator, err = newIamAssumeAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_CONTAINER) {
 		authenticator, err = newContainerAuthenticatorFromMap(properties)
 	} else if strings.EqualFold(authType, AUTHTYPE_VPC) {
@@ -69,6 +72,10 @@ func GetAuthenticatorFromEnvironment(credentialKey string) (authenticator Authen
 			"unknown-auth-type",
 			getComponentInfo(),
 		)
+	}
+
+	if authenticator != nil {
+		GetLogger().Debug("Returning authenticator, type=%s\n", authenticator.AuthenticationType())
 	}
 
 	return

@@ -6,11 +6,13 @@ package objstore
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -70,8 +72,19 @@ type InstrumentedBucket interface {
 type BucketReader interface {
 	// Iter calls f for each entry in the given directory (not recursive.). The argument to f is the full
 	// object name including the prefix of the inspected directory.
+
 	// Entries are passed to function in sorted order.
-	Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error
+	Iter(ctx context.Context, dir string, f func(name string) error, options ...IterOption) error
+
+	// IterWithAttributes calls f for each entry in the given directory similar to Iter.
+	// In addition to Name, it also includes requested object attributes in the argument to f.
+	//
+	// Attributes can be requested using IterOption.
+	// Not all IterOptions are supported by all providers, requesting for an unsupported option will fail with ErrOptionNotSupported.
+	IterWithAttributes(ctx context.Context, dir string, f func(attrs IterObjectAttributes) error, options ...IterOption) error
+
+	// SupportedIterOptions returns a list of supported IterOptions by the underlying provider.
+	SupportedIterOptions() []IterOptionType
 
 	// Get returns a reader for the given object name.
 	Get(ctx context.Context, name string) (io.ReadCloser, error)
@@ -101,24 +114,66 @@ type InstrumentedBucketReader interface {
 	ReaderWithExpectedErrs(IsOpFailureExpectedFunc) BucketReader
 }
 
+var ErrOptionNotSupported = errors.New("iter option is not supported")
+
+// IterOptionType is used for type-safe option support checking.
+type IterOptionType int
+
+const (
+	Recursive IterOptionType = iota
+	UpdatedAt
+)
+
 // IterOption configures the provided params.
-type IterOption func(params *IterParams)
+type IterOption struct {
+	Type  IterOptionType
+	Apply func(params *IterParams)
+}
 
 // WithRecursiveIter is an option that can be applied to Iter() to recursively list objects
 // in the bucket.
-func WithRecursiveIter(params *IterParams) {
-	params.Recursive = true
+func WithRecursiveIter() IterOption {
+	return IterOption{
+		Type: Recursive,
+		Apply: func(params *IterParams) {
+			params.Recursive = true
+		},
+	}
+}
+
+// WithUpdatedAt is an option that can be applied to Iter() to
+// include the last modified time in the attributes.
+// NB: Prefixes may not report last modified time.
+// This option is currently supported for the azure, s3, bos, gcs and filesystem providers.
+func WithUpdatedAt() IterOption {
+	return IterOption{
+		Type: UpdatedAt,
+		Apply: func(params *IterParams) {
+			params.LastModified = true
+		},
+	}
 }
 
 // IterParams holds the Iter() parameters and is used by objstore clients implementations.
 type IterParams struct {
-	Recursive bool
+	Recursive    bool
+	LastModified bool
+}
+
+func ValidateIterOptions(supportedOptions []IterOptionType, options ...IterOption) error {
+	for _, opt := range options {
+		if !slices.Contains(supportedOptions, opt.Type) {
+			return fmt.Errorf("%w: %v", ErrOptionNotSupported, opt.Type)
+		}
+	}
+
+	return nil
 }
 
 func ApplyIterOptions(options ...IterOption) IterParams {
 	out := IterParams{}
 	for _, opt := range options {
-		opt(&out)
+		opt.Apply(&out)
 	}
 	return out
 }
@@ -189,6 +244,20 @@ type ObjectAttributes struct {
 	LastModified time.Time `json:"last_modified"`
 }
 
+type IterObjectAttributes struct {
+	Name         string
+	lastModified time.Time
+}
+
+func (i *IterObjectAttributes) SetLastModified(t time.Time) {
+	i.lastModified = t
+}
+
+// LastModified returns the timestamp the object was last modified. Returns false if the timestamp is not available.
+func (i *IterObjectAttributes) LastModified() (time.Time, bool) {
+	return i.lastModified, !i.lastModified.IsZero()
+}
+
 // TryToGetSize tries to get upfront size from reader.
 // Some implementations may return only size of unread data in the reader, so it's best to call this method before
 // doing any reading.
@@ -211,6 +280,8 @@ func TryToGetSize(r io.Reader) (int64, error) {
 		return f.Size(), nil
 	case ObjectSizer:
 		return f.ObjectSize()
+	case *io.LimitedReader:
+		return f.N, nil
 	}
 	return 0, errors.Errorf("unsupported type of io.Reader: %T", r)
 }
@@ -400,11 +471,8 @@ type IsOpFailureExpectedFunc func(error) bool
 
 var _ InstrumentedBucket = &metricBucket{}
 
-// WrapWithMetrics takes a bucket and registers metrics with the given registry for
-// operations run against the bucket.
-func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBucket {
-	bkt := &metricBucket{
-		bkt:                 b,
+func BucketMetrics(reg prometheus.Registerer, name string) *Metrics {
+	return &Metrics{
 		isOpFailureExpected: func(err error) bool { return false },
 		ops: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name:        "objstore_bucket_operations_total",
@@ -430,8 +498,8 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     prometheus.ExponentialBuckets(2<<14, 2, 16), // 32KiB, 64KiB, ... 1GiB
 			// Use factor=2 for native histograms, which gives similar buckets as the original exponential buckets.
-			NativeHistogramBucketFactor: 2,
-			NativeHistogramMaxBucketNumber: 100,
+			NativeHistogramBucketFactor:     2,
+			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 		}, []string{"operation"}),
 
@@ -441,8 +509,8 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			ConstLabels: prometheus.Labels{"bucket": name},
 			Buckets:     []float64{0.001, 0.01, 0.1, 0.3, 0.6, 1, 3, 6, 9, 20, 30, 60, 90, 120},
 			// Use the recommended defaults for native histograms with 10% growth factor.
-			NativeHistogramBucketFactor: 1.1,
-			NativeHistogramMaxBucketNumber: 100,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 		}, []string{"operation"}),
 
@@ -452,6 +520,27 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 			ConstLabels: prometheus.Labels{"bucket": name},
 		}),
 	}
+}
+
+// WrapWithMetrics takes a bucket and registers metrics with the given registry for
+// operations run against the bucket.
+func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBucket {
+	metrics := BucketMetrics(reg, name)
+	return wrapWithMetrics(b, metrics)
+}
+
+// WrapWith takes a `bucket` and `metrics` that returns instrumented bucket.
+// Similar to WrapWithMetrics, but `metrics` can be passed separately as an argument.
+func WrapWith(b Bucket, metrics *Metrics) *metricBucket {
+	return wrapWithMetrics(b, metrics)
+}
+
+func wrapWithMetrics(b Bucket, metrics *Metrics) *metricBucket {
+	bkt := &metricBucket{
+		bkt:     b,
+		metrics: metrics,
+	}
+
 	for _, op := range []string{
 		OpIter,
 		OpGet,
@@ -461,10 +550,10 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		OpDelete,
 		OpAttributes,
 	} {
-		bkt.ops.WithLabelValues(op)
-		bkt.opsFailures.WithLabelValues(op)
-		bkt.opsDuration.WithLabelValues(op)
-		bkt.opsFetchedBytes.WithLabelValues(op)
+		bkt.metrics.ops.WithLabelValues(op)
+		bkt.metrics.opsFailures.WithLabelValues(op)
+		bkt.metrics.opsDuration.WithLabelValues(op)
+		bkt.metrics.opsFetchedBytes.WithLabelValues(op)
 	}
 
 	// fetched bytes only relevant for get, getrange and upload
@@ -473,14 +562,12 @@ func WrapWithMetrics(b Bucket, reg prometheus.Registerer, name string) *metricBu
 		OpGetRange,
 		OpUpload,
 	} {
-		bkt.opsTransferredBytes.WithLabelValues(op)
+		bkt.metrics.opsTransferredBytes.WithLabelValues(op)
 	}
 	return bkt
 }
 
-type metricBucket struct {
-	bkt Bucket
-
+type Metrics struct {
 	ops                 *prometheus.CounterVec
 	opsFailures         *prometheus.CounterVec
 	isOpFailureExpected IsOpFailureExpectedFunc
@@ -491,16 +578,23 @@ type metricBucket struct {
 	lastSuccessfulUploadTime prometheus.Gauge
 }
 
+type metricBucket struct {
+	bkt     Bucket
+	metrics *Metrics
+}
+
 func (b *metricBucket) WithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket {
 	return &metricBucket{
-		bkt:                      b.bkt,
-		ops:                      b.ops,
-		opsFailures:              b.opsFailures,
-		opsFetchedBytes:          b.opsFetchedBytes,
-		opsTransferredBytes:      b.opsTransferredBytes,
-		isOpFailureExpected:      fn,
-		opsDuration:              b.opsDuration,
-		lastSuccessfulUploadTime: b.lastSuccessfulUploadTime,
+		bkt: b.bkt,
+		metrics: &Metrics{
+			ops:                      b.metrics.ops,
+			opsFailures:              b.metrics.opsFailures,
+			opsFetchedBytes:          b.metrics.opsFetchedBytes,
+			opsTransferredBytes:      b.metrics.opsTransferredBytes,
+			isOpFailureExpected:      fn,
+			opsDuration:              b.metrics.opsDuration,
+			lastSuccessfulUploadTime: b.metrics.lastSuccessfulUploadTime,
+		},
 	}
 }
 
@@ -508,138 +602,171 @@ func (b *metricBucket) ReaderWithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket
 	return b.WithExpectedErrs(fn)
 }
 
-func (b *metricBucket) Iter(ctx context.Context, dir string, f func(name string) error, options ...IterOption) error {
+func (b *metricBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...IterOption) error {
 	const op = OpIter
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
-	start := time.Now()
+	timer := prometheus.NewTimer(b.metrics.opsDuration.WithLabelValues(op))
+	defer timer.ObserveDuration()
+
 	err := b.bkt.Iter(ctx, dir, f, options...)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return err
+}
+
+func (b *metricBucket) IterWithAttributes(ctx context.Context, dir string, f func(IterObjectAttributes) error, options ...IterOption) error {
+	const op = OpIter
+	b.metrics.ops.WithLabelValues(op).Inc()
+
+	timer := prometheus.NewTimer(b.metrics.opsDuration.WithLabelValues(op))
+	defer timer.ObserveDuration()
+
+	err := b.bkt.IterWithAttributes(ctx, dir, f, options...)
+	if err != nil {
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
+		}
+	}
+
+	return err
+}
+
+func (b *metricBucket) SupportedIterOptions() []IterOptionType {
+	return b.bkt.SupportedIterOptions()
 }
 
 func (b *metricBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	const op = OpAttributes
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
 	attrs, err := b.bkt.Attributes(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return attrs, err
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return attrs, nil
 }
 
 func (b *metricBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	const op = OpGet
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
+
+	start := time.Now()
 
 	rc, err := b.bkt.Get(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
+		b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 		return nil, err
 	}
 	return newTimingReader(
+		start,
 		rc,
 		true,
 		op,
-		b.opsDuration,
-		b.opsFailures,
-		b.isOpFailureExpected,
-		b.opsFetchedBytes,
-		b.opsTransferredBytes,
+		b.metrics.opsDuration,
+		b.metrics.opsFailures,
+		b.metrics.isOpFailureExpected,
+		b.metrics.opsFetchedBytes,
+		b.metrics.opsTransferredBytes,
 	), nil
 }
 
 func (b *metricBucket) GetRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
 	const op = OpGetRange
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
+
+	start := time.Now()
 
 	rc, err := b.bkt.GetRange(ctx, name, off, length)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
+		b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 		return nil, err
 	}
 	return newTimingReader(
+		start,
 		rc,
 		true,
 		op,
-		b.opsDuration,
-		b.opsFailures,
-		b.isOpFailureExpected,
-		b.opsFetchedBytes,
-		b.opsTransferredBytes,
+		b.metrics.opsDuration,
+		b.metrics.opsFailures,
+		b.metrics.isOpFailureExpected,
+		b.metrics.opsFetchedBytes,
+		b.metrics.opsTransferredBytes,
 	), nil
 }
 
 func (b *metricBucket) Exists(ctx context.Context, name string) (bool, error) {
 	const op = OpExists
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
 	ok, err := b.bkt.Exists(ctx, name)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return false, err
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 	return ok, nil
 }
 
 func (b *metricBucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	const op = OpUpload
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
+
+	start := time.Now()
 
 	trc := newTimingReader(
+		start,
 		r,
 		false,
 		op,
-		b.opsDuration,
-		b.opsFailures,
-		b.isOpFailureExpected,
+		b.metrics.opsDuration,
+		b.metrics.opsFailures,
+		b.metrics.isOpFailureExpected,
 		nil,
-		b.opsTransferredBytes,
+		b.metrics.opsTransferredBytes,
 	)
 	defer trc.Close()
 	err := b.bkt.Upload(ctx, name, trc)
 	if err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
 	}
-	b.lastSuccessfulUploadTime.SetToCurrentTime()
+	b.metrics.lastSuccessfulUploadTime.SetToCurrentTime()
 
 	return nil
 }
 
 func (b *metricBucket) Delete(ctx context.Context, name string) error {
 	const op = OpDelete
-	b.ops.WithLabelValues(op).Inc()
+	b.metrics.ops.WithLabelValues(op).Inc()
 
 	start := time.Now()
 	if err := b.bkt.Delete(ctx, name); err != nil {
-		if !b.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
-			b.opsFailures.WithLabelValues(op).Inc()
+		if !b.metrics.isOpFailureExpected(err) && ctx.Err() != context.Canceled {
+			b.metrics.opsFailures.WithLabelValues(op).Inc()
 		}
 		return err
 	}
-	b.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
+	b.metrics.opsDuration.WithLabelValues(op).Observe(time.Since(start).Seconds())
 
 	return nil
 }
@@ -682,7 +809,7 @@ type timingReader struct {
 	transferredBytes  *prometheus.HistogramVec
 }
 
-func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) io.ReadCloser {
+func newTimingReader(start time.Time, r io.Reader, closeReader bool, op string, dur *prometheus.HistogramVec, failed *prometheus.CounterVec, isFailureExpected IsOpFailureExpectedFunc, fetchedBytes *prometheus.CounterVec, transferredBytes *prometheus.HistogramVec) io.ReadCloser {
 	// Initialize the metrics with 0.
 	dur.WithLabelValues(op)
 	failed.WithLabelValues(op)
@@ -693,7 +820,7 @@ func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.H
 		closeReader:       closeReader,
 		objSize:           objSize,
 		objSizeErr:        objSizeErr,
-		start:             time.Now(),
+		start:             start,
 		op:                op,
 		duration:          dur,
 		failed:            failed,
@@ -705,7 +832,6 @@ func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.H
 
 	_, isSeeker := r.(io.Seeker)
 	_, isReaderAt := r.(io.ReaderAt)
-
 	if isSeeker && isReaderAt {
 		// The assumption is that in most cases when io.ReaderAt() is implemented then
 		// io.Seeker is implemented too (e.g. os.File).
@@ -713,6 +839,9 @@ func newTimingReader(r io.Reader, closeReader bool, op string, dur *prometheus.H
 	}
 	if isSeeker {
 		return &timingReaderSeeker{timingReader: trc}
+	}
+	if _, isWriterTo := r.(io.WriterTo); isWriterTo {
+		return &timingReaderWriterTo{timingReader: trc}
 	}
 
 	return &trc
@@ -749,11 +878,16 @@ func (r *timingReader) Close() error {
 
 func (r *timingReader) Read(b []byte) (n int, err error) {
 	n, err = r.Reader.Read(b)
+	r.updateMetrics(n, err)
+	return n, err
+}
+
+func (r *timingReader) updateMetrics(n int, err error) {
 	if r.fetchedBytes != nil {
 		r.fetchedBytes.WithLabelValues(r.op).Add(float64(n))
 	}
-
 	r.readBytes += int64(n)
+
 	// Report metric just once.
 	if !r.alreadyGotErr && err != nil && err != io.EOF {
 		if !r.isFailureExpected(err) && !errors.Is(err, context.Canceled) {
@@ -761,7 +895,6 @@ func (r *timingReader) Read(b []byte) (n int, err error) {
 		}
 		r.alreadyGotErr = true
 	}
-	return n, err
 }
 
 type timingReaderSeeker struct {
@@ -778,4 +911,28 @@ type timingReaderSeekerReaderAt struct {
 
 func (rsc *timingReaderSeekerReaderAt) ReadAt(p []byte, off int64) (int, error) {
 	return (rsc.Reader).(io.ReaderAt).ReadAt(p, off)
+}
+
+type timingReaderWriterTo struct {
+	timingReader
+}
+
+func (t *timingReaderWriterTo) WriteTo(w io.Writer) (n int64, err error) {
+	n, err = (t.Reader).(io.WriterTo).WriteTo(w)
+	t.timingReader.updateMetrics(int(n), err)
+	return n, err
+}
+
+type ObjectSizerReadCloser struct {
+	io.ReadCloser
+	Size func() (int64, error)
+}
+
+// ObjectSize implement ObjectSizer.
+func (o ObjectSizerReadCloser) ObjectSize() (int64, error) {
+	if o.Size == nil {
+		return 0, errors.New("unknown size")
+	}
+
+	return o.Size()
 }

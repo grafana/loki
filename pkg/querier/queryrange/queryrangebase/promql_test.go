@@ -314,7 +314,6 @@ func Test_PromQL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
 
 			baseQuery, err := engine.NewRangeQuery(context.Background(), shardAwareQueryable, nil, tt.normalQuery, start, end, step)
@@ -570,7 +569,7 @@ func Test_FunctionParallelism(t *testing.T) {
 
 }
 
-var shardAwareQueryable = storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+var shardAwareQueryable = storage.QueryableFunc(func(_, _ int64) (storage.Querier, error) {
 	return &testMatrix{
 		series: []*promql.StorageSeries{
 			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "barr"}}, factor(5)),

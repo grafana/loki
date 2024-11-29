@@ -2900,7 +2900,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(reason) (rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/ingester\", namespace=~\"$namespace\"}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"$namespace/ingester\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum by(reason) (rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\", namespace=~\"$namespace\"}[$__rate_interval])) / ignoring(reason) group_left sum(rate(loki_ingester_chunks_flushed_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\", namespace=~\"$namespace\"}[$__rate_interval]))",
                         "interval": "",
                         "legendFormat": "{{ reason }}"
                      }
@@ -3427,6 +3427,417 @@
             ],
             "targets": [ ],
             "title": "Read Path",
+            "type": "row"
+         },
+         {
+            "collapsed": true,
+            "datasource": null,
+            "gridPos": {
+               "h": 1,
+               "w": 24,
+               "x": 0,
+               "y": 31
+            },
+            "id": 64,
+            "panels": [
+               {
+                  "aliasColors": { },
+                  "bars": false,
+                  "dashLength": 10,
+                  "dashes": false,
+                  "datasource": "$datasource",
+                  "fill": 1,
+                  "fillGradient": 0,
+                  "gridPos": {
+                     "h": 7,
+                     "w": 6,
+                     "x": 0,
+                     "y": 32
+                  },
+                  "hiddenSeries": false,
+                  "id": 68,
+                  "legend": {
+                     "avg": false,
+                     "current": false,
+                     "max": false,
+                     "min": false,
+                     "show": false,
+                     "total": false,
+                     "values": false
+                  },
+                  "lines": false,
+                  "linewidth": 1,
+                  "nullPointMode": "null",
+                  "options": {
+                     "dataLinks": [ ]
+                  },
+                  "panels": [ ],
+                  "percentage": false,
+                  "pointradius": 1,
+                  "points": true,
+                  "renderer": "flot",
+                  "seriesOverrides": [ ],
+                  "spaceLength": 10,
+                  "stack": false,
+                  "steppedLine": false,
+                  "targets": [
+                     {
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki.*|enterprise-logs)-read.*\"}[$__rate_interval]))",
+                        "intervalFactor": 3,
+                        "legendFormat": "{{pod}}",
+                        "refId": "A"
+                     }
+                  ],
+                  "thresholds": [ ],
+                  "timeFrom": null,
+                  "timeRegions": [ ],
+                  "timeShift": null,
+                  "title": "CPU Usage",
+                  "tooltip": {
+                     "shared": true,
+                     "sort": 2,
+                     "value_type": "individual"
+                  },
+                  "type": "timeseries",
+                  "xaxis": {
+                     "buckets": null,
+                     "mode": "time",
+                     "name": null,
+                     "show": true,
+                     "values": [ ]
+                  },
+                  "yaxes": [
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": true
+                     },
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": true
+                     }
+                  ],
+                  "yaxis": {
+                     "align": false,
+                     "alignLevel": null
+                  }
+               },
+               {
+                  "aliasColors": { },
+                  "bars": false,
+                  "dashLength": 10,
+                  "dashes": false,
+                  "datasource": "$datasource",
+                  "fieldConfig": {
+                     "defaults": {
+                        "unit": "binBps"
+                     }
+                  },
+                  "fill": 1,
+                  "fillGradient": 0,
+                  "gridPos": {
+                     "h": 7,
+                     "w": 6,
+                     "x": 0,
+                     "y": 39
+                  },
+                  "hiddenSeries": false,
+                  "id": 69,
+                  "legend": {
+                     "avg": false,
+                     "current": false,
+                     "hideEmpty": false,
+                     "hideZero": false,
+                     "max": false,
+                     "min": false,
+                     "show": false,
+                     "total": false,
+                     "values": false
+                  },
+                  "lines": false,
+                  "linewidth": 1,
+                  "nullPointMode": "null",
+                  "options": {
+                     "dataLinks": [ ]
+                  },
+                  "panels": [ ],
+                  "percentage": false,
+                  "pointradius": 1,
+                  "points": true,
+                  "renderer": "flot",
+                  "seriesOverrides": [ ],
+                  "spaceLength": 10,
+                  "stack": false,
+                  "steppedLine": false,
+                  "targets": [
+                     {
+                        "expr": "go_memstats_heap_inuse_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"(loki.*|enterprise-logs)-backend.*\"}",
+                        "instant": false,
+                        "intervalFactor": 3,
+                        "legendFormat": "{{pod}}",
+                        "refId": "A"
+                     }
+                  ],
+                  "thresholds": [ ],
+                  "timeFrom": null,
+                  "timeRegions": [ ],
+                  "timeShift": null,
+                  "title": "Memory Usage",
+                  "tooltip": {
+                     "shared": true,
+                     "sort": 2,
+                     "value_type": "individual"
+                  },
+                  "type": "timeseries",
+                  "xaxis": {
+                     "buckets": null,
+                     "mode": "time",
+                     "name": null,
+                     "show": true,
+                     "values": [ ]
+                  },
+                  "yaxes": [
+                     {
+                        "format": "bytes",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": true
+                     },
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": true
+                     }
+                  ],
+                  "yaxis": {
+                     "align": false,
+                     "alignLevel": null
+                  }
+               },
+               {
+                  "aliasColors": { },
+                  "bars": true,
+                  "dashLength": 10,
+                  "dashes": false,
+                  "datasource": "$loki_datasource",
+                  "fill": 1,
+                  "fillGradient": 0,
+                  "gridPos": {
+                     "h": 3,
+                     "w": 18,
+                     "x": 12,
+                     "y": 32
+                  },
+                  "hiddenSeries": false,
+                  "id": 65,
+                  "legend": {
+                     "avg": false,
+                     "current": false,
+                     "max": false,
+                     "min": false,
+                     "show": false,
+                     "total": false,
+                     "values": false
+                  },
+                  "lines": false,
+                  "linewidth": 1,
+                  "nullPointMode": "null",
+                  "options": {
+                     "dataLinks": [ ]
+                  },
+                  "panels": [ ],
+                  "percentage": false,
+                  "pointradius": 2,
+                  "points": false,
+                  "renderer": "flot",
+                  "seriesOverrides": [
+                     {
+                        "alias": "{}",
+                        "color": "#F2495C"
+                     }
+                  ],
+                  "spaceLength": 10,
+                  "stack": false,
+                  "steppedLine": false,
+                  "targets": [
+                     {
+                        "expr": "sum(rate({cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-backend\"} | logfmt |  level=\"error\"[$__auto]))",
+                        "refId": "A"
+                     }
+                  ],
+                  "thresholds": [ ],
+                  "timeFrom": null,
+                  "timeRegions": [ ],
+                  "timeShift": null,
+                  "title": "Error Log Rate",
+                  "tooltip": {
+                     "shared": true,
+                     "sort": 2,
+                     "value_type": "individual"
+                  },
+                  "type": "timeseries",
+                  "xaxis": {
+                     "buckets": null,
+                     "mode": "time",
+                     "name": null,
+                     "show": false,
+                     "values": [ ]
+                  },
+                  "yaxes": [
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": true
+                     },
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": false
+                     }
+                  ],
+                  "yaxis": {
+                     "align": false,
+                     "alignLevel": null
+                  }
+               },
+               {
+                  "datasource": "$loki_datasource",
+                  "gridPos": {
+                     "h": 18,
+                     "w": 18,
+                     "x": 12,
+                     "y": 35
+                  },
+                  "id": 66,
+                  "options": {
+                     "showLabels": false,
+                     "showTime": false,
+                     "sortOrder": "Descending",
+                     "wrapLogMessage": true
+                  },
+                  "panels": [ ],
+                  "targets": [
+                     {
+                        "expr": "{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-backend\"} |= \"level=error\"",
+                        "refId": "A"
+                     }
+                  ],
+                  "timeFrom": null,
+                  "timeShift": null,
+                  "title": "Logs",
+                  "type": "logs"
+               },
+               {
+                  "aliasColors": { },
+                  "bars": false,
+                  "dashLength": 10,
+                  "dashes": false,
+                  "datasource": "$datasource",
+                  "fill": 0,
+                  "fillGradient": 0,
+                  "gridPos": {
+                     "h": 7,
+                     "w": 6,
+                     "x": 0,
+                     "y": 46
+                  },
+                  "hiddenSeries": false,
+                  "id": 70,
+                  "legend": {
+                     "avg": false,
+                     "current": false,
+                     "max": false,
+                     "min": false,
+                     "show": false,
+                     "total": false,
+                     "values": false
+                  },
+                  "lines": true,
+                  "linewidth": 1,
+                  "nullPointMode": "null",
+                  "options": {
+                     "dataLinks": [ ]
+                  },
+                  "panels": [ ],
+                  "percentage": false,
+                  "pointradius": 1,
+                  "points": false,
+                  "renderer": "flot",
+                  "seriesOverrides": [ ],
+                  "spaceLength": 10,
+                  "stack": false,
+                  "steppedLine": false,
+                  "targets": [
+                     {
+                        "expr": "sum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-backend\", status_code!~\"5[0-9]{2}\"}[$__rate_interval])) by (route)\n/\nsum(rate(loki_request_duration_seconds_count{cluster=\"$cluster\", namespace=\"$namespace\", job=~\"($namespace)/(loki.*|enterprise-logs)-backend\"}[$__rate_interval])) by (route) > 0",
+                        "interval": "",
+                        "intervalFactor": 1,
+                        "legendFormat": "{{route}}",
+                        "refId": "A"
+                     }
+                  ],
+                  "thresholds": [ ],
+                  "timeFrom": null,
+                  "timeRegions": [ ],
+                  "timeShift": null,
+                  "title": "Success Rate",
+                  "tooltip": {
+                     "shared": true,
+                     "sort": 2,
+                     "value_type": "individual"
+                  },
+                  "type": "timeseries",
+                  "xaxis": {
+                     "buckets": null,
+                     "mode": "time",
+                     "name": null,
+                     "show": true,
+                     "values": [ ]
+                  },
+                  "yaxes": [
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": true
+                     },
+                     {
+                        "format": "short",
+                        "label": null,
+                        "logBase": 1,
+                        "max": null,
+                        "min": null,
+                        "show": true
+                     }
+                  ],
+                  "yaxis": {
+                     "align": false,
+                     "alignLevel": null
+                  }
+               }
+            ],
+            "targets": [ ],
+            "title": "Backend Path",
             "type": "row"
          },
          {

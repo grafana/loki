@@ -1,4 +1,3 @@
-version: '3.4'
 services:
   consul:
     logging: &logging
@@ -30,7 +29,7 @@ services:
   memcached:
     logging:
       <<: *logging
-    image: memcached:1.6.17-alpine
+    image: memcached:1.6.32-alpine
 
   jaeger:
     logging:
