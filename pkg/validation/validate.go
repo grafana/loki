@@ -11,8 +11,8 @@ import (
 )
 
 const (
-	ReasonLabel    = "reason"
-	MissingStreams = "error at least one valid stream is required for ingestion"
+	ReasonLabel            = "reason"
+	MissingStreamsErrorMsg = "error at least one valid stream is required for ingestion"
 
 	// InvalidLabels is a reason for discarding log lines which have labels that cannot be parsed.
 	InvalidLabels = "invalid_labels"
