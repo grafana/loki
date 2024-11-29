@@ -84,9 +84,12 @@ type Limits struct {
 	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
 	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
-	DiscoverServiceName         []string         `yaml:"discover_service_name" json:"discover_service_name"`
-	DiscoverLogLevels           bool             `yaml:"discover_log_levels" json:"discover_log_levels"`
-	LogLevelFields              []string         `yaml:"log_level_fields" json:"log_level_fields"`
+
+	// Metadata field extraction
+	DiscoverGenericFields map[string][]string `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
+	DiscoverServiceName   []string            `yaml:"discover_service_name" json:"discover_service_name"`
+	DiscoverLogLevels     bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
+	LogLevelFields        []string            `yaml:"log_level_fields" json:"log_level_fields"`
 
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
@@ -428,7 +431,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	)
 
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
-
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 
 	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", true, "Allow user to send structured metadata (non-indexed labels) in push payload.")
@@ -994,6 +996,10 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+func (o *Overrides) DiscoverGenericFields(userID string) map[string][]string {
+	return o.getOverridesForUser(userID).DiscoverGenericFields
 }
 
 func (o *Overrides) DiscoverServiceName(userID string) []string {

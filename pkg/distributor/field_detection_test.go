@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/plog"
 
@@ -432,5 +433,135 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelInfo, level)
+	}
+}
+
+func Test_DetectGenericFields_Enabled(t *testing.T) {
+	t.Run("disabled if map is empty", func(t *testing.T) {
+		detector := newFieldDetector(
+			validationContext{
+				discoverGenericFields:   make(map[string][]string, 0),
+				allowStructuredMetadata: true,
+			})
+		require.False(t, detector.shouldDiscoverGenericFields())
+	})
+	t.Run("disabled if structured metadata is not allowed", func(t *testing.T) {
+		detector := newFieldDetector(
+			validationContext{
+				discoverGenericFields:   map[string][]string{"trace_id": []string{"trace_id", "TRACE_ID"}},
+				allowStructuredMetadata: false,
+			})
+		require.False(t, detector.shouldDiscoverGenericFields())
+	})
+	t.Run("enabled if structured metadata is allowed and map is not empty", func(t *testing.T) {
+		detector := newFieldDetector(
+			validationContext{
+				discoverGenericFields:   map[string][]string{"trace_id": []string{"trace_id", "TRACE_ID"}},
+				allowStructuredMetadata: true,
+			})
+		require.True(t, detector.shouldDiscoverGenericFields())
+	})
+}
+
+func Test_DetectGenericFields(t *testing.T) {
+
+	detector := newFieldDetector(
+		validationContext{
+			discoverGenericFields: map[string][]string{
+				"trace_id": []string{"trace_id"},
+				"org_id":   []string{"org_id", "user_id", "tenant_id"},
+			},
+			allowStructuredMetadata: true,
+		})
+
+	for _, tc := range []struct {
+		name     string
+		labels   labels.Labels
+		entry    logproto.Entry
+		expected push.LabelsAdapter
+	}{
+		{
+			name: "no match",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               "log line does not match",
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{},
+		},
+		{
+			name: "stream label matches",
+			labels: labels.Labels{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "tenant_id", Value: "fake"},
+			},
+			entry: push.Entry{
+				Line:               "log line does not match",
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "metadata matches",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line: "log line does not match",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+					{Name: "user_id", Value: "fake"},
+				},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "logline (logfmt) matches",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `msg="this log line matches" trace_id="8c5f2ecbade6f01d" org_id=fake duration=1h`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "logline (json) matches",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `{"msg": "this log line matches", "trace_id": "8c5f2ecbade6f01d", "org_id": "fake", "duration": "1s"}`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			extracted := push.LabelsAdapter{}
+			metadata := logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata)
+			for name, hints := range detector.validationContext.discoverGenericFields {
+				field, ok := detector.extractGenericField(name, hints, tc.labels, metadata, tc.entry)
+				if ok {
+					extracted = append(extracted, field)
+				}
+			}
+			require.ElementsMatch(t, tc.expected, extracted)
+		})
 	}
 }

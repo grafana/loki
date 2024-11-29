@@ -462,6 +462,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validationContext := d.validator.getValidationContextForTime(now, tenantID)
 	levelDetector := newFieldDetector(validationContext)
 	shouldDiscoverLevels := levelDetector.shouldDiscoverLogLevels()
+	shouldDiscoverGenericFields := levelDetector.shouldDiscoverGenericFields()
 
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
@@ -550,6 +551,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
 					if ok {
 						entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+					}
+				}
+				if shouldDiscoverGenericFields {
+					for field, hints := range levelDetector.validationContext.discoverGenericFields {
+						extracted, ok := levelDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+						if ok {
+							entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+						}
 					}
 				}
 				stream.Entries[n] = entry
