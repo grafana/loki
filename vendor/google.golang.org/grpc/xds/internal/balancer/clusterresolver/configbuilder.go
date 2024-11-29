@@ -37,7 +37,7 @@ import (
 
 const million = 1000000
 
-// priorityConfig is config for one priority. For example, if there an EDS and a
+// priorityConfig is config for one priority. For example, if there's an EDS and a
 // DNS, the priority list will be [priorityConfig{EDS}, priorityConfig{DNS}].
 //
 // Each priorityConfig corresponds to one discovery mechanism from the LBConfig
@@ -146,8 +146,9 @@ func buildClusterImplConfigForDNS(g *nameGenerator, addrStrs []string, mechanism
 		retAddrs = append(retAddrs, hierarchy.Set(resolver.Address{Addr: addrStr}, []string{pName}))
 	}
 	return pName, &clusterimpl.LBConfig{
-		Cluster:     mechanism.Cluster,
-		ChildPolicy: &internalserviceconfig.BalancerConfig{Name: childPolicy},
+		Cluster:         mechanism.Cluster,
+		TelemetryLabels: mechanism.TelemetryLabels,
+		ChildPolicy:     &internalserviceconfig.BalancerConfig{Name: childPolicy},
 	}, retAddrs
 }
 
@@ -170,7 +171,7 @@ func buildClusterImplConfigForEDS(g *nameGenerator, edsResp xdsresource.Endpoint
 	}
 
 	// Localities of length 0 is triggered by an NACK or resource-not-found
-	// error before update, or a empty localities list in a update. In either
+	// error before update, or an empty localities list in an update. In either
 	// case want to create a priority, and send down empty address list, causing
 	// TF for that priority. "If any discovery mechanism instance experiences an
 	// error retrieving data, and it has not previously reported any results, it
@@ -283,6 +284,7 @@ func priorityLocalitiesToClusterImpl(localities []xdsresource.Locality, priority
 		EDSServiceName:        mechanism.EDSServiceName,
 		LoadReportingServer:   mechanism.LoadReportingServer,
 		MaxConcurrentRequests: mechanism.MaxConcurrentRequests,
+		TelemetryLabels:       mechanism.TelemetryLabels,
 		DropCategories:        drops,
 		ChildPolicy:           xdsLBPolicy,
 	}, addrs, nil

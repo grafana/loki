@@ -1,7 +1,7 @@
 ---
 title: LogCLI
 menuTItle:
-description: Describes LogCLI, Grafana Loki's command-line interface.
+description: Describes LogCLI, the Grafana Loki command-line interface.
 aliases:
 - ../getting-started/logcli/
 - ../tools/logcli/
@@ -70,11 +70,11 @@ without needing a username and password:
 export LOKI_ADDR=http://localhost:3100
 ```
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 If you are running Loki behind a proxy server and you have
 authentication configured, you will also have to pass in LOKI_USERNAME
 and LOKI_PASSWORD, LOKI_BEARER_TOKEN or LOKI_BEARER_TOKEN_FILE accordingly.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ```bash
 $ logcli labels job
@@ -371,6 +371,7 @@ Flags:
       --auth-header="Authorization"
                                 The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""            The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress                Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --limit=30                Limit on number of entries to print. Setting it to 0 will fetch all entries.
       --since=1h                Lookback window.
       --from=FROM               Start looking for logs at this absolute time (inclusive)
@@ -465,6 +466,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --limit=30              Limit on number of entries to print. Setting it to 0 will fetch all entries.
       --now=NOW               Time at which to execute the instant query.
       --forward               Scan forwards through logs.
@@ -525,6 +527,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for labels at this absolute time (inclusive)
       --to=TO                 Stop looking for labels at this absolute time (exclusive)
@@ -581,6 +584,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
@@ -633,6 +637,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
 ```
 
 ### `stats` command reference
@@ -694,6 +699,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
@@ -761,6 +767,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
@@ -833,6 +840,7 @@ Flags:
       --auth-header="Authorization"
                               The authorization header used. Can also be set using LOKI_AUTH_HEADER env var.
       --proxy-url=""          The http or https proxy to use when making requests. Can also be set using LOKI_HTTP_PROXY_URL env var.
+      --compress              Request that Loki compress returned data in transit. Can also be set using LOKI_HTTP_COMPRESSION env var.
       --since=1h              Lookback window.
       --from=FROM             Start looking for logs at this absolute time (inclusive)
       --to=TO                 Stop looking for logs at this absolute time (exclusive)
@@ -852,9 +860,9 @@ You can consume log lines from your `stdin` instead of Loki servers.
 
 Say you have log files in your local, and just want to do run some LogQL queries for that, `--stdin` flag can help.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Currently it doesn't support any type of metric queries.
-{{% /admonition %}}
+{{< /admonition >}}
 
 You may have to use `stdin` flag for several reasons
 1. Quick way to check and validate a LogQL expressions.

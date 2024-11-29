@@ -2,10 +2,8 @@ package bloomgateway
 
 import (
 	"sort"
-	"time"
 
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -17,21 +15,22 @@ func truncateDay(ts model.Time) model.Time {
 	return model.TimeFromUnix(ts.Time().Truncate(Day).Unix())
 }
 
-// getFromThrough assumes a list of ShortRefs sorted by From time
-func getFromThrough(refs []*logproto.ShortRef) (model.Time, model.Time) {
-	if len(refs) == 0 {
-		return model.Earliest, model.Latest
+// daysForRange returns a list of model.Time truncated to the start of each day
+// for the inclusive range [from, through]
+func daysForRange(from, through model.Time) []model.Time {
+	fromDay, throughDay := truncateDay(from), truncateDay(through)
+
+	// Trim the last day if it's the same as the through time,
+	// but preserve at least 1 day
+	if throughDay.Equal(through) && !fromDay.Equal(throughDay) {
+		throughDay = throughDay.Add(-Day)
 	}
 
-	if len(refs) == 1 {
-		return refs[0].From, refs[0].Through
+	days := make([]model.Time, 0, int(throughDay.Sub(fromDay)/Day)+1)
+	for day := fromDay; !day.After(throughDay); day = day.Add(Day) {
+		days = append(days, day)
 	}
-
-	maxItem := slices.MaxFunc(refs, func(a, b *logproto.ShortRef) int {
-		return int(a.Through) - int(b.Through)
-	})
-
-	return refs[0].From, maxItem.Through
+	return days
 }
 
 // convertToChunkRefs converts a []*logproto.ShortRef into v1.ChunkRefs
@@ -48,7 +47,7 @@ type blockWithTasks struct {
 	tasks []Task
 }
 
-func partitionTasks(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
+func partitionTasksByBlock(tasks []Task, blocks []bloomshipper.BlockRef) []blockWithTasks {
 	result := make([]blockWithTasks, 0, len(blocks))
 
 	for _, block := range blocks {
@@ -95,15 +94,7 @@ func partitionRequest(req *logproto.FilterChunkRefRequest) []seriesWithInterval 
 func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto.GroupedChunkRefs) []seriesWithInterval {
 	result := make([]seriesWithInterval, 0)
 
-	fromDay, throughDay := truncateDay(from), truncateDay(through)
-
-	// because through is exclusive, if it's equal to the truncated day, it means it's the start of the day
-	// and we should not include it in the range
-	if through.Equal(throughDay) {
-		throughDay = throughDay.Add(-24 * time.Hour)
-	}
-
-	for day := fromDay; !throughDay.Before(day); day = day.Add(Day) {
+	for _, day := range daysForRange(from, through) {
 		minTs, maxTs := model.Latest, model.Earliest
 		res := make([]*logproto.GroupedChunkRefs, 0, len(seriesWithChunks))
 
@@ -119,6 +110,7 @@ func partitionSeriesByDay(from, through model.Time, seriesWithChunks []*logproto
 
 			res = append(res, &logproto.GroupedChunkRefs{
 				Fingerprint: series.Fingerprint,
+				Labels:      series.Labels,
 				Tenant:      series.Tenant,
 				Refs:        relevantChunks,
 			})

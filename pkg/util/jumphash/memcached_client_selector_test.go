@@ -47,7 +47,7 @@ var ips = map[string][]byte{
 	"microsoft.com:80":  net.ParseIP("172.12.34.56"),
 }
 
-var mockTCPResolver = func(network, address string) (*net.TCPAddr, error) {
+var mockTCPResolver = func(_, address string) (*net.TCPAddr, error) {
 	return &net.TCPAddr{
 		IP:   ips[address],
 		Port: 0,
@@ -57,6 +57,7 @@ var mockTCPResolver = func(network, address string) (*net.TCPAddr, error) {
 
 func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 	s := NewSelector(
+		"test",
 		mockUnixResolver,
 		mockTCPResolver,
 	)
@@ -84,6 +85,7 @@ func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 
 func TestMemcachedJumpHashSelector_PickSever_ErrNoServers(t *testing.T) {
 	s := NewSelector(
+		"test",
 		mockUnixResolver,
 		mockTCPResolver,
 	)

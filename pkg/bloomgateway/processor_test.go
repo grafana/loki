@@ -14,22 +14,26 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
-var _ bloomshipper.Store = &dummyStore{}
+var _ bloomshipper.StoreBase = &dummyStore{}
 
 // refs and blocks must be in 1-1 correspondence.
 func newMockBloomStore(refs []bloomshipper.BlockRef, blocks []*v1.Block, metas []bloomshipper.Meta) *dummyStore {
+	allocator := mempool.New("bloompages", mempool.Buckets{
+		{Size: 32, Capacity: 512 << 10},
+	}, nil)
 	return &dummyStore{
-		refs:   refs,
-		blocks: blocks,
-		metas:  metas,
+		refs:      refs,
+		blocks:    blocks,
+		metas:     metas,
+		allocator: allocator,
 	}
 }
 
@@ -37,6 +41,8 @@ type dummyStore struct {
 	metas  []bloomshipper.Meta
 	refs   []bloomshipper.BlockRef
 	blocks []*v1.Block
+
+	allocator mempool.Allocator
 
 	// mock how long it takes to serve block queriers
 	delay time.Duration
@@ -76,6 +82,10 @@ func (s *dummyStore) Client(_ model.Time) (bloomshipper.Client, error) {
 	return nil, nil
 }
 
+func (s *dummyStore) Allocator() mempool.Allocator {
+	return s.allocator
+}
+
 func (s *dummyStore) Stop() {
 }
 
@@ -92,7 +102,7 @@ func (s *dummyStore) FetchBlocks(_ context.Context, refs []bloomshipper.BlockRef
 			if ref.Bounds.Equal(s.refs[i].Bounds) {
 				blockCopy := *block
 				bq := &bloomshipper.CloseableBlockQuerier{
-					BlockQuerier: v1.NewBlockQuerier(&blockCopy, false, v1.DefaultMaxPageSize),
+					BlockQuerier: v1.NewBlockQuerier(&blockCopy, s.Allocator(), v1.DefaultMaxPageSize),
 					BlockRef:     s.refs[i],
 				}
 				result = append(result, bq)
@@ -118,7 +128,7 @@ func TestProcessor(t *testing.T) {
 		refs, metas, queriers, data := createBlocks(t, tenant, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		mockStore := newMockBloomStore(refs, queriers, metas)
-		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, false, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -129,17 +139,16 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+
+		matchers := []v1.LabelMatcher{
+			v1.KeyValueMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -155,7 +164,7 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(0), results.Load())
@@ -170,7 +179,7 @@ func TestProcessor(t *testing.T) {
 		}
 
 		mockStore := newMockBloomStore(refs, queriers, metas)
-		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, false, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -181,17 +190,15 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+		matchers := []v1.LabelMatcher{
+			v1.KeyValueMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, blocks)
+		task := newTask(ctx, "fake", swb, matchers, blocks)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -207,7 +214,7 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.NoError(t, err)
 		require.Equal(t, int64(len(swb.series)), results.Load())
@@ -219,7 +226,7 @@ func TestProcessor(t *testing.T) {
 		mockStore := newMockBloomStore(refs, queriers, metas)
 		mockStore.err = errors.New("store failed")
 
-		p := newProcessor("worker", 1, mockStore, log.NewNopLogger(), metrics)
+		p := newProcessor("worker", 1, false, mockStore, log.NewNopLogger(), metrics)
 
 		chunkRefs := createQueryInputFromBlockData(t, tenant, data, 10)
 		swb := seriesWithInterval{
@@ -230,17 +237,15 @@ func TestProcessor(t *testing.T) {
 			},
 			day: config.NewDayTime(truncateDay(now)),
 		}
-		filters := []syntax.LineFilterExpr{
-			{
-				LineFilter: syntax.LineFilter{
-					Ty:    0,
-					Match: "no match",
-				},
+		matchers := []v1.LabelMatcher{
+			v1.KeyValueMatcher{
+				Key:   "trace_id",
+				Value: "nomatch",
 			},
 		}
 
 		t.Log("series", len(swb.series))
-		task := newTask(ctx, "fake", swb, filters, nil)
+		task := newTask(ctx, "fake", swb, matchers, nil)
 		tasks := []Task{task}
 
 		results := atomic.NewInt64(0)
@@ -256,7 +261,7 @@ func TestProcessor(t *testing.T) {
 			}(tasks[i])
 		}
 
-		err := p.run(ctx, tasks)
+		err := p.processTasks(ctx, tasks)
 		wg.Wait()
 		require.Errorf(t, err, "store failed")
 		require.Equal(t, int64(0), results.Load())

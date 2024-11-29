@@ -1,4 +1,3 @@
-version: '3'
 services:
   loki:
     build:
@@ -25,7 +24,7 @@ services:
 
   # Read /var/log/syslog and send it to fluentd
   fluentbit:
-    image: fluent/fluent-bit:1.0
+    image: fluent/fluent-bit:3.2
     command: "/fluent-bit/bin/fluent-bit -c /srv/fluent-bit.conf"
     user: root
     volumes:

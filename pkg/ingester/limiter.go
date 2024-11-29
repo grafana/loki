@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/dskit/ring"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
@@ -13,13 +14,15 @@ import (
 )
 
 const (
-	errMaxStreamsPerUserLimitExceeded = "tenant '%v' per-user streams limit exceeded, streams: %d exceeds calculated limit: %d (local limit: %d, global limit: %d, global/ingesters: %d)"
+	errMaxStreamsPerUserLimitExceeded = "tenant '%v' per-user streams limit exceeded, streams: %d exceeds calculated limit: %d (local limit: %d, global limit: %d, local share: %d)"
 )
 
 // RingCount is the interface exposed by a ring implementation which allows
 // to count members
 type RingCount interface {
 	HealthyInstancesCount() int
+	HealthyInstancesInZoneCount() int
+	ZonesCount() int
 }
 
 type Limits interface {
@@ -29,15 +32,16 @@ type Limits interface {
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
+	IngestionPartitionsTenantShardSize(userID string) int
 }
 
 // Limiter implements primitives to get the maximum number of streams
 // an ingester can handle for a specific tenant
 type Limiter struct {
 	limits            Limits
-	ring              RingCount
-	replicationFactor int
+	ringStrategy      limiterRingStrategy
 	metrics           *ingesterMetrics
+	rateLimitStrategy RateLimiterStrategy
 
 	mtx      sync.RWMutex
 	disabled bool
@@ -48,6 +52,7 @@ func (l *Limiter) DisableForWALReplay() {
 	defer l.mtx.Unlock()
 	l.disabled = true
 	l.metrics.limiterEnabled.Set(0)
+	l.rateLimitStrategy.SetDisabled(true)
 }
 
 func (l *Limiter) Enable() {
@@ -55,15 +60,20 @@ func (l *Limiter) Enable() {
 	defer l.mtx.Unlock()
 	l.disabled = false
 	l.metrics.limiterEnabled.Set(1)
+	l.rateLimitStrategy.SetDisabled(false)
+}
+
+type limiterRingStrategy interface {
+	convertGlobalToLocalLimit(int, string) int
 }
 
 // NewLimiter makes a new limiter
-func NewLimiter(limits Limits, metrics *ingesterMetrics, ring RingCount, replicationFactor int) *Limiter {
+func NewLimiter(limits Limits, metrics *ingesterMetrics, ingesterRingLimiterStrategy limiterRingStrategy, rateLimitStrategy RateLimiterStrategy) *Limiter {
 	return &Limiter{
 		limits:            limits,
-		ring:              ring,
-		replicationFactor: replicationFactor,
+		ringStrategy:      ingesterRingLimiterStrategy,
 		metrics:           metrics,
+		rateLimitStrategy: rateLimitStrategy,
 	}
 }
 
@@ -84,7 +94,7 @@ func (l *Limiter) GetStreamCountLimit(tenantID string) (calculatedLimit, localLi
 	// We can assume that streams are evenly distributed across ingesters
 	// so we do convert the global limit into a local limit
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
-	adjustedGlobalLimit = l.convertGlobalToLocalLimit(globalLimit)
+	adjustedGlobalLimit = l.ringStrategy.convertGlobalToLocalLimit(globalLimit, tenantID)
 
 	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
 	calculatedLimit = l.minNonZero(localLimit, adjustedGlobalLimit)
@@ -105,24 +115,73 @@ func (l *Limiter) minNonZero(first, second int) int {
 	return first
 }
 
-func (l *Limiter) convertGlobalToLocalLimit(globalLimit int) int {
-	if globalLimit == 0 {
+type ingesterRingLimiterStrategy struct {
+	ring              RingCount
+	replicationFactor int
+}
+
+func newIngesterRingLimiterStrategy(ring RingCount, replicationFactor int) *ingesterRingLimiterStrategy {
+	return &ingesterRingLimiterStrategy{
+		ring:              ring,
+		replicationFactor: replicationFactor,
+	}
+}
+
+func (l *ingesterRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) int {
+	if globalLimit == 0 || l.replicationFactor == 0 {
 		return 0
 	}
-	// todo: change to healthyInstancesInZoneCount() once
-	// Given we don't need a super accurate count (ie. when the ingesters
-	// topology changes) and we prefer to always be in favor of the tenant,
-	// we can use a per-ingester limit equal to:
-	// (global limit / number of ingesters) * replication factor
-	numIngesters := l.ring.HealthyInstancesCount()
 
-	// May happen because the number of ingesters is asynchronously updated.
-	// If happens, we just temporarily ignore the global limit.
+	zonesCount := l.ring.ZonesCount()
+	if zonesCount <= 1 {
+		return l.calculateLimitForSingleZone(globalLimit)
+	}
+
+	return l.calculateLimitForMultipleZones(globalLimit, zonesCount)
+}
+
+func (l *ingesterRingLimiterStrategy) calculateLimitForSingleZone(globalLimit int) int {
+	numIngesters := l.ring.HealthyInstancesCount()
 	if numIngesters > 0 {
 		return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
 	}
-
 	return 0
+}
+
+func (l *ingesterRingLimiterStrategy) calculateLimitForMultipleZones(globalLimit, zonesCount int) int {
+	ingestersInZone := l.ring.HealthyInstancesInZoneCount()
+	if ingestersInZone > 0 {
+		return int((float64(globalLimit) * float64(l.replicationFactor)) / float64(zonesCount) / float64(ingestersInZone))
+	}
+	return 0
+}
+
+type partitionRingLimiterStrategy struct {
+	ring                  ring.PartitionRingReader
+	getPartitionShardSize func(user string) int
+}
+
+func newPartitionRingLimiterStrategy(ring ring.PartitionRingReader, getPartitionShardSize func(user string) int) *partitionRingLimiterStrategy {
+	return &partitionRingLimiterStrategy{
+		ring:                  ring,
+		getPartitionShardSize: getPartitionShardSize,
+	}
+}
+
+func (l *partitionRingLimiterStrategy) convertGlobalToLocalLimit(globalLimit int, tenantID string) int {
+	if globalLimit == 0 {
+		return 0
+	}
+
+	userShardSize := l.getPartitionShardSize(tenantID)
+
+	// ShuffleShardSize correctly handles cases when user has no shard config or more shards than number of active partitions in the ring.
+	activePartitionsForUser := l.ring.PartitionRing().ShuffleShardSize(userShardSize)
+
+	if activePartitionsForUser == 0 {
+		return 0
+	}
+	return int(float64(globalLimit) / float64(activePartitionsForUser))
 }
 
 type supplier[T any] func() T
@@ -176,14 +235,34 @@ func (l *streamCountLimiter) getSuppliers(tenant string) (streamCountSupplier, f
 
 type RateLimiterStrategy interface {
 	RateLimit(tenant string) validation.RateLimit
+	SetDisabled(bool)
 }
 
-func (l *Limiter) RateLimit(tenant string) validation.RateLimit {
+type TenantBasedStrategy struct {
+	disabled bool
+	limits   Limits
+}
+
+func (l *TenantBasedStrategy) RateLimit(tenant string) validation.RateLimit {
 	if l.disabled {
 		return validation.Unlimited
 	}
 
 	return l.limits.PerStreamRateLimit(tenant)
+}
+
+func (l *TenantBasedStrategy) SetDisabled(disabled bool) {
+	l.disabled = disabled
+}
+
+type NoLimitsStrategy struct{}
+
+func (l *NoLimitsStrategy) RateLimit(_ string) validation.RateLimit {
+	return validation.Unlimited
+}
+
+func (l *NoLimitsStrategy) SetDisabled(_ bool) {
+	// no-op
 }
 
 type StreamRateLimiter struct {

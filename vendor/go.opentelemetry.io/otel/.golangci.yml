@@ -9,8 +9,11 @@ linters:
   disable-all: true
   # Specifically enable linters we want to use.
   enable:
+    - asasalint
+    - bodyclose
     - depguard
     - errcheck
+    - errorlint
     - godot
     - gofumpt
     - goimports
@@ -21,8 +24,12 @@ linters:
     - misspell
     - revive
     - staticcheck
+    - tenv
+    - testifylint
     - typecheck
+    - unconvert
     - unused
+    - unparam
 
 issues:
   # Maximum issues count per one linter.
@@ -58,12 +65,12 @@ issues:
     - path: _test\.go
       linters:
         - gosec
-    # Igonoring gosec G404: Use of weak random number generator (math/rand instead of crypto/rand)
+    # Ignoring gosec G404: Use of weak random number generator (math/rand instead of crypto/rand)
     # as we commonly use it in tests and examples.
     - text: "G404:"
       linters:
         - gosec
-    # Igonoring gosec G402: TLS MinVersion too low
+    # Ignoring gosec G402: TLS MinVersion too low
     # as the https://pkg.go.dev/crypto/tls#Config handles MinVersion default well.
     - text: "G402: TLS MinVersion too low."
       linters:
@@ -120,10 +127,10 @@ linters-settings:
           - "**/metric/**/*.go"
           - "**/bridge/*.go"
           - "**/bridge/**/*.go"
-          - "**/example/*.go"
-          - "**/example/**/*.go"
           - "**/trace/*.go"
           - "**/trace/**/*.go"
+          - "**/log/*.go"
+          - "**/log/**/*.go"
         deny:
           - pkg: "go.opentelemetry.io/otel/internal$"
             desc: Do not use cross-module internal packages.
@@ -294,3 +301,9 @@ linters-settings:
       # https://github.com/mgechev/revive/blob/master/RULES_DESCRIPTIONS.md#waitgroup-by-value
       - name: waitgroup-by-value
         disabled: false
+  testifylint:
+    enable-all: true
+    disable:
+      - float-compare
+      - go-require
+      - require-error

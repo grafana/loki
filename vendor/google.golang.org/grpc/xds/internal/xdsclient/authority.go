@@ -23,15 +23,20 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 	"google.golang.org/grpc/xds/internal/xdsclient/transport"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	v3adminpb "github.com/envoyproxy/go-control-plane/envoy/admin/v3"
+	v3statuspb "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
 type watchState int
@@ -94,17 +99,12 @@ type authorityArgs struct {
 	// (although the former is part of the latter) is because authorities in the
 	// bootstrap config might contain an empty server config, and in this case,
 	// the top-level server config is to be used.
-	//
-	// There are two code paths from where a new authority struct might be
-	// created. One is when a watch is registered for a resource, and one is
-	// when load reporting needs to be started. We have the authority name in
-	// the first case, but do in the second. We only have the server config in
-	// the second case.
 	serverCfg          *bootstrap.ServerConfig
 	bootstrapCfg       *bootstrap.Config
 	serializer         *grpcsync.CallbackSerializer
 	resourceTypeGetter func(string) xdsresource.Type
 	watchExpiryTimeout time.Duration
+	backoff            func(int) time.Duration // Backoff for ADS and LRS stream failures.
 	logger             *grpclog.PrefixLogger
 }
 
@@ -120,12 +120,13 @@ func newAuthority(args authorityArgs) (*authority, error) {
 	}
 
 	tr, err := transport.New(transport.Options{
-		ServerCfg:      *args.serverCfg,
+		ServerCfg:      args.serverCfg,
 		OnRecvHandler:  ret.handleResourceUpdate,
 		OnErrorHandler: ret.newConnectionError,
 		OnSendHandler:  ret.transportOnSendHandler,
+		Backoff:        args.backoff,
 		Logger:         args.logger,
-		NodeProto:      args.bootstrapCfg.NodeProto,
+		NodeProto:      args.bootstrapCfg.Node(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating new transport to %q: %v", args.serverCfg, err)
@@ -150,21 +151,50 @@ func (a *authority) transportOnSendHandler(u *transport.ResourceSendInfo) {
 	a.startWatchTimersLocked(rType, u.ResourceNames)
 }
 
-func (a *authority) handleResourceUpdate(resourceUpdate transport.ResourceUpdate) error {
+func (a *authority) handleResourceUpdate(resourceUpdate transport.ResourceUpdate, onDone func()) error {
 	rType := a.resourceTypeGetter(resourceUpdate.URL)
 	if rType == nil {
 		return xdsresource.NewErrorf(xdsresource.ErrorTypeResourceTypeUnsupported, "Resource URL %v unknown in response from server", resourceUpdate.URL)
 	}
 
-	opts := &xdsresource.DecodeOptions{BootstrapConfig: a.bootstrapCfg}
+	opts := &xdsresource.DecodeOptions{
+		BootstrapConfig: a.bootstrapCfg,
+		ServerConfig:    a.serverCfg,
+	}
 	updates, md, err := decodeAllResources(opts, rType, resourceUpdate)
-	a.updateResourceStateAndScheduleCallbacks(rType, updates, md)
+	a.updateResourceStateAndScheduleCallbacks(rType, updates, md, onDone)
 	return err
 }
 
-func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Type, updates map[string]resourceDataErrTuple, md xdsresource.UpdateMetadata) {
+func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Type, updates map[string]resourceDataErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
 	a.resourcesMu.Lock()
 	defer a.resourcesMu.Unlock()
+
+	// We build a list of callback funcs to invoke, and invoke them at the end
+	// of this method instead of inline (when handling the update for a
+	// particular resource), because we want to make sure that all calls to
+	// increment watcherCnt happen before any callbacks are invoked. This will
+	// ensure that the onDone callback is never invoked before all watcher
+	// callbacks are invoked, and the watchers have processed the update.
+	watcherCnt := new(atomic.Int64)
+	done := func() {
+		watcherCnt.Add(-1)
+		if watcherCnt.Load() == 0 {
+			onDone()
+		}
+	}
+	funcsToSchedule := []func(context.Context){}
+	defer func() {
+		if len(funcsToSchedule) == 0 {
+			// When there are no watchers for the resources received as part of
+			// this update, invoke onDone explicitly to unblock the next read on
+			// the ADS stream.
+			onDone()
+		}
+		for _, f := range funcsToSchedule {
+			a.serializer.ScheduleOr(f, onDone)
+		}
+	}()
 
 	resourceStates := a.resources[rType]
 	for name, uErr := range updates {
@@ -184,7 +214,7 @@ func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Ty
 			//   server might respond with the requested resource before we send
 			//   out request for the same. If we don't check for `started` here,
 			//   and move the state to `received`, we will end up starting the
-			//   timer when the request gets sent out. And since the mangement
+			//   timer when the request gets sent out. And since the management
 			//   server already sent us the resource, there is a good chance
 			//   that it will not send it again. This would eventually lead to
 			//   the timer firing, even though we have the resource in the
@@ -209,7 +239,8 @@ func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Ty
 				for watcher := range state.watchers {
 					watcher := watcher
 					err := uErr.err
-					a.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
+					watcherCnt.Add(1)
+					funcsToSchedule = append(funcsToSchedule, func(context.Context) { watcher.OnError(err, done) })
 				}
 				continue
 			}
@@ -218,17 +249,23 @@ func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Ty
 				state.deletionIgnored = false
 				a.logger.Infof("A valid update was received for resource %q of type %q after previously ignoring a deletion", name, rType.TypeName())
 			}
-			// Notify watchers only if this is a first time update or it is different
-			// from the one currently cached.
-			if state.cache == nil || !state.cache.Equal(uErr.resource) {
+			// Notify watchers if any of these conditions are met:
+			//   - this is the first update for this resource
+			//   - this update is different from the one currently cached
+			//   - the previous update for this resource was NACKed, but the update
+			//     before that was the same as this update.
+			if state.cache == nil || !state.cache.Equal(uErr.resource) || state.md.ErrState != nil {
 				for watcher := range state.watchers {
 					watcher := watcher
 					resource := uErr.resource
-					a.serializer.Schedule(func(context.Context) { watcher.OnUpdate(resource) })
+					watcherCnt.Add(1)
+					funcsToSchedule = append(funcsToSchedule, func(context.Context) { watcher.OnUpdate(resource, done) })
 				}
 			}
 			// Sync cache.
-			a.logger.Debugf("Resource type %q with name %q added to cache", rType.TypeName(), name)
+			if a.logger.V(2) {
+				a.logger.Infof("Resource type %q with name %q added to cache", rType.TypeName(), name)
+			}
 			state.cache = uErr.resource
 			// Set status to ACK, and clear error state. The metadata might be a
 			// NACK metadata because some other resources in the same response
@@ -282,7 +319,7 @@ func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Ty
 			// resource deletion is to be ignored, the resource is not removed from
 			// the cache and the corresponding OnResourceDoesNotExist() callback is
 			// not invoked on the watchers.
-			if a.serverCfg.IgnoreResourceDeletion {
+			if a.serverCfg.ServerFeaturesIgnoreResourceDeletion() {
 				if !state.deletionIgnored {
 					state.deletionIgnored = true
 					a.logger.Warningf("Ignoring resource deletion for resource %q of type %q", name, rType.TypeName())
@@ -297,7 +334,8 @@ func (a *authority) updateResourceStateAndScheduleCallbacks(rType xdsresource.Ty
 			state.md = xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusNotExist}
 			for watcher := range state.watchers {
 				watcher := watcher
-				a.serializer.Schedule(func(context.Context) { watcher.OnResourceDoesNotExist() })
+				watcherCnt.Add(1)
+				funcsToSchedule = append(funcsToSchedule, func(context.Context) { watcher.OnResourceDoesNotExist(done) })
 			}
 		}
 	}
@@ -369,7 +407,9 @@ func (a *authority) startWatchTimersLocked(rType xdsresource.Type, resourceNames
 				continue
 			}
 			state.wTimer = time.AfterFunc(a.watchExpiryTimeout, func() {
-				a.handleWatchTimerExpiry(rType, resourceName, state)
+				a.resourcesMu.Lock()
+				a.handleWatchTimerExpiryLocked(rType, resourceName, state)
+				a.resourcesMu.Unlock()
 			})
 			state.wState = watchStateRequested
 		}
@@ -423,8 +463,8 @@ func (a *authority) newConnectionError(err error) {
 			// Propagate the connection error from the transport layer to all watchers.
 			for watcher := range state.watchers {
 				watcher := watcher
-				a.serializer.Schedule(func(context.Context) {
-					watcher.OnError(xdsresource.NewErrorf(xdsresource.ErrorTypeConnection, "xds: error received from xDS stream: %v", err))
+				a.serializer.TrySchedule(func(context.Context) {
+					watcher.OnError(xdsresource.NewErrorf(xdsresource.ErrorTypeConnection, "xds: error received from xDS stream: %v", err), func() {})
 				})
 			}
 		}
@@ -451,7 +491,9 @@ func (a *authority) close() {
 }
 
 func (a *authority) watchResource(rType xdsresource.Type, resourceName string, watcher xdsresource.ResourceWatcher) func() {
-	a.logger.Debugf("New watch for type %q, resource name %q", rType.TypeName(), resourceName)
+	if a.logger.V(2) {
+		a.logger.Infof("New watch for type %q, resource name %q", rType.TypeName(), resourceName)
+	}
 	a.resourcesMu.Lock()
 	defer a.resourcesMu.Unlock()
 
@@ -468,7 +510,9 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 	// instruct the transport layer to send a DiscoveryRequest for the same.
 	state := resources[resourceName]
 	if state == nil {
-		a.logger.Debugf("First watch for type %q, resource name %q", rType.TypeName(), resourceName)
+		if a.logger.V(2) {
+			a.logger.Infof("First watch for type %q, resource name %q", rType.TypeName(), resourceName)
+		}
 		state = &resourceState{
 			watchers: make(map[xdsresource.ResourceWatcher]bool),
 			md:       xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusRequested},
@@ -482,9 +526,11 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 
 	// If we have a cached copy of the resource, notify the new watcher.
 	if state.cache != nil {
-		a.logger.Debugf("Resource type %q with resource name %q found in cache: %s", rType.TypeName(), resourceName, state.cache.ToJSON())
+		if a.logger.V(2) {
+			a.logger.Infof("Resource type %q with resource name %q found in cache: %s", rType.TypeName(), resourceName, state.cache.ToJSON())
+		}
 		resource := state.cache
-		a.serializer.Schedule(func(context.Context) { watcher.OnUpdate(resource) })
+		a.serializer.TrySchedule(func(context.Context) { watcher.OnUpdate(resource, func() {}) })
 	}
 
 	return func() {
@@ -505,16 +551,15 @@ func (a *authority) watchResource(rType xdsresource.Type, resourceName string, w
 		// There are no more watchers for this resource, delete the state
 		// associated with it, and instruct the transport to send a request
 		// which does not include this resource name.
-		a.logger.Debugf("Removing last watch for type %q, resource name %q", rType.TypeName(), resourceName)
+		if a.logger.V(2) {
+			a.logger.Infof("Removing last watch for type %q, resource name %q", rType.TypeName(), resourceName)
+		}
 		delete(resources, resourceName)
 		a.sendDiscoveryRequestLocked(rType, resources)
 	}
 }
 
-func (a *authority) handleWatchTimerExpiry(rType xdsresource.Type, resourceName string, state *resourceState) {
-	a.resourcesMu.Lock()
-	defer a.resourcesMu.Unlock()
-
+func (a *authority) handleWatchTimerExpiryLocked(rType xdsresource.Type, resourceName string, state *resourceState) {
 	if a.closed {
 		return
 	}
@@ -538,7 +583,7 @@ func (a *authority) handleWatchTimerExpiry(rType xdsresource.Type, resourceName 
 	state.md = xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusNotExist}
 	for watcher := range state.watchers {
 		watcher := watcher
-		a.serializer.Schedule(func(context.Context) { watcher.OnResourceDoesNotExist() })
+		a.serializer.TrySchedule(func(context.Context) { watcher.OnResourceDoesNotExist(func() {}) })
 	}
 }
 
@@ -564,13 +609,13 @@ func (a *authority) triggerResourceNotFoundForTesting(rType xdsresource.Type, re
 	state.md = xdsresource.UpdateMetadata{Status: xdsresource.ServiceStatusNotExist}
 	for watcher := range state.watchers {
 		watcher := watcher
-		a.serializer.Schedule(func(context.Context) { watcher.OnResourceDoesNotExist() })
+		a.serializer.TrySchedule(func(context.Context) { watcher.OnResourceDoesNotExist(func() {}) })
 	}
 }
 
 // sendDiscoveryRequestLocked sends a discovery request for the specified
 // resource type and resource names. Even though this method does not directly
-// access the resource cache, it is important that `resourcesMu` be beld when
+// access the resource cache, it is important that `resourcesMu` be held when
 // calling this method to ensure that a consistent snapshot of resource names is
 // being requested.
 func (a *authority) sendDiscoveryRequestLocked(rType xdsresource.Type, resources map[string]*resourceState) {
@@ -587,26 +632,54 @@ func (a *authority) reportLoad() (*load.Store, func()) {
 	return a.transport.ReportLoad()
 }
 
-func (a *authority) dumpResources() map[string]map[string]xdsresource.UpdateWithMD {
+func (a *authority) dumpResources() []*v3statuspb.ClientConfig_GenericXdsConfig {
 	a.resourcesMu.Lock()
 	defer a.resourcesMu.Unlock()
 
-	dump := make(map[string]map[string]xdsresource.UpdateWithMD)
+	var ret []*v3statuspb.ClientConfig_GenericXdsConfig
 	for rType, resourceStates := range a.resources {
-		states := make(map[string]xdsresource.UpdateWithMD)
+		typeURL := rType.TypeURL()
 		for name, state := range resourceStates {
 			var raw *anypb.Any
 			if state.cache != nil {
 				raw = state.cache.Raw()
 			}
-			states[name] = xdsresource.UpdateWithMD{
-				MD:  state.md,
-				Raw: raw,
+			config := &v3statuspb.ClientConfig_GenericXdsConfig{
+				TypeUrl:      typeURL,
+				Name:         name,
+				VersionInfo:  state.md.Version,
+				XdsConfig:    raw,
+				LastUpdated:  timestamppb.New(state.md.Timestamp),
+				ClientStatus: serviceStatusToProto(state.md.Status),
 			}
+			if errState := state.md.ErrState; errState != nil {
+				config.ErrorState = &v3adminpb.UpdateFailureState{
+					LastUpdateAttempt: timestamppb.New(errState.Timestamp),
+					Details:           errState.Err.Error(),
+					VersionInfo:       errState.Version,
+				}
+			}
+			ret = append(ret, config)
 		}
-		dump[rType.TypeURL()] = states
 	}
-	return dump
+	return ret
+}
+
+func serviceStatusToProto(serviceStatus xdsresource.ServiceStatus) v3adminpb.ClientResourceStatus {
+	switch serviceStatus {
+	case xdsresource.ServiceStatusUnknown:
+		return v3adminpb.ClientResourceStatus_UNKNOWN
+	case xdsresource.ServiceStatusRequested:
+		return v3adminpb.ClientResourceStatus_REQUESTED
+	case xdsresource.ServiceStatusNotExist:
+		return v3adminpb.ClientResourceStatus_DOES_NOT_EXIST
+	case xdsresource.ServiceStatusACKed:
+		return v3adminpb.ClientResourceStatus_ACKED
+	case xdsresource.ServiceStatusNACKed:
+		return v3adminpb.ClientResourceStatus_NACKED
+	default:
+		return v3adminpb.ClientResourceStatus_UNKNOWN
+	}
 }
 
 func combineErrors(rType string, topLevelErrors []error, perResourceErrors map[string]error) error {

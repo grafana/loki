@@ -2,9 +2,10 @@ package log
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"unsafe"
+
+	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -101,6 +102,9 @@ func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
 
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+	}
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
 }
@@ -220,6 +224,11 @@ func (p *streamPipeline) ReferencedStructuredMetadata() bool {
 func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
+
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+	}
+
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 
 	for _, s := range p.stages {
@@ -371,13 +380,9 @@ func ReduceStages(stages []Stage) Stage {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
 }

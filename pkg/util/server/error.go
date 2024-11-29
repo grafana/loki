@@ -48,6 +48,10 @@ func WriteError(err error, w http.ResponseWriter) {
 // ClientHTTPStatusAndError returns error and http status that is "safe" to return to client without
 // exposing any implementation details.
 func ClientHTTPStatusAndError(err error) (int, error) {
+	if err == nil {
+		return http.StatusOK, nil
+	}
+
 	var (
 		queryErr storage_errors.QueryError
 		promErr  promql.ErrStorage
@@ -78,7 +82,12 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	case errors.As(err, &queryErr):
 		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline) || errors.Is(err, logqlmodel.ErrBlocked) || errors.Is(err, logqlmodel.ErrParseMatchers):
+	case errors.Is(err, logqlmodel.ErrLimit) ||
+		errors.Is(err, logqlmodel.ErrParse) ||
+		errors.Is(err, logqlmodel.ErrPipeline) ||
+		errors.Is(err, logqlmodel.ErrBlocked) ||
+		errors.Is(err, logqlmodel.ErrParseMatchers) ||
+		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
 		return http.StatusBadRequest, err

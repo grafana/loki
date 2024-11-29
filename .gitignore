@@ -34,6 +34,7 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
+tools/lambda-promtail/main
 
 # Workspaces
 *.work
@@ -56,3 +57,9 @@ nix/result
 
 # snyk
 .dccache
+
+# helm test
+production/helm/loki/src/helm-test/helm-test
+
+# Go telemetry
+.config

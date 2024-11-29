@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -15,7 +16,7 @@ import (
 func TestBatchedLoader(t *testing.T) {
 	t.Parallel()
 
-	errMapper := func(i int) (int, error) {
+	errMapper := func(_ int) (int, error) {
 		return 0, errors.New("bzzt")
 	}
 	successMapper := func(i int) (int, error) {
@@ -105,7 +106,6 @@ func TestBatchedLoader(t *testing.T) {
 			inputs:    [][]int{{0}},
 		},
 	} {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			fetchers := make([]Fetcher[int, int], 0, len(tc.inputs))
 			for range tc.inputs {
@@ -120,7 +120,7 @@ func TestBatchedLoader(t *testing.T) {
 				)
 			}
 
-			loader := newBatchedLoader[int, int, int](
+			loader := newBatchedLoader(
 				tc.ctx,
 				fetchers,
 				tc.inputs,
@@ -128,7 +128,7 @@ func TestBatchedLoader(t *testing.T) {
 				tc.batchSize,
 			)
 
-			got, err := v1.Collect[int](loader)
+			got, err := v2.Collect(loader)
 			if tc.err {
 				require.Error(t, err)
 				return
@@ -192,7 +192,6 @@ func TestOverlappingBlocksIter(t *testing.T) {
 			exp: 2,
 		},
 	} {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			it := overlappingBlocksIter(tc.inp)
 			var overlapping [][]bloomshipper.BlockRef

@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -36,21 +37,22 @@ func shardResolverForConf(
 	maxParallelism int,
 	maxShards int,
 	r queryrangebase.Request,
-	statsHandler, next queryrangebase.Handler,
+	statsHandler, next, retryNext queryrangebase.Handler,
 	limits Limits,
 ) (logql.ShardResolver, bool) {
 	if conf.IndexType == types.TSDBType {
 		return &dynamicShardResolver{
-			ctx:             ctx,
-			logger:          logger,
-			statsHandler:    statsHandler,
-			next:            next,
-			limits:          limits,
-			from:            model.Time(r.GetStart().UnixMilli()),
-			through:         model.Time(r.GetEnd().UnixMilli()),
-			maxParallelism:  maxParallelism,
-			maxShards:       maxShards,
-			defaultLookback: defaultLookback,
+			ctx:              ctx,
+			logger:           logger,
+			statsHandler:     statsHandler,
+			retryNextHandler: retryNext,
+			next:             next,
+			limits:           limits,
+			from:             model.Time(r.GetStart().UnixMilli()),
+			through:          model.Time(r.GetEnd().UnixMilli()),
+			maxParallelism:   maxParallelism,
+			maxShards:        maxShards,
+			defaultLookback:  defaultLookback,
 		}, true
 	}
 	if conf.RowShards < 2 {
@@ -63,10 +65,11 @@ type dynamicShardResolver struct {
 	ctx context.Context
 	// TODO(owen-d): shouldn't have to fork handlers here -- one should just transparently handle the right logic
 	// depending on the underlying type?
-	statsHandler queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
-	next         queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
-	logger       log.Logger
-	limits       Limits
+	statsHandler     queryrangebase.Handler // index stats handler (hooked up to results cache, etc)
+	retryNextHandler queryrangebase.Handler // next handler wrapped with retries
+	next             queryrangebase.Handler // next handler in the chain (used for non-stats reqs)
+	logger           log.Logger
+	limits           Limits
 
 	from, through   model.Time
 	maxParallelism  int
@@ -141,8 +144,6 @@ func getStatsForMatchers(
 func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 	sp, ctx := opentracing.StartSpanFromContext(r.ctx, "dynamicShardResolver.GetStats")
 	defer sp.Finish()
-	log := spanlogger.FromContext(r.ctx)
-	defer log.Finish()
 
 	start := time.Now()
 
@@ -159,6 +160,7 @@ func (r *dynamicShardResolver) GetStats(e syntax.Expr) (stats.Stats, error) {
 		grps = append(grps, syntax.MatcherRange{})
 	}
 
+	log := util_log.WithContext(ctx, util_log.Logger)
 	results, err := getStatsForMatchers(ctx, log, r.statsHandler, r.from, r.through, grps, r.maxParallelism, r.defaultLookback)
 	if err != nil {
 		return stats.Stats{}, err
@@ -199,7 +201,7 @@ func (r *dynamicShardResolver) Shards(e syntax.Expr) (int, uint64, error) {
 	maxBytesPerShard := validation.SmallestPositiveIntPerTenant(tenantIDs, r.limits.TSDBMaxBytesPerShard)
 	factor := sharding.GuessShardFactor(combined.Bytes, uint64(maxBytesPerShard), r.maxShards)
 
-	var bytesPerShard = combined.Bytes
+	bytesPerShard := combined.Bytes
 	if factor > 0 {
 		bytesPerShard = combined.Bytes / uint64(factor)
 	}
@@ -223,7 +225,10 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 ) {
 	log := spanlogger.FromContext(r.ctx)
 
-	adjustedFrom := r.from
+	var (
+		adjustedFrom    = r.from
+		adjustedThrough model.Time
+	)
 
 	// NB(owen-d): there should only ever be 1 matcher group passed
 	// to this call as we call it separately for different legs
@@ -234,30 +239,42 @@ func (r *dynamicShardResolver) ShardingRanges(expr syntax.Expr, targetBytesPerSh
 	}
 
 	for _, grp := range grps {
-		diff := grp.Interval + grp.Offset
+		diff := grp.Interval
 
 		// For instant queries, when start == end,
 		// we have a default lookback which we add here
-		if grp.Interval == 0 {
-			diff = diff + r.defaultLookback
+		if diff == 0 {
+			diff = r.defaultLookback
 		}
+
+		diff += grp.Offset
 
 		// use the oldest adjustedFrom
 		if r.from.Add(-diff).Before(adjustedFrom) {
 			adjustedFrom = r.from.Add(-diff)
 		}
+
+		// use the latest adjustedThrough
+		if r.through.Add(-grp.Offset).After(adjustedThrough) {
+			adjustedThrough = r.through.Add(-grp.Offset)
+		}
+	}
+
+	// handle the case where there are no matchers
+	if adjustedThrough == 0 {
+		adjustedThrough = r.through
 	}
 
 	exprStr := expr.String()
 	// try to get shards for the given expression
 	// if it fails, fallback to linearshards based on stats
-	resp, err := r.next.Do(r.ctx, &logproto.ShardsRequest{
+	// use the retry handler here to retry transient errors
+	resp, err := r.retryNextHandler.Do(r.ctx, &logproto.ShardsRequest{
 		From:                adjustedFrom,
-		Through:             r.through,
+		Through:             adjustedThrough,
 		Query:               expr.String(),
 		TargetBytesPerShard: targetBytesPerShard,
 	})
-
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to get shards for expression, got %T: %+v", err, err)
 	}

@@ -10,9 +10,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	v2 "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 )
 
 func blocksFromSchema(t *testing.T, n int, options v1.BlockOptions) (res []*v1.Block, data []v1.SeriesWithBlooms, refs []bloomshipper.BlockRef) {
@@ -46,7 +48,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 
 		minIdx, maxIdx := i*seriesPerBlock, (i+1)*seriesPerBlock
 
-		itr := v1.NewSliceIter[v1.SeriesWithBlooms](data[minIdx:maxIdx])
+		itr := v2.NewSliceIter(data[minIdx:maxIdx])
 		_, err = builder.BuildFrom(itr)
 		require.Nil(t, err)
 
@@ -65,16 +67,16 @@ type dummyChunkLoader struct{}
 func (dummyChunkLoader) Load(_ context.Context, _ string, series *v1.Series) *ChunkItersByFingerprint {
 	return &ChunkItersByFingerprint{
 		fp:  series.Fingerprint,
-		itr: v1.NewEmptyIter[v1.ChunkRefWithIter](),
+		itr: v2.NewEmptyIter[v1.ChunkRefWithIter](),
 	}
 }
 
-func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Series], blocks []*v1.Block, refs []bloomshipper.BlockRef) *SimpleBloomGenerator {
+func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v2.Iterator[*v1.Series], blocks []*v1.Block, refs []bloomshipper.BlockRef) *SimpleBloomGenerator {
 	bqs := make([]*bloomshipper.CloseableBlockQuerier, 0, len(blocks))
 	for i, b := range blocks {
 		bqs = append(bqs, &bloomshipper.CloseableBlockQuerier{
 			BlockRef:     refs[i],
-			BlockQuerier: v1.NewBlockQuerier(b, false, v1.DefaultMaxPageSize),
+			BlockQuerier: v1.NewBlockQuerier(b, &mempool.SimpleHeapAllocator{}, v1.DefaultMaxPageSize),
 		})
 	}
 
@@ -106,14 +108,14 @@ func dummyBloomGen(t *testing.T, opts v1.BlockOptions, store v1.Iterator[*v1.Ser
 			return v1.NewMemoryBlockWriter(indexBuf, bloomsBuf), v1.NewByteReader(indexBuf, bloomsBuf)
 		},
 		nil,
-		NewMetrics(nil, v1.NewMetrics(nil)),
+		v1.NewMetrics(nil),
 		log.NewNopLogger(),
 	)
 }
 
 func TestSimpleBloomGenerator(t *testing.T) {
 	const maxBlockSize = 100 << 20 // 100MB
-	for _, enc := range []chunkenc.Encoding{chunkenc.EncNone, chunkenc.EncGZIP, chunkenc.EncSnappy} {
+	for _, enc := range []compression.Codec{compression.None, compression.GZIP, compression.Snappy} {
 		for _, tc := range []struct {
 			desc                 string
 			fromSchema, toSchema v1.BlockOptions
@@ -121,21 +123,21 @@ func TestSimpleBloomGenerator(t *testing.T) {
 		}{
 			{
 				desc:       "SkipsIncompatibleSchemas",
-				fromSchema: v1.NewBlockOptions(enc, 3, 0, maxBlockSize, 0),
-				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize, 0),
+				fromSchema: v1.NewBlockOptions(enc, maxBlockSize, 0),
+				toSchema:   v1.NewBlockOptions(enc, maxBlockSize, 0),
 			},
 			{
 				desc:       "CombinesBlocks",
-				fromSchema: v1.NewBlockOptions(enc, 4, 0, maxBlockSize, 0),
-				toSchema:   v1.NewBlockOptions(enc, 4, 0, maxBlockSize, 0),
+				fromSchema: v1.NewBlockOptions(enc, maxBlockSize, 0),
+				toSchema:   v1.NewBlockOptions(enc, maxBlockSize, 0),
 			},
 		} {
 			t.Run(fmt.Sprintf("%s/%s", tc.desc, enc), func(t *testing.T) {
 				sourceBlocks, data, refs := blocksFromSchemaWithRange(t, 2, tc.fromSchema, 0x00000, 0x6ffff)
-				storeItr := v1.NewMapIter[v1.SeriesWithBlooms, *v1.Series](
-					v1.NewSliceIter[v1.SeriesWithBlooms](data),
+				storeItr := v2.NewMapIter(
+					v2.NewSliceIter(data),
 					func(swb v1.SeriesWithBlooms) *v1.Series {
-						return swb.Series
+						return &swb.Series.Series
 					},
 				)
 
@@ -152,14 +154,16 @@ func TestSimpleBloomGenerator(t *testing.T) {
 				expectedRefs := v1.PointerSlice(data)
 				outputRefs := make([]*v1.SeriesWithBlooms, 0, len(data))
 				for _, block := range outputBlocks {
-					bq := v1.NewBlockQuerier(block, false, v1.DefaultMaxPageSize).Iter()
+					bq := v1.NewBlockQuerier(block, &mempool.SimpleHeapAllocator{}, v1.DefaultMaxPageSize).Iter()
 					for bq.Next() {
 						outputRefs = append(outputRefs, bq.At())
 					}
 				}
 				require.Equal(t, len(expectedRefs), len(outputRefs))
 				for i := range expectedRefs {
-					require.Equal(t, expectedRefs[i].Series, outputRefs[i].Series)
+					// TODO(chaudum): For now we only compare the series
+					// but we should also compare meta.
+					require.Equal(t, expectedRefs[i].Series.Series, outputRefs[i].Series.Series)
 				}
 			})
 		}

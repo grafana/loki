@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -10,14 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -25,8 +22,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
-
-	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -39,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -47,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	mathutil "github.com/grafana/loki/v3/pkg/util/math"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
@@ -186,6 +183,7 @@ func newInstance(
 		customStreamsTracker: customStreamsTracker,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
+
 	return i, err
 }
 
@@ -289,7 +287,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"stream", pushReqStream.Labels,
 			)
 		}
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if record != nil {
@@ -309,7 +307,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -338,10 +336,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 	}
 
 	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
-	bytes := 0
-	for _, e := range pushReqStream.Entries {
-		bytes += len(e.Line)
-	}
+	bytes := util.EntriesTotalSize(pushReqStream.Entries)
 	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
@@ -355,7 +350,8 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
-	i.ownedStreamsSvc.incOwnedStreamCount()
+	// we count newly created stream as owned
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
@@ -373,12 +369,9 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
 
-	i.streamsCreatedTotal.Inc()
-	memoryStreams.WithLabelValues(i.instanceID).Inc()
-	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
-	i.addTailersToNewStream(s)
+	i.onStreamCreated(s)
 
 	return s, nil
 }
@@ -422,7 +415,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
-		i.ownedStreamsSvc.decOwnedStreamCount()
+		i.ownedStreamsSvc.trackRemovedStream(s.fp)
 	}
 }
 
@@ -1174,4 +1167,27 @@ func minTs(stream *logproto.Stream) model.Time {
 		}
 	}
 	return model.TimeFromUnixNano(streamMinTs)
+}
+
+// For each stream, we check if the stream is owned by the ingester or not and increment/decrement the owned stream count.
+func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error)) error {
+	start := time.Now()
+	defer func() {
+		i.metrics.streamsOwnershipCheck.Observe(float64(time.Since(start).Milliseconds()))
+	}()
+
+	var err error
+	i.streams.WithLock(func() {
+		i.ownedStreamsSvc.resetStreamCounts()
+		err = i.streams.ForEach(func(s *stream) (bool, error) {
+			ownedStream, err := isOwnedStream(s)
+			if err != nil {
+				return false, err
+			}
+
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
+			return true, nil
+		})
+	})
+	return err
 }

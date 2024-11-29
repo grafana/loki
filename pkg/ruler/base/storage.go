@@ -7,13 +7,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
 	promRules "github.com/prometheus/prometheus/rules"
 
-	configClient "github.com/grafana/loki/v3/pkg/configs/client"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore/bucketclient"
-	"github.com/grafana/loki/v3/pkg/ruler/rulestore/configdb"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore/objectclient"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -30,7 +27,6 @@ import (
 )
 
 // RuleStoreConfig configures a rule store.
-// TODO remove this legacy config in Cortex 1.11.
 type RuleStoreConfig struct {
 	Type string `yaml:"type"`
 
@@ -123,29 +119,18 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 }
 
 // NewRuleStore returns a rule store backend client based on the provided cfg.
-func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
-	if cfg.Backend == configdb.Name {
-		c, err := configClient.New(cfg.ConfigDB)
-		if err != nil {
-			return nil, err
-		}
-
-		return configdb.NewConfigRuleStore(c), nil
-	}
-
+func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.SSEConfigProvider, loader promRules.GroupLoader, logger log.Logger) (rulestore.RuleStore, error) {
 	if cfg.Backend == local.Name {
+		if loader == nil {
+			loader = promRules.FileLoader{}
+		}
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	}
 
-	bucketClient, err := bucket.NewClient(ctx, cfg.Config, "ruler-storage", logger, reg)
+	bucketClient, err := bucket.NewClient(ctx, cfg.Backend, cfg.Config, "ruler-storage", logger)
 	if err != nil {
 		return nil, err
 	}
 
-	store := bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	return store, nil
+	return bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger), nil
 }

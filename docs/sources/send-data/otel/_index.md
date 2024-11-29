@@ -12,6 +12,8 @@ weight:  250
 Loki natively supports ingesting OpenTelemetry logs over HTTP.
 For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [`otlphttp` exporter](https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlphttpexporter).
 
+{{< youtube id="snXhe1fDDa8" >}}
+
 ## Loki configuration
 
 When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}).
@@ -30,7 +32,7 @@ You need to make the following changes to the [OpenTelemetry Collector config](h
 ```yaml
 exporters:
   otlphttp:
-    endpoint: http://<loki-addr>:3100/otlp/v1/logs
+    endpoint: http://<loki-addr>:3100/otlp
 ```
 
 And enable it in `service.pipelines`:
@@ -57,7 +59,7 @@ exporters:
   otlphttp:
     auth:
       authenticator: basicauth/otlp
-    endpoint: http://<loki-addr>:3100/otlp/v1/logs
+    endpoint: http://<loki-addr>:3100/otlp
 
 service:
   extensions: [basicauth/otlp]
@@ -77,6 +79,7 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
   - cloud.region
   - container.name
   - deployment.environment
+  - deployment.environment.name
   - k8s.cluster.name
   - k8s.container.name
   - k8s.cronjob.name
@@ -91,9 +94,9 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
   - service.name
   - service.namespace
 
-    {{% admonition type="note" %}}
+    {{< admonition type="note" >}}
     Because Loki has a default limit of 15 index labels, we recommend storing only select resource attributes as index labels. Although the default config selects more than 15 Resource Attributes, it should be fine since a few are mutually exclusive.
-    {{% /admonition %}}
+    {{< /admonition >}}
 
 - Timestamp: One of `LogRecord.TimeUnixNano` or `LogRecord.ObservedTimestamp`, based on which one is set. If both are not set, the ingestion timestamp will be used.
 
@@ -199,7 +202,7 @@ With the example config, here is how various kinds of Attributes would be stored
 * Store remaining Resource Attributes as Structured Metadata.
 * Store all the Scope and Log Attributes as Structured Metadata.
 
-#### Example 2:
+#### Example 3:
 
 ```yaml
 limits_config:

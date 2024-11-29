@@ -124,16 +124,25 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (queryrange
 	case sketch.TopKMatrix:
 		sk, err := data.ToProto()
 		return &TopKSketchesResponse{
-			Response: sk,
-			Warnings: result.Warnings,
+			Response:   sk,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
 		}, err
 	case logql.ProbabilisticQuantileMatrix:
 		r := data.ToProto()
 		data.Release()
 		return &QuantileSketchResponse{
-			Response: r,
-			Warnings: result.Warnings,
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
 		}, nil
+	case logql.CountMinSketchVector:
+		r, err := data.ToProto()
+		return &CountMinSketchResponse{
+			Response:   r,
+			Warnings:   result.Warnings,
+			Statistics: result.Statistics,
+		}, err
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %T", result.Data)
@@ -184,9 +193,10 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 		}
 
 		return logqlmodel.Result{
-			Data:     matrix,
-			Headers:  resp.GetHeaders(),
-			Warnings: r.Warnings,
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
 		}, nil
 	case *QuantileSketchResponse:
 		matrix, err := logql.ProbabilisticQuantileMatrixFromProto(r.Response)
@@ -194,9 +204,21 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
 		}
 		return logqlmodel.Result{
-			Data:     matrix,
-			Headers:  resp.GetHeaders(),
-			Warnings: r.Warnings,
+			Data:       matrix,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
+		}, nil
+	case *CountMinSketchResponse:
+		cms, err := logql.CountMinSketchVectorFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode count min sketch vector: %w", err)
+		}
+		return logqlmodel.Result{
+			Data:       cms,
+			Headers:    resp.GetHeaders(),
+			Warnings:   r.Warnings,
+			Statistics: r.Statistics,
 		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
@@ -233,6 +255,8 @@ func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
 		return concrete.DetectedLabels, nil
 	case *QueryResponse_DetectedFields:
 		return concrete.DetectedFields, nil
+	case *QueryResponse_CountMinSketches:
+		return concrete.CountMinSketches, nil
 	default:
 		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
 	}
@@ -274,6 +298,8 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 		p.Response = &QueryResponse_DetectedLabels{response}
 	case *DetectedFieldsResponse:
 		p.Response = &QueryResponse_DetectedFields{response}
+	case *CountMinSketchResponse:
+		p.Response = &QueryResponse_CountMinSketches{response}
 	default:
 		return nil, fmt.Errorf("invalid response format, got (%T)", res)
 	}
@@ -332,7 +358,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if concrete.Instant.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Instant.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Instant.Plan = &plan.QueryPlan{
 				AST: parsed,
@@ -350,7 +376,7 @@ func (Codec) QueryRequestUnwrap(ctx context.Context, req *QueryRequest) (queryra
 		if concrete.Streams.Plan == nil {
 			parsed, err := syntax.ParseExpr(concrete.Streams.GetQuery())
 			if err != nil {
-				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, ctx, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			concrete.Streams.Plan = &plan.QueryPlan{
 				AST: parsed,

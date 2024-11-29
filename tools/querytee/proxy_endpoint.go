@@ -109,9 +109,6 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 	wg.Add(len(p.backends))
 	for i, b := range p.backends {
-		i := i
-		b := b
-
 		go func() {
 			defer wg.Done()
 			var (

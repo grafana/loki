@@ -197,10 +197,8 @@ func (c CompositeStore) Stats(ctx context.Context, userID string, from, through 
 		xs = append(xs, x)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
-
 	}
 	res := stats.MergeStats(xs...)
 	return &res, err
@@ -213,7 +211,6 @@ func (c CompositeStore) Volume(ctx context.Context, userID string, from, through
 		volumes = append(volumes, volume)
 		return err
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +238,6 @@ func (c CompositeStore) GetShards(
 		groups = append(groups, shards)
 		return nil
 	})
-
 	if err != nil {
 		return nil, err
 	}

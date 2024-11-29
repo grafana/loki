@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -13,39 +14,38 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/loghttp/push"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
-	"github.com/grafana/loki/v3/pkg/storage/types"
-
-	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	server_util "github.com/grafana/loki/v3/pkg/util/server"
-
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	lokilog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -56,8 +56,10 @@ import (
 	indexstore "github.com/grafana/loki/v3/pkg/storage/stores/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
 )
 
@@ -66,6 +68,10 @@ const (
 	RingKey = "ring"
 
 	shutdownMarkerFilename = "shutdown-requested.txt"
+
+	// PartitionRingKey is the key under which we store the partitions ring used by the "ingest storage".
+	PartitionRingKey  = "ingester-partitions-key"
+	PartitionRingName = "ingester-partitions"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -92,7 +98,7 @@ type Config struct {
 	BlockSize           int               `yaml:"chunk_block_size"`
 	TargetChunkSize     int               `yaml:"chunk_target_size"`
 	ChunkEncoding       string            `yaml:"chunk_encoding"`
-	parsedEncoding      chunkenc.Encoding `yaml:"-"` // placeholder for validated encoding
+	parsedEncoding      compression.Codec `yaml:"-"` // placeholder for validated encoding
 	MaxChunkAge         time.Duration     `yaml:"max_chunk_age"`
 	AutoForgetUnhealthy bool              `yaml:"autoforget_unhealthy"`
 
@@ -122,12 +128,17 @@ type Config struct {
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
 
 	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
+
+	OwnedStreamsCheckInterval time.Duration `yaml:"owned_streams_check_interval" doc:"description=Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams."`
+
+	KafkaIngestion KafkaIngestionConfig `yaml:"kafka_ingestion,omitempty"`
 }
 
 // RegisterFlags registers the flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.LifecyclerConfig.RegisterFlags(f, util_log.Logger)
 	cfg.WAL.RegisterFlags(f)
+	cfg.KafkaIngestion.RegisterFlags(f)
 
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
 	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
@@ -139,7 +150,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")
 	f.IntVar(&cfg.TargetChunkSize, "ingester.chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
-	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", chunkenc.EncGZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", chunkenc.SupportedEncoding()))
+	f.StringVar(&cfg.ChunkEncoding, "ingester.chunk-encoding", compression.GZIP.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.SyncPeriod, "ingester.sync-period", 1*time.Hour, "Parameters used to synchronize ingesters to cut chunks at the same moment. Sync period is used to roll over incoming entry to a new chunk. If chunk's utilization isn't high enough (eg. less than 50% when sync_min_utilization is set to 0.5), then this chunk rollover doesn't happen.")
 	f.Float64Var(&cfg.SyncMinUtilization, "ingester.sync-min-utilization", 0.1, "Minimum utilization of chunk when doing synchronization.")
 	f.IntVar(&cfg.MaxReturnedErrors, "ingester.max-ignored-stream-errors", 10, "The maximum number of errors a stream will report to the user when a push fails. 0 to make unlimited.")
@@ -149,10 +160,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
 	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
+	f.DurationVar(&cfg.OwnedStreamsCheckInterval, "ingester.owned-streams-check-interval", 30*time.Second, "Interval at which the ingester ownedStreamService checks for changes in the ring to recalculate owned streams.")
 }
 
 func (cfg *Config) Validate() error {
-	enc, err := chunkenc.ParseEncoding(cfg.ChunkEncoding)
+	enc, err := compression.ParseCodec(cfg.ChunkEncoding)
 	if err != nil {
 		return err
 	}
@@ -176,6 +188,17 @@ func (cfg *Config) Validate() error {
 	}
 
 	return nil
+}
+
+type KafkaIngestionConfig struct {
+	Enabled             bool                 `yaml:"enabled" doc:"description=Whether the kafka ingester is enabled."`
+	PartitionRingConfig partitionring.Config `yaml:"partition_ring" category:"experimental"`
+	KafkaConfig         kafka.Config         `yaml:"-"`
+}
+
+func (cfg *KafkaIngestionConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.PartitionRingConfig.RegisterFlagsWithPrefix("ingester.", f)
+	f.BoolVar(&cfg.Enabled, "ingester.kafka-ingestion-enabled", false, "Whether the ingester will consume data from kafka.")
 }
 
 type Wrapper interface {
@@ -204,6 +227,7 @@ type Interface interface {
 	GetOrCreateInstance(instanceID string) (*instance, error)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
+	PreparePartitionDownscaleHandler(w http.ResponseWriter, r *http.Request)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -236,6 +260,9 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// Spread out calls to the chunk store over the flush period
+	flushRateLimiter *rate.Limiter
+
 	limiter *Limiter
 
 	// Denotes whether the ingester should flush on shutdown.
@@ -262,10 +289,18 @@ type Ingester struct {
 	writeLogManager *writefailures.Manager
 
 	customStreamsTracker push.UsageTracker
+
+	// recalculateOwnedStreams periodically checks the ring for changes and recalculates owned streams for each instance.
+	readRing                ring.ReadRing
+	recalculateOwnedStreams *recalculateOwnedStreamsSvc
+
+	ingestPartitionID       int32
+	partitionRingLifecycler *ring.PartitionInstanceLifecycler
+	partitionReader         *partition.ReaderService
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing, partitionRingWatcher ring.PartitionRingReader) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -287,6 +322,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		periodicConfigs:       store.GetSchemaConfigs(),
 		loopQuit:              make(chan struct{}),
 		flushQueues:           make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		flushRateLimiter:      rate.NewLimiter(rate.Inf, 1),
 		tailersQuit:           make(chan struct{}),
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
@@ -294,11 +330,12 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		streamRateCalculator:  NewStreamRateCalculator(),
 		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
+		readRing:              readRing,
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
 	if cfg.WAL.Enabled {
-		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(cfg.WAL.Dir, 0750); err != nil {
 			// Best effort try to make path absolute for easier debugging.
 			path, _ := filepath.Abs(cfg.WAL.Dir)
 			if path == "" {
@@ -323,9 +360,40 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.lifecyclerWatcher = services.NewFailureWatcher()
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
-	// Now that the lifecycler has been created, we can create the limiter
-	// which depends on it.
-	i.limiter = NewLimiter(limits, metrics, i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
+	if i.cfg.KafkaIngestion.Enabled {
+		i.ingestPartitionID, err = partitionring.ExtractIngesterPartitionID(cfg.LifecyclerConfig.ID)
+		if err != nil {
+			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
+		}
+		partitionRingKV := cfg.KafkaIngestion.PartitionRingConfig.KVStore.Mock
+		if partitionRingKV == nil {
+			partitionRingKV, err = kv.NewClient(cfg.KafkaIngestion.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), kv.RegistererWithKVName(registerer, PartitionRingName+"-lifecycler"), logger)
+			if err != nil {
+				return nil, fmt.Errorf("creating KV store for ingester partition ring: %w", err)
+			}
+		}
+		i.partitionRingLifecycler = ring.NewPartitionInstanceLifecycler(
+			i.cfg.KafkaIngestion.PartitionRingConfig.ToLifecyclerConfig(i.ingestPartitionID, cfg.LifecyclerConfig.ID),
+			PartitionRingName,
+			PartitionRingKey,
+			partitionRingKV,
+			logger,
+			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		i.partitionReader, err = partition.NewReaderService(
+			cfg.KafkaIngestion.KafkaConfig,
+			i.ingestPartitionID,
+			cfg.LifecyclerConfig.ID,
+			NewKafkaConsumerFactory(i, registerer),
+			logger,
+			registerer,
+		)
+		if err != nil {
+			return nil, err
+		}
+		i.lifecyclerWatcher.WatchService(i.partitionRingLifecycler)
+		i.lifecyclerWatcher.WatchService(i.partitionReader)
+	}
 
 	i.Service = services.NewBasicService(i.starting, i.running, i.stopping)
 
@@ -342,6 +410,23 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	if i.cfg.SampleExtractorWrapper != nil {
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
+
+	var streamCountLimiter limiterRingStrategy
+	var ownedStreamsStrategy ownershipStrategy
+	var streamRateLimiter RateLimiterStrategy
+	if i.cfg.KafkaIngestion.Enabled {
+		streamCountLimiter = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
+		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
+		streamRateLimiter = &NoLimitsStrategy{} // Kafka ingestion does not have per-stream rate limits, because we control the consumption speed.
+	} else {
+		streamCountLimiter = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
+		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
+		streamRateLimiter = &TenantBasedStrategy{limits: limits}
+	}
+	// Now that the lifecycler has been created, we can create the limiter
+	// which depends on it.
+	i.limiter = NewLimiter(limits, metrics, streamCountLimiter, streamRateLimiter)
+	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
 }
@@ -429,7 +514,15 @@ func (i *Ingester) setupAutoForget() {
 	}()
 }
 
-func (i *Ingester) starting(ctx context.Context) error {
+func (i *Ingester) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			// if starting() fails for any reason (e.g., context canceled),
+			// the lifecycler must be stopped.
+			_ = services.StopAndAwaitTerminated(context.Background(), i.lifecycler)
+		}
+	}()
+
 	if i.cfg.WAL.Enabled {
 		start := time.Now()
 
@@ -514,8 +607,32 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	i.InitFlushQueues()
 
+	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
+	if err != nil {
+		return fmt.Errorf("failed to check ingester shutdown marker: %w", err)
+	}
+
+	if shutdownMarker {
+		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
+		i.setPrepareShutdown()
+	}
+
+	// start our flush loop: this needs to start before the partition-reader in order for chunks to be shipped in the case of Kafka catching up.
+	i.loopDone.Add(1)
+	go i.loop()
+
+	// When kafka ingestion is enabled, we have to make sure that reader catches up replaying the partition
+	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
+	// it will switch the ingester state in the ring to ACTIVE.
+	if i.partitionReader != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionReader); err != nil {
+			return fmt.Errorf("failed to start partition reader: %w", err)
+		}
+	}
+
 	// pass new context to lifecycler, so that it doesn't stop automatically when Ingester's service context is done
-	err := i.lifecycler.StartAsync(context.Background())
+	err = i.lifecycler.StartAsync(context.Background())
 	if err != nil {
 		return err
 	}
@@ -525,20 +642,22 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return err
 	}
 
-	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
-	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
+	err = i.recalculateOwnedStreams.StartAsync(ctx)
 	if err != nil {
-		return errors.Wrap(err, "failed to check ingester shutdown marker")
+		return fmt.Errorf("can not start recalculate owned streams service: %w", err)
 	}
 
-	if shutdownMarker {
-		level.Info(i.logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
-		i.setPrepareShutdown()
+	err = i.recalculateOwnedStreams.AwaitRunning(ctx)
+	if err != nil {
+		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
-	// start our loop
-	i.loopDone.Add(1)
-	go i.loop()
+	if i.partitionRingLifecycler != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
+			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -568,6 +687,19 @@ func (i *Ingester) running(ctx context.Context) error {
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
+
+	if i.partitionReader != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), i.partitionReader); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to stop partition reader", "err", err)
+		}
+	}
+
+	if i.partitionRingLifecycler != nil {
+		if err := services.StopAndAwaitTerminated(context.Background(), i.partitionRingLifecycler); err != nil {
+			level.Warn(i.logger).Log("msg", "failed to stop partition ring lifecycler", "err", err)
+		}
+	}
+
 	var errs util.MultiError
 	errs.Add(i.wal.Stop())
 
@@ -627,7 +759,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG.
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
@@ -724,6 +856,18 @@ func (i *Ingester) setPrepareShutdown() {
 	i.lifecycler.SetUnregisterOnShutdown(true)
 	i.terminateOnShutdown = true
 	i.metrics.shutdownMarker.Set(1)
+
+	if i.partitionRingLifecycler != nil {
+		// When the prepare shutdown endpoint is called there are two changes in the partitions ring behavior:
+		//
+		// 1. If setPrepareShutdown() is called at startup, because of the shutdown marker found on disk,
+		//    the ingester shouldn't create the partition if doesn't exist, because we expect the ingester will
+		//    be scaled down shortly after.
+		// 2. When the ingester will shutdown we'll have to remove the ingester from the partition owners,
+		//    because we expect the ingester to be scaled down.
+		i.partitionRingLifecycler.SetCreatePartitionOnStartup(false)
+		i.partitionRingLifecycler.SetRemoveOwnerOnShutdown(true)
+	}
 }
 
 func (i *Ingester) unsetPrepareShutdown() {
@@ -760,7 +904,7 @@ func createShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -777,7 +921,7 @@ func removeShutdownMarker(p string) error {
 		return err
 	}
 
-	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0o777)
 	if err != nil {
 		return err
 	}
@@ -850,16 +994,16 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-
-	pprof.Do(ctx, pprof.Labels("path", "write", "tenant", instanceID), func(c context.Context) {
-		err = instance.Push(ctx, req)
-	})
-
-	return &logproto.PushResponse{}, err
+	return &logproto.PushResponse{}, instance.Push(ctx, req)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
@@ -870,11 +1014,12 @@ func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRe
 		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
 	}
 
-	var allRates []logproto.StreamRate
-	pprof.Do(ctx, pprof.Labels("path", "write"), func(c context.Context) {
-		allRates = i.streamRateCalculator.Rates()
-	})
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))
+	pprof.SetGoroutineLabels(ctx)
 
+	allRates := i.streamRateCalculator.Rates()
 	rates := make([]*logproto.StreamRate, len(allRates))
 	for idx := range allRates {
 		rates[idx] = &allRates[idx]
@@ -924,49 +1069,48 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "log"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return err
 	}
+	it, err := instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
+	if err != nil {
+		return err
+	}
 
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "log", "tenant", instanceID), func(c context.Context) {
-		var it iter.EntryIterator
-		it, err = instance.Query(ctx, logql.SelectLogParams{QueryRequest: req})
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
+			Selector:  req.Selector,
+			Direction: req.Direction,
+			Start:     start,
+			End:       end,
+			Limit:     req.Limit,
+			Shards:    req.Shards,
+			Deletes:   req.Deletes,
+			Plan:      req.Plan,
+		}}
+		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
-			return
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			return err
 		}
+		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
+	}
 
-		if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-			storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
-				Selector:  req.Selector,
-				Direction: req.Direction,
-				Start:     start,
-				End:       end,
-				Limit:     req.Limit,
-				Shards:    req.Shards,
-				Deletes:   req.Deletes,
-				Plan:      req.Plan,
-			}}
-			var storeItr iter.EntryIterator
-			storeItr, err = i.store.SelectLogs(ctx, storeReq)
-			if err != nil {
-				util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-				return
-			}
-			it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
-		}
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-		defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	// sendBatches uses -1 to specify no limit.
+	batchLimit := int32(req.Limit)
+	if batchLimit == 0 {
+		batchLimit = -1
+	}
 
-		// sendBatches uses -1 to specify no limit.
-		batchLimit := int32(req.Limit)
-		if batchLimit == 0 {
-			batchLimit = -1
-		}
-		err = sendBatches(ctx, it, queryServer, batchLimit)
-	})
-
-	return err
+	return sendBatches(ctx, it, queryServer, batchLimit)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.
@@ -992,46 +1136,45 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		return err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "metric"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return err
 	}
 
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "metric", "tenant", instanceID), func(c context.Context) {
-		var it iter.SampleIterator
-		it, err = instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
+	if err != nil {
+		return err
+	}
+	if sp != nil {
+		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
+			Start:    start,
+			End:      end,
+			Selector: req.Selector,
+			Shards:   req.Shards,
+			Deletes:  req.Deletes,
+			Plan:     req.Plan,
+		}}
+		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
-			return
-		}
-		if sp != nil {
-			sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			return err
 		}
 
-		if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-			storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
-				Start:    start,
-				End:      end,
-				Selector: req.Selector,
-				Shards:   req.Shards,
-				Deletes:  req.Deletes,
-				Plan:     req.Plan,
-			}}
-			var storeItr iter.SampleIterator
-			storeItr, err = i.store.SelectSamples(ctx, storeReq)
-			if err != nil {
-				util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-				return
-			}
+		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+	}
 
-			it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
-		}
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-		defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
-
-		err = sendSampleBatches(ctx, it, queryServer)
-	})
-
-	return err
+	return sendSampleBatches(ctx, it, queryServer)
 }
 
 // asyncStoreMaxLookBack returns a max look back period only if active index type is one of async index stores like `boltdb-shipper` and `tsdb`.
@@ -1069,6 +1212,11 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "chunkIDs"))
+	pprof.SetGoroutineLabels(ctx)
+
 	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
 	if asyncStoreMaxLookBack == 0 {
 		return &logproto.GetChunkIDsResponse{}, nil
@@ -1084,27 +1232,24 @@ func (i *Ingester) getChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 		return nil, err
 	}
 
-	var resp logproto.GetChunkIDsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "chunkIDs", "tenant", orgID), func(c context.Context) {
-		// get chunk references
-		chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
-		if err != nil {
-			return
-		}
+	// get chunk references
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, chunk.NewPredicate(matchers, nil), nil)
+	if err != nil {
+		return nil, err
+	}
 
-		// todo (Callum) ingester should maybe store the whole schema config?
-		s := config.SchemaConfig{
-			Configs: i.periodicConfigs,
-		}
+	// todo (Callum) ingester should maybe store the whole schema config?
+	s := config.SchemaConfig{
+		Configs: i.periodicConfigs,
+	}
 
-		// build the response
-		resp = logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
-		for _, chunks := range chunksGroups {
-			for _, chk := range chunks {
-				resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
-			}
+	// build the response
+	resp := logproto.GetChunkIDsResponse{ChunkIDs: []string{}}
+	for _, chunks := range chunksGroups {
+		for _, chk := range chunks {
+			resp.ChunkIDs = append(resp.ChunkIDs, s.ExternalKey(chk.ChunkRef))
 		}
-	})
+	}
 
 	return &resp, nil
 }
@@ -1115,6 +1260,11 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "labels"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
@@ -1129,59 +1279,49 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		}
 	}
 
-	var resp *logproto.LabelResponse
-	var storeValues []string
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "labels", "tenant", userID), func(c context.Context) {
-		resp, err = instance.Label(ctx, req, matchers...)
-		if err != nil {
-			return
-		}
-		if req.Start == nil {
-			return
-		}
-
-		// Only continue if the active index type is one of async index store types or QueryStore flag is true.
-		asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
-		if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
-			return
-		}
-
-		var cs storage.Store
-		var ok bool
-		if cs, ok = i.store.(storage.Store); !ok {
-			return
-		}
-
-		maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
-		if asyncStoreMaxLookBack != 0 {
-			maxLookBackPeriod = asyncStoreMaxLookBack
-		}
-		// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-		start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
-		if start.After(*req.End) {
-			// The request is older than we are allowed to query the store, just return what we have.
-			return
-		}
-		from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-
-		if req.Values {
-			storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
-			if err != nil {
-				return
-			}
-		} else {
-			storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
-			if err != nil {
-				return
-			}
-		}
-	})
-
-	// When wrapping the work above in the pprof.Do function we created a possible scenario where resp could
-	// be populated with values but an error occurred later on, prior to this profiling wrapper we would have
-	// always exited with a nil response and the error message, this is here to keep that behavior.
+	resp, err := instance.Label(ctx, req, matchers...)
 	if err != nil {
 		return nil, err
+	}
+
+	if req.Start == nil {
+		return resp, nil
+	}
+
+	// Only continue if the active index type is one of async index store types or QueryStore flag is true.
+	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
+	if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
+		return resp, nil
+	}
+
+	var cs storage.Store
+	var ok bool
+	if cs, ok = i.store.(storage.Store); !ok {
+		return resp, nil
+	}
+
+	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
+	if asyncStoreMaxLookBack != 0 {
+		maxLookBackPeriod = asyncStoreMaxLookBack
+	}
+	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
+	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
+	if start.After(*req.End) {
+		// The request is older than we are allowed to query the store, just return what we have.
+		return resp, nil
+	}
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+	var storeValues []string
+	if req.Values {
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &logproto.LabelResponse{
@@ -1202,17 +1342,16 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "series"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(instanceID)
 	if err != nil {
 		return nil, err
 	}
-
-	var series *logproto.SeriesResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "series", "tenant", instanceID), func(c context.Context) {
-		series, err = instance.Series(ctx, req)
-	})
-
-	return series, err
+	return instance.Series(ctx, req)
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
@@ -1222,6 +1361,11 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "stats"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1233,47 +1377,43 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	var merged logproto.IndexStatsResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "stats", "tenant", user), func(c context.Context) {
+	type f func() (*logproto.IndexStatsResponse, error)
+	jobs := []f{
+		f(func() (*logproto.IndexStatsResponse, error) {
+			return instance.GetStats(ctx, req)
+		}),
+		f(func() (*logproto.IndexStatsResponse, error) {
+			return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
+		}),
+	}
+	resps := make([]*logproto.IndexStatsResponse, len(jobs))
 
-		type f func() (*logproto.IndexStatsResponse, error)
-		jobs := []f{
-			f(func() (*logproto.IndexStatsResponse, error) {
-				return instance.GetStats(ctx, req)
-			}),
-			f(func() (*logproto.IndexStatsResponse, error) {
-				return i.store.Stats(ctx, user, req.From, req.Through, matchers...)
-			}),
-		}
-		resps := make([]*logproto.IndexStatsResponse, len(jobs))
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
 
-		if err := concurrency.ForEachJob(
-			ctx,
-			len(jobs),
-			2,
-			func(_ context.Context, idx int) error {
-				res, err := jobs[idx]()
-				resps[idx] = res
-				return err
-			},
-		); err != nil {
-			return
-		}
-
-		merged = index_stats.MergeStats(resps...)
-		if sp != nil {
-			sp.LogKV(
-				"user", user,
-				"from", req.From.Time(),
-				"through", req.Through.Time(),
-				"matchers", syntax.MatchersString(matchers),
-				"streams", merged.Streams,
-				"chunks", merged.Chunks,
-				"bytes", merged.Bytes,
-				"entries", merged.Entries,
-			)
-		}
-	})
+	merged := index_stats.MergeStats(resps...)
+	if sp != nil {
+		sp.LogKV(
+			"user", user,
+			"from", req.From.Time(),
+			"through", req.Through.Time(),
+			"matchers", syntax.MatchersString(matchers),
+			"streams", merged.Streams,
+			"chunks", merged.Chunks,
+			"bytes", merged.Bytes,
+			"entries", merged.Entries,
+		)
+	}
 
 	return &merged, nil
 }
@@ -1283,6 +1423,11 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 	if err != nil {
 		return nil, err
 	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "volume"))
+	pprof.SetGoroutineLabels(ctx)
 
 	instance, err := i.GetOrCreateInstance(user)
 	if err != nil {
@@ -1294,33 +1439,31 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
-	var merged *logproto.VolumeResponse
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "volume", "tenant", user), func(c context.Context) {
-		type f func() (*logproto.VolumeResponse, error)
-		jobs := []f{
-			f(func() (*logproto.VolumeResponse, error) {
-				return instance.GetVolume(ctx, req)
-			}),
-			f(func() (*logproto.VolumeResponse, error) {
-				return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
-			}),
-		}
-		resps := make([]*logproto.VolumeResponse, len(jobs))
+	type f func() (*logproto.VolumeResponse, error)
+	jobs := []f{
+		f(func() (*logproto.VolumeResponse, error) {
+			return instance.GetVolume(ctx, req)
+		}),
+		f(func() (*logproto.VolumeResponse, error) {
+			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
+		}),
+	}
+	resps := make([]*logproto.VolumeResponse, len(jobs))
 
-		if err := concurrency.ForEachJob(
-			ctx,
-			len(jobs),
-			2,
-			func(_ context.Context, idx int) error {
-				res, err := jobs[idx]()
-				resps[idx] = res
-				return err
-			},
-		); err != nil {
-			return
-		}
-		merged = seriesvolume.Merge(resps, req.Limit)
-	})
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := seriesvolume.Merge(resps, req.Limit)
 	return merged, nil
 }
 
@@ -1364,6 +1507,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 	err = server_util.ClientGrpcStatusAndError(err)
 	return err
 }
+
 func (i *Ingester) tail(req *logproto.TailRequest, queryServer logproto.Querier_TailServer) error {
 	select {
 	case <-i.tailersQuit:
@@ -1465,7 +1609,7 @@ func (i *Ingester) GetDetectedFields(_ context.Context, r *logproto.DetectedFiel
 				Cardinality: 1,
 			},
 		},
-		FieldLimit: r.GetFieldLimit(),
+		Limit: r.GetLimit(),
 	}, nil
 }
 
@@ -1482,6 +1626,11 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 		return nil, err
 	}
 
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "detectedLabels"))
+	pprof.SetGoroutineLabels(ctx)
+
 	instance, err := i.GetOrCreateInstance(userID)
 	if err != nil {
 		return nil, err
@@ -1494,22 +1643,18 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 		}
 	}
 
-	var result map[string]*logproto.UniqueLabelValues
-	pprof.Do(ctx, pprof.Labels("path", "read", "type", "detectedLabels", "tenant", userID), func(c context.Context) {
-		labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
-		if err != nil {
-			return
+	labelMap, err := instance.LabelsWithValues(ctx, req.Start, matchers...)
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]*logproto.UniqueLabelValues)
+	for label, values := range labelMap {
+		var uniqueValues []string
+		for v := range values {
+			uniqueValues = append(uniqueValues, v)
 		}
-		result = make(map[string]*logproto.UniqueLabelValues)
-		for label, values := range labelMap {
-			var uniqueValues []string
-			for v := range values {
-				uniqueValues = append(uniqueValues, v)
-			}
 
-			result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
-		}
-	})
-
+		result[label] = &logproto.UniqueLabelValues{Values: uniqueValues}
+	}
 	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }

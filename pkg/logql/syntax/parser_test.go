@@ -2,7 +2,6 @@ package syntax
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
@@ -364,6 +363,10 @@ var ParseTestCases = []struct {
 	{
 		in:  `absent_over_time({ foo = "bar" }[5h]) by (foo)`,
 		err: logqlmodel.NewParseError("grouping not allowed for absent_over_time aggregation", 0, 0),
+	},
+	{
+		in:  `approx_topk(2, count_over_time({ foo = "bar" }[5h])) by (foo)`,
+		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
 	},
 	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
@@ -3240,7 +3243,7 @@ func TestParse(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.exp, ast)
+			AssertExpressions(t, tc.exp, ast)
 		})
 	}
 }
@@ -3286,8 +3289,11 @@ func TestParseMatchers(t *testing.T) {
 				t.Errorf("ParseMatchers() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ParseMatchers() = %v, want %v", got, tt.want)
+
+			if tt.want == nil {
+				require.Nil(t, got)
+			} else {
+				AssertMatchers(t, tt.want, got)
 			}
 		})
 	}

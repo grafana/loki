@@ -59,7 +59,7 @@ type LogFile struct {
 	// passing along ownership is expressed with function argument types.
 	// Methods which take a pointer *logReadState argument borrow the state,
 	// analogous to functions which require a lock to be held when calling.
-	// The caller retains ownership. Calling a method which which takes a
+	// The caller retains ownership. Calling a method which takes a
 	// value logFileState argument gives ownership to the callee.
 	read chan logReadState
 
@@ -93,7 +93,7 @@ type Decoder interface {
 	// Reset resets the decoder
 	// Reset is called for certain events, such as log rotations
 	Reset(io.Reader)
-	// Decode decodes the next log messeage from the stream
+	// Decode decodes the next log message from the stream
 	Decode() (*logger.Message, error)
 	// Close signals to the decoder that it can release whatever resources it was using.
 	Close()

@@ -201,6 +201,16 @@ You can install and run a "local Go Doc site" in the following way:
 [`go.opentelemetry.io/otel/metric`](https://pkg.go.dev/go.opentelemetry.io/otel/metric)
 is an example of a very well-documented package.
 
+### README files
+
+Each (non-internal, non-test, non-documentation) package must contain a
+`README.md` file containing at least a title, and a `pkg.go.dev` badge.
+
+The README should not be a repetition of Go doc comments.
+
+You can verify the presence of all README files with the `make verify-readmes`
+command.
+
 ## Style Guide
 
 One of the primary goals of this project is that it is actually used by
@@ -560,12 +570,18 @@ functionality should be added, each one will need their own super-set
 interfaces and will duplicate the pattern. For this reason, the simple targeted
 interface that defines the specific functionality should be preferred.
 
+See also:
+[Keeping Your Modules Compatible: Working with interfaces](https://go.dev/blog/module-compatibility#working-with-interfaces).
+
 ### Testing
 
 The tests should never leak goroutines.
 
 Use the term `ConcurrentSafe` in the test name when it aims to verify the
-absence of race conditions.
+absence of race conditions. The top-level tests with this term will be run
+many times in the `test-concurrent-safe` CI job to increase the chance of
+catching concurrency issues. This does not apply to subtests when this term
+is not in their root name.
 
 ### Internal packages
 
@@ -613,31 +629,34 @@ should be canceled.
 
 ## Approvers and Maintainers
 
-### Approvers
+### Triagers
 
-- [Evan Torrie](https://github.com/evantorrie), Verizon Media
-- [Sam Xie](https://github.com/XSAM), Cisco/AppDynamics
-- [Chester Cheung](https://github.com/hanyuancheung), Tencent
-- [Damien Mathieu](https://github.com/dmathieu), Elastic
-- [Anthony Mirabella](https://github.com/Aneurysm9), AWS
+- [Cheng-Zhen Yang](https://github.com/scorpionknifes), Independent
+
+### Approvers
 
 ### Maintainers
 
+- [Damien Mathieu](https://github.com/dmathieu), Elastic
 - [David Ashpole](https://github.com/dashpole), Google
-- [Aaron Clawson](https://github.com/MadVikingGod), LightStep
 - [Robert Pająk](https://github.com/pellared), Splunk
+- [Sam Xie](https://github.com/XSAM), Cisco/AppDynamics
 - [Tyler Yahn](https://github.com/MrAlias), Splunk
 
 ### Emeritus
 
-- [Liz Fong-Jones](https://github.com/lizthegrey), Honeycomb
-- [Gustavo Silva Paiva](https://github.com/paivagustavo), LightStep
-- [Josh MacDonald](https://github.com/jmacd), LightStep
+- [Aaron Clawson](https://github.com/MadVikingGod)
+- [Anthony Mirabella](https://github.com/Aneurysm9)
+- [Chester Cheung](https://github.com/hanyuancheung)
+- [Evan Torrie](https://github.com/evantorrie)
+- [Gustavo Silva Paiva](https://github.com/paivagustavo)
+- [Josh MacDonald](https://github.com/jmacd)
+- [Liz Fong-Jones](https://github.com/lizthegrey)
 
 ### Become an Approver or a Maintainer
 
 See the [community membership document in OpenTelemetry community
-repo](https://github.com/open-telemetry/community/blob/main/community-membership.md).
+repo](https://github.com/open-telemetry/community/blob/main/guides/contributor/membership.md).
 
 [Approver]: #approvers
 [Maintainer]: #maintainers

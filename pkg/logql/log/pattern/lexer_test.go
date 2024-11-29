@@ -20,7 +20,6 @@ func Test_Lex(t *testing.T) {
 		{`<1foo>`, []int{LITERAL, LITERAL, LITERAL, LITERAL, LITERAL, LITERAL}},
 		{`▶`, []int{LITERAL}},
 	} {
-		tc := tc
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
 			l := newLexer()
