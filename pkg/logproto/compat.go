@@ -51,14 +51,14 @@ func ToWriteRequest(lbls []labels.Labels, samples []LegacySample, metadata []*Me
 // Note: while resulting labels.Labels is supposedly sorted, this function
 // doesn't enforce that. If input is not sorted, output will be wrong.
 func FromLabelAdaptersToLabels(ls []LabelAdapter) labels.Labels {
-	return *(*labels.Labels)(unsafe.Pointer(&ls))
+	return *(*labels.Labels)(unsafe.Pointer(&ls)) // #nosec G103 -- we know the string is not mutated
 }
 
 // FromLabelsToLabelAdapters casts labels.Labels to []LabelAdapter.
 // It uses unsafe, but as LabelAdapter == labels.Label this should be safe.
 // This allows us to use labels.Labels directly in protos.
 func FromLabelsToLabelAdapters(ls labels.Labels) []LabelAdapter {
-	return *(*[]LabelAdapter)(unsafe.Pointer(&ls))
+	return *(*[]LabelAdapter)(unsafe.Pointer(&ls)) // #nosec G103 -- we know the string is not mutated
 }
 
 // FromLabelAdaptersToMetric converts []LabelAdapter to a model.Metric.
@@ -155,7 +155,7 @@ func SampleJsoniterDecode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 	}
 
 	bs := iter.ReadStringAsSlice()
-	ss := *(*string)(unsafe.Pointer(&bs))
+	ss := *(*string)(unsafe.Pointer(&bs)) // #nosec G103 -- we know the string is not mutated
 	v, err := strconv.ParseFloat(ss, 64)
 	if err != nil {
 		iter.ReportError("logproto.LegacySample", err.Error())

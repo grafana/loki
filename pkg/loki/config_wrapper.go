@@ -567,9 +567,9 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore) {
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
 		applyConfig = func(r *ConfigWrapper) {
-			r.StorageConfig.ObjectStore = r.Common.Storage.ObjectStore
+			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
 		}
 	}
 
