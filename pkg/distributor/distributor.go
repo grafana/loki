@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
+
+	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -66,6 +69,14 @@ const (
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 // Config for a Distributor.
@@ -517,6 +528,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+				for i := range entry.StructuredMetadata {
+					structuredMetadata[i].Name = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
+					if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
+						structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
+					}
+				}
 				if shouldDiscoverLevels {
 					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
 					if ok {
