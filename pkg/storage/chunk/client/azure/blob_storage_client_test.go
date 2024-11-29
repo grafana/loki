@@ -93,7 +93,7 @@ func (suite *FederatedTokenTestSuite) Test_HandleNoServicePrincipalToken() {
 		return suite.mockOAuthConfig, nil
 	}
 
-	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _ string, _ string, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
 		return nil, errors.New("No token")
 	}
 
