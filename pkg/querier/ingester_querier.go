@@ -91,7 +91,7 @@ const (
 
 type PartitionContext struct {
 	isPartitioned bool
-	ingestersUsed []PartitionIngesterUsed
+	ingestersUsed map[string]PartitionIngesterUsed
 	mtx           sync.Mutex
 }
 
@@ -106,7 +106,16 @@ func (p *PartitionContext) AddClient(client logproto.QuerierClient, addr string)
 	if !p.isPartitioned {
 		return
 	}
-	p.ingestersUsed = append(p.ingestersUsed, PartitionIngesterUsed{client: client, addr: addr})
+	p.ingestersUsed[addr] = PartitionIngesterUsed{client: client, addr: addr}
+}
+
+func (p *PartitionContext) RemoveClient(addr string) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	if !p.isPartitioned {
+		return
+	}
+	delete(p.ingestersUsed, addr)
 }
 
 func (p *PartitionContext) SetIsPartitioned(isPartitioned bool) {
@@ -123,11 +132,12 @@ func (p *PartitionContext) forQueriedIngesters(ctx context.Context, f func(conte
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
-	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
+	ingestersUsed := make([]PartitionIngesterUsed, 0, len(p.ingestersUsed))
+	for _, ingester := range p.ingestersUsed {
+		ingestersUsed = append(ingestersUsed, ingester)
+	}
 
-	return concurrency.ForEachJobMergeResults(ctx, p.ingestersUsed, 0, func(ctx context.Context, job PartitionIngesterUsed) ([]responseFromIngesters, error) {
+	return concurrency.ForEachJobMergeResults(ctx, ingestersUsed, 0, func(ctx context.Context, job PartitionIngesterUsed) ([]responseFromIngesters, error) {
 		resp, err := f(ctx, job.client)
 		if err != nil {
 			return nil, err
@@ -139,13 +149,17 @@ func (p *PartitionContext) forQueriedIngesters(ctx context.Context, f func(conte
 // NewPartitionContext creates a new partition context
 // This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
 func NewPartitionContext(ctx context.Context) context.Context {
-	return context.WithValue(ctx, partitionCtxKey, &PartitionContext{})
+	return context.WithValue(ctx, partitionCtxKey, &PartitionContext{
+		ingestersUsed: make(map[string]PartitionIngesterUsed),
+	})
 }
 
 func ExtractPartitionContext(ctx context.Context) *PartitionContext {
 	v, ok := ctx.Value(partitionCtxKey).(*PartitionContext)
 	if !ok {
-		return &PartitionContext{}
+		return &PartitionContext{
+			ingestersUsed: make(map[string]PartitionIngesterUsed),
+		}
 	}
 	return v
 }
@@ -197,15 +211,15 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 		if err != nil {
 			return responseFromIngesters{addr: ingester.Addr}, err
 		}
-		ExtractPartitionContext(ctx).AddClient(client.(logproto.QuerierClient), ingester.Addr)
 		resp, err := f(ctx, client.(logproto.QuerierClient))
 		if err != nil {
 			return responseFromIngesters{addr: ingester.Addr}, err
 		}
 
+		ExtractPartitionContext(ctx).AddClient(client.(logproto.QuerierClient), ingester.Addr)
 		return responseFromIngesters{ingester.Addr, resp}, nil
-	}, func(responseFromIngesters) {
-		// Nothing to do
+	}, func(cleanup responseFromIngesters) {
+		ExtractPartitionContext(ctx).RemoveClient(cleanup.addr)
 	})
 	if err != nil {
 		return nil, err
