@@ -127,3 +127,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 
 	return nil
 }
+
+func (c *Writer) SeriesStats(userID string, fp uint64) []string {
+	return c.indexWriter.SeriesStats(userID, fp)
+}

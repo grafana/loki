@@ -433,6 +433,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 		}
 
 		firstTime, lastTime := util.RoundToMilliseconds(c.chunk.Bounds())
+		// c.chunk already has memchunk that contains symbolizer and structured metadata (can add series stats)
 		ch := chunk.NewChunk(
 			userID, fp, metric,
 			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),

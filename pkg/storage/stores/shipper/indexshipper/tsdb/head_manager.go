@@ -254,8 +254,13 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
+	// (h11): appends to tsdb head here - coming from PutOne eventually from the ingester (flush loop)
 	rec := m.activeHeads.Append(userID, ls, fprint, chks)
 	return m.active.Log(rec)
+}
+
+func (m *HeadManager) SeriesStats(userID string, fp uint64) []string {
+	return m.activeHeads.seriesStats(userID, fp)
 }
 
 func (m *HeadManager) Start() error {
@@ -655,6 +660,7 @@ func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Lo
 	return res
 }
 
+// (h11) appends from the ingester
 func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) *WALRecord {
 	var mint, maxt int64
 	for _, chk := range chks {
@@ -688,6 +694,12 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chk
 	}
 
 	return rec
+}
+
+func (t *tenantHeads) seriesStats(userID string, fp uint64) []string {
+	// (h11) : don't create head.extract to a different function to just get
+	head := t.getOrCreateTenantHead(userID)
+	return head.seriesStats(fp)
 }
 
 func (t *tenantHeads) getOrCreateTenantHead(userID string) *Head {

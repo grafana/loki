@@ -21,6 +21,7 @@ import (
 type ChunkWriter interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
+	SeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64) ([]string, error)
 }
 
 type ChunkFetcherProvider interface {
@@ -104,6 +105,22 @@ func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	return c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.PutOne(innerCtx, from, through, chunk)
 	})
+}
+
+func (c CompositeStore) SeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64) ([]string, error) {
+	var results []string
+	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		r, err := store.SeriesStats(innerCtx, from, through, userID, fp)
+		if err != nil {
+			return err
+		}
+		results = append(results, r...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 func (c CompositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {

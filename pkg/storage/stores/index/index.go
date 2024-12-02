@@ -53,6 +53,7 @@ type Reader interface {
 
 type Writer interface {
 	IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error
+	SeriesStats(userID string, fp uint64) []string
 }
 
 type ReaderWriter interface {

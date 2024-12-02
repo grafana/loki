@@ -176,6 +176,10 @@ func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (c
 	return
 }
 
+func (h *Head) seriesStats(fp uint64) []string {
+	return h.series.seriesStats(fp)
+}
+
 // seriesHashmap is a simple hashmap for memSeries by their label set. It is built
 // on top of a regular hashmap and holds a slice of series to resolve hash collisions.
 // Its methods require the hash to be submitted with it to avoid re-computations throughout
@@ -284,7 +288,14 @@ func (s *stripeSeries) Append(
 	return
 }
 
+func (s *stripeSeries) seriesStats(fp uint64) []string {
+	// should return the set of struct metadata labels
+	// ideally should be a pointer to struct that contains the []string
+	return nil
+}
+
 type memSeries struct {
+	// (h11) potentially add stats?
 	sync.RWMutex
 	ref  uint64 // The unique reference within a *Head
 	ls   labels.Labels

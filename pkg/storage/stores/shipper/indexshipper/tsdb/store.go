@@ -25,6 +25,7 @@ import (
 
 type IndexWriter interface {
 	Append(userID string, ls labels.Labels, fprint uint64, chks tsdbindex.ChunkMetas) error
+	SeriesStats(userID string, fp uint64) []string
 }
 
 type store struct {
@@ -166,12 +167,17 @@ func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk ch
 			MaxTime:  int64(chk.ChunkRef.Through),
 			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
+			// set of fields chunk.data.structure metadata fields
 		},
 	}
 	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}
 	return nil
+}
+
+func (s *store) SeriesStats(userID string, fp uint64) []string {
+	return s.indexWriter.SeriesStats(userID, fp)
 }
 
 type failingIndexWriter struct{}
