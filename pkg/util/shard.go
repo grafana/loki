@@ -29,7 +29,7 @@ var (
 // ShuffleShardSeed returns seed for random number generator, computed from provided identifier.
 func ShuffleShardSeed(identifier, zone string) int64 {
 	// Use the identifier to compute an hash we'll use to seed the random.
-	hasher := md5.New()
+	hasher := md5.New()               //#nosec G401 -- This does not require collision resistance, this is an intentionally predictable value
 	hasher.Write(YoloBuf(identifier)) // nolint:errcheck
 	if zone != "" {
 		hasher.Write(seedSeparator) // nolint:errcheck

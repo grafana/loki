@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
-
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/dskit/backoff"
-
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 
@@ -60,11 +60,13 @@ type PartitionJobController struct {
 	part    partition.Reader
 	backoff backoff.Config
 	decoder *kafka.Decoder
+	logger  log.Logger
 }
 
 func NewPartitionJobController(
 	controller partition.Reader,
 	backoff backoff.Config,
+	logger log.Logger,
 ) (*PartitionJobController, error) {
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
@@ -75,6 +77,11 @@ func NewPartitionJobController(
 		part:    controller,
 		backoff: backoff,
 		decoder: decoder,
+		logger: log.With(logger,
+			"component", "job-controller",
+			"topic", controller.Topic(),
+			"partition", controller.Partition(),
+		),
 	}, nil
 }
 
@@ -117,9 +124,9 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets types.Offs
 		err        error
 	)
 
-	for boff.Ongoing() {
+	for lastOffset < offsets.Max && boff.Ongoing() {
 		var records []partition.Record
-		records, err = l.part.Poll(ctx)
+		records, err = l.part.Poll(ctx, int(offsets.Max-lastOffset))
 		if err != nil {
 			boff.Wait()
 			continue
@@ -135,11 +142,11 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets types.Offs
 
 		converted := make([]AppendInput, 0, len(records))
 		for _, record := range records {
-			offset := records[len(records)-1].Offset
-			if offset >= offsets.Max {
+			if record.Offset >= offsets.Max {
+				level.Debug(l.logger).Log("msg", "record offset exceeds job max offset. stop processing", "record offset", record.Offset, "max offset", offsets.Max)
 				break
 			}
-			lastOffset = offset
+			lastOffset = record.Offset
 
 			stream, labels, err := l.decoder.Decode(record.Content)
 			if err != nil {
@@ -155,7 +162,9 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets types.Offs
 				labelsStr: stream.Labels,
 				entries:   stream.Entries,
 			})
+		}
 
+		if len(converted) > 0 {
 			select {
 			case ch <- converted:
 			case <-ctx.Done():
@@ -190,7 +199,14 @@ func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, *types.Job,
 	if err != nil {
 		return false, nil, err
 	}
+
+	if highestOffset < committedOffset {
+		level.Error(l.logger).Log("msg", "partition highest offset is less than committed offset", "highest", highestOffset, "committed", committedOffset)
+		return false, nil, fmt.Errorf("partition highest offset is less than committed offset")
+	}
+
 	if highestOffset == committedOffset {
+		level.Info(l.logger).Log("msg", "no pending records to process")
 		return false, nil, nil
 	}
 

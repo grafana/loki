@@ -12,15 +12,16 @@ keywords:
 
 {{< admonition type="warning" >}}
 In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.
-In Grafana Cloud, Query acceleration using blooms is enabled for large-scale customers that send more than 75TB of logs a month as a [public preview](/docs/release-life-cycle/) with limited support and no SLA.
+
+In Grafana Cloud, Query acceleration using Bloom filters is enabled as a [public preview](/docs/release-life-cycle/) for select large-scale customers that are ingesting more that 75TB of logs a month. Limited support and no SLA are provided.
 {{< /admonition >}}
 
 If [bloom filters][] are enabled, you can write LogQL queries using [structured metadata][] to benefit from query acceleration.
 
 ## Prerequisites
 
-* [Bloom filters][bloom filters] must be enabled.
-* Logs must be sending [structured metadata][].
+* [Bloom filters][bloom filters] must be enabled. OpenSource and Enterprise customers must [enable bloom filters](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/bloom-filters/#enable-bloom-filters). Grafana Support enables Bloom Filters for Cloud Customers who are part of the public preview.
+* Logs must be sending [structured metadata][]. OpenSource and Enterprise customers must [enable structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/#enable-or-disable-structured-metadata). Structured metadata is enabled by default in Grafana Cloud.
 
 ### Query blooms
 

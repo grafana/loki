@@ -95,11 +95,13 @@ func (c *partitionCommitter) autoCommitLoop(ctx context.Context) {
 				continue
 			}
 
-			if err := c.Commit(ctx, currOffset); err == nil {
-				level.Error(c.logger).Log("msg", "failed to commit", "offset", currOffset)
-				c.lastCommittedOffset.Set(float64(currOffset))
-				previousOffset = currOffset
+			if err := c.Commit(ctx, currOffset); err != nil {
+				level.Error(c.logger).Log("msg", "failed to commit", "offset", currOffset, "err", err)
+				continue
 			}
+
+			c.lastCommittedOffset.Set(float64(currOffset))
+			previousOffset = currOffset
 		}
 	}
 }
