@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -53,7 +54,7 @@ type Reader interface {
 
 type Writer interface {
 	IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error
-	SeriesStats(userID string, fp uint64) []string
+	UpdateSeriesStats(userID string, fp uint64, stats tsdb.SeriesStats)
 }
 
 type ReaderWriter interface {

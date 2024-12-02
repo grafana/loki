@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -272,12 +273,12 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 
 	// (h11) this should return the stats to pass down to the writer
 	// Each stream has a list of chunks (all closed but the last one.
-	// The stream should have two stream:
+	// The stream should have two stats:
 	//  1. ClosedStats: stats ready to be flushed
 	//  2. UpdatableStats: stats with the most up to date data: includes stats for unclosed chunks.
 	// When a chunk is closed, we copy UpdatableStats into ClosedStats, and create a new UpdatableStats as a copy of ClosedStats
 	// That way, collectChunksToFlush can return ClosedStats, or we can use it right away
-	chunks, labels, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
+	chunks, labels, stats, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
 	if len(chunks) < 1 {
 		return nil
 	}
@@ -328,18 +329,18 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 	// GET the stats from the stream, and call UpdateSeriesStats() with the stats object
 	// Then reset the series stats
 
-	i.store.SeriesStats(ctx, 0, 0, userID, uint64(fp))
+	i.store.UpdateSeriesStats(ctx, 0, 0, userID, uint64(fp), stats)
 
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, tsdb.SeriesStats, *sync.RWMutex) {
 	var stream *stream
 	var ok bool
 	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
-		return nil, nil, nil
+		return nil, nil, tsdb.SeriesStats{}, nil
 	}
 
 	stream.chunkMtx.Lock()
@@ -356,6 +357,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			// Ensure no more writes happen to this chunk.
 			if !stream.chunks[j].closed {
 				stream.chunks[j].closed = true
+				stream.cutStats()
 			}
 			// Flush this chunk if it hasn't already been successfully flushed.
 			if stream.chunks[j].flushed.IsZero() {
@@ -368,7 +370,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			}
 		}
 	}
-	return result, stream.labels, &stream.chunkMtx
+	return result, stream.labels, stream.stats(), &stream.chunkMtx
 }
 
 func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {

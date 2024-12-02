@@ -204,6 +204,8 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 		return err
 	}
 
+	heads.ResetSeriesStats()
+
 	for p, b := range periods {
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
 		dst := NewPrefixedIdentifier(

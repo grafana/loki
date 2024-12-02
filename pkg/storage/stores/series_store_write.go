@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -128,6 +129,6 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 	return nil
 }
 
-func (c *Writer) SeriesStats(userID string, fp uint64) []string {
-	return c.indexWriter.SeriesStats(userID, fp)
+func (c *Writer) UpdateSeriesStats(userID string, fp uint64, stats tsdb.SeriesStats) {
+	c.indexWriter.UpdateSeriesStats(userID, fp, stats)
 }

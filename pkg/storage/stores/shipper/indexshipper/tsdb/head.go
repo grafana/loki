@@ -16,6 +16,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -176,8 +177,12 @@ func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (c
 	return
 }
 
-func (h *Head) seriesStats(fp uint64) []string {
-	return h.series.seriesStats(fp)
+func (h *Head) updateSeriesStats(fp uint64, stats SeriesStats) {
+	h.series.updateSeriesStats(fp, stats)
+}
+
+func (h *Head) ResetSeriesStats() {
+	h.series.resetSeriesStats()
 }
 
 // seriesHashmap is a simple hashmap for memSeries by their label set. It is built
@@ -288,19 +293,67 @@ func (s *stripeSeries) Append(
 	return
 }
 
-func (s *stripeSeries) seriesStats(fp uint64) []string {
-	// should return the set of struct metadata labels
-	// ideally should be a pointer to struct that contains the []string
-	return nil
+func (s *stripeSeries) updateSeriesStats(fp uint64, stats SeriesStats) {
+	series := s.getByID(fp)
+
+	series.Lock()
+	defer series.Unlock()
+	series.stats.Merge(stats)
+}
+
+func (s *stripeSeries) resetSeriesStats() {
+	for _, seriesMap := range s.series {
+		seriesMap.Lock()
+		for _, series := range seriesMap.m {
+			series.stats.Reset()
+		}
+		seriesMap.Unlock()
+	}
+}
+
+// h11: add a mutex.
+// Reset takes the muted to reset all the stats
+// AddStructuredMetadata takes the mutes and updates the stats
+// The index manager calls Reset when the index is written
+// In the ingester push logic, we keep updating the index stats
+type SeriesStats struct {
+	StructuredMetadataFieldNames map[string]struct{}
+}
+
+func (s *SeriesStats) Copy() SeriesStats {
+	out := SeriesStats{
+		StructuredMetadataFieldNames: make(map[string]struct{}, len(s.StructuredMetadataFieldNames)),
+	}
+	for k := range s.StructuredMetadataFieldNames {
+		out.StructuredMetadataFieldNames[k] = struct{}{}
+	}
+	return out
+}
+
+func (s *SeriesStats) Merge(other SeriesStats) {
+	for k := range other.StructuredMetadataFieldNames {
+		s.StructuredMetadataFieldNames[k] = struct{}{}
+	}
+}
+
+func (s *SeriesStats) AddStructuredMetadata(metadata push.LabelsAdapter) {
+	for _, l := range metadata {
+		s.StructuredMetadataFieldNames[l.Name] = struct{}{}
+	}
+}
+
+func (s *SeriesStats) Reset() {
+	s.StructuredMetadataFieldNames = make(map[string]struct{})
 }
 
 type memSeries struct {
 	// (h11) potentially add stats?
 	sync.RWMutex
-	ref  uint64 // The unique reference within a *Head
-	ls   labels.Labels
-	fp   uint64
-	chks index.ChunkMetas
+	ref   uint64 // The unique reference within a *Head
+	ls    labels.Labels
+	fp    uint64
+	chks  index.ChunkMetas
+	stats SeriesStats
 }
 
 func newMemSeries(ref uint64, ls labels.Labels, fp uint64) *memSeries {

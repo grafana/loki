@@ -259,8 +259,8 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	return m.active.Log(rec)
 }
 
-func (m *HeadManager) SeriesStats(userID string, fp uint64) []string {
-	return m.activeHeads.seriesStats(userID, fp)
+func (m *HeadManager) UpdateSeriesStats(userID string, fp uint64, stats SeriesStats) {
+	m.activeHeads.updateSeriesStats(userID, fp, stats)
 }
 
 func (m *HeadManager) Start() error {
@@ -696,10 +696,10 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chk
 	return rec
 }
 
-func (t *tenantHeads) seriesStats(userID string, fp uint64) []string {
+func (t *tenantHeads) updateSeriesStats(userID string, fp uint64, stats SeriesStats) {
 	// (h11) : don't create head.extract to a different function to just get
 	head := t.getOrCreateTenantHead(userID)
-	return head.seriesStats(fp)
+	head.updateSeriesStats(fp, stats)
 }
 
 func (t *tenantHeads) getOrCreateTenantHead(userID string) *Head {
@@ -853,4 +853,16 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 	}
 
 	return nil
+}
+
+func (t *tenantHeads) ResetSeriesStats() {
+	for i, shard := range t.tenants {
+		t.locks[i].RLock()
+		defer t.locks[i].RUnlock()
+
+		for _, tenant := range shard {
+			tenant.ResetSeriesStats()
+		}
+	}
+
 }
