@@ -351,11 +351,11 @@ storage_config:
 ```yaml
 
 # This partial configuration uses IBM Cloud Object Storage (COS) for chunk storage. 
-# A trusted profile will be used for authenticating with COS. We can either pass
+# A trusted profile will be used for authenticating with COS. You can either pass
 # the trusted profile name or trusted profile ID along with the compute resource token file.
-# If we pass both trusted profile name and trusted profile ID it should be of 
+# If you pass both trusted profile name and trusted profile ID it should be of 
 # the same trusted profile.
-# In order to use trusted profile authentication we need to follow an additional step to create a trusted profile.
+# In order to use trusted profile authentication you need to follow an additional step to create a trusted profile.
 # For more details about creating a trusted profile, see https://cloud.ibm.com/docs/account?topic=account-create-trusted-profile&interface=ui.
 common:
   path_prefix: /tmp/loki
