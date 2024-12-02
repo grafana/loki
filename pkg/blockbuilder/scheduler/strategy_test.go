@@ -150,7 +150,7 @@ type mockOffsetReader struct {
 	groupLag          map[int32]kadm.GroupMemberLag
 }
 
-func (m *mockOffsetReader) ListOffsetsAfterMilli(_ context.Context, ts int64) (map[int32]kadm.ListedOffset, error) {
+func (m *mockOffsetReader) ListOffsetsAfterMilli(_ context.Context, _ int64) (map[int32]kadm.ListedOffset, error) {
 	return m.offsetsAfterMilli, nil
 }
 

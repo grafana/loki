@@ -39,7 +39,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if cfg.Interval.Seconds() <= 0 {
-		return errors.New("interval must be a non-zero value.")
+		return errors.New("interval must be a non-zero value")
 	}
 
 	return nil
@@ -139,6 +139,7 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 }
 
 func (s *BlockScheduler) HandleCompleteJob(_ context.Context, builderID string, job *types.Job) error {
+	// TODO: handle commits
 	return s.queue.MarkComplete(job.ID, builderID)
 }
 
