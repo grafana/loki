@@ -4,6 +4,30 @@
 
 The Block Builder and Block Scheduler are separate components designed to build storage formats from ingested Kafka data. The Block Scheduler coordinates job distribution to multiple Block Builder instances, implementing a pull-based architecture that decouples read and write operations, allowing for independent scaling and simpler operational management. This document describes the architecture and interaction between components.
 
+## Package Structure
+
+The Block Builder system is organized into three main packages:
+
+### pkg/blockbuilder/types
+- Contains shared type definitions and interfaces
+- Defines core data structures like `Job` and `Offsets`
+- Provides interface definitions for:
+  - `Worker`: Interface for processing jobs and reporting status
+  - `Scheduler`: Interface for job scheduling and worker management
+  - `Transport`: Interface for communication between components
+
+### pkg/blockbuilder/scheduler
+- Implements the job queue and scheduling logic
+- Manages job distribution to block builders
+- Tracks job progress and ensures exactly-once processing
+- Handles job state management and offset tracking
+
+### pkg/blockbuilder/builder
+- Implements the block builder worker functionality
+- Processes assigned jobs and builds storage formats
+- Manages transport layer communication
+- Handles data processing and object storage interactions
+
 ## Component Diagram
 
 ```mermaid
@@ -99,62 +123,37 @@ sequenceDiagram
 - Processes jobs assigned by the Block Scheduler
 - Responsible for:
   - Building storage formats from Kafka data
-  - Reporting job status back to Block Scheduler
-- Stateless design allows for easy scaling
-- Transport-agnostic through the Transport interface
+  - Writing completed blocks to object storage
+  - Reporting job status back to scheduler
+- Implements the Worker interface for job processing
 
 ### Transport Layer
-- Abstract interface for communication between Block Scheduler and Block Builders
-- Default gRPC implementation provided
-- Can be replaced with different implementations for testing or different protocols
-- Enables decoupling of business logic from I/O operations
-
-### Queue
-- Manages pending jobs
-- Provides operations for:
-  - Enqueueing new jobs
-  - Dequeuing jobs for processing
-  - Tracking job status
-
-### Partition Controller
-- Interfaces with Kafka partitions
-- Manages:
-  - Offset tracking
-  - Data processing
-  - Commit operations
-- Ensures exactly-once processing of data
+- Provides communication between Block Builders and Scheduler
+- Abstracts transport mechanism (currently in-memory & gRPC)
+- Defines message types for:
+  - Job requests
+  - Job completion notifications
+  - Job synchronization
 
 ## Design Principles
 
-### 1. Decoupled I/O
+###  Decoupled I/O
 - Business logic is separated from I/O operations
 - Transport interface allows for different communication mechanisms
 - Enables easier testing through mock implementations
 
-### 2. Pull-Based Architecture
-- Block Builders pull jobs from the Block Scheduler
-- Natural backpressure handling
-- Improved resource utilization
-- Similar to Loki's query-frontend design
+### Stateless Design
+- Block Builders are stateless workers
+- All state is managed by the Scheduler
+- Allows for easy scaling and failover
 
-### 3. Stateless Block Builders
-- Block Builders are designed to be stateless
-- Easier to scale and manage
-- No disk requirements
-- Safe to delete without orphaned data
+### Pull-Based Architecture
+- Block Builders pull jobs when ready
+- Natural load balancing
+- Prevents overloading of workers
 
-### 4. Interface-Driven Design
+
+### Interface-Driven Development
 - Core components defined by interfaces
-- Default implementations provided
-- Easy to extend or mock for testing
-- Uses unimplemented variants for interface compliance
-
-### 5. Idempotent Operations
-- Jobs can be retried safely
-- No data duplication on retries
-- Robust error handling
-
-### Independent Scaling
-- Block Scheduler and Block Builders can be scaled independently
-- Resource allocation based on actual demand
-- Improved cost efficiency
+- Allows for multiple implementations
+- Facilitates testing and modularity
