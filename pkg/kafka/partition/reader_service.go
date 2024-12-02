@@ -17,9 +17,6 @@ import (
 )
 
 const (
-	kafkaStartOffset = -2
-	kafkaEndOffset   = -1
-
 	phaseStarting = "starting"
 	phaseRunning  = "running"
 )
@@ -111,7 +108,7 @@ func newReaderService(
 		consumerFactory:     consumerFactory,
 		logger:              log.With(logger, "partition", reader.Partition(), "consumer_group", reader.ConsumerGroup()),
 		metrics:             newServiceMetrics(reg),
-		lastProcessedOffset: kafkaEndOffset,
+		lastProcessedOffset: int64(KafkaEndOffset),
 	}
 
 	// Create the committer
@@ -135,12 +132,12 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	}
 
 	if lastCommittedOffset == int64(KafkaEndOffset) {
-		level.Warn(logger).Log("msg", fmt.Sprintf("no committed offset found, starting from %d", kafkaStartOffset))
+		level.Warn(logger).Log("msg", fmt.Sprintf("no committed offset found, starting from %d", KafkaStartOffset))
 	} else {
 		level.Debug(logger).Log("msg", "last committed offset", "offset", lastCommittedOffset)
 	}
 
-	consumeOffset := int64(kafkaStartOffset)
+	consumeOffset := int64(KafkaStartOffset)
 	if lastCommittedOffset >= 0 {
 		// Read from the next offset.
 		consumeOffset = lastCommittedOffset + 1
@@ -222,7 +219,7 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 
 	for b.Ongoing() {
 		// Send a direct request to the Kafka backend to fetch the partition start offset.
-		partitionStartOffset, err := s.reader.FetchPartitionOffset(ctx, kafkaStartOffset)
+		partitionStartOffset, err := s.reader.FetchPartitionOffset(ctx, KafkaStartOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch partition start offset", "err", err)
 			b.Wait()
@@ -240,7 +237,7 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 		// We intentionally don't use WaitNextFetchLastProducedOffset() to not introduce further
 		// latency.
 		lastProducedOffsetRequestedAt := time.Now()
-		lastProducedOffset, err := s.reader.FetchPartitionOffset(ctx, kafkaEndOffset)
+		lastProducedOffset, err := s.reader.FetchPartitionOffset(ctx, KafkaEndOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last produced offset", "err", err)
 			b.Wait()
