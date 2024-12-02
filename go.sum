@@ -2507,8 +2507,8 @@ github.com/sercand/kuberesolver/v5 v5.1.1/go.mod h1:Fs1KbKhVRnB2aDWN12NjKCB+RgYM
 github.com/sergi/go-diff v1.0.0/go.mod h1:0CfEIISq7TuYL3j771MWULgwwjU+GofnZX9QAmXWZgo=
 github.com/shirou/gopsutil v2.20.9+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMTu2PcXUg8+E1lC7eC3UO/RA=
 github.com/shirou/gopsutil/v3 v3.22.9/go.mod h1:bBYl1kjgEJpWpxeHmLI+dVHWtyAwfcmSBLDsp2TNT8A=
-github.com/shirou/gopsutil/v4 v4.24.10 h1:7VOzPtfw/5YDU+jLEoBwXwxJbQetULywoSV4RYY7HkM=
-github.com/shirou/gopsutil/v4 v4.24.10/go.mod h1:s4D/wg+ag4rG0WO7AiTj2BeYCRhym0vM7DHbZRxnIT8=
+github.com/shirou/gopsutil/v4 v4.24.11 h1:WaU9xqGFKvFfsUv94SXcUPD7rCkU0vr/asVdQOBZNj8=
+github.com/shirou/gopsutil/v4 v4.24.11/go.mod h1:s4D/wg+ag4rG0WO7AiTj2BeYCRhym0vM7DHbZRxnIT8=
 github.com/shopspring/decimal v0.0.0-20180709203117-cd690d0c9e24/go.mod h1:M+9NzErvs504Cn4c5DxATwIqPbtswREoFCre64PpcG4=
 github.com/shopspring/decimal v0.0.0-20200105231215-408a2507e114/go.mod h1:DKyhrW/HYNuLGql+MJL6WCR6knT2jwCFRcu2hWCYk4o=
 github.com/shopspring/decimal v1.2.0/go.mod h1:DKyhrW/HYNuLGql+MJL6WCR6knT2jwCFRcu2hWCYk4o=
