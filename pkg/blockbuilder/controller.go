@@ -15,16 +15,6 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-// [min,max)
-type Offsets struct {
-	Min, Max int64
-}
-
-type Job struct {
-	Partition int32
-	Offsets   Offsets
-}
-
 // Interface required for interacting with queue partitions.
 type PartitionController interface {
 	Topic() string
