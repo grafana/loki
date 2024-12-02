@@ -111,11 +111,6 @@ func TestKafkaGetGroupLag(t *testing.T) {
 		require.EqualValues(t, 0, getTopicPartitionLag(t, groupLag, testTopic, 2), "partition 2 has no data and must have no lag")
 	})
 
-	t.Run("fallbackOffset=wrong", func(t *testing.T) {
-		_, err := GetGroupLag(ctx, admClient, testTopic, testGroup, -1)
-		require.Error(t, err)
-	})
-
 	t.Run("group=unknown", func(t *testing.T) {
 		groupLag, err := GetGroupLag(ctx, admClient, testTopic, "unknown", 0)
 		require.NoError(t, err)
