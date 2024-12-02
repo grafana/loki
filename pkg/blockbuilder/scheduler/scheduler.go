@@ -99,11 +99,29 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 		level.Error(s.logger).Log("msg", "failed to publish lag metrics", "err", err)
 	}
 
+	jobs, err := s.planner.Plan(ctx)
+	if err != nil {
+		level.Error(s.logger).Log("msg", "failed to plan jobs", "err", err)
+	}
+
+	for _, job := range jobs {
+		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
+		if status, ok := s.queue.Exists(&job); ok {
+			level.Debug(s.logger).Log("msg", "job already exists", "job", job, "status", status)
+			continue
+		}
+
+		if err := s.queue.Enqueue(&job); err != nil {
+			level.Error(s.logger).Log("msg", "failed to enqueue job", "job", job, "err", err)
+		}
+	}
+
 	return nil
 }
 
 func (s *BlockScheduler) publishLagMetrics(lag map[int32]kadm.GroupMemberLag) error {
 	for partition, offsets := range lag {
+		// useful for scaling builders
 		s.metrics.lag.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(offsets.Lag))
 		s.metrics.committedOffset.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(offsets.Commit.At))
 	}
