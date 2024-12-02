@@ -1,35 +1,38 @@
-package blockbuilder
+package scheduler
 
 import (
 	"fmt"
 	"sync"
+
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
+
+// jobAssignment tracks a job and its assigned builder
+type jobAssignment struct {
+	job       *types.Job
+	builderID string
+}
 
 // JobQueue manages the queue of pending jobs and tracks their state.
 type JobQueue struct {
-	pending    map[string]*Job           // Jobs waiting to be processed, key is job ID
+	pending    map[string]*types.Job     // Jobs waiting to be processed, key is job ID
 	inProgress map[string]*jobAssignment // job ID -> assignment info
-	completed  map[string]*Job           // Completed jobs, key is job ID
+	completed  map[string]*types.Job     // Completed jobs, key is job ID
 	mu         sync.RWMutex
-}
-
-type jobAssignment struct {
-	builderID string
-	job       *Job
 }
 
 // NewJobQueue creates a new job queue instance
 func NewJobQueue() *JobQueue {
 	return &JobQueue{
-		pending:    make(map[string]*Job),
+		pending:    make(map[string]*types.Job),
 		inProgress: make(map[string]*jobAssignment),
-		completed:  make(map[string]*Job),
+		completed:  make(map[string]*types.Job),
 	}
 }
 
 // Enqueue adds a new job to the pending queue
 // This is a naive implementation, intended to be refactored
-func (q *JobQueue) Enqueue(job *Job) error {
+func (q *JobQueue) Enqueue(job *types.Job) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -43,45 +46,29 @@ func (q *JobQueue) Enqueue(job *Job) error {
 		return fmt.Errorf("job %s already completed", job.ID)
 	}
 
-	job.Status = JobStatusPending
 	q.pending[job.ID] = job
 	return nil
 }
 
 // Dequeue gets the next available job and assigns it to a builder
-func (q *JobQueue) Dequeue(builderID string) (*Job, bool, error) {
-	if builderID == "" {
-		return nil, false, fmt.Errorf("builder ID cannot be empty")
-	}
-
+func (q *JobQueue) Dequeue(builderID string) (*types.Job, bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Get first available pending job
-	var jobID string
-	var job *Job
-	for id, j := range q.pending {
-		jobID = id
-		job = j
-		break
+	// Simple FIFO for now
+	for id, job := range q.pending {
+		delete(q.pending, id)
+		q.inProgress[id] = &jobAssignment{
+			job:       job,
+			builderID: builderID,
+		}
+		return job, true, nil
 	}
 
-	if job == nil {
-		return nil, false, nil
-	}
-
-	// Move job to in progress
-	delete(q.pending, jobID)
-	job.Status = JobStatusInProgress
-	q.inProgress[jobID] = &jobAssignment{
-		builderID: builderID,
-		job:       job,
-	}
-
-	return job, true, nil
+	return nil, false, nil
 }
 
-// MarkComplete moves a job from in progress to completed
+// MarkComplete moves a job from in-progress to completed
 func (q *JobQueue) MarkComplete(jobID string, builderID string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -90,20 +77,18 @@ func (q *JobQueue) MarkComplete(jobID string, builderID string) error {
 	if !exists {
 		return fmt.Errorf("job %s not found in progress", jobID)
 	}
+
 	if assignment.builderID != builderID {
-		return fmt.Errorf("job %s is assigned to builder %s, not %s", jobID, assignment.builderID, builderID)
+		return fmt.Errorf("job %s not assigned to builder %s", jobID, builderID)
 	}
 
-	job := assignment.job
 	delete(q.inProgress, jobID)
-	job.Status = JobStatusComplete
-	q.completed[jobID] = job
-
+	q.completed[jobID] = assignment.job
 	return nil
 }
 
 // SyncJob updates the state of an in-progress job
-func (q *JobQueue) SyncJob(jobID string, builderID string, job *Job) error {
+func (q *JobQueue) SyncJob(jobID string, builderID string, job *types.Job) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -111,11 +96,11 @@ func (q *JobQueue) SyncJob(jobID string, builderID string, job *Job) error {
 	if !exists {
 		return fmt.Errorf("job %s not found in progress", jobID)
 	}
+
 	if assignment.builderID != builderID {
-		return fmt.Errorf("job %s is assigned to builder %s, not %s", jobID, assignment.builderID, builderID)
+		return fmt.Errorf("job %s not assigned to builder %s", jobID, builderID)
 	}
 
-	// Update job state
 	assignment.job = job
 	return nil
 }

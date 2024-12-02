@@ -1,23 +1,26 @@
-package blockbuilder
+package scheduler
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/blockbuilder/builder"
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 type testEnv struct {
 	queue     *JobQueue
 	scheduler *SchedulerImpl
-	transport *MemoryTransport
-	builder   *TestBuilder
+	transport *builder.MemoryTransport
+	builder   *builder.WorkerImpl
 }
 
 func newTestEnv(builderID string) *testEnv {
 	queue := NewJobQueue()
 	scheduler := NewScheduler(queue)
-	transport := NewMemoryTransport(scheduler)
-	builder := NewTestBuilder(builderID, transport)
+	transport := builder.NewMemoryTransport(scheduler)
+	builder := builder.NewWorker(builderID, builder.NewMemoryTransport(scheduler))
 
 	return &testEnv{
 		queue:     queue,
@@ -32,7 +35,7 @@ func TestScheduleAndProcessJob(t *testing.T) {
 	ctx := context.Background()
 
 	// Create and enqueue a test job
-	job := NewJob(1, Offsets{Min: 100, Max: 200})
+	job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
 	err := env.queue.Enqueue(job)
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
@@ -83,13 +86,13 @@ func TestMultipleBuilders(t *testing.T) {
 	// Create first environment
 	env1 := newTestEnv("test-builder-1")
 	// Create second builder using same scheduler
-	builder2 := NewTestBuilder("test-builder-2", env1.transport)
+	builder2 := builder.NewWorker("test-builder-2", builder.NewMemoryTransport(env1.scheduler))
 
 	ctx := context.Background()
 
 	// Create test jobs
-	job1 := NewJob(1, Offsets{Min: 100, Max: 200})
-	job2 := NewJob(2, Offsets{Min: 300, Max: 400})
+	job1 := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
+	job2 := types.NewJob(2, types.Offsets{Min: 300, Max: 400})
 
 	// Enqueue jobs
 	err := env1.queue.Enqueue(job1)
