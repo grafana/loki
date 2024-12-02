@@ -1,4 +1,4 @@
-package blockbuilder
+package builder
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
