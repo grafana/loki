@@ -12,8 +12,8 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail
 
-# Promtail requires debian as the base image to support systemd journal reading
-FROM debian:stretch-slim
+# Promtail requires debian or ubuntu as the base image to support systemd journal reading
+FROM public.ecr.aws/ubuntu/ubuntu:noble
 # tzdata required for the timestamp stage to work
 RUN apt-get update && \
   apt-get install -qy \
