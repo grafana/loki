@@ -167,16 +167,16 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets Offsets, c
 
 // LoadJob(ctx) returns the next job by finding the most recent unconsumed offset in the partition
 // Returns whether an applicable job exists, the job, and an error
-func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error) {
+func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, *Job, error) {
 	// Read the most recent committed offset
 	committedOffset, err := l.HighestCommittedOffset(ctx)
 	if err != nil {
-		return false, Job{}, err
+		return false, nil, err
 	}
 
 	earliestOffset, err := l.EarliestPartitionOffset(ctx)
 	if err != nil {
-		return false, Job{}, err
+		return false, nil, err
 	}
 
 	startOffset := committedOffset + 1
@@ -186,21 +186,19 @@ func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, Job, error)
 
 	highestOffset, err := l.HighestPartitionOffset(ctx)
 	if err != nil {
-		return false, Job{}, err
+		return false, nil, err
 	}
 	if highestOffset == committedOffset {
-		return false, Job{}, nil
+		return false, nil, nil
 	}
 
 	// Create the job with the calculated offsets
-	job := Job{
-		Partition: l.part.Partition(),
-		Offsets: Offsets{
-			Min: startOffset,
-			Max: min(startOffset+l.stepLen, highestOffset),
-		},
+	offsets := Offsets{
+		Min: startOffset,
+		Max: min(startOffset+l.stepLen, highestOffset),
 	}
 
+	job := NewJob(l.part.Partition(), offsets)
 	return true, job, nil
 }
 
