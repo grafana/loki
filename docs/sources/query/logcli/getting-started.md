@@ -1,6 +1,6 @@
 ---
-title: LogCLI Getting Started
-menuTItle: Getting Started
+title: LogCLI getting started
+menuTItle: Getting started
 description: Installation and reference for LogCLI, a command-line tool for querying and exploring logs in Grafana Loki.
 aliases:
 - ../getting-started/logcli/
@@ -9,7 +9,7 @@ aliases:
 weight: 150
 ---
 
-# LogCLI Getting Started
+# LogCLI getting started
 
 LogCLI is the command-line interface to Grafana Loki.
 It facilitates running [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query)

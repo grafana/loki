@@ -88,7 +88,7 @@ If you are running this example against your own Loki instance and have configur
 export LOKI_ADDR=http://localhost:3100
 ```
 
-Lets now verify the connection by running the following command:
+Now let's verify the connection by running the following command:
 
 ```bash
 logcli labels
@@ -103,7 +103,7 @@ service_name
 state
 ```
 
-This confirms that LogCLI is connected to the Loki instance and we now know that the logs contain the following labels: `package_size`, `service_name`, and `state`. Lets now run some queries against Loki to better understand our package logistics.
+This confirms that LogCLI is connected to the Loki instance and we now know that the logs contain the following labels: `package_size`, `service_name`, and `state`. Let's now run some queries against Loki to better understand our package logistics.
 
 <!-- INTERACTIVE page step1.md END -->
 
@@ -216,7 +216,7 @@ Part of our role as site manager is to understand the labels and log volume in o
 
 One of the most important aspects of keeping Loki healthy is to monitor the series cardinality. This is the number of unique series in your logs. A high series cardinality can lead to performance issues and increased storage costs. We can use LogCLI to check the series cardinality of our logs.
 
-To start lets print how many unique series we have in our logs:
+To start let's print how many unique series we have in our logs:
 
 ```bash
 logcli series '{}'
