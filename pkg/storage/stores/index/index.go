@@ -54,7 +54,7 @@ type Reader interface {
 
 type Writer interface {
 	IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error
-	UpdateSeriesStats(userID string, fp uint64, stats tsdb.SeriesStats)
+	UpdateSeriesStats(userID string, fp uint64, stats *tsdb.StreamStats)
 }
 
 type ReaderWriter interface {

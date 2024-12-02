@@ -32,6 +32,7 @@ type stream struct {
 	labels labels.Labels
 	fp     model.Fingerprint
 	chunks index.ChunkMetas
+	stats  *StreamStats
 }
 
 func NewBuilder(version int) *Builder {
@@ -41,7 +42,8 @@ func NewBuilder(version int) *Builder {
 	}
 }
 
-func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+// TODO(h11): stats should be variadic but I added it to avoid changinf it in many places
+func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, stats ...*StreamStats) {
 	id := ls.String()
 	s, ok := b.streams[id]
 	if !ok {
@@ -52,7 +54,15 @@ func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index
 		b.streams[id] = s
 	}
 
+	// h11: Seeing how we append insteasd of setting the chunks points that AddSeries can be called multiple times.
+	// Doesn't look like we check for duplicated chunks so I think we keep adding chunks to the series until we rotate the index
+	// when we reach a new period (new day). If we can verify this, then, for stats we could either merge as we do here of just set.
+	// But I'm not sure if then we should only reset the stream stats when we rotate the index.
 	s.chunks = append(s.chunks, chks...)
+
+	if len(stats) > 0 {
+		s.stats.Merge(stats[0])
+	}
 }
 
 func (b *Builder) FinalizeChunks() {
@@ -175,9 +185,17 @@ func (b *Builder) build(
 	// Build symbols
 	symbolsMap := make(map[string]struct{})
 	for _, s := range streams {
+		// Add labels/names to symbols
 		for _, l := range s.labels {
 			symbolsMap[l.Name] = struct{}{}
 			symbolsMap[l.Value] = struct{}{}
+		}
+
+		// Add SM stats to symbols
+		if s.stats != nil {
+			for smName := range s.stats.StructuredMetadataFieldNames {
+				symbolsMap[smName] = struct{}{}
+			}
 		}
 	}
 

@@ -259,7 +259,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	return m.active.Log(rec)
 }
 
-func (m *HeadManager) UpdateSeriesStats(userID string, fp uint64, stats SeriesStats) {
+func (m *HeadManager) UpdateSeriesStats(userID string, fp uint64, stats *StreamStats) {
 	m.activeHeads.updateSeriesStats(userID, fp, stats)
 }
 
@@ -696,7 +696,7 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chk
 	return rec
 }
 
-func (t *tenantHeads) updateSeriesStats(userID string, fp uint64, stats SeriesStats) {
+func (t *tenantHeads) updateSeriesStats(userID string, fp uint64, stats *StreamStats) {
 	// (h11) : don't create head.extract to a different function to just get
 	head := t.getOrCreateTenantHead(userID)
 	head.updateSeriesStats(fp, stats)
@@ -821,13 +821,13 @@ func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter ind
 }
 
 // helper only used in building TSDBs
-func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error) error {
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas, head *Head) error) error {
 	for i, shard := range t.tenants {
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
 
-		for user, tenant := range shard {
-			idx := tenant.Index()
+		for tenant, head := range shard {
+			idx := head.Index()
 			ps, err := postingsForMatcher(idx, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			if err != nil {
 				return err
@@ -842,10 +842,10 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
 
 				if err != nil {
-					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
+					return errors.Wrapf(err, "iterating postings for tenant: %s", tenant)
 				}
 
-				if err := fn(user, ls, fp, chks); err != nil {
+				if err := fn(tenant, ls, fp, chks, head); err != nil {
 					return err
 				}
 			}
@@ -853,16 +853,4 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 	}
 
 	return nil
-}
-
-func (t *tenantHeads) ResetSeriesStats() {
-	for i, shard := range t.tenants {
-		t.locks[i].RLock()
-		defer t.locks[i].RUnlock()
-
-		for _, tenant := range shard {
-			tenant.ResetSeriesStats()
-		}
-	}
-
 }

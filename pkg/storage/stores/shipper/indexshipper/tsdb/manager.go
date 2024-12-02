@@ -160,7 +160,7 @@ type chunkInfo struct {
 func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
-	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
+	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas, head *Head) error {
 
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]chunkInfo)
@@ -198,13 +198,15 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 			)
 		}
 
+		// The builder now has the up-to-date series data, we can now reset the stats
+		// TODO(h11): We need to write the stats to the builder here
+		head.ResetSeriesStats()
+
 		return nil
 	}); err != nil {
 		level.Error(m.log).Log("err", err.Error(), "msg", "building TSDB")
 		return err
 	}
-
-	heads.ResetSeriesStats()
 
 	for p, b := range periods {
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))

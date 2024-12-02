@@ -84,10 +84,10 @@ type stream struct {
 
 	configs *runtime.TenantConfigs
 
-	// closedChunksStats has the stats up to the most recent closed chunk.
-	closedChunksStats tsdb.SeriesStats
-	// openChunksStats has the stats up to the most recent open chunk (i.e. closedChunksStats + newer data).
-	openChunksStats tsdb.SeriesStats
+	// closedStreamStats has the stats up to the most recent closed chunk.
+	closedStreamStats *tsdb.StreamStats
+	// openStreamStats has the stats up to the most recent open chunk (i.e. closedChunksStats + newer data).
+	openStreamStats *tsdb.StreamStats
 }
 
 type chunkDesc struct {
@@ -362,7 +362,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 		// h11: index fliushing and chunks flushing happen independently
 		// we need to have the stats in sync: when the index stats are flushed, we need to reset the stats
-		s.openChunksStats.AddStructuredMetadata(entries[i].StructuredMetadata)
+		s.openStreamStats.AddStructuredMetadata(entries[i].StructuredMetadata)
 
 		s.entryCt++
 		s.lastLine.ts = entries[i].Timestamp
@@ -516,7 +516,7 @@ func (s *stream) cutChunk(ctx context.Context) *chunkDesc {
 		level.Error(util_log.WithContext(ctx, util_log.Logger)).Log("msg", "failed to Close chunk", "err", err)
 	}
 	chunk.closed = true
-	s.cutStats()
+	s.cutSeriesStats()
 
 	s.metrics.samplesPerChunk.Observe(float64(chunk.chunk.Size()))
 	s.metrics.blocksPerChunk.Observe(float64(chunk.chunk.BlockCount()))
@@ -660,13 +660,13 @@ func (s *stream) addTailer(t *tailer) {
 	s.tailers[t.getID()] = t
 }
 
-func (s *stream) cutStats() {
-	s.closedChunksStats = s.openChunksStats
-	s.openChunksStats = s.closedChunksStats.Copy()
+func (s *stream) cutSeriesStats() {
+	s.closedStreamStats = s.openStreamStats
+	s.openStreamStats = s.closedStreamStats.Copy()
 }
 
-func (s *stream) stats() tsdb.SeriesStats {
-	return s.closedChunksStats
+func (s *stream) flushableSeriesStats() *tsdb.StreamStats {
+	return s.closedStreamStats
 }
 
 func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {

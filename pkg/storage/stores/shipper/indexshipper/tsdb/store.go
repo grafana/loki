@@ -25,7 +25,7 @@ import (
 
 type IndexWriter interface {
 	Append(userID string, ls labels.Labels, fprint uint64, chks tsdbindex.ChunkMetas) error
-	UpdateSeriesStats(userID string, fp uint64, stats SeriesStats)
+	UpdateSeriesStats(userID string, fp uint64, stats *StreamStats)
 }
 
 type store struct {
@@ -176,7 +176,7 @@ func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk ch
 	return nil
 }
 
-func (s *store) UpdateSeriesStats(userID string, fp uint64, stats SeriesStats) {
+func (s *store) UpdateSeriesStats(userID string, fp uint64, stats *StreamStats) {
 	s.indexWriter.UpdateSeriesStats(userID, fp, stats)
 }
 

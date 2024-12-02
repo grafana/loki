@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -403,7 +404,7 @@ func (w *Creator) writeMeta() error {
 // fingerprint differs from what labels.Hash() produces. For example,
 // multitenant TSDBs embed a tenant label, but the actual series has no such
 // label and so the derived fingerprint differs.
-func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks ...ChunkMeta) error {
+func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks []ChunkMeta, stats ...*tsdb.StreamStats) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -463,6 +464,27 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
+	}
+
+	// h11: write stream stats
+	var smFields map[string]struct{}
+	if len(stats) > 0 {
+		smFields = stats[0].StructuredMetadataFieldNames
+	}
+
+	w.buf2.PutUvarint(len(smFields))
+	for sm := range smFields {
+		var err error
+		cacheEntry, ok := w.symbolCache[sm]
+		nameIndex := cacheEntry.index
+		if !ok {
+			nameIndex, err = w.symbols.ReverseLookup(sm)
+			if err != nil {
+				return errors.Errorf("symbol entry for %q does not exist, %v", sm, err)
+			}
+		}
+		// h11: Should we add this to w.labelNames?
+		w.buf2.PutUvarint32(nameIndex)
 	}
 
 	w.addChunks(chunks, &w.buf2, &w.buf1, ChunkPageSize)
@@ -1753,7 +1775,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats *tsdb.StreamStats) (uint64, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1765,7 +1787,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 		return 0, d.Err()
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, stats)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
@@ -2171,6 +2193,24 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 	return &d, fprint, nil
 }
 
+func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats *tsdb.StreamStats) error {
+	nSMFieldNames := d.Uvarint()
+
+	stats.StructuredMetadataFieldNames = make(map[string]struct{}, nSMFieldNames)
+	for i := 0; i < nSMFieldNames; i++ {
+		fieldName := uint32(d.Uvarint())
+
+		ln, err := dec.LookupSymbol(fieldName)
+		if err != nil {
+			return errors.Wrap(err, "lookup structured metadata field name")
+		}
+
+		stats.StructuredMetadataFieldNames[ln] = struct{}{}
+	}
+
+	return nil
+}
+
 // prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
 // If `by` is empty, it returns all labels for the series.
 func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
@@ -2357,10 +2397,14 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats *tsdb.StreamStats) (uint64, error) {
 	d, fprint, err := dec.prepSeries(b, lbls, chks)
 	if err != nil {
 		return 0, err
+	}
+
+	if err := dec.readSeriesStats(version, d, stats); err != nil {
+		return 0, errors.Wrap(err, "series stats")
 	}
 
 	// read chunks based on fmt

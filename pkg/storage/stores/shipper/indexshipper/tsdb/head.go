@@ -177,7 +177,7 @@ func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (c
 	return
 }
 
-func (h *Head) updateSeriesStats(fp uint64, stats SeriesStats) {
+func (h *Head) updateSeriesStats(fp uint64, stats *StreamStats) {
 	h.series.updateSeriesStats(fp, stats)
 }
 
@@ -293,7 +293,7 @@ func (s *stripeSeries) Append(
 	return
 }
 
-func (s *stripeSeries) updateSeriesStats(fp uint64, stats SeriesStats) {
+func (s *stripeSeries) updateSeriesStats(fp uint64, stats *StreamStats) {
 	series := s.getByID(fp)
 
 	series.Lock()
@@ -316,12 +316,16 @@ func (s *stripeSeries) resetSeriesStats() {
 // AddStructuredMetadata takes the mutes and updates the stats
 // The index manager calls Reset when the index is written
 // In the ingester push logic, we keep updating the index stats
-type SeriesStats struct {
+type StreamStats struct {
+	mu                           sync.RWMutex
 	StructuredMetadataFieldNames map[string]struct{}
 }
 
-func (s *SeriesStats) Copy() SeriesStats {
-	out := SeriesStats{
+func (s *StreamStats) Copy() *StreamStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := &StreamStats{
 		StructuredMetadataFieldNames: make(map[string]struct{}, len(s.StructuredMetadataFieldNames)),
 	}
 	for k := range s.StructuredMetadataFieldNames {
@@ -330,20 +334,29 @@ func (s *SeriesStats) Copy() SeriesStats {
 	return out
 }
 
-func (s *SeriesStats) Merge(other SeriesStats) {
+func (s *StreamStats) Merge(other *StreamStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for k := range other.StructuredMetadataFieldNames {
 		s.StructuredMetadataFieldNames[k] = struct{}{}
 	}
 }
 
-func (s *SeriesStats) AddStructuredMetadata(metadata push.LabelsAdapter) {
+func (s *StreamStats) AddStructuredMetadata(metadata push.LabelsAdapter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for _, l := range metadata {
 		s.StructuredMetadataFieldNames[l.Name] = struct{}{}
 	}
 }
 
-func (s *SeriesStats) Reset() {
-	s.StructuredMetadataFieldNames = make(map[string]struct{})
+func (s *StreamStats) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.StructuredMetadataFieldNames = make(map[string]struct{}, len(s.StructuredMetadataFieldNames))
 }
 
 type memSeries struct {
@@ -353,7 +366,7 @@ type memSeries struct {
 	ls    labels.Labels
 	fp    uint64
 	chks  index.ChunkMetas
-	stats SeriesStats
+	stats StreamStats
 }
 
 func newMemSeries(ref uint64, ls labels.Labels, fp uint64) *memSeries {

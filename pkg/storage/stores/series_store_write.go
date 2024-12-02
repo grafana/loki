@@ -129,6 +129,7 @@ func (c *Writer) PutOne(ctx context.Context, from, through model.Time, chk chunk
 	return nil
 }
 
-func (c *Writer) UpdateSeriesStats(userID string, fp uint64, stats tsdb.SeriesStats) {
+func (c *Writer) UpdateSeriesStats(_ context.Context, _, _ model.Time, userID string, fp uint64, stats *tsdb.StreamStats) error {
 	c.indexWriter.UpdateSeriesStats(userID, fp, stats)
+	return nil
 }

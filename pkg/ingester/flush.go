@@ -306,7 +306,9 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		"total_comp", humanize.Bytes(uint64(totalCompressedSize)),
 		"avg_comp", humanize.Bytes(uint64(totalCompressedSize/len(chunks))),
 		"total_uncomp", humanize.Bytes(uint64(totalUncompressedSize)),
-		"avg_uncomp", humanize.Bytes(uint64(totalUncompressedSize/len(chunks))))
+		"avg_uncomp", humanize.Bytes(uint64(totalUncompressedSize/len(chunks))),
+		"metadata_fields", len(labels),
+	)
 	logValues = append(logValues, frc.Log()...)
 	logValues = append(logValues, "labels", lbs)
 	level.Info(i.logger).Log(logValues...)
@@ -319,28 +321,20 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		return fmt.Errorf("failed to flush chunks: %w, num_chunks: %d, labels: %s", err, len(chunks), lbs)
 	}
 
-	// (h11) Rename to UpdateSeriesStats passing the series stats object
-	s, exists := instance.streams.LoadByFP(fp)
-	if !exists {
-		level.Error(i.logger).Log("msg", "stream not found", "fp", fp)
-		return nil
+	if err := i.store.UpdateSeriesStats(ctx, 0, 0, userID, uint64(fp), stats); err != nil {
+		return fmt.Errorf("failed to update series stats: %w", err)
 	}
-
-	// GET the stats from the stream, and call UpdateSeriesStats() with the stats object
-	// Then reset the series stats
-
-	i.store.UpdateSeriesStats(ctx, 0, 0, userID, uint64(fp), stats)
 
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, tsdb.SeriesStats, *sync.RWMutex) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *tsdb.StreamStats, *sync.RWMutex) {
 	var stream *stream
 	var ok bool
 	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
-		return nil, nil, tsdb.SeriesStats{}, nil
+		return nil, nil, nil, nil
 	}
 
 	stream.chunkMtx.Lock()
@@ -357,7 +351,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			// Ensure no more writes happen to this chunk.
 			if !stream.chunks[j].closed {
 				stream.chunks[j].closed = true
-				stream.cutStats()
+				stream.cutSeriesStats()
 			}
 			// Flush this chunk if it hasn't already been successfully flushed.
 			if stream.chunks[j].flushed.IsZero() {
@@ -370,7 +364,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			}
 		}
 	}
-	return result, stream.labels, stream.stats(), &stream.chunkMtx
+	return result, stream.labels, stream.flushableSeriesStats(), &stream.chunkMtx
 }
 
 func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {
