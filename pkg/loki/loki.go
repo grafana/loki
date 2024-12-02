@@ -32,7 +32,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
-	"github.com/grafana/loki/v3/pkg/blockscheduler"
+	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"

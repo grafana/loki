@@ -1,4 +1,4 @@
-package blockscheduler
+package scheduler
 
 import "github.com/prometheus/client_golang/prometheus"
 

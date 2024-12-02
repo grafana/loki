@@ -1,4 +1,4 @@
-package blockscheduler
+package scheduler
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
+
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 func TestTimeRangePlanner_Plan(t *testing.T) {
@@ -15,7 +17,7 @@ func TestTimeRangePlanner_Plan(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		now          time.Time
-		expectedJobs []Job
+		expectedJobs []types.Job
 		groupLag     map[int32]kadm.GroupMemberLag
 		consumeUpto  map[int32]kadm.ListedOffset
 	}{
@@ -40,11 +42,10 @@ func TestTimeRangePlanner_Plan(t *testing.T) {
 					Offset: 200,
 				},
 			},
-			expectedJobs: []Job{
+			expectedJobs: []types.Job{
 				{
-					Partition:   0,
-					StartOffset: 101,
-					EndOffset:   200,
+					Partition: 0,
+					Offsets:   types.Offsets{Min: 101, Max: 200},
 				},
 			},
 		},
@@ -78,16 +79,14 @@ func TestTimeRangePlanner_Plan(t *testing.T) {
 					Offset: 123,
 				},
 			},
-			expectedJobs: []Job{
+			expectedJobs: []types.Job{
 				{
-					Partition:   0,
-					StartOffset: 200,
-					EndOffset:   300,
+					Partition: 0,
+					Offsets:   types.Offsets{Min: 200, Max: 300},
 				},
 				{
-					Partition:   1,
-					StartOffset: 12,
-					EndOffset:   123,
+					Partition: 1,
+					Offsets:   types.Offsets{Min: 12, Max: 123},
 				},
 			},
 		},
@@ -122,11 +121,10 @@ func TestTimeRangePlanner_Plan(t *testing.T) {
 					Offset: 123,
 				},
 			},
-			expectedJobs: []Job{
+			expectedJobs: []types.Job{
 				{
-					Partition:   1,
-					StartOffset: 12,
-					EndOffset:   123,
+					Partition: 1,
+					Offsets:   types.Offsets{Min: 12, Max: 123},
 				},
 			},
 		},

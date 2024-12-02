@@ -1,4 +1,4 @@
-package blockscheduler
+package scheduler
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/twmb/franz-go/pkg/kadm"
 )
 
@@ -17,7 +18,7 @@ type OffsetReader interface {
 
 type Planner interface {
 	Name() string
-	Plan(ctx context.Context) ([]Job, error)
+	Plan(ctx context.Context) ([]types.Job, error)
 }
 
 const (
@@ -42,24 +43,26 @@ func (p *RecordCountPlanner) Name() string {
 	return RecordCountStrategy
 }
 
-func (p *RecordCountPlanner) Plan(ctx context.Context) ([]Job, error) {
+func (p *RecordCountPlanner) Plan(ctx context.Context) ([]types.Job, error) {
 	offsets, err := p.offsetReader.GroupLag(ctx)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
 		return nil, err
 	}
 
-	jobs := make([]Job, 0, len(offsets))
+	jobs := make([]types.Job, 0, len(offsets))
 	for _, partition := range offsets {
 		// kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
 		// no additional validation is needed here
 		startOffset := partition.Commit.At + 1
 		endOffset := min(startOffset+p.targetRecordCount, partition.End.Offset)
 
-		job := Job{
-			Partition:   partition.Partition,
-			StartOffset: startOffset,
-			EndOffset:   endOffset,
+		job := types.Job{
+			Partition: int(partition.Partition),
+			Offsets: types.Offsets{
+				Min: startOffset,
+				Max: endOffset,
+			},
 		}
 
 		jobs = append(jobs, job)
@@ -94,7 +97,7 @@ func (p *TimeRangePlanner) Name() string {
 	return TimeRangeStrategy
 }
 
-func (p *TimeRangePlanner) Plan(ctx context.Context) ([]Job, error) {
+func (p *TimeRangePlanner) Plan(ctx context.Context) ([]types.Job, error) {
 	// truncate to the nearest Interval
 	consumeUptoTS := p.now().Add(-p.buffer).Truncate(p.targetPeriod)
 
@@ -111,7 +114,7 @@ func (p *TimeRangePlanner) Plan(ctx context.Context) ([]Job, error) {
 		return nil, err
 	}
 
-	var jobs []Job
+	var jobs []types.Job
 	for _, partitionOffset := range offsets {
 		startOffset := partitionOffset.Commit.At + 1
 		// TODO: we could further break down the work into Interval sized chunks if this partition has pending records spanning a long time range
@@ -125,10 +128,12 @@ func (p *TimeRangePlanner) Plan(ctx context.Context) ([]Job, error) {
 			continue
 		}
 
-		jobs = append(jobs, Job{
-			StartOffset: startOffset,
-			EndOffset:   endOffset,
-			Partition:   partitionOffset.Partition,
+		jobs = append(jobs, types.Job{
+			Partition: int(partitionOffset.Partition),
+			Offsets: types.Offsets{
+				Min: startOffset,
+				Max: endOffset,
+			},
 		})
 	}
 

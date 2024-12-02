@@ -34,11 +34,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
-	"github.com/grafana/loki/v3/pkg/blockscheduler"
+	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -1879,9 +1878,8 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
-
-	t.Cfg.BlockScheduler.Topic = t.Cfg.KafkaConfig.Topic
-	return blockscheduler.New(t.Cfg.BlockScheduler, kadm.NewClient(c), logger, prometheus.DefaultRegisterer)
+	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, c)
+	return blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
