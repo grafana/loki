@@ -1878,7 +1878,7 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
-	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, c)
+	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, t.Cfg.BlockScheduler.LookbackPeriod, c)
 	return blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
 }
 

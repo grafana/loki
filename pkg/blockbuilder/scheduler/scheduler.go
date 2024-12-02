@@ -21,16 +21,17 @@ var (
 )
 
 type Config struct {
-	ConsumerGroup string
-	Interval      time.Duration
-
-	TargetRecordConsumptionPeriod time.Duration
+	ConsumerGroup                 string        `yaml:"consumer_group"`
+	Interval                      time.Duration `yaml:"interval"`
+	TargetRecordConsumptionPeriod time.Duration `yaml:"target_records_spanning_period"`
+	LookbackPeriod                int64         `yaml:"lookback_period"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.Interval, prefix+"interval", time.Minute, "How often to run scheduler top compute jobs.")
+	f.DurationVar(&cfg.Interval, prefix+"interval", 5*time.Minute, "How often the scheduler should plan jobs.")
 	f.DurationVar(&cfg.TargetRecordConsumptionPeriod, prefix+"target-records-spanning-period", time.Hour, "Period used by the planner to calculate the start and end offset such that each job consumes records spanning the target period.")
 	f.StringVar(&cfg.ConsumerGroup, prefix+"consumer-group", "block-scheduler", "Consumer group used by block scheduler to track the last consumed offset.")
+	f.Int64Var(&cfg.LookbackPeriod, prefix+"lookback-period", -2, "Lookback period in milliseconds used by the scheduler to plan jobs when the consumer group has no commits. -1 consumes from the latest offset. -2 consumes from the start of the partition.")
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -38,8 +39,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.Interval.Seconds() <= 0 {
+	if cfg.Interval <= 0 {
 		return errors.New("interval must be a non-zero value")
+	}
+
+	if cfg.LookbackPeriod < -2 {
+		return errors.New("only -1(latest) and -2(earliest) are valid as negative values for lookback_period")
 	}
 
 	return nil
@@ -74,6 +79,10 @@ func NewScheduler(cfg Config, queue *JobQueue, offsetReader OffsetReader, logger
 }
 
 func (s *BlockScheduler) running(ctx context.Context) error {
+	if err := s.runOnce(ctx); err != nil {
+		level.Error(s.logger).Log("msg", "failed to schedule jobs", "err", err)
+	}
+
 	ticker := time.NewTicker(s.cfg.Interval)
 	for {
 		select {
@@ -95,9 +104,7 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 		return err
 	}
 
-	if err := s.publishLagMetrics(lag); err != nil {
-		level.Error(s.logger).Log("msg", "failed to publish lag metrics", "err", err)
-	}
+	s.publishLagMetrics(lag)
 
 	jobs, err := s.planner.Plan(ctx)
 	if err != nil {
@@ -119,14 +126,12 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 	return nil
 }
 
-func (s *BlockScheduler) publishLagMetrics(lag map[int32]kadm.GroupMemberLag) error {
+func (s *BlockScheduler) publishLagMetrics(lag map[int32]kadm.GroupMemberLag) {
 	for partition, offsets := range lag {
 		// useful for scaling builders
 		s.metrics.lag.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(offsets.Lag))
 		s.metrics.committedOffset.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(offsets.Commit.At))
 	}
-
-	return nil
 }
 
 func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*types.Job, bool, error) {

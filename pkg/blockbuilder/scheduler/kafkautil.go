@@ -41,9 +41,6 @@ func GetGroupLag(ctx context.Context, admClient *kadm.Client, topic, group strin
 	}
 
 	resolveFallbackOffsets := sync.OnceValues(func() (kadm.ListedOffsets, error) {
-		if fallbackOffsetMillis < 0 {
-			return nil, fmt.Errorf("cannot resolve fallback offset for value %v", fallbackOffsetMillis)
-		}
 		return admClient.ListOffsetsAfterMilli(ctx, fallbackOffsetMillis, topic)
 	})
 	// If the group-partition in offsets doesn't have a commit, fall back depending on where fallbackOffsetMillis points at.

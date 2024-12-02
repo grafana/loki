@@ -188,6 +188,26 @@ block_builder:
     # CLI flag: -blockbuilder.backoff..backoff-retries
     [max_retries: <int> | default = 10]
 
+block_scheduler:
+  # Consumer group used by block scheduler to track the last consumed offset.
+  # CLI flag: -block-scheduler.consumer-group
+  [consumer_group: <string> | default = "block-scheduler"]
+
+  # How often the scheduler should plan jobs.
+  # CLI flag: -block-scheduler.interval
+  [interval: <duration> | default = 5m]
+
+  # Period used by the planner to calculate the start and end offset such that
+  # each job consumes records spanning the target period.
+  # CLI flag: -block-scheduler.target-records-spanning-period
+  [target_records_spanning_period: <duration> | default = 1h]
+
+  # Lookback period in milliseconds used by the scheduler to plan jobs when the
+  # consumer group has no commits. -1 consumes from the latest offset. -2
+  # consumes from the start of the partition.
+  # CLI flag: -block-scheduler.lookback-period
+  [lookback_period: <int> | default = -2]
+
 pattern_ingester:
   # Whether the pattern ingester is enabled.
   # CLI flag: -pattern-ingester.enabled
