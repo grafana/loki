@@ -3400,8 +3400,9 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
-# Detect fields from stream labels, structured metadata, or json/logfmt
-# formatted log line and put them into structured metadata of the log entry.
+# Experimental: Detect fields from stream labels, structured metadata, or
+# json/logfmt formatted log line and put them into structured metadata of the
+# log entry.
 [discover_generic_fields: <map of string to list of strings>]
 
 # If no service_name label exists, Loki maps a single label from the configured

@@ -86,7 +86,7 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 
 	// Metadata field extraction
-	DiscoverGenericFields map[string][]string `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
+	DiscoverGenericFields map[string][]string `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
 	DiscoverServiceName   []string            `yaml:"discover_service_name" json:"discover_service_name"`
 	DiscoverLogLevels     bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
 	LogLevelFields        []string            `yaml:"log_level_fields" json:"log_level_fields"`
