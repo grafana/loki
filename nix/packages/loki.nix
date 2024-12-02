@@ -5,7 +5,7 @@ let
     pname = "lambda-promtail";
 
     src = ./../../tools/lambda-promtail;
-    vendorHash = "sha256-HfIjAMaS9L3hRuKQo99964e9GH4fsdZQ27Awk9Vzwpo=";
+    vendorHash = "sha256-qsgaWkuSVo5Clb9FpS4SUIHVZZjpfjv0dKtwSUIX7a8=";
 
     doCheck = false;
 
