@@ -44,10 +44,10 @@ type GetJobResponse struct {
 
 type CompleteJobRequest struct {
 	BuilderID string
-	Job      *Job
+	Job       *Job
 }
 
 type SyncJobRequest struct {
 	BuilderID string
-	Job      *Job
+	Job       *Job
 }
