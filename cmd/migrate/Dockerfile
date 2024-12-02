@@ -1,10 +1,5 @@
-<<<<<<< HEAD
 ARG GO_VERSION=1.22
 FROM golang:${GO_VERSION} as build
-=======
-ARG GO_VERSION=1.23
-FROM golang:${GO_VERSION} AS build
->>>>>>> 5f670a4b1 (chore(deps): Move from base-nossl to static (#15203))
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false migrate
