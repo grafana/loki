@@ -270,6 +270,13 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		return nil
 	}
 
+	// (h11) this should return the stats to pass down to the writer
+	// Each stream has a list of chunks (all closed but the last one.
+	// The stream should have two stream:
+	//  1. ClosedStats: stats ready to be flushed
+	//  2. UpdatableStats: stats with the most up to date data: includes stats for unclosed chunks.
+	// When a chunk is closed, we copy UpdatableStats into ClosedStats, and create a new UpdatableStats as a copy of ClosedStats
+	// That way, collectChunksToFlush can return ClosedStats, or we can use it right away
 	chunks, labels, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
 	if len(chunks) < 1 {
 		return nil
@@ -310,6 +317,18 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 	if err != nil {
 		return fmt.Errorf("failed to flush chunks: %w, num_chunks: %d, labels: %s", err, len(chunks), lbs)
 	}
+
+	// (h11) Rename to UpdateSeriesStats passing the series stats object
+	s, exists := instance.streams.LoadByFP(fp)
+	if !exists {
+		level.Error(i.logger).Log("msg", "stream not found", "fp", fp)
+		return nil
+	}
+
+	// GET the stats from the stream, and call UpdateSeriesStats() with the stats object
+	// Then reset the series stats
+
+	i.store.SeriesStats(ctx, 0, 0, userID, uint64(fp))
 
 	return nil
 }
