@@ -6,24 +6,28 @@ import (
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
+var (
+	_ types.Transport = unimplementedTransport{}
+	_ types.Transport = &MemoryTransport{}
+)
+
 // unimplementedTransport provides default implementations that panic
 type unimplementedTransport struct{}
 
-func (t *unimplementedTransport) SendGetJobRequest(_ context.Context, _ *types.GetJobRequest) (*types.GetJobResponse, error) {
+func (t unimplementedTransport) SendGetJobRequest(_ context.Context, _ *types.GetJobRequest) (*types.GetJobResponse, error) {
 	panic("unimplemented")
 }
 
-func (t *unimplementedTransport) SendCompleteJob(_ context.Context, _ *types.CompleteJobRequest) error {
+func (t unimplementedTransport) SendCompleteJob(_ context.Context, _ *types.CompleteJobRequest) error {
 	panic("unimplemented")
 }
 
-func (t *unimplementedTransport) SendSyncJob(_ context.Context, _ *types.SyncJobRequest) error {
+func (t unimplementedTransport) SendSyncJob(_ context.Context, _ *types.SyncJobRequest) error {
 	panic("unimplemented")
 }
 
 // MemoryTransport implements Transport interface for in-memory communication
 type MemoryTransport struct {
-	unimplementedTransport
 	scheduler types.Scheduler
 }
 

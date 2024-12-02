@@ -11,9 +11,9 @@ import (
 
 type testEnv struct {
 	queue     *JobQueue
-	scheduler *SchedulerImpl
+	scheduler *QueueScheduler
 	transport *builder.MemoryTransport
-	builder   *builder.WorkerImpl
+	builder   *builder.Worker
 }
 
 func newTestEnv(builderID string) *testEnv {
