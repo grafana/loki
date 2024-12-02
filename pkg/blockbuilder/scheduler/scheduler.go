@@ -10,9 +10,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
-	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kadm"
+
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 var (

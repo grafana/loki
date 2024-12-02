@@ -6,8 +6,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/twmb/franz-go/pkg/kadm"
+
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 // OffsetReader is an interface to list offsets for all partitions of a topic from Kafka.
