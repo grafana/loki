@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.33.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.5
-	github.com/baidubce/bce-sdk-go v0.9.201
+	github.com/baidubce/bce-sdk-go v0.9.202
 	github.com/bmatcuk/doublestar/v4 v4.7.1
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
@@ -144,7 +144,6 @@ require (
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.20.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
-	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
 	golang.org/x/oauth2 v0.24.0
 	golang.org/x/text v0.20.0
 	google.golang.org/protobuf v1.35.2
@@ -189,6 +188,7 @@ require (
 	go.opentelemetry.io/contrib/detectors/gcp v1.29.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.29.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.29.0 // indirect
+	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
 	google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a // indirect
 )
 

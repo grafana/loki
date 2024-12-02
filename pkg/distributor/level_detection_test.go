@@ -31,7 +31,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		limits, ingester := setup(false)
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
-		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
 		_, err := distributors[0].Push(ctx, writeReq)
 		require.NoError(t, err)
 		topVal := ingester.Peek()
@@ -43,7 +43,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		limits, ingester := setup(true)
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
-		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
 		_, err := distributors[0].Push(ctx, writeReq)
 		require.NoError(t, err)
 		topVal := ingester.Peek()
@@ -80,7 +80,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		limits, ingester := setup(true)
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
-		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar", level="debug"}`})
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar", level="debug"}`}, false, false, false)
 		_, err := distributors[0].Push(ctx, writeReq)
 		require.NoError(t, err)
 		topVal := ingester.Peek()
@@ -95,7 +95,7 @@ func Test_DetectLogLevels(t *testing.T) {
 		limits, ingester := setup(true)
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
-		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`})
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
 		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
 			{
 				Name:  "severity",

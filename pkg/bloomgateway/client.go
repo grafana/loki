@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"io"
+	"slices"
 	"sort"
 
 	"github.com/go-kit/log"
@@ -14,7 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 

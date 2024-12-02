@@ -113,7 +113,7 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 	// Avoid a nil entries slice to be consistent with the decoding
 	entries := []loghttp.Entry{}
 	if len(s.Entries) > 0 {
-		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries))
+		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries)) //#nosec G103 -- Just preventing an allocation, safe. Entry types are the same.
 	}
 
 	ret := loghttp.Stream{

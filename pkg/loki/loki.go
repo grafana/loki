@@ -31,7 +31,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	"github.com/grafana/loki/v3/pkg/blockbuilder"
+	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	"github.com/grafana/loki/v3/pkg/blockscheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
