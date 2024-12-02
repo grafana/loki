@@ -35,15 +35,15 @@ type Transport interface {
 // unimplementedTransport provides default implementations that panic
 type unimplementedTransport struct{}
 
-func (t *unimplementedTransport) SendGetJobRequest(ctx context.Context, req *GetJobRequest) (*GetJobResponse, error) {
+func (t *unimplementedTransport) SendGetJobRequest(_ context.Context, _ *GetJobRequest) (*GetJobResponse, error) {
 	panic("unimplemented")
 }
 
-func (t *unimplementedTransport) SendCompleteJob(ctx context.Context, req *CompleteJobRequest) error {
+func (t *unimplementedTransport) SendCompleteJob(_ context.Context, _ *CompleteJobRequest) error {
 	panic("unimplemented")
 }
 
-func (t *unimplementedTransport) SendSyncJob(ctx context.Context, req *SyncJobRequest) error {
+func (t *unimplementedTransport) SendSyncJob(_ context.Context, _ *SyncJobRequest) error {
 	panic("unimplemented")
 }
 

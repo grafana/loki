@@ -15,15 +15,15 @@ type Worker interface {
 // unimplementedWorker provides default implementations for the Worker interface.
 type unimplementedWorker struct{}
 
-func (u *unimplementedWorker) GetJob(ctx context.Context) (*Job, bool, error) {
+func (u *unimplementedWorker) GetJob(_ context.Context) (*Job, bool, error) {
 	panic("unimplemented")
 }
 
-func (u *unimplementedWorker) CompleteJob(ctx context.Context, job *Job) error {
+func (u *unimplementedWorker) CompleteJob(_ context.Context, _ *Job) error {
 	panic("unimplemented")
 }
 
-func (u *unimplementedWorker) SyncJob(ctx context.Context, job *Job) error {
+func (u *unimplementedWorker) SyncJob(_ context.Context, _ *Job) error {
 	panic("unimplemented")
 }
 

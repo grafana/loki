@@ -17,15 +17,15 @@ type Scheduler interface {
 // unimplementedScheduler provides default implementations that panic.
 type unimplementedScheduler struct{}
 
-func (s *unimplementedScheduler) HandleGetJob(ctx context.Context, builderID string) (*Job, bool, error) {
+func (s *unimplementedScheduler) HandleGetJob(_ context.Context, _ string) (*Job, bool, error) {
 	panic("unimplemented")
 }
 
-func (s *unimplementedScheduler) HandleCompleteJob(ctx context.Context, builderID string, job *Job) error {
+func (s *unimplementedScheduler) HandleCompleteJob(_ context.Context, _ string, _ *Job) error {
 	panic("unimplemented")
 }
 
-func (s *unimplementedScheduler) HandleSyncJob(ctx context.Context, builderID string, job *Job) error {
+func (s *unimplementedScheduler) HandleSyncJob(_ context.Context, _ string, _ *Job) error {
 	panic("unimplemented")
 }
 
@@ -51,10 +51,10 @@ func (s *SchedulerImpl) HandleGetJob(ctx context.Context, builderID string) (*Jo
 	}
 }
 
-func (s *SchedulerImpl) HandleCompleteJob(ctx context.Context, builderID string, job *Job) error {
+func (s *SchedulerImpl) HandleCompleteJob(_ context.Context, builderID string, job *Job) error {
 	return s.queue.MarkComplete(job.ID, builderID)
 }
 
-func (s *SchedulerImpl) HandleSyncJob(ctx context.Context, builderID string, job *Job) error {
+func (s *SchedulerImpl) HandleSyncJob(_ context.Context, builderID string, job *Job) error {
 	return s.queue.SyncJob(job.ID, builderID, job)
 }

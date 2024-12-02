@@ -28,6 +28,7 @@ func NewJobQueue() *JobQueue {
 }
 
 // Enqueue adds a new job to the pending queue
+// This is a naive implementation, intended to be refactored
 func (q *JobQueue) Enqueue(job *Job) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
