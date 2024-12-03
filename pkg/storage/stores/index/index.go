@@ -209,7 +209,7 @@ func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.
 				matchers ...*labels.Matcher,
 			) error {
 				return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
-					return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+					return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 				})
 			},
 		)

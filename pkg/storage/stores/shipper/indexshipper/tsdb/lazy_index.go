@@ -36,12 +36,12 @@ func (f LazyIndex) Close() error {
 	return i.Close()
 }
 
-func (f LazyIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (f LazyIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabelNames []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	i, err := f()
 	if err != nil {
 		return nil, err
 	}
-	return i.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
+	return i.GetChunkRefs(ctx, userID, from, through, nil, res, fpFilter, matchers...)
 }
 func (f LazyIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	i, err := f()
@@ -81,10 +81,10 @@ func (f LazyIndex) Volume(ctx context.Context, userID string, from, through mode
 	return i.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
-func (f LazyIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+func (f LazyIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	i, err := f()
 	if err != nil {
 		return err
 	}
-	return i.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+	return i.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 }

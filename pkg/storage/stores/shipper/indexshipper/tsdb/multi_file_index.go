@@ -132,7 +132,7 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 }
 
-func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabelNames []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	acc := newResultAccumulator(func(xs [][]ChunkRef) ([]ChunkRef, error) {
 		if res == nil {
 			res = ChunkRefsPool.Get()
@@ -170,7 +170,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		from,
 		through,
 		func(ctx context.Context, idx Index) error {
-			got, err := idx.GetChunkRefs(ctx, userID, from, through, nil, fpFilter, matchers...)
+			got, err := idx.GetChunkRefs(ctx, userID, from, through, nil, nil, fpFilter, matchers...)
 			if err != nil {
 				return err
 			}
@@ -371,8 +371,8 @@ func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through mo
 	})
 }
 
-func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
-		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 	})
 }

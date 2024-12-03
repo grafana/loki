@@ -161,9 +161,10 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 // Iteration will stop if the callback returns true.
 // Accepts a userID argument in order to implement `Index` interface, but since this is a single tenant index,
 // it is ignored (it's enforced elsewhere in index selection)
-func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
+	var stats *StreamStats
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
@@ -175,9 +176,39 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 
 	return i.forPostings(ctx, fpFilter, from, through, matchers, func(p index.Postings) error {
 		for p.Next() {
-			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks)
+			hash, err := i.reader.Series(p.At(), int64(from), int64(through), &ls, &chks, &stats)
 			if err != nil {
 				return err
+			}
+
+			if stats != nil {
+				// Looking at the structured metadata fields names, discard all series for which we don't have the required filter label names
+				allFound := false
+				for _, ln := range filterLabelNames {
+					var found bool
+					// Search label name in stream labels
+					for _, lbs := range ls {
+						if lbs.Name == ln {
+							found = true
+							break
+						}
+					}
+					// If not a stream label, search in structured metadata fields
+					if !found {
+						if _, ok := stats.StructuredMetadataFieldNames[ln]; ok {
+							found = true
+						}
+					}
+					// If label name not found at all, we can skip this series
+					if !found {
+						allFound = false
+						break
+					}
+				}
+
+				if !allFound {
+					continue
+				}
 			}
 
 			// skip series that belong to different shards
@@ -212,7 +243,7 @@ func (i *TSDBIndex) forPostings(
 	return fn(p)
 }
 
-func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	if res == nil {
 		res = ChunkRefsPool.Get()
 	}
@@ -230,7 +261,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 			})
 		}
 		return false
-	}, matchers...); err != nil {
+	}, nil, matchers...); err != nil {
 		return nil, err
 	}
 
@@ -252,7 +283,7 @@ func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Ti
 			Fingerprint: fp,
 		})
 		return false
-	}, matchers...); err != nil {
+	}, nil, matchers...); err != nil {
 		return nil, err
 	}
 

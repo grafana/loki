@@ -759,12 +759,12 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabelNames []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, nil, fpFilter, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, nil, nil, fpFilter, matchers...)
 
 }
 
@@ -812,12 +812,12 @@ func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through m
 	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
-func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 }
 
 // helper only used in building TSDBs
@@ -839,7 +839,8 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					chks []index.ChunkMeta
 				)
 
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
+				// h11: Pass stream stats
+				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks, nil)
 
 				if err != nil {
 					return errors.Wrapf(err, "iterating postings for tenant: %s", tenant)

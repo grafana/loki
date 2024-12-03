@@ -41,6 +41,10 @@ type headIndexReader struct {
 	mint, maxt int64
 }
 
+func (h *headIndexReader) SeriesStats() (StreamStats, error) {
+	hd := h.head
+	return hd.SeriesStats()
+}
 func (h *headIndexReader) Bounds() (int64, int64) {
 	return h.head.MinTime(), h.head.MaxTime()
 }
@@ -122,7 +126,7 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 }
 
 // Series returns the series for the given reference.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta, stats **StreamStats) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -130,6 +134,8 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 		return 0, storage.ErrNotFound
 	}
 	*lbls = append((*lbls)[:0], s.ls...)
+
+	*stats = &s.stats
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 

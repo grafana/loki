@@ -3,12 +3,15 @@ package tsdb
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/logql"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -122,8 +125,19 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
+	// h11: somehow check if the predicates have structured metadata labels
+	var filterLabelNames []string
+	filters := syntax.ExtractLabelFiltersBeforeParser(predicate.Plan().AST)
+	for _, f := range filters {
+		filterLabelNames = append(filterLabelNames, f.RequiredLabelNames()...)
+	}
+	if len(filterLabelNames) > 0 {
+		level.Debug(util_log.Logger).Log("msg", "filtering by label names", "label_names", strings.Join(filterLabelNames, ","))
+		// h11: dedup
+	}
+
 	// TODO(owen-d): use a pool to reduce allocs here
-	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, filterLabelNames, nil, shard, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +304,7 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 		m[fp] = append(m[fp], chks...)
 		mtx.Unlock()
 		return false
-	}, predicate.Matchers...); err != nil {
+	}, nil, predicate.Matchers...); err != nil {
 		return nil, err
 	}
 

@@ -181,6 +181,10 @@ func (h *Head) updateSeriesStats(fp uint64, stats *StreamStats) {
 	h.series.updateSeriesStats(fp, stats)
 }
 
+func (h *Head) SeriesStats() (StreamStats, error) {
+	return h.series.SeriesStats()
+}
+
 func (h *Head) ResetSeriesStats() {
 	h.series.resetSeriesStats()
 }
@@ -259,6 +263,18 @@ func (s *stripeSeries) getByID(id uint64) *memSeries {
 	x.RLock()
 	defer x.RUnlock()
 	return x.m[id]
+}
+
+func (s *stripeSeries) SeriesStats() (StreamStats, error) {
+	var stats StreamStats
+	for _, seriesMap := range s.series {
+		seriesMap.RLock()
+		defer seriesMap.RUnlock()
+		for _, series := range seriesMap.m {
+			stats.Merge(series.stats.Copy())
+		}
+	}
+	return stats, nil
 }
 
 // Append adds chunks to the correct series and returns whether a new series was added

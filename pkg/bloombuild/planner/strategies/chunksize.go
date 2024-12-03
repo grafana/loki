@@ -243,46 +243,39 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 		currentBatch = newSeriesBatch(idx.tsdbIdentifier)
 
 		for _, gap := range idx.gaps {
-			if err := idx.tsdb.ForSeries(
-				ctx,
-				tenant,
-				gap,
-				0, math.MaxInt64,
-				func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-					select {
-					case <-ctx.Done():
-						return true
-					default:
-						var seriesSize uint64
-						for _, chk := range chks {
-							seriesSize += uint64(chk.KB * 1024)
-						}
-
-						// Cut a new batch IF the current batch is not empty (so we add at least one series to the batch)
-						// AND Adding this series to the batch would exceed the target task size.
-						if currentBatch.Len() > 0 && currentBatch.Size()+seriesSize > targetTaskSizeBytes {
-							batches = append(batches, currentBatch)
-							currentBatch = newSeriesBatch(idx.tsdbIdentifier)
-						}
-
-						res := &v1.Series{
-							Fingerprint: fp,
-							Chunks:      make(v1.ChunkRefs, 0, len(chks)),
-						}
-						for _, chk := range chks {
-							res.Chunks = append(res.Chunks, v1.ChunkRef{
-								From:     model.Time(chk.MinTime),
-								Through:  model.Time(chk.MaxTime),
-								Checksum: chk.Checksum,
-							})
-						}
-
-						currentBatch.Append(res, seriesSize)
-						return false
+			if err := idx.tsdb.ForSeries(ctx, tenant, gap, 0, math.MaxInt64, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+				select {
+				case <-ctx.Done():
+					return true
+				default:
+					var seriesSize uint64
+					for _, chk := range chks {
+						seriesSize += uint64(chk.KB * 1024)
 					}
-				},
-				labels.MustNewMatcher(labels.MatchEqual, "", ""),
-			); err != nil {
+
+					// Cut a new batch IF the current batch is not empty (so we add at least one series to the batch)
+					// AND Adding this series to the batch would exceed the target task size.
+					if currentBatch.Len() > 0 && currentBatch.Size()+seriesSize > targetTaskSizeBytes {
+						batches = append(batches, currentBatch)
+						currentBatch = newSeriesBatch(idx.tsdbIdentifier)
+					}
+
+					res := &v1.Series{
+						Fingerprint: fp,
+						Chunks:      make(v1.ChunkRefs, 0, len(chks)),
+					}
+					for _, chk := range chks {
+						res.Chunks = append(res.Chunks, v1.ChunkRef{
+							From:     model.Time(chk.MinTime),
+							Through:  model.Time(chk.MaxTime),
+							Checksum: chk.Checksum,
+						})
+					}
+
+					currentBatch.Append(res, seriesSize)
+					return false
+				}
+			}, nil, labels.MustNewMatcher(labels.MatchEqual, "", "")); err != nil {
 				return nil, 0, err
 			}
 

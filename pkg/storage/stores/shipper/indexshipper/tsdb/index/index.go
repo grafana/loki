@@ -1775,7 +1775,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats *tsdb.StreamStats) (uint64, error) {
+func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats **tsdb.StreamStats) (uint64, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.

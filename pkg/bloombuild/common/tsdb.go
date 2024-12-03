@@ -128,34 +128,27 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 	// TODO(salvacorts): Create a pool
 	series := make([]*v1.Series, 0, 100)
 
-	if err := f.ForSeries(
-		ctx,
-		user,
-		bounds,
-		0, math.MaxInt64,
-		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
-			select {
-			case <-ctx.Done():
-				return true
-			default:
-				res := &v1.Series{
-					Fingerprint: fp,
-					Chunks:      make(v1.ChunkRefs, 0, len(chks)),
-				}
-				for _, chk := range chks {
-					res.Chunks = append(res.Chunks, v1.ChunkRef{
-						From:     model.Time(chk.MinTime),
-						Through:  model.Time(chk.MaxTime),
-						Checksum: chk.Checksum,
-					})
-				}
-
-				series = append(series, res)
-				return false
+	if err := f.ForSeries(ctx, user, bounds, 0, math.MaxInt64, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+			res := &v1.Series{
+				Fingerprint: fp,
+				Chunks:      make(v1.ChunkRefs, 0, len(chks)),
 			}
-		},
-		labels.MustNewMatcher(labels.MatchEqual, "", ""),
-	); err != nil {
+			for _, chk := range chks {
+				res.Chunks = append(res.Chunks, v1.ChunkRef{
+					From:     model.Time(chk.MinTime),
+					Through:  model.Time(chk.MaxTime),
+					Checksum: chk.Checksum,
+				})
+			}
+
+			series = append(series, res)
+			return false
+		}
+	}, nil, labels.MustNewMatcher(labels.MatchEqual, "", "")); err != nil {
 		return nil, err
 	}
 

@@ -84,12 +84,12 @@ func (i *indexShipperQuerier) Close() error {
 	return nil
 }
 
-func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabelNames []string, res []ChunkRef, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, res, fpFilter, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, nil, res, fpFilter, matchers...)
 }
 
 func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
@@ -134,13 +134,13 @@ func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, t
 	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
-func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFilter tsdbindex.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []tsdbindex.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) ForSeries(ctx context.Context, userID string, fpFilter tsdbindex.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []tsdbindex.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 }
 
 type resultAccumulator[T any] struct {

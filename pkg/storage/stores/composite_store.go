@@ -292,7 +292,7 @@ func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeri
 			matchers ...*labels.Matcher,
 		) error {
 			for _, impl := range impls {
-				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...); err != nil {
+				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...); err != nil {
 					return err
 				}
 			}

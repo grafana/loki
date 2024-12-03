@@ -58,7 +58,7 @@ type Index interface {
 	// the requested shard. If it is nil, TSDB will return all results,
 	// regardless of shard.
 	// Note: any shard used must be a valid factor of two, meaning `0_of_2` and `3_of_4` are fine, but `0_of_3` is not.
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error)
+	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabelNames []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error)
 	// Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
 	Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error)
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
@@ -71,7 +71,7 @@ type NoopIndex struct{}
 
 func (NoopIndex) Close() error                    { return nil }
 func (NoopIndex) Bounds() (_, through model.Time) { return }
-func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ []ChunkRef, _ index.FingerprintFilter, _ ...*labels.Matcher) ([]ChunkRef, error) {
+func (NoopIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabelNames []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	return nil, nil
 }
 
@@ -96,6 +96,6 @@ func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAc
 	return nil
 }
 
-func (NoopIndex) ForSeries(_ context.Context, _ string, _ index.FingerprintFilter, _ model.Time, _ model.Time, _ func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ ...*labels.Matcher) error {
+func (NoopIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	return nil
 }

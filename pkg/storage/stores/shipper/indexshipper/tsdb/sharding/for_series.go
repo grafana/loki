@@ -19,19 +19,7 @@ import (
 // such as when the Index is backed by multiple files with the same series present.
 // NB(owen-d): mainly in this package to avoid circular dependencies elsewhere
 type ForSeries interface {
-	ForSeries(
-		ctx context.Context,
-		userID string,
-		fpFilter index.FingerprintFilter,
-		from model.Time,
-		through model.Time,
-		fn func(
-			labels.Labels,
-			model.Fingerprint,
-			[]index.ChunkMeta,
-		) (stop bool),
-		matchers ...*labels.Matcher,
-	) error
+	ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error
 }
 
 // function Adapter for ForSeries implementation
@@ -49,18 +37,6 @@ type ForSeriesFunc func(
 	matchers ...*labels.Matcher,
 ) error
 
-func (f ForSeriesFunc) ForSeries(
-	ctx context.Context,
-	userID string,
-	fpFilter index.FingerprintFilter,
-	from model.Time,
-	through model.Time,
-	fn func(
-		labels.Labels,
-		model.Fingerprint,
-		[]index.ChunkMeta,
-	) (stop bool),
-	matchers ...*labels.Matcher,
-) error {
+func (f ForSeriesFunc) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	return f(ctx, userID, fpFilter, from, through, fn, matchers...)
 }

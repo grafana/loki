@@ -16,15 +16,7 @@ import (
 
 type forSeriesTestImpl []*v1.Series
 
-func (f forSeriesTestImpl) ForSeries(
-	_ context.Context,
-	_ string,
-	_ index.FingerprintFilter,
-	_ model.Time,
-	_ model.Time,
-	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) bool,
-	_ ...*labels.Matcher,
-) error {
+func (f forSeriesTestImpl) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	for i := range f {
 		unmapped := make([]index.ChunkMeta, 0, len(f[i].Chunks))
 		for _, c := range f[i].Chunks {
