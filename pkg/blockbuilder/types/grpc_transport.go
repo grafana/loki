@@ -22,7 +22,7 @@ var _ Transport = &GRPCTransport{}
 type GRPCTransportConfig struct {
 	Address string `yaml:"address,omitempty"`
 
-	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
+	// GRPCClientConfig configures the gRPC connection between the block-builder and its scheduler.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
