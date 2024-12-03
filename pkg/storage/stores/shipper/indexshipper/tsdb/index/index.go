@@ -140,6 +140,7 @@ type Creator struct {
 	symbols     *Symbols
 	lastSymbol  string
 	symbolCache map[string]symbolCacheEntry
+	//smSymbolCache map[string]uint32
 
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
@@ -1788,7 +1789,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 		return 0, d.Err()
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, *stats)
+	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, stats)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
@@ -2161,7 +2162,7 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats) (*encoding.Decbuf, uint64, error) {
 	*lbls = (*lbls)[:0]
 	if chks != nil {
 		*chks = (*chks)[:0]
@@ -2191,13 +2192,18 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
+
+	if err := dec.readSeriesStats(version, &d, stats); err != nil {
+		return nil, 0, errors.Wrap(err, "read series stats")
+	}
+
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats *StreamStats) error {
+func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats **StreamStats) error {
 	nSMFieldNames := d.Uvarint()
 
-	stats.StructuredMetadataFieldNames = make(map[string]struct{}, nSMFieldNames)
+	fields := make(map[string]struct{}, nSMFieldNames)
 	for i := 0; i < nSMFieldNames; i++ {
 		fieldName := uint32(d.Uvarint())
 
@@ -2206,7 +2212,11 @@ func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats *Stre
 			return errors.Wrap(err, "lookup structured metadata field name")
 		}
 
-		stats.StructuredMetadataFieldNames[ln] = struct{}{}
+		fields[ln] = struct{}{}
+	}
+
+	if stats != nil {
+		(*stats).StructuredMetadataFieldNames = fields
 	}
 
 	return nil
@@ -2214,9 +2224,9 @@ func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats *Stre
 
 // prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
 // If `by` is empty, it returns all labels for the series.
-func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeriesBy(version int, b []byte, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
 	if by == nil {
-		return dec.prepSeries(b, lbls, chks)
+		return dec.prepSeries(version, b, lbls, chks, stats)
 	}
 	*lbls = (*lbls)[:0]
 	if chks != nil {
@@ -2251,11 +2261,16 @@ func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMet
 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
+
+	if err := dec.readSeriesStats(version, &d, stats); err != nil {
+		return nil, 0, errors.Wrap(err, "read series stats")
+	}
+
 	return &d, fprint, nil
 }
 
 func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeriesBy(b, lbls, nil, by)
+	d, fp, err := dec.prepSeriesBy(version, b, lbls, nil, nil, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2398,14 +2413,10 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats *StreamStats) (uint64, error) {
-	d, fprint, err := dec.prepSeries(b, lbls, chks)
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats) (uint64, error) {
+	d, fprint, err := dec.prepSeries(version, b, lbls, chks, stats)
 	if err != nil {
 		return 0, err
-	}
-
-	if err := dec.readSeriesStats(version, d, stats); err != nil {
-		return 0, errors.Wrap(err, "series stats")
 	}
 
 	// read chunks based on fmt

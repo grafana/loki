@@ -89,7 +89,7 @@ func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, f
 	if err != nil {
 		return nil, err
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, nil, res, fpFilter, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, filterLabelNames, res, fpFilter, matchers...)
 }
 
 func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter tsdbindex.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {

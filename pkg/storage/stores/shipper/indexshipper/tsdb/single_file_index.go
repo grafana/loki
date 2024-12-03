@@ -164,7 +164,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
-	var stats *index.StreamStats
+	stats := index.NewStreamStats()
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
@@ -181,7 +181,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 				return err
 			}
 
-			if stats != nil {
+			if stats != nil && len(filterLabelNames) > 0 {
 				// Looking at the structured metadata fields names, discard all series for which we don't have the required filter label names
 				allFound := false
 				for _, ln := range filterLabelNames {
@@ -244,7 +244,7 @@ func (i *TSDBIndex) forPostings(
 	return fn(p)
 }
 
-func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabels []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	if res == nil {
 		res = ChunkRefsPool.Get()
 	}
@@ -262,7 +262,7 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 			})
 		}
 		return false
-	}, nil, matchers...); err != nil {
+	}, filterLabels, matchers...); err != nil {
 		return nil, err
 	}
 

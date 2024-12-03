@@ -764,7 +764,7 @@ func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, thr
 	if !ok {
 		return nil, nil
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, nil, nil, fpFilter, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, filterLabelNames, nil, fpFilter, matchers...)
 
 }
 
@@ -835,12 +835,13 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 
 			for ps.Next() {
 				var (
-					ls   labels.Labels
-					chks []index.ChunkMeta
+					ls    labels.Labels
+					chks  []index.ChunkMeta
+					stats *index.StreamStats
 				)
 
 				// h11: Pass stream stats
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks, nil)
+				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks, &stats)
 
 				if err != nil {
 					return errors.Wrapf(err, "iterating postings for tenant: %s", tenant)

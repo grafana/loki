@@ -170,7 +170,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 		from,
 		through,
 		func(ctx context.Context, idx Index) error {
-			got, err := idx.GetChunkRefs(ctx, userID, from, through, nil, nil, fpFilter, matchers...)
+			got, err := idx.GetChunkRefs(ctx, userID, from, through, filterLabelNames, nil, fpFilter, matchers...)
 			if err != nil {
 				return err
 			}

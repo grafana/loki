@@ -105,10 +105,10 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 func (b *Builder) Build(
 	ctx context.Context,
 	scratchDir string,
-// Determines how to create the resulting Identifier and file name.
-// This is variable as we use Builder for multiple reasons,
-// such as building multi-tenant tsdbs on the ingester
-// and per tenant ones during compaction
+	// Determines how to create the resulting Identifier and file name.
+	// This is variable as we use Builder for multiple reasons,
+	// such as building multi-tenant tsdbs on the ingester
+	// and per tenant ones during compaction
 	createFn func(from, through model.Time, checksum uint32) Identifier,
 ) (id Identifier, err error) {
 	// Ensure the parent dir exists (i.e. index/<bucket>/<tenant>/)
@@ -229,10 +229,10 @@ func (b *Builder) build(
 
 func (b *Builder) BuildInMemory(
 	ctx context.Context,
-// Determines how to create the resulting Identifier and file name.
-// This is variable as we use Builder for multiple reasons,
-// such as building multi-tenant tsdbs on the ingester
-// and per tenant ones during compaction
+	// Determines how to create the resulting Identifier and file name.
+	// This is variable as we use Builder for multiple reasons,
+	// such as building multi-tenant tsdbs on the ingester
+	// and per tenant ones during compaction
 	createFn func(from, through model.Time, checksum uint32) Identifier,
 ) (id Identifier, data []byte, err error) {
 	writer, err := index.NewMemWriterWithVersion(ctx, b.version)

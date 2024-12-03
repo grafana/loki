@@ -41,7 +41,7 @@ func (f LazyIndex) GetChunkRefs(ctx context.Context, userID string, from, throug
 	if err != nil {
 		return nil, err
 	}
-	return i.GetChunkRefs(ctx, userID, from, through, nil, res, fpFilter, matchers...)
+	return i.GetChunkRefs(ctx, userID, from, through, filterLabelNames, res, fpFilter, matchers...)
 }
 func (f LazyIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
 	i, err := f()
