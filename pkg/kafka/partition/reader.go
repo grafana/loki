@@ -25,10 +25,10 @@ const (
 	KafkaEndOffset   SpecialOffset = -1
 )
 
-var readerMetric *readerMetrics
+var rm *readerMetrics
 
 func init() {
-	readerMetric = newReaderMetrics(prometheus.DefaultRegisterer)
+	rm = newReaderMetrics(prometheus.DefaultRegisterer)
 }
 
 type Record struct {
@@ -120,7 +120,7 @@ func NewKafkaReader(
 		client:      c,
 		topic:       cfg.Topic,
 		partitionID: partitionID,
-		metrics:     readerMetric,
+		metrics:     rm,
 		logger:      logger,
 	}, nil
 }
