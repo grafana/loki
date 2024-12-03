@@ -465,7 +465,7 @@ github.com/aws/smithy-go/transport/http/internal/io
 # github.com/axiomhq/hyperloglog v0.2.0
 ## explicit; go 1.21
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.202
+# github.com/baidubce/bce-sdk-go v0.9.203
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
