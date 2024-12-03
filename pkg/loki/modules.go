@@ -52,7 +52,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	kclient "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
-	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -1816,57 +1815,29 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 	// TODO(owen-d): perhaps refactor to not use the ingester config?
 	id := t.Cfg.Ingester.LifecyclerConfig.ID
 
-	ingestPartitionID, err := partitionring.ExtractIngesterPartitionID(id)
-	if err != nil {
-		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
-	}
-
-	reader, err := partition.NewKafkaReader(
-		t.Cfg.KafkaConfig,
-		ingestPartitionID,
-		logger,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	offsetManager, err := partition.NewKafkaOffsetManager(
-		t.Cfg.KafkaConfig,
-		ingestPartitionID,
-		id,
-		logger,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	controller, err := blockbuilder.NewPartitionJobController(
-		reader,
-		offsetManager,
-		t.Cfg.BlockBuilder.Backoff,
-		logger,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
 	objectStore, err := blockbuilder.NewMultiStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
 	if err != nil {
 		return nil, err
+	}
+
+	readerFactory := func(partitionID int32) (partition.Reader, error) {
+		return partition.NewKafkaReader(
+			t.Cfg.KafkaConfig,
+			partitionID,
+			logger,
+			prometheus.DefaultRegisterer,
+		)
 	}
 
 	bb, err := blockbuilder.NewBlockBuilder(
 		id,
 		t.Cfg.BlockBuilder,
 		t.Cfg.SchemaConfig.Configs,
+		readerFactory,
 		t.Store,
 		objectStore,
 		logger,
 		prometheus.DefaultRegisterer,
-		controller,
 	)
 
 	if err != nil {

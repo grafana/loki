@@ -18,14 +18,17 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-	"github.com/grafana/loki/v3/pkg/storage/types"
+	storagetypes "github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -40,15 +43,18 @@ const (
 )
 
 type Config struct {
-	ConcurrentFlushes int               `yaml:"concurrent_flushes"`
-	ConcurrentWriters int               `yaml:"concurrent_writers"`
-	BlockSize         flagext.ByteSize  `yaml:"chunk_block_size"`
-	TargetChunkSize   flagext.ByteSize  `yaml:"chunk_target_size"`
-	ChunkEncoding     string            `yaml:"chunk_encoding"`
-	parsedEncoding    compression.Codec `yaml:"-"` // placeholder for validated encoding
-	MaxChunkAge       time.Duration     `yaml:"max_chunk_age"`
-	Interval          time.Duration     `yaml:"interval"`
-	Backoff           backoff.Config    `yaml:"backoff_config"`
+	ConcurrentFlushes int `yaml:"concurrent_flushes"`
+	ConcurrentWriters int `yaml:"concurrent_writers"`
+
+	BlockSize       flagext.ByteSize  `yaml:"chunk_block_size"`
+	TargetChunkSize flagext.ByteSize  `yaml:"chunk_target_size"`
+	ChunkEncoding   string            `yaml:"chunk_encoding"`
+	parsedEncoding  compression.Codec `yaml:"-"` // placeholder for validated encoding
+	MaxChunkAge     time.Duration     `yaml:"max_chunk_age"`
+
+	Backoff           backoff.Config `yaml:"backoff_config"`
+	WorkerParallelism int            `yaml:"worker_parallelism"`
+	SyncInterval      time.Duration  `yaml:"sync_interval"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -60,7 +66,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.TargetChunkSize, prefix+"chunk-target-size", "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.")
 	f.StringVar(&cfg.ChunkEncoding, prefix+"chunk-encoding", compression.Snappy.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
-	f.DurationVar(&cfg.Interval, prefix+"interval", 10*time.Minute, "The interval at which to run.")
+	f.DurationVar(&cfg.SyncInterval, prefix+"sync-interval", 30*time.Second, "The interval at which to sync job status with the scheduler.")
+	f.IntVar(&cfg.WorkerParallelism, prefix+"worker-parallelism", 1, "The number of workers to run in parallel to process jobs.")
 	cfg.Backoff.RegisterFlagsWithPrefix(prefix+"backoff.", f)
 }
 
@@ -75,6 +82,15 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 	cfg.parsedEncoding = enc
+
+	if cfg.SyncInterval <= 0 {
+		return errors.New("sync interval must be greater than 0")
+	}
+
+	if cfg.WorkerParallelism < 1 {
+		return errors.New("worker parallelism must be greater than 0")
+	}
+
 	return nil
 }
 
@@ -95,35 +111,47 @@ type BlockBuilder struct {
 	id              string
 	cfg             Config
 	periodicConfigs []config.PeriodConfig
+	metrics         *SlimgesterMetrics
+	logger          log.Logger
 
-	metrics *SlimgesterMetrics
-	logger  log.Logger
+	decoder       *kafka.Decoder
+	readerFactory func(partition int32) (partition.Reader, error)
 
-	store         stores.ChunkWriter
-	objStore      *MultiStore
-	jobController *PartitionJobController
+	store    stores.ChunkWriter
+	objStore *MultiStore
+
+	jobsMtx      sync.RWMutex
+	inflightJobs map[string]*types.Job
+	transport    types.BuilderTransport
 }
 
 func NewBlockBuilder(
 	id string,
 	cfg Config,
 	periodicConfigs []config.PeriodConfig,
+	readerFactory func(partition int32) (partition.Reader, error),
 	store stores.ChunkWriter,
 	objStore *MultiStore,
 	logger log.Logger,
 	reg prometheus.Registerer,
-	jobController *PartitionJobController,
 ) (*BlockBuilder,
 	error) {
+	decoder, err := kafka.NewDecoder()
+	if err != nil {
+		return nil, err
+	}
+
 	i := &BlockBuilder{
 		id:              id,
 		cfg:             cfg,
 		periodicConfigs: periodicConfigs,
 		metrics:         NewSlimgesterMetrics(reg),
 		logger:          logger,
+		decoder:         decoder,
+		readerFactory:   readerFactory,
 		store:           store,
 		objStore:        objStore,
-		jobController:   jobController,
+		// TODO: wire transport
 	}
 
 	i.Service = services.NewBasicService(nil, i.running, nil)
@@ -131,58 +159,122 @@ func NewBlockBuilder(
 }
 
 func (i *BlockBuilder) running(ctx context.Context) error {
-	ticker := time.NewTicker(i.cfg.Interval)
-	defer ticker.Stop()
+	wg := sync.WaitGroup{}
 
-	// run once in beginning
-	select {
-	case <-ctx.Done():
-		return nil
-	default:
-		_, err := i.runOne(ctx)
-		if err != nil {
-			level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
-		}
+	for j := 0; j < i.cfg.WorkerParallelism; j++ {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					err := i.runOne(ctx, id)
+					if err != nil {
+						level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
+					}
+				}
+			}
+		}(fmt.Sprintf("worker-%d", j))
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			skipped, err := i.runOne(ctx)
-			level.Info(i.logger).Log(
-				"msg", "completed block builder run", "skipped",
-				"skipped", skipped,
-				"err", err,
-			)
-			if err != nil {
-				level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		ticker := time.NewTicker(i.cfg.SyncInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := i.syncJobs(ctx); err != nil {
+					level.Error(i.logger).Log("msg", "failed to sync jobs", "err", err)
+				}
 			}
 		}
-	}
+	}()
+
+	wg.Wait()
+	return nil
 }
 
-// runOne performs a single
-func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
+func (i *BlockBuilder) syncJobs(ctx context.Context) error {
+	i.jobsMtx.RLock()
+	defer i.jobsMtx.RUnlock()
 
-	exists, job, err := i.jobController.LoadJob(ctx)
+	for _, job := range i.inflightJobs {
+		if err := i.transport.SendSyncJob(ctx, &types.SyncJobRequest{
+			BuilderID: i.id,
+			Job:       job,
+		}); err != nil {
+			level.Error(i.logger).Log("msg", "failed to sync job", "err", err)
+		}
+	}
+
+	return nil
+}
+
+func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
+	// assuming GetJob blocks/polls until a job is available
+	resp, err := i.transport.SendGetJobRequest(ctx, &types.GetJobRequest{
+		BuilderID: workerID,
+	})
 	if err != nil {
-		return false, err
+		return err
 	}
 
-	if !exists {
+	if !resp.OK {
 		level.Info(i.logger).Log("msg", "no available job to process")
-		return true, nil
+		return nil
 	}
 
+	job := resp.Job
 	logger := log.With(
 		i.logger,
+		"worker_id", workerID,
 		"partition", job.Partition,
 		"job_min_offset", job.Offsets.Min,
 		"job_max_offset", job.Offsets.Max,
 	)
 
+	// TODO: add metrics for inflight jobs
+	i.jobsMtx.Lock()
+	i.inflightJobs[job.ID] = job
+	i.jobsMtx.Unlock()
+
+	lastConsumedOffset, err := i.processJob(ctx, job, logger)
+	// TODO: pass lastConsumedOffset as a separate field
+	job.Offsets.Max = lastConsumedOffset
+
+	if _, err := withBackoff(
+		ctx,
+		i.cfg.Backoff,
+		func() (res struct{}, err error) {
+			if err = i.transport.SendCompleteJob(ctx, &types.CompleteJobRequest{
+				BuilderID: workerID,
+				Job:       job,
+			}); err != nil {
+				level.Error(i.logger).Log("msg", "failed to mark the job as complete", "err", err)
+			}
+			return
+		},
+	); err != nil {
+		return err
+	}
+
+	i.jobsMtx.Lock()
+	delete(i.inflightJobs, job.ID)
+	i.jobsMtx.Unlock()
+
+	return err
+}
+
+func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
 	level.Debug(logger).Log("msg", "beginning job")
 
 	indexer := newTsdbCreator()
@@ -206,7 +298,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		"load records",
 		1,
 		func(ctx context.Context) error {
-			lastOffset, err = i.jobController.Process(ctx, job.Offsets, inputCh)
+			lastOffset, err = i.loadRecords(ctx, int32(job.Partition), job.Offsets, inputCh)
 			return err
 		},
 		func(ctx context.Context) error {
@@ -343,18 +435,18 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		"err", err,
 	)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
 
 	var (
 		nodeName    = i.id
-		tableRanges = config.GetIndexStoreTableRanges(types.TSDBType, i.periodicConfigs)
+		tableRanges = config.GetIndexStoreTableRanges(storagetypes.TSDBType, i.periodicConfigs)
 	)
 
 	built, err := indexer.create(ctx, nodeName, tableRanges)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to build index", "err", err)
-		return false, err
+		return 0, err
 	}
 
 	u := newUploader(i.objStore)
@@ -375,30 +467,86 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 			)
 			return
 		}); err != nil {
-			return false, err
+			return 0, err
 		}
 	}
 
 	if lastOffset <= job.Offsets.Min {
-		return false, nil
-	}
-
-	if err = i.jobController.offsetManager.Commit(ctx, lastOffset); err != nil {
-		level.Error(logger).Log(
-			"msg", "failed to commit offset",
-			"last_offset", lastOffset,
-			"err", err,
-		)
-		return false, err
+		return lastOffset, nil
 	}
 
 	// log success
 	level.Info(logger).Log(
-		"msg", "successfully processed and committed batch",
+		"msg", "successfully processed job",
 		"last_offset", lastOffset,
 	)
 
-	return false, nil
+	return lastOffset, nil
+}
+
+func (b *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
+	f, err := b.readerFactory(partitionID)
+	if err != nil {
+		return 0, err
+	}
+
+	f.SetOffsetForConsumption(offsets.Min)
+
+	var (
+		lastOffset = offsets.Min - 1
+		boff       = backoff.New(ctx, b.cfg.Backoff)
+	)
+
+	for lastOffset < offsets.Max && boff.Ongoing() {
+		var records []partition.Record
+		records, err = f.Poll(ctx, int(offsets.Max-lastOffset))
+		if err != nil {
+			boff.Wait()
+			continue
+		}
+
+		if len(records) == 0 {
+			// No more records available
+			break
+		}
+
+		// Reset backoff on successful poll
+		boff.Reset()
+
+		converted := make([]AppendInput, 0, len(records))
+		for _, record := range records {
+			if record.Offset >= offsets.Max {
+				level.Debug(b.logger).Log("msg", "record offset exceeds job max offset. stop processing", "record offset", record.Offset, "max offset", offsets.Max)
+				break
+			}
+			lastOffset = record.Offset
+
+			stream, labels, err := b.decoder.Decode(record.Content)
+			if err != nil {
+				return 0, fmt.Errorf("failed to decode record: %w", err)
+			}
+			if len(stream.Entries) == 0 {
+				continue
+			}
+
+			converted = append(converted, AppendInput{
+				tenant:    record.TenantID,
+				labels:    labels,
+				labelsStr: stream.Labels,
+				entries:   stream.Entries,
+			})
+		}
+
+		if len(converted) > 0 {
+			select {
+			case ch <- converted:
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
+		}
+	}
+
+	return lastOffset, err
 }
 
 type Appender struct {
