@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/push"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
@@ -177,12 +176,8 @@ func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (c
 	return
 }
 
-func (h *Head) updateSeriesStats(fp uint64, stats *StreamStats) {
+func (h *Head) updateSeriesStats(fp uint64, stats *index.StreamStats) {
 	h.series.updateSeriesStats(fp, stats)
-}
-
-func (h *Head) SeriesStats() (StreamStats, error) {
-	return h.series.SeriesStats()
 }
 
 func (h *Head) ResetSeriesStats() {
@@ -265,18 +260,6 @@ func (s *stripeSeries) getByID(id uint64) *memSeries {
 	return x.m[id]
 }
 
-func (s *stripeSeries) SeriesStats() (StreamStats, error) {
-	var stats StreamStats
-	for _, seriesMap := range s.series {
-		seriesMap.RLock()
-		defer seriesMap.RUnlock()
-		for _, series := range seriesMap.m {
-			stats.Merge(series.stats.Copy())
-		}
-	}
-	return stats, nil
-}
-
 // Append adds chunks to the correct series and returns whether a new series was added
 func (s *stripeSeries) Append(
 	ls labels.Labels,
@@ -309,7 +292,7 @@ func (s *stripeSeries) Append(
 	return
 }
 
-func (s *stripeSeries) updateSeriesStats(fp uint64, stats *StreamStats) {
+func (s *stripeSeries) updateSeriesStats(fp uint64, stats *index.StreamStats) {
 	series := s.getByID(fp)
 
 	series.Lock()
@@ -327,54 +310,6 @@ func (s *stripeSeries) resetSeriesStats() {
 	}
 }
 
-// h11: add a mutex.
-// Reset takes the muted to reset all the stats
-// AddStructuredMetadata takes the mutes and updates the stats
-// The index manager calls Reset when the index is written
-// In the ingester push logic, we keep updating the index stats
-type StreamStats struct {
-	mu                           sync.RWMutex
-	StructuredMetadataFieldNames map[string]struct{}
-}
-
-func (s *StreamStats) Copy() *StreamStats {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	out := &StreamStats{
-		StructuredMetadataFieldNames: make(map[string]struct{}, len(s.StructuredMetadataFieldNames)),
-	}
-	for k := range s.StructuredMetadataFieldNames {
-		out.StructuredMetadataFieldNames[k] = struct{}{}
-	}
-	return out
-}
-
-func (s *StreamStats) Merge(other *StreamStats) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for k := range other.StructuredMetadataFieldNames {
-		s.StructuredMetadataFieldNames[k] = struct{}{}
-	}
-}
-
-func (s *StreamStats) AddStructuredMetadata(metadata push.LabelsAdapter) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, l := range metadata {
-		s.StructuredMetadataFieldNames[l.Name] = struct{}{}
-	}
-}
-
-func (s *StreamStats) Reset() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.StructuredMetadataFieldNames = make(map[string]struct{}, len(s.StructuredMetadataFieldNames))
-}
-
 type memSeries struct {
 	// (h11) potentially add stats?
 	sync.RWMutex
@@ -382,7 +317,7 @@ type memSeries struct {
 	ls    labels.Labels
 	fp    uint64
 	chks  index.ChunkMetas
-	stats StreamStats
+	stats index.StreamStats
 }
 
 func newMemSeries(ref uint64, ls labels.Labels, fp uint64) *memSeries {

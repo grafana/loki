@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -29,6 +28,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -404,7 +405,7 @@ func (w *Creator) writeMeta() error {
 // fingerprint differs from what labels.Hash() produces. For example,
 // multitenant TSDBs embed a tenant label, but the actual series has no such
 // label and so the derived fingerprint differs.
-func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks []ChunkMeta, stats ...*tsdb.StreamStats) error {
+func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks []ChunkMeta, stats ...*StreamStats) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -1775,7 +1776,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats **tsdb.StreamStats) (uint64, error) {
+func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats) (uint64, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1787,7 +1788,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 		return 0, d.Err()
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, stats)
+	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, *stats)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
@@ -2193,7 +2194,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats *tsdb.StreamStats) error {
+func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats *StreamStats) error {
 	nSMFieldNames := d.Uvarint()
 
 	stats.StructuredMetadataFieldNames = make(map[string]struct{}, nSMFieldNames)
@@ -2397,7 +2398,7 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats *tsdb.StreamStats) (uint64, error) {
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats *StreamStats) (uint64, error) {
 	d, fprint, err := dec.prepSeries(b, lbls, chks)
 	if err != nil {
 		return 0, err
@@ -2571,4 +2572,58 @@ func overlap(from, through, chkFrom, chkThrough int64) bool {
 	// note: chkThrough is inclusive as it represents the last
 	// sample timestamp in the chunk, whereas through is exclusive
 	return from <= chkThrough && through > chkFrom
+}
+
+// h11: add a mutex.
+// Reset takes the muted to reset all the stats
+// AddStructuredMetadata takes the mutes and updates the stats
+// The index manager calls Reset when the index is written
+// In the ingester push logic, we keep updating the index stats
+type StreamStats struct {
+	mu                           sync.RWMutex
+	StructuredMetadataFieldNames map[string]struct{}
+}
+
+func NewStreamStats() *StreamStats {
+	return &StreamStats{
+		StructuredMetadataFieldNames: make(map[string]struct{}),
+	}
+}
+
+func (s *StreamStats) Copy() *StreamStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := &StreamStats{
+		StructuredMetadataFieldNames: make(map[string]struct{}, len(s.StructuredMetadataFieldNames)),
+	}
+	for k := range s.StructuredMetadataFieldNames {
+		out.StructuredMetadataFieldNames[k] = struct{}{}
+	}
+	return out
+}
+
+func (s *StreamStats) Merge(other *StreamStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for k := range other.StructuredMetadataFieldNames {
+		s.StructuredMetadataFieldNames[k] = struct{}{}
+	}
+}
+
+func (s *StreamStats) AddStructuredMetadata(metadata push.LabelsAdapter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, l := range metadata {
+		s.StructuredMetadataFieldNames[l.Name] = struct{}{}
+	}
+}
+
+func (s *StreamStats) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.StructuredMetadataFieldNames = make(map[string]struct{}, len(s.StructuredMetadataFieldNames))
 }

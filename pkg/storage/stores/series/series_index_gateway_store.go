@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -34,6 +35,10 @@ type GatewayClient interface {
 type IndexGatewayClientStore struct {
 	client GatewayClient
 	logger log.Logger
+}
+
+func (c *IndexGatewayClientStore) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+	level.Warn(c.logger).Log("msg", "UpdateSeriesStats called on index gateway client store, but it does not support it")
 }
 
 func NewIndexGatewayClientStore(client GatewayClient, logger log.Logger) *IndexGatewayClientStore {

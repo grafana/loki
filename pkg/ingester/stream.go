@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -85,9 +85,9 @@ type stream struct {
 	configs *runtime.TenantConfigs
 
 	// closedStreamStats has the stats up to the most recent closed chunk.
-	closedStreamStats *tsdb.StreamStats
+	closedStreamStats *index.StreamStats
 	// openStreamStats has the stats up to the most recent open chunk (i.e. closedChunksStats + newer data).
-	openStreamStats *tsdb.StreamStats
+	openStreamStats *index.StreamStats
 }
 
 type chunkDesc struct {
@@ -139,6 +139,8 @@ func newStream(
 		chunkHeadBlockFormat: headBlockFmt,
 
 		configs: configs,
+
+		openStreamStats: index.NewStreamStats(),
 	}
 }
 
@@ -182,18 +184,18 @@ func (s *stream) NewChunk() *chunkenc.MemChunk {
 func (s *stream) Push(
 	ctx context.Context,
 	entries []logproto.Entry,
-	// WAL record to add push contents to.
-	// May be nil to disable this functionality.
+// WAL record to add push contents to.
+// May be nil to disable this functionality.
 	record *wal.Record,
-	// Counter used in WAL replay to avoid duplicates.
-	// If this is non-zero, the stream will reject entries
-	// with a counter value less than or equal to it's own.
-	// It is set to zero and thus bypassed outside of WAL replays.
+// Counter used in WAL replay to avoid duplicates.
+// If this is non-zero, the stream will reject entries
+// with a counter value less than or equal to it's own.
+// It is set to zero and thus bypassed outside of WAL replays.
 	counter int64,
-	// Lock chunkMtx while pushing.
-	// If this is false, chunkMtx must be held outside Push.
+// Lock chunkMtx while pushing.
+// If this is false, chunkMtx must be held outside Push.
 	lockChunk bool,
-	// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
+// Whether nor not to ingest all at once or not. It is a per-tenant configuration.
 	rateLimitWholeStream bool,
 
 	usageTracker push.UsageTracker,
@@ -665,7 +667,7 @@ func (s *stream) cutSeriesStats() {
 	s.openStreamStats = s.closedStreamStats.Copy()
 }
 
-func (s *stream) flushableSeriesStats() *tsdb.StreamStats {
+func (s *stream) flushableSeriesStats() *index.StreamStats {
 	return s.closedStreamStats
 }
 

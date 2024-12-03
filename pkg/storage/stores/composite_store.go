@@ -4,7 +4,6 @@ import (
 	"context"
 	"sort"
 
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -22,7 +21,7 @@ import (
 type ChunkWriter interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
-	UpdateSeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64, stats *tsdb.StreamStats) error
+	UpdateSeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64, stats *tsdb_index.StreamStats) error
 }
 
 type ChunkFetcherProvider interface {
@@ -108,7 +107,7 @@ func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	})
 }
 
-func (c CompositeStore) UpdateSeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64, stats *tsdb.StreamStats) error {
+func (c CompositeStore) UpdateSeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64, stats *tsdb_index.StreamStats) error {
 	return c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
 		return store.UpdateSeriesStats(innerCtx, from, through, userID, fp, stats)
 	})

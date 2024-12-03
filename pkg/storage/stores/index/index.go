@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/instrument"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -54,7 +53,7 @@ type Reader interface {
 
 type Writer interface {
 	IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error
-	UpdateSeriesStats(userID string, fp uint64, stats *tsdb.StreamStats)
+	UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats)
 }
 
 type ReaderWriter interface {
@@ -65,6 +64,10 @@ type ReaderWriter interface {
 type MonitoredReaderWriter struct {
 	rw      ReaderWriter
 	metrics *metrics
+}
+
+func (m MonitoredReaderWriter) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+	m.rw.UpdateSeriesStats(userID, fp, stats)
 }
 
 func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) *MonitoredReaderWriter {

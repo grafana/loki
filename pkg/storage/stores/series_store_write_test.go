@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -45,6 +46,10 @@ func (m *mockCache) GetCacheType() stats.CacheType { return stats.ChunkCache }
 
 type mockIndexWriter struct {
 	called int
+}
+
+func (m *mockIndexWriter) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+	return
 }
 
 func (m *mockIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {

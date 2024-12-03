@@ -56,7 +56,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 		return false
-	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+	}, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 			return false
-		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
+		}, nil, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
 			return nil, err
 		}
@@ -249,7 +249,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) (stop bool) {
 			builder.AddSeries(lbls.Copy(), fp, chks)
 			return false
-		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+		}, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
 			return nil, err
 		}

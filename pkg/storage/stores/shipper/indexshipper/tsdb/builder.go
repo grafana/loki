@@ -32,7 +32,7 @@ type stream struct {
 	labels labels.Labels
 	fp     model.Fingerprint
 	chunks index.ChunkMetas
-	stats  *StreamStats
+	stats  *index.StreamStats
 }
 
 func NewBuilder(version int) *Builder {
@@ -43,13 +43,14 @@ func NewBuilder(version int) *Builder {
 }
 
 // TODO(h11): stats should be variadic but I added it to avoid changinf it in many places
-func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, stats ...*StreamStats) {
+func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, stats ...*index.StreamStats) {
 	id := ls.String()
 	s, ok := b.streams[id]
 	if !ok {
 		s = &stream{
 			labels: ls,
 			fp:     fp,
+			stats:  index.NewStreamStats(),
 		}
 		b.streams[id] = s
 	}
@@ -104,10 +105,10 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 func (b *Builder) Build(
 	ctx context.Context,
 	scratchDir string,
-	// Determines how to create the resulting Identifier and file name.
-	// This is variable as we use Builder for multiple reasons,
-	// such as building multi-tenant tsdbs on the ingester
-	// and per tenant ones during compaction
+// Determines how to create the resulting Identifier and file name.
+// This is variable as we use Builder for multiple reasons,
+// such as building multi-tenant tsdbs on the ingester
+// and per tenant ones during compaction
 	createFn func(from, through model.Time, checksum uint32) Identifier,
 ) (id Identifier, err error) {
 	// Ensure the parent dir exists (i.e. index/<bucket>/<tenant>/)
@@ -218,7 +219,7 @@ func (b *Builder) build(
 		if !b.chunksFinalized {
 			s.chunks = s.chunks.Finalize()
 		}
-		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.fp, s.chunks...); err != nil {
+		if err := writer.AddSeries(storage.SeriesRef(i), s.labels, s.fp, s.chunks, s.stats); err != nil {
 			return nil, err
 		}
 	}
@@ -228,10 +229,10 @@ func (b *Builder) build(
 
 func (b *Builder) BuildInMemory(
 	ctx context.Context,
-	// Determines how to create the resulting Identifier and file name.
-	// This is variable as we use Builder for multiple reasons,
-	// such as building multi-tenant tsdbs on the ingester
-	// and per tenant ones during compaction
+// Determines how to create the resulting Identifier and file name.
+// This is variable as we use Builder for multiple reasons,
+// such as building multi-tenant tsdbs on the ingester
+// and per tenant ones during compaction
 	createFn func(from, through model.Time, checksum uint32) Identifier,
 ) (id Identifier, data []byte, err error) {
 	writer, err := index.NewMemWriterWithVersion(ctx, b.version)

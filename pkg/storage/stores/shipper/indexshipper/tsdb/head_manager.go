@@ -259,7 +259,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	return m.active.Log(rec)
 }
 
-func (m *HeadManager) UpdateSeriesStats(userID string, fp uint64, stats *StreamStats) {
+func (m *HeadManager) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
 	m.activeHeads.updateSeriesStats(userID, fp, stats)
 }
 
@@ -696,7 +696,7 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chk
 	return rec
 }
 
-func (t *tenantHeads) updateSeriesStats(userID string, fp uint64, stats *StreamStats) {
+func (t *tenantHeads) updateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
 	// (h11) : don't create head.extract to a different function to just get
 	head := t.getOrCreateTenantHead(userID)
 	head.updateSeriesStats(fp, stats)

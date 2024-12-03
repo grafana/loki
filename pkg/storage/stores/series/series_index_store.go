@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
@@ -73,6 +74,10 @@ type IndexReaderWriter struct {
 	chunkFilterer    chunk.RequestChunkFilterer
 	chunkBatchSize   int
 	writeDedupeCache cache.Cache
+}
+
+func (c *IndexReaderWriter) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+	level.Warn(util_log.Logger).Log("msg", "UpdateSeriesStats called on index gateway client store, but it does not support it")
 }
 
 func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.SeriesStoreSchema, index series_index.Client,

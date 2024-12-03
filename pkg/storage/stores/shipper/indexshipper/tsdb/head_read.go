@@ -41,10 +41,6 @@ type headIndexReader struct {
 	mint, maxt int64
 }
 
-func (h *headIndexReader) SeriesStats() (StreamStats, error) {
-	hd := h.head
-	return hd.SeriesStats()
-}
 func (h *headIndexReader) Bounds() (int64, int64) {
 	return h.head.MinTime(), h.head.MaxTime()
 }
@@ -126,7 +122,7 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 }
 
 // Series returns the series for the given reference.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta, stats **StreamStats) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta, stats **index.StreamStats) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {

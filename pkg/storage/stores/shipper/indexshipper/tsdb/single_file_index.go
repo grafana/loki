@@ -58,7 +58,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipp
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, "", nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 		return false
-	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+	}, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	// TODO(owen-d): use pool
 
-	var stats *StreamStats
+	var stats *index.StreamStats
 	var ls labels.Labels
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
@@ -207,6 +207,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 				}
 
 				if !allFound {
+					level.Debug(util_log.Logger).Log("msg", "skipping series as it does not have all required labels")
 					continue
 				}
 			}

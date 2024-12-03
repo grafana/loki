@@ -51,8 +51,8 @@ func (m *MultiTenantIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilter
 
 func (m *MultiTenantIndex) Close() error { return m.idx.Close() }
 
-func (m *MultiTenantIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	return m.idx.GetChunkRefs(ctx, userID, from, through, res, fpFilter, withTenantLabelMatcher(userID, matchers)...)
+func (m *MultiTenantIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, ln []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	return m.idx.GetChunkRefs(ctx, userID, from, through, ln, res, fpFilter, withTenantLabelMatcher(userID, matchers)...)
 }
 
 func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
