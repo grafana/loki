@@ -115,7 +115,7 @@ require (
 	github.com/DataDog/sketches-go v1.4.6
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.18.1
-	github.com/IBM/ibm-cos-sdk-go v1.11.1
+	github.com/IBM/ibm-cos-sdk-go v1.12.0
 	github.com/axiomhq/hyperloglog v0.2.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/d4l3k/messagediff v1.2.1
