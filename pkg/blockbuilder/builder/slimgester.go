@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -55,6 +56,10 @@ type Config struct {
 	Backoff           backoff.Config `yaml:"backoff_config"`
 	WorkerParallelism int            `yaml:"worker_parallelism"`
 	SyncInterval      time.Duration  `yaml:"sync_interval"`
+
+	SchedulerAddress string `yaml:"scheduler_address"`
+	// SchedulerGRPCClientConfig configures the gRPC connection between the block-builder and its scheduler.
+	SchedulerGRPCClientConfig grpcclient.Config `yaml:"scheduler_grpc_client_config"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -68,6 +73,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.SyncInterval, prefix+"sync-interval", 30*time.Second, "The interval at which to sync job status with the scheduler.")
 	f.IntVar(&cfg.WorkerParallelism, prefix+"worker-parallelism", 1, "The number of workers to run in parallel to process jobs.")
+	f.StringVar(&cfg.SchedulerAddress, prefix+"scheduler-address", "", "Address of the scheduler in the format described here: https://github.com/grpc/grpc/blob/master/doc/naming.md")
+
+	cfg.SchedulerGRPCClientConfig.RegisterFlagsWithPrefix(prefix+"scheduler-grpc-client.", f)
 	cfg.Backoff.RegisterFlagsWithPrefix(prefix+"backoff.", f)
 }
 
@@ -107,6 +115,7 @@ func (cfg *Config) Validate() error {
 //     containing all chunk references. Finally, clears internal state.
 type BlockBuilder struct {
 	services.Service
+	types.BuilderTransport
 
 	id              string
 	cfg             Config
@@ -122,7 +131,6 @@ type BlockBuilder struct {
 
 	jobsMtx      sync.RWMutex
 	inflightJobs map[string]*types.Job
-	transport    types.BuilderTransport
 }
 
 func NewBlockBuilder(
@@ -141,17 +149,22 @@ func NewBlockBuilder(
 		return nil, err
 	}
 
+	t, err := types.NewGRPCTransportFromAddress(cfg.SchedulerAddress, cfg.SchedulerGRPCClientConfig, reg)
+	if err != nil {
+		return nil, fmt.Errorf("create grpc transport: %w", err)
+	}
+
 	i := &BlockBuilder{
-		id:              id,
-		cfg:             cfg,
-		periodicConfigs: periodicConfigs,
-		metrics:         NewSlimgesterMetrics(reg),
-		logger:          logger,
-		decoder:         decoder,
-		readerFactory:   readerFactory,
-		store:           store,
-		objStore:        objStore,
-		// TODO: wire transport
+		id:               id,
+		cfg:              cfg,
+		periodicConfigs:  periodicConfigs,
+		metrics:          NewSlimgesterMetrics(reg),
+		logger:           logger,
+		decoder:          decoder,
+		readerFactory:    readerFactory,
+		store:            store,
+		objStore:         objStore,
+		BuilderTransport: t,
 	}
 
 	i.Service = services.NewBasicService(nil, i.running, nil)
@@ -208,7 +221,7 @@ func (i *BlockBuilder) syncJobs(ctx context.Context) error {
 	defer i.jobsMtx.RUnlock()
 
 	for _, job := range i.inflightJobs {
-		if err := i.transport.SendSyncJob(ctx, &types.SyncJobRequest{
+		if err := i.SendSyncJob(ctx, &types.SyncJobRequest{
 			BuilderID: i.id,
 			Job:       job,
 		}); err != nil {
@@ -221,7 +234,7 @@ func (i *BlockBuilder) syncJobs(ctx context.Context) error {
 
 func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
 	// assuming GetJob blocks/polls until a job is available
-	resp, err := i.transport.SendGetJobRequest(ctx, &types.GetJobRequest{
+	resp, err := i.SendGetJobRequest(ctx, &types.GetJobRequest{
 		BuilderID: workerID,
 	})
 	if err != nil {
@@ -255,7 +268,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
 		ctx,
 		i.cfg.Backoff,
 		func() (res struct{}, err error) {
-			if err = i.transport.SendCompleteJob(ctx, &types.CompleteJobRequest{
+			if err = i.SendCompleteJob(ctx, &types.CompleteJobRequest{
 				BuilderID: workerID,
 				Job:       job,
 			}); err != nil {

@@ -6,7 +6,7 @@ import "fmt"
 type Job struct {
 	ID string
 	// Partition and offset information
-	Partition int32
+	Partition int
 	Offsets   Offsets
 }
 
