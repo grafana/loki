@@ -87,7 +87,6 @@ func NewReaderService(
 	offsetManager, err := NewKafkaOffsetManager(
 		kafkaCfg,
 		partitionID,
-
 		instanceID,
 		logger,
 		reg,

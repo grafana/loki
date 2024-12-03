@@ -42,7 +42,6 @@ func TestPartitionCommitter(t *testing.T) {
 		partitionID,
 		consumerGroup,
 		logger,
-		reg,
 	)
 	committer := newCommitter(reader, kafkaCfg.ConsumerGroupOffsetCommitInterval, logger, reg)
 

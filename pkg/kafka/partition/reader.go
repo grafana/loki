@@ -116,31 +116,13 @@ func NewKafkaReader(
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
 
-	// Create the reader
-	return newKafkaReader(
-		c,
-		cfg.Topic,
-		partitionID,
-		logger,
-		reg,
-	), nil
-}
-
-// newKafkaReader creates a new KafkaReader instance
-func newKafkaReader(
-	client *kgo.Client,
-	topic string,
-	partitionID int32,
-	logger log.Logger,
-	reg prometheus.Registerer,
-) *KafkaReader {
 	return &KafkaReader{
-		client:      client,
-		topic:       topic,
+		client:      c,
+		topic:       cfg.Topic,
 		partitionID: partitionID,
 		metrics:     readerMetric,
 		logger:      logger,
-	}
+	}, nil
 }
 
 // Topic returns the topic being read

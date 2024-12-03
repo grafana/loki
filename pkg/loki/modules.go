@@ -1838,6 +1838,9 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	controller, err := blockbuilder.NewPartitionJobController(
 		reader,

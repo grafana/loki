@@ -44,7 +44,7 @@ func NewKafkaOffsetManager(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*KafkaOffsetManager, error) {
-	// Create a new Kafka client for this reader
+	// Create a new Kafka client for the partition manager.
 	clientMetrics := client.NewReaderClientMetrics("partition-manager", reg)
 	c, err := client.NewReaderClient(
 		cfg,
@@ -55,14 +55,12 @@ func NewKafkaOffsetManager(
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
 
-	// Create the reader
 	return newKafkaOffsetManager(
 		c,
 		cfg.Topic,
 		partitionID,
 		cfg.GetConsumerGroup(instanceID, partitionID),
 		logger,
-		reg,
 	), nil
 }
 
@@ -73,7 +71,6 @@ func newKafkaOffsetManager(
 	partitionID int32,
 	consumerGroup string,
 	logger log.Logger,
-	reg prometheus.Registerer,
 ) *KafkaOffsetManager {
 	return &KafkaOffsetManager{
 		client:        client,
