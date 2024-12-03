@@ -1,8 +1,8 @@
 package builder
 
 import (
-	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -14,15 +14,10 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/services"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -30,17 +25,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	storagetypes "github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-
-	"github.com/grafana/loki/pkg/push"
-)
-
-const (
-	flushReasonFull   = "full"
-	flushReasonMaxAge = "max_age"
-	onePointFiveMB    = 3 << 19
 )
 
 type Config struct {
@@ -120,7 +106,7 @@ type BlockBuilder struct {
 	id              string
 	cfg             Config
 	periodicConfigs []config.PeriodConfig
-	metrics         *SlimgesterMetrics
+	metrics         *builderMetrics
 	logger          log.Logger
 
 	decoder       *kafka.Decoder
@@ -158,7 +144,7 @@ func NewBlockBuilder(
 		id:               id,
 		cfg:              cfg,
 		periodicConfigs:  periodicConfigs,
-		metrics:          NewSlimgesterMetrics(reg),
+		metrics:          newBuilderMetrics(reg),
 		logger:           logger,
 		decoder:          decoder,
 		readerFactory:    readerFactory,
@@ -255,22 +241,21 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
 		"job_max_offset", job.Offsets.Max,
 	)
 
-	// TODO: add metrics for inflight jobs
 	i.jobsMtx.Lock()
 	i.inflightJobs[job.ID] = job
+	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
 	i.jobsMtx.Unlock()
 
 	lastConsumedOffset, err := i.processJob(ctx, job, logger)
-	// TODO: pass lastConsumedOffset as a separate field
-	job.Offsets.Max = lastConsumedOffset
 
 	if _, err := withBackoff(
 		ctx,
 		i.cfg.Backoff,
 		func() (res struct{}, err error) {
 			if err = i.SendCompleteJob(ctx, &types.CompleteJobRequest{
-				BuilderID: workerID,
-				Job:       job,
+				BuilderID:          workerID,
+				Job:                job,
+				LastConsumedOffset: lastConsumedOffset,
 			}); err != nil {
 				level.Error(i.logger).Log("msg", "failed to mark the job as complete", "err", err)
 			}
@@ -282,6 +267,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
 
 	i.jobsMtx.Lock()
 	delete(i.inflightJobs, job.ID)
+	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
 	i.jobsMtx.Unlock()
 
 	return err
@@ -497,8 +483,8 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 	return lastOffset, nil
 }
 
-func (b *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
-	f, err := b.readerFactory(partitionID)
+func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
+	f, err := i.readerFactory(partitionID)
 	if err != nil {
 		return 0, err
 	}
@@ -507,7 +493,7 @@ func (b *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 
 	var (
 		lastOffset = offsets.Min - 1
-		boff       = backoff.New(ctx, b.cfg.Backoff)
+		boff       = backoff.New(ctx, i.cfg.Backoff)
 	)
 
 	for lastOffset < offsets.Max && boff.Ongoing() {
@@ -529,12 +515,12 @@ func (b *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 		converted := make([]AppendInput, 0, len(records))
 		for _, record := range records {
 			if record.Offset >= offsets.Max {
-				level.Debug(b.logger).Log("msg", "record offset exceeds job max offset. stop processing", "record offset", record.Offset, "max offset", offsets.Max)
+				level.Debug(i.logger).Log("msg", "record offset exceeds job max offset. stop processing", "record offset", record.Offset, "max offset", offsets.Max)
 				break
 			}
 			lastOffset = record.Offset
 
-			stream, labels, err := b.decoder.Decode(record.Content)
+			stream, labels, err := i.decoder.Decode(record.Content)
 			if err != nil {
 				return 0, fmt.Errorf("failed to decode record: %w", err)
 			}
@@ -560,408 +546,6 @@ func (b *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 	}
 
 	return lastOffset, err
-}
-
-type Appender struct {
-	id              string
-	cfg             Config
-	periodicConfigs []config.PeriodConfig
-
-	metrics *SlimgesterMetrics
-	logger  log.Logger
-
-	instances    map[string]*instance
-	instancesMtx sync.RWMutex
-
-	store    stores.ChunkWriter
-	objStore *MultiStore
-}
-
-// Writer is a single use construct for building chunks
-// for from a set of records. It's an independent struct to ensure its
-// state is not reused across jobs.
-func newAppender(
-	id string,
-	cfg Config,
-	periodicConfigs []config.PeriodConfig,
-	store stores.ChunkWriter,
-	objStore *MultiStore,
-	logger log.Logger,
-	metrics *SlimgesterMetrics,
-) *Appender {
-	return &Appender{
-		id:              id,
-		cfg:             cfg,
-		periodicConfigs: periodicConfigs,
-		metrics:         metrics,
-		logger:          logger,
-		instances:       make(map[string]*instance),
-		store:           store,
-		objStore:        objStore,
-	}
-}
-
-// reportFlushedChunkStatistics calculate overall statistics of flushed chunks without compromising the flush process.
-func (w *Appender) reportFlushedChunkStatistics(
-	ch *chunk.Chunk,
-) {
-	byt, err := ch.Encoded()
-	if err != nil {
-		level.Error(w.logger).Log("msg", "failed to encode flushed wire chunk", "err", err)
-		return
-	}
-	sizePerTenant := w.metrics.chunkSizePerTenant.WithLabelValues(ch.UserID)
-	countPerTenant := w.metrics.chunksPerTenant.WithLabelValues(ch.UserID)
-
-	reason := flushReasonFull
-	from, through := ch.From.Time(), ch.Through.Time()
-	if through.Sub(from) > w.cfg.MaxChunkAge {
-		reason = flushReasonMaxAge
-	}
-
-	w.metrics.chunksFlushedPerReason.WithLabelValues(reason).Add(1)
-
-	compressedSize := float64(len(byt))
-	uncompressedSize, ok := chunkenc.UncompressedSize(ch.Data)
-
-	if ok && compressedSize > 0 {
-		w.metrics.chunkCompressionRatio.Observe(float64(uncompressedSize) / compressedSize)
-	}
-
-	utilization := ch.Data.Utilization()
-	w.metrics.chunkUtilization.Observe(utilization)
-
-	numEntries := ch.Data.Entries()
-	w.metrics.chunkEntries.Observe(float64(numEntries))
-	w.metrics.chunkSize.Observe(compressedSize)
-	sizePerTenant.Add(compressedSize)
-	countPerTenant.Inc()
-
-	w.metrics.chunkAge.Observe(time.Since(from).Seconds())
-	w.metrics.chunkLifespan.Observe(through.Sub(from).Hours())
-
-	w.metrics.flushedChunksBytesStats.Record(compressedSize)
-	w.metrics.flushedChunksLinesStats.Record(float64(numEntries))
-	w.metrics.flushedChunksUtilizationStats.Record(utilization)
-	w.metrics.flushedChunksAgeStats.Record(time.Since(from).Seconds())
-	w.metrics.flushedChunksLifespanStats.Record(through.Sub(from).Seconds())
-	w.metrics.flushedChunksStats.Inc(1)
-}
-
-func (w *Appender) CutRemainingChunks(ctx context.Context) ([]*chunk.Chunk, error) {
-	var chunks []*chunk.Chunk
-	w.instancesMtx.Lock()
-	defer w.instancesMtx.Unlock()
-
-	for _, inst := range w.instances {
-
-		// wrap in anonymous fn to make lock release more straightforward
-		if err := func() error {
-			inst.streams.mtx.Lock()
-			defer inst.streams.mtx.Unlock()
-
-			for _, stream := range inst.streams.byLabels {
-
-				// wrap in anonymous fn to make lock release more straightforward
-				if err := func() error {
-					stream.chunkMtx.Lock()
-					defer stream.chunkMtx.Unlock()
-					if stream.chunk != nil {
-						cut, err := stream.closeChunk()
-						if err != nil {
-							return err
-						}
-						encoded, err := inst.encodeChunk(ctx, stream, cut)
-						if err != nil {
-							return err
-						}
-						chunks = append(chunks, encoded)
-					}
-					return nil
-
-				}(); err != nil {
-					return err
-				}
-
-			}
-			return nil
-
-		}(); err != nil {
-			return nil, err
-		}
-
-	}
-
-	return chunks, nil
-}
-
-type AppendInput struct {
-	tenant string
-	// both labels & labelsStr are populated to prevent duplicating conversion work in multiple places
-	labels    labels.Labels
-	labelsStr string
-	entries   []push.Entry
-}
-
-func (w *Appender) Append(ctx context.Context, input AppendInput) ([]*chunk.Chunk, error) {
-	// use rlock so multiple appends can be called on same instance.
-	// re-check after using regular lock if it didnt exist.
-	w.instancesMtx.RLock()
-	inst, ok := w.instances[input.tenant]
-	w.instancesMtx.RUnlock()
-	if !ok {
-		w.instancesMtx.Lock()
-		inst, ok = w.instances[input.tenant]
-		if !ok {
-			inst = newInstance(w.cfg, input.tenant, w.metrics, w.periodicConfigs, w.logger)
-			w.instances[input.tenant] = inst
-		}
-		w.instancesMtx.Unlock()
-	}
-
-	closed, err := inst.Push(ctx, input)
-	return closed, err
-}
-
-// instance is a slimmed down version from the ingester pkg
-type instance struct {
-	cfg     Config
-	tenant  string
-	buf     []byte             // buffer used to compute fps.
-	mapper  *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	metrics *SlimgesterMetrics
-	streams *streamsMap
-	logger  log.Logger
-
-	periods []config.PeriodConfig
-}
-
-func newInstance(
-	cfg Config,
-	tenant string,
-	metrics *SlimgesterMetrics,
-	periods []config.PeriodConfig,
-	logger log.Logger,
-) *instance {
-	streams := newStreamsMap()
-	return &instance{
-		cfg:     cfg,
-		tenant:  tenant,
-		buf:     make([]byte, 0, 1024),
-		mapper:  ingester.NewFPMapper(streams.getLabelsFromFingerprint),
-		metrics: metrics,
-		streams: streams,
-		logger:  logger,
-		periods: periods,
-	}
-}
-
-func newStreamsMap() *streamsMap {
-	return &streamsMap{
-		byLabels: make(map[string]*stream),
-		byFp:     make(map[model.Fingerprint]*stream),
-	}
-}
-
-type streamsMap struct {
-	// labels -> stream
-	byLabels map[string]*stream
-	byFp     map[model.Fingerprint]*stream
-	mtx      sync.RWMutex
-}
-
-// For performs an operation on an existing stream, creating it if it wasn't previously present.
-func (m *streamsMap) For(
-	ls string,
-	createFn func() (*stream, error),
-	fn func(*stream) error,
-) error {
-	// first use read lock in case the stream exists
-	m.mtx.RLock()
-	if s, ok := m.byLabels[ls]; ok {
-		err := fn(s)
-		m.mtx.RUnlock()
-		return err
-	}
-	m.mtx.RUnlock()
-
-	// Stream wasn't found, acquire write lock to create it
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	// Double check it wasn't created while we were upgrading the lock
-	if s, ok := m.byLabels[ls]; ok {
-		return fn(s)
-	}
-
-	// Create new stream
-	s, err := createFn()
-	if err != nil {
-		return err
-	}
-
-	m.byLabels[ls] = s
-	m.byFp[s.fp] = s
-	return fn(s)
-}
-
-// Return labels associated with given fingerprint. Used by fingerprint mapper.
-func (m *streamsMap) getLabelsFromFingerprint(fp model.Fingerprint) labels.Labels {
-
-	if s, ok := m.byFp[fp]; ok {
-		return s.ls
-	}
-	return nil
-}
-
-func (i *instance) getHashForLabels(ls labels.Labels) model.Fingerprint {
-	var fp uint64
-	fp, i.buf = ls.HashWithoutLabels(i.buf, []string(nil)...)
-	return i.mapper.MapFP(model.Fingerprint(fp), ls)
-}
-
-// Push will iterate over the given streams present in the PushRequest and attempt to store them.
-func (i *instance) Push(
-	ctx context.Context,
-	input AppendInput,
-) (closed []*chunk.Chunk, err error) {
-	err = i.streams.For(
-		input.labelsStr,
-		func() (*stream, error) {
-			fp := i.getHashForLabels(input.labels)
-			return newStream(fp, input.labels, i.cfg, i.metrics), nil
-		},
-		func(stream *stream) error {
-			xs, err := stream.Push(input.entries)
-			if err != nil {
-				return err
-			}
-
-			if len(xs) > 0 {
-				for _, x := range xs {
-					// encodeChunk mutates the chunk so we must pass by reference
-					chk, err := i.encodeChunk(ctx, stream, x)
-					if err != nil {
-						return err
-					}
-					closed = append(closed, chk)
-				}
-			}
-			return err
-		},
-	)
-
-	return closed, err
-}
-
-// encodeChunk encodes a chunk.Chunk.
-func (i *instance) encodeChunk(ctx context.Context, stream *stream, mc *chunkenc.MemChunk) (*chunk.Chunk, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	start := time.Now()
-
-	firstTime, lastTime := util.RoundToMilliseconds(mc.Bounds())
-	chk := chunk.NewChunk(
-		i.tenant, stream.fp, stream.ls,
-		chunkenc.NewFacade(mc, stream.blockSize, stream.targetChunkSize),
-		firstTime,
-		lastTime,
-	)
-
-	chunkBytesSize := mc.BytesSize() + 4*1024 // size + 4kB should be enough room for cortex header
-	if err := chk.EncodeTo(bytes.NewBuffer(make([]byte, 0, chunkBytesSize)), i.logger); err != nil {
-		if !errors.Is(err, chunk.ErrChunkDecode) {
-			return nil, fmt.Errorf("chunk encoding: %w", err)
-		}
-
-		i.metrics.chunkDecodeFailures.WithLabelValues(chk.UserID).Inc()
-	}
-	i.metrics.chunkEncodeTime.Observe(time.Since(start).Seconds())
-	i.metrics.chunksEncoded.WithLabelValues(chk.UserID).Inc()
-	return &chk, nil
-}
-
-type stream struct {
-	fp model.Fingerprint
-	ls labels.Labels
-
-	chunkFormat     byte
-	codec           compression.Codec
-	blockSize       int
-	targetChunkSize int
-
-	chunkMtx sync.RWMutex
-	chunk    *chunkenc.MemChunk
-	metrics  *SlimgesterMetrics
-}
-
-func newStream(fp model.Fingerprint, ls labels.Labels, cfg Config, metrics *SlimgesterMetrics) *stream {
-	return &stream{
-		fp: fp,
-		ls: ls,
-
-		chunkFormat:     chunkenc.ChunkFormatV4,
-		codec:           cfg.parsedEncoding,
-		blockSize:       cfg.BlockSize.Val(),
-		targetChunkSize: cfg.TargetChunkSize.Val(),
-
-		metrics: metrics,
-	}
-}
-
-func (s *stream) Push(entries []push.Entry) (closed []*chunkenc.MemChunk, err error) {
-	s.chunkMtx.Lock()
-	defer s.chunkMtx.Unlock()
-
-	if s.chunk == nil {
-		s.chunk = s.NewChunk()
-	}
-
-	// bytesAdded, err := s.storeEntries(ctx, toStore, usageTracker)
-	for i := 0; i < len(entries); i++ {
-
-		// cut the chunk if the new addition overflows target size
-		if !s.chunk.SpaceFor(&entries[i]) {
-			cut, err := s.closeChunk()
-			if err != nil {
-				return nil, err
-			}
-			closed = append(closed, cut)
-		}
-
-		if _, err = s.chunk.Append(&entries[i]); err != nil {
-			return closed, errors.Wrap(err, "appending entry")
-		}
-	}
-
-	return closed, nil
-}
-
-func (s *stream) closeChunk() (*chunkenc.MemChunk, error) {
-	if err := s.chunk.Close(); err != nil {
-		return nil, errors.Wrap(err, "closing chunk")
-	}
-
-	s.metrics.samplesPerChunk.Observe(float64(s.chunk.Size()))
-	s.metrics.blocksPerChunk.Observe(float64(s.chunk.BlockCount()))
-	s.metrics.chunksCreatedTotal.Inc()
-	s.metrics.chunkCreatedStats.Inc(1)
-
-	// add a chunk
-	res := s.chunk
-	s.chunk = s.NewChunk()
-	return res, nil
-}
-
-func (s *stream) NewChunk() *chunkenc.MemChunk {
-	return chunkenc.NewMemChunk(
-		s.chunkFormat,
-		s.codec,
-		chunkenc.ChunkHeadFormatFor(s.chunkFormat),
-		s.blockSize,
-		s.targetChunkSize,
-	)
 }
 
 func withBackoff[T any](

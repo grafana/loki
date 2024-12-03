@@ -52,8 +52,9 @@ type GetJobResponse struct {
 }
 
 type CompleteJobRequest struct {
-	BuilderID string
-	Job       *Job
+	BuilderID          string
+	Job                *Job
+	LastConsumedOffset int64
 }
 
 type SyncJobRequest struct {
