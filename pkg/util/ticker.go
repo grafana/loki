@@ -19,7 +19,7 @@ func NewJitter(b time.Duration, d time.Duration) Jitter {
 // Duration returns a random duration from the base duration and +/- jitter
 func (j Jitter) Duration() time.Duration {
 	base := j.base - j.deviation
-	jitter := time.Duration(rand.Int63n(int64(float64(2 * j.deviation.Nanoseconds()))))
+	jitter := time.Duration(rand.Int63n(int64(float64(2 * j.deviation.Nanoseconds())))) //#nosec G404 -- Jitter does not require CSPRNG
 	return base + jitter
 }
 

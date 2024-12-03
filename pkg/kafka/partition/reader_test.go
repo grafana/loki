@@ -82,7 +82,7 @@ func TestPartitionReader_BasicFunctionality(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test")
 	consumer := newMockConsumer()
 
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 
@@ -136,7 +136,7 @@ func TestPartitionReader_ProcessCatchUpAtStartup(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 	var consumerStarting *mockConsumer
 
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		// Return two consumers to ensure we are processing requests during service `start()` and not during `run()`.
 		if consumerStarting == nil {
 			consumerStarting = newMockConsumer()
@@ -198,7 +198,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 	_, kafkaCfg := testkafka.CreateCluster(t, 1, "test-topic")
 	consumer := newMockConsumer()
 
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 
@@ -267,7 +267,7 @@ func TestPartitionReader_StartsAtNextOffset(t *testing.T) {
 	consumer := newMockConsumer()
 
 	kaf.CurrentNode()
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 
@@ -329,7 +329,7 @@ func TestPartitionReader_StartsUpIfNoNewRecordsAreAvailable(t *testing.T) {
 	consumer := newMockConsumer()
 
 	kaf.CurrentNode()
-	consumerFactory := func(_ Committer) (Consumer, error) {
+	consumerFactory := func(_ Committer, _ log.Logger) (Consumer, error) {
 		return consumer, nil
 	}
 

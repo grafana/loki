@@ -1,4 +1,4 @@
-package blockbuilder
+package builder
 
 import (
 	"os"

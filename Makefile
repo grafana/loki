@@ -1,5 +1,10 @@
-# Loki Project Makefile
+#     ______           ____                     __          __   _ 
+#    / ____/________ _/ __/___ _____  ____ _   / /   ____  / /__(_)
+#   / / __/ ___/ __ `/ /_/ __ `/ __ \/ __ `/  / /   / __ \/ //_/ /
+#  / /_/ / /  / /_/ / __/ /_/ / / / / /_/ /  / /___/ /_/ / ,< / /
+#  \____/_/   \__,_/_/  \__,_/_/ /_/\__,_/  /_____/\____/_/|_/_/
 #
+#  Loki Project Makefile
 
 SHELL = /usr/bin/env bash -o pipefail
 
@@ -66,7 +71,9 @@ OCI_PUSH_ARGS  := -o type=registry
 OCI_PUSH       := docker push
 OCI_TAG        := docker tag
 
-ifeq ($(CI), true)
+ifeq ($(CI),true)
+  # ensure buildx is set up
+	_               := $(shell ./tools/ensure-buildx-builder.sh)
 	OCI_BUILD       := DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS)
 else
 	OCI_BUILD       := DOCKER_BUILDKIT=1 docker build $(OCI_BUILD_ARGS)
@@ -145,17 +152,8 @@ DOC_FLAGS := $(DOC_SOURCES_PATH)/shared/configuration.md
 # Docker #
 ##########
 
-# RM is parameterized to allow CircleCI to run builds, as it
-# currently disallows `docker run --rm`. This value is overridden
-# in circle.yml
-RM := --rm
-# TTY is parameterized to allow Google Cloud Builder to run builds,
-# as it currently disallows TTY devices. This value needs to be overridden
-# in any custom cloudbuild.yaml files
-TTY := --tty
-
 binfmt:
-	 docker run --privileged linuxkit/binfmt:v0.6
+	docker run --privileged linuxkit/binfmt:v0.6
 
 ################
 # Main Targets #
@@ -180,7 +178,7 @@ logcli: cmd/logcli/logcli ## build logcli executable
 logcli-debug: cmd/logcli/logcli-debug ## build debug logcli executable
 
 logcli-image: ## build logcli docker image
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
+	$(OCI_BUILD) -t $(LOGCLI_IMAGE) -f cmd/logcli/Dockerfile .
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
@@ -615,90 +613,79 @@ define push-image
 	$(call push,$(1),main)
 endef
 
-# promtail
+# Promtail image
 promtail-image: ## build the promtail docker image
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile .
+	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile .
 promtail-image-cross:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
-
+	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile.cross .
 promtail-debug-image: ## build the promtail debug docker image
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
-
+	$(OCI_BUILD) -t $(PROMTAIL_IMAGE)-debug -f clients/cmd/promtail/Dockerfile.debug .
 promtail-push: promtail-image-cross
 	$(call push-image,promtail)
 
-# loki
+# Loki image
 loki-image: ## build the loki docker image
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
+	$(OCI_BUILD) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile .
 loki-image-cross:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
-
-loki-debug-image: ## build the debug loki docker image
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
-
+	$(OCI_BUILD) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile.cross .
+loki-debug-image: ## build the loki debug docker image
+	$(OCI_BUILD) -t $(LOKI_IMAGE)-debug -f cmd/loki/Dockerfile.debug .
 loki-push: loki-image-cross
 	$(call push-image,loki)
 
-# loki-canary
-loki-canary-image: ## build the loki canary docker image
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
+# Canary image
+loki-canary-image: ## build the canary docker image
+	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
 loki-canary-image-cross:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
+	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile.cross .
+loki-canary-push: loki-canary-image-cross
+	$(OCI_PUSH) $(LOKI_CANARY_IMAGE)
 loki-canary-image-cross-boringcrypto:
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
-loki-canary-push: loki-canary-image-cross
-	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
 loki-canary-push-boringcrypto: loki-canary-image-cross-boringcrypto
 	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
-helm-test-image: ## build the helm test image
+
+# Helm test image
+helm-test-image: ## build the helm test docker image
 	$(OCI_BUIILD) -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
-helm-test-push: helm-test-image ## push the helm test image
+helm-test-push: helm-test-image
 	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
-# loki-querytee
-loki-querytee-image:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile .
+# Query Tee image
+loki-querytee-image: ## build the querytee docker image
+	$(OCI_BUILD) -t $(QUERY_TEE_IMAGE) -f cmd/querytee/Dockerfile .
 loki-querytee-image-cross:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG) -f cmd/querytee/Dockerfile.cross .
+	$(OCI_BUILD) -t $(QUERY_TEE_IMAGE) -f cmd/querytee/Dockerfile.cross .
 loki-querytee-push: loki-querytee-image-cross
-	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-query-tee:$(IMAGE_TAG)
+	$(OCI_PUSH) $(QUERY_TEE_IMAGE)
 
-# migrate-image
-migrate-image:
+# Migrate image
+migrate-image: ## build the migrate docker image
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
 
 # LogQL Analyzer
-logql-analyzer-image: ## build the LogQL Analyzer image
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
-logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
+logql-analyzer-image: ## build the logql analyzer docker image
+	$(OCI_BUILD) -t $(LOGQL_ANALYZER_IMAGE) -f cmd/logql-analyzer/Dockerfile .
+logql-analyzer-push: logql-analyzer-image
 	$(call push-image,logql-analyzer)
 
-
-# build-image
-ensure-buildx-builder:
-ifeq ($(CI),true)
-	./tools/ensure-buildx-builder.sh
-else
-	@echo "skipping buildx setup"
-endif
-
-build-image: ensure-buildx-builder
-	$(OCI_BUILD) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG) ./loki-build-image
-build-image-push: build-image ## push the docker build image
+# Build image
+build-image: ## build the build docker image
+	$(OCI_BUILD) -t $(BUILD_IMAGE) ./loki-build-image
+build-image-push:  build-image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	echo ${DOCKER_PASSWORD} | docker login --username ${DOCKER_USERNAME} --password-stdin
-	$(OCI_BUILD_PUSH) -t $(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_TAG) ./loki-build-image
+	$(OCI_PUSH) -t $(BUILD_IMAGE)
 
-# loki-operator
-loki-operator-image:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile operator/
+# Loki Operator
+loki-operator-image: ## build the operator docker image
+	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile operator/
 loki-operator-image-cross:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG) -f operator/Dockerfile.cross operator/
+	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile.cross operator/
 loki-operator-push: loki-operator-image-cross
-	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
+	$(OCI_PUSH) $(OPERATOR_IMAGE)
 
 #################
 # Documentation #
@@ -878,6 +865,7 @@ trivy: loki-image build-image
 snyk: loki-image build-image
 	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
 	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) --file=clients/cmd/promtail/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities
