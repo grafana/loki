@@ -63,7 +63,7 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int],
 			types.NewJob(int(partitionOffset.Partition), types.Offsets{
 				Min: startOffset,
 				Max: endOffset,
-			}), int(endOffset-startOffset),
+			}), int(partitionOffset.End.Offset-startOffset),
 		)
 
 		jobs = append(jobs, job)
