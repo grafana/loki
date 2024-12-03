@@ -51,8 +51,8 @@ type: Counter
 [max_idle_duration: <string>]
 
 config:
-  # If present and true all log lines will be counted without
-  # attempting to match the source to the extract map.
+  # If present and true all log lines will be counted without attempting
+  # to match the `value` to the field specified by `source` in the extracted map.
   # It is an error to specify `match_all: true` and also specify a `value`
   [match_all: <bool>]
 
@@ -231,7 +231,7 @@ This pipeline first tries to find text in the format `order_status=<value>` in
 the log line, pulling out the `<value>` into the extracted map with the key
 `order_status`.
 
-The metric stages creates `successful_orders_total` and `failed_orders_total`
+The metrics stage creates `successful_orders_total` and `failed_orders_total`
 metrics that only increment when the value of `order_status` in the extracted
 map is `success` or `fail` respectively.
 
@@ -265,7 +265,7 @@ number in the `retries` field from the extracted map.
 - metrics:
     http_response_time_seconds:
       type: Histogram
-      description: "length of each log line"
+      description: "distribution of log response time"
       source: response_time
       config:
         buckets: [0.001,0.0025,0.005,0.010,0.025,0.050]

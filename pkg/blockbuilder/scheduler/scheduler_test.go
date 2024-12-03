@@ -5,22 +5,25 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 type testEnv struct {
 	queue     *JobQueue
-	scheduler *QueueScheduler
-	transport *builder.MemoryTransport
+	scheduler *BlockScheduler
+	transport *types.MemoryTransport
 	builder   *builder.Worker
 }
 
 func newTestEnv(builderID string) *testEnv {
 	queue := NewJobQueue()
-	scheduler := NewScheduler(queue)
-	transport := builder.NewMemoryTransport(scheduler)
-	builder := builder.NewWorker(builderID, builder.NewMemoryTransport(scheduler))
+	scheduler := NewScheduler(Config{}, queue, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	transport := types.NewMemoryTransport(scheduler)
+	builder := builder.NewWorker(builderID, transport)
 
 	return &testEnv{
 		queue:     queue,
@@ -86,7 +89,7 @@ func TestMultipleBuilders(t *testing.T) {
 	// Create first environment
 	env1 := newTestEnv("test-builder-1")
 	// Create second builder using same scheduler
-	builder2 := builder.NewWorker("test-builder-2", builder.NewMemoryTransport(env1.scheduler))
+	builder2 := builder.NewWorker("test-builder-2", env1.transport)
 
 	ctx := context.Background()
 
