@@ -48,7 +48,6 @@ type Config struct {
 	Enabled       bool             `yaml:"reporting_enabled"`
 	Leader        bool             `yaml:"-"`
 	UsageStatsURL string           `yaml:"usage_stats_url"`
-	ProxyURL      string           `yaml:"proxy_url"`
 	TLSConfig     tls.ClientConfig `yaml:"tls_config"`
 }
 
