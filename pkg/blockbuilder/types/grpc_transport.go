@@ -2,24 +2,79 @@ package types
 
 import (
 	"context"
+	"flag"
+	"io"
 
+	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/instrument"
+	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var _ Transport = &GRPCTransport{}
 
-// GRPCTransport implements the Transport interface using gRPC
-type GRPCTransport struct {
-	client proto.BlockBuilderServiceClient
+type GRPCTransportConfig struct {
+	Address string `yaml:"address,omitempty"`
+
+	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
+	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 }
 
-// NewGRPCTransport creates a new gRPC transport instance
-func NewGRPCTransport(conn *grpc.ClientConn) *GRPCTransport {
-	return &GRPCTransport{
-		client: proto.NewBlockBuilderServiceClient(conn),
+func (cfg *GRPCTransportConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&cfg.Address, prefix+"address", "", "address in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
+}
+
+type grpcTransportMetrics struct {
+	requestLatency *prometheus.HistogramVec
+}
+
+func newGRPCTransportMetrics(registerer prometheus.Registerer) *grpcTransportMetrics {
+	return &grpcTransportMetrics{
+		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: constants.Loki,
+			Subsystem: "block_builder_grpc",
+			Name:      "request_duration_seconds",
+			Help:      "Time (in seconds) spent serving requests when using the block builder grpc transport",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"operation", "status_code"}),
 	}
+}
+
+// GRPCTransport implements the Transport interface using gRPC
+type GRPCTransport struct {
+	grpc_health_v1.HealthClient
+	io.Closer
+	proto.BlockBuilderServiceClient
+}
+
+// NewGRPCTransportFromAddress creates a new gRPC transport instance from an address and dial options
+func NewGRPCTransportFromAddress(
+	metrics *grpcTransportMetrics,
+	cfg GRPCTransportConfig,
+) (*GRPCTransport, error) {
+
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(metrics.requestLatency))
+	if err != nil {
+		return nil, err
+	}
+
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
+	conn, err := grpc.Dial(cfg.Address, dialOpts...)
+	if err != nil {
+		return nil, errors.Wrap(err, "new grpc pool dial")
+	}
+
+	return &GRPCTransport{
+		Closer:                    conn,
+		HealthClient:              grpc_health_v1.NewHealthClient(conn),
+		BlockBuilderServiceClient: proto.NewBlockBuilderServiceClient(conn),
+	}, nil
 }
 
 // SendGetJobRequest implements Transport
@@ -28,7 +83,7 @@ func (t *GRPCTransport) SendGetJobRequest(ctx context.Context, req *GetJobReques
 		BuilderId: req.BuilderID,
 	}
 
-	resp, err := t.client.GetJob(ctx, protoReq)
+	resp, err := t.GetJob(ctx, protoReq)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +101,7 @@ func (t *GRPCTransport) SendCompleteJob(ctx context.Context, req *CompleteJobReq
 		Job:       jobToProto(req.Job),
 	}
 
-	_, err := t.client.CompleteJob(ctx, protoReq)
+	_, err := t.CompleteJob(ctx, protoReq)
 	return err
 }
 
@@ -57,7 +112,7 @@ func (t *GRPCTransport) SendSyncJob(ctx context.Context, req *SyncJobRequest) er
 		Job:       jobToProto(req.Job),
 	}
 
-	_, err := t.client.SyncJob(ctx, protoReq)
+	_, err := t.SyncJob(ctx, protoReq)
 	return err
 }
 
