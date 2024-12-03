@@ -15,15 +15,15 @@ import (
 type testEnv struct {
 	queue     *JobQueue
 	scheduler *BlockScheduler
-	transport *builder.MemoryTransport
+	transport *types.MemoryTransport
 	builder   *builder.Worker
 }
 
 func newTestEnv(builderID string) *testEnv {
 	queue := NewJobQueue()
 	scheduler := NewScheduler(Config{}, queue, nil, log.NewNopLogger(), prometheus.NewRegistry())
-	transport := builder.NewMemoryTransport(scheduler)
-	builder := builder.NewWorker(builderID, builder.NewMemoryTransport(scheduler))
+	transport := types.NewMemoryTransport(scheduler)
+	builder := builder.NewWorker(builderID, transport)
 
 	return &testEnv{
 		queue:     queue,
@@ -89,7 +89,7 @@ func TestMultipleBuilders(t *testing.T) {
 	// Create first environment
 	env1 := newTestEnv("test-builder-1")
 	// Create second builder using same scheduler
-	builder2 := builder.NewWorker("test-builder-2", builder.NewMemoryTransport(env1.scheduler))
+	builder2 := builder.NewWorker("test-builder-2", env1.transport)
 
 	ctx := context.Background()
 
