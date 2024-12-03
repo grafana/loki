@@ -152,6 +152,7 @@ message LabelRequest {
 
 message LabelResponse {
   repeated string values = 1;
+  repeated string structuredMetadata = 2;
 }
 
 message Sample {

@@ -72,7 +72,7 @@ type IndexReader interface {
 	ChunkStats(ref storage.SeriesRef, from, through int64, lset *labels.Labels, by map[string]struct{}) (uint64, index.ChunkStats, error)
 
 	// LabelNames returns all the unique label names present in the index in sorted order.
-	LabelNames(matchers ...*labels.Matcher) ([]string, error)
+	LabelNames(matchers ...*labels.Matcher) ([]string, []string, error)
 
 	// LabelValueFor returns label value for the given label name in the series referred to by ID.
 	// If the series couldn't be found or the series doesn't have the requested label a
@@ -81,7 +81,7 @@ type IndexReader interface {
 
 	// LabelNamesFor returns all the label names for the series referred to by IDs.
 	// The names returned are sorted.
-	LabelNamesFor(ids ...storage.SeriesRef) ([]string, error)
+	LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, error)
 
 	// Close releases the underlying resources of the reader.
 	Close() error
@@ -336,10 +336,10 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 	return values, nil
 }
 
-func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]string, error) {
+func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]string, []string, error) {
 	p, err := PostingsForMatchers(r, nil, matchers...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var postings []storage.SeriesRef
@@ -347,7 +347,7 @@ func labelNamesWithMatchers(r IndexReader, matchers ...*labels.Matcher) ([]strin
 		postings = append(postings, p.At())
 	}
 	if p.Err() != nil {
-		return nil, errors.Wrapf(p.Err(), "postings for label names with matchers")
+		return nil, nil, errors.Wrapf(p.Err(), "postings for label names with matchers")
 	}
 
 	return r.LabelNamesFor(postings...)

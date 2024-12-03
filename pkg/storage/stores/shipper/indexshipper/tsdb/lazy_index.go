@@ -50,10 +50,10 @@ func (f LazyIndex) Series(ctx context.Context, userID string, from, through mode
 	}
 	return i.Series(ctx, userID, from, through, res, fpFilter, matchers...)
 }
-func (f LazyIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (f LazyIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
 	i, err := f()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return i.LabelNames(ctx, userID, from, through, matchers...)
 }

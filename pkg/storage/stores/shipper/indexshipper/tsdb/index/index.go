@@ -1709,7 +1709,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 
 // LabelNamesFor returns all the label names for the series referred to by IDs.
 // The names returned are sorted.
-func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
+func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, error) {
 	// Gather offsetsMap the name offsetsMap in the symbol table first
 	offsetsMap := make(map[uint32]struct{})
 	for _, id := range ids {
@@ -1723,12 +1723,12 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 		d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 		buf := d.Get()
 		if d.Err() != nil {
-			return nil, errors.Wrap(d.Err(), "get buffer for series")
+			return nil, nil, errors.Wrap(d.Err(), "get buffer for series")
 		}
 
 		offsets, err := r.dec.LabelNamesOffsetsFor(buf)
 		if err != nil {
-			return nil, errors.Wrap(err, "get label name offsets")
+			return nil, nil, errors.Wrap(err, "get label name offsets")
 		}
 		for _, off := range offsets {
 			offsetsMap[off] = struct{}{}
@@ -1740,14 +1740,14 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 	for off := range offsetsMap {
 		name, err := r.lookupSymbol(off)
 		if err != nil {
-			return nil, errors.Wrap(err, "lookup symbol in LabelNamesFor")
+			return nil, nil, errors.Wrap(err, "lookup symbol in LabelNamesFor")
 		}
 		names = append(names, name)
 	}
 
 	sort.Strings(names)
 
-	return names, nil
+	return names, nil, nil
 }
 
 // LabelValueFor returns label value for the given label name in the series referred to by ID.
@@ -1923,9 +1923,9 @@ func (r *Reader) Size() int64 {
 
 // LabelNames returns all the unique label names present in the index.
 // TODO(twilkie) implement support for matchers
-func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, []string, error) {
 	if len(matchers) > 0 {
-		return nil, errors.Errorf("matchers parameter is not implemented: %+v", matchers)
+		return nil, nil, errors.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}
 
 	labelNames := make([]string, 0, len(r.postings))
@@ -1937,7 +1937,7 @@ func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
 		labelNames = append(labelNames, name)
 	}
 	sort.Strings(labelNames)
-	return labelNames, nil
+	return labelNames, nil, nil
 }
 
 // NewStringListIter returns a StringIter for the given sorted list of strings.

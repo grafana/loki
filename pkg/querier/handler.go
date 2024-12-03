@@ -73,9 +73,10 @@ func (h *Handler) Do(ctx context.Context, req queryrangebase.Request) (queryrang
 		}
 
 		return &queryrange.LokiLabelNamesResponse{
-			Status:  "success",
-			Version: uint32(loghttp.VersionV1),
-			Data:    res.Values,
+			Status:             "success",
+			Version:            uint32(loghttp.VersionV1),
+			Data:               res.Values,
+			StructuredMetadata: res.StructuredMetadata,
 		}, nil
 	case *logproto.IndexStatsRequest:
 		request := loghttp.NewRangeQueryWithDefaults()

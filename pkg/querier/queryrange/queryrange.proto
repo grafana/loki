@@ -129,6 +129,7 @@ message LokiLabelNamesResponse {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "statistics"
   ];
+  repeated string StructuredMetadata = 6 [(gogoproto.jsontag) = "structuredMetadata,omitempty"];
 }
 
 message LokiData {

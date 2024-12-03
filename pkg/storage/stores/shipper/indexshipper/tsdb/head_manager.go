@@ -778,10 +778,10 @@ func (t *tenantHeads) Series(ctx context.Context, userID string, from, through m
 
 }
 
-func (t *tenantHeads) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (t *tenantHeads) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	return idx.LabelNames(ctx, userID, from, through, matchers...)
 

@@ -243,7 +243,7 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 	return merged, nil
 }
 
-func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
 	acc := newResultAccumulator(func(xs [][]string) ([]string, error) {
 		var (
 			maxLn int // maximum number of lNames, assuming no duplicates
@@ -280,7 +280,7 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 		from,
 		through,
 		func(ctx context.Context, idx Index) error {
-			got, err := idx.LabelNames(ctx, userID, from, through, matchers...)
+			got, _, err := idx.LabelNames(ctx, userID, from, through, matchers...)
 			if err != nil {
 				return err
 			}
@@ -288,17 +288,17 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 			return nil
 		},
 	); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	merged, err := acc.Merge()
 	if err != nil {
 		if err == ErrEmptyAccumulator {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	return merged, nil
+	return merged, nil, nil
 }
 
 func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {

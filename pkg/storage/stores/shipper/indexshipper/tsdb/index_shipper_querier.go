@@ -100,10 +100,10 @@ func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, t
 	return idx.Series(ctx, userID, from, through, res, fpFilter, matchers...)
 }
 
-func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (i *indexShipperQuerier) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return idx.LabelNames(ctx, userID, from, through, matchers...)
 }

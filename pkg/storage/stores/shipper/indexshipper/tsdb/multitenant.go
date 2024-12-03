@@ -66,19 +66,19 @@ func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, thro
 	return xs, nil
 }
 
-func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	res, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabelMatcher(userID, matchers)...)
+func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
+	res, _, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabelMatcher(userID, matchers)...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Strip out the tenant label in response.
 	i := sort.SearchStrings(res, TenantLabel)
 	if i == len(res) || res[i] != TenantLabel {
-		return res, nil
+		return res, nil, nil
 	}
 
-	return append(res[:i], res[i+1:]...), nil
+	return append(res[:i], res[i+1:]...), nil, nil
 }
 
 func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
