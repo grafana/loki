@@ -4,8 +4,7 @@ import "fmt"
 
 // Job represents a block building task.
 type Job struct {
-	ID     string
-	Status JobStatus
+	ID string
 	// Partition and offset information
 	Partition int
 	Offsets   Offsets
@@ -30,7 +29,6 @@ type Offsets struct {
 func NewJob(partition int, offsets Offsets) *Job {
 	return &Job{
 		ID:        GenerateJobID(partition, offsets),
-		Status:    JobStatusPending,
 		Partition: partition,
 		Offsets:   offsets,
 	}

@@ -30,6 +30,25 @@ func NewJobQueue() *JobQueue {
 	}
 }
 
+func (q *JobQueue) Exists(job *types.Job) (types.JobStatus, bool) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	if _, ok := q.inProgress[job.ID]; ok {
+		return types.JobStatusInProgress, true
+	}
+
+	if _, ok := q.pending[job.ID]; ok {
+		return types.JobStatusPending, true
+	}
+
+	if _, ok := q.completed[job.ID]; ok {
+		return types.JobStatusComplete, true
+	}
+
+	return -1, false
+}
+
 // Enqueue adds a new job to the pending queue
 // This is a naive implementation, intended to be refactored
 func (q *JobQueue) Enqueue(job *types.Job) error {

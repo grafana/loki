@@ -37,6 +37,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
+	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -49,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	kclient "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -139,6 +141,7 @@ const (
 	InitCodec                string = "init-codec"
 	PartitionRing            string = "partition-ring"
 	BlockBuilder             string = "block-builder"
+	BlockScheduler           string = "block-scheduler"
 )
 
 const (
@@ -1861,6 +1864,22 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 
 	t.blockBuilder = bb
 	return t.blockBuilder, nil
+}
+
+func (t *Loki) initBlockScheduler() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "block_scheduler")
+
+	clientMetrics := kclient.NewReaderClientMetrics("block-scheduler", prometheus.DefaultRegisterer)
+	c, err := kclient.NewReaderClient(
+		t.Cfg.KafkaConfig,
+		clientMetrics,
+		log.With(logger, "component", "kafka-client"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating kafka client: %w", err)
+	}
+	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, t.Cfg.BlockScheduler.LookbackPeriod, c)
+	return blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
