@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -137,6 +138,11 @@ func (p *TimeRangePlanner) Plan(ctx context.Context) ([]types.Job, error) {
 			},
 		})
 	}
+
+	// Sort jobs by partition number to ensure consistent ordering
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].Partition < jobs[j].Partition
+	})
 
 	return jobs, nil
 }
