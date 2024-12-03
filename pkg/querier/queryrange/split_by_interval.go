@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/math"
 
 	"github.com/grafana/dskit/tenant"
@@ -180,6 +181,11 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
+	}
+
+	noSplit := httpreq.ExtractQueryNoSplitFromContext(ctx)
+	if noSplit {
+		return h.next.Do(ctx, r)
 	}
 
 	var interval time.Duration

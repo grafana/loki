@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 var nilMetrics = NewSplitByMetrics(nil)
@@ -1408,6 +1409,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 		name string
 		req  *LokiRequest
 		want *LokiResponse
+		ctx  context.Context
 	}{
 		{
 			"backward",
@@ -1441,6 +1443,38 @@ func Test_splitByInterval_Do(t *testing.T) {
 					},
 				},
 			},
+			ctx,
+		},
+		{
+			"backward - no split header",
+			&LokiRequest{
+				StartTs:   time.Unix(0, 0),
+				EndTs:     time.Unix(0, (4 * time.Hour).Nanoseconds()),
+				Query:     "",
+				Limit:     1000,
+				Step:      1,
+				Direction: logproto.BACKWARD,
+				Path:      "/api/prom/query_range",
+			},
+			&LokiResponse{
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      1000,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 0}},
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 0), Line: fmt.Sprintf("%d", 0)},
+							},
+						},
+					},
+				},
+			},
+			httpreq.InjectQueryNoSplit(ctx, true),
 		},
 		{
 			"forward",
@@ -1474,6 +1508,38 @@ func Test_splitByInterval_Do(t *testing.T) {
 					},
 				},
 			},
+			ctx,
+		},
+		{
+			"forward - no split header",
+			&LokiRequest{
+				StartTs:   time.Unix(0, 0),
+				EndTs:     time.Unix(0, (4 * time.Hour).Nanoseconds()),
+				Query:     "",
+				Limit:     1000,
+				Step:      1,
+				Direction: logproto.FORWARD,
+				Path:      "/api/prom/query_range",
+			},
+			&LokiResponse{
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.FORWARD,
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 0}},
+				Limit:      1000,
+				Version:    1,
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 0), Line: fmt.Sprintf("%d", 0)},
+							},
+						},
+					},
+				},
+			},
+			httpreq.InjectQueryNoSplit(ctx, true),
 		},
 		{
 			"forward limited",
@@ -1505,6 +1571,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 					},
 				},
 			},
+			ctx,
 		},
 		{
 			"backward limited",
@@ -1536,12 +1603,13 @@ func Test_splitByInterval_Do(t *testing.T) {
 					},
 				},
 			},
+			ctx,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := split.Do(ctx, tt.req)
+			res, err := split.Do(tt.ctx, tt.req)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, res)
 		})
