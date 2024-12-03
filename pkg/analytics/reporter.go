@@ -81,10 +81,12 @@ func NewReporter(config Config, kvConfig kv.Config, objectClient client.ObjectCl
 
 	originalDefaultTransport := http.DefaultTransport.(*http.Transport)
 	tr := originalDefaultTransport.Clone()
-	var err error
-	tr.TLSClientConfig, err = config.TLSConfig.GetTLSConfig()
-	if err != nil {
-		return nil, err
+	if config.TLSConfig.CertPath != "" || config.TLSConfig.KeyPath != "" {
+		var err error
+		tr.TLSClientConfig, err = config.TLSConfig.GetTLSConfig()
+		if err != nil {
+			return nil, err
+		}
 	}
 	r := &Reporter{
 		logger:       logger,
