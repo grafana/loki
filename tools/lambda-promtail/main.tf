@@ -237,7 +237,7 @@ resource "aws_lambda_function_event_invoke_config" "this" {
 #-------------------------------------------------------------------------------
 
 resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
-  count = length(var.log_group_names) > 0 ? 1 : 0
+  count = length(local.log_group_names) > 0 ? 1 : 0
 
   statement_id  = "lambda-promtail-allow-cloudwatch"
   action        = "lambda:InvokeFunction"
@@ -246,8 +246,8 @@ resource "aws_lambda_permission" "lambda_promtail_allow_cloudwatch" {
 }
 
 # Providing a log group prefix of "" enables matching _all_ log groups
-data "aws_cloudwatch_log_groups" "lambdafunction_logs" {
-  for_each = var.log_group_prefixes
+data "aws_cloudwatch_log_groups" "log_groups" {
+  for_each = toset(var.log_group_prefixes)
 
   log_group_name_prefix = each.value
 }
@@ -259,14 +259,14 @@ locals {
   log_group_names = setsubtract(
     setunion(
       var.log_group_names,
-      data.aws_cloudwatch_log_groups.lambdafunction_logs.log_group_names
+      flatten([for lg in data.aws_cloudwatch_log_groups.log_groups: lg.log_group_names]),
     ),
     toset(["/aws/lambda/${var.name}"])
   )
 }
 
 resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
-  for_each = var.log_group_names
+  for_each = local.log_group_names
 
   name            = "lambdafunction_logfilter_${each.value}"
   log_group_name  = each.value
