@@ -3,7 +3,6 @@ package distributor
 import (
 	"context"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"math"
 	"math/rand"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
