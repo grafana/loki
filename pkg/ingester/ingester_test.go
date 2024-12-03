@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"fmt"
+	index2 "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"math"
 	"net"
 	"net/http"
@@ -433,6 +434,10 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 type mockStore struct {
 	mtx    sync.Mutex
 	chunks map[string][]chunk.Chunk
+}
+
+func (s *mockStore) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index2.StreamStats) error {
+	return nil
 }
 
 func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {

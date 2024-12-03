@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"math"
 	"time"
 
@@ -329,6 +330,11 @@ type storeMock struct {
 func newStoreMock() *storeMock {
 	return &storeMock{}
 }
+
+func (s *storeMock) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index.StreamStats) error {
+	return nil
+}
+
 func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer)    {}
 func (s *storeMock) SetExtractorWrapper(log.SampleExtractorWrapper) {}
 func (s *storeMock) SetPipelineWrapper(log.PipelineWrapper)         {}

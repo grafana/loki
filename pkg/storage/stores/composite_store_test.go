@@ -3,6 +3,7 @@ package stores
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"reflect"
 	"testing"
 
@@ -28,6 +29,10 @@ func (m mockStore) Put(_ context.Context, _ []chunk.Chunk) error {
 }
 
 func (m mockStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return nil
+}
+
+func (m mockStore) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index.StreamStats) error {
 	return nil
 }
 

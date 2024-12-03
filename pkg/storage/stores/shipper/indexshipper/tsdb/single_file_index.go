@@ -181,6 +181,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, _ string, fpFilter index.Fing
 				return err
 			}
 
+			// Try to filter out series that don't have the required filter label names in their stream labels or structured metadata fields
 			if stats != nil && len(filterLabelNames) > 0 {
 				// Looking at the structured metadata fields names, discard all series for which we don't have the required filter label names
 				allFound := false

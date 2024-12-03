@@ -174,10 +174,10 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	// Postings lists are only written if a series with the respective
 	// reference was added before.
-	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash())))
-	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash())))
-	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
-	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
+	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash()), nil))
+	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash()), nil))
+	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash()), nil))
+	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash()), nil))
 
 	_, err = iw.Close(false)
 	require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	var c []ChunkMeta
 
 	for i := 0; p.Next(); i++ {
-		_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c)
+		_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c, nil)
 
 		require.NoError(t, err)
 		require.Equal(t, 0, len(c))
@@ -266,7 +266,7 @@ func TestPostingsMany(t *testing.T) {
 	})
 
 	for i, s := range series {
-		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
+		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash()), nil))
 	}
 	_, err = iw.Close(false)
 	require.NoError(t, err)
@@ -314,7 +314,7 @@ func TestPostingsMany(t *testing.T) {
 		var lbls labels.Labels
 		var metas []ChunkMeta
 		for it.Next() {
-			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas)
+			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas, nil)
 			require.NoError(t, err)
 			got = append(got, lbls.Get("i"))
 		}
@@ -394,7 +394,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	mi := newMockIndex()
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks...)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
 		require.NoError(t, err)
 		require.NoError(t, mi.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...))
 
@@ -430,7 +430,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 			ref := gotp.At()
 
-			_, err := ir.Series(ref, 0, math.MaxInt64, &lset, &chks)
+			_, err := ir.Series(ref, 0, math.MaxInt64, &lset, &chks, nil)
 			require.NoError(t, err)
 
 			err = mi.Series(expp.At(), &explset, &expchks)
@@ -740,7 +740,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			}
 
 			for i, l := range lbls {
-				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas...)
+				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas)
 				require.NoError(t, err)
 			}
 
@@ -761,7 +761,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			require.Nil(t, ir.dec.chunksSample[postings.At()])
 
 			// read series so that chunk samples get built
-			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks)
+			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks, nil)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.chunkMetas, chks)
@@ -785,6 +785,13 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				d.Uvarint()
 				d.Uvarint()
 			}
+
+			// Read structured metadata names stats
+			k = d.Uvarint()
+			for i := 0; i < k; i++ {
+				d.Uvarint()
+			}
+
 			require.Equal(t, len(tc.chunkMetas), d.Uvarint())
 			for i, cs := range ir.dec.chunksSample[postings.At()].chunks {
 				require.Equal(t, tc.expectedChunkSamples[i].idx, cs.idx)
@@ -996,7 +1003,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 	}
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks...)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
 		require.NoError(b, err)
 	}
 

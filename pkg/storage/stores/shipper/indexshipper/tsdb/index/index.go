@@ -2216,6 +2216,9 @@ func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats **Str
 	}
 
 	if stats != nil {
+		if *stats == nil {
+			*stats = NewStreamStats()
+		}
 		(*stats).StructuredMetadataFieldNames = fields
 	}
 

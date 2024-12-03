@@ -131,7 +131,9 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	}
 	*lbls = append((*lbls)[:0], s.ls...)
 
-	*stats = &s.stats
+	if stats != nil {
+		*stats = &s.stats
+	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 

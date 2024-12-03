@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"sort"
 	"testing"
 	"time"
@@ -188,6 +189,9 @@ func newMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, streams 
 
 func (m *mockChunkStore) Put(_ context.Context, _ []chunk.Chunk) error { return nil }
 func (m *mockChunkStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return nil
+}
+func (m *mockChunkStore) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index.StreamStats) error {
 	return nil
 }
 

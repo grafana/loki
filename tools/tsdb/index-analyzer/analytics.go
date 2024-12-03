@@ -58,6 +58,7 @@ func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants [
 					tenant,
 					model.Earliest,
 					model.Latest,
+					nil,
 					chunkRes, nil,
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)
@@ -82,6 +83,7 @@ func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants [
 						}
 						return false
 					},
+					nil,
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)
 

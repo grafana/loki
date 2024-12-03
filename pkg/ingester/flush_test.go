@@ -3,6 +3,7 @@ package ingester
 import (
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"os"
 	"sort"
 	"sync"
@@ -458,6 +459,10 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		}
 	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
+	return nil
+}
+
+func (s *testStore) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index.StreamStats) error {
 	return nil
 }
 
