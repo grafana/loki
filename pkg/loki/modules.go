@@ -1824,7 +1824,6 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 	reader, err := partition.NewKafkaReader(
 		t.Cfg.KafkaConfig,
 		ingestPartitionID,
-		id,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -1832,8 +1831,17 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, err
 	}
 
+	offsetManager, err := partition.NewKafkaOffsetManager(
+		t.Cfg.KafkaConfig,
+		ingestPartitionID,
+		id,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+
 	controller, err := blockbuilder.NewPartitionJobController(
 		reader,
+		offsetManager,
 		t.Cfg.BlockBuilder.Backoff,
 		logger,
 	)

@@ -383,7 +383,7 @@ func (i *BlockBuilder) runOne(ctx context.Context) (skipped bool, err error) {
 		return false, nil
 	}
 
-	if err = i.jobController.part.Commit(ctx, lastOffset); err != nil {
+	if err = i.jobController.offsetManager.Commit(ctx, lastOffset); err != nil {
 		level.Error(logger).Log(
 			"msg", "failed to commit offset",
 			"last_offset", lastOffset,
