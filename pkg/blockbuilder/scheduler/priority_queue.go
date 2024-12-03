@@ -86,30 +86,41 @@ func NewCircularBuffer[T any](capacity int) *CircularBuffer[T] {
 	}
 }
 
-// Push adds an element to the circular buffer.
-func (cb *CircularBuffer[T]) Push(v T) {
-	if cb.size == len(cb.buffer) {
-		cb.head = (cb.head + 1) % len(cb.buffer)
+// Push adds an element to the circular buffer and returns the evicted element if any
+func (b *CircularBuffer[T]) Push(v T) (T, bool) {
+	var evicted T
+	hasEvicted := false
+
+	if b.size == len(b.buffer) {
+		// If buffer is full, evict the oldest element (at head)
+		evicted = b.buffer[b.head]
+		hasEvicted = true
+		b.head = (b.head + 1) % len(b.buffer)
 	} else {
-		cb.size++
+		b.size++
 	}
-	cb.buffer[cb.tail] = v
-	cb.tail = (cb.tail + 1) % len(cb.buffer)
+
+	b.buffer[b.tail] = v
+	b.tail = (b.tail + 1) % len(b.buffer)
+
+	return evicted, hasEvicted
 }
 
-// Pop removes and returns the oldest element from the circular buffer.
-func (cb *CircularBuffer[T]) Pop() (T, bool) {
-	if cb.size == 0 {
+// Pop removes and returns the oldest element from the buffer
+func (b *CircularBuffer[T]) Pop() (T, bool) {
+	if b.size == 0 {
 		var zero T
 		return zero, false
 	}
-	v := cb.buffer[cb.head]
-	cb.head = (cb.head + 1) % len(cb.buffer)
-	cb.size--
+
+	v := b.buffer[b.head]
+	b.head = (b.head + 1) % len(b.buffer)
+	b.size--
+
 	return v, true
 }
 
-// Len returns the number of elements in the circular buffer.
-func (cb *CircularBuffer[T]) Len() int {
-	return cb.size
+// Len returns the number of elements in the buffer
+func (b *CircularBuffer[T]) Len() int {
+	return b.size
 }
