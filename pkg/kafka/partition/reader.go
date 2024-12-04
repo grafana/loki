@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 
@@ -24,12 +25,6 @@ const (
 	KafkaStartOffset SpecialOffset = -2
 	KafkaEndOffset   SpecialOffset = -1
 )
-
-var rm *readerMetrics
-
-func init() {
-	rm = newReaderMetrics(prometheus.DefaultRegisterer)
-}
 
 type Record struct {
 	// Context holds the tracing (and potentially other) info, that the record was enriched with on fetch from Kafka.
@@ -47,18 +42,19 @@ type Reader interface {
 	SetOffsetForConsumption(offset int64)
 }
 
-// readerMetrics contains metrics specific to Kafka reading operations
-type readerMetrics struct {
+// ReaderMetrics contains metrics specific to Kafka reading operations
+type ReaderMetrics struct {
 	recordsPerFetch     prometheus.Histogram
 	fetchesErrors       prometheus.Counter
 	fetchesTotal        prometheus.Counter
 	fetchWaitDuration   prometheus.Histogram
 	receiveDelay        prometheus.Histogram
 	lastCommittedOffset prometheus.Gauge
+	kprom               *kprom.Metrics
 }
 
-func newReaderMetrics(r prometheus.Registerer) *readerMetrics {
-	return &readerMetrics{
+func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
+	return &ReaderMetrics{
 		fetchWaitDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:                        "loki_kafka_reader_fetch_wait_duration_seconds",
 			Help:                        "How long the reader spent waiting for a batch of records from Kafka.",
@@ -86,6 +82,7 @@ func newReaderMetrics(r prometheus.Registerer) *readerMetrics {
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
 		}),
+		kprom: client.NewReaderClientMetrics("partition-reader", r),
 	}
 }
 
@@ -95,7 +92,7 @@ type KafkaReader struct {
 	topic         string
 	partitionID   int32
 	consumerGroup string
-	metrics       *readerMetrics
+	metrics       *ReaderMetrics
 	logger        log.Logger
 }
 
@@ -103,13 +100,12 @@ func NewKafkaReader(
 	cfg kafka.Config,
 	partitionID int32,
 	logger log.Logger,
-	reg prometheus.Registerer,
+	metrics *ReaderMetrics,
 ) (*KafkaReader, error) {
 	// Create a new Kafka client for this reader
-	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
 	c, err := client.NewReaderClient(
 		cfg,
-		clientMetrics,
+		metrics.kprom,
 		log.With(logger, "component", "kafka-client"),
 	)
 	if err != nil {
@@ -120,7 +116,7 @@ func NewKafkaReader(
 		client:      c,
 		topic:       cfg.Topic,
 		partitionID: partitionID,
-		metrics:     rm,
+		metrics:     metrics,
 		logger:      logger,
 	}, nil
 }

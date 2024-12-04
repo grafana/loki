@@ -1821,11 +1821,12 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
 	}
 
+	readerMetrics := partition.NewReaderMetrics(prometheus.DefaultRegisterer)
 	reader, err := partition.NewKafkaReader(
 		t.Cfg.KafkaConfig,
 		ingestPartitionID,
 		logger,
-		prometheus.DefaultRegisterer,
+		readerMetrics,
 	)
 	if err != nil {
 		return nil, err
