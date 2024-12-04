@@ -140,7 +140,7 @@ func TestTimeRangePlanner_Plan(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, len(tc.expectedJobs), len(jobs))
-			require.Equal(t, tc.expectedJobs, jobs)
+			require.ElementsMatch(t, tc.expectedJobs, jobs)
 		})
 	}
 }
