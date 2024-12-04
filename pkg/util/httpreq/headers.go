@@ -77,7 +77,7 @@ func ExtractQueryNoSplitFromHTTP(req *http.Request) bool {
 
 func ExtractQueryNoSplitFromContext(ctx context.Context) bool {
 	// if the cast fails then v will be an empty string
-	v, _ := ctx.Value(QueryNoSplitHTTPHeader).(bool)
+	v, _ := ctx.Value(headerContextKey(QueryNoSplitHTTPHeader)).(bool)
 	return v
 }
 
