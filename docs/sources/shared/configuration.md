@@ -171,10 +171,6 @@ block_builder:
   # CLI flag: -blockbuilder.max-chunk-age
   [max_chunk_age: <duration> | default = 2h]
 
-  # The interval at which to run.
-  # CLI flag: -blockbuilder.interval
-  [interval: <duration> | default = 10m]
-
   backoff_config:
     # Minimum delay when backing off.
     # CLI flag: -blockbuilder.backoff..backoff-min-period
@@ -187,6 +183,25 @@ block_builder:
     # Number of times to backoff and retry before failing.
     # CLI flag: -blockbuilder.backoff..backoff-retries
     [max_retries: <int> | default = 10]
+
+  # The number of workers to run in parallel to process jobs.
+  # CLI flag: -blockbuilder.worker-parallelism
+  [worker_parallelism: <int> | default = 1]
+
+  # The interval at which to sync job status with the scheduler.
+  # CLI flag: -blockbuilder.sync-interval
+  [sync_interval: <duration> | default = 30s]
+
+  # Address of the scheduler in the format described here:
+  # https://github.com/grpc/grpc/blob/master/doc/naming.md
+  # CLI flag: -blockbuilder.scheduler-address
+  [scheduler_address: <string> | default = ""]
+
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is:
+  # blockbuilder.scheduler-grpc-client.
+  [scheduler_grpc_client_config: <grpc_client>]
 
 block_scheduler:
   # Consumer group used by block scheduler to track the last consumed offset.
@@ -2632,6 +2647,7 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `blockbuilder.scheduler-grpc-client.`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
