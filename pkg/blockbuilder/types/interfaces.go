@@ -24,6 +24,15 @@ type Scheduler interface {
 
 // Transport defines the interface for communication between block builders and scheduler
 type Transport interface {
+	BuilderTransport
+	SchedulerTransport
+}
+
+// SchedulerTransport is for calls originating from the scheduler
+type SchedulerTransport interface{}
+
+// BuilderTransport is for calls originating from the builder
+type BuilderTransport interface {
 	// SendGetJobRequest sends a request to get a new job
 	SendGetJobRequest(ctx context.Context, req *GetJobRequest) (*GetJobResponse, error)
 	// SendCompleteJob sends a job completion notification
@@ -43,8 +52,9 @@ type GetJobResponse struct {
 }
 
 type CompleteJobRequest struct {
-	BuilderID string
-	Job       *Job
+	BuilderID          string
+	Job                *Job
+	LastConsumedOffset int64
 }
 
 type SyncJobRequest struct {

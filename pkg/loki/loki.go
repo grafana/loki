@@ -32,6 +32,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
+	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
@@ -91,6 +92,7 @@ type Config struct {
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	BlockBuilder        blockbuilder.Config        `yaml:"block_builder,omitempty"`
+	BlockScheduler      blockscheduler.Config      `yaml:"block_scheduler,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
@@ -186,6 +188,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Profiling.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
 	c.BlockBuilder.RegisterFlags(f)
+	c.BlockScheduler.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -263,6 +266,9 @@ func (c *Config) Validate() error {
 	}
 	if err := c.BlockBuilder.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid block_builder config"))
+	}
+	if err := c.BlockScheduler.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid block_scheduler config"))
 	}
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
@@ -379,6 +385,7 @@ type Loki struct {
 	partitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
 	blockBuilder              *blockbuilder.BlockBuilder
+	blockScheduler            *blockscheduler.BlockScheduler
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -690,6 +697,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
+	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -728,6 +736,7 @@ func (t *Loki) setupModuleManager() error {
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
 		BlockBuilder:             {PartitionRing, Store, Server},
+		BlockScheduler:           {Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},

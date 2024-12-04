@@ -13,6 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/grafana/loki/pkg/push"
@@ -1961,22 +1963,27 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 	for _, tc := range []struct {
 		req              *logproto.PushRequest
 		expectedResponse *logproto.PushResponse
+		numSanitizations float64
 	}{
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, false),
 			success,
+			0,
 		},
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, false),
 			success,
+			10,
 		},
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, true),
 			success,
+			10,
 		},
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, true),
 			success,
+			20,
 		},
 	} {
 		distributors, _ := prepare(t, 1, 5, limits, nil)
@@ -1988,5 +1995,6 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
 	}
 }
