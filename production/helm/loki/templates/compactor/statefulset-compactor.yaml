@@ -51,7 +51,7 @@ spec:
       {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.compactor.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl . $ | nindent 8 }}
       {{- end }}
       {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}

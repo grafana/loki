@@ -105,7 +105,7 @@ spec:
       {{- end }}
       {{- with .Values.gateway.dnsConfig }}
       dnsConfig:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl . $ | nindent 8 }}
       {{- end }}
       {{- with .Values.gateway.nodeSelector }}
       nodeSelector:
