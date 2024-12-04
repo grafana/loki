@@ -83,7 +83,7 @@ func (q *JobQueue) Enqueue(job *types.Job, priority int) error {
 }
 
 // Dequeue gets the next available job and assigns it to a builder
-func (q *JobQueue) Dequeue(builderID string) (*types.Job, bool, error) {
+func (q *JobQueue) Dequeue(_ string) (*types.Job, bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
