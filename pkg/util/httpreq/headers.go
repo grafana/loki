@@ -71,7 +71,7 @@ func ExtractQueryNoSplitMiddleware() middleware.Interface {
 }
 
 func ExtractQueryNoSplitFromHTTP(req *http.Request) bool {
-	tags := req.Header.Get(string(QueryNoSplitHTTPHeader))
+	tags := req.Header.Get(QueryNoSplitHTTPHeader)
 	return tags != "" && strings.ToLower(tags) == "true"
 }
 
@@ -82,5 +82,5 @@ func ExtractQueryNoSplitFromContext(ctx context.Context) bool {
 }
 
 func InjectQueryNoSplit(ctx context.Context, noSplit bool) context.Context {
-	return context.WithValue(ctx, QueryNoSplitHTTPHeader, noSplit)
+	return context.WithValue(ctx, headerContextKey(QueryNoSplitHTTPHeader), noSplit)
 }

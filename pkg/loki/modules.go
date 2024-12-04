@@ -1150,7 +1150,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	if t.Cfg.Frontend.TailProxyURL != "" && !t.isModuleActive(Querier) {
 		httpMiddleware := middleware.Merge(
 			httpreq.ExtractQueryTagsMiddleware(),
-		  httpreq.ExtractQueryNoSplitMiddleware(),
+			httpreq.ExtractQueryNoSplitMiddleware(),
 			t.HTTPAuthMiddleware,
 			queryrange.StatsHTTPMiddleware,
 		)

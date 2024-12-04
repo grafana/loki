@@ -40,7 +40,7 @@ func TestQueryNoSplit(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "http://testing.com", nil)
 			if tc.in != "" {
-				req.Header.Set(string(QueryNoSplitHTTPHeader), tc.in)
+				req.Header.Set(QueryNoSplitHTTPHeader, tc.in)
 			}
 
 			w := httptest.NewRecorder()
