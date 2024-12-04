@@ -100,7 +100,7 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.29.0
 	golang.org/x/net v0.31.0
-	golang.org/x/sync v0.9.0
+	golang.org/x/sync v0.10.0
 	golang.org/x/sys v0.27.0
 	golang.org/x/time v0.8.0
 	google.golang.org/api v0.209.0
