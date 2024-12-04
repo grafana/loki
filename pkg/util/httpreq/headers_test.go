@@ -46,10 +46,8 @@ func TestQueryNoSplit(t *testing.T) {
 			w := httptest.NewRecorder()
 			checked := false
 			mware := ExtractQueryNoSplitMiddleware().Wrap(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
-				noSplit := req.Context().Value(QueryNoSplitHTTPHeader)
-				noSplitBool, ok := noSplit.(bool)
-				require.True(t, ok)
-				require.Equal(t, tc.exp, noSplitBool)
+				noSplit := ExtractQueryNoSplitFromContext(req.Context())
+				require.Equal(t, tc.exp, noSplit)
 				checked = true
 			}))
 
