@@ -56,6 +56,7 @@ By adding our output plugin you can quickly try Loki without doing big configura
 These third-party clients also enable sending logs to Loki:
 
 - [Cribl Loki Destination](https://docs.cribl.io/stream/destinations-loki)
+- [GrafanaLokiLogger](https://github.com/antoniojmsjr/GrafanaLokiLogger) (Delphi/Lazarus)
 - [ilogtail](https://github.com/alibaba/ilogtail) (Go)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
