@@ -6,6 +6,13 @@
 * Update dependencies versions to remove CVE ([#13835](https://github.com/grafana/loki/pull/13835)) ([567bef2](https://github.com/grafana/loki/commit/567bef286376663407c54f5da07fa00963ba5485))
 
 
+## [2.9.11](https://github.com/grafana/loki/compare/v2.9.10...v2.9.11) (2024-12-04)
+
+
+### Bug Fixes
+
+* switch promtails base image from debian to ubuntu (backport release-2.9.x) ([#15210](https://github.com/grafana/loki/issues/15210)) ([ae1fb5a](https://github.com/grafana/loki/commit/ae1fb5a3d2b8fb57a413b16ab4060b65226867d1))
+
 ## [2.9.9](https://github.com/grafana/loki/compare/v2.9.8...v2.9.9) (2024-07-04)
 
 ### All Changes
