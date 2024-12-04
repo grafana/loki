@@ -1170,7 +1170,7 @@ For the most part, there are very few impactful changes and for most this will b
 
 The default config file in the docker image, as well as the default helm values.yaml and jsonnet for Tanka all specify a schema definition to make things easier to get started.
 
-{{< admonition type="caution >}}
+{{< admonition type="caution" >}}
 If you have not specified your own config file with your own schema definition (or you do not have a custom schema definition in your values.yaml), upgrading to 2.0 will break things!
 {{< /admonition >}}
 
