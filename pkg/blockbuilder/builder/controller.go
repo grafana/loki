@@ -56,15 +56,17 @@ type PartitionController interface {
 //
 //	containing log data and "committed" is the consumer group
 type PartitionJobController struct {
-	stepLen int64
-	part    partition.Reader
-	backoff backoff.Config
-	decoder *kafka.Decoder
-	logger  log.Logger
+	stepLen       int64
+	reader        partition.Reader
+	offsetManager partition.OffsetManager
+	backoff       backoff.Config
+	decoder       *kafka.Decoder
+	logger        log.Logger
 }
 
 func NewPartitionJobController(
-	controller partition.Reader,
+	reader partition.Reader,
+	offsetManager partition.OffsetManager,
 	backoff backoff.Config,
 	logger log.Logger,
 ) (*PartitionJobController, error) {
@@ -73,14 +75,15 @@ func NewPartitionJobController(
 		return nil, err
 	}
 	return &PartitionJobController{
-		stepLen: 1000, // Default step length of 1000 offsets per job
-		part:    controller,
-		backoff: backoff,
-		decoder: decoder,
+		stepLen:       1000, // Default step length of 1000 offsets per job
+		reader:        reader,
+		offsetManager: offsetManager,
+		backoff:       backoff,
+		decoder:       decoder,
 		logger: log.With(logger,
 			"component", "job-controller",
-			"topic", controller.Topic(),
-			"partition", controller.Partition(),
+			"topic", offsetManager.Topic(),
+			"partition", offsetManager.Partition(),
 		),
 	}, nil
 }
@@ -90,7 +93,7 @@ func (l *PartitionJobController) HighestCommittedOffset(ctx context.Context) (in
 		ctx,
 		l.backoff,
 		func() (int64, error) {
-			return l.part.FetchLastCommittedOffset(ctx)
+			return l.offsetManager.FetchLastCommittedOffset(ctx)
 		},
 	)
 }
@@ -100,7 +103,7 @@ func (l *PartitionJobController) HighestPartitionOffset(ctx context.Context) (in
 		ctx,
 		l.backoff,
 		func() (int64, error) {
-			return l.part.FetchPartitionOffset(ctx, partition.KafkaEndOffset)
+			return l.offsetManager.FetchPartitionOffset(ctx, partition.KafkaEndOffset)
 		},
 	)
 }
@@ -110,13 +113,13 @@ func (l *PartitionJobController) EarliestPartitionOffset(ctx context.Context) (i
 		ctx,
 		l.backoff,
 		func() (int64, error) {
-			return l.part.FetchPartitionOffset(ctx, partition.KafkaStartOffset)
+			return l.offsetManager.FetchPartitionOffset(ctx, partition.KafkaStartOffset)
 		},
 	)
 }
 
 func (l *PartitionJobController) Process(ctx context.Context, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
-	l.part.SetOffsetForConsumption(offsets.Min)
+	l.reader.SetOffsetForConsumption(offsets.Min)
 
 	var (
 		lastOffset = offsets.Min - 1
@@ -126,7 +129,7 @@ func (l *PartitionJobController) Process(ctx context.Context, offsets types.Offs
 
 	for lastOffset < offsets.Max && boff.Ongoing() {
 		var records []partition.Record
-		records, err = l.part.Poll(ctx, int(offsets.Max-lastOffset))
+		records, err = l.reader.Poll(ctx, int(offsets.Max-lastOffset))
 		if err != nil {
 			boff.Wait()
 			continue
@@ -217,7 +220,7 @@ func (l *PartitionJobController) LoadJob(ctx context.Context) (bool, *types.Job,
 	}
 
 	// Convert partition from int32 to int
-	job := types.NewJob(int(l.part.Partition()), offsets)
+	job := types.NewJob(int(l.reader.Partition()), offsets)
 	return true, job, nil
 }
 
