@@ -409,7 +409,7 @@ func (s *Scanner) scanNumber(ch rune, seenDot bool) (rune, rune) {
 				ch = s.next()
 				base, prefix = 8, 'o'
 			case 'b':
-				if s.Peek() == '1' || s.Peek() == '0' {
+				if peek := s.Peek(); peek == '0' || peek == '1' {
 					ch = s.next()
 					base, prefix = 2, 'b'
 				}
