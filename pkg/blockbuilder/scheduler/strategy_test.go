@@ -5,120 +5,141 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
-func TestTimeRangePlanner_Plan(t *testing.T) {
-	interval := 15 * time.Minute
+type mockOffsetReader struct {
+	groupLag map[int32]kadm.GroupMemberLag
+}
+
+func (m *mockOffsetReader) GroupLag(_ context.Context) (map[int32]kadm.GroupMemberLag, error) {
+	return m.groupLag, nil
+}
+
+func TestRecordCountPlanner_Plan(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
-		now          time.Time
+		recordCount  int64
 		expectedJobs []*JobWithPriority[int]
 		groupLag     map[int32]kadm.GroupMemberLag
-		consumeUpto  map[int32]kadm.ListedOffset
 	}{
 		{
-			name: "normal case. schedule first interval",
-			now:  time.Date(0, 0, 0, 0, 42, 0, 0, time.UTC), // 00:42:00
+			name:        "single partition, single job",
+			recordCount: 100,
 			groupLag: map[int32]kadm.GroupMemberLag{
 				0: {
 					Commit: kadm.Offset{
 						At: 100,
 					},
+					End: kadm.ListedOffset{
+						Offset: 150,
+					},
 					Partition: 0,
-				},
-			},
-			consumeUpto: map[int32]kadm.ListedOffset{
-				0: {
-					Offset: 200,
 				},
 			},
 			expectedJobs: []*JobWithPriority[int]{
 				NewJobWithPriority(
-					types.NewJob(0, types.Offsets{Min: 101, Max: 200}),
-					99, // 200-101
+					types.NewJob(0, types.Offsets{Min: 101, Max: 150}),
+					49, // 150-101
 				),
 			},
 		},
 		{
-			name: "normal case. schedule second interval",
-			now:  time.Date(0, 0, 0, 0, 46, 0, 0, time.UTC), // 00:46:00
+			name:        "single partition, multiple jobs",
+			recordCount: 50,
 			groupLag: map[int32]kadm.GroupMemberLag{
 				0: {
 					Commit: kadm.Offset{
-						At: 199,
+						At: 100,
+					},
+					End: kadm.ListedOffset{
+						Offset: 200,
 					},
 					Partition: 0,
-				},
-				1: {
-					Commit: kadm.Offset{
-						At: 11,
-					},
-					Partition: 1,
-				},
-			},
-			consumeUpto: map[int32]kadm.ListedOffset{
-				0: {
-					Offset: 300,
-				},
-				1: {
-					Offset: 123,
 				},
 			},
 			expectedJobs: []*JobWithPriority[int]{
 				NewJobWithPriority(
-					types.NewJob(0, types.Offsets{Min: 200, Max: 300}),
-					100, // 300-200
+					types.NewJob(0, types.Offsets{Min: 101, Max: 151}),
+					99, // priority is total remaining: 200-101
 				),
 				NewJobWithPriority(
-					types.NewJob(1, types.Offsets{Min: 12, Max: 123}),
-					111, // 123-12
+					types.NewJob(0, types.Offsets{Min: 151, Max: 200}),
+					49, // priority is total remaining: 200-151
 				),
 			},
 		},
 		{
-			name: "no pending records to consume. schedule second interval once more time",
-			now:  time.Date(0, 0, 0, 0, 48, 0, 0, time.UTC), // 00:48:00
+			name:        "multiple partitions",
+			recordCount: 100,
 			groupLag: map[int32]kadm.GroupMemberLag{
 				0: {
 					Commit: kadm.Offset{
-						At: 299,
+						At: 100,
+					},
+					End: kadm.ListedOffset{
+						Offset: 150,
 					},
 					Partition: 0,
 				},
 				1: {
 					Commit: kadm.Offset{
-						At: 11,
+						At: 200,
+					},
+					End: kadm.ListedOffset{
+						Offset: 400,
 					},
 					Partition: 1,
 				},
 			},
-			consumeUpto: map[int32]kadm.ListedOffset{
-				0: {
-					Offset: 300,
-				},
-				1: {
-					Offset: 123,
-				},
-			},
 			expectedJobs: []*JobWithPriority[int]{
 				NewJobWithPriority(
-					types.NewJob(1, types.Offsets{Min: 12, Max: 123}),
-					111, // 123-12
+					types.NewJob(1, types.Offsets{Min: 201, Max: 301}),
+					199, // priority is total remaining: 400-201
+				),
+				NewJobWithPriority(
+					types.NewJob(1, types.Offsets{Min: 301, Max: 400}),
+					99, // priority is total remaining: 400-301
+				),
+				NewJobWithPriority(
+					types.NewJob(0, types.Offsets{Min: 101, Max: 150}),
+					49, // priority is total remaining: 150-101
 				),
 			},
+		},
+		{
+			name:        "no lag",
+			recordCount: 100,
+			groupLag: map[int32]kadm.GroupMemberLag{
+				0: {
+					Commit: kadm.Offset{
+						At: 100,
+					},
+					End: kadm.ListedOffset{
+						Offset: 100,
+					},
+					Partition: 0,
+				},
+			},
+			expectedJobs: nil,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mockOffsetReader := &mockOffsetReader{
-				offsetsAfterMilli: tc.consumeUpto,
-				groupLag:          tc.groupLag,
+			mockReader := &mockOffsetReader{
+				groupLag: tc.groupLag,
 			}
-			planner := NewTimeRangePlanner(interval, mockOffsetReader, func() time.Time { return tc.now }, log.NewNopLogger())
+			cfg := Config{
+				Interval:          time.Second, // foced > 0 in validation
+				Strategy:          RecordCountStrategy,
+				TargetRecordCount: tc.recordCount,
+			}
+			require.NoError(t, cfg.Validate())
+
+			planner := NewRecordCountPlanner(tc.recordCount)
+			planner.offsetReader = mockReader
 
 			jobs, err := planner.Plan(context.Background())
 			require.NoError(t, err)
@@ -127,17 +148,4 @@ func TestTimeRangePlanner_Plan(t *testing.T) {
 			require.ElementsMatch(t, tc.expectedJobs, jobs)
 		})
 	}
-}
-
-type mockOffsetReader struct {
-	offsetsAfterMilli map[int32]kadm.ListedOffset
-	groupLag          map[int32]kadm.GroupMemberLag
-}
-
-func (m *mockOffsetReader) ListOffsetsAfterMilli(_ context.Context, _ int64) (map[int32]kadm.ListedOffset, error) {
-	return m.offsetsAfterMilli, nil
-}
-
-func (m *mockOffsetReader) GroupLag(_ context.Context) (map[int32]kadm.GroupMemberLag, error) {
-	return m.groupLag, nil
 }

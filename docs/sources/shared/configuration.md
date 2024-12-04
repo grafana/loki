@@ -212,16 +212,20 @@ block_scheduler:
   # CLI flag: -block-scheduler.interval
   [interval: <duration> | default = 5m]
 
-  # Period used by the planner to calculate the start and end offset such that
-  # each job consumes records spanning the target period.
-  # CLI flag: -block-scheduler.target-records-spanning-period
-  [target_records_spanning_period: <duration> | default = 1h]
-
   # Lookback period in milliseconds used by the scheduler to plan jobs when the
   # consumer group has no commits. -1 consumes from the latest offset. -2
   # consumes from the start of the partition.
   # CLI flag: -block-scheduler.lookback-period
   [lookback_period: <int> | default = -2]
+
+  # Strategy used by the planner to plan jobs. One of record-count
+  # CLI flag: -block-scheduler.strategy
+  [strategy: <string> | default = "record-count"]
+
+  # Target record count used by the planner to plan jobs. Only used when
+  # strategy is record-count
+  # CLI flag: -block-scheduler.target-record-count
+  [target_record_count: <int> | default = 1000]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
