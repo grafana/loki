@@ -39,7 +39,7 @@ func TestScheduleAndProcessJob(t *testing.T) {
 
 	// Create and enqueue a test job
 	job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
-	err := env.queue.Enqueue(job)
+	err := env.queue.Enqueue(job, 100)
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
@@ -98,11 +98,11 @@ func TestMultipleBuilders(t *testing.T) {
 	job2 := types.NewJob(2, types.Offsets{Min: 300, Max: 400})
 
 	// Enqueue jobs
-	err := env1.queue.Enqueue(job1)
+	err := env1.queue.Enqueue(job1, 100)
 	if err != nil {
 		t.Fatalf("failed to enqueue job1: %v", err)
 	}
-	err = env1.queue.Enqueue(job2)
+	err = env1.queue.Enqueue(job2, 100)
 	if err != nil {
 		t.Fatalf("failed to enqueue job2: %v", err)
 	}

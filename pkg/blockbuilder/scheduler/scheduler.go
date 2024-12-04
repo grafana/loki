@@ -114,12 +114,12 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 
 	for _, job := range jobs {
 		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
-		if status, ok := s.queue.Exists(&job); ok {
+		if status, ok := s.queue.Exists(job.Job); ok {
 			level.Debug(s.logger).Log("msg", "job already exists", "job", job, "status", status)
 			continue
 		}
 
-		if err := s.queue.Enqueue(&job); err != nil {
+		if err := s.queue.Enqueue(job.Job, job.Priority); err != nil {
 			level.Error(s.logger).Log("msg", "failed to enqueue job", "job", job, "err", err)
 		}
 	}
@@ -144,13 +144,15 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 	}
 }
 
-func (s *BlockScheduler) HandleCompleteJob(_ context.Context, builderID string, job *types.Job) error {
+func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job) error {
 	// TODO: handle commits
-	return s.queue.MarkComplete(job.ID, builderID)
+	s.queue.MarkComplete(job.ID)
+	return nil
 }
 
 func (s *BlockScheduler) HandleSyncJob(_ context.Context, builderID string, job *types.Job) error {
-	return s.queue.SyncJob(job.ID, builderID, job)
+	s.queue.SyncJob(job.ID, builderID, job)
+	return nil
 }
 
 // unimplementedScheduler provides default implementations that panic.

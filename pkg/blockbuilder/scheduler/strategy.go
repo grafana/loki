@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"sort"
 	"time"
 
 	"github.com/go-kit/log"
@@ -19,7 +20,7 @@ type OffsetReader interface {
 
 type Planner interface {
 	Name() string
-	Plan(ctx context.Context) ([]types.Job, error)
+	Plan(ctx context.Context) ([]*JobWithPriority[int], error)
 }
 
 const (
@@ -44,30 +45,34 @@ func (p *RecordCountPlanner) Name() string {
 	return RecordCountStrategy
 }
 
-func (p *RecordCountPlanner) Plan(ctx context.Context) ([]types.Job, error) {
+func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int], error) {
 	offsets, err := p.offsetReader.GroupLag(ctx)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
 		return nil, err
 	}
 
-	jobs := make([]types.Job, 0, len(offsets))
-	for _, partition := range offsets {
+	var jobs []*JobWithPriority[int]
+	for _, partitionOffset := range offsets {
 		// kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
 		// no additional validation is needed here
-		startOffset := partition.Commit.At + 1
-		endOffset := min(startOffset+p.targetRecordCount, partition.End.Offset)
+		startOffset := partitionOffset.Commit.At + 1
+		endOffset := min(startOffset+p.targetRecordCount, partitionOffset.End.Offset)
 
-		job := types.Job{
-			Partition: int(partition.Partition),
-			Offsets: types.Offsets{
+		job := NewJobWithPriority(
+			types.NewJob(int(partitionOffset.Partition), types.Offsets{
 				Min: startOffset,
 				Max: endOffset,
-			},
-		}
+			}), int(partitionOffset.End.Offset-startOffset),
+		)
 
 		jobs = append(jobs, job)
 	}
+
+	// Sort jobs by partition number to ensure consistent ordering
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].Job.Partition < jobs[j].Job.Partition
+	})
 
 	return jobs, nil
 }
@@ -98,7 +103,7 @@ func (p *TimeRangePlanner) Name() string {
 	return TimeRangeStrategy
 }
 
-func (p *TimeRangePlanner) Plan(ctx context.Context) ([]types.Job, error) {
+func (p *TimeRangePlanner) Plan(ctx context.Context) ([]*JobWithPriority[int], error) {
 	// truncate to the nearest Interval
 	consumeUptoTS := p.now().Add(-p.buffer).Truncate(p.targetPeriod)
 
@@ -115,7 +120,7 @@ func (p *TimeRangePlanner) Plan(ctx context.Context) ([]types.Job, error) {
 		return nil, err
 	}
 
-	var jobs []types.Job
+	var jobs []*JobWithPriority[int]
 	for _, partitionOffset := range offsets {
 		startOffset := partitionOffset.Commit.At + 1
 		// TODO: we could further break down the work into Interval sized chunks if this partition has pending records spanning a long time range
@@ -129,14 +134,20 @@ func (p *TimeRangePlanner) Plan(ctx context.Context) ([]types.Job, error) {
 			continue
 		}
 
-		jobs = append(jobs, types.Job{
-			Partition: int(partitionOffset.Partition),
-			Offsets: types.Offsets{
+		job := NewJobWithPriority(
+			types.NewJob(int(partitionOffset.Partition), types.Offsets{
 				Min: startOffset,
 				Max: endOffset,
-			},
-		})
+			}), int(endOffset-startOffset),
+		)
+
+		jobs = append(jobs, job)
 	}
+
+	// Sort jobs by partition number to ensure consistent ordering
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].Job.Partition < jobs[j].Job.Partition
+	})
 
 	return jobs, nil
 }
