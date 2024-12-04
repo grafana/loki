@@ -149,3 +149,104 @@ func TestMultipleBuilders(t *testing.T) {
 		t.Error("builder1 got unexpected second job")
 	}
 }
+
+func TestConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr string
+	}{
+		{
+			name: "valid config with record count strategy",
+			cfg: Config{
+				Interval:          time.Minute,
+				LookbackPeriod:    -1,
+				Strategy:          RecordCountStrategy,
+				TargetRecordCount: 1000,
+			},
+		},
+		{
+			name: "zero interval",
+			cfg: Config{
+				Interval:          0,
+				LookbackPeriod:    -1,
+				Strategy:          RecordCountStrategy,
+				TargetRecordCount: 1000,
+			},
+			wantErr: "interval must be a non-zero value",
+		},
+		{
+			name: "negative interval",
+			cfg: Config{
+				Interval:          -time.Minute,
+				LookbackPeriod:    -1,
+				Strategy:          RecordCountStrategy,
+				TargetRecordCount: 1000,
+			},
+			wantErr: "interval must be a non-zero value",
+		},
+		{
+			name: "invalid lookback period",
+			cfg: Config{
+				Interval:          time.Minute,
+				LookbackPeriod:    -3,
+				Strategy:          RecordCountStrategy,
+				TargetRecordCount: 1000,
+			},
+			wantErr: "only -1(latest) and -2(earliest) are valid as negative values for lookback_period",
+		},
+		{
+			name: "invalid strategy",
+			cfg: Config{
+				Interval:          time.Minute,
+				LookbackPeriod:    -1,
+				Strategy:          "invalid",
+				TargetRecordCount: 1000,
+			},
+			wantErr: "invalid strategy: invalid",
+		},
+		{
+			name: "zero target record count",
+			cfg: Config{
+				Interval:          time.Minute,
+				LookbackPeriod:    -1,
+				Strategy:          RecordCountStrategy,
+				TargetRecordCount: 0,
+			},
+			wantErr: "target record count must be a non-zero value",
+		},
+		{
+			name: "negative target record count",
+			cfg: Config{
+				Interval:          time.Minute,
+				LookbackPeriod:    -1,
+				Strategy:          RecordCountStrategy,
+				TargetRecordCount: -1000,
+			},
+			wantErr: "target record count must be a non-zero value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Errorf("Validate() error = nil, wantErr %v", tt.wantErr)
+					return
+				}
+				if err.Error() != tt.wantErr {
+					t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Validate() error = %v, wantErr nil", err)
+			}
+			// Check that planner is set for valid configs
+			if tt.cfg.planner == nil {
+				t.Error("Validate() did not set planner for valid config")
+			}
+		})
+	}
+}
