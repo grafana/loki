@@ -152,6 +152,9 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limit
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	// Create a new partition context for the query
+	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
+	ctx = NewPartitionContext(ctx)
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
@@ -211,6 +214,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 }
 
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+	// Create a new partition context for the query
+	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
+	ctx = NewPartitionContext(ctx)
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
