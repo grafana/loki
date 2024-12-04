@@ -107,18 +107,18 @@ func (q *JobQueue) Dequeue(_ string) (*types.Job, bool, error) {
 }
 
 // MarkComplete moves a job from in-progress to completed
-func (q *JobQueue) MarkComplete(jobID string) error {
+func (q *JobQueue) MarkComplete(jobID string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	// Find job in in-progress map
 	inProgressJob, exists := q.inProgress[jobID]
-	if !exists {
-		return fmt.Errorf("job %s not found in progress", jobID)
+	// if it doesn't exist, it could be previously removed (duplicate job execution)
+	// or the scheduler may have restarted and not have the job state anymore.
+	if exists {
+		// Remove from in-progress
+		delete(q.inProgress, jobID)
 	}
-
-	// Remove from in-progress
-	delete(q.inProgress, jobID)
 
 	// Add to completed buffer and handle evicted job
 	if evictedJob, hasEvicted := q.completed.Push(inProgressJob.job); hasEvicted {
@@ -126,19 +126,12 @@ func (q *JobQueue) MarkComplete(jobID string) error {
 		delete(q.statusMap, evictedJob.ID)
 	}
 	q.statusMap[jobID] = types.JobStatusComplete
-
-	return nil
 }
 
 // SyncJob registers a job as in-progress, used for restoring state after scheduler restarts
-func (q *JobQueue) SyncJob(jobID string, _ string, job *types.Job) error {
+func (q *JobQueue) SyncJob(jobID string, _ string, job *types.Job) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-
-	// Check if job already exists
-	if status, exists := q.statusMap[jobID]; exists {
-		return fmt.Errorf("job %s already exists with status %v", jobID, status)
-	}
 
 	// Add directly to in-progress
 	q.inProgress[jobID] = &inProgressJob{
@@ -146,6 +139,4 @@ func (q *JobQueue) SyncJob(jobID string, _ string, job *types.Job) error {
 		startTime: time.Now(),
 	}
 	q.statusMap[jobID] = types.JobStatusInProgress
-
-	return nil
 }

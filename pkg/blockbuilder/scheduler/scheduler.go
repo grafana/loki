@@ -146,11 +146,13 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 
 func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job) error {
 	// TODO: handle commits
-	return s.queue.MarkComplete(job.ID)
+	s.queue.MarkComplete(job.ID)
+	return nil
 }
 
 func (s *BlockScheduler) HandleSyncJob(_ context.Context, builderID string, job *types.Job) error {
-	return s.queue.SyncJob(job.ID, builderID, job)
+	s.queue.SyncJob(job.ID, builderID, job)
+	return nil
 }
 
 // unimplementedScheduler provides default implementations that panic.
