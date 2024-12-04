@@ -102,9 +102,9 @@ func (h *headIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, []s
 				for ln := range ms.stats.StructuredMetadataFieldNames {
 					SMFieldNames[ln] = struct{}{}
 				}
-				ms.Unlock()
+				ms.RUnlock()
 			}
-			s.Unlock()
+			s.RUnlock()
 		}
 
 		structuredMetadataFieldNames := make([]string, 0, len(SMFieldNames))

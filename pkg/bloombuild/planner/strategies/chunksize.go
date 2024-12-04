@@ -243,7 +243,7 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 		currentBatch = newSeriesBatch(idx.tsdbIdentifier)
 
 		for _, gap := range idx.gaps {
-			if err := idx.tsdb.ForSeries(ctx, tenant, gap, 0, math.MaxInt64, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+			if err := idx.tsdb.ForSeries(ctx, tenant, gap, 0, math.MaxInt64, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 				select {
 				case <-ctx.Done():
 					return true

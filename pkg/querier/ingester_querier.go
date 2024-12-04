@@ -263,20 +263,23 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 	return iterators, nil
 }
 
-func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error) {
+func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, [][]string, error) {
 	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
 		return client.Label(ctx, req)
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	results := make([][]string, 0, len(resps))
+	smResults := make([][]string, 0, len(resps))
 	for _, resp := range resps {
-		results = append(results, resp.response.(*logproto.LabelResponse).Values)
+		r := resp.response.(*logproto.LabelResponse)
+		results = append(results, r.Values)
+		smResults = append(smResults, r.StructuredMetadata)
 	}
 
-	return results, nil
+	return results, smResults, nil
 }
 
 func (q *IngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {

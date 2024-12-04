@@ -581,18 +581,22 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 				Values: labels,
 			}, nil
 		}
-		names, err := i.index.LabelNames(*req.Start, nil)
+		names, smNames, err := i.index.LabelNames(*req.Start, nil)
 		if err != nil {
 			return nil, err
 		}
 		labels = make([]string, len(names))
 		copy(labels, names)
+		smLabels := make([]string, len(smNames))
+		copy(smLabels, smNames)
 		return &logproto.LabelResponse{
-			Values: labels,
+			Values:             labels,
+			StructuredMetadata: smLabels,
 		}, nil
 	}
 
 	labels := util.NewUniqueStrings(0)
+	smLabels := util.NewUniqueStrings(0)
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
@@ -601,6 +605,12 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 			}
 			if !req.Values {
 				labels.Add(label.Name)
+
+				if s.openStreamStats != nil {
+					for ln := range s.openStreamStats.StructuredMetadataFieldNames {
+						smLabels.Add(ln)
+					}
+				}
 			}
 		}
 		return nil
@@ -610,7 +620,8 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	return &logproto.LabelResponse{
-		Values: labels.Strings(),
+		Values:             labels.Strings(),
+		StructuredMetadata: smLabels.Strings(),
 	}, nil
 }
 
@@ -620,7 +631,7 @@ type UniqueValues map[string]struct{}
 func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
 	labelMap := make(map[string]UniqueValues)
 	if len(matchers) == 0 {
-		labelsFromIndex, err := i.index.LabelNames(startTime, nil)
+		labelsFromIndex, _, err := i.index.LabelNames(startTime, nil)
 		if err != nil {
 			return nil, err
 		}

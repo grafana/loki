@@ -110,15 +110,15 @@ func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *storeEntry) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer sp.Finish()
 
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	} else if shortcut {
-		return nil, nil
+		return nil, nil, nil
 	}
 	sp.LogKV("metric", metricName)
 

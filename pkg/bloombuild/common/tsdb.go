@@ -128,7 +128,7 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 	// TODO(salvacorts): Create a pool
 	series := make([]*v1.Series, 0, 100)
 
-	if err := f.ForSeries(ctx, user, bounds, 0, math.MaxInt64, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+	if err := f.ForSeries(ctx, user, bounds, 0, math.MaxInt64, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 		select {
 		case <-ctx.Done():
 			return true

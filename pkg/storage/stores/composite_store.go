@@ -156,17 +156,18 @@ func (c CompositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
-	var result util.UniqueStrings
+func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+	var result, smLabelResult util.UniqueStrings
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName, matchers...)
+		labelNames, smLabels, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName, matchers...)
 		if err != nil {
 			return err
 		}
 		result.Add(labelNames...)
+		smLabelResult.Add(smLabels...)
 		return nil
 	})
-	return result.Strings(), err
+	return result.Strings(), smLabelResult.Strings(), err
 }
 
 func (c CompositeStore) GetChunks(
@@ -287,6 +288,7 @@ func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeri
 				labels.Labels,
 				model.Fingerprint,
 				[]tsdb_index.ChunkMeta,
+				*tsdb_index.StreamStats,
 			) (stop bool),
 			matchers ...*labels.Matcher,
 		) error {

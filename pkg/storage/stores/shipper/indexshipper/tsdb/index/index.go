@@ -1712,6 +1712,7 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, error) {
 	// Gather offsetsMap the name offsetsMap in the symbol table first
 	offsetsMap := make(map[uint32]struct{})
+	smOffsetsMap := make(map[uint32]struct{})
 	for _, id := range ids {
 		offset := id
 		// In version 2+ series IDs are no longer exact references but series are 16-byte padded
@@ -1721,17 +1722,21 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, er
 		}
 
 		d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
-		buf := d.Get()
-		if d.Err() != nil {
-			return nil, nil, errors.Wrap(d.Err(), "get buffer for series")
-		}
 
-		offsets, err := r.dec.LabelNamesOffsetsFor(buf)
+		offsets, err := r.dec.LabelNamesOffsetsFor(&d)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "get label name offsets")
 		}
 		for _, off := range offsets {
 			offsetsMap[off] = struct{}{}
+		}
+
+		smOffset, err := r.dec.SmNamesOffsetsFor(&d)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "get structured metadata offsets")
+		}
+		for _, off := range smOffset {
+			smOffsetsMap[off] = struct{}{}
 		}
 	}
 
@@ -1740,14 +1745,24 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, er
 	for off := range offsetsMap {
 		name, err := r.lookupSymbol(off)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "lookup symbol in LabelNamesFor")
+			return nil, nil, errors.Wrap(err, "lookup stream symbol in LabelNamesFor")
 		}
 		names = append(names, name)
 	}
-
 	sort.Strings(names)
 
-	return names, nil, nil
+	// Lookup the unique structured metadata symbols.
+	smNames := make([]string, 0, len(smOffsetsMap))
+	for o := range smOffsetsMap {
+		name, err := r.lookupSymbol(o)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "lookup structured metadata symbol in LabelNamesFor")
+		}
+		smNames = append(smNames, name)
+	}
+	sort.Strings(smNames)
+
+	return names, smNames, nil
 }
 
 // LabelValueFor returns label value for the given label name in the series referred to by ID.
@@ -2041,18 +2056,34 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
 // They are returned in the same order they're stored, which should be sorted lexicographically.
-func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
-	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+func (dec *Decoder) LabelNamesOffsetsFor(d *encoding.Decbuf) ([]uint32, error) {
 	_ = d.Be64() // skip fingerprint
 	k := d.Uvarint()
 
 	offsets := make([]uint32, k)
 	for i := 0; i < k; i++ {
-		offsets[i] = uint32(d.Uvarint())
-		_ = d.Uvarint() // skip the label value
+		offsets[i] = d.Uvarint32()
+		_ = d.Uvarint32() // skip the label value
 
 		if d.Err() != nil {
 			return nil, errors.Wrap(d.Err(), "read series label offsets")
+		}
+	}
+
+	return offsets, d.Err()
+}
+
+// LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
+// They are returned in the same order they're stored, which should be sorted lexicographically.
+func (dec *Decoder) SmNamesOffsetsFor(d *encoding.Decbuf) ([]uint32, error) {
+	k := d.Uvarint()
+
+	offsets := make([]uint32, k)
+	for i := 0; i < k; i++ {
+		offsets[i] = d.Uvarint32()
+
+		if d.Err() != nil {
+			return nil, errors.Wrap(d.Err(), "read structured metadata label offsets")
 		}
 	}
 

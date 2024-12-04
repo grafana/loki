@@ -420,7 +420,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(*req.Start, *req.End)
 
-	var ingesterValues [][]string
+	var ingesterValues, ingesterMetaValues [][]string
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		g.Go(func() error {
 			var err error
@@ -428,12 +428,12 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 			timeFramedReq.Start = &ingesterQueryInterval.start
 			timeFramedReq.End = &ingesterQueryInterval.end
 
-			ingesterValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
+			ingesterValues, ingesterMetaValues, err = q.ingesterQuerier.Label(ctx, &timeFramedReq)
 			return err
 		})
 	}
 
-	var storeValues []string
+	var storeValues, storeMetaValues []string
 	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
 		g.Go(func() error {
 			var (
@@ -445,7 +445,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 			if req.Values {
 				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 			} else {
-				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+				storeValues, storeMetaValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 			}
 			return err
 		})
@@ -456,8 +456,10 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 	}
 
 	results := append(ingesterValues, storeValues)
+	smResults := append(ingesterMetaValues, storeMetaValues)
 	return &logproto.LabelResponse{
-		Values: listutil.MergeStringLists(results...),
+		Values:             listutil.MergeStringLists(results...),
+		StructuredMetadata: listutil.MergeStringLists(smResults...),
 	}, nil
 }
 
@@ -972,7 +974,7 @@ func (q *SingleTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.
 			var err error
 			start := model.TimeFromUnixNano(storeQueryInterval.start.UnixNano())
 			end := model.TimeFromUnixNano(storeQueryInterval.end.UnixNano())
-			storeLabels, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs", matchers...)
+			storeLabels, _, err := q.store.LabelNamesForMetricName(ctx, userID, start, end, "logs", matchers...)
 			for _, label := range storeLabels {
 				values, err := q.store.LabelValuesForMetricName(ctx, userID, start, end, "logs", label, matchers...)
 				if err != nil {

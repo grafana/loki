@@ -2,7 +2,6 @@ package ingester
 
 import (
 	"fmt"
-	index2 "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"math"
 	"net"
 	"net/http"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	index2 "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

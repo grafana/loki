@@ -3,13 +3,14 @@ package ingester
 import (
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"os"
 	"sort"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"

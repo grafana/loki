@@ -329,7 +329,7 @@ func (g *Gateway) LabelNamesForMetricName(ctx context.Context, req *logproto.Lab
 		}
 		matchers = matcherExpr.Mts
 	}
-	names, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
+	names, _, err := g.indexQuerier.LabelNamesForMetricName(ctx, instanceID, req.From, req.Through, req.MetricName, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -607,7 +607,7 @@ func accumulateChunksToShards(
 
 	var mtx sync.Mutex
 
-	if err := forSeries.ForSeries(ctx, user, v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()), req.From, req.Through, func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
+	if err := forSeries.ForSeries(ctx, user, v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()), req.From, req.Through, func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta, stats *tsdb_index.StreamStats) (stop bool) {
 		mtx.Lock()
 		defer mtx.Unlock()
 

@@ -225,8 +225,8 @@ func (m *mockChunkStore) LabelValuesForMetricName(_ context.Context, _ string, _
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
-	return nil, nil
+func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+	return nil, nil, nil
 }
 
 func (m *mockChunkStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {

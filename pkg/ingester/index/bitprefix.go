@@ -169,9 +169,9 @@ func (ii *BitPrefixInvertedIndex) Lookup(matchers []*labels.Matcher, shard *logq
 }
 
 // LabelNames returns all label names.
-func (ii *BitPrefixInvertedIndex) LabelNames(shard *logql.Shard) ([]string, error) {
+func (ii *BitPrefixInvertedIndex) LabelNames(shard *logql.Shard) ([]string, []string, error) {
 	if err := ii.validateShard(shard); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var extractor func(unlockIndex) []string
@@ -206,7 +206,7 @@ func (ii *BitPrefixInvertedIndex) LabelNames(shard *logql.Shard) ([]string, erro
 		results = append(results, shardResult)
 	}
 
-	return mergeStringSlices(results), nil
+	return mergeStringSlices(results), nil, nil
 }
 
 // LabelValues returns the values for the given label.

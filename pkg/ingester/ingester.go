@@ -1311,21 +1311,22 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return resp, nil
 	}
 	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
-	var storeValues []string
+	var storeValues, smValues []string
 	if req.Values {
 		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+		storeValues, smValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &logproto.LabelResponse{
-		Values: util.MergeStringLists(resp.Values, storeValues),
+		Values:             util.MergeStringLists(resp.Values, storeValues),
+		StructuredMetadata: util.MergeStringLists(resp.StructuredMetadata, smValues),
 	}, nil
 }
 

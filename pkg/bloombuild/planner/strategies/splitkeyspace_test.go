@@ -333,7 +333,7 @@ func newFakeForSeries(series []*v1.Series) *fakeForSeries {
 	}
 }
 
-func (f fakeForSeries) ForSeries(_ context.Context, _ string, ff index.FingerprintFilter, _ model.Time, _ model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), _ []string, _ ...*labels.Matcher) error {
+func (f fakeForSeries) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	overlapping := make([]*v1.Series, 0, len(f.series))
 	for _, s := range f.series {
 		if ff.Match(s.Fingerprint) {

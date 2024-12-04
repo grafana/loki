@@ -30,7 +30,7 @@ var ErrInvalidShardQuery = errors.New("incompatible index shard query")
 type Interface interface {
 	Add(labels []logproto.LabelAdapter, fp model.Fingerprint) labels.Labels
 	Lookup(matchers []*labels.Matcher, shard *logql.Shard) ([]model.Fingerprint, error)
-	LabelNames(shard *logql.Shard) ([]string, error)
+	LabelNames(shard *logql.Shard) ([]string, []string, error)
 	LabelValues(name string, shard *logql.Shard) ([]string, error)
 	Delete(labels labels.Labels, fp model.Fingerprint)
 }
@@ -183,10 +183,10 @@ func (ii *InvertedIndex) Lookup(matchers []*labels.Matcher, s *logql.Shard) ([]m
 }
 
 // LabelNames returns all label names.
-func (ii *InvertedIndex) LabelNames(s *logql.Shard) ([]string, error) {
+func (ii *InvertedIndex) LabelNames(s *logql.Shard) ([]string, []string, error) {
 	shard, err := ii.validateShard(s)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	shards := ii.getShards(shard)
 	results := make([][]string, 0, len(shards))
@@ -195,7 +195,7 @@ func (ii *InvertedIndex) LabelNames(s *logql.Shard) ([]string, error) {
 		results = append(results, shardResult)
 	}
 
-	return mergeStringSlices(results), nil
+	return mergeStringSlices(results), nil, nil
 }
 
 // LabelValues returns the values for the given label.

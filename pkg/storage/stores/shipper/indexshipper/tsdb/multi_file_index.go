@@ -244,31 +244,44 @@ func (i *MultiIndex) Series(ctx context.Context, userID string, from, through mo
 }
 
 func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
-	acc := newResultAccumulator(func(xs [][]string) ([]string, error) {
+	type labelsResult struct {
+		labels   []string
+		smLabels []string
+	}
+
+	acc := newResultAccumulator(func(xs []labelsResult) (labelsResult, error) {
 		var (
 			maxLn int // maximum number of lNames, assuming no duplicates
-			lists [][]string
+			lists []labelsResult
 		)
-		for _, group := range xs {
-			x := group
-			maxLn += len(x)
+		for _, x := range xs {
+			maxLn += len(x.labels)
 			lists = append(lists, x)
 		}
 
 		// optimistically allocate the maximum length slice
 		// to avoid growing incrementally
-		// TODO(owen-d): use pool
-		results := make([]string, 0, maxLn)
-		seen := make(map[string]struct{})
+		results := labelsResult{
+			labels:   make([]string, 0, maxLn),
+			smLabels: make([]string, 0, maxLn), // Same capacity for sm
+		}
+		seenNames := make(map[string]struct{})
+		seenSM := make(map[string]struct{})
 
 		for _, ls := range lists {
-			for _, l := range ls {
-				_, ok := seen[l]
-				if ok {
-					continue
+			// Handle label names
+			for _, l := range ls.labels {
+				if _, ok := seenNames[l]; !ok {
+					seenNames[l] = struct{}{}
+					results.labels = append(results.labels, l)
 				}
-				seen[l] = struct{}{}
-				results = append(results, l)
+			}
+			// Handle structured metadata names
+			for _, s := range ls.smLabels {
+				if _, ok := seenSM[s]; !ok {
+					seenSM[s] = struct{}{}
+					results.smLabels = append(results.smLabels, s)
+				}
 			}
 		}
 
@@ -280,11 +293,11 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 		from,
 		through,
 		func(ctx context.Context, idx Index) error {
-			got, _, err := idx.LabelNames(ctx, userID, from, through, matchers...)
+			got, sm, err := idx.LabelNames(ctx, userID, from, through, matchers...)
 			if err != nil {
 				return err
 			}
-			acc.Add(got)
+			acc.Add(labelsResult{labels: got, smLabels: sm})
 			return nil
 		},
 	); err != nil {
@@ -298,7 +311,7 @@ func (i *MultiIndex) LabelNames(ctx context.Context, userID string, from, throug
 		}
 		return nil, nil, err
 	}
-	return merged, nil, nil
+	return merged.labels, merged.smLabels, nil
 }
 
 func (i *MultiIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
@@ -371,7 +384,7 @@ func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through mo
 	})
 }
 
-func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
+func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
 		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 	})

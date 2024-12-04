@@ -3,9 +3,10 @@ package stores
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"reflect"
 	"testing"
+
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 
 	"github.com/pkg/errors"
 
@@ -50,8 +51,8 @@ func (m mockStore) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ...
 	return nil, nil
 }
 
-func (m mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
-	return nil, nil
+func (m mockStore) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+	return nil, nil, nil
 }
 
 func (m mockStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
@@ -215,8 +216,8 @@ func (m mockStoreLabel) LabelValuesForMetricName(_ context.Context, _ string, _,
 	return m.values, nil
 }
 
-func (m mockStoreLabel) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
-	return m.values, nil
+func (m mockStoreLabel) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+	return m.values, nil, nil
 }
 
 func TestCompositeStoreLabels(t *testing.T) {
@@ -248,7 +249,7 @@ func TestCompositeStoreLabels(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			have, err := cs.LabelNamesForMetricName(context.Background(), "", model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), "")
+			have, _, err := cs.LabelNamesForMetricName(context.Background(), "", model.TimeFromUnix(tc.from), model.TimeFromUnix(tc.through), "")
 			require.NoError(t, err)
 			if !reflect.DeepEqual(tc.want, have) {
 				t.Fatalf("wrong label names - %s", test.Diff(tc.want, have))

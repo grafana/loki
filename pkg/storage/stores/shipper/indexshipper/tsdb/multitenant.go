@@ -67,7 +67,7 @@ func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, thro
 }
 
 func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
-	res, _, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabelMatcher(userID, matchers)...)
+	res, sm, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabelMatcher(userID, matchers)...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -75,10 +75,11 @@ func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, 
 	// Strip out the tenant label in response.
 	i := sort.SearchStrings(res, TenantLabel)
 	if i == len(res) || res[i] != TenantLabel {
-		return res, nil, nil
+		return res, sm, nil
 	}
+	res = append(res[:i], res[i+1:]...) // Skip tenant label
 
-	return append(res[:i], res[i+1:]...), nil, nil
+	return res, sm, nil
 }
 
 func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
@@ -97,6 +98,6 @@ func (m *MultiTenantIndex) Volume(ctx context.Context, userID string, from, thro
 	return m.idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, withTenantLabelMatcher(userID, matchers)...)
 }
 
-func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
+func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
 	return m.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, withTenantLabelMatcher(userID, matchers)...)
 }

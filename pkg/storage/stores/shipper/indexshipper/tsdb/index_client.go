@@ -184,7 +184,8 @@ func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+// h11: Stopped implementing the interface, needs fix
+func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, []string, error) {
 	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
@@ -299,7 +300,7 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 	var mtx sync.Mutex
 
 	m := make(map[model.Fingerprint]index.ChunkMetas, 1024)
-	if err := c.idx.ForSeries(ctx, userID, v1.FullBounds, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+	if err := c.idx.ForSeries(ctx, userID, v1.FullBounds, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 		mtx.Lock()
 		m[fp] = append(m[fp], chks...)
 		mtx.Unlock()

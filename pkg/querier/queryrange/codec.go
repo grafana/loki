@@ -1091,10 +1091,11 @@ func decodeResponseJSONFrom(buf []byte, req queryrangebase.Request, headers http
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
 		return &LokiLabelNamesResponse{
-			Status:  resp.Status,
-			Version: uint32(loghttp.GetVersion(req.Path())),
-			Data:    resp.Data,
-			Headers: httpResponseHeadersToPromResponseHeaders(headers),
+			Status:             resp.Status,
+			Version:            uint32(loghttp.GetVersion(req.Path())),
+			Data:               resp.Data,
+			StructuredMetadata: resp.StructuredMetadata,
+			Headers:            httpResponseHeadersToPromResponseHeaders(headers),
 		}, nil
 	case *logproto.IndexStatsRequest:
 		var resp logproto.IndexStatsResponse
@@ -1348,11 +1349,14 @@ func encodeResponseJSONTo(version loghttp.Version, res queryrangebase.Response, 
 		}
 	case *LokiLabelNamesResponse:
 		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
-			if err := marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{Values: response.Data}, w); err != nil {
+			if err := marshal_legacy.WriteLabelResponseJSON(logproto.LabelResponse{
+				Values:             response.Data,
+				StructuredMetadata: response.StructuredMetadata,
+			}, w); err != nil {
 				return err
 			}
 		} else {
-			if err := marshal.WriteLabelResponseJSON(response.Data, w); err != nil {
+			if err := marshal.WriteLabelResponseJSON(response.Data, response.StructuredMetadata, w); err != nil {
 				return err
 			}
 		}
@@ -1503,25 +1507,38 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
 		uniqueNames := make(map[string]struct{})
 		names := []string{}
+		uniqueSmNames := make(map[string]struct{})
+		smNames := []string{}
 
 		// only unique name should be merged
 		for _, res := range responses {
 			lokiResult := res.(*LokiLabelNamesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
+
+			// stream label names
 			for _, labelName := range lokiResult.Data {
 				if _, ok := uniqueNames[labelName]; !ok {
 					names = append(names, labelName)
 					uniqueNames[labelName] = struct{}{}
 				}
 			}
+
+			// Structured metadata label names
+			for _, labelName := range lokiResult.StructuredMetadata {
+				if _, ok := uniqueSmNames[labelName]; !ok {
+					smNames = append(smNames, labelName)
+					uniqueSmNames[labelName] = struct{}{}
+				}
+			}
 		}
 
 		return &LokiLabelNamesResponse{
-			Status:     labelNameRes.Status,
-			Version:    labelNameRes.Version,
-			Headers:    labelNameRes.Headers,
-			Data:       names,
-			Statistics: mergedStats,
+			Status:             labelNameRes.Status,
+			Version:            labelNameRes.Version,
+			Headers:            labelNameRes.Headers,
+			Data:               names,
+			StructuredMetadata: smNames,
+			Statistics:         mergedStats,
 		}, nil
 	case *IndexStatsResponse:
 		headers := responses[0].(*IndexStatsResponse).Headers
