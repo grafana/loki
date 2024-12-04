@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 
@@ -25,11 +27,11 @@ const (
 	KafkaEndOffset   SpecialOffset = -1
 )
 
-var rm *readerMetrics
-
-func init() {
-	rm = newReaderMetrics(prometheus.DefaultRegisterer)
-}
+var (
+	rm            *readerMetrics
+	clientMetrics *kprom.Metrics
+	registerOnce  sync.Once
+)
 
 type Record struct {
 	// Context holds the tracing (and potentially other) info, that the record was enriched with on fetch from Kafka.
@@ -105,8 +107,12 @@ func NewKafkaReader(
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*KafkaReader, error) {
+	registerOnce.Do(func() {
+		rm = newReaderMetrics(reg)
+		clientMetrics = client.NewReaderClientMetrics("partition-reader", reg)
+	})
+
 	// Create a new Kafka client for this reader
-	clientMetrics := client.NewReaderClientMetrics("partition-reader", reg)
 	c, err := client.NewReaderClient(
 		cfg,
 		clientMetrics,
