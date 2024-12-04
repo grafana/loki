@@ -60,7 +60,7 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int],
 		endOffset := min(startOffset+p.targetRecordCount, partitionOffset.End.Offset)
 
 		job := NewJobWithPriority(
-			types.NewJob(int(partitionOffset.Partition), types.Offsets{
+			types.NewJob(partitionOffset.Partition, types.Offsets{
 				Min: startOffset,
 				Max: endOffset,
 			}), int(partitionOffset.End.Offset-startOffset),
@@ -135,7 +135,7 @@ func (p *TimeRangePlanner) Plan(ctx context.Context) ([]*JobWithPriority[int], e
 		}
 
 		job := NewJobWithPriority(
-			types.NewJob(int(partitionOffset.Partition), types.Offsets{
+			types.NewJob(partitionOffset.Partition, types.Offsets{
 				Min: startOffset,
 				Max: endOffset,
 			}), int(endOffset-startOffset),

@@ -297,7 +297,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 		"load records",
 		1,
 		func(ctx context.Context) error {
-			lastOffset, err = i.loadRecords(ctx, int32(job.Partition), job.Offsets, inputCh)
+			lastOffset, err = i.loadRecords(ctx, job.Partition, job.Offsets, inputCh)
 			return err
 		},
 		func(ctx context.Context) error {
@@ -545,7 +545,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 		}
 	}
 
-	return lastOffset, err
+	return lastOffset, boff.Err()
 }
 
 func withBackoff[T any](

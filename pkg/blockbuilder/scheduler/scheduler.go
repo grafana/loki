@@ -14,10 +14,10 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 )
 
 var (
-	_ types.Scheduler = unimplementedScheduler{}
 	_ types.Scheduler = &BlockScheduler{}
 )
 
@@ -140,7 +140,7 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 	case <-ctx.Done():
 		return nil, false, ctx.Err()
 	default:
-		return s.queue.Dequeue(builderID)
+		return s.queue.Dequeue(ctx, builderID, false)
 	}
 }
 
@@ -155,17 +155,44 @@ func (s *BlockScheduler) HandleSyncJob(_ context.Context, builderID string, job 
 	return nil
 }
 
-// unimplementedScheduler provides default implementations that panic.
-type unimplementedScheduler struct{}
-
-func (s unimplementedScheduler) HandleGetJob(_ context.Context, _ string) (*types.Job, bool, error) {
-	panic("unimplemented")
+func (s *BlockScheduler) CompleteJob(_ context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
+	s.queue.MarkComplete(req.Job.Id)
+	return nil, nil
 }
 
-func (s unimplementedScheduler) HandleCompleteJob(_ context.Context, _ string, _ *types.Job) error {
-	panic("unimplemented")
+func (s *BlockScheduler) SyncJob(_ context.Context, req *proto.SyncJobRequest) (*proto.SyncJobResponse, error) {
+	s.queue.SyncJob(req.Job.Id, req.BuilderId, &types.Job{
+		ID:        req.Job.Id,
+		Partition: req.Job.Partition,
+		Offsets: types.Offsets{
+			Min: req.Job.Offsets.Min,
+			Max: req.Job.Offsets.Max,
+		},
+	})
+
+	return nil, nil
 }
 
-func (s unimplementedScheduler) HandleSyncJob(_ context.Context, _ string, _ *types.Job) error {
-	panic("unimplemented")
+func (s *BlockScheduler) GetJob(req *proto.GetJobRequest, stream proto.BlockBuilderService_GetJobServer) error {
+	job, ok, err := s.queue.Dequeue(stream.Context(), req.BuilderId, true)
+	if err != nil {
+		return err
+	}
+
+	var jobpb *proto.Job
+	if ok {
+		jobpb = &proto.Job{
+			Id:        job.ID,
+			Partition: job.Partition,
+			Offsets: &proto.Offsets{
+				Min: job.Offsets.Min,
+				Max: job.Offsets.Max,
+			},
+		}
+	}
+
+	return stream.Send(&proto.GetJobResponse{
+		Job: jobpb,
+		Ok:  ok,
+	})
 }
