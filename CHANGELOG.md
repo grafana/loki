@@ -6,6 +6,17 @@
 
 * **promtail:** fix parser for azureeventhubs message without time field ([#14218](https://github.com/grafana/loki/pull/14218))
 
+## [3.3.1](https://github.com/grafana/loki/compare/v3.3.0...v3.3.1) (2024-12-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove `wget` from Promtail docker image (backport release-3.3.x) ([#15146](https://github.com/grafana/loki/issues/15146))
+
+### Miscellaneous Chores
+
+* Remove `wget` from Promtail docker image (backport release-3.3.x) ([#15146](https://github.com/grafana/loki/issues/15146)) ([0f5a994](https://github.com/grafana/loki/commit/0f5a9948f0fc97c8460bd4ec18bb1a41aa7dae67))
+
 ## [3.3.0](https://github.com/grafana/loki/compare/v3.2.1...v3.3.0) (2024-11-19)
 
 
