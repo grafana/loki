@@ -2,7 +2,6 @@ package types
 
 import (
 	"context"
-	"flag"
 	"io"
 
 	"github.com/grafana/dskit/grpcclient"
@@ -18,17 +17,6 @@ import (
 )
 
 var _ Transport = &GRPCTransport{}
-
-type GRPCTransportConfig struct {
-	Address string `yaml:"address,omitempty"`
-
-	// GRPCClientConfig configures the gRPC connection between the block-builder and its scheduler.
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
-}
-
-func (cfg *GRPCTransportConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, prefix+"address", "", "address in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
-}
 
 type grpcTransportMetrics struct {
 	requestLatency *prometheus.HistogramVec
@@ -55,17 +43,16 @@ type GRPCTransport struct {
 
 // NewGRPCTransportFromAddress creates a new gRPC transport instance from an address and dial options
 func NewGRPCTransportFromAddress(
-	metrics *grpcTransportMetrics,
-	cfg GRPCTransportConfig,
+	address string,
+	cfg grpcclient.Config,
+	reg prometheus.Registerer,
 ) (*GRPCTransport, error) {
-
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(metrics.requestLatency))
+	dialOpts, err := cfg.DialOption(grpcclient.Instrument(newGRPCTransportMetrics(reg).requestLatency))
 	if err != nil {
 		return nil, err
 	}
 
-	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
-	conn, err := grpc.Dial(cfg.Address, dialOpts...)
+	conn, err := grpc.NewClient(address, dialOpts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "new grpc pool dial")
 	}
@@ -97,8 +84,9 @@ func (t *GRPCTransport) SendGetJobRequest(ctx context.Context, req *GetJobReques
 // SendCompleteJob implements Transport
 func (t *GRPCTransport) SendCompleteJob(ctx context.Context, req *CompleteJobRequest) error {
 	protoReq := &proto.CompleteJobRequest{
-		BuilderId: req.BuilderID,
-		Job:       jobToProto(req.Job),
+		BuilderId:          req.BuilderID,
+		Job:                jobToProto(req.Job),
+		LastConsumedOffset: req.LastConsumedOffset,
 	}
 
 	_, err := t.CompleteJob(ctx, protoReq)
