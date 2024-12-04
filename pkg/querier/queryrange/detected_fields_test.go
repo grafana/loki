@@ -1334,7 +1334,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		lines := []push.Entry{
 			{
 				Timestamp:          now,
-				Line:               "ts=2024-09-05T15:36:38.757788067Z caller=metrics.go:66 tenant=2419 level=info bytes=1024",
+				Line:               "ts=2024-09-05T15:36:38.757788067Z caller=metrics.go:66 tenant=2419 level=info bytes=1,024",
 				StructuredMetadata: infoDetectdFiledMetadata,
 			},
 			{
