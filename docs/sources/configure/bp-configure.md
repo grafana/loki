@@ -6,7 +6,7 @@ weight:  100
 ---
 # Configuration best practices
 
-Grafana Loki is under active development, and we are constantly working to improve performance. But here are some of the most current best practices for configuration that will give you the best experience with Loki.
+Grafana Loki is under active development, and the Loki team is constantly working to improve performance. But here are some of the most current best practices for configuration that will give you the best experience with Loki.
 
 ## Configure caching
 
@@ -36,7 +36,7 @@ If Loki received these two lines which are for the same stream, everything would
 {job="syslog"} 00:00:01 i'm a syslog!  <- Rejected out of order!
 ```
 
-What can we do about this? What if this was because the sources of these logs were different systems? We can solve this with an additional label which is unique per system:
+What can you do about this? What if this was because the sources of these logs were different systems? You can solve this with an additional label which is unique per system:
 
 ```
 {job="syslog", instance="host1"} 00:00:00 i'm a syslog!
@@ -56,9 +56,9 @@ Using `chunk_target_size` instructs Loki to try to fill all chunks to a target _
 
 Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 2h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
 
-Depending on the compression used (we have been using snappy which has less compressibility but faster performance), you need 5-10x or 7.5-10MB of raw log data to fill a 1.5MB chunk. Remembering that a chunk is per stream, the more streams you break up your log files into, the more chunks that sit in memory, and the higher likelihood they get flushed by hitting one of those timeouts mentioned above before they are filled.
+Depending on the compression used (Loki has been using snappy which has less compressibility but faster performance), you need 5-10x or 7.5-10MB of raw log data to fill a 1.5MB chunk. Remembering that a chunk is per stream, the more streams you break up your log files into, the more chunks that sit in memory, and the higher likelihood they get flushed by hitting one of those timeouts mentioned above before they are filled.
 
-Lots of small, unfilled chunks negatively affect Loki. We are always working to improve this and may consider a compactor to improve this in some situations. But, in general, the guidance should stay about the same: try your best to fill chunks.
+Lots of small, unfilled chunks negatively affect Loki. The team is always working to improve this and may consider a compactor to improve this in some situations. But, in general, the guidance should stay about the same: try your best to fill chunks.
 
 If you have an application that can log fast enough to fill these chunks quickly (much less than `max_chunk_age`), then it becomes more reasonable to use dynamic labels to break that up into separate streams.
 
@@ -68,4 +68,4 @@ Loki and Promtail have flags which will dump the entire config object to stderr 
 
 `-print-config-stderr` works well when invoking Loki from the command line, as you can get a quick output of the entire Loki configuration.
 
-`-log-config-reverse-order` is the flag we run Loki with in all our environments. The configuration entries are reversed, so that the order of the configuration reads correctly top to bottom when viewed in Grafana's Explore.
+`-log-config-reverse-order` is the flag Grafana runs Loki with in all our environments. The configuration entries are reversed, so that the order of the configuration reads correctly top to bottom when viewed in Grafana's Explore.
