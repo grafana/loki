@@ -2643,7 +2643,7 @@ func TestConfigureDeploymentForStorageCA(t *testing.T) {
 										},
 									},
 									Args: []string{
-										"-swift.http.ca-file=/etc/storage/ca/service-ca.crt",
+										"-swift.http.tls-ca-path=/etc/storage/ca/service-ca.crt",
 									},
 									Env: []corev1.EnvVar{
 										{
@@ -2933,7 +2933,7 @@ func TestConfigureStatefulSetForStorageCA(t *testing.T) {
 										},
 									},
 									Args: []string{
-										"-swift.http.ca-file=/etc/storage/ca/service-ca.crt",
+										"-swift.http.tls-ca-path=/etc/storage/ca/service-ca.crt",
 									},
 									Env: []corev1.EnvVar{
 										{
