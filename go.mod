@@ -76,7 +76,7 @@ require (
 	github.com/oklog/run v1.1.0
 	github.com/oklog/ulid v1.3.1 // indirect
 	github.com/opentracing-contrib/go-grpc v0.1.0
-	github.com/opentracing-contrib/go-stdlib v1.0.0
+	github.com/opentracing-contrib/go-stdlib v1.1.0
 	github.com/opentracing/opentracing-go v1.2.1-0.20220228012449-10b1cf09e00b
 	github.com/oschwald/geoip2-golang v1.11.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
@@ -142,7 +142,7 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.5.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/willf/bloom v2.0.3+incompatible
-	go.opentelemetry.io/collector/pdata v1.20.0
+	go.opentelemetry.io/collector/pdata v1.21.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.24.0
 	golang.org/x/text v0.20.0
