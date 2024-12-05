@@ -61,7 +61,7 @@ type RequestQueue struct {
 	connectedConsumers *atomic.Int32
 
 	mtx     sync.Mutex
-	cond    ContextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
+	cond    contextCond // Notified when request is enqueued or dequeued, or querier is disconnected.
 	queues  *tenantQueues
 	stopped bool
 
@@ -77,7 +77,7 @@ func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, lim
 		pool:               NewSlicePool[Request](1<<6, 1<<10, 2), // Buckets are [64, 128, 256, 512, 1024].
 	}
 
-	q.cond = ContextCond{Cond: sync.NewCond(&q.mtx)}
+	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
 	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedConsumers, q.stopping).WithName("request queue")
 
 	return q
@@ -299,8 +299,8 @@ func (q *RequestQueue) GetConnectedConsumersMetric() float64 {
 	return float64(q.connectedConsumers.Load())
 }
 
-// ContextCond is a *sync.Cond with Wait() method overridden to support context-based waiting.
-type ContextCond struct {
+// contextCond is a *sync.Cond with Wait() method overridden to support context-based waiting.
+type contextCond struct {
 	*sync.Cond
 
 	// testHookBeforeWaiting is called before calling Cond.Wait() if it's not nil.
@@ -312,7 +312,7 @@ type ContextCond struct {
 // Wait does c.cond.Wait() but will also return if the context provided is done.
 // All the documentation of sync.Cond.Wait() applies, but it's especially important to remember that the mutex of
 // the cond should be held while Wait() is called (and mutex will be held once it returns)
-func (c ContextCond) Wait(ctx context.Context) {
+func (c contextCond) Wait(ctx context.Context) {
 	// "condWait" goroutine does q.cond.Wait() and signals through condWait channel.
 	condWait := make(chan struct{})
 	go func() {

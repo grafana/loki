@@ -177,7 +177,7 @@ func TestContextCond(t *testing.T) {
 	t.Run("wait until broadcast", func(t *testing.T) {
 		t.Parallel()
 		mtx := &sync.Mutex{}
-		cond := ContextCond{Cond: sync.NewCond(mtx)}
+		cond := contextCond{Cond: sync.NewCond(mtx)}
 
 		doneWaiting := make(chan struct{})
 
@@ -197,7 +197,7 @@ func TestContextCond(t *testing.T) {
 	t.Run("wait until context deadline", func(t *testing.T) {
 		t.Parallel()
 		mtx := &sync.Mutex{}
-		cond := ContextCond{Cond: sync.NewCond(mtx)}
+		cond := contextCond{Cond: sync.NewCond(mtx)}
 		doneWaiting := make(chan struct{})
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -221,7 +221,7 @@ func TestContextCond(t *testing.T) {
 		// we don't know whether it's going to wait before the broadcast triggered by the context cancellation.
 		t.Parallel()
 		mtx := &sync.Mutex{}
-		cond := ContextCond{Cond: sync.NewCond(mtx)}
+		cond := contextCond{Cond: sync.NewCond(mtx)}
 		doneWaiting := make(chan struct{})
 
 		alreadyCanceledContext, cancel := context.WithCancel(context.Background())
@@ -240,7 +240,7 @@ func TestContextCond(t *testing.T) {
 	t.Run("wait on already canceled context, but it takes a while to wait", func(t *testing.T) {
 		t.Parallel()
 		mtx := &sync.Mutex{}
-		cond := ContextCond{
+		cond := contextCond{
 			Cond: sync.NewCond(mtx),
 			testHookBeforeWaiting: func() {
 				// This makes the waiting goroutine so slow that out Wait(ctx) will need to broadcast once it sees it waiting.
@@ -265,7 +265,7 @@ func TestContextCond(t *testing.T) {
 	t.Run("lots of goroutines waiting at the same time, none of them misses it's broadcast from cancel", func(t *testing.T) {
 		t.Parallel()
 		mtx := &sync.Mutex{}
-		cond := ContextCond{
+		cond := contextCond{
 			Cond: sync.NewCond(mtx),
 			testHookBeforeWaiting: func() {
 				// Wait just a little bit to create every goroutine

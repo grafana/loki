@@ -140,7 +140,7 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 	case <-ctx.Done():
 		return nil, false, ctx.Err()
 	default:
-		return s.queue.Dequeue(ctx, builderID, false)
+		return s.queue.Dequeue(builderID)
 	}
 }
 
@@ -173,9 +173,9 @@ func (s *BlockScheduler) SyncJob(_ context.Context, req *proto.SyncJobRequest) (
 	return &proto.SyncJobResponse{}, nil
 }
 
-func (s *BlockScheduler) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
+func (s *BlockScheduler) GetJob(_ context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
 	var resp proto.GetJobResponse
-	job, ok, err := s.queue.Dequeue(ctx, req.BuilderId, false)
+	job, ok, err := s.queue.Dequeue(req.BuilderId)
 	if err != nil {
 		return &resp, err
 	}

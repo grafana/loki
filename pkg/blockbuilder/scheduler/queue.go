@@ -1,13 +1,11 @@
 package scheduler
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
-	"github.com/grafana/loki/v3/pkg/queue"
 )
 
 const (
@@ -46,12 +44,11 @@ type JobQueue struct {
 	completed  *CircularBuffer[*types.Job]           // Last N completed jobs
 	statusMap  map[string]types.JobStatus            // Maps job ID to its current status
 	mu         sync.RWMutex
-	cond       queue.ContextCond // to signal when a job is available
 }
 
 // NewJobQueue creates a new job queue instance
 func NewJobQueue() *JobQueue {
-	q := &JobQueue{
+	return &JobQueue{
 		pending: NewPriorityQueue[*JobWithPriority[int]](func(a, b *JobWithPriority[int]) bool {
 			return a.Priority > b.Priority // Higher priority first
 		}),
@@ -59,11 +56,6 @@ func NewJobQueue() *JobQueue {
 		completed:  NewCircularBuffer[*types.Job](defaultCompletedJobsCapacity),
 		statusMap:  make(map[string]types.JobStatus),
 	}
-	q.cond = queue.ContextCond{
-		Cond: sync.NewCond(&q.mu),
-	}
-
-	return q
 }
 
 func (q *JobQueue) Exists(job *types.Job) (types.JobStatus, bool) {
@@ -87,24 +79,15 @@ func (q *JobQueue) Enqueue(job *types.Job, priority int) error {
 	jobWithPriority := NewJobWithPriority(job, priority)
 	q.pending.Push(jobWithPriority)
 	q.statusMap[job.ID] = types.JobStatusPending
-	q.cond.Broadcast()
 	return nil
 }
 
 // Dequeue gets the next available job and assigns it to a builder
-func (q *JobQueue) Dequeue(ctx context.Context, _ string, wait bool) (*types.Job, bool, error) {
+func (q *JobQueue) Dequeue(_ string) (*types.Job, bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if wait {
-		for q.pending.Len() == 0 && ctx.Err() == nil {
-			q.cond.Wait(ctx)
-		}
-
-		if ctx.Err() != nil {
-			return nil, false, ctx.Err()
-		}
-	} else if q.pending.Len() == 0 {
+	if q.pending.Len() == 0 {
 		return nil, false, nil
 	}
 
