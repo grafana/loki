@@ -6,7 +6,7 @@ toolchain go1.23.1
 
 require (
 	cloud.google.com/go/bigtable v1.33.0
-	cloud.google.com/go/pubsub v1.45.1
+	cloud.google.com/go/pubsub v1.45.2
 	cloud.google.com/go/storage v1.47.0
 	dario.cat/mergo v1.0.1
 	github.com/Azure/azure-pipeline-go v0.2.3
@@ -100,8 +100,8 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.29.0
 	golang.org/x/net v0.31.0
-	golang.org/x/sync v0.9.0
-	golang.org/x/sys v0.27.0
+	golang.org/x/sync v0.10.0
+	golang.org/x/sys v0.28.0
 	golang.org/x/time v0.8.0
 	google.golang.org/api v0.209.0
 	google.golang.org/grpc v1.68.0
@@ -115,7 +115,7 @@ require (
 	github.com/DataDog/sketches-go v1.4.6
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.18.1
-	github.com/IBM/ibm-cos-sdk-go v1.11.1
+	github.com/IBM/ibm-cos-sdk-go v1.12.0
 	github.com/axiomhq/hyperloglog v0.2.0
 	github.com/buger/jsonparser v1.1.1
 	github.com/d4l3k/messagediff v1.2.1
@@ -142,10 +142,10 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.5.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/willf/bloom v2.0.3+incompatible
-	go.opentelemetry.io/collector/pdata v1.20.0
+	go.opentelemetry.io/collector/pdata v1.21.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.24.0
-	golang.org/x/text v0.20.0
+	golang.org/x/text v0.21.0
 	google.golang.org/protobuf v1.35.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.31.3

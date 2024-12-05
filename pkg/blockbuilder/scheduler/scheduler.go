@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -22,17 +24,36 @@ var (
 )
 
 type Config struct {
-	ConsumerGroup                 string        `yaml:"consumer_group"`
-	Interval                      time.Duration `yaml:"interval"`
-	TargetRecordConsumptionPeriod time.Duration `yaml:"target_records_spanning_period"`
-	LookbackPeriod                int64         `yaml:"lookback_period"`
+	ConsumerGroup     string        `yaml:"consumer_group"`
+	Interval          time.Duration `yaml:"interval"`
+	LookbackPeriod    int64         `yaml:"lookback_period"`
+	Strategy          string        `yaml:"strategy"`
+	planner           Planner       `yaml:"-"` // validated planner
+	TargetRecordCount int64         `yaml:"target_record_count"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.Interval, prefix+"interval", 5*time.Minute, "How often the scheduler should plan jobs.")
-	f.DurationVar(&cfg.TargetRecordConsumptionPeriod, prefix+"target-records-spanning-period", time.Hour, "Period used by the planner to calculate the start and end offset such that each job consumes records spanning the target period.")
 	f.StringVar(&cfg.ConsumerGroup, prefix+"consumer-group", "block-scheduler", "Consumer group used by block scheduler to track the last consumed offset.")
 	f.Int64Var(&cfg.LookbackPeriod, prefix+"lookback-period", -2, "Lookback period in milliseconds used by the scheduler to plan jobs when the consumer group has no commits. -1 consumes from the latest offset. -2 consumes from the start of the partition.")
+	f.StringVar(
+		&cfg.Strategy,
+		prefix+"strategy",
+		RecordCountStrategy,
+		fmt.Sprintf(
+			"Strategy used by the planner to plan jobs. One of %s",
+			strings.Join(validStrategies, ", "),
+		),
+	)
+	f.Int64Var(
+		&cfg.TargetRecordCount,
+		prefix+"target-record-count",
+		1000,
+		fmt.Sprintf(
+			"Target record count used by the planner to plan jobs. Only used when strategy is %s",
+			RecordCountStrategy,
+		),
+	)
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -46,6 +67,16 @@ func (cfg *Config) Validate() error {
 
 	if cfg.LookbackPeriod < -2 {
 		return errors.New("only -1(latest) and -2(earliest) are valid as negative values for lookback_period")
+	}
+
+	switch cfg.Strategy {
+	case RecordCountStrategy:
+		if cfg.TargetRecordCount <= 0 {
+			return errors.New("target record count must be a non-zero value")
+		}
+		cfg.planner = NewRecordCountPlanner(cfg.TargetRecordCount)
+	default:
+		return fmt.Errorf("invalid strategy: %s", cfg.Strategy)
 	}
 
 	return nil
@@ -66,10 +97,9 @@ type BlockScheduler struct {
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(cfg Config, queue *JobQueue, offsetReader OffsetReader, logger log.Logger, r prometheus.Registerer) *BlockScheduler {
-	planner := NewTimeRangePlanner(cfg.TargetRecordConsumptionPeriod, offsetReader, func() time.Time { return time.Now().UTC() }, logger)
 	s := &BlockScheduler{
 		cfg:          cfg,
-		planner:      planner,
+		planner:      cfg.planner,
 		offsetReader: offsetReader,
 		logger:       logger,
 		metrics:      NewMetrics(r),
