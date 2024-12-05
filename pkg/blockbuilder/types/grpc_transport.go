@@ -70,12 +70,7 @@ func (t *GRPCTransport) SendGetJobRequest(ctx context.Context, req *GetJobReques
 		BuilderId: req.BuilderID,
 	}
 
-	client, err := t.GetJob(ctx, protoReq)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.Recv()
+	resp, err := t.GetJob(ctx, protoReq)
 	if err != nil {
 		return nil, err
 	}

@@ -157,7 +157,7 @@ func (s *BlockScheduler) HandleSyncJob(_ context.Context, builderID string, job 
 
 func (s *BlockScheduler) CompleteJob(_ context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
 	s.queue.MarkComplete(req.Job.Id)
-	return nil, nil
+	return &proto.CompleteJobResponse{}, nil
 }
 
 func (s *BlockScheduler) SyncJob(_ context.Context, req *proto.SyncJobRequest) (*proto.SyncJobResponse, error) {
@@ -170,18 +170,19 @@ func (s *BlockScheduler) SyncJob(_ context.Context, req *proto.SyncJobRequest) (
 		},
 	})
 
-	return nil, nil
+	return &proto.SyncJobResponse{}, nil
 }
 
-func (s *BlockScheduler) GetJob(req *proto.GetJobRequest, stream proto.BlockBuilderService_GetJobServer) error {
-	job, ok, err := s.queue.Dequeue(stream.Context(), req.BuilderId, true)
+func (s *BlockScheduler) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
+	var resp proto.GetJobResponse
+	job, ok, err := s.queue.Dequeue(ctx, req.BuilderId, false)
 	if err != nil {
-		return err
+		return &resp, err
 	}
 
-	var jobpb *proto.Job
 	if ok {
-		jobpb = &proto.Job{
+		resp.Ok = true
+		resp.Job = &proto.Job{
 			Id:        job.ID,
 			Partition: job.Partition,
 			Offsets: &proto.Offsets{
@@ -191,8 +192,5 @@ func (s *BlockScheduler) GetJob(req *proto.GetJobRequest, stream proto.BlockBuil
 		}
 	}
 
-	return stream.Send(&proto.GetJobResponse{
-		Job: jobpb,
-		Ok:  ok,
-	})
+	return &resp, nil
 }
