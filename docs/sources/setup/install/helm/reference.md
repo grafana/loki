@@ -6247,7 +6247,11 @@ null
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler</td>
 			<td><pre lang="json">
-{}
+{
+  "wal": {
+    "dir": "/var/loki/ruler-wal"
+  }
+}
 </pre>
 </td>
 		</tr>

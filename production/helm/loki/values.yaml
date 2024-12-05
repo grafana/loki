@@ -412,7 +412,9 @@ loki:
           prefix: index_
           period: 24h
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
-  rulerConfig: {}
+  rulerConfig:
+    wal:
+      dir: /var/loki/ruler-wal
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
