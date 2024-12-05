@@ -125,6 +125,44 @@ log_attributes:
 			},
 		},
 		{
+			name: "log_attributes indexing",
+			yamlConfig: []byte(`
+log_attributes:
+  - action: index_label
+    attributes:
+      - user_id
+      - order_id`),
+			expectedCfg: OTLPConfig{
+				ResourceAttributes: ResourceAttributesConfig{
+					AttributesConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig).ResourceAttributes.AttributesConfig,
+				},
+				LogAttributes: []AttributesConfig{
+					{
+						Action:     IndexLabel,
+						Attributes: []string{"user_id", "order_id"},
+					},
+				},
+			},
+		},
+		{
+			name: "log_attributes with regex",
+			yamlConfig: []byte(`
+log_attributes:
+  - action: index_label
+    regex: ^custom_.+`),
+			expectedCfg: OTLPConfig{
+				ResourceAttributes: ResourceAttributesConfig{
+					AttributesConfig: DefaultOTLPConfig(defaultGlobalOTLPConfig).ResourceAttributes.AttributesConfig,
+				},
+				LogAttributes: []AttributesConfig{
+					{
+						Action: IndexLabel,
+						Regex:  relabel.MustNewRegexp("^custom_.+"),
+					},
+				},
+			},
+		},
+		{
 			name: "unsupported action should error",
 			yamlConfig: []byte(`
 log_attributes:
