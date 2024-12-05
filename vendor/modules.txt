@@ -1112,6 +1112,7 @@ github.com/hashicorp/golang-lru/simplelru
 # github.com/hashicorp/golang-lru/v2 v2.0.7
 ## explicit; go 1.18
 github.com/hashicorp/golang-lru/v2
+github.com/hashicorp/golang-lru/v2/expirable
 github.com/hashicorp/golang-lru/v2/internal
 github.com/hashicorp/golang-lru/v2/simplelru
 # github.com/hashicorp/memberlist v0.5.1 => github.com/grafana/memberlist v0.3.1-0.20220714140823-09ffed8adbbe

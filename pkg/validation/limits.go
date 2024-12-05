@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/distributor/pipelines"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -238,6 +239,8 @@ type Limits struct {
 	PatternIngesterTokenizableJSONFieldsAppend  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_append"  json:"pattern_ingester_tokenizable_json_fields_append"  doc:"hidden"`
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
+
+	IngestPipelines pipelines.IngestPipelineConfig `yaml:"ingest_pipelines" json:"ingest_pipelines" doc:"nocli|hidden"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -1161,6 +1164,10 @@ func (o *Overrides) S3SSEKMSKeyID(user string) string {
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
+}
+
+func (o *Overrides) GetIngestPipelines(userID string) pipelines.IngestPipelineConfig {
+	return o.getOverridesForUser(userID).IngestPipelines
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

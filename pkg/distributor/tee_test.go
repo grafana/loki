@@ -6,13 +6,14 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/distributor/model"
 )
 
 type mockedTee struct {
 	mock.Mock
 }
 
-func (m *mockedTee) Duplicate(tenant string, streams []KeyedStream) {
+func (m *mockedTee) Duplicate(tenant string, streams []model.KeyedStream) {
 	m.Called(tenant, streams)
 }
 
@@ -20,7 +21,7 @@ func TestWrapTee(t *testing.T) {
 	tee1 := new(mockedTee)
 	tee2 := new(mockedTee)
 	tee3 := new(mockedTee)
-	streams := []KeyedStream{
+	streams := []model.KeyedStream{
 		{
 			HashKey: 1,
 			Stream:  push.Stream{},

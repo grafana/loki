@@ -19,7 +19,7 @@ func uniqueString(s []string) []string {
 	return us
 }
 
-func sanitizeLabelKey(key string, isPrefix bool) string {
+func SanitizeLabelKey(key string, isPrefix bool) string {
 	if len(key) == 0 {
 		return key
 	}
