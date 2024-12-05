@@ -139,6 +139,17 @@ func PutBucket(cli bce.Client, bucket string, args *PutBucketArgs, ctx *BosConte
 		if len(args.TagList) != 0 {
 			req.SetHeader(http.BCE_TAG, args.TagList)
 		}
+		if args.EnableMultiAz {
+			jsonBytes, jsonErr := json.Marshal(args)
+			if jsonErr != nil {
+				return "", jsonErr
+			}
+			body, err := bce.NewBodyFromBytes(jsonBytes)
+			if err != nil {
+				return "", err
+			}
+			req.SetBody(body)
+		}
 	}
 	resp := &bce.BceResponse{}
 	if err := SendRequest(cli, req, resp, ctx); err != nil {
