@@ -280,3 +280,59 @@ func TestErrorTypeFromHTTPStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestIsError(t *testing.T) {
+	tests := []struct {
+		name           string
+		status         int
+		expectedResult bool
+	}{
+		{
+			name:           "200 OK",
+			status:         200,
+			expectedResult: false,
+		},
+		{
+			name:           "201 Created",
+			status:         201,
+			expectedResult: false,
+		},
+		{
+			name:           "400 Bad Request",
+			status:         400,
+			expectedResult: true,
+		},
+		{
+			name:           "404 Not Found",
+			status:         404,
+			expectedResult: true,
+		},
+		{
+			name:           "429 Too Many Requests",
+			status:         429,
+			expectedResult: true,
+		},
+		{
+			name:           "500 Internal Server Error",
+			status:         500,
+			expectedResult: true,
+		},
+		{
+			name:           "503 Service Unavailable",
+			status:         503,
+			expectedResult: true,
+		},
+		{
+			name:           "600 Unknown",
+			status:         600,
+			expectedResult: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := util.IsError(tt.status)
+			assert.Equal(t, tt.expectedResult, result)
+		})
+	}
+}
