@@ -17,11 +17,18 @@ let
     else
       "dirty";
 
-      imageTag =
-        if (self ? rev) then
-          "${imageTagVersion}"
-        else
-          "${imageTagVersion}-WIP";
+  imageTag =
+    if (self ? rev) then
+      "${imageTagVersion}"
+    else
+      "${imageTagVersion}-WIP";
+
+  meta = with lib; {
+    homepage = "https://grafana.com/oss/loki/";
+    changelog = "https://github.com/grafana/loki/commit/${shortGitRevsion}";
+    maintainers = with maintainers; [ trevorwhitney ];
+
+  };
 
   loki-helm-test = pkgs.callPackage ../production/helm/loki/src/helm-test {
     inherit pkgs;
@@ -46,10 +53,7 @@ in
       description = "LogCLI is a command line tool for interacting with Loki.";
       mainProgram = "logcli";
       license = with licenses; [ agpl3Only ];
-      homepage = "https://grafana.com/oss/loki/";
-      changelog = "https://github.com/grafana/loki/commit/${version}";
-      maintainers = with maintainers; [ trevorwhitney ];
-    };
+    } // meta;
   });
 
   loki-canary = loki.overrideAttrs (oldAttrs: {
@@ -61,10 +65,7 @@ in
       description = "Loki Canary is a canary for the Loki project.";
       mainProgram = "loki-canary";
       license = with licenses; [ agpl3Only ];
-      homepage = "https://grafana.com/oss/loki/";
-      changelog = "https://github.com/grafana/loki/commit/${version}";
-      maintainers = with maintainers; [ trevorwhitney ];
-    };
+    } // meta;
   });
 
   promtail = loki.overrideAttrs (oldAttrs: {
@@ -82,12 +83,9 @@ in
     '';
 
     meta = with lib; {
-      description = "Like Prometheus, but for logs";
-      mainProgram = "loki";
+      description = "Client for sending logs to Loki";
+      mainProgram = "promtail";
       license = with licenses; [ asl20 ];
-      homepage = "https://grafana.com/oss/loki/";
-      changelog = "https://github.com/grafana/loki/commit/${version}";
-      maintainers = with maintainers; [ trevorwhitney ];
-    };
+    } // meta;
   });
 }
