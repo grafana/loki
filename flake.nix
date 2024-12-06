@@ -56,18 +56,32 @@
 
           test = {
             type = "app";
-            program = with pkgs; "${
-                (writeShellScriptBin "test.sh" ''
-                  ${loki.overrideAttrs(old: { 
-                  buildInputs =
-                    let
-                      inherit (old) buildInputs;
-                    in
-                    if pkgs.stdenv.hostPlatform.isLinux then
-                      buildInputs ++ (with pkgs; [ systemd ])
-                    else buildInputs;
-                  doCheck = true; 
-                  })}/bin/loki --version
+            program =
+              let
+                loki = pkgs.loki.overrideAttrs (old: {
+                  buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
+                  doCheck = true;
+                  checkFlags = [
+                    "-v"
+                    "-covermode=atomic"
+                    "-coverprofile=coverage.txt"
+                    "-p=4"
+                  ];
+                  subPackages = [
+                    "./..."
+                    "cmd/loki"
+                    "cmd/logcli"
+                    "cmd/loki-canary"
+                    "clients/cmd/promtail"
+                  ];
+                });
+              in
+              "${
+                (pkgs.writeShellScriptBin "test.sh" ''
+                  ${loki}/bin/loki --version
+                  ${loki}/bin/logcli --version
+                  ${loki}/bin/loki-canary --version
+                  ${loki}/bin/promtail --version
                 '')
               }/bin/test.sh";
           };
@@ -78,10 +92,6 @@
             (pkgs.callPackage ./nix/packages/chart-releaser.nix {
               inherit pkgs;
               inherit (pkgs) buildGoModule fetchFromGitHub;
-            })
-
-            (pkgs.callPackage ./nix/packages/faillint.nix {
-              inherit (pkgs) lib buildGoModule fetchFromGitHub;
             })
 
             chart-testing

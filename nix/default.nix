@@ -42,51 +42,50 @@
       logcli = loki.overrideAttrs (oldAttrs: {
         pname = "logcli";
 
-        buildPhase = ''
-          export GOCACHE=$TMPDIR/go-cache
-          make clean logcli
-        '';
+        subPackages = [ "cmd/logcli" ];
 
-        installPhase = ''
-          mkdir -p $out/bin
-          install -m755 cmd/logcli/logcli $out/bin/logcli
-        '';
+        meta = with prev.lib; {
+          description = "LogCLI is a command line tool for interacting with Loki.";
+          mainProgram = "logcli";
+          license = with licenses; [ agpl3Only ];
+          homepage = "https://grafana.com/oss/loki/";
+          changelog = "https://github.com/grafana/loki/commit/${version}";
+          maintainers = with maintainers; [ trevorwhitney ];
+        };
       });
 
       loki-canary = loki.overrideAttrs (oldAttrs: {
         pname = "loki-canary";
 
-        buildPhase = ''
-          export GOCACHE=$TMPDIR/go-cache
-          make clean loki-canary
-        '';
+        subPackages = [ "cmd/loki-canary" ];
 
-        installPhase = ''
-          mkdir -p $out/bin
-          install -m755 cmd/loki-canary/loki-canary $out/bin/loki-canary
-        '';
+        meta = with prev.lib; {
+          description = "Loki Canary is a canary for the Loki project.";
+          mainProgram = "loki-canary";
+          license = with licenses; [ agpl3Only ];
+          homepage = "https://grafana.com/oss/loki/";
+          changelog = "https://github.com/grafana/loki/commit/${version}";
+          maintainers = with maintainers; [ trevorwhitney ];
+        };
       });
 
       promtail = loki.overrideAttrs (oldAttrs: {
         pname = "promtail";
 
-        buildInputs =
-          let
-            inherit (oldAttrs) buildInputs;
-          in
-          if prev.stdenv.hostPlatform.isLinux then
-            buildInputs ++ (with prev; [ systemd ])
-          else buildInputs;
+        buildInputs = with prev; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
 
-        buildPhase = ''
-          export GOCACHE=$TMPDIR/go-cache
-          make clean promtail
-        '';
+        tags = [ "promtail_journal_enabled" ];
 
-        installPhase = ''
-          mkdir -p $out/bin
-          install -m755 clients/cmd/promtail/promtail $out/bin/promtail
-        '';
+        subPackages = [ "clients/cmd/promtail" ];
+
+        meta = with prev.lib; {
+          description = "Like Prometheus, but for logs";
+          mainProgram = "loki";
+          license = with licenses; [ asl20 ];
+          homepage = "https://grafana.com/oss/loki/";
+          changelog = "https://github.com/grafana/loki/commit/${version}";
+          maintainers = with maintainers; [ trevorwhitney ];
+        };
       });
     };
 }
