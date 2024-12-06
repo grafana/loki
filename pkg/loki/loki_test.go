@@ -155,7 +155,7 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 func getRandomPorts(n int) []int {
 	portListeners := []net.Listener{}
 	for i := 0; i < n; i++ {
-		listener, err := net.Listen("tcp", ":0")
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			panic(err)
 		}
@@ -178,6 +178,8 @@ func getRandomPorts(n int) []int {
 
 func TestLoki_CustomRunOptsBehavior(t *testing.T) {
 	ports := getRandomPorts(2)
+  println("ports", ports)
+
 	httpPort := ports[0]
 	grpcPort := ports[1]
 
@@ -205,8 +207,12 @@ schema_config:
 	cfgWrapper, _, err := configWrapperFromYAML(t, yamlConfig, nil)
 	require.NoError(t, err)
 
+  println("here, creating new Loki")
+
 	loki, err := New(cfgWrapper.Config)
 	require.NoError(t, err)
+
+  println("here, have a loki")
 
 	lokiHealthCheck := func() error {
 		// wait for Loki HTTP server to be ready.
@@ -239,6 +245,7 @@ schema_config:
 		require.NoError(t, err)
 	}
 
+  println("here, running loki in a different go routine")
 	// Run Loki querier in a different go routine and with custom /config handler.
 	go func() {
 		err := loki.Run(RunOpts{CustomConfigEndpointHandlerFn: customHandler})
@@ -248,16 +255,23 @@ schema_config:
 	err = lokiHealthCheck()
 	require.NoError(t, err)
 
+  println("here, about to get config")
+
 	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/config", httpPort))
 	require.NoError(t, err)
 
 	defer resp.Body.Close()
 
+  println("here, reading response body")
 	bBytes, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, string(bBytes), "abc")
 	assert.True(t, customHandlerInvoked)
+
+  println("here, unregistering loki metrics")
 	unregisterLokiMetrics(loki)
+
+  println("here, done")
 }
 
 func unregisterLokiMetrics(loki *Loki) {

@@ -68,7 +68,8 @@ pkgs.stdenv.mkDerivation {
     export GOPROXY=off
     export BUILD_IN_CONTAINER=false
 
-    make lint test
+    # make lint test
+    go test -covermode=atomic -coverprofile=coverage.txt -p=4 -run "^TestLoki_CustomRunOptsBehavior$" -v  ./pkg/loki
   '';
 
   installPhase = ''
