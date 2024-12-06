@@ -15,7 +15,7 @@
             config = { allowUnfree = true; };
           };
       in
-      {
+      rec {
         defaultPackage = pkgs.loki;
 
         packages = import ./nix {
@@ -38,7 +38,7 @@
             type = "app";
             program =
               let
-                loki = pkgs.loki.overrideAttrs (old: {
+                loki = packages.loki.overrideAttrs (old: {
                   buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
                   doCheck = true;
                   checkFlags = [
@@ -84,7 +84,7 @@
             nixpkgs-fmt
             statix
             yamllint
-          ];
+          ] // packages;
         };
       });
 }
