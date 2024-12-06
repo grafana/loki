@@ -1542,7 +1542,8 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
 		querierCfg := bloomgateway.QuerierConfig{
-			MinTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildInterval:    t.Cfg.BloomBuild.Planner.PlanningInterval,
 		}
 		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
