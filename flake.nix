@@ -6,41 +6,21 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  # Nixpkgs / NixOS version to use.
-
   outputs = { self, nixpkgs, flake-utils }:
-    let
-      nix = import ./nix { inherit self; };
-    in
-    {
-      overlays = {
-        default = nix.overlay;
-      };
-    } //
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [
-            nix.overlay
-          ];
-          config = { allowUnfree = true; };
-        };
+        pkgs = import nixpkgs
+          {
+            inherit system;
+            config = { allowUnfree = true; };
+          };
       in
       {
-        # The default package for 'nix build'. This makes sense if the
-        # flake provides only one package or there is a clear "main"
-        # package.
         defaultPackage = pkgs.loki;
 
-        packages = with pkgs; {
-          inherit
-            logcli
-            loki
-            loki-canary
-            loki-helm-test
-            loki-helm-test-docker
-            promtail;
+        packages = import ./nix {
+          inherit self pkgs;
+          inherit (pkgs) lib;
         };
 
         apps = {
@@ -68,7 +48,7 @@
                     "-p=4"
                   ];
                   subPackages = [
-                    "./..."
+                    "./..." # for tests
                     "cmd/loki"
                     "cmd/logcli"
                     "cmd/loki-canary"
