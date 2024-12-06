@@ -329,7 +329,7 @@ func ErrorTypeFromHTTPStatus(status int) string {
 }
 
 func IsError(status int) bool {
-	return status/200 != 0
+	return status/100 != 2
 }
 
 func IsServerError(status int) bool {
