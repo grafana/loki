@@ -119,7 +119,7 @@ func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from
 	preFilterSeries := len(grouped)
 
 	// Do not attempt to filter chunks for which there are no blooms
-	minAge := model.Now().Add(-1 * (config.ObjectStorageIndexRequiredPeriod*time.Duration(bq.cfg.BuildTableOffset) + bq.cfg.BuildInterval))
+	minAge := model.Now().Add(-1 * (config.ObjectStorageIndexRequiredPeriod*time.Duration(bq.cfg.BuildTableOffset) + 2*bq.cfg.BuildInterval))
 	if through.After(minAge) {
 		level.Info(logger).Log(
 			"msg", "skip too recent chunks",
