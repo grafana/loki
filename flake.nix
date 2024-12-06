@@ -42,7 +42,6 @@
                   buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
                   doCheck = true;
                   checkFlags = [
-                    "-v"
                     "-covermode=atomic"
                     "-coverprofile=coverage.txt"
                     "-p=4"
