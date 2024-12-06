@@ -46,6 +46,7 @@
                     "-covermode=atomic"
                     "-coverprofile=coverage.txt"
                     "-p=4"
+                    "-timeout=30m"
                   ];
                   subPackages = [
                     "./..." # for tests
