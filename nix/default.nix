@@ -76,6 +76,11 @@ in
 
     subPackages = [ "clients/cmd/promtail" ];
 
+    preFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+      wrapProgram $out/bin/promtail \
+        --prefix LD_LIBRARY_PATH : "${lib.getLib pkgs.systemd}/lib"
+    '';
+
     meta = with lib; {
       description = "Like Prometheus, but for logs";
       mainProgram = "loki";

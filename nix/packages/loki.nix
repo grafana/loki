@@ -25,11 +25,6 @@ pkgs.buildGo123Module {
 
   nativeBuildInputs = with pkgs; [ makeWrapper ];
 
-  preFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
-    wrapProgram $out/bin/promtail \
-      --prefix LD_LIBRARY_PATH : "${lib.getLib pkgs.systemd}/lib"
-  '';
-
   doCheck = false;
 
   meta = with lib; {
