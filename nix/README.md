@@ -1,5 +1,6 @@
 # Nix
 
+test
 This folder (along with the top level `flake.nix`) contains Nix configurations to enable this project to be built by `nix`. These configurations are mostly wrappers around Makefile goals. The goal of this work is to enable people who use `nix` to integrate this project more easily in their workflows. It is not the goal of this work to replace the Makefile, and any Nix configurations added should wrap Makefile goals whenever possible so binaries built with `nix` will be identical to those built without.
 
 ## What is Nix
