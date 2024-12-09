@@ -84,9 +84,9 @@ func (t *GRPCTransport) SendGetJobRequest(ctx context.Context, req *GetJobReques
 // SendCompleteJob implements Transport
 func (t *GRPCTransport) SendCompleteJob(ctx context.Context, req *CompleteJobRequest) error {
 	protoReq := &proto.CompleteJobRequest{
-		BuilderId:          req.BuilderID,
-		Job:                jobToProto(req.Job),
-		LastConsumedOffset: req.LastConsumedOffset,
+		BuilderId: req.BuilderID,
+		Job:       jobToProto(req.Job),
+		Success:   req.Success,
 	}
 
 	_, err := t.CompleteJob(ctx, protoReq)
@@ -111,7 +111,7 @@ func protoToJob(p *proto.Job) *Job {
 	}
 	return &Job{
 		ID:        p.GetId(),
-		Partition: int(p.GetPartition()),
+		Partition: p.GetPartition(),
 		Offsets: Offsets{
 			Min: p.GetOffsets().GetMin(),
 			Max: p.GetOffsets().GetMax(),
@@ -126,7 +126,7 @@ func jobToProto(j *Job) *proto.Job {
 	}
 	return &proto.Job{
 		Id:        j.ID,
-		Partition: int32(j.Partition),
+		Partition: j.Partition,
 		Offsets: &proto.Offsets{
 			Min: j.Offsets.Min,
 			Max: j.Offsets.Max,

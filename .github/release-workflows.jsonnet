@@ -20,15 +20,9 @@ local imageJobs = {
 
 local weeklyImageJobs = {
   loki: build.weeklyImage('loki', 'cmd/loki'),
-  fluentd: build.weeklyImage('fluent-plugin-loki', 'clients/cmd/fluentd', platform=['linux/amd64']),
-  'fluent-bit': build.weeklyImage('fluent-bit-plugin-loki', 'clients/cmd/fluent-bit', platform=['linux/amd64']),
-  logstash: build.weeklyImage('logstash-output-loki', 'clients/cmd/logstash', platform=['linux/amd64']),
-  logcli: build.weeklyImage('logcli', 'cmd/logcli'),
   'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary'),
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail'),
-  querytee: build.weeklyImage('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
-  'loki-docker-driver': build.weeklyDockerPlugin('grafana/loki-docker-driver', 'clients/cmd/docker-driver', platform=['linux/amd64', 'linux/arm64']),
 };
 
 local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');

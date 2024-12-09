@@ -192,6 +192,10 @@ block_builder:
   # CLI flag: -blockbuilder.sync-interval
   [sync_interval: <duration> | default = 30s]
 
+  # The interval at which to poll for new jobs.
+  # CLI flag: -blockbuilder.poll-interval
+  [poll_interval: <duration> | default = 30s]
+
   # Address of the scheduler in the format described here:
   # https://github.com/grpc/grpc/blob/master/doc/naming.md
   # CLI flag: -blockbuilder.scheduler-address
