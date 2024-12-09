@@ -462,8 +462,8 @@ github.com/aws/smithy-go/rand
 github.com/aws/smithy-go/time
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
-# github.com/axiomhq/hyperloglog v0.2.0
-## explicit; go 1.21
+# github.com/axiomhq/hyperloglog v0.2.1
+## explicit; go 1.23
 github.com/axiomhq/hyperloglog
 # github.com/baidubce/bce-sdk-go v0.9.205
 ## explicit; go 1.11
@@ -1169,6 +1169,9 @@ github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.3.0
 ## explicit; go 1.7
 github.com/julienschmidt/httprouter
+# github.com/kamstrup/intmap v0.5.0
+## explicit; go 1.23
+github.com/kamstrup/intmap
 # github.com/klauspost/compress v1.17.11
 ## explicit; go 1.21
 github.com/klauspost/compress
