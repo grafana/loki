@@ -59,7 +59,8 @@ type PrefixType struct {
 }
 
 type PutBucketArgs struct {
-	TagList string
+	TagList string `json:"-"`
+	EnableMultiAz bool `json:"enableMultiAz"`
 }
 
 // ListObjectsResult defines the result structure of ListObjects api.
