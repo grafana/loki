@@ -2030,6 +2030,7 @@ func schemaHasBoltDBShipperConfig(scfg config.SchemaConfig) bool {
 }
 
 func GetInstanceAddr(addr string, netInterfaces []string, logger log.Logger) (string, error) {
+	fmt.Println("Getting instance address", "addr", addr, "netInterfaces", netInterfaces)
 	if addr != "" {
 		return addr, nil
 	}
