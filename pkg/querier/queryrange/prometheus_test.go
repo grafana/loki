@@ -16,7 +16,8 @@ var emptyStats = `"stats": {
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
-		"shardsDuration": 0
+		"shardsDuration": 0,
+		"usedBloomFilters": false
 	},
 	"ingester" : {
 		"store": {

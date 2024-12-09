@@ -7,6 +7,7 @@ import (
 
 	"github.com/c2h5oh/datasize"
 	"github.com/opentracing/opentracing-go"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
@@ -72,23 +73,23 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 	predicate chunk.Predicate,
 	storeChunksOverride *logproto.ChunkRefGroup,
 ) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
-	errs := make(chan error)
 
 	var storeChunks [][]chunk.Chunk
+	g, ctx := errgroup.WithContext(ctx)
+
 	var fetchers []*fetcher.Fetcher
-	go func() {
+	g.Go(func() error {
 		var err error
 		storeChunks, fetchers, err = a.Store.GetChunks(ctx, userID, from, through, predicate, storeChunksOverride)
-		errs <- err
-	}()
+		return err
+	})
 
 	var ingesterChunks []string
 
-	go func() {
+	g.Go(func() error {
 		if !a.shouldQueryIngesters(through, model.Now()) {
 			level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
-			errs <- nil
-			return
+			return nil
 		}
 
 		var err error
@@ -100,14 +101,11 @@ func (a *AsyncStore) GetChunks(ctx context.Context,
 			}
 			level.Debug(util_log.Logger).Log("msg", "got chunk ids from ingester", "count", len(ingesterChunks))
 		}
-		errs <- err
-	}()
+		return err
+	})
 
-	for i := 0; i < 2; i++ {
-		err := <-errs
-		if err != nil {
-			return nil, nil, err
-		}
+	if err := g.Wait(); err != nil {
+		return nil, nil, err
 	}
 
 	if len(ingesterChunks) == 0 {
@@ -372,15 +370,8 @@ func mergeShardsFromIngestersAndStore(
 
 	shards := sharding.LinearShards(int(totalBytes/targetBytesPerShard), totalBytes)
 
-	// increment the total chunks by the number seen from ingesters
-	// NB(owen-d): this isn't perfect as it mixes signals a bit by joining
-	// store chunks which _could_ possibly be filtered with ingester chunks which can't,
-	// but it's still directionally helpful
-	updatedStats := storeResp.Statistics
-	updatedStats.Index.TotalChunks += int64(statsResp.Chunks)
 	return &logproto.ShardsResponse{
-		Shards:     shards,
-		Statistics: updatedStats,
+		Shards: shards,
 		// explicitly nil chunkgroups when we've changed the shards+included chunkrefs from ingesters
 		ChunkGroups: nil,
 	}

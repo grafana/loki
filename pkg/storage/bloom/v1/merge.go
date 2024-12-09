@@ -69,11 +69,6 @@ func (mbq *HeapIterator[T]) At() T {
 	return mbq.cache
 }
 
-func (mbq *HeapIterator[T]) push(x iter.PeekIterator[T]) {
-	mbq.itrs = append(mbq.itrs, x)
-	mbq.up(mbq.Len() - 1)
-}
-
 func (mbq *HeapIterator[T]) pop() (T, bool) {
 	for {
 		if mbq.Len() == 0 {

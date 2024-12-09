@@ -52,6 +52,10 @@
       // cores and will result in scheduling delays.
       concurrency: 4,
 
+      // use_no_constraints is false by default allowing either TopologySpreadConstraints or pod antiAffinity to be configured.
+      // If no_schedule_constraints is set to true, neither of the pod constraints will be applied.
+      no_schedule_constraints: false,
+
       // If use_topology_spread is true, queriers can run on nodes already running queriers but will be
       // spread through the available nodes using a TopologySpreadConstraints with a max skew
       // of topology_spread_max_skew.

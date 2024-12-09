@@ -27,8 +27,7 @@ type groupConsumer struct {
 	cooperative atomicBool // true if the group balancer chosen during Join is cooperative
 
 	// The data for topics that the user assigned. Metadata updates the
-	// atomic.Value in each pointer atomically. If we are consuming via
-	// regex, metadata grabs the lock to add new topics.
+	// atomic.Value in each pointer atomically.
 	tps *topicsPartitions
 
 	reSeen map[string]bool // topics we evaluated against regex, and whether we want them or not
@@ -1714,11 +1713,6 @@ func (g *groupConsumer) findNewAssignments() {
 		delta int
 	}
 
-	var rns reNews
-	if g.cfg.regex {
-		defer rns.log(&g.cl.cfg)
-	}
-
 	var numNewTopics int
 	toChange := make(map[string]change, len(topics))
 	for topic, topicPartitions := range topics {
@@ -1741,20 +1735,7 @@ func (g *groupConsumer) findNewAssignments() {
 		// support adding new regex).
 		useTopic := true
 		if g.cfg.regex {
-			want, seen := g.reSeen[topic]
-			if !seen {
-				for rawRe, re := range g.cfg.topics {
-					if want = re.MatchString(topic); want {
-						rns.add(rawRe, topic)
-						break
-					}
-				}
-				if !want {
-					rns.skip(topic)
-				}
-				g.reSeen[topic] = want
-			}
-			useTopic = want
+			useTopic = g.reSeen[topic]
 		}
 
 		// We only track using the topic if there are partitions for

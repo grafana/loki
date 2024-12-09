@@ -88,7 +88,11 @@ validate_version_update "${new_chart_version}" "${current_chart_version}" "${lat
 
 if ${k_release}; then
   update_yaml_node "${values_file}" .loki.image.tag "${latest_loki_tag}"
+  update_yaml_node "${values_file}" .lokiCanary.image.tag "${latest_loki_tag}"
+
   update_yaml_node "${values_file}" .enterprise.image.tag "${latest_gel_tag}"
+  update_yaml_node "${values_file}" .enterprise.provisioner.image.tag "${latest_gel_tag}"
+
   update_yaml_node "${chart_file}" .appVersion "$(extract_k_version "${latest_loki_tag}")"
 fi
 
@@ -106,7 +110,9 @@ fi
 
 make TTY='' helm-docs
 
-echo "::set-output name=new_chart_version::${new_chart_version}"
+# shellcheck disable=SC2154,SC2250
+echo "new_chart_version=${new_chart_version}" >> "$GITHUB_OUTPUT"
 if ${k_release}; then
-  echo "::set-output name=weekly::$(extract_k_version "${latest_loki_tag}")"
+  # shellcheck disable=SC2154,SC2250
+  echo "weekly=$(extract_k_version "${latest_loki_tag}")" >> "$GITHUB_OUTPUT"
 fi

@@ -270,6 +270,7 @@ func (b *priorityBalancer) run() {
 			// deadlock.
 			b.mu.Lock()
 			if b.done.HasFired() {
+				b.mu.Unlock()
 				return
 			}
 			switch s := u.(type) {

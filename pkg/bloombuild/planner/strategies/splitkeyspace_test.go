@@ -3,26 +3,21 @@ package strategies
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-var testDay = parseDayTime("2023-09-01")
-var testTable = config.NewDayTable(testDay, "index_")
-
 func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
-
 	for _, tc := range []struct {
 		desc           string
 		err            bool
@@ -36,24 +31,24 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 			err:            true,
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
-				tsdbID(0): nil,
+				plannertest.TsdbID(0): nil,
 			},
 			metas: []bloomshipper.Meta{
-				genMeta(11, 20, []int{0}, nil),
+				plannertest.GenMeta(11, 20, []int{0}, nil),
 			},
 		},
 		{
 			desc:           "single tsdb",
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
-				tsdbID(0): nil,
+				plannertest.TsdbID(0): nil,
 			},
 			metas: []bloomshipper.Meta{
-				genMeta(4, 8, []int{0}, nil),
+				plannertest.GenMeta(4, 8, []int{0}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdbIdentifier: tsdbID(0),
+					tsdbIdentifier: plannertest.TsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(0, 3),
 						v1.NewBounds(9, 10),
@@ -65,22 +60,22 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 			desc:           "multiple tsdbs with separate blocks",
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
-				tsdbID(0): nil,
-				tsdbID(1): nil,
+				plannertest.TsdbID(0): nil,
+				plannertest.TsdbID(1): nil,
 			},
 			metas: []bloomshipper.Meta{
-				genMeta(0, 5, []int{0}, nil),
-				genMeta(6, 10, []int{1}, nil),
+				plannertest.GenMeta(0, 5, []int{0}, nil),
+				plannertest.GenMeta(6, 10, []int{1}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdbIdentifier: tsdbID(0),
+					tsdbIdentifier: plannertest.TsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(6, 10),
 					},
 				},
 				{
-					tsdbIdentifier: tsdbID(1),
+					tsdbIdentifier: plannertest.TsdbID(1),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(0, 5),
 					},
@@ -91,22 +86,22 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 			desc:           "multiple tsdbs with the same blocks",
 			ownershipRange: v1.NewBounds(0, 10),
 			tsdbs: map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries{
-				tsdbID(0): nil,
-				tsdbID(1): nil,
+				plannertest.TsdbID(0): nil,
+				plannertest.TsdbID(1): nil,
 			},
 			metas: []bloomshipper.Meta{
-				genMeta(0, 5, []int{0, 1}, nil),
-				genMeta(6, 8, []int{1}, nil),
+				plannertest.GenMeta(0, 5, []int{0, 1}, nil),
+				plannertest.GenMeta(6, 8, []int{1}, nil),
 			},
 			exp: []tsdbGaps{
 				{
-					tsdbIdentifier: tsdbID(0),
+					tsdbIdentifier: plannertest.TsdbID(0),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(6, 10),
 					},
 				},
 				{
-					tsdbIdentifier: tsdbID(1),
+					tsdbIdentifier: plannertest.TsdbID(1),
 					gaps: []v1.FingerprintBounds{
 						v1.NewBounds(9, 10),
 					},
@@ -120,7 +115,7 @@ func Test_gapsBetweenTSDBsAndMetas(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Equal(t, tc.exp, gaps)
+			require.ElementsMatch(t, tc.exp, gaps)
 		})
 	}
 }
@@ -137,17 +132,17 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "single overlapping meta+no overlapping block",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
+			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{plannertest.TsdbID(0)},
 			metas: []bloomshipper.Meta{
-				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(11, 20)}),
+				plannertest.GenMeta(5, 20, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(11, 20)}),
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbID(0),
+					tsdb: plannertest.TsdbID(0),
 					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
-							Series: genSeries(v1.NewBounds(0, 10)),
+							Series: plannertest.GenSeries(v1.NewBounds(0, 10)),
 						},
 					},
 				},
@@ -156,18 +151,18 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "single overlapping meta+one overlapping block",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
+			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{plannertest.TsdbID(0)},
 			metas: []bloomshipper.Meta{
-				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(9, 20)}),
+				plannertest.GenMeta(5, 20, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(9, 20)}),
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbID(0),
+					tsdb: plannertest.TsdbID(0),
 					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
-							Series: genSeries(v1.NewBounds(0, 10)),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(9, 20)},
+							Series: plannertest.GenSeries(v1.NewBounds(0, 10)),
+							Blocks: []bloomshipper.BlockRef{plannertest.GenBlockRef(9, 20)},
 						},
 					},
 				},
@@ -179,18 +174,18 @@ func Test_blockPlansForGaps(t *testing.T) {
 			// but we can trim the range needing generation
 			desc:           "trims up to date area",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
+			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{plannertest.TsdbID(0)},
 			metas: []bloomshipper.Meta{
-				genMeta(9, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for same tsdb
-				genMeta(9, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for different tsdb
+				plannertest.GenMeta(9, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(9, 20)}), // block for same tsdb
+				plannertest.GenMeta(9, 20, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(9, 20)}), // block for different tsdb
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbID(0),
+					tsdb: plannertest.TsdbID(0),
 					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 8),
-							Series: genSeries(v1.NewBounds(0, 8)),
+							Series: plannertest.GenSeries(v1.NewBounds(0, 8)),
 						},
 					},
 				},
@@ -199,19 +194,19 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "uses old block for overlapping range",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
+			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{plannertest.TsdbID(0)},
 			metas: []bloomshipper.Meta{
-				genMeta(9, 20, []int{0}, []bloomshipper.BlockRef{genBlockRef(9, 20)}), // block for same tsdb
-				genMeta(5, 20, []int{1}, []bloomshipper.BlockRef{genBlockRef(5, 20)}), // block for different tsdb
+				plannertest.GenMeta(9, 20, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(9, 20)}), // block for same tsdb
+				plannertest.GenMeta(5, 20, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(5, 20)}), // block for different tsdb
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbID(0),
+					tsdb: plannertest.TsdbID(0),
 					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 8),
-							Series: genSeries(v1.NewBounds(0, 8)),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(5, 20)},
+							Series: plannertest.GenSeries(v1.NewBounds(0, 8)),
+							Blocks: []bloomshipper.BlockRef{plannertest.GenBlockRef(5, 20)},
 						},
 					},
 				},
@@ -220,50 +215,50 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "multi case",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0), tsdbID(1)}, // generate for both tsdbs
+			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{plannertest.TsdbID(0), plannertest.TsdbID(1)}, // generate for both tsdbs
 			metas: []bloomshipper.Meta{
-				genMeta(0, 2, []int{0}, []bloomshipper.BlockRef{
-					genBlockRef(0, 1),
-					genBlockRef(1, 2),
+				plannertest.GenMeta(0, 2, []int{0}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(0, 1),
+					plannertest.GenBlockRef(1, 2),
 				}), // tsdb_0
-				genMeta(6, 8, []int{0}, []bloomshipper.BlockRef{genBlockRef(6, 8)}), // tsdb_0
+				plannertest.GenMeta(6, 8, []int{0}, []bloomshipper.BlockRef{plannertest.GenBlockRef(6, 8)}), // tsdb_0
 
-				genMeta(3, 5, []int{1}, []bloomshipper.BlockRef{genBlockRef(3, 5)}),   // tsdb_1
-				genMeta(8, 10, []int{1}, []bloomshipper.BlockRef{genBlockRef(8, 10)}), // tsdb_1
+				plannertest.GenMeta(3, 5, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(3, 5)}),   // tsdb_1
+				plannertest.GenMeta(8, 10, []int{1}, []bloomshipper.BlockRef{plannertest.GenBlockRef(8, 10)}), // tsdb_1
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbID(0),
+					tsdb: plannertest.TsdbID(0),
 					gaps: []protos.Gap{
 						// tsdb (id=0) can source chunks from the blocks built from tsdb (id=1)
 						{
 							Bounds: v1.NewBounds(3, 5),
-							Series: genSeries(v1.NewBounds(3, 5)),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(3, 5)},
+							Series: plannertest.GenSeries(v1.NewBounds(3, 5)),
+							Blocks: []bloomshipper.BlockRef{plannertest.GenBlockRef(3, 5)},
 						},
 						{
 							Bounds: v1.NewBounds(9, 10),
-							Series: genSeries(v1.NewBounds(9, 10)),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(8, 10)},
+							Series: plannertest.GenSeries(v1.NewBounds(9, 10)),
+							Blocks: []bloomshipper.BlockRef{plannertest.GenBlockRef(8, 10)},
 						},
 					},
 				},
 				// tsdb (id=1) can source chunks from the blocks built from tsdb (id=0)
 				{
-					tsdb: tsdbID(1),
+					tsdb: plannertest.TsdbID(1),
 					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 2),
-							Series: genSeries(v1.NewBounds(0, 2)),
+							Series: plannertest.GenSeries(v1.NewBounds(0, 2)),
 							Blocks: []bloomshipper.BlockRef{
-								genBlockRef(0, 1),
-								genBlockRef(1, 2),
+								plannertest.GenBlockRef(0, 1),
+								plannertest.GenBlockRef(1, 2),
 							},
 						},
 						{
 							Bounds: v1.NewBounds(6, 7),
-							Series: genSeries(v1.NewBounds(6, 7)),
-							Blocks: []bloomshipper.BlockRef{genBlockRef(6, 8)},
+							Series: plannertest.GenSeries(v1.NewBounds(6, 7)),
+							Blocks: []bloomshipper.BlockRef{plannertest.GenBlockRef(6, 8)},
 						},
 					},
 				},
@@ -272,28 +267,28 @@ func Test_blockPlansForGaps(t *testing.T) {
 		{
 			desc:           "dedupes block refs",
 			ownershipRange: v1.NewBounds(0, 10),
-			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{tsdbID(0)},
+			tsdbs:          []tsdb.SingleTenantTSDBIdentifier{plannertest.TsdbID(0)},
 			metas: []bloomshipper.Meta{
-				genMeta(9, 20, []int{1}, []bloomshipper.BlockRef{
-					genBlockRef(1, 4),
-					genBlockRef(9, 20),
+				plannertest.GenMeta(9, 20, []int{1}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(1, 4),
+					plannertest.GenBlockRef(9, 20),
 				}), // blocks for first diff tsdb
-				genMeta(5, 20, []int{2}, []bloomshipper.BlockRef{
-					genBlockRef(5, 10),
-					genBlockRef(9, 20), // same block references in prior meta (will be deduped)
+				plannertest.GenMeta(5, 20, []int{2}, []bloomshipper.BlockRef{
+					plannertest.GenBlockRef(5, 10),
+					plannertest.GenBlockRef(9, 20), // same block references in prior meta (will be deduped)
 				}), // block for second diff tsdb
 			},
 			exp: []blockPlan{
 				{
-					tsdb: tsdbID(0),
+					tsdb: plannertest.TsdbID(0),
 					gaps: []protos.Gap{
 						{
 							Bounds: v1.NewBounds(0, 10),
-							Series: genSeries(v1.NewBounds(0, 10)),
+							Series: plannertest.GenSeries(v1.NewBounds(0, 10)),
 							Blocks: []bloomshipper.BlockRef{
-								genBlockRef(1, 4),
-								genBlockRef(5, 10),
-								genBlockRef(9, 20),
+								plannertest.GenBlockRef(1, 4),
+								plannertest.GenBlockRef(5, 10),
+								plannertest.GenBlockRef(9, 20),
 							},
 						},
 					},
@@ -305,7 +300,7 @@ func Test_blockPlansForGaps(t *testing.T) {
 			// We add series spanning the whole FP ownership range
 			tsdbs := make(map[tsdb.SingleTenantTSDBIdentifier]common.ClosableForSeries)
 			for _, id := range tc.tsdbs {
-				tsdbs[id] = newFakeForSeries(genSeries(tc.ownershipRange))
+				tsdbs[id] = newFakeForSeries(plannertest.GenSeries(tc.ownershipRange))
 			}
 
 			// we reuse the gapsBetweenTSDBsAndMetas function to generate the gaps as this function is tested
@@ -323,72 +318,8 @@ func Test_blockPlansForGaps(t *testing.T) {
 				require.Error(t, err)
 				return
 			}
-			require.Equal(t, tc.exp, plans)
+			require.ElementsMatch(t, tc.exp, plans)
 		})
-	}
-}
-
-func genSeries(bounds v1.FingerprintBounds) []*v1.Series {
-	series := make([]*v1.Series, 0, int(bounds.Max-bounds.Min+1))
-	for i := bounds.Min; i <= bounds.Max; i++ {
-		series = append(series, &v1.Series{
-			Fingerprint: i,
-			Chunks: v1.ChunkRefs{
-				{
-					From:     0,
-					Through:  1,
-					Checksum: 1,
-				},
-			},
-		})
-	}
-	return series
-}
-
-func genMeta(min, max model.Fingerprint, sources []int, blocks []bloomshipper.BlockRef) bloomshipper.Meta {
-	m := bloomshipper.Meta{
-		MetaRef: bloomshipper.MetaRef{
-			Ref: bloomshipper.Ref{
-				TenantID:  "fakeTenant",
-				TableName: testTable.Addr(),
-				Bounds:    v1.NewBounds(min, max),
-			},
-		},
-		Blocks: blocks,
-	}
-	for _, source := range sources {
-		m.Sources = append(m.Sources, tsdbID(source))
-	}
-	return m
-}
-
-func genBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
-	startTS, endTS := testDay.Bounds()
-	return bloomshipper.BlockRef{
-		Ref: bloomshipper.Ref{
-			TenantID:       "fakeTenant",
-			TableName:      testTable.Addr(),
-			Bounds:         v1.NewBounds(min, max),
-			StartTimestamp: startTS,
-			EndTimestamp:   endTS,
-			Checksum:       0,
-		},
-	}
-}
-
-func tsdbID(n int) tsdb.SingleTenantTSDBIdentifier {
-	return tsdb.SingleTenantTSDBIdentifier{
-		TS: time.Unix(int64(n), 0),
-	}
-}
-
-func parseDayTime(s string) config.DayTime {
-	t, err := time.Parse("2006-01-02", s)
-	if err != nil {
-		panic(err)
-	}
-	return config.DayTime{
-		Time: model.TimeFromUnix(t.Unix()),
 	}
 }
 
@@ -417,6 +348,7 @@ func (f fakeForSeries) ForSeries(_ context.Context, _ string, ff index.Fingerpri
 				MinTime:  int64(c.From),
 				MaxTime:  int64(c.Through),
 				Checksum: c.Checksum,
+				KB:       100,
 			})
 		}
 

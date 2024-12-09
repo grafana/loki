@@ -221,7 +221,7 @@ func TestParseRequest(t *testing.T) {
 			enableServiceDiscovery:    true,
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff"}`: float64(len("fizzbuss"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff", service_name="stuff"}`: float64(len("fizzbuss"))},
 			expectedLabels:            labels.FromStrings("foo", "bar2", "job", "stuff", LabelServiceName, "stuff"),
 		},
 		{
@@ -232,7 +232,7 @@ func TestParseRequest(t *testing.T) {
 			enableServiceDiscovery:    true,
 			expectedBytes:             len("fizzbuzz"),
 			expectedLines:             1,
-			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
+			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", service_name="unknown_service"}`: float64(len("fizzbuss"))},
 			expectedLabels:            labels.FromStrings("foo", "bar2", LabelServiceName, ServiceUnknown),
 		},
 		{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"io"
+	"slices"
 	"sort"
 
 	"github.com/go-kit/log"
@@ -14,7 +15,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
-	"golang.org/x/exp/slices"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -116,6 +116,7 @@ func (i *ClientConfig) Validate() error {
 
 type Client interface {
 	FilterChunks(ctx context.Context, tenant string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error)
+	PrefetchBloomBlocks(ctx context.Context, blocks []bloomshipper.BlockRef) error
 }
 
 // clientPool is a minimal interface that is satisfied by the JumpHashClientPool.
@@ -204,7 +205,48 @@ func (c *GatewayClient) Close() {
 	c.dnsProvider.Stop()
 }
 
-// FilterChunkRefs implements Client
+func (c *GatewayClient) PrefetchBloomBlocks(ctx context.Context, blocks []bloomshipper.BlockRef) error {
+	if len(blocks) == 0 {
+		return nil
+	}
+
+	pos := make(map[string]int)
+	servers := make([]addrWithBlocks, 0, len(blocks))
+	for _, block := range blocks {
+		addr, err := c.pool.Addr(block.String())
+		if err != nil {
+			level.Error(c.logger).Log("msg", "failed to resolve server address for block", "block", block, "err", err)
+			continue
+		}
+
+		if idx, found := pos[addr]; found {
+			servers[idx].blocks = append(servers[idx].blocks, block.String())
+		} else {
+			pos[addr] = len(servers)
+			servers = append(servers, addrWithBlocks{
+				addr:   addr,
+				blocks: []string{block.String()},
+			})
+		}
+	}
+
+	return concurrency.ForEachJob(ctx, len(servers), len(servers), func(ctx context.Context, i int) error {
+		rs := servers[i]
+		return c.doForAddrs([]string{rs.addr}, func(client logproto.BloomGatewayClient) error {
+			req := &logproto.PrefetchBloomBlocksRequest{Blocks: rs.blocks}
+			_, err := client.PrefetchBloomBlocks(ctx, req)
+			if err != nil {
+				level.Error(c.logger).Log("msg", "block prefetch failed for instance, skipping", "addr", rs.addr, "blocks", len(rs.blocks), "err", err)
+				c.metrics.clientRequests.WithLabelValues(routePrefectBlocks, typeError).Inc()
+			} else {
+				c.metrics.clientRequests.WithLabelValues(routePrefectBlocks, typeSuccess).Inc()
+			}
+			return err
+		})
+	})
+}
+
+// FilterChunks implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval bloomshipper.Interval, blocks []blockWithSeries, plan plan.QueryPlan) ([]*logproto.GroupedChunkRefs, error) {
 	// no block and therefore no series with chunks
 	if len(blocks) == 0 {
@@ -268,10 +310,10 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, _ string, interval blo
 					"err", err,
 				)
 				// filter none of the results on failed request
-				c.metrics.clientRequests.WithLabelValues(typeError).Inc()
+				c.metrics.clientRequests.WithLabelValues(routeFilterChunks, typeError).Inc()
 				results[i] = rs.groups
 			} else {
-				c.metrics.clientRequests.WithLabelValues(typeSuccess).Inc()
+				c.metrics.clientRequests.WithLabelValues(routeFilterChunks, typeSuccess).Inc()
 				results[i] = resp.ChunkRefs
 			}
 
@@ -301,12 +343,12 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 		iters = append(iters, iter.NewPeekIter(iter.NewSliceIter(inp)))
 	}
 
-	heapIter := v1.NewHeapIterator[*logproto.GroupedChunkRefs](
+	heapIter := v1.NewHeapIterator(
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint < b.Fingerprint },
 		iters...,
 	)
 
-	dedupeIter := iter.NewDedupingIter[*logproto.GroupedChunkRefs, *logproto.GroupedChunkRefs](
+	dedupeIter := iter.NewDedupingIter(
 		// eq
 		func(a, b *logproto.GroupedChunkRefs) bool { return a.Fingerprint == b.Fingerprint },
 		// from
@@ -322,6 +364,7 @@ func mergeSeries(input [][]*logproto.GroupedChunkRefs, buf []*logproto.GroupedCh
 			}
 			return &logproto.GroupedChunkRefs{
 				Fingerprint: a.Fingerprint,
+				Labels:      a.Labels,
 				Tenant:      a.Tenant,
 				Refs:        mergeChunkSets(a.Refs, b.Refs),
 			}
@@ -387,6 +430,11 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 		return nil
 	}
 	return err
+}
+
+type addrWithBlocks struct {
+	addr   string
+	blocks []string
 }
 
 type addrWithGroups struct {

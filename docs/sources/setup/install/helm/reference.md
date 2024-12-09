@@ -53,6 +53,7 @@ This is the generated reference for the Loki Helm Chart values.
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -81,7 +82,8 @@ This is the generated reference for the Loki Helm Chart values.
     "type": "RollingUpdate"
   },
   "terminationGracePeriodSeconds": 60,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -126,6 +128,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -267,6 +278,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for admin-api Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for admin-api pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -2685,7 +2705,8 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -3008,6 +3029,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for distributor pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise</td>
 			<td>object</td>
 			<td>Configuration for running Enterprise Loki</td>
@@ -3032,7 +3062,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": null
+    "tag": "3.3.1"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3205,7 +3235,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-null
+"3.3.1"
 </pre>
 </td>
 		</tr>
@@ -3616,6 +3646,7 @@ false
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
+  "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
@@ -3647,6 +3678,7 @@ false
   },
   "terminationGracePeriodSeconds": 60,
   "tolerations": [],
+  "topologySpreadConstraints": [],
   "useDefaultProxyURLs": true
 }
 </pre>
@@ -3692,6 +3724,15 @@ false
 			<td>enterpriseGateway.extraContainers</td>
 			<td>list</td>
 			<td>Conifgure optional extraContainers</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the enterprise gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3835,6 +3876,15 @@ false
 			<td>enterpriseGateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for gateway Pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for enterprise-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4212,6 +4262,15 @@ false
 			<td>Lifecycle for the gateway container</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.clientMaxBodySize</td>
+			<td>string</td>
+			<td>Allows customizing the `client_max_body_size` directive</td>
+			<td><pre lang="json">
+"4M"
 </pre>
 </td>
 		</tr>
@@ -4629,6 +4688,7 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
+  "topologySpreadConstraints": [],
   "updateStrategy": {
     "type": "RollingUpdate"
   }
@@ -4912,6 +4972,15 @@ null
 			<td>indexGateway.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for index-gateway pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for index-gateway pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -5783,6 +5852,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>kubeVersionOverride</td>
+			<td>string</td>
+			<td>Overrides the version used to determine compatibility of resources with the target Kubernetes cluster. This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version, which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm devises.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>kubectlImage</td>
 			<td>object</td>
 			<td>kubetclImage is used in the enterprise provisioner and tokengen jobs</td>
@@ -6012,7 +6090,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"3.3.1"
 </pre>
 </td>
 		</tr>
@@ -6169,7 +6247,11 @@ null
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler</td>
 			<td><pre lang="json">
-{}
+{
+  "wal": {
+    "dir": "/var/loki/ruler-wal"
+  }
+}
 </pre>
 </td>
 		</tr>
@@ -6649,7 +6731,7 @@ false
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.23-alpine"
+"1.6.32-alpine"
 </pre>
 </td>
 		</tr>
@@ -6734,7 +6816,7 @@ true
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v0.14.2"
+"v0.15.0"
 </pre>
 </td>
 		</tr>
@@ -7648,7 +7730,8 @@ false
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -7974,6 +8057,15 @@ null
 			<td>patternIngester.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for pattern ingester pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for pattern ingester pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -8503,7 +8595,8 @@ Defaults to allow skew no more then 1 node
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -8817,6 +8910,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler</td>
 			<td>object</td>
 			<td>Configuration for the query-scheduler</td>
@@ -8861,7 +8963,8 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -9070,6 +9173,15 @@ null
 			<td>queryScheduler.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for query-scheduler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for query-scheduler pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -9970,7 +10082,8 @@ null
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
-  "tolerations": []
+  "tolerations": [],
+  "topologySpreadConstraints": []
 }
 </pre>
 </td>
@@ -10266,6 +10379,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ruler.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for ruler pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>serviceAccount.annotations</td>
 			<td>object</td>
 			<td>Annotations for the service account</td>
@@ -10360,7 +10482,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.27.5"
+"1.28.0"
 </pre>
 </td>
 		</tr>

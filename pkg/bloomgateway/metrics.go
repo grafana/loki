@@ -18,12 +18,14 @@ type metrics struct {
 const (
 	typeSuccess = "success"
 	typeError   = "error"
+
+	routeFilterChunks  = "FilterChunks"
+	routePrefectBlocks = "PrefetchBloomBlocks"
 )
 
 type clientMetrics struct {
 	clientRequests *prometheus.CounterVec
 	requestLatency *prometheus.HistogramVec
-	clients        prometheus.Gauge
 }
 
 func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
@@ -33,7 +35,7 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Subsystem: "bloom_gateway_client",
 			Name:      "requests_total",
 			Help:      "Total number of requests made to the bloom gateway",
-		}, []string{"type"}),
+		}, []string{"route", "type"}),
 		requestLatency: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: constants.Loki,
 			Subsystem: "bloom_gateway_client",
@@ -41,12 +43,6 @@ func newClientMetrics(registerer prometheus.Registerer) *clientMetrics {
 			Help:      "Time (in seconds) spent serving requests when using the bloom gateway",
 			Buckets:   instrument.DefBuckets,
 		}, []string{"operation", "status_code"}),
-		clients: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Subsystem: "bloom_gateway",
-			Name:      "clients",
-			Help:      "The current number of bloom gateway clients.",
-		}),
 	}
 }
 
@@ -57,6 +53,7 @@ type serverMetrics struct {
 	requestedChunks  prometheus.Histogram
 	filteredChunks   prometheus.Histogram
 	receivedMatchers prometheus.Histogram
+	prefetchedBlocks *prometheus.CounterVec
 }
 
 func newMetrics(registerer prometheus.Registerer, namespace, subsystem string) *metrics {
@@ -112,6 +109,12 @@ func newServerMetrics(registerer prometheus.Registerer, namespace, subsystem str
 			Help:      "Number of matchers per request.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 9), // 1 -> 256
 		}),
+		prefetchedBlocks: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "prefetched_blocks_total",
+			Help:      "Total amount of blocks prefetched by the bloom-gateway",
+		}, []string{"status"}),
 	}
 }
 

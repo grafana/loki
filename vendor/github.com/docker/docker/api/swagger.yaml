@@ -19,10 +19,10 @@ produces:
 consumes:
   - "application/json"
   - "text/plain"
-basePath: "/v1.46"
+basePath: "/v1.47"
 info:
   title: "Docker Engine API"
-  version: "1.46"
+  version: "1.47"
   x-logo:
     url: "https://docs.docker.com/assets/images/logo-docker-main.png"
   description: |
@@ -55,8 +55,8 @@ info:
     the URL is not supported by the daemon, a HTTP `400 Bad Request` error message
     is returned.
 
-    If you omit the version-prefix, the current version of the API (v1.46) is used.
-    For example, calling `/info` is the same as calling `/v1.46/info`. Using the
+    If you omit the version-prefix, the current version of the API (v1.47) is used.
+    For example, calling `/info` is the same as calling `/v1.47/info`. Using the
     API without a version-prefix is deprecated and will be removed in a future release.
 
     Engine releases in the near future should support this version of the API,
@@ -393,7 +393,7 @@ definitions:
                Make the mount non-recursively read-only, but still leave the mount recursive
                (unless NonRecursive is set to `true` in conjunction).
 
-               Addded in v1.44, before that version all read-only mounts were
+               Added in v1.44, before that version all read-only mounts were
                non-recursive by default. To match the previous behaviour this
                will default to `true` for clients on versions prior to v1.44.
             type: "boolean"
@@ -1384,7 +1384,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always empty. It must not be used, and will be removed in API v1.47.
+          > always empty. It must not be used, and will be removed in API v1.48.
         type: "string"
         example: ""
       Domainname:
@@ -1394,7 +1394,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always empty. It must not be used, and will be removed in API v1.47.
+          > always empty. It must not be used, and will be removed in API v1.48.
         type: "string"
         example: ""
       User:
@@ -1408,7 +1408,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.47.
+          > always false. It must not be used, and will be removed in API v1.48.
         type: "boolean"
         default: false
         example: false
@@ -1419,7 +1419,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.47.
+          > always false. It must not be used, and will be removed in API v1.48.
         type: "boolean"
         default: false
         example: false
@@ -1430,7 +1430,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.47.
+          > always false. It must not be used, and will be removed in API v1.48.
         type: "boolean"
         default: false
         example: false
@@ -1457,7 +1457,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.47.
+          > always false. It must not be used, and will be removed in API v1.48.
         type: "boolean"
         default: false
         example: false
@@ -1468,7 +1468,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.47.
+          > always false. It must not be used, and will be removed in API v1.48.
         type: "boolean"
         default: false
         example: false
@@ -1479,7 +1479,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always false. It must not be used, and will be removed in API v1.47.
+          > always false. It must not be used, and will be removed in API v1.48.
         type: "boolean"
         default: false
         example: false
@@ -1516,7 +1516,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always empty. It must not be used, and will be removed in API v1.47.
+          > always empty. It must not be used, and will be removed in API v1.48.
         type: "string"
         default: ""
         example: ""
@@ -1555,7 +1555,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always omitted. It must not be used, and will be removed in API v1.47.
+          > always omitted. It must not be used, and will be removed in API v1.48.
         type: "boolean"
         default: false
         example: false
@@ -1567,7 +1567,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always omitted. It must not be used, and will be removed in API v1.47.
+          > always omitted. It must not be used, and will be removed in API v1.48.
         type: "string"
         default: ""
         example: ""
@@ -1601,7 +1601,7 @@ definitions:
           <p><br /></p>
 
           > **Deprecated**: this field is not part of the image specification and is
-          > always omitted. It must not be used, and will be removed in API v1.47.
+          > always omitted. It must not be used, and will be removed in API v1.48.
         type: "integer"
         default: 10
         x-nullable: true
@@ -2216,7 +2216,7 @@ definitions:
       Created:
         description: |
           Date and time at which the image was created as a Unix timestamp
-          (number of seconds sinds EPOCH).
+          (number of seconds since EPOCH).
         type: "integer"
         x-nullable: false
         example: "1644009612"
@@ -2265,6 +2265,19 @@ definitions:
         x-nullable: false
         type: "integer"
         example: 2
+      Manifests:
+        description: |
+          Manifests is a list of manifests available in this image.
+          It provides a more detailed view of the platform-specific image manifests
+          or other image-attached data like build attestations.
+
+          WARNING: This is experimental and may change at any time without any backward
+          compatibility.
+        type: "array"
+        x-nullable: false
+        x-omitempty: true
+        items:
+          $ref: "#/definitions/ImageManifestSummary"
 
   AuthConfig:
     type: "object"
@@ -2500,7 +2513,7 @@ definitions:
         example: false
       Attachable:
         description: |
-          Wheter a global / swarm scope network is manually attachable by regular
+          Whether a global / swarm scope network is manually attachable by regular
           containers from workers in swarm mode.
         type: "boolean"
         default: false
@@ -3723,7 +3736,7 @@ definitions:
                 example: "json-file"
               Options:
                 description: |
-                  Driver-specific options for the selectd log driver, specified
+                  Driver-specific options for the selected log driver, specified
                   as key/value pairs.
                 type: "object"
                 additionalProperties:
@@ -5318,7 +5331,7 @@ definitions:
         description: |
           The default (and highest) API version that is supported by the daemon
         type: "string"
-        example: "1.46"
+        example: "1.47"
       MinAPIVersion:
         description: |
           The minimum API version that is supported by the daemon
@@ -5334,7 +5347,7 @@ definitions:
           The version Go used to compile the daemon, and the version of the Go
           runtime in use.
         type: "string"
-        example: "go1.21.13"
+        example: "go1.22.7"
       Os:
         description: |
           The operating system that the daemon is running on ("linux" or "windows")
@@ -6644,6 +6657,120 @@ definitions:
     additionalProperties:
       type: "string"
 
+  ImageManifestSummary:
+    x-go-name: "ManifestSummary"
+    description: |
+      ImageManifestSummary represents a summary of an image manifest.
+    type: "object"
+    required: ["ID", "Descriptor", "Available", "Size", "Kind"]
+    properties:
+      ID:
+        description: |
+          ID is the content-addressable ID of an image and is the same as the
+          digest of the image manifest.
+        type: "string"
+        example: "sha256:95869fbcf224d947ace8d61d0e931d49e31bb7fc67fffbbe9c3198c33aa8e93f"
+      Descriptor:
+        $ref: "#/definitions/OCIDescriptor"
+      Available:
+        description: Indicates whether all the child content (image config, layers) is fully available locally.
+        type: "boolean"
+        example: true
+      Size:
+        type: "object"
+        x-nullable: false
+        required: ["Content", "Total"]
+        properties:
+          Total:
+            type: "integer"
+            format: "int64"
+            example: 8213251
+            description: |
+              Total is the total size (in bytes) of all the locally present
+              data (both distributable and non-distributable) that's related to
+              this manifest and its children.
+              This equal to the sum of [Content] size AND all the sizes in the
+              [Size] struct present in the Kind-specific data struct.
+              For example, for an image kind (Kind == "image")
+              this would include the size of the image content and unpacked
+              image snapshots ([Size.Content] + [ImageData.Size.Unpacked]).
+          Content:
+            description: |
+              Content is the size (in bytes) of all the locally present
+              content in the content store (e.g. image config, layers)
+              referenced by this manifest and its children.
+              This only includes blobs in the content store.
+            type: "integer"
+            format: "int64"
+            example: 3987495
+      Kind:
+        type: "string"
+        example: "image"
+        enum:
+          - "image"
+          - "attestation"
+          - "unknown"
+        description: |
+          The kind of the manifest.
+
+          kind         | description
+          -------------|-----------------------------------------------------------
+          image        | Image manifest that can be used to start a container.
+          attestation  | Attestation manifest produced by the Buildkit builder for a specific image manifest.
+      ImageData:
+        description: |
+          The image data for the image manifest.
+          This field is only populated when Kind is "image".
+        type: "object"
+        x-nullable: true
+        x-omitempty: true
+        required: ["Platform", "Containers", "Size", "UnpackedSize"]
+        properties:
+          Platform:
+            $ref: "#/definitions/OCIPlatform"
+            description: |
+              OCI platform of the image. This will be the platform specified in the
+              manifest descriptor from the index/manifest list.
+              If it's not available, it will be obtained from the image config.
+          Containers:
+            description: |
+              The IDs of the containers that are using this image.
+            type: "array"
+            items:
+              type: "string"
+            example: ["ede54ee1fda366ab42f824e8a5ffd195155d853ceaec74a927f249ea270c7430", "abadbce344c096744d8d6071a90d474d28af8f1034b5ea9fb03c3f4bfc6d005e"]
+          Size:
+            type: "object"
+            x-nullable: false
+            required: ["Unpacked"]
+            properties:
+              Unpacked:
+                type: "integer"
+                format: "int64"
+                example: 3987495
+                description: |
+                  Unpacked is the size (in bytes) of the locally unpacked
+                  (uncompressed) image content that's directly usable by the containers
+                  running this image.
+                  It's independent of the distributable content - e.g.
+                  the image might still have an unpacked data that's still used by
+                  some container even when the distributable/compressed content is
+                  already gone.
+      AttestationData:
+        description: |
+          The image data for the attestation manifest.
+          This field is only populated when Kind is "attestation".
+        type: "object"
+        x-nullable: true
+        x-omitempty: true
+        required: ["For"]
+        properties:
+          For:
+            description: |
+              The digest of the image manifest that this attestation is for.
+            type: "string"
+            example: "sha256:95869fbcf224d947ace8d61d0e931d49e31bb7fc67fffbbe9c3198c33aa8e93f"
+
 paths:
   /containers/json:
     get:
@@ -7585,7 +7712,7 @@ paths:
         * Memory usage % = `(used_memory / available_memory) * 100.0`
         * cpu_delta = `cpu_stats.cpu_usage.total_usage - precpu_stats.cpu_usage.total_usage`
         * system_cpu_delta = `cpu_stats.system_cpu_usage - precpu_stats.system_cpu_usage`
-        * number_cpus = `lenght(cpu_stats.cpu_usage.percpu_usage)` or `cpu_stats.online_cpus`
+        * number_cpus = `length(cpu_stats.cpu_usage.percpu_usage)` or `cpu_stats.online_cpus`
         * CPU usage % = `(cpu_delta / system_cpu_delta) * number_cpus * 100.0`
       operationId: "ContainerStats"
       produces: ["application/json"]
@@ -8622,6 +8749,11 @@ paths:
           description: "Show digest information as a `RepoDigests` field on each image."
           type: "boolean"
           default: false
+        - name: "manifests"
+          in: "query"
+          description: "Include `Manifests` in the image summary."
+          type: "boolean"
+          default: false
       tags: ["Image"]
   /build:
     post:
@@ -9094,12 +9226,23 @@ paths:
       parameters:
         - name: "name"
           in: "path"
-          description: "Image name or ID."
+          description: |
+            Name of the image to push. For example, `registry.example.com/myimage`.
+            The image must be present in the local image store with the same name.
+
+            The name should be provided without tag; if a tag is provided, it
+            is ignored. For example, `registry.example.com/myimage:latest` is
+            considered equivalent to `registry.example.com/myimage`.
+
+            Use the `tag` parameter to specify the tag to push.
           type: "string"
           required: true
         - name: "tag"
           in: "query"
-          description: "The tag to associate with the image on the registry."
+          description: |
+            Tag of the image to push. For example, `latest`. If no tag is provided,
+            all tags of the given image that are present in the local image store
+            are pushed.
           type: "string"
         - name: "X-Registry-Auth"
           in: "header"

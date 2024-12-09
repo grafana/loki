@@ -37,9 +37,9 @@ For more information, see [Ingesting logs to Loki using OpenTelemetry Collector]
 
 The following clients have been developed by the Loki community or other third-parties and can be used to send log data to Loki.  
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Grafana Labs cannot provide support for third-party clients. Once an issue has been determined to be with the client and not Loki, it is the responsibility of the customer to work with the associated vendor or project for bug fixes to these clients.
-{{% /admonition %}}
+{{< /admonition >}}
 
 The following are popular third-party Loki clients:
 
@@ -56,6 +56,7 @@ By adding our output plugin you can quickly try Loki without doing big configura
 These third-party clients also enable sending logs to Loki:
 
 - [Cribl Loki Destination](https://docs.cribl.io/stream/destinations-loki)
+- [GrafanaLokiLogger](https://github.com/antoniojmsjr/GrafanaLokiLogger) (Delphi/Lazarus)
 - [ilogtail](https://github.com/alibaba/ilogtail) (Go)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)

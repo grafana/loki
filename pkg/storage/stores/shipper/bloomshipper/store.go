@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"slices"
 	"sort"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -334,7 +334,7 @@ func NewBloomStore(
 	}
 
 	for _, periodicConfig := range periodicConfigs {
-		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
+		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, "bloomshipper", storageConfig, clientMetrics)
 		if err != nil {
 			return nil, errors.Wrapf(err, "creating object client for period %s", periodicConfig.From)
 		}

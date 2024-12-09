@@ -3,7 +3,6 @@ package strategies
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,19 +16,27 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
+type SplitKeyspaceStrategyLimits interface {
+	BloomSplitSeriesKeyspaceBy(tenantID string) int
+}
+
 type SplitKeyspaceStrategy struct {
-	limits Limits
+	limits SplitKeyspaceStrategyLimits
 	logger log.Logger
 }
 
 func NewSplitKeyspaceStrategy(
-	limits Limits,
+	limits SplitKeyspaceStrategyLimits,
 	logger log.Logger,
 ) (*SplitKeyspaceStrategy, error) {
 	return &SplitKeyspaceStrategy{
 		limits: limits,
 		logger: logger,
 	}, nil
+}
+
+func (s *SplitKeyspaceStrategy) Name() string {
+	return SplitKeyspaceStrategyName
 }
 
 func (s *SplitKeyspaceStrategy) Plan(
@@ -43,7 +50,7 @@ func (s *SplitKeyspaceStrategy) Plan(
 	ownershipRanges := SplitFingerprintKeyspaceByFactor(splitFactor)
 
 	logger := log.With(s.logger, "table", table.Addr(), "tenant", tenant)
-	level.Debug(s.logger).Log("msg", "loading work for tenant", "splitFactor", splitFactor)
+	level.Debug(logger).Log("msg", "loading work for tenant", "splitFactor", splitFactor)
 
 	var tasks []*protos.Task
 	for _, ownershipRange := range ownershipRanges {
@@ -185,50 +192,10 @@ func blockPlansForGaps(
 				return nil, fmt.Errorf("failed to collect series: %w", err)
 			}
 
-			for _, meta := range metas {
-				if meta.Bounds.Intersection(gap) == nil {
-					// this meta doesn't overlap the gap, skip
-					continue
-				}
-
-				for _, block := range meta.Blocks {
-					if block.Bounds.Intersection(gap) == nil {
-						// this block doesn't overlap the gap, skip
-						continue
-					}
-					// this block overlaps the gap, add it to the plan
-					// for this gap
-					planGap.Blocks = append(planGap.Blocks, block)
-				}
-			}
-
-			// ensure we sort blocks so deduping iterator works as expected
-			sort.Slice(planGap.Blocks, func(i, j int) bool {
-				return planGap.Blocks[i].Bounds.Less(planGap.Blocks[j].Bounds)
-			})
-
-			peekingBlocks := iter.NewPeekIter[bloomshipper.BlockRef](
-				iter.NewSliceIter[bloomshipper.BlockRef](
-					planGap.Blocks,
-				),
-			)
-			// dedupe blocks which could be in multiple metas
-			itr := iter.NewDedupingIter[bloomshipper.BlockRef, bloomshipper.BlockRef](
-				func(a, b bloomshipper.BlockRef) bool {
-					return a == b
-				},
-				iter.Identity[bloomshipper.BlockRef],
-				func(a, _ bloomshipper.BlockRef) bloomshipper.BlockRef {
-					return a
-				},
-				peekingBlocks,
-			)
-
-			deduped, err := iter.Collect[bloomshipper.BlockRef](itr)
+			planGap.Blocks, err = getBlocksMatchingBounds(metas, gap)
 			if err != nil {
-				return nil, fmt.Errorf("failed to dedupe blocks: %w", err)
+				return nil, fmt.Errorf("failed to get blocks matching bounds: %w", err)
 			}
-			planGap.Blocks = deduped
 
 			plan.gaps = append(plan.gaps, planGap)
 		}

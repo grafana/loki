@@ -20,7 +20,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.patternIngesterFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.patternIngester.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.patternIngester.persistence.enableStatefulSetAutoDeletePVC)  }}
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: {{ .Values.patternIngester.persistence.whenDeleted }}
     whenScaled: {{ .Values.patternIngester.persistence.whenScaled }}
@@ -131,6 +131,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.patternIngester.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}      
       {{- with .Values.patternIngester.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}

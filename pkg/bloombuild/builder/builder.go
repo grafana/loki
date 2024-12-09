@@ -3,7 +3,9 @@ package builder
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +23,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -46,9 +49,9 @@ type Builder struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	tsdbStore   common.TSDBStore
-	bloomStore  bloomshipper.Store
-	chunkLoader ChunkLoader
+	bloomStore   bloomshipper.Store
+	chunkLoader  ChunkLoader
+	bloomGateway bloomgateway.Client
 
 	client protos.PlannerForBuilderClient
 
@@ -60,11 +63,12 @@ type Builder struct {
 func New(
 	cfg Config,
 	limits Limits,
-	schemaCfg config.SchemaConfig,
-	storeCfg storage.Config,
-	storageMetrics storage.ClientMetrics,
+	_ config.SchemaConfig,
+	_ storage.Config,
+	_ storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
 	bloomStore bloomshipper.Store,
+	bloomGateway bloomgateway.Client,
 	logger log.Logger,
 	r prometheus.Registerer,
 	rm *ring.RingManager,
@@ -74,21 +78,16 @@ func New(
 	builderID := uuid.NewString()
 	logger = log.With(logger, "builder_id", builderID)
 
-	tsdbStore, err := common.NewTSDBStores(schemaCfg, storeCfg, storageMetrics, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error creating TSDB store: %w", err)
-	}
-
 	metrics := NewMetrics(r)
 	b := &Builder{
-		ID:          builderID,
-		cfg:         cfg,
-		limits:      limits,
-		metrics:     metrics,
-		tsdbStore:   tsdbStore,
-		bloomStore:  bloomStore,
-		chunkLoader: NewStoreChunkLoader(fetcherProvider, metrics),
-		logger:      logger,
+		ID:           builderID,
+		cfg:          cfg,
+		limits:       limits,
+		metrics:      metrics,
+		bloomStore:   bloomStore,
+		chunkLoader:  NewStoreChunkLoader(fetcherProvider, metrics),
+		bloomGateway: bloomGateway,
+		logger:       logger,
 	}
 
 	if rm != nil {
@@ -143,22 +142,70 @@ func (b *Builder) running(ctx context.Context) error {
 	retries := backoff.New(ctx, b.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		err := b.connectAndBuild(ctx)
-		if err == nil || errors.Is(err, context.Canceled) {
-			break
+		if err != nil {
+			err := standardizeRPCError(err)
+
+			// When the builder is shutting down, we will get a context canceled error
+			if errors.Is(err, context.Canceled) && b.State() != services.Running {
+				level.Debug(b.logger).Log("msg", "builder is shutting down")
+				break
+			}
+
+			// If the planner disconnects while we are sending/receive a message we get an EOF error.
+			// In this case we should reset the backoff and retry
+			if errors.Is(err, io.EOF) {
+				level.Error(b.logger).Log("msg", "planner disconnected. Resetting backoff and retrying", "err", err)
+				retries.Reset()
+				continue
+			}
+
+			// Otherwise (e.g. failed to connect to the builder), we should retry
+			code := status.Code(err)
+			level.Error(b.logger).Log("msg", "failed to connect and build. Retrying", "retry", retries.NumRetries(), "maxRetries", b.cfg.BackoffConfig.MaxRetries, "code", code.String(), "err", err)
+			retries.Wait()
+			continue
 		}
 
-		level.Error(b.logger).Log("msg", "failed to connect and build. Retrying", "err", err)
-		retries.Wait()
+		// We shouldn't get here. If we do, we better restart the builder.
+		// Adding a log line for visibility
+		level.Error(b.logger).Log("msg", "unexpected end of connectAndBuild. Restarting builder")
+		break
 	}
 
 	if err := retries.Err(); err != nil {
 		if errors.Is(err, context.Canceled) {
+			// Edge case when the builder is shutting down while we check for retries
 			return nil
 		}
 		return fmt.Errorf("failed to connect and build: %w", err)
 	}
 
 	return nil
+}
+
+// standardizeRPCError converts some gRPC errors we want to handle differently to standard errors.
+// 1. codes.Canceled -> context.Canceled
+// 2. codes.Unavailable with EOF -> io.EOF
+// 3. All other errors are returned as is.
+func standardizeRPCError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.Canceled:
+			// Happens when the builder is shutting down, and we are sending/receiving a message
+			return context.Canceled
+		case codes.Unavailable:
+			// We want to handle this case as a retryable error that resets the backoff
+			if i := strings.LastIndex(st.Message(), "EOF"); i != -1 {
+				return io.EOF
+			}
+		}
+	}
+
+	return err
 }
 
 func (b *Builder) plannerAddress() string {
@@ -180,8 +227,7 @@ func (b *Builder) connectAndBuild(ctx context.Context) error {
 		return fmt.Errorf("failed to create grpc dial options: %w", err)
 	}
 
-	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
-	conn, err := grpc.DialContext(ctx, b.plannerAddress(), opts...)
+	conn, err := grpc.NewClient(b.plannerAddress(), opts...)
 	if err != nil {
 		return fmt.Errorf("failed to dial bloom planner: %w", err)
 	}
@@ -209,21 +255,17 @@ func (b *Builder) connectAndBuild(ctx context.Context) error {
 }
 
 func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) error {
+	ctx := c.Context()
+
 	// Send ready message to planner
 	if err := c.Send(&protos.BuilderToPlanner{BuilderID: b.ID}); err != nil {
 		return fmt.Errorf("failed to send ready message to planner: %w", err)
 	}
 
-	for b.State() == services.Running {
-		// When the planner connection closes, an EOF or "planner shutting down" error is returned.
-		// When the builder is shutting down, a gRPC context canceled error is returned.
+	// Will break when planner<->builder connection is closed or when the builder is shutting down.
+	for ctx.Err() == nil {
 		protoTask, err := c.Recv()
 		if err != nil {
-			if status.Code(err) == codes.Canceled {
-				level.Debug(b.logger).Log("msg", "builder loop context canceled")
-				return nil
-			}
-
 			return fmt.Errorf("failed to receive task from planner: %w", err)
 		}
 
@@ -242,7 +284,7 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 			continue
 		}
 
-		newMetas, err := b.processTask(c.Context(), task)
+		newMetas, err := b.processTask(ctx, task)
 		if err != nil {
 			err = fmt.Errorf("failed to process task: %w", err)
 		}
@@ -256,8 +298,8 @@ func (b *Builder) builderLoop(c protos.PlannerForBuilder_BuilderLoopClient) erro
 		b.metrics.processingTask.Set(0)
 	}
 
-	level.Debug(b.logger).Log("msg", "builder loop stopped")
-	return nil
+	level.Debug(b.logger).Log("msg", "builder loop stopped", "ctx_err", ctx.Err())
+	return ctx.Err()
 }
 
 func (b *Builder) logTaskCompleted(
@@ -330,6 +372,12 @@ func (b *Builder) processTask(
 	logger := task.GetLogger(b.logger)
 	level.Debug(logger).Log("msg", "task started")
 
+	if timeout := b.limits.BuilderResponseTimeout(task.Tenant); timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, time.Now().Add(timeout))
+		defer cancel()
+	}
+
 	client, err := b.bloomStore.Client(task.Table.ModelTime())
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get client", "err", err)
@@ -352,6 +400,10 @@ func (b *Builder) processTask(
 	)
 
 	for i := range task.Gaps {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		gap := task.Gaps[i]
 		logger := log.With(logger, "gap", gap.Bounds.String())
 
@@ -386,7 +438,7 @@ func (b *Builder) processTask(
 		// Blocks are built consuming the series iterator. For observability, we wrap the series iterator
 		// with a counter iterator to count the number of times Next() is called on it.
 		// This is used to observe the number of series that are being processed.
-		seriesItrWithCounter := iter.NewCounterIter[*v1.Series](seriesItr)
+		seriesItrWithCounter := iter.NewCounterIter(seriesItr)
 
 		gen := NewSimpleBloomGenerator(
 			tenant,
@@ -416,7 +468,7 @@ func (b *Builder) processTask(
 				return nil, fmt.Errorf("failed to build block: %w", err)
 			}
 
-			logger := log.With(logger, "block", built.BlockRef.String())
+			logger := log.With(logger, "block", built.String())
 
 			if err := client.PutBlock(
 				ctx,
@@ -461,7 +513,7 @@ func (b *Builder) processTask(
 		}
 		meta.MetaRef = ref
 
-		logger = log.With(logger, "meta", meta.MetaRef.String())
+		logger = log.With(logger, "meta", meta.String())
 
 		if err := client.PutMeta(ctx, meta); err != nil {
 			level.Error(logger).Log("msg", "failed to write meta", "err", err)
@@ -471,6 +523,13 @@ func (b *Builder) processTask(
 		b.metrics.metasCreated.Inc()
 		level.Debug(logger).Log("msg", "uploaded meta")
 		created = append(created, meta)
+
+		// Now that the meta is written thus blocks can be queried, we prefetch them to the gateway
+		if b.bloomGateway != nil && b.limits.PrefetchBloomBlocks(tenant) {
+			if err := b.bloomGateway.PrefetchBloomBlocks(ctx, meta.Blocks); err != nil {
+				level.Error(logger).Log("msg", "failed to prefetch block on gateway", "err", err)
+			}
+		}
 	}
 
 	b.metrics.seriesPerTask.Observe(float64(totalSeries))
@@ -490,7 +549,7 @@ func (b *Builder) loadWorkForGap(
 	table config.DayTable,
 	gap protos.Gap,
 ) (iter.Iterator[*v1.Series], iter.CloseResetIterator[*v1.SeriesWithBlooms], error) {
-	seriesItr := iter.NewCancelableIter[*v1.Series](ctx, iter.NewSliceIter[*v1.Series](gap.Series))
+	seriesItr := iter.NewCancelableIter(ctx, iter.NewSliceIter(gap.Series))
 
 	// load a blocks iterator for the gap
 	fetcher, err := b.bloomStore.Fetcher(table.ModelTime())
