@@ -948,6 +948,8 @@ Configuration for `analytics`.
 # CLI flag: -reporting.usage-stats-url
 [usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 
+# URL to the proxy server
+# CLI flag: -reporting.proxy-url
 [proxy_url: <string> | default = ""]
 
 # The TLS configuration.
