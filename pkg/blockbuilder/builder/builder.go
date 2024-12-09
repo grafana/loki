@@ -260,17 +260,21 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) (bool, error
 	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
 	i.jobsMtx.Unlock()
 
-	lastConsumedOffset, err := i.processJob(ctx, job, logger)
+	completion := &types.CompleteJobRequest{
+		BuilderID: workerID,
+		Job:       job,
+		Success:   true,
+	}
+	if _, err = i.processJob(ctx, job, logger); err != nil {
+		level.Error(i.logger).Log("msg", "failed to process job", "err", err)
+		completion.Success = false
+	}
 
 	if _, err := withBackoff(
 		ctx,
 		i.cfg.Backoff,
 		func() (res struct{}, err error) {
-			if err = i.SendCompleteJob(ctx, &types.CompleteJobRequest{
-				BuilderID:          workerID,
-				Job:                job,
-				LastConsumedOffset: lastConsumedOffset,
-			}); err != nil {
+			if err = i.SendCompleteJob(ctx, completion); err != nil {
 				level.Error(i.logger).Log("msg", "failed to mark the job as complete", "err", err)
 			}
 			return
