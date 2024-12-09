@@ -1,5 +1,12 @@
 # Changes
 
+## [1.45.3](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.2...pubsub/v1.45.3) (2024-12-04)
+
+
+### Bug Fixes
+
+* **pubsub:** Convert stream ack deadline seconds from duration ([#11214](https://github.com/googleapis/google-cloud-go/issues/11214)) ([b2b05e4](https://github.com/googleapis/google-cloud-go/commit/b2b05e4515d8e59d7b3bf39432c6356b4450a17b))
+
 ## [1.45.2](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.1...pubsub/v1.45.2) (2024-12-03)
 
 
