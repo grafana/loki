@@ -42,6 +42,7 @@ type Config struct {
 	Backoff           backoff.Config `yaml:"backoff_config"`
 	WorkerParallelism int            `yaml:"worker_parallelism"`
 	SyncInterval      time.Duration  `yaml:"sync_interval"`
+	PollInterval      time.Duration  `yaml:"poll_interval"`
 
 	SchedulerAddress string `yaml:"scheduler_address"`
 	// SchedulerGRPCClientConfig configures the gRPC connection between the block-builder and its scheduler.
@@ -58,6 +59,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ChunkEncoding, prefix+"chunk-encoding", compression.Snappy.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.SyncInterval, prefix+"sync-interval", 30*time.Second, "The interval at which to sync job status with the scheduler.")
+	f.DurationVar(&cfg.PollInterval, prefix+"poll-interval", 30*time.Second, "The interval at which to poll for new jobs.")
 	f.IntVar(&cfg.WorkerParallelism, prefix+"worker-parallelism", 1, "The number of workers to run in parallel to process jobs.")
 	f.StringVar(&cfg.SchedulerAddress, prefix+"scheduler-address", "", "Address of the scheduler in the format described here: https://github.com/grpc/grpc/blob/master/doc/naming.md")
 
@@ -79,6 +81,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.SyncInterval <= 0 {
 		return errors.New("sync interval must be greater than 0")
+	}
+
+	if cfg.PollInterval <= 0 {
+		return errors.New("poll interval must be greater than 0")
 	}
 
 	if cfg.WorkerParallelism < 1 {
@@ -165,14 +171,22 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 		go func(id string) {
 			defer wg.Done()
 
+			var waitFor time.Duration
 			for {
 				select {
 				case <-ctx.Done():
 					return
-				default:
-					err := i.runOne(ctx, id)
+				case <-time.After(waitFor):
+					gotJob, err := i.runOne(ctx, id)
 					if err != nil {
 						level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
+					}
+
+					// poll only when there are no jobs
+					if gotJob {
+						waitFor = 0
+					} else {
+						waitFor = i.cfg.PollInterval
 					}
 				}
 			}
@@ -218,18 +232,18 @@ func (i *BlockBuilder) syncJobs(ctx context.Context) error {
 	return nil
 }
 
-func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
+func (i *BlockBuilder) runOne(ctx context.Context, workerID string) (bool, error) {
 	// assuming GetJob blocks/polls until a job is available
 	resp, err := i.SendGetJobRequest(ctx, &types.GetJobRequest{
 		BuilderID: workerID,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if !resp.OK {
 		level.Info(i.logger).Log("msg", "no available job to process")
-		return nil
+		return false, nil
 	}
 
 	job := resp.Job
@@ -262,7 +276,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
 			return
 		},
 	); err != nil {
-		return err
+		return true, err
 	}
 
 	i.jobsMtx.Lock()
@@ -270,7 +284,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
 	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
 	i.jobsMtx.Unlock()
 
-	return err
+	return true, err
 }
 
 func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
@@ -297,7 +311,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 		"load records",
 		1,
 		func(ctx context.Context) error {
-			lastOffset, err = i.loadRecords(ctx, int32(job.Partition), job.Offsets, inputCh)
+			lastOffset, err = i.loadRecords(ctx, job.Partition, job.Offsets, inputCh)
 			return err
 		},
 		func(ctx context.Context) error {
@@ -545,7 +559,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 		}
 	}
 
-	return lastOffset, err
+	return lastOffset, boff.Err()
 }
 
 func withBackoff[T any](

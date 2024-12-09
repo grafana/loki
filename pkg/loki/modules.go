@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
+	blockprotos "github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -1862,8 +1863,16 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
+
 	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, t.Cfg.BlockScheduler.LookbackPeriod, c)
-	return blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
+	s, err := blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
+	if err != nil {
+		return s, err
+	}
+
+	blockprotos.RegisterBlockBuilderServiceServer(t.Server.GRPC, s)
+
+	return s, err
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
