@@ -178,11 +178,8 @@ func getRandomPorts(n int) []int {
 
 func TestLoki_CustomRunOptsBehavior(t *testing.T) {
 	ports := getRandomPorts(2)
-
 	httpPort := ports[0]
 	grpcPort := ports[1]
-
-	fmt.Printf("!!!!!!!!!!!!!!! httpPort: %d, grpcPort: %d\n", httpPort, grpcPort)
 
 	yamlConfig := fmt.Sprintf(`target: querier
 server:
@@ -208,8 +205,6 @@ schema_config:
 
 	cfgWrapper, _, err := configWrapperFromYAML(t, yamlConfig, nil)
 	require.NoError(t, err)
-
-	fmt.Println("advertise config", cfgWrapper.Config.MemberlistKV.AdvertiseAddr)
 
 	loki, err := New(cfgWrapper.Config)
 	require.NoError(t, err)
