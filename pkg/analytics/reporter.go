@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -48,6 +49,7 @@ type Config struct {
 	Enabled       bool             `yaml:"reporting_enabled"`
 	Leader        bool             `yaml:"-"`
 	UsageStatsURL string           `yaml:"usage_stats_url"`
+	ProxyURL      string           `yaml:"proxy_url"`
 	TLSConfig     tls.ClientConfig `yaml:"tls_config"`
 }
 
@@ -55,6 +57,7 @@ type Config struct {
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "reporting.enabled", true, "Enable anonymous usage reporting.")
 	f.StringVar(&cfg.UsageStatsURL, "reporting.usage-stats-url", usageStatsURL, "URL to which reports are sent")
+	f.StringVar(&cfg.ProxyURL, "reporting.proxy-url", "", "URL to the proxy server")
 	cfg.TLSConfig.RegisterFlagsWithPrefix("reporting.tls-config.", f)
 }
 
@@ -86,6 +89,13 @@ func NewReporter(config Config, kvConfig kv.Config, objectClient client.ObjectCl
 		if err != nil {
 			return nil, err
 		}
+	}
+	if config.ProxyURL != "" {
+		proxyURL, err := url.ParseRequestURI(config.ProxyURL)
+		if err != nil {
+			return nil, err
+		}
+		tr.Proxy = http.ProxyURL(proxyURL)
 	}
 	r := &Reporter{
 		logger:       logger,
