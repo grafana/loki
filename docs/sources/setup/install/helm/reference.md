@@ -5012,6 +5012,7 @@ null
 			<td>Configuration for the ingester</td>
 			<td><pre lang="json">
 {
+  "addIngesterNamePrefix": false,
   "affinity": {
     "podAntiAffinity": {
       "requiredDuringSchedulingIgnoredDuringExecution": [
@@ -5080,6 +5081,7 @@ null
   "readinessProbe": {},
   "replicas": 0,
   "resources": {},
+  "rolloutGroupPrefix": null,
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
