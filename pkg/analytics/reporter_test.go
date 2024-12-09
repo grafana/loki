@@ -175,8 +175,12 @@ func Test_ProxyURL(t *testing.T) {
 	// Create a channel to track received messages
 	received := make(chan bool, 1)
 
+	// Using this variable to use `http` for this test as `https` is not supported by `httptest`.
+	target := "http://stats.grafana.org/loki-usage-report"
+
 	// Start local test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, target, r.URL.String())
 		received <- true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -186,7 +190,7 @@ func Test_ProxyURL(t *testing.T) {
 	reporterCfg := Config{
 		Leader:        true,
 		Enabled:       true,
-		UsageStatsURL: "http://stats.grafana.org/loki-usage-report",
+		UsageStatsURL: target,
 		ProxyURL:      proxyStr,
 	}
 	reporter, err := NewReporter(
