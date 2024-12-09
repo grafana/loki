@@ -19,6 +19,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -1252,4 +1253,49 @@ func DeleteBucketTag(cli bce.Client, bucket string, ctx *BosContext) error {
 	}
 	defer func() { resp.Body().Close() }()
 	return nil
+}
+
+func GetBosShareLink(cli bce.Client, bucket, prefix, shareCode string, duration int) (string, error) {
+	req := &bce.BceRequest{}
+	req.SetEndpoint(BOS_SHARE_ENDPOINT)
+	req.SetParam("action", "")
+	req.SetMethod(http.POST)
+	if len(shareCode) != 0 && len(shareCode) != 6 {
+		return "", fmt.Errorf("shareCode length must be 0 or 6")
+	}
+	if duration < 60 || duration > 64800 {
+		return "", fmt.Errorf("duration must between 1 minute and 18 hours")
+	}
+	bosShareReqBody := &BosShareLinkArgs{
+		Bucket:          bucket,
+		Endpoint:        cli.GetBceClientConfig().Endpoint,
+		Prefix:          prefix,
+		ShareCode:       shareCode,
+		DurationSeconds: int64(duration),
+	}
+	jsonBytes, jsonErr := json.Marshal(bosShareReqBody)
+	if jsonErr != nil {
+		return "", jsonErr
+	}
+	body, err := bce.NewBodyFromBytes(jsonBytes)
+	if err != nil {
+		return "", err
+	}
+	req.SetBody(body)
+	resp := &bce.BceResponse{}
+	if err = cli.SendRequest(req, resp); err != nil {
+		return "", err
+	}
+	if resp.IsFail() {
+		return "", resp.ServiceError()
+	}
+	bosShareResBody := &BosShareResBody{}
+	if err := resp.ParseJsonBody(bosShareResBody); err != nil {
+		return "", err
+	}
+	jsonData, err := json.Marshal(bosShareResBody)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
 }

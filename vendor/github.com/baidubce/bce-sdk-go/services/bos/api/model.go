@@ -670,3 +670,17 @@ type ObjectTag struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
 }
+
+type BosShareLinkArgs struct {
+	Bucket          string `json:"bucket"`
+	Endpoint        string `json:"endpoint"`
+	Prefix          string `json:"prefix"`
+	ShareCode       string `json:"shareCode"`
+	DurationSeconds int64  `json:"durationSeconds"`
+}
+
+type BosShareResBody struct {
+	ShareUrl       string `json:"shareUrl"`
+	LinkExpireTime int64  `json:"linkExpireTime"`
+	ShareCode      string `json:"shareCode"`
+}

@@ -2310,3 +2310,7 @@ func (c *Client) GetObjectTag(bucket string, object string) (map[string]interfac
 func (c *Client) DeleteObjectTag(bucket string, object string) error {
 	return api.DeleteObjectTag(c, bucket, object, c.BosContext)
 }
+
+func (c *Client) BosShareLinkGet(bucket string, prefix string, shareCode string, duration int) (string, error) {
+	return api.GetBosShareLink(c, bucket, prefix, shareCode, duration)
+}
