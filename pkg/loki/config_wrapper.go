@@ -170,6 +170,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		fmt.Println("!!!! setting memberlist advertise addr to", r.Common.InstanceAddr)
 		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 

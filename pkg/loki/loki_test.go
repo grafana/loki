@@ -209,6 +209,8 @@ schema_config:
 	cfgWrapper, _, err := configWrapperFromYAML(t, yamlConfig, nil)
 	require.NoError(t, err)
 
+	fmt.Println("advertise config", cfgWrapper.Config.MemberlistKV.AdvertiseAddr)
+
 	loki, err := New(cfgWrapper.Config)
 	require.NoError(t, err)
 
