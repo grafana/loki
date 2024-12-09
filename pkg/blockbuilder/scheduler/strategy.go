@@ -70,7 +70,7 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int],
 			currentEnd := min(currentStart+p.targetRecordCount, endOffset)
 
 			job := NewJobWithPriority(
-				types.NewJob(int(partitionOffset.Partition), types.Offsets{
+				types.NewJob(partitionOffset.Partition, types.Offsets{
 					Min: currentStart,
 					Max: currentEnd,
 				}), int(endOffset-currentStart), // priority is remaining records to process
