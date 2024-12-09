@@ -182,6 +182,8 @@ func TestLoki_CustomRunOptsBehavior(t *testing.T) {
 	httpPort := ports[0]
 	grpcPort := ports[1]
 
+  fmt.Printf("!!!!!!!!!!!!!!! httpPort: %d, grpcPort: %d\n", httpPort, grpcPort)
+
 	yamlConfig := fmt.Sprintf(`target: querier
 server:
   http_listen_port: %d
@@ -215,7 +217,7 @@ schema_config:
 		// retries at most 10 times (1 second in total) to avoid infinite loops when no timeout is set.
 		for i := 0; i < 10; i++ {
 			// waits until request to /ready doesn't error.
-			resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/ready", httpPort))
+			resp, err := http.DefaultClient.Get(fmt.Sprintf("http://127.0.0.1:%d/ready", httpPort))
 			if err != nil {
 				time.Sleep(time.Millisecond * 200)
 				continue
@@ -250,7 +252,7 @@ schema_config:
 	err = lokiHealthCheck()
 	require.NoError(t, err)
 
-	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/config", httpPort))
+	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://127.0.0.1:%d/config", httpPort))
 	require.NoError(t, err)
 
 	defer resp.Body.Close()
