@@ -7,7 +7,7 @@ type Worker interface {
 	// GetJob requests a new job from the scheduler
 	GetJob(ctx context.Context) (*Job, bool, error)
 	// CompleteJob marks a job as finished
-	CompleteJob(ctx context.Context, job *Job) error
+	CompleteJob(ctx context.Context, job *Job, success bool) error
 	// SyncJob informs the scheduler about an in-progress job
 	SyncJob(ctx context.Context, job *Job) error
 }
@@ -54,6 +54,7 @@ type GetJobResponse struct {
 type CompleteJobRequest struct {
 	BuilderID string
 	Job       *Job
+	Success   bool
 }
 
 type SyncJobRequest struct {

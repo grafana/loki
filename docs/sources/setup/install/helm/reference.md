@@ -3062,7 +3062,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.3.0"
+    "tag": "3.3.1"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3235,7 +3235,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.3.0"
+"3.3.1"
 </pre>
 </td>
 		</tr>
@@ -6090,7 +6090,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.3.0"
+"3.3.1"
 </pre>
 </td>
 		</tr>
@@ -6247,7 +6247,11 @@ null
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler</td>
 			<td><pre lang="json">
-{}
+{
+  "wal": {
+    "dir": "/var/loki/ruler-wal"
+  }
+}
 </pre>
 </td>
 		</tr>

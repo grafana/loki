@@ -279,7 +279,7 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 		// If the cancellation comes from the underlying grpc client getting closed,
 		// do propagate the cancellation error.
 		// See https://github.com/googleapis/google-cloud-go/pull/10153#discussion_r1600814775
-		if err != nil && it.ps.ctx.Err() == context.Canceled {
+		if err != nil && errors.Is(it.ps.ctx.Err(), context.Canceled) {
 			err = io.EOF
 		}
 	}
@@ -340,7 +340,7 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 				opts,
 				trace.WithAttributes(
 					attribute.Bool(eosAttribute, it.enableExactlyOnceDelivery),
-					attribute.String(ackIDAttribute, ackID),
+					semconv.MessagingGCPPubsubMessageAckID(ackID),
 					semconv.MessagingBatchMessageCount(len(msgs)),
 					semconv.CodeFunction("receive"),
 				),
@@ -406,7 +406,7 @@ func (it *messageIterator) pullMessages(maxToPull int32) ([]*pb.ReceivedMessage,
 		MaxMessages:  maxToPull,
 	}, gax.WithGRPCOptions(grpc.MaxCallRecvMsgSize(maxSendRecvBytes)))
 	switch {
-	case err == context.Canceled:
+	case errors.Is(err, context.Canceled):
 		return nil, nil
 	case status.Code(err) == codes.Canceled:
 		return nil, nil
