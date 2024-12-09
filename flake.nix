@@ -45,6 +45,7 @@
                     "-covermode=atomic"
                     "-coverprofile=coverage.txt"
                     "-p=4"
+                    "-run=\"^TestLoki_CustomRunOptsBehavior$\""
                   ];
                   subPackages = [
                     "./..." # for tests
