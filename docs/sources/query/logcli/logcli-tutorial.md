@@ -160,7 +160,7 @@ logcli query 'count_over_time({state="California"}| json | package_type= "Docume
 
 Instant metric queries are a subset of metric queries that return the value of the metric at a specific point in time. This can be useful for quickly understanding an aggregate state of the stored logs. 
 
-For instance, we can use the following query to get the number of packages being sent from California at the current time:
+For instance, we can use the following query to get the number of packages sent from California in the last 5 minutes:
 
 ```bash
 logcli instant-query 'sum(count_over_time({state="California"}[5m]))'
@@ -202,7 +202,7 @@ Next we can run the following query to write the logs to the `./inventory` direc
      '{service_name="Delivery World"}'
 ```
 
-This will write all logs for the `service_name` `Delivery World` in the last 24 hours to the `./inventory` directory. The logs will be split into two files, each containing 12 hours of logs. Note that we do not need to specify `--limit` as this is overridden by the `--parallel-duration` flag. The `--forwards` flag will write the logs in ascending order.
+This will write all logs for the `service_name` `Delivery World` in the last 24 hours to the `./inventory` directory. The logs will be split into two files, each containing 12 hours of logs. Note that we do not need to specify `--limit` as this is overridden by the `--parallel-duration` flag. 
 
 <!-- INTERACTIVE page step2.md END -->
 
@@ -210,7 +210,7 @@ This will write all logs for the `service_name` `Delivery World` in the last 24 
 
 ## Meta Queries
 
-Part of our role as site manager is to understand the labels and log volume in our logs. We want to keep good data hygiene and make sure that Loki is running smoothly. In addition to querying logs, LogCLI also supports meta queries against your Loki instance. This can be useful for understanding the labels and log volume in your logs.
+As site managers, it's essential to maintain good data hygiene and ensure Loki operates efficiently. Understanding the labels and log volume in your logs plays a key role in this process. Beyond querying logs, LogCLI also supports meta queries on your Loki instance. Meta queries don't return log data but provide insights into the structure of your logs and the performance of your queries. The following examples demonstrate some of the core meta queries we run internally to better understand how a Loki instance is performing.
 
 ### Checking series cardinality
 
@@ -267,17 +267,17 @@ logcli detected-fields --since 24h '{service_name="Delivery World"}'
 This will return a list of all the keys detected in our logs. The output will look similar to the following:
 
 ```console
-label: city                      type: string    cardinality: 15
-label: detected_level            type: string    cardinality: 3
-label: note                      type: string    cardinality: 7
-label: package_id                type: string    cardinality: 7136
-label: package_status            type: string    cardinality: 4
-label: package_type              type: string    cardinality: 5
-label: receiver_address          type: string    cardinality: 6962
-label: receiver_name             type: string    cardinality: 100
-label: sender_address            type: string    cardinality: 6981
-label: sender_name               type: string    cardinality: 100
-label: timestamp                 type: string    cardinality: 7438
+label: city             type: string    cardinality: 15
+label: detected_level   type: string    cardinality: 3
+label: note             type: string    cardinality: 7
+label: package_id       type: string    cardinality: 7136
+label: package_status   type: string    cardinality: 4
+label: package_type     type: string    cardinality: 5
+label: receiver_address type: string    cardinality: 6962
+label: receiver_name    type: string    cardinality: 100
+label: sender_address   type: string    cardinality: 6981
+label: sender_name      type: string    cardinality: 100
+label: timestamp        type: string    cardinality: 7438
 ```
 
 You can now see why we opted to keep `package_id` in structured metadata and `package_size` as a label. Package ID has a high cardinality and is unique to each log entry, making it a good candidate for structured metadata since we potentially may need to query for it directly. Package size, on the other hand, has a low cardinality and is a good candidate for a label.
@@ -357,7 +357,14 @@ We can also return the log volume over time by using `volume_range`:
 logcli volume_range --since 24h --step=1h '{service_name="Delivery World"}'
 ```
 
-This will provide a JSON object containing the log volume for the label `Delivery World` in the last 24 hours. For each hour.
+This will provide a JSON object containing the log volume for the label `Delivery World` in the last 24 hours. `--step` will aggregate the log volume into 1 hour buckets. Note that if there are no logs for a specific hour, the log volume for that hour will not return a value.
+
+We can even aggregate the log volume into buckets based on a specific labels value:
+
+```bash
+logcli volume_range --since 24h --step=1h --targetLabels='state' '{service_name="Delivery World"}' 
+```
+This will provide a similar JSON object but will aggregate the log volume into buckets based on the `state` label value.
 
 <!-- INTERACTIVE page step3.md END -->
 
