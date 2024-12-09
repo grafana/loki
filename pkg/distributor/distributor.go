@@ -12,6 +12,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
+
+	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -66,6 +69,14 @@ const (
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 // Config for a Distributor.
@@ -156,10 +167,11 @@ type Distributor struct {
 	RequestParserWrapper push.RequestParserWrapper
 
 	// metrics
-	ingesterAppends        *prometheus.CounterVec
-	ingesterAppendTimeouts *prometheus.CounterVec
-	replicationFactor      prometheus.Gauge
-	streamShardCount       prometheus.Counter
+	ingesterAppends                       *prometheus.CounterVec
+	ingesterAppendTimeouts                *prometheus.CounterVec
+	replicationFactor                     prometheus.Gauge
+	streamShardCount                      prometheus.Counter
+	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
@@ -273,6 +285,11 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
+		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_structured_metadata_sanitized_total",
+			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
+		}, []string{"tenant"}),
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_appends_total",
@@ -516,7 +533,19 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					continue
 				}
 
+				var normalized string
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+				for i := range entry.StructuredMetadata {
+					normalized = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
+					if normalized != structuredMetadata[i].Name {
+						structuredMetadata[i].Name = normalized
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
+					}
+					if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
+						structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
+					}
+				}
 				if shouldDiscoverLevels {
 					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
 					if ok {

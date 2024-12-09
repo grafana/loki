@@ -25,34 +25,34 @@ type partitionCommitter struct {
 	commitFailuresTotal   prometheus.Counter
 	lastCommittedOffset   prometheus.Gauge
 
-	logger     log.Logger
-	reader     Reader
-	commitFreq time.Duration
+	logger        log.Logger
+	offsetManager OffsetManager
+	commitFreq    time.Duration
 
 	toCommit *atomic.Int64
 	wg       sync.WaitGroup
 	cancel   context.CancelFunc
 }
 
-func newCommitter(reader Reader, commitFreq time.Duration, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
+func newCommitter(offsetManager OffsetManager, commitFreq time.Duration, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
 	c := &partitionCommitter{
-		logger:     logger,
-		reader:     reader,
-		commitFreq: commitFreq,
+		logger:        logger,
+		offsetManager: offsetManager,
+		commitFreq:    commitFreq,
 		commitRequestsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name:        "loki_ingest_storage_reader_offset_commit_requests_total",
 			Help:        "Total number of requests issued to commit the last consumed offset (includes both successful and failed requests).",
-			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(reader.Partition()))},
+			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(offsetManager.Partition()))},
 		}),
 		commitFailuresTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name:        "loki_ingest_storage_reader_offset_commit_failures_total",
 			Help:        "Total number of failed requests to commit the last consumed offset.",
-			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(reader.Partition()))},
+			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(offsetManager.Partition()))},
 		}),
 		commitRequestsLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_ingest_storage_reader_offset_commit_request_duration_seconds",
 			Help:                            "The duration of requests to commit the last consumed offset.",
-			ConstLabels:                     prometheus.Labels{"partition": strconv.Itoa(int(reader.Partition()))},
+			ConstLabels:                     prometheus.Labels{"partition": strconv.Itoa(int(offsetManager.Partition()))},
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: time.Hour,
@@ -61,7 +61,7 @@ func newCommitter(reader Reader, commitFreq time.Duration, logger log.Logger, re
 		lastCommittedOffset: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "loki_ingest_storage_reader_last_committed_offset",
 			Help:        "The last consumed offset successfully committed by the partition reader. Set to -1 if not offset has been committed yet.",
-			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(reader.Partition()))},
+			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(offsetManager.Partition()))},
 		}),
 		toCommit: atomic.NewInt64(-1),
 	}
@@ -116,7 +116,7 @@ func (c *partitionCommitter) Commit(ctx context.Context, offset int64) error {
 	startTime := time.Now()
 	c.commitRequestsTotal.Inc()
 
-	if err := c.reader.Commit(ctx, offset); err != nil {
+	if err := c.offsetManager.Commit(ctx, offset); err != nil {
 		level.Error(c.logger).Log("msg", "failed to commit offset", "err", err, "offset", offset)
 		c.commitFailuresTotal.Inc()
 		c.commitRequestsLatency.Observe(time.Since(startTime).Seconds())
