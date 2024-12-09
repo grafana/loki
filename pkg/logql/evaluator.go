@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -257,6 +259,7 @@ func Sortable(q Params) (bool, error) {
 type EvaluatorFactory interface {
 	SampleEvaluatorFactory
 	EntryEvaluatorFactory
+	VariantEvaluatorFactory
 }
 
 type SampleEvaluatorFactory interface {
@@ -317,6 +320,24 @@ func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSele
 	}
 
 	return ev.querier.SelectLogs(ctx, params)
+}
+
+type VariantEvaluatorFactory interface {
+	NewVariantsStepEvaluator(
+		ctx context.Context,
+		expr syntax.VariantsExpr,
+		p Params,
+	) (StepEvaluator, error)
+}
+
+type VariantsEvaluatorFunc func(ctx context.Context, expr syntax.VariantsExpr, p Params) (StepEvaluator, error)
+
+func (s VariantsEvaluatorFunc) NewVariantsStepEvaluator(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+	p Params,
+) (StepEvaluator, error) {
+	return s(ctx, expr, p)
 }
 
 func (ev *DefaultEvaluator) NewStepEvaluator(
@@ -383,6 +404,61 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixMilli(), q.End().UnixMilli()), nil
+	default:
+		return nil, EvaluatorUnsupportedType(e, ev)
+	}
+}
+
+func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+	q Params,
+) (StepEvaluator, error) {
+	switch e := expr.(type) {
+	case *syntax.MultiVariantExpr:
+		logRange := e.LogRange()
+		variants := make([]string, 0, len(e.Variants()))
+		for _, variant := range e.Variants() {
+			variants = append(variants, variant.String())
+		}
+
+		// We don't have the benefit of sending the vector expression to the source for reducing labels
+		// Since multiple samples are allowed, and they may not share the same labels to reduce by
+		it, err := ev.querier.SelectVariants(ctx, SelectVariantsParams{
+			&logproto.VariantsQueryRequest{
+				// extend startTs backwards by step
+				Start: q.Start().Add(-logRange.Interval).Add(-logRange.Offset),
+				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
+				End: q.End().Add(-logRange.Offset).Add(time.Nanosecond),
+				// intentionally send the vector for reducing labels.
+				Selector: logRange.String(),
+				Variants: variants,
+				Shards:   q.Shards(),
+				Plan: &plan.QueryPlan{
+					AST: expr,
+				},
+				StoreChunks: q.GetStoreChunks(),
+			},
+		})
+		// variant := e.Variants()[0]
+		// it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
+		// &logproto.SampleQueryRequest{
+		// Start: q.Start().Add(-logRange.Interval).Add(-logRange.Offset),
+		// End:   q.End().Add(-logRange.Offset).Add(time.Nanosecond),
+		// // intentionally send the vector for reducing labels.
+		// Selector: variant.String(),
+		// Shards:   q.Shards(),
+		// Plan: &plan.QueryPlan{
+		// AST: variant,
+		// },
+		// StoreChunks: q.GetStoreChunks(),
+		// },
+		// })
+		if err != nil {
+			return nil, err
+		}
+		return ev.newVariantsEvaluator(ctx, iter.NewPeekingSampleIterator(it), e, q)
+		// return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), variant.(*syntax.RangeAggregationExpr), q, 0)
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -687,6 +763,7 @@ func newRangeAggEvaluator(
 			iter: iter,
 		}, nil
 	default:
+		// TODO(twhitney): this is the case we match
 		iter, err := newRangeVectorIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),
@@ -1336,4 +1413,225 @@ func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 		m = labels.NewBuilder(m).Del(v).Labels()
 	}
 	return m, nil
+}
+
+func (ev *DefaultEvaluator) newVariantsEvaluator(
+	ctx context.Context,
+	it iter.PeekingSampleIterator,
+	expr *syntax.MultiVariantExpr,
+	q Params,
+) (StepEvaluator, error) {
+	// an iterator that can buffer samples across all variants for each step
+	bufferedIterator := &bufferedVariantsIterator{
+		iter: it,
+	}
+
+	variantEvaluators := make([]StepEvaluator, len(expr.Variants()))
+	for i, variant := range expr.Variants() {
+		// wraps the buffered iterator to only return samples for the current variant (determined by the index)
+		variantIterator := &bufferedVariantsIteratorWrapper{
+			bufferedVariantsIterator: bufferedIterator,
+			index:                    i,
+		}
+
+		var variantEvaluator StepEvaluator
+		var err error
+		switch e := variant.(type) {
+		case *syntax.VectorAggregationExpr:
+			if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok {
+				rangeEvaluator, err := newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), rangExpr, q, rangExpr.Left.Offset)
+				if err != nil {
+					return nil, err
+				}
+
+				sort.Strings(e.Grouping.Groups)
+				variantEvaluator = &VectorAggEvaluator{
+					nextEvaluator: rangeEvaluator,
+					expr:          e,
+					buf:           make([]byte, 0, 1024),
+					lb:            labels.NewBuilder(nil),
+				}
+			} else {
+				return nil, fmt.Errorf("expected range aggregation expression but got %T", e.Left)
+			}
+		case *syntax.RangeAggregationExpr:
+			variantEvaluator, err = newRangeAggEvaluator(iter.NewPeekingSampleIterator(variantIterator), e, q, e.Left.Offset)
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		variantEvaluators[i] = variantEvaluator
+	}
+
+	return &VariantsEvaluator{
+		current:           q.Start().UnixNano() - q.Step().Nanoseconds(),
+		variantEvaluators: variantEvaluators,
+	}, nil
+}
+
+type bufferedVariantsIterator struct {
+	iter          iter.PeekingSampleIterator
+	buffer        map[int][]sampleWithLabelsAndStreamHash
+	current       sampleWithLabelsAndStreamHash
+	currentLabels string
+	err           error
+}
+
+type sampleWithLabelsAndStreamHash struct {
+	sample     logproto.Sample
+	labels     string
+	streamHash uint64
+}
+
+func (it *bufferedVariantsIterator) Next(index int) bool {
+	// Check if there are samples in the buffer for the requested index
+	if samples, ok := it.buffer[index]; ok && len(samples) > 0 {
+		it.current = samples[0]
+		it.buffer[index] = samples[1:]
+		return true
+	}
+
+	// If not, keep popping samples from the underlying iterator
+	for it.iter.Next() {
+		sample := it.iter.At()
+		variantIndex := it.getVariantIndex(it.iter.Labels())
+		if variantIndex == -1 {
+			it.err = fmt.Errorf("variant label not found in %s", it.iter.Labels())
+			return false
+		}
+
+		currentSample := sampleWithLabelsAndStreamHash{
+			sample:     sample,
+			labels:     it.iter.Labels(),
+			streamHash: it.iter.StreamHash(),
+		}
+
+		if variantIndex == index {
+			it.current = currentSample
+			return true
+		}
+
+		// Store the sample in the buffer for its variant
+		it.storeSample(variantIndex, currentSample)
+	}
+
+	return false
+}
+
+// getVariantIndex determines the variant index for a given sample based on the "__variant__" label
+func (it *bufferedVariantsIterator) getVariantIndex(lbls string) int {
+	metric, err := parser.ParseMetric(lbls)
+	if err != nil {
+		it.err = err
+		return -1
+	}
+
+	for _, lbl := range metric {
+		// TODO: make constant
+		if lbl.Name == "__variant__" {
+			val, err := strconv.Atoi(lbl.Value)
+			if err != nil {
+				it.err = err
+				return -1
+			}
+
+			return val
+		}
+	}
+
+	it.err = fmt.Errorf("variant label not found in %s", lbls)
+	return -1
+}
+
+func (it *bufferedVariantsIterator) storeSample(index int, sample sampleWithLabelsAndStreamHash) {
+	if it.buffer == nil {
+		it.buffer = make(map[int][]sampleWithLabelsAndStreamHash)
+	}
+	it.buffer[index] = append(it.buffer[index], sample)
+}
+
+func (it *bufferedVariantsIterator) At() logproto.Sample {
+	return it.current.sample
+}
+
+func (it *bufferedVariantsIterator) Labels() string {
+	return it.current.labels
+}
+
+func (it *bufferedVariantsIterator) StreamHash() uint64 {
+	return it.current.streamHash
+}
+
+func (it *bufferedVariantsIterator) Err() error {
+	return it.err
+}
+
+func (it *bufferedVariantsIterator) Close() error {
+	return it.iter.Close()
+}
+
+type bufferedVariantsIteratorWrapper struct {
+	*bufferedVariantsIterator
+	index int
+}
+
+func (it *bufferedVariantsIteratorWrapper) Next() bool {
+	return it.bufferedVariantsIterator.Next(it.index)
+}
+
+// VariantsEvaluator is responsible for making sure the window is loaded from all
+// evaluators for all variants
+type VariantsEvaluator struct {
+	current int64
+
+	variantEvaluators []StepEvaluator
+	currentSamples    SampleVector
+	err               error
+}
+
+// Reports any error
+func (it *VariantsEvaluator) Error() error {
+	return it.err
+}
+
+// Explain returns a print of the step evaluation tree
+func (it *VariantsEvaluator) Explain(_ Node) {
+	panic("not implemented") // TODO: Implement
+}
+
+func (it *VariantsEvaluator) Next() (bool, int64, StepResult) {
+	samples := it.currentSamples[:0]
+	hasNext := false
+
+	for _, variantEval := range it.variantEvaluators {
+		if ok, ts, result := variantEval.Next(); ok {
+			hasNext = true
+			samples = append(samples, result.SampleVector()...)
+			if ts > it.current {
+				it.current = ts
+			}
+		}
+	}
+
+	if !hasNext {
+		return false, 0, SampleVector{}
+	}
+
+	it.currentSamples = samples
+	return true, it.current, it.currentSamples
+}
+
+func (it *VariantsEvaluator) Close() error {
+	var errs []error
+	for _, variantIter := range it.variantEvaluators {
+		if err := variantIter.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("multiple errors on close: %v", errs)
+	}
+	return nil
 }

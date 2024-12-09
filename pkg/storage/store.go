@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
@@ -54,7 +55,11 @@ var (
 type SelectStore interface {
 	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
 	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+	SelectSeries(
+		ctx context.Context,
+		req logql.SelectLogParams,
+	) ([]logproto.SeriesIdentifier, error)
+	SelectVariants(ctx context.Context, req logql.SelectVariantsParams) (iter.SampleIterator, error)
 }
 
 type SchemaConfigProvider interface {
@@ -100,6 +105,78 @@ type LokiStore struct {
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 
 	metricsNamespace string
+}
+
+func (s *LokiStore) SelectVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	matchers, from, through, err := decodeReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	lazyChunks, err := s.lazyChunks(
+		ctx,
+		from,
+		through,
+		chunk.NewPredicate(matchers, req.Plan),
+		req.GetStoreChunks(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(lazyChunks) == 0 {
+		return iter.NoopSampleIterator, nil
+	}
+
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractors, err := expr.Extractors()
+	if err != nil {
+		return nil, err
+	}
+
+	for i, extractor := range extractors {
+		extractor, err = deletion.SetupExtractor(req, extractor)
+		if err != nil {
+			return nil, err
+		}
+
+		if s.extractorWrapper != nil &&
+			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			extractor = s.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		}
+
+		extractors[i] = extractor
+	}
+
+	var chunkFilterer chunk.Filterer
+	if s.chunkFilterer != nil {
+		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
+	}
+
+	return newSampleBatchIterator(
+		ctx,
+		s.schemaCfg,
+		s.chunkMetrics,
+		lazyChunks,
+		s.cfg.MaxChunkBatchSize,
+		matchers,
+		extractors,
+		req.Start,
+		req.End,
+		chunkFilterer,
+	)
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -575,7 +652,18 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
+	return newSampleBatchIterator(
+		ctx,
+		s.schemaCfg,
+		s.chunkMetrics,
+		lazyChunks,
+		s.cfg.MaxChunkBatchSize,
+		matchers,
+		[]syntax.SampleExtractor{extractor},
+		req.Start,
+		req.End,
+		chunkFilterer,
+	)
 }
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {

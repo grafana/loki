@@ -64,6 +64,7 @@ type QueryParams interface {
 	GetStart() time.Time
 	GetEnd() time.Time
 	GetShards() []string
+	GetDeletes() []*logproto.Delete
 }
 
 // SelectParams specifies parameters passed to data selections.
@@ -136,6 +137,7 @@ func (s SelectSampleParams) LogSelector() (syntax.LogSelectorExpr, error) {
 type Querier interface {
 	SelectLogs(context.Context, SelectLogParams) (iter.EntryIterator, error)
 	SelectSamples(context.Context, SelectSampleParams) (iter.SampleIterator, error)
+	SelectVariants(context.Context, SelectVariantsParams) (iter.SampleIterator, error)
 }
 
 // EngineOpts is the list of options to use with the LogQL query engine.
@@ -323,6 +325,10 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		defer util.LogErrorWithContext(ctx, "closing iterator", itr.Close)
 		streams, err := readStreams(itr, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
+	case syntax.VariantsExpr:
+		value, err := q.evalVariant(ctx, e)
+		return value, err
+
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
@@ -611,4 +617,92 @@ type groupedAggregation struct {
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
+}
+
+// evalSample evaluate a sampleExpr
+func (q *query) evalVariant(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+) (promql_parser.Value, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(
+		tenantIDs,
+		maxIntervalCapture,
+	)
+	if maxQueryInterval != 0 {
+		for i, v := range expr.Variants() {
+			err = q.checkIntervalLimit(v, maxQueryInterval)
+			if err != nil {
+				return nil, err
+			}
+
+			vExpr, err := optimizeSampleExpr(v)
+			if err != nil {
+				return nil, err
+			}
+
+			expr.SetVariant(i, vExpr)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	stepEvaluator, err := q.evaluator.NewVariantsStepEvaluator(ctx, expr, q.params)
+	if err != nil {
+		return nil, err
+	}
+	defer util.LogErrorWithContext(ctx, "closing VariantsExpr", stepEvaluator.Close)
+
+	//TODO: this never returns
+	next, _, r := stepEvaluator.Next()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	if next && r != nil {
+		switch vec := r.(type) {
+		//TODO(twhitney): need case for a log query
+		case SampleVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			//TDOO: what is merge first last for?
+			mfl := false
+			// if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
+			// 	mfl = true
+			// }
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
+		default:
+			return nil, fmt.Errorf("unsupported result type: %T", r)
+		}
+	}
+	return nil, errors.New("unexpected empty result")
+}
+
+type SelectVariantsParams struct {
+	*logproto.VariantsQueryRequest
+}
+
+func (s SelectVariantsParams) Expr() (syntax.VariantsExpr, error) {
+	if s.VariantsQueryRequest.Plan == nil {
+		return nil, errors.New("query plan is empty")
+	}
+	expr, ok := s.VariantsQueryRequest.Plan.AST.(syntax.VariantsExpr)
+	if !ok {
+		return nil, errors.New("only sample expression supported")
+	}
+	return expr, nil
+}
+
+func (s SelectVariantsParams) LogSelector() (syntax.LogSelectorExpr, error) {
+	expr, err := s.Expr()
+	if err != nil {
+		return nil, err
+	}
+	return expr.LogRange().Left, nil
 }

@@ -1064,6 +1064,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	return iter.NewSortEntryIterator(blockItrs, direction), nil
 }
 
+// TODO(twhitney): do I need a multi extractor iterator here as well?
 // Iterator implements Chunk.
 func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	mint, maxt := from.UnixNano(), through.UnixNano()
@@ -1191,6 +1192,13 @@ func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSample
 		return iter.NoopSampleIterator
 	}
 	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+}
+
+func (b encBlock) MultiExtractorSampleIterator(ctx context.Context, extractors []log.StreamSampleExtractor) iter.SampleIterator {
+	if len(b.b) == 0 {
+		return iter.NoopSampleIterator
+	}
+	return newMultiExtractorSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractors, b.symbolizer)
 }
 
 func (b block) Offset() int {

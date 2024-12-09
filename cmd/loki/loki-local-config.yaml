@@ -25,6 +25,13 @@ query_range:
         enabled: true
         max_size_mb: 100
 
+# querier:
+#   query_ingesters_within: 10m
+
+ingester:
+  max_chunk_age: 5m
+  # query_store_max_look_back_period: 10m
+
 schema_config:
   configs:
     - from: 2020-10-24
