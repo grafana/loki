@@ -5,8 +5,8 @@ import (
 )
 
 var (
-	_ Transport = unimplementedTransport{}
-	_ Transport = &MemoryTransport{}
+	_ BuilderTransport = unimplementedTransport{}
+	_ BuilderTransport = &MemoryTransport{}
 )
 
 // unimplementedTransport provides default implementations that panic
@@ -26,11 +26,11 @@ func (t unimplementedTransport) SendSyncJob(_ context.Context, _ *SyncJobRequest
 
 // MemoryTransport implements Transport interface for in-memory communication
 type MemoryTransport struct {
-	scheduler Scheduler
+	scheduler SchedulerHandler
 }
 
 // NewMemoryTransport creates a new in-memory transport instance
-func NewMemoryTransport(scheduler Scheduler) *MemoryTransport {
+func NewMemoryTransport(scheduler SchedulerHandler) *MemoryTransport {
 	return &MemoryTransport{
 		scheduler: scheduler,
 	}
@@ -48,7 +48,7 @@ func (t *MemoryTransport) SendGetJobRequest(ctx context.Context, req *GetJobRequ
 }
 
 func (t *MemoryTransport) SendCompleteJob(ctx context.Context, req *CompleteJobRequest) error {
-	return t.scheduler.HandleCompleteJob(ctx, req.BuilderID, req.Job)
+	return t.scheduler.HandleCompleteJob(ctx, req.BuilderID, req.Job, req.Success)
 }
 
 func (t *MemoryTransport) SendSyncJob(ctx context.Context, req *SyncJobRequest) error {

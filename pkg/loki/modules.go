@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
+	blocktypes "github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	blockprotos "github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -1870,7 +1871,10 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 		return s, err
 	}
 
-	blockprotos.RegisterBlockBuilderServiceServer(t.Server.GRPC, s)
+	blockprotos.RegisterSchedulerServiceServer(
+		t.Server.GRPC,
+		blocktypes.NewSchedulerServer(s),
+	)
 
 	return s, err
 }

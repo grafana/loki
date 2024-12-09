@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-var _ Transport = &GRPCTransport{}
+var _ BuilderTransport = &GRPCTransport{}
 
 type grpcTransportMetrics struct {
 	requestLatency *prometheus.HistogramVec
@@ -38,7 +38,7 @@ func newGRPCTransportMetrics(registerer prometheus.Registerer) *grpcTransportMet
 type GRPCTransport struct {
 	grpc_health_v1.HealthClient
 	io.Closer
-	proto.BlockBuilderServiceClient
+	proto.SchedulerServiceClient
 }
 
 // NewGRPCTransportFromAddress creates a new gRPC transport instance from an address and dial options
@@ -58,9 +58,9 @@ func NewGRPCTransportFromAddress(
 	}
 
 	return &GRPCTransport{
-		Closer:                    conn,
-		HealthClient:              grpc_health_v1.NewHealthClient(conn),
-		BlockBuilderServiceClient: proto.NewBlockBuilderServiceClient(conn),
+		Closer:                 conn,
+		HealthClient:           grpc_health_v1.NewHealthClient(conn),
+		SchedulerServiceClient: proto.NewSchedulerServiceClient(conn),
 	}, nil
 }
 
