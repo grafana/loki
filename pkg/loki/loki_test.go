@@ -155,7 +155,7 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 func getRandomPorts(n int) []int {
 	portListeners := []net.Listener{}
 	for i := 0; i < n; i++ {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		listener, err := net.Listen("tcp", ":0")
 		if err != nil {
 			panic(err)
 		}
@@ -188,7 +188,7 @@ server:
 common:
   compactor_address: http://localhost:%d
   path_prefix: /tmp/loki
-  instance_addr: 127.0.0.1
+  instance_addr: localhost
   ring:
     kvstore:
       store: inmemory
@@ -214,7 +214,7 @@ schema_config:
 		// retries at most 10 times (1 second in total) to avoid infinite loops when no timeout is set.
 		for i := 0; i < 10; i++ {
 			// waits until request to /ready doesn't error.
-			resp, err := http.DefaultClient.Get(fmt.Sprintf("http://127.0.0.1:%d/ready", httpPort))
+			resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/ready", httpPort))
 			if err != nil {
 				time.Sleep(time.Millisecond * 200)
 				continue
@@ -249,7 +249,7 @@ schema_config:
 	err = lokiHealthCheck()
 	require.NoError(t, err)
 
-	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://127.0.0.1:%d/config", httpPort))
+	resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/config", httpPort))
 	require.NoError(t, err)
 
 	defer resp.Body.Close()
