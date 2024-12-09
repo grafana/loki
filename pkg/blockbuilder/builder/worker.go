@@ -18,7 +18,7 @@ func (u unimplementedWorker) GetJob(_ context.Context) (*types.Job, bool, error)
 	panic("unimplemented")
 }
 
-func (u unimplementedWorker) CompleteJob(_ context.Context, _ *types.Job) error {
+func (u unimplementedWorker) CompleteJob(_ context.Context, _ *types.Job, _ bool) error {
 	panic("unimplemented")
 }
 
@@ -51,10 +51,11 @@ func (w *Worker) GetJob(ctx context.Context) (*types.Job, bool, error) {
 	return resp.Job, resp.OK, nil
 }
 
-func (w *Worker) CompleteJob(ctx context.Context, job *types.Job) error {
+func (w *Worker) CompleteJob(ctx context.Context, job *types.Job, success bool) error {
 	return w.transport.SendCompleteJob(ctx, &types.CompleteJobRequest{
 		BuilderID: w.builderID,
 		Job:       job,
+		Success:   success,
 	})
 }
 
