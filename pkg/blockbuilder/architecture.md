@@ -12,7 +12,6 @@ The Block Builder system is organized into three main packages:
 - Contains shared type definitions and interfaces
 - Defines core data structures like `Job` and `Offsets`
 - Provides interface definitions for:
-  - `Worker`: Interface for processing jobs and reporting status
   - `Scheduler`: Interface for job scheduling and worker management
   - `Transport`: Interface for communication between components
 
@@ -125,7 +124,6 @@ sequenceDiagram
   - Building storage formats from Kafka data
   - Writing completed blocks to object storage
   - Reporting job status back to scheduler
-- Implements the Worker interface for job processing
 
 ### Transport Layer
 - Provides communication between Block Builders and Scheduler

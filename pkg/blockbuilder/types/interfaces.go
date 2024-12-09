@@ -2,16 +2,6 @@ package types
 
 import "context"
 
-// Worker interface defines the methods for processing jobs and reporting status.
-type Worker interface {
-	// GetJob requests a new job from the scheduler
-	GetJob(ctx context.Context) (*Job, bool, error)
-	// CompleteJob marks a job as finished
-	CompleteJob(ctx context.Context, job *Job) error
-	// SyncJob informs the scheduler about an in-progress job
-	SyncJob(ctx context.Context, job *Job) error
-}
-
 // Scheduler interface defines the methods for scheduling jobs and managing worker pools.
 type Scheduler interface {
 	// HandleGetJob processes a job request from a block builder
