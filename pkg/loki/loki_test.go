@@ -191,8 +191,8 @@ server:
 common:
   compactor_address: http://localhost:%d
   path_prefix: /tmp/loki
+  instance_addr: 127.0.0.1
   ring:
-    instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
 schema_config:
