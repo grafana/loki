@@ -25,6 +25,9 @@ query_range:
         enabled: true
         max_size_mb: 100
 
+limits_config:
+  metric_aggregation_enabled: true
+
 schema_config:
   configs:
     - from: 2020-10-24
