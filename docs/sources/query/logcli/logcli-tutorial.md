@@ -287,6 +287,10 @@ You can now see why we opted to keep `package_id` in structured metadata and `pa
 
 Another important aspect of keeping Loki healthy is to monitor the query performance. We can use LogCLI to check the query performance of our logs.
 
+{{< admonition type="note" >}}
+The LogCLI can only return statistics for queries that touch object storage. In this example we force the Loki ingesters to flush chunks every 5 minutes which isn't recommended for production use. When running this demo if you don't see any statistics returned, try running the command again after a few minutes.
+{{< /admonition >}}
+
 To start lets print the query performance of our logs:
 
 ```bash
