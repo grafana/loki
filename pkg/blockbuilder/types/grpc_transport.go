@@ -84,9 +84,9 @@ func (t *GRPCTransport) SendGetJobRequest(ctx context.Context, req *GetJobReques
 // SendCompleteJob implements Transport
 func (t *GRPCTransport) SendCompleteJob(ctx context.Context, req *CompleteJobRequest) error {
 	protoReq := &proto.CompleteJobRequest{
-		BuilderId:          req.BuilderID,
-		Job:                jobToProto(req.Job),
-		LastConsumedOffset: req.LastConsumedOffset,
+		BuilderId: req.BuilderID,
+		Job:       jobToProto(req.Job),
+		Success:   req.Success,
 	}
 
 	_, err := t.CompleteJob(ctx, protoReq)

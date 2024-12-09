@@ -57,7 +57,7 @@ func TestScheduleAndProcessJob(t *testing.T) {
 	}
 
 	// Builder completes job
-	err = env.builder.CompleteJob(ctx, receivedJob)
+	err = env.builder.CompleteJob(ctx, receivedJob, true)
 	if err != nil {
 		t.Fatalf("failed to complete job: %v", err)
 	}
@@ -130,12 +130,12 @@ func TestMultipleBuilders(t *testing.T) {
 	}
 
 	// Complete jobs
-	err = env1.builder.CompleteJob(ctx, receivedJob1)
+	err = env1.builder.CompleteJob(ctx, receivedJob1, true)
 	if err != nil {
 		t.Fatalf("builder1 failed to complete job: %v", err)
 	}
 
-	err = builder2.CompleteJob(ctx, receivedJob2)
+	err = builder2.CompleteJob(ctx, receivedJob2, true)
 	if err != nil {
 		t.Fatalf("builder2 failed to complete job: %v", err)
 	}
