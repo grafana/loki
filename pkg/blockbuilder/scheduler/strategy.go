@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"context"
-	"time"
+	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -13,19 +13,21 @@ import (
 
 // OffsetReader is an interface to list offsets for all partitions of a topic from Kafka.
 type OffsetReader interface {
-	ListOffsetsAfterMilli(context.Context, int64) (map[int32]kadm.ListedOffset, error)
 	GroupLag(context.Context) (map[int32]kadm.GroupMemberLag, error)
 }
 
 type Planner interface {
 	Name() string
-	Plan(ctx context.Context) ([]types.Job, error)
+	Plan(ctx context.Context) ([]*JobWithPriority[int], error)
 }
 
 const (
-	RecordCountStrategy = "record_count"
-	TimeRangeStrategy   = "time_range"
+	RecordCountStrategy = "record-count"
 )
+
+var validStrategies = []string{
+	RecordCountStrategy,
+}
 
 // tries to consume upto targetRecordCount records per partition
 type RecordCountPlanner struct {
@@ -44,99 +46,48 @@ func (p *RecordCountPlanner) Name() string {
 	return RecordCountStrategy
 }
 
-func (p *RecordCountPlanner) Plan(ctx context.Context) ([]types.Job, error) {
+func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int], error) {
 	offsets, err := p.offsetReader.GroupLag(ctx)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
 		return nil, err
 	}
 
-	jobs := make([]types.Job, 0, len(offsets))
-	for _, partition := range offsets {
+	jobs := make([]*JobWithPriority[int], 0, len(offsets))
+	for _, partitionOffset := range offsets {
 		// kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
 		// no additional validation is needed here
-		startOffset := partition.Commit.At + 1
-		endOffset := min(startOffset+p.targetRecordCount, partition.End.Offset)
-
-		job := types.Job{
-			Partition: int(partition.Partition),
-			Offsets: types.Offsets{
-				Min: startOffset,
-				Max: endOffset,
-			},
-		}
-
-		jobs = append(jobs, job)
-	}
-
-	return jobs, nil
-}
-
-// Targets consuming records spanning a configured period.
-// This is a stateless planner, it is upto the caller to deduplicate or update jobs that are already in queue or progress.
-type TimeRangePlanner struct {
-	offsetReader OffsetReader
-
-	buffer       time.Duration
-	targetPeriod time.Duration
-	now          func() time.Time
-
-	logger log.Logger
-}
-
-func NewTimeRangePlanner(interval time.Duration, offsetReader OffsetReader, now func() time.Time, logger log.Logger) *TimeRangePlanner {
-	return &TimeRangePlanner{
-		targetPeriod: interval,
-		buffer:       interval,
-		offsetReader: offsetReader,
-		now:          now,
-		logger:       logger,
-	}
-}
-
-func (p *TimeRangePlanner) Name() string {
-	return TimeRangeStrategy
-}
-
-func (p *TimeRangePlanner) Plan(ctx context.Context) ([]types.Job, error) {
-	// truncate to the nearest Interval
-	consumeUptoTS := p.now().Add(-p.buffer).Truncate(p.targetPeriod)
-
-	// this will return the latest offset in the partition if no records are produced after this ts.
-	consumeUptoOffsets, err := p.offsetReader.ListOffsetsAfterMilli(ctx, consumeUptoTS.UnixMilli())
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to list offsets after timestamp", "err", err)
-		return nil, err
-	}
-
-	offsets, err := p.offsetReader.GroupLag(ctx)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
-		return nil, err
-	}
-
-	var jobs []types.Job
-	for _, partitionOffset := range offsets {
 		startOffset := partitionOffset.Commit.At + 1
-		// TODO: we could further break down the work into Interval sized chunks if this partition has pending records spanning a long time range
-		// or have the builder consume in chunks and commit the job status back to scheduler.
-		endOffset := consumeUptoOffsets[partitionOffset.Partition].Offset
+		endOffset := partitionOffset.End.Offset
 
+		// Skip if there's no lag
 		if startOffset >= endOffset {
-			level.Info(p.logger).Log("msg", "no pending records to process", "partition", partitionOffset.Partition,
-				"commitOffset", partitionOffset.Commit.At,
-				"consumeUptoOffset", consumeUptoOffsets[partitionOffset.Partition].Offset)
 			continue
 		}
 
-		jobs = append(jobs, types.Job{
-			Partition: int(partitionOffset.Partition),
-			Offsets: types.Offsets{
-				Min: startOffset,
-				Max: endOffset,
-			},
-		})
+		// Create jobs of size targetRecordCount until we reach endOffset
+		for currentStart := startOffset; currentStart < endOffset; {
+			currentEnd := min(currentStart+p.targetRecordCount, endOffset)
+
+			job := NewJobWithPriority(
+				types.NewJob(partitionOffset.Partition, types.Offsets{
+					Min: currentStart,
+					Max: currentEnd,
+				}), int(endOffset-currentStart), // priority is remaining records to process
+			)
+			jobs = append(jobs, job)
+
+			currentStart = currentEnd
+		}
 	}
+
+	// Sort jobs by partition then priority
+	sort.Slice(jobs, func(i, j int) bool {
+		if jobs[i].Job.Partition != jobs[j].Job.Partition {
+			return jobs[i].Job.Partition < jobs[j].Job.Partition
+		}
+		return jobs[i].Priority > jobs[j].Priority
+	})
 
 	return jobs, nil
 }

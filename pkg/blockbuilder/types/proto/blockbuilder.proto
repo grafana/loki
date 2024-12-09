@@ -29,6 +29,7 @@ message GetJobResponse {
 message CompleteJobRequest {
   string builder_id = 1;
   Job job = 2;
+  bool success = 3;
 }
 
 // CompleteJobResponse is an empty response for job completion

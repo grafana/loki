@@ -6,7 +6,7 @@ import "fmt"
 type Job struct {
 	ID string
 	// Partition and offset information
-	Partition int
+	Partition int32
 	Offsets   Offsets
 }
 
@@ -26,7 +26,7 @@ type Offsets struct {
 }
 
 // NewJob creates a new job with the given partition and offsets
-func NewJob(partition int, offsets Offsets) *Job {
+func NewJob(partition int32, offsets Offsets) *Job {
 	return &Job{
 		ID:        GenerateJobID(partition, offsets),
 		Partition: partition,
@@ -35,6 +35,6 @@ func NewJob(partition int, offsets Offsets) *Job {
 }
 
 // GenerateJobID creates a deterministic job ID from partition and offsets
-func GenerateJobID(partition int, offsets Offsets) string {
+func GenerateJobID(partition int32, offsets Offsets) string {
 	return fmt.Sprintf("job-%d-%d-%d", partition, offsets.Min, offsets.Max)
 }

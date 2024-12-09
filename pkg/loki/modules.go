@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
+	blockprotos "github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -52,7 +53,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	kclient "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
-	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -785,7 +785,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	bsCfg := t.Cfg.StorageConfig.BloomShipperConfig
 
 	var metasCache cache.Cache
-	if t.Cfg.isTarget(IndexGateway) && cache.IsCacheConfigured(bsCfg.MetasCache) {
+	if (t.Cfg.isTarget(IndexGateway) || t.Cfg.isTarget(Backend)) && cache.IsCacheConfigured(bsCfg.MetasCache) {
 		metasCache, err = cache.New(bsCfg.MetasCache, reg, logger, stats.BloomMetasCache, constants.Loki)
 
 		// always enable LRU cache
@@ -1543,7 +1543,8 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
 		querierCfg := bloomgateway.QuerierConfig{
-			MinTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildInterval:    t.Cfg.BloomBuild.Planner.PlanningInterval,
 		}
 		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
@@ -1816,46 +1817,30 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 	// TODO(owen-d): perhaps refactor to not use the ingester config?
 	id := t.Cfg.Ingester.LifecyclerConfig.ID
 
-	ingestPartitionID, err := partitionring.ExtractIngesterPartitionID(id)
-	if err != nil {
-		return nil, fmt.Errorf("calculating block builder partition ID: %w", err)
-	}
-
-	reader, err := partition.NewKafkaReader(
-		t.Cfg.KafkaConfig,
-		ingestPartitionID,
-		id,
-		logger,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	controller, err := blockbuilder.NewPartitionJobController(
-		reader,
-		t.Cfg.BlockBuilder.Backoff,
-		logger,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
 	objectStore, err := blockbuilder.NewMultiStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
 	if err != nil {
 		return nil, err
+	}
+
+	readerMetrics := partition.NewReaderMetrics(prometheus.DefaultRegisterer)
+	readerFactory := func(partitionID int32) (partition.Reader, error) {
+		return partition.NewKafkaReader(
+			t.Cfg.KafkaConfig,
+			partitionID,
+			logger,
+			readerMetrics,
+		)
 	}
 
 	bb, err := blockbuilder.NewBlockBuilder(
 		id,
 		t.Cfg.BlockBuilder,
 		t.Cfg.SchemaConfig.Configs,
+		readerFactory,
 		t.Store,
 		objectStore,
 		logger,
 		prometheus.DefaultRegisterer,
-		controller,
 	)
 
 	if err != nil {
@@ -1878,8 +1863,16 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
+
 	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, t.Cfg.BlockScheduler.LookbackPeriod, c)
-	return blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
+	s, err := blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
+	if err != nil {
+		return s, err
+	}
+
+	blockprotos.RegisterBlockBuilderServiceServer(t.Server.GRPC, s)
+
+	return s, err
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
