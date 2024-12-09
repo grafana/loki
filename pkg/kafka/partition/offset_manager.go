@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -19,27 +20,28 @@ import (
 
 type OffsetManager interface {
 	Topic() string
-	Partition() int32
 	ConsumerGroup() string
 
-	FetchLastCommittedOffset(ctx context.Context) (int64, error)
-	FetchPartitionOffset(ctx context.Context, position SpecialOffset) (int64, error)
-	Commit(ctx context.Context, offset int64) error
+	// GroupLag returns the lag for the consumer group; if lookbackPeriod is greater than 0, then the lag is calculated
+	// based on the current time minus the lookback period; otherwise, the lag is calculated based on Kafka's start offset
+	GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error)
+	FetchLastCommittedOffset(ctx context.Context, partition int32) (int64, error)
+	FetchPartitionOffset(ctx context.Context, partition int32, position SpecialOffset) (int64, error)
+	Commit(ctx context.Context, partition int32, offset int64) error
 }
 
 var _ OffsetManager = &KafkaOffsetManager{}
 
 type KafkaOffsetManager struct {
-	client        *kgo.Client
-	topic         string
-	partitionID   int32
-	consumerGroup string
-	logger        log.Logger
+	client      *kgo.Client
+	adminClient *kadm.Client
+	cfg         kafka.Config
+	instanceID  string
+	logger      log.Logger
 }
 
 func NewKafkaOffsetManager(
 	cfg kafka.Config,
-	partitionID int32,
 	instanceID string,
 	logger log.Logger,
 	reg prometheus.Registerer,
@@ -57,9 +59,8 @@ func NewKafkaOffsetManager(
 
 	return newKafkaOffsetManager(
 		c,
-		cfg.Topic,
-		partitionID,
-		cfg.GetConsumerGroup(instanceID, partitionID),
+		cfg,
+		instanceID,
 		logger,
 	), nil
 }
@@ -67,43 +68,36 @@ func NewKafkaOffsetManager(
 // newKafkaReader creates a new KafkaReader instance
 func newKafkaOffsetManager(
 	client *kgo.Client,
-	topic string,
-	partitionID int32,
-	consumerGroup string,
+	cfg kafka.Config,
+	instanceID string,
 	logger log.Logger,
 ) *KafkaOffsetManager {
 	return &KafkaOffsetManager{
-		client:        client,
-		topic:         topic,
-		partitionID:   partitionID,
-		consumerGroup: consumerGroup,
-		logger:        logger,
+		client:      client,
+		adminClient: kadm.NewClient(client),
+		cfg:         cfg,
+		instanceID:  instanceID,
+		logger:      logger,
 	}
 }
 
 // Topic returns the topic being read
 func (r *KafkaOffsetManager) Topic() string {
-	return r.topic
+	return r.cfg.Topic
 }
 
-// Partition returns the partition being read
-func (r *KafkaOffsetManager) Partition() int32 {
-	return r.partitionID
-}
-
-// ConsumerGroup returns the consumer group
 func (r *KafkaOffsetManager) ConsumerGroup() string {
-	return r.consumerGroup
+	return r.cfg.GetConsumerGroup(r.instanceID)
 }
 
 // FetchLastCommittedOffset retrieves the last committed offset for this partition
-func (r *KafkaOffsetManager) FetchLastCommittedOffset(ctx context.Context) (int64, error) {
+func (r *KafkaOffsetManager) FetchLastCommittedOffset(ctx context.Context, partitionID int32) (int64, error) {
 	req := kmsg.NewPtrOffsetFetchRequest()
 	req.Topics = []kmsg.OffsetFetchRequestTopic{{
-		Topic:      r.topic,
-		Partitions: []int32{r.partitionID},
+		Topic:      r.cfg.Topic,
+		Partitions: []int32{partitionID},
 	}}
-	req.Group = r.consumerGroup
+	req.Group = r.ConsumerGroup()
 
 	resps := r.client.RequestSharded(ctx, req)
 
@@ -142,13 +136,13 @@ func (r *KafkaOffsetManager) FetchLastCommittedOffset(ctx context.Context) (int6
 }
 
 // FetchPartitionOffset retrieves the offset for a specific position
-func (r *KafkaOffsetManager) FetchPartitionOffset(ctx context.Context, position SpecialOffset) (int64, error) {
+func (r *KafkaOffsetManager) FetchPartitionOffset(ctx context.Context, partitionID int32, position SpecialOffset) (int64, error) {
 	partitionReq := kmsg.NewListOffsetsRequestTopicPartition()
-	partitionReq.Partition = r.partitionID
+	partitionReq.Partition = partitionID
 	partitionReq.Timestamp = int64(position)
 
 	topicReq := kmsg.NewListOffsetsRequestTopic()
-	topicReq.Topic = r.topic
+	topicReq.Topic = r.cfg.Topic
 	topicReq.Partitions = []kmsg.ListOffsetsRequestTopicPartition{partitionReq}
 
 	req := kmsg.NewPtrListOffsetsRequest()
@@ -188,22 +182,46 @@ func (r *KafkaOffsetManager) FetchPartitionOffset(ctx context.Context, position 
 	return partition.Offset, nil
 }
 
+// GroupLag returns the lag for the consumer group; if lookbackPeriod is greater than 0, then the lag is calculated
+// based on the current time minus the lookback period; otherwise, the lag is calculated based on Kafka's start offset
+func (r *KafkaOffsetManager) GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+	lookbackMills := int64(lookbackPeriod / time.Millisecond)
+	var fallbackOffsetMillis int64
+	if lookbackMills > 0 {
+		fallbackOffsetMillis = time.Now().UnixMilli() - lookbackMills
+	} else {
+		fallbackOffsetMillis = int64(KafkaStartOffset)
+	}
+
+	lag, err := GetGroupLag(ctx, r.adminClient, r.cfg.Topic, r.ConsumerGroup(), fallbackOffsetMillis)
+	if err != nil {
+		return nil, err
+	}
+
+	offsets, ok := lag[r.cfg.Topic]
+	if !ok {
+		return nil, errors.New("no lag found for the topic")
+	}
+
+	return offsets, nil
+}
+
 // Commit commits an offset to the consumer group
-func (r *KafkaOffsetManager) Commit(ctx context.Context, offset int64) error {
+func (r *KafkaOffsetManager) Commit(ctx context.Context, partitionID int32, offset int64) error {
 	admin := kadm.NewClient(r.client)
 
 	// Commit the last consumed offset.
 	toCommit := kadm.Offsets{}
-	toCommit.AddOffset(r.topic, r.partitionID, offset, -1)
+	toCommit.AddOffset(r.cfg.Topic, partitionID, offset, -1)
 
-	committed, err := admin.CommitOffsets(ctx, r.consumerGroup, toCommit)
+	committed, err := admin.CommitOffsets(ctx, r.ConsumerGroup(), toCommit)
 	if err != nil {
 		return err
 	} else if !committed.Ok() {
 		return committed.Error()
 	}
 
-	committedOffset, _ := committed.Lookup(r.topic, r.partitionID)
+	committedOffset, _ := committed.Lookup(r.cfg.Topic, partitionID)
 	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
 	return nil
 }
