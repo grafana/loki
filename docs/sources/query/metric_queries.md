@@ -163,4 +163,4 @@ approx_topk(k, <vector expression>)
 ```
 
 It is only supported for instant queries and does not support grouping. It is useful when the cardinality of the inner
-vector is too high, e.g. when it uses an aggregation by a structured metadata label.
+vector is too high, for example, when it uses an aggregation by a structured metadata label.
