@@ -39,19 +39,24 @@ func (j *inProgressJob) Duration() time.Duration {
 
 // JobQueue manages the queue of pending jobs and tracks their state.
 type JobQueue struct {
-	pending    *PriorityQueue[*JobWithPriority[int]] // Jobs waiting to be processed, ordered by priority
-	inProgress map[string]*inProgressJob             // Jobs currently being processed, key is job ID
-	completed  *CircularBuffer[*types.Job]           // Last N completed jobs
-	statusMap  map[string]types.JobStatus            // Maps job ID to its current status
+	pending    *PriorityQueue[*JobWithPriority[int], string] // Jobs waiting to be processed, ordered by priority
+	inProgress map[string]*inProgressJob                     // Jobs currently being processed, key is job ID
+	completed  *CircularBuffer[*types.Job]                   // Last N completed jobs
+	statusMap  map[string]types.JobStatus                    // Maps job ID to its current status
 	mu         sync.RWMutex
 }
 
 // NewJobQueue creates a new job queue instance
 func NewJobQueue() *JobQueue {
 	return &JobQueue{
-		pending: NewPriorityQueue[*JobWithPriority[int]](func(a, b *JobWithPriority[int]) bool {
-			return a.Priority > b.Priority // Higher priority first
-		}),
+		pending: NewPriorityQueue[*JobWithPriority[int]](
+			func(a, b *JobWithPriority[int]) bool {
+				return a.Priority > b.Priority // Higher priority first
+			},
+			func(a *JobWithPriority[int]) string {
+				return a.Job.ID
+			},
+		),
 		inProgress: make(map[string]*inProgressJob),
 		completed:  NewCircularBuffer[*types.Job](defaultCompletedJobsCapacity),
 		statusMap:  make(map[string]types.JobStatus),

@@ -146,6 +146,7 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
 		if status, ok := s.queue.Exists(job.Job); ok {
 			level.Debug(s.logger).Log("msg", "job already exists", "job", job, "status", status)
+			// TODO: update priority
 			continue
 		}
 
@@ -174,8 +175,13 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 	}
 }
 
-func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job, _ bool) error {
-	// TODO: handle commits
+func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job, success bool) error {
+	logger := log.With(s.logger, "job", job.ID)
+
+	if !success {
+		level.Error(logger).Log("msg", "job failed")
+		return nil
+	}
 	s.queue.MarkComplete(job.ID)
 	return nil
 }

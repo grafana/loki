@@ -7,7 +7,7 @@ import (
 )
 
 func TestPriorityQueue(t *testing.T) {
-	t.Run("operations", func(t *testing.T) {
+	t.Run("basic operations", func(t *testing.T) {
 		tests := []struct {
 			name     string
 			input    []int
@@ -33,16 +33,14 @@ func TestPriorityQueue(t *testing.T) {
 				input:    []int{3, 1, 2},
 				wantPops: []int{1, 2, 3},
 			},
-			{
-				name:     "duplicate elements",
-				input:    []int{2, 1, 2, 1},
-				wantPops: []int{1, 1, 2, 2},
-			},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				pq := NewPriorityQueue[int](func(a, b int) bool { return a < b })
+				pq := NewPriorityQueue[int, int](
+					func(a, b int) bool { return a < b },
+					func(a int) int { return a },
+				)
 				require.Equal(t, 0, pq.Len())
 
 				// Push all elements
@@ -69,15 +67,73 @@ func TestPriorityQueue(t *testing.T) {
 		}
 	})
 
+	t.Run("key operations", func(t *testing.T) {
+		type Job struct {
+			ID       string
+			Priority int
+		}
+
+		pq := NewPriorityQueue[Job, string](
+			func(a, b Job) bool { return a.Priority < b.Priority },
+			func(j Job) string { return j.ID },
+		)
+
+		// Test Push with duplicate key
+		job1 := Job{ID: "job1", Priority: 1}
+		job1Updated := Job{ID: "job1", Priority: 3}
+		job2 := Job{ID: "job2", Priority: 2}
+
+		pq.Push(job1)
+		require.Equal(t, 1, pq.Len())
+
+		// Push with same key should update
+		pq.Push(job1Updated)
+		require.Equal(t, 1, pq.Len())
+
+		// Verify updated priority
+		v, ok := pq.Lookup("job1")
+		require.True(t, ok)
+		require.Equal(t, job1Updated, v)
+
+		// Test Remove
+		pq.Push(job2)
+		v, ok = pq.Remove("job1")
+		require.True(t, ok)
+		require.Equal(t, job1Updated, v)
+		require.Equal(t, 1, pq.Len())
+
+		// Test UpdatePriority
+		newJob2 := Job{ID: "job2", Priority: 4}
+		ok = pq.UpdatePriority("job2", newJob2)
+		require.True(t, ok)
+
+		v, ok = pq.Lookup("job2")
+		require.True(t, ok)
+		require.Equal(t, newJob2, v)
+
+		// Test non-existent key operations
+		v, ok = pq.Lookup("nonexistent")
+		require.False(t, ok)
+		require.Zero(t, v)
+
+		v, ok = pq.Remove("nonexistent")
+		require.False(t, ok)
+		require.Zero(t, v)
+
+		ok = pq.UpdatePriority("nonexistent", Job{})
+		require.False(t, ok)
+	})
+
 	t.Run("custom type", func(t *testing.T) {
 		type Job struct {
 			ID       string
 			Priority int
 		}
 
-		pq := NewPriorityQueue[Job](func(a, b Job) bool {
-			return a.Priority < b.Priority
-		})
+		pq := NewPriorityQueue[Job, string](
+			func(a, b Job) bool { return a.Priority < b.Priority },
+			func(j Job) string { return j.ID },
+		)
 
 		jobs := []Job{
 			{ID: "high", Priority: 3},
@@ -102,7 +158,10 @@ func TestPriorityQueue(t *testing.T) {
 	})
 
 	t.Run("mixed operations", func(t *testing.T) {
-		pq := NewPriorityQueue[int](func(a, b int) bool { return a < b })
+		pq := NewPriorityQueue[int, int](
+			func(a, b int) bool { return a < b },
+			func(a int) int { return a },
+		)
 
 		// Push some elements
 		pq.Push(3)
