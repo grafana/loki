@@ -19,7 +19,7 @@ CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
 GO_VERSION         := 1.23.1
-BUILD_IMAGE_TAG    := 0.34.2
+BUILD_IMAGE_TAG    := 0.34.3
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -672,12 +672,12 @@ logql-analyzer-push: logql-analyzer-image
 # Build image
 build-image: ## build the build docker image
 	$(OCI_BUILD) -t $(BUILD_IMAGE) ./loki-build-image
-build-image-push:  build-image
+build-image-push:
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(OCI_PUSH) $(BUILD_IMAGE)
+	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -t $(BUILD_IMAGE) ./loki-build-image
 
 # Loki Operator
 loki-operator-image: ## build the operator docker image
