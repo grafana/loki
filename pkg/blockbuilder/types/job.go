@@ -21,7 +21,26 @@ const (
 	JobStatusPending JobStatus = iota
 	JobStatusInProgress
 	JobStatusComplete
+	JobStatusFailed    // Job failed and may be retried
+	JobStatusExpired   // Job failed too many times or is too old
 )
+
+func (s JobStatus) String() string {
+	switch s {
+	case JobStatusPending:
+		return "pending"
+	case JobStatusInProgress:
+		return "in_progress"
+	case JobStatusComplete:
+		return "complete"
+	case JobStatusFailed:
+		return "failed"
+	case JobStatusExpired:
+		return "expired"
+	default:
+		return "unknown"
+	}
+}
 
 // Offsets represents the range of offsets to process
 type Offsets struct {

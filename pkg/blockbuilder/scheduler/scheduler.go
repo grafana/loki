@@ -204,29 +204,27 @@ func (s *BlockScheduler) publishLagMetrics(lag map[int32]kadm.GroupMemberLag) {
 	}
 }
 
-func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*types.Job, bool, error) {
+func (s *BlockScheduler) HandleGetJob(ctx context.Context, _ string) (*types.Job, bool, error) {
 	select {
 	case <-ctx.Done():
 		return nil, false, ctx.Err()
 	default:
-		return s.queue.Dequeue(builderID)
+		job, ok := s.queue.Dequeue()
+		return job, ok, nil
 	}
 }
 
 func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job, success bool) error {
 	logger := log.With(s.logger, "job", job.ID)
 
-	status, exists := s.queue.Exists(job)
-	if !exists {
-		level.Error(logger).Log("msg", "cannot complete job, job does not exist")
+	if success {
+		level.Info(logger).Log("msg", "job completed successfully")
+		s.queue.MarkComplete(job.ID, types.JobStatusComplete)
 		return nil
 	}
 
-	if !success {
-		level.Error(logger).Log("msg", "job failed, re-enqueuing")
-		return nil
-	}
-	s.queue.MarkComplete(job.ID)
+	level.Error(logger).Log("msg", "job failed, re-enqueuing")
+	s.queue.MarkComplete(job.ID, types.JobStatusFailed)
 	return nil
 }
 
