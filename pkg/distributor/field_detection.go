@@ -210,7 +210,7 @@ func getValueUsingJSONParser(line []byte, hints []string) []byte {
 		if err != nil {
 			continue
 		}
-		l, _, _, err := jsonparser.Get(line, log.JSONPathsToStrings(parsed)...)
+		l, _, _, err := jsonparser.Get(line, log.JSONPathToStrings(parsed)...)
 		if err != nil {
 			continue
 		}
