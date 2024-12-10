@@ -42,7 +42,7 @@ func NewPromtailClient(cfg *promtailClientConfig, log *log.Logger) *promtailClie
 func NewHTTPClient(cfg *httpClientConfig) *http.Client {
 	transport := http.DefaultTransport
 	if cfg.skipTlsVerify {
-		transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //#nosec G402 -- User has explicitly requested to disable TLS
 	}
 	return &http.Client{
 		Timeout:   cfg.timeout,

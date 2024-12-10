@@ -1,5 +1,19 @@
 # Changes
 
+## [1.45.2](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.1...pubsub/v1.45.2) (2024-12-03)
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Make invalid filter return error instead of panic ([#11087](https://github.com/googleapis/google-cloud-go/issues/11087)) ([45e1ce7](https://github.com/googleapis/google-cloud-go/commit/45e1ce70e2757b78b868768b93e05da8858bab85))
+* **pubsub:** Only init batch span if trace enabled ([#11193](https://github.com/googleapis/google-cloud-go/issues/11193)) ([f843d50](https://github.com/googleapis/google-cloud-go/commit/f843d50f849c5014eba33d923085f0add41365a6))
+* **pubsub:** Use official semconv variable whenever possible ([#10904](https://github.com/googleapis/google-cloud-go/issues/10904)) ([1ce4b6d](https://github.com/googleapis/google-cloud-go/commit/1ce4b6dc31653ca6f28c50d5149d74b827caaeaa))
+
+
+### Documentation
+
+* **pubsub:** MinExtensionPeriod defaults to 60 seconds ([#10791](https://github.com/googleapis/google-cloud-go/issues/10791)) ([cc88fe1](https://github.com/googleapis/google-cloud-go/commit/cc88fe1c8d834903e2b5f8d3a7cc9bbd65c70b29))
+
 ## [1.45.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.0...pubsub/v1.45.1) (2024-10-24)
 
 
