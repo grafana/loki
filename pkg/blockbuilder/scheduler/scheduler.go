@@ -16,12 +16,11 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
-	"github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 var (
-	_ types.Scheduler = &BlockScheduler{}
+	_ types.SchedulerHandler = &BlockScheduler{}
 )
 
 type Config struct {
@@ -175,7 +174,7 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 	}
 }
 
-func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job) error {
+func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job, _ bool) error {
 	// TODO: handle commits
 	s.queue.MarkComplete(job.ID)
 	return nil
@@ -184,44 +183,4 @@ func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *typ
 func (s *BlockScheduler) HandleSyncJob(_ context.Context, builderID string, job *types.Job) error {
 	s.queue.SyncJob(job.ID, builderID, job)
 	return nil
-}
-
-func (s *BlockScheduler) CompleteJob(_ context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
-	s.queue.MarkComplete(req.Job.Id)
-	return &proto.CompleteJobResponse{}, nil
-}
-
-func (s *BlockScheduler) SyncJob(_ context.Context, req *proto.SyncJobRequest) (*proto.SyncJobResponse, error) {
-	s.queue.SyncJob(req.Job.Id, req.BuilderId, &types.Job{
-		ID:        req.Job.Id,
-		Partition: req.Job.Partition,
-		Offsets: types.Offsets{
-			Min: req.Job.Offsets.Min,
-			Max: req.Job.Offsets.Max,
-		},
-	})
-
-	return &proto.SyncJobResponse{}, nil
-}
-
-func (s *BlockScheduler) GetJob(_ context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
-	var resp proto.GetJobResponse
-	job, ok, err := s.queue.Dequeue(req.BuilderId)
-	if err != nil {
-		return &resp, err
-	}
-
-	if ok {
-		resp.Ok = true
-		resp.Job = &proto.Job{
-			Id:        job.ID,
-			Partition: job.Partition,
-			Offsets: &proto.Offsets{
-				Min: job.Offsets.Min,
-				Max: job.Offsets.Max,
-			},
-		}
-	}
-
-	return &resp, nil
 }

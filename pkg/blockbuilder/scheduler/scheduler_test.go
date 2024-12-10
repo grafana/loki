@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
@@ -16,14 +15,14 @@ type testEnv struct {
 	queue     *JobQueue
 	scheduler *BlockScheduler
 	transport *types.MemoryTransport
-	builder   *builder.Worker
+	builder   *Worker
 }
 
 func newTestEnv(builderID string) *testEnv {
 	queue := NewJobQueue()
 	scheduler := NewScheduler(Config{}, queue, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	transport := types.NewMemoryTransport(scheduler)
-	builder := builder.NewWorker(builderID, transport)
+	builder := NewWorker(builderID, transport)
 
 	return &testEnv{
 		queue:     queue,
@@ -89,7 +88,7 @@ func TestMultipleBuilders(t *testing.T) {
 	// Create first environment
 	env1 := newTestEnv("test-builder-1")
 	// Create second builder using same scheduler
-	builder2 := builder.NewWorker("test-builder-2", env1.transport)
+	builder2 := NewWorker("test-builder-2", env1.transport)
 
 	ctx := context.Background()
 
@@ -249,4 +248,48 @@ func TestConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Worker handles communication with the scheduler service.
+type Worker struct {
+	transport types.BuilderTransport
+	builderID string
+}
+
+// NewWorker creates a new Worker instance.
+func NewWorker(builderID string, transport types.BuilderTransport) *Worker {
+	return &Worker{
+		transport: transport,
+		builderID: builderID,
+	}
+}
+
+// GetJob requests a new job from the scheduler.
+func (w *Worker) GetJob(ctx context.Context) (*types.Job, bool, error) {
+	resp, err := w.transport.SendGetJobRequest(ctx, &types.GetJobRequest{
+		BuilderID: w.builderID,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return resp.Job, resp.OK, nil
+}
+
+// CompleteJob marks a job as finished.
+func (w *Worker) CompleteJob(ctx context.Context, job *types.Job, success bool) error {
+	err := w.transport.SendCompleteJob(ctx, &types.CompleteJobRequest{
+		BuilderID: w.builderID,
+		Job:       job,
+		Success:   success,
+	})
+	return err
+}
+
+// SyncJob informs the scheduler about an in-progress job.
+func (w *Worker) SyncJob(ctx context.Context, job *types.Job) error {
+	err := w.transport.SendSyncJob(ctx, &types.SyncJobRequest{
+		BuilderID: w.builderID,
+		Job:       job,
+	})
+	return err
 }
