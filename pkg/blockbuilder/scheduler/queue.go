@@ -5,10 +5,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 const (
+	DefaultPriority              = 0 // TODO(owen-d): better determine priority when unknown
 	defaultCompletedJobsCapacity = 100
 )
 
@@ -33,6 +37,7 @@ func NewJobWithMetadata(job *types.Job, priority int) *JobWithMetadata {
 
 // JobQueue manages the queue of pending jobs and tracks their state.
 type JobQueue struct {
+	logger     log.Logger
 	pending    *PriorityQueue[string, *JobWithMetadata] // Jobs waiting to be processed, ordered by priority
 	inProgress map[string]*JobWithMetadata              // Jobs currently being processed
 	completed  *CircularBuffer[*JobWithMetadata]        // Last N completed jobs
@@ -40,9 +45,9 @@ type JobQueue struct {
 	mu         sync.RWMutex
 }
 
-// NewJobQueue creates a new job queue instance
-func NewJobQueue() *JobQueue {
+func NewJobQueueWithLogger(logger log.Logger) *JobQueue {
 	return &JobQueue{
+		logger: logger,
 		pending: NewPriorityQueue(
 			func(a, b *JobWithMetadata) bool {
 				return a.Priority > b.Priority // Higher priority first
@@ -53,6 +58,11 @@ func NewJobQueue() *JobQueue {
 		completed:  NewCircularBuffer[*JobWithMetadata](defaultCompletedJobsCapacity),
 		statusMap:  make(map[string]types.JobStatus),
 	}
+}
+
+// NewJobQueue creates a new job queue instance
+func NewJobQueue() *JobQueue {
+	return NewJobQueueWithLogger(log.NewNopLogger())
 }
 
 // Exists checks if a job exists in any state and returns its status
@@ -177,38 +187,45 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 	}
 }
 
-// GetStatus returns the current status of a job
-func (q *JobQueue) GetStatus(id string) (types.JobStatus, bool) {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	status, ok := q.statusMap[id]
-	return status, ok
-}
-
 // SyncJob registers a job as in-progress or updates its UpdateTime if already in progress
 func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
-	// Check if job exists and is in progress
-	if status, exists := q.Exists(job); exists && status == types.JobStatusInProgress {
-		q.mu.Lock()
-		if existingJob, ok := q.inProgress[jobID]; ok {
-			existingJob.UpdateTime = time.Now()
-		}
-		q.mu.Unlock()
-		return
-	}
-
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Add new job to in-progress
-	jobMeta := &JobWithMetadata{
-		Job:        job,
-		Priority:   0, // Priority is not known in this case
-		Status:     types.JobStatusInProgress,
-		StartTime:  time.Now(),
-		UpdateTime: time.Now(),
+	// Helper function to create a new job
+	registerInProgress := func() {
+		// Job does not exist; add it as in-progress
+		now := time.Now()
+		jobMeta := NewJobWithMetadata(job, DefaultPriority)
+		jobMeta.StartTime = now
+		jobMeta.UpdateTime = now
+		jobMeta.Status = types.JobStatusInProgress
+		q.inProgress[jobID] = jobMeta
 	}
+
+	jobMeta, ok := q.existsLockLess(jobID)
+
+	if !ok {
+		registerInProgress()
+		return
+	}
+
+	switch jobMeta.Status {
+	case types.JobStatusPending:
+		// Job already pending, move to in-progress
+		_, ok := q.pending.Remove(jobID)
+		if !ok {
+			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", jobID)
+		}
+	case types.JobStatusInProgress:
+	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
+		// Job already completed, re-enqueue a new one
+		registerInProgress()
+	default:
+		registerInProgress()
+	}
+
 	q.inProgress[jobID] = jobMeta
-	q.statusMap[jobID] = types.JobStatusInProgress
+	jobMeta.Status = types.JobStatusInProgress
+
 }
