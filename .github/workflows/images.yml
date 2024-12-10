@@ -193,6 +193,7 @@
         "tags": "${{ env.IMAGE_PREFIX }}/promtail:${{ steps.weekly-version.outputs.version }}"
 "name": "publish images"
 "on":
+  "pull_request": {}
   "push":
     "branches":
     - "k[0-9]+*"

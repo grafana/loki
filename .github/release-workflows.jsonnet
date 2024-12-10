@@ -15,7 +15,7 @@ local imageJobs = {
   'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.image('promtail', 'clients/cmd/promtail'),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
-  'loki-docker-driver': build.dockerPlugin('grafana/loki-docker-driver', 'clients/cmd/docker-driver', platform=['linux/amd64', 'linux/arm64']),
+  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', 'clients/cmd/docker-driver', platform=['linux/amd64', 'linux/arm64']),
 };
 
 local weeklyImageJobs = {
@@ -105,6 +105,7 @@ local imagePrefix = 'grafana';
   'images.yml': std.manifestYamlDoc({
     name: 'publish images',
     on: {
+      pull_request: {},
       push: {
         branches: [
           'k[0-9]+*',  // This is a weird glob pattern, not a regexp, do not use ".*", see https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
