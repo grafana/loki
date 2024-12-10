@@ -267,17 +267,19 @@ logcli detected-fields --since 24h '{service_name="Delivery World"}'
 This will return a list of all the keys detected in our logs. The output will look similar to the following:
 
 ```console
-label: city             type: string    cardinality: 15
-label: detected_level   type: string    cardinality: 3
-label: note             type: string    cardinality: 7
-label: package_id       type: string    cardinality: 7136
-label: package_status   type: string    cardinality: 4
-label: package_type     type: string    cardinality: 5
-label: receiver_address type: string    cardinality: 6962
-label: receiver_name    type: string    cardinality: 100
-label: sender_address   type: string    cardinality: 6981
-label: sender_name      type: string    cardinality: 100
-label: timestamp        type: string    cardinality: 7438
+label: city                     type: string            cardinality: 10
+label: detected_level           type: string            cardinality: 3
+label: note                     type: string            cardinality: 7
+label: package_id               type: string            cardinality: 20
+label: package_size_extracted   type: string            cardinality: 3
+label: package_status           type: string            cardinality: 4
+label: package_type             type: string            cardinality: 5
+label: receiver_address         type: string            cardinality: 20
+label: receiver_name            type: string            cardinality: 19
+label: sender_address           type: string            cardinality: 20
+label: sender_name              type: string            cardinality: 19
+label: state_extracted          type: string            cardinality: 5
+label: timestamp                type: string            cardinality: 20
 ```
 
 You can now see why we opted to keep `package_id` in structured metadata and `package_size` as a label. Package ID has a high cardinality and is unique to each log entry, making it a good candidate for structured metadata since we potentially may need to query for it directly. Package size, on the other hand, has a low cardinality and is a good candidate for a label.
