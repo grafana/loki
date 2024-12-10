@@ -15,10 +15,10 @@ const (
 // JobWithMetadata wraps a job with additional metadata for tracking its lifecycle
 type JobWithMetadata struct {
 	*types.Job
-	Priority    int
-	Status      types.JobStatus
-	StartTime   time.Time
-	UpdateTime  time.Time
+	Priority   int
+	Status     types.JobStatus
+	StartTime  time.Time
+	UpdateTime time.Time
 }
 
 // NewJobWithMetadata creates a new JobWithMetadata instance
@@ -135,7 +135,10 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 	jobMeta.UpdateTime = time.Now()
 
 	// Add to completed buffer
-	_, _ = q.completed.Push(jobMeta)
+	if old, evicted := q.completed.Push(jobMeta); evicted {
+		// If the buffer is full, evict the oldest job and remove it from the status map to avoid leaks
+		delete(q.statusMap, old.ID)
+	}
 
 	// Update status map and clean up
 	q.statusMap[id] = status
