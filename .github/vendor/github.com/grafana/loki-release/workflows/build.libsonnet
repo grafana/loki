@@ -164,8 +164,8 @@ local releaseLibStep = common.releaseLibStep;
         'build-args': |||
           %s
         ||| % std.rstripChars(std.lines([
-          'IMAGE_TAG=${{ needs.version.outputs.version }}',
-          'GOARCH=${{ steps.platform.outputs.platform_short }}',
+          'IMAGE_TAG="${{ needs.version.outputs.version }}"',
+          'GOARCH="${{ steps.platform.outputs.platform_short }}"',
           ('BUILD_IMAGE=%s' % buildImage),
         ]), '\n'),
       }),

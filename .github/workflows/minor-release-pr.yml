@@ -650,8 +650,8 @@ jobs:
       uses: "docker/build-push-action@v6"
       with:
         build-args: |
-          IMAGE_TAG=${{ needs.version.outputs.version }}
-          GOARCH=${{ steps.platform.outputs.platform_short }}
+          IMAGE_TAG="${{ needs.version.outputs.version }}"
+          GOARCH="${{ steps.platform.outputs.platform_short }}"
           BUILD_IMAGE=grafana/loki-build-image:0.34.3
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
