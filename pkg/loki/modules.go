@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
+	blocktypes "github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	blockprotos "github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
@@ -51,7 +52,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	kclient "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -1854,25 +1854,30 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 func (t *Loki) initBlockScheduler() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "block_scheduler")
 
-	clientMetrics := kclient.NewReaderClientMetrics("block-scheduler", prometheus.DefaultRegisterer)
-	c, err := kclient.NewReaderClient(
+	offsetManager, err := partition.NewKafkaOffsetManager(
 		t.Cfg.KafkaConfig,
-		clientMetrics,
-		log.With(logger, "component", "kafka-client"),
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		logger,
+		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating kafka client: %w", err)
+		return nil, fmt.Errorf("creating kafka offset manager: %w", err)
 	}
 
-	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, t.Cfg.BlockScheduler.LookbackPeriod, c)
-	s, err := blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
-	if err != nil {
-		return s, err
-	}
+	s := blockscheduler.NewScheduler(
+		t.Cfg.BlockScheduler,
+		blockscheduler.NewJobQueue(),
+		offsetManager,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
 
-	blockprotos.RegisterBlockBuilderServiceServer(t.Server.GRPC, s)
+	blockprotos.RegisterSchedulerServiceServer(
+		t.Server.GRPC,
+		blocktypes.NewSchedulerServer(s),
+	)
 
-	return s, err
+	return s, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {

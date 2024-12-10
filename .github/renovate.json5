@@ -48,6 +48,7 @@
       "matchManagers": ["helm-requirements", "helm-values", "helmv3"],
       "groupName": "helm-{{packageName}}",
       "matchUpdateTypes": ["major", "minor", "patch"],
+      "matchPackageNames": ["!grafana/loki"], // This is updated via a different job
       "autoApprove": false,
       "automerge": false
     },
