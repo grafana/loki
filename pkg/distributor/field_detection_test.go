@@ -468,8 +468,9 @@ func Test_DetectGenericFields(t *testing.T) {
 	detector := newFieldDetector(
 		validationContext{
 			discoverGenericFields: map[string][]string{
-				"trace_id": []string{"trace_id"},
-				"org_id":   []string{"org_id", "user_id", "tenant_id"},
+				"trace_id":   []string{"trace_id"},
+				"org_id":     []string{"org_id", "user_id", "tenant_id"},
+				"product_id": []string{"product.id"}, // jsonpath
 			},
 			allowStructuredMetadata: true,
 		})
@@ -575,6 +576,19 @@ func Test_DetectGenericFields(t *testing.T) {
 			},
 			expected: push.LabelsAdapter{
 				{Name: "org_id", Value: "fake_b"}, // first field from configuration that matches takes precedence
+			},
+		},
+		{
+			name: "logline matches jsonpath",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `{"product": {"details": "product details", "id": "P2024/01"}}`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "product_id", Value: "P2024/01"},
 			},
 		},
 	} {

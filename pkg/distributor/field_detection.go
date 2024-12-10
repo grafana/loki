@@ -13,6 +13,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
@@ -141,9 +143,9 @@ func (l *FieldDetector) detectGenericFieldFromLogEntry(entry logproto.Entry, hin
 	lineBytes := unsafe.Slice(unsafe.StringData(entry.Line), len(entry.Line))
 	var v []byte
 	if isJSON(entry.Line) {
-		v = l.getValueUsingJSONParser(lineBytes, hints)
+		v = getValueUsingJSONParser(lineBytes, hints)
 	} else if isLogFmt(lineBytes) {
-		v = l.getValueUsingLogfmtParser(lineBytes, hints)
+		v = getValueUsingLogfmtParser(lineBytes, hints)
 	}
 	return string(v)
 }
@@ -152,9 +154,9 @@ func (l *FieldDetector) extractLogLevelFromLogLine(log string) string {
 	lineBytes := unsafe.Slice(unsafe.StringData(log), len(log))
 	var v []byte
 	if isJSON(log) {
-		v = l.getValueUsingJSONParser(lineBytes, l.allowedLevelLabels)
+		v = getValueUsingJSONParser(lineBytes, l.allowedLevelLabels)
 	} else if isLogFmt(lineBytes) {
-		v = l.getValueUsingLogfmtParser(lineBytes, l.allowedLevelLabels)
+		v = getValueUsingLogfmtParser(lineBytes, l.allowedLevelLabels)
 	} else {
 		return detectLevelFromLogLine(log)
 	}
@@ -179,7 +181,7 @@ func (l *FieldDetector) extractLogLevelFromLogLine(log string) string {
 	}
 }
 
-func (l *FieldDetector) getValueUsingLogfmtParser(line []byte, hints []string) []byte {
+func getValueUsingLogfmtParser(line []byte, hints []string) []byte {
 	d := logfmt.NewDecoder(line)
 	// In order to have the same behaviour as the JSON field extraction,
 	// the full line needs to be parsed to extract all possible matching fields.
@@ -201,14 +203,20 @@ func (l *FieldDetector) getValueUsingLogfmtParser(line []byte, hints []string) [
 	return res
 }
 
-func (l *FieldDetector) getValueUsingJSONParser(log []byte, hints []string) []byte {
+func getValueUsingJSONParser(line []byte, hints []string) []byte {
+	var res []byte
 	for _, allowedLabel := range hints {
-		l, _, _, err := jsonparser.Get(log, allowedLabel)
-		if err == nil {
-			return l
+		parsed, err := jsonexpr.Parse(allowedLabel, false)
+		if err != nil {
+			continue
 		}
+		l, _, _, err := jsonparser.Get(line, log.JSONPathsToStrings(parsed)...)
+		if err != nil {
+			continue
+		}
+		return l
 	}
-	return nil
+	return res
 }
 
 func isLogFmt(line []byte) bool {

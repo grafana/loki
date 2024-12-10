@@ -571,7 +571,7 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 		}
 
 		ids = append(ids, exp.Identifier)
-		paths = append(paths, pathsToString(path))
+		paths = append(paths, JSONPathsToStrings(path))
 	}
 
 	return &JSONExpressionParser{
@@ -581,7 +581,7 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	}, nil
 }
 
-func pathsToString(paths []interface{}) []string {
+func JSONPathsToStrings(paths []interface{}) []string {
 	stingPaths := make([]string, 0, len(paths))
 	for _, p := range paths {
 		switch v := p.(type) {
