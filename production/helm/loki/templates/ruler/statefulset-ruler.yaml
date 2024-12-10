@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.rulerFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.rulerLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -164,7 +165,9 @@ spec:
           emptyDir: {}
   {{- else }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
         {{- with .Values.ruler.persistence.annotations }}
         annotations:

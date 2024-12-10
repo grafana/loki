@@ -6,9 +6,8 @@ toolchain go1.23.3
 
 require (
 	github.com/gogo/protobuf v1.3.2
-	github.com/stretchr/testify v1.9.0
-	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8
-	google.golang.org/grpc v1.68.0
+	github.com/stretchr/testify v1.10.0
+	google.golang.org/grpc v1.68.1
 )
 
 require (

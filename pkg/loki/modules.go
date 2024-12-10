@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
@@ -35,6 +36,10 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
+	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
+	blocktypes "github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	blockprotos "github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -47,6 +52,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -134,6 +140,8 @@ const (
 	Analytics                string = "analytics"
 	InitCodec                string = "init-codec"
 	PartitionRing            string = "partition-ring"
+	BlockBuilder             string = "block-builder"
+	BlockScheduler           string = "block-scheduler"
 )
 
 const (
@@ -777,7 +785,7 @@ func (t *Loki) initBloomStore() (services.Service, error) {
 	bsCfg := t.Cfg.StorageConfig.BloomShipperConfig
 
 	var metasCache cache.Cache
-	if t.Cfg.isTarget(IndexGateway) && cache.IsCacheConfigured(bsCfg.MetasCache) {
+	if (t.Cfg.isTarget(IndexGateway) || t.Cfg.isTarget(Backend)) && cache.IsCacheConfigured(bsCfg.MetasCache) {
 		metasCache, err = cache.New(bsCfg.MetasCache, reg, logger, stats.BloomMetasCache, constants.Loki)
 
 		// always enable LRU cache
@@ -874,6 +882,12 @@ func (t *Loki) updateConfigForShipperStore() {
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+
+	case t.Cfg.isTarget(BlockBuilder):
+		// Blockbuilder handles index creation independently of the shipper.
+		// TODO: introduce Disabled mode for boltdb shipper and set it here.
+		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeDisabled
 
 	default:
 		// All other targets use the shipper store in RW mode
@@ -1374,6 +1388,15 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	)
 	dnsProvider := dns.NewProvider(util_log.Logger, dnsProviderReg, dns.GolangResolverType)
 
+	var err error
+	t.Cfg.MemberlistKV.AdvertiseAddr, err = GetInstanceAddr(
+		t.Cfg.MemberlistKV.AdvertiseAddr,
+		t.Cfg.Common.InstanceInterfaceNames,
+		util_log.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
 	t.MemberlistKV = memberlist.NewKVInitService(&t.Cfg.MemberlistKV, util_log.Logger, dnsProvider, reg)
 
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
@@ -1520,7 +1543,8 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
 		querierCfg := bloomgateway.QuerierConfig{
-			MinTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildInterval:    t.Cfg.BloomBuild.Planner.PlanningInterval,
 		}
 		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
@@ -1634,6 +1658,22 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		ringManager = t.indexGatewayRingManager
 	}
 
+	var bloomGatewayClient bloomgateway.Client
+	if t.Cfg.BloomGateway.Enabled {
+		var err error
+		bloomGatewayClient, err = bloomgateway.NewClient(
+			t.Cfg.BloomGateway.Client,
+			t.Overrides,
+			prometheus.DefaultRegisterer,
+			logger,
+			t.cacheGenerationLoader,
+			t.Cfg.CompactorConfig.RetentionEnabled,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
 		t.Overrides,
@@ -1642,6 +1682,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		t.ClientMetrics,
 		t.Store,
 		t.BloomStore,
+		bloomGatewayClient,
 		logger,
 		prometheus.DefaultRegisterer,
 		ringManager,
@@ -1768,6 +1809,75 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.partitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
 
 	return t.partitionRingWatcher, nil
+}
+
+func (t *Loki) initBlockBuilder() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "block_builder")
+
+	// TODO(owen-d): perhaps refactor to not use the ingester config?
+	id := t.Cfg.Ingester.LifecyclerConfig.ID
+
+	objectStore, err := blockbuilder.NewMultiStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
+	if err != nil {
+		return nil, err
+	}
+
+	readerMetrics := partition.NewReaderMetrics(prometheus.DefaultRegisterer)
+	readerFactory := func(partitionID int32) (partition.Reader, error) {
+		return partition.NewKafkaReader(
+			t.Cfg.KafkaConfig,
+			partitionID,
+			logger,
+			readerMetrics,
+		)
+	}
+
+	bb, err := blockbuilder.NewBlockBuilder(
+		id,
+		t.Cfg.BlockBuilder,
+		t.Cfg.SchemaConfig.Configs,
+		readerFactory,
+		t.Store,
+		objectStore,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	t.blockBuilder = bb
+	return t.blockBuilder, nil
+}
+
+func (t *Loki) initBlockScheduler() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "block_scheduler")
+
+	offsetManager, err := partition.NewKafkaOffsetManager(
+		t.Cfg.KafkaConfig,
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating kafka offset manager: %w", err)
+	}
+
+	s := blockscheduler.NewScheduler(
+		t.Cfg.BlockScheduler,
+		blockscheduler.NewJobQueue(),
+		offsetManager,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+
+	blockprotos.RegisterSchedulerServiceServer(
+		t.Server.GRPC,
+		blocktypes.NewSchedulerServer(s),
+	)
+
+	return s, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
@@ -1931,4 +2041,12 @@ func schemaHasBoltDBShipperConfig(scfg config.SchemaConfig) bool {
 	}
 
 	return false
+}
+
+func GetInstanceAddr(addr string, netInterfaces []string, logger log.Logger) (string, error) {
+	if addr != "" {
+		return addr, nil
+	}
+
+	return netutil.GetFirstAddressOf(netInterfaces, logger, false)
 }

@@ -3,8 +3,8 @@ package serverutils
 import (
 	"flag"
 
+	"dario.cat/mergo"
 	"github.com/grafana/dskit/server"
-	"github.com/imdario/mergo"
 )
 
 // MergeWithDefaults applies server.Config defaults to a given and different server.Config.

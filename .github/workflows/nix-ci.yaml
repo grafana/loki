@@ -1,6 +1,9 @@
 ---
 name: "Lint And Build Nix Flake"
 on:
+  push:
+    branches:
+      - main
   pull_request:
     paths:
       - "flake.nix"

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
@@ -114,7 +115,13 @@ func parseDetectedFieldValues(limit uint32, streams []push.Stream, name string) 
 			parsedLabels, _ := parseEntry(entry, entryLbls)
 			if vals, ok := parsedLabels[name]; ok {
 				for _, v := range vals {
-					values[v] = struct{}{}
+					// special case bytes values, so they can be directly inserted into a query
+					if bs, err := humanize.ParseBytes(v); err == nil {
+						bsString := strings.Replace(humanize.Bytes(bs), " ", "", 1)
+						values[bsString] = struct{}{}
+					} else {
+						values[v] = struct{}{}
+					}
 				}
 			}
 		}

@@ -14,9 +14,11 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -269,10 +271,6 @@ func metricNeedsEscaping(m *dto.Metric) bool {
 	return false
 }
 
-const (
-	lowerhex = "0123456789abcdef"
-)
-
 // EscapeName escapes the incoming name according to the provided escaping
 // scheme. Depending on the rules of escaping, this may cause no change in the
 // string that is returned. (Especially NoEscaping, which by definition is a
@@ -307,7 +305,7 @@ func EscapeName(name string, scheme EscapingScheme) string {
 			} else if isValidLegacyRune(b, i) {
 				escaped.WriteRune(b)
 			} else {
-				escaped.WriteRune('_')
+				escaped.WriteString("__")
 			}
 		}
 		return escaped.String()
@@ -317,21 +315,15 @@ func EscapeName(name string, scheme EscapingScheme) string {
 		}
 		escaped.WriteString("U__")
 		for i, b := range name {
-			if isValidLegacyRune(b, i) {
+			if b == '_' {
+				escaped.WriteString("__")
+			} else if isValidLegacyRune(b, i) {
 				escaped.WriteRune(b)
 			} else if !utf8.ValidRune(b) {
 				escaped.WriteString("_FFFD_")
-			} else if b < 0x100 {
+			} else {
 				escaped.WriteRune('_')
-				for s := 4; s >= 0; s -= 4 {
-					escaped.WriteByte(lowerhex[b>>uint(s)&0xF])
-				}
-				escaped.WriteRune('_')
-			} else if b < 0x10000 {
-				escaped.WriteRune('_')
-				for s := 12; s >= 0; s -= 4 {
-					escaped.WriteByte(lowerhex[b>>uint(s)&0xF])
-				}
+				escaped.WriteString(strconv.FormatInt(int64(b), 16))
 				escaped.WriteRune('_')
 			}
 		}
@@ -389,8 +381,9 @@ func UnescapeName(name string, scheme EscapingScheme) string {
 			// We think we are in a UTF-8 code, process it.
 			var utf8Val uint
 			for j := 0; i < len(escapedName); j++ {
-				// This is too many characters for a utf8 value.
-				if j > 4 {
+				// This is too many characters for a utf8 value based on the MaxRune
+				// value of '\U0010FFFF'.
+				if j >= 6 {
 					return name
 				}
 				// Found a closing underscore, convert to a rune, check validity, and append.
@@ -443,7 +436,7 @@ func (e EscapingScheme) String() string {
 
 func ToEscapingScheme(s string) (EscapingScheme, error) {
 	if s == "" {
-		return NoEscaping, fmt.Errorf("got empty string instead of escaping scheme")
+		return NoEscaping, errors.New("got empty string instead of escaping scheme")
 	}
 	switch s {
 	case AllowUTF8:

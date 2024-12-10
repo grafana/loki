@@ -146,7 +146,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - policy/v1
+  - policy
   resources:
   - poddisruptionbudgets
   verbs:
