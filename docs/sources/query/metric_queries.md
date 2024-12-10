@@ -156,7 +156,7 @@ Examples:
 
 ## Probabilistic aggregation
 
-LogQL also supports a probabilistic `topk` approximation that is a drop-in replacement when `topk` hits the maximum series limit.
+The `topk` keyword lets you find the largest 1,000 elements in a data stream by sample size. When  `topk` hits the maximum series limit, LogQL also supports using a probable approximation; `approx_topk`  is a drop-in replacement when `topk` hits the maximum series limit.
 
 ```logql
 approx_topk(k, <vector expression>)
