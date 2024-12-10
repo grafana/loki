@@ -191,3 +191,16 @@ func (b *CircularBuffer[V]) Pop() (V, bool) {
 func (b *CircularBuffer[V]) Len() int {
 	return b.size
 }
+
+// returns the first element in the buffer that satisfies the given predicate
+func (b *CircularBuffer[V]) Lookup(f func(V) bool) (V, bool) {
+	for i := 0; i < b.size; i++ {
+		idx := (b.head + i) % len(b.buffer)
+		if f(b.buffer[idx]) {
+			return b.buffer[idx], true
+		}
+
+	}
+	var zero V
+	return zero, false
+}

@@ -26,7 +26,8 @@ func (j *Job) Offsets() Offsets {
 type JobStatus int
 
 const (
-	JobStatusPending JobStatus = iota
+	JobStatusUnknown JobStatus = iota // zero value, largely unused
+	JobStatusPending
 	JobStatusInProgress
 	JobStatusComplete
 	JobStatusFailed  // Job failed and may be retried

@@ -250,3 +250,54 @@ func TestCircularBuffer(t *testing.T) {
 		})
 	}
 }
+
+func TestCircularBufferLookup(t *testing.T) {
+	t.Run("empty buffer", func(t *testing.T) {
+		cb := NewCircularBuffer[int](5)
+		_, ok := cb.Lookup(func(i int) bool { return i == 1 })
+		require.False(t, ok)
+	})
+
+	t.Run("single element", func(t *testing.T) {
+		cb := NewCircularBuffer[int](5)
+		cb.Push(1)
+		v, ok := cb.Lookup(func(i int) bool { return i == 1 })
+		require.True(t, ok)
+		require.Equal(t, 1, v)
+	})
+
+	t.Run("multiple elements", func(t *testing.T) {
+		cb := NewCircularBuffer[int](5)
+		for i := 1; i <= 3; i++ {
+			cb.Push(i)
+		}
+		v, ok := cb.Lookup(func(i int) bool { return i == 2 })
+		require.True(t, ok)
+		require.Equal(t, 2, v)
+	})
+
+	t.Run("wrapped buffer", func(t *testing.T) {
+		cb := NewCircularBuffer[int](3)
+		// Push 5 elements into a buffer of size 3, causing wrap-around
+		for i := 1; i <= 5; i++ {
+			cb.Push(i)
+		}
+		// Buffer should now contain [4,5,3] with head at index 2
+		v, ok := cb.Lookup(func(i int) bool { return i == 4 })
+		require.True(t, ok)
+		require.Equal(t, 4, v)
+
+		// Element that was evicted should not be found
+		_, ok = cb.Lookup(func(i int) bool { return i == 1 })
+		require.False(t, ok)
+	})
+
+	t.Run("no match", func(t *testing.T) {
+		cb := NewCircularBuffer[int](5)
+		for i := 1; i <= 3; i++ {
+			cb.Push(i)
+		}
+		_, ok := cb.Lookup(func(i int) bool { return i == 99 })
+		require.False(t, ok)
+	})
+}

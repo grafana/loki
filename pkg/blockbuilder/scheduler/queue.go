@@ -60,8 +60,32 @@ func (q *JobQueue) Exists(job *types.Job) (types.JobStatus, bool) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	status, ok := q.statusMap[job.ID()]
-	return status, ok
+	x, ok := q.existsLockLess(job.ID())
+	if !ok {
+		return types.JobStatusUnknown, false
+	}
+	return x.Status, ok
+}
+
+func (q *JobQueue) existsLockLess(id string) (*JobWithMetadata, bool) {
+	status, ok := q.statusMap[id]
+	if !ok {
+		return nil, false
+	}
+
+	switch status {
+	case types.JobStatusPending:
+		return q.pending.Lookup(id)
+	case types.JobStatusInProgress:
+		res, ok := q.inProgress[id]
+		return res, ok
+	case types.JobStatusComplete:
+		return q.completed.Lookup(func(jwm *JobWithMetadata) bool {
+			return jwm.ID() == id
+		})
+	default:
+		return nil, false
+	}
 }
 
 // Enqueue adds a job to the pending queue with the given priority
