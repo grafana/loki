@@ -677,7 +677,7 @@ ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(OCI_PUSH) --tag $(BUILD_IMAGE)
+	$(OCI_PUSH) $(BUILD_IMAGE)
 
 # Loki Operator
 loki-operator-image: ## build the operator docker image
