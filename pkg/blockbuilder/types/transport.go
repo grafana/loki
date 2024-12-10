@@ -36,7 +36,7 @@ func NewMemoryTransport(scheduler SchedulerHandler) *MemoryTransport {
 	}
 }
 
-func (t *MemoryTransport) SendGetJobRequest(ctx context.Context, req *GetJobRequest) (*GetJobResponse, error) {
+func (t *MemoryTransport) SendGetJobRequest(ctx context.Context, _ *GetJobRequest) (*GetJobResponse, error) {
 	job, ok, err := t.scheduler.HandleGetJob(ctx)
 	if err != nil {
 		return nil, err

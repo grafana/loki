@@ -27,16 +27,16 @@ type mockOffsetManager struct {
 
 func (m *mockOffsetManager) Topic() string         { return m.topic }
 func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
-func (m *mockOffsetManager) GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetManager) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
 	return nil, nil
 }
-func (m *mockOffsetManager) FetchLastCommittedOffset(ctx context.Context, partition int32) (int64, error) {
+func (m *mockOffsetManager) FetchLastCommittedOffset(_ context.Context, _ int32) (int64, error) {
 	return 0, nil
 }
-func (m *mockOffsetManager) FetchPartitionOffset(ctx context.Context, partition int32, position partition.SpecialOffset) (int64, error) {
+func (m *mockOffsetManager) FetchPartitionOffset(_ context.Context, _ int32, _ partition.SpecialOffset) (int64, error) {
 	return 0, nil
 }
-func (m *mockOffsetManager) Commit(ctx context.Context, partition int32, offset int64) error {
+func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
 	return nil
 }
 

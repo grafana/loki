@@ -20,7 +20,7 @@ func NewSchedulerServer(handler SchedulerHandler) proto.SchedulerServiceServer {
 }
 
 // GetJob implements proto.SchedulerServiceServer
-func (s *schedulerServer) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
+func (s *schedulerServer) GetJob(ctx context.Context, _ *proto.GetJobRequest) (*proto.GetJobResponse, error) {
 	job, ok, err := s.handler.HandleGetJob(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
