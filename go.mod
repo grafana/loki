@@ -7,7 +7,7 @@ toolchain go1.23.1
 require (
 	cloud.google.com/go/bigtable v1.33.0
 	cloud.google.com/go/pubsub v1.45.3
-	cloud.google.com/go/storage v1.47.0
+	cloud.google.com/go/storage v1.48.0
 	dario.cat/mergo v1.0.1
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.15.0
