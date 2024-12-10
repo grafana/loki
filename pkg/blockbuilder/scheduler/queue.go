@@ -186,6 +186,7 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 	if evicted {
 		delete(q.statusMap, removal.ID())
 	}
+	q.statusMap[id] = status
 }
 
 // SyncJob registers a job as in-progress or updates its UpdateTime if already in progress
@@ -202,6 +203,7 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 		jobMeta.UpdateTime = now
 		jobMeta.Status = types.JobStatusInProgress
 		q.inProgress[jobID] = jobMeta
+		q.statusMap[jobID] = types.JobStatusInProgress
 	}
 
 	jobMeta, ok := q.existsLockLess(jobID)
@@ -218,15 +220,18 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 		if !ok {
 			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", jobID)
 		}
+		jobMeta.Status = types.JobStatusInProgress
 	case types.JobStatusInProgress:
 	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
 		// Job already completed, re-enqueue a new one
 		registerInProgress()
+		return
 	default:
 		registerInProgress()
+		return
 	}
 
+	jobMeta.UpdateTime = time.Now()
 	q.inProgress[jobID] = jobMeta
-	jobMeta.Status = types.JobStatusInProgress
-
+	q.statusMap[jobID] = types.JobStatusInProgress
 }
