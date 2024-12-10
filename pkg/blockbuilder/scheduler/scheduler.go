@@ -147,7 +147,7 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 
 		logger := log.With(
 			s.logger,
-			"job", job.Job.ID,
+			"job", job.Job.ID(),
 			"priority", job.Priority,
 		)
 
@@ -174,7 +174,7 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 				"msg", "job is pending, updating priority",
 				"old_priority", job.Priority,
 			)
-			s.queue.pending.UpdatePriority(job.Job.ID, job)
+			s.queue.pending.UpdatePriority(job.Job.ID(), job)
 		case types.JobStatusInProgress:
 			level.Debug(s.logger).Log(
 				"msg", "job is in progress, ignoring",
@@ -215,20 +215,20 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, _ string) (*types.Job
 }
 
 func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job, success bool) error {
-	logger := log.With(s.logger, "job", job.ID)
+	logger := log.With(s.logger, "job", job.ID())
 
 	if success {
 		level.Info(logger).Log("msg", "job completed successfully")
-		s.queue.MarkComplete(job.ID, types.JobStatusComplete)
+		s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
 		return nil
 	}
 
 	level.Error(logger).Log("msg", "job failed, re-enqueuing")
-	s.queue.MarkComplete(job.ID, types.JobStatusFailed)
+	s.queue.MarkComplete(job.ID(), types.JobStatusFailed)
 	return nil
 }
 
 func (s *BlockScheduler) HandleSyncJob(_ context.Context, builderID string, job *types.Job) error {
-	s.queue.SyncJob(job.ID, builderID, job)
+	s.queue.SyncJob(job.ID(), builderID, job)
 	return nil
 }

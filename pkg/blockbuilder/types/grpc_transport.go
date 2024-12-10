@@ -110,9 +110,9 @@ func protoToJob(p *proto.Job) *Job {
 		return nil
 	}
 	return &Job{
-		ID:        p.GetId(),
-		Partition: p.GetPartition(),
-		Offsets: Offsets{
+		id:        p.GetId(),
+		partition: p.GetPartition(),
+		offsets: Offsets{
 			Min: p.GetOffsets().GetMin(),
 			Max: p.GetOffsets().GetMax(),
 		},
@@ -125,11 +125,11 @@ func jobToProto(j *Job) *proto.Job {
 		return nil
 	}
 	return &proto.Job{
-		Id:        j.ID,
-		Partition: j.Partition,
+		Id:        j.ID(),
+		Partition: j.Partition(),
 		Offsets: &proto.Offsets{
-			Min: j.Offsets.Min,
-			Max: j.Offsets.Max,
+			Min: j.offsets.Min,
+			Max: j.offsets.Max,
 		},
 	}
 }

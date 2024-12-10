@@ -47,7 +47,7 @@ func NewJobQueue() *JobQueue {
 			func(a, b *JobWithMetadata) bool {
 				return a.Priority > b.Priority // Higher priority first
 			},
-			func(j *JobWithMetadata) string { return j.ID },
+			func(j *JobWithMetadata) string { return j.ID() },
 		),
 		inProgress: make(map[string]*JobWithMetadata),
 		completed:  NewCircularBuffer[*JobWithMetadata](defaultCompletedJobsCapacity),
@@ -60,7 +60,7 @@ func (q *JobQueue) Exists(job *types.Job) (types.JobStatus, bool) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	status, ok := q.statusMap[job.ID]
+	status, ok := q.statusMap[job.ID()]
 	return status, ok
 }
 
@@ -70,13 +70,13 @@ func (q *JobQueue) Enqueue(job *types.Job, priority int) error {
 	defer q.mu.Unlock()
 
 	// Check if job already exists
-	if status, exists := q.statusMap[job.ID]; exists {
-		return fmt.Errorf("job %s already exists with status %v", job.ID, status)
+	if status, exists := q.statusMap[job.ID()]; exists {
+		return fmt.Errorf("job %s already exists with status %v", job.ID(), status)
 	}
 
 	jobMeta := NewJobWithMetadata(job, priority)
 	q.pending.Push(jobMeta)
-	q.statusMap[job.ID] = types.JobStatusPending
+	q.statusMap[job.ID()] = types.JobStatusPending
 	return nil
 }
 
@@ -95,8 +95,8 @@ func (q *JobQueue) Dequeue() (*types.Job, bool) {
 	jobMeta.StartTime = time.Now()
 	jobMeta.UpdateTime = jobMeta.StartTime
 
-	q.inProgress[jobMeta.ID] = jobMeta
-	q.statusMap[jobMeta.ID] = types.JobStatusInProgress
+	q.inProgress[jobMeta.ID()] = jobMeta
+	q.statusMap[jobMeta.ID()] = types.JobStatusInProgress
 
 	return jobMeta.Job, true
 }
@@ -137,7 +137,7 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 	// Add to completed buffer
 	if old, evicted := q.completed.Push(jobMeta); evicted {
 		// If the buffer is full, evict the oldest job and remove it from the status map to avoid leaks
-		delete(q.statusMap, old.ID)
+		delete(q.statusMap, old.ID())
 	}
 
 	// Update status map and clean up

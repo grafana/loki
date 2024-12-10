@@ -84,8 +84,8 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithMetadata, erro
 
 	// Sort jobs by partition then priority
 	sort.Slice(jobs, func(i, j int) bool {
-		if jobs[i].Job.Partition != jobs[j].Job.Partition {
-			return jobs[i].Job.Partition < jobs[j].Job.Partition
+		if jobs[i].Job.Partition() != jobs[j].Job.Partition() {
+			return jobs[i].Job.Partition() < jobs[j].Job.Partition()
 		}
 		return jobs[i].Priority > jobs[j].Priority
 	})

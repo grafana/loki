@@ -51,8 +51,8 @@ func TestScheduleAndProcessJob(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to receive job")
 	}
-	if receivedJob.ID != job.ID {
-		t.Errorf("got job ID %s, want %s", receivedJob.ID, job.ID)
+	if receivedJob.ID() != job.ID() {
+		t.Errorf("got job ID %s, want %s", receivedJob.ID(), job.ID())
 	}
 
 	// Builder completes job
@@ -124,7 +124,7 @@ func TestMultipleBuilders(t *testing.T) {
 	}
 
 	// Verify different jobs were assigned
-	if receivedJob1.ID == receivedJob2.ID {
+	if receivedJob1.ID() == receivedJob2.ID() {
 		t.Error("builders received same job")
 	}
 
