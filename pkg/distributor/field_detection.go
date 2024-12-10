@@ -181,15 +181,24 @@ func (l *FieldDetector) extractLogLevelFromLogLine(log string) string {
 
 func (l *FieldDetector) getValueUsingLogfmtParser(line []byte, hints []string) []byte {
 	d := logfmt.NewDecoder(line)
+	// In order to have the same behaviour as the JSON field extraction,
+	// the full line needs to be parsed to extract all possible matching fields.
+	pos := len(hints) // the index of the hint that matches
+	var res []byte
 	for !d.EOL() && d.ScanKeyval() {
 		k := unsafe.String(unsafe.SliceData(d.Key()), len(d.Key()))
-		for _, hint := range hints {
-			if strings.EqualFold(k, hint) {
-				return d.Value()
+		for x, hint := range hints {
+			if strings.EqualFold(k, hint) && x < pos {
+				res, pos = d.Value(), x
+				// If there is only a single hint, or the matching hint is the first one,
+				// we can stop parsing the rest of the line and return early.
+				if x == 0 {
+					return res
+				}
 			}
 		}
 	}
-	return nil
+	return res
 }
 
 func (l *FieldDetector) getValueUsingJSONParser(log []byte, hints []string) []byte {

@@ -538,6 +538,19 @@ func Test_DetectGenericFields(t *testing.T) {
 			},
 		},
 		{
+			name: "logline (logfmt) matches multiple fields",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `msg="this log line matches" tenant_id="fake_a" org_id=fake_b duration=1h`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "org_id", Value: "fake_b"}, // first field from configuration that matches takes precedence
+			},
+		},
+		{
 			name: "logline (json) matches",
 			labels: labels.Labels{
 				{Name: "env", Value: "prod"},
@@ -549,6 +562,19 @@ func Test_DetectGenericFields(t *testing.T) {
 			expected: push.LabelsAdapter{
 				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
 				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "logline (json) matches multiple fields",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `{"msg": "this log line matches", "tenant_id": "fake_a", "org_id": "fake_b", "duration": "1s"}`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "org_id", Value: "fake_b"}, // first field from configuration that matches takes precedence
 			},
 		},
 	} {
