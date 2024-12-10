@@ -200,10 +200,6 @@
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       "uses": "docker/build-push-action@v6"
       "with":
-        "build-args": |
-          IMAGE_TAG=${{ needs.version.outputs.version }}
-          GOARCH=${{ steps.platform.outputs.platform_short }}
-          BUILD_IMAGE=grafana/loki-build-image:0.34.3
         "context": "release"
         "file": "release/clients/cmd/docker-driver/Dockerfile"
         "outputs": "type=docker,dest=release/images/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
