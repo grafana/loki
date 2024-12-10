@@ -65,7 +65,7 @@ LOGQL_ANALYZER_IMAGE   := $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG)
 OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
 # OCI (Docker) setup
-OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
+OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64,linux/arm
 OCI_BUILD_ARGS := --build-arg GO_VERSION=$(GO_VERSION) --build-arg BUILD_IMAGE=$(BUILD_IMAGE)
 OCI_PUSH_ARGS  := -o type=registry
 OCI_PUSH       := docker push
