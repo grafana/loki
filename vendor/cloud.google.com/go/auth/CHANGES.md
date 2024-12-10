@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.12.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.12.0...auth/v0.12.1) (2024-12-10)
+
+
+### Bug Fixes
+
+* **auth:** Correct typo in link ([#11160](https://github.com/googleapis/google-cloud-go/issues/11160)) ([af6fb46](https://github.com/googleapis/google-cloud-go/commit/af6fb46d7cd694ddbe8c9d63bc4cdcd62b9fb2c1))
+
+## [0.12.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.11.0...auth/v0.12.0) (2024-12-04)
+
+
+### Features
+
+* **auth:** Add support for providing custom certificate URL ([#11006](https://github.com/googleapis/google-cloud-go/issues/11006)) ([ebf3657](https://github.com/googleapis/google-cloud-go/commit/ebf36579724afb375d3974cf1da38f703e3b7dbc)), refs [#11005](https://github.com/googleapis/google-cloud-go/issues/11005)
+
+
+### Bug Fixes
+
+* **auth:** Ensure endpoints are present in Validator ([#11209](https://github.com/googleapis/google-cloud-go/issues/11209)) ([106cd53](https://github.com/googleapis/google-cloud-go/commit/106cd53309facaef1b8ea78376179f523f6912b9)), refs [#11006](https://github.com/googleapis/google-cloud-go/issues/11006) [#11190](https://github.com/googleapis/google-cloud-go/issues/11190) [#11189](https://github.com/googleapis/google-cloud-go/issues/11189) [#11188](https://github.com/googleapis/google-cloud-go/issues/11188)
+
 ## [0.11.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.2...auth/v0.11.0) (2024-11-21)
 
 
