@@ -9,8 +9,8 @@ metadata:
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
-    rollout-group: ingester
-    name: ingester-zone-a
+    name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
+    rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
   annotations:
     rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
     {{- with .Values.loki.annotations }}
@@ -38,8 +38,8 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.ingesterSelectorLabels" . | nindent 6 }}
-      name: ingester-zone-a
-      rollout-group: ingester
+      name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
+      rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
 {{- with .Values.ingester.updateStrategy }}
   updateStrategy:
      {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -60,8 +60,8 @@ spec:
       labels:
         {{- include "loki.ingesterSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        name: ingester-zone-a
-        rollout-group: ingester
+        name: {{ include "loki.prefixIngesterName" . }}ingester-zone-a
+        rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -164,11 +164,11 @@ spec:
                   - key: rollout-group
                     operator: In
                     values:
-                      - ingester
+                      - {{ include "loki.prefixRolloutGroup" . }}ingester
                   - key: name
                     operator: NotIn
                     values:
-                      - ingester-zone-a
+                      - {{ include "loki.prefixIngesterName" . }}ingester-zone-a
               topologyKey: kubernetes.io/hostname
         {{- with .Values.ingester.zoneAwareReplication.zoneA.extraAffinity }}
         {{- toYaml . | nindent 8 }}

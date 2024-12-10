@@ -1893,6 +1893,12 @@ ingester:
       excludeDefaultZone: false
       readPath: false
       writePath: false
+
+  # optionally allow adding arbitrary prefix to the ingester rollout-group label
+  rolloutGroupPrefix: null
+  # optionally allow adding 'loki-' prefix to ingester name label
+  addIngesterNamePrefix: false
+
 # --  Configuration for the distributor
 distributor:
   # -- Number of replicas for the distributor
