@@ -1,10 +1,10 @@
-ARG GO_VERSION=1.23
+ARG BUILD_IMAGE=grafana/loki-build-image:0.34.0
 ARG GOARCH=amd64
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/loki-docker-driver -f clients/cmd/docker-driver/Dockerfile .
 
-FROM golang:${GO_VERSION}-bookworm as build
+FROM $BUILD_IMAGE AS build
 COPY . /src/loki
 WORKDIR /src/loki
 
