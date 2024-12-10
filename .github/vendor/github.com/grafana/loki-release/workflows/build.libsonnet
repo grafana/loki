@@ -150,10 +150,6 @@ local releaseLibStep = common.releaseLibStep;
       step.new('Build and export', 'docker/build-push-action@v6')
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
-      + step.withEnv({
-        IMAGE_TAG: '${{ needs.version.outputs.version }}',
-        BUILD_IMAGE: buildImage,
-      })
       + step.with({
         context: context,
         file: 'release/%s/%s' % [path, dockerfile],
@@ -174,12 +170,12 @@ local releaseLibStep = common.releaseLibStep;
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
         IMAGE_TAG: '${{ needs.version.outputs.version }}',
-        BUILD_DIR: 'release/%s' % [path],
+        BUILD_DIR: path,
       })
       + step.withRun(|||
         rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
         mkdir "${{ env.BUILD_DIR }}/rootfs"
-        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
       |||),
 

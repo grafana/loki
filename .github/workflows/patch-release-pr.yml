@@ -641,10 +641,7 @@ jobs:
           echo "plugin_arch=" >> $GITHUB_OUTPUT
         fi
       working-directory: "release"
-    - env:
-        BUILD_IMAGE: "grafana/loki-build-image:0.34.3"
-        IMAGE_TAG: "${{ needs.version.outputs.version }}"
-      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v6"
@@ -660,14 +657,14 @@ jobs:
         push: false
         tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - env:
-        BUILD_DIR: "release/clients/cmd/docker-driver"
+        BUILD_DIR: "clients/cmd/docker-driver"
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
       if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Package as Docker plugin"
       run: |
         rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
         mkdir "${{ env.BUILD_DIR }}/rootfs"
-        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
