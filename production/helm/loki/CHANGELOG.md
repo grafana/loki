@@ -18,6 +18,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Changed version of Grafana Loki to 3.3.1
 - [CHANGE] Changed version of Minio helm chart to 5.3.0 (#14834)
 - [BUGFIX] Add default wal dir to ruler config ([#14920](https://github.com/grafana/loki/pull/14920))
+- [FIX] Fix statefulset templates to not show diffs in ArgoCD
 
 ## 6.22.0
 
@@ -107,7 +108,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.7.3
 
 - [BUGFIX] Removed Helm test binary
-  
+
 ## 6.7.2
 
 - [BUGFIX] Fix imagePullSecrets for statefulset-results-cache

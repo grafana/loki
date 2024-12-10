@@ -66,6 +66,7 @@ const (
 
 	NAMESPACE_BUCKET  = "namespace"
 	BOS_CONFIG_PREFIX = "bos://"
+	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
