@@ -162,12 +162,22 @@ func (q *JobQueue) GetStatus(id string) (types.JobStatus, bool) {
 	return status, ok
 }
 
-// SyncJob registers a job as in-progress, used for restoring state after scheduler restarts
+// SyncJob registers a job as in-progress or updates its UpdateTime if already in progress
 func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
+	// Check if job exists and is in progress
+	if status, exists := q.Exists(job); exists && status == types.JobStatusInProgress {
+		q.mu.Lock()
+		if existingJob, ok := q.inProgress[jobID]; ok {
+			existingJob.UpdateTime = time.Now()
+		}
+		q.mu.Unlock()
+		return
+	}
+
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Add directly to in-progress
+	// Add new job to in-progress
 	jobMeta := &JobWithMetadata{
 		Job:        job,
 		Priority:   0, // Priority is not known in this case
