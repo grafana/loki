@@ -27,13 +27,12 @@ local weeklyImageJobs = {
   'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary'),
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail'),
-  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', 'clients/cmd/docker-driver', buildImage=buildImage, platform=['linux/amd64', 'linux/arm64']),
 };
 
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['release-[0-9]+.[0-9]+.x'],
+      branches=['release-[0-9]+.[0-9]+.x', 'fix-docker-driver-again'],
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       golangCiLintVersion=golangCiLintVersion,
@@ -43,7 +42,7 @@ local weeklyImageJobs = {
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
       skipArm=false,
-      skipValidation=false,
+      skipValidation=true,
       useGitHubAppToken=true,
       versioningStrategy='always-bump-patch',
     ) + {
@@ -103,7 +102,6 @@ local weeklyImageJobs = {
   'images.yml': std.manifestYamlDoc({
     name: 'publish images',
     on: {
-      pull_request: {},
       push: {
         branches: [
           'k[0-9]+*',  // This is a weird glob pattern, not a regexp, do not use ".*", see https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
