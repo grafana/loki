@@ -7,8 +7,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 type testEnv struct {
@@ -18,9 +20,33 @@ type testEnv struct {
 	builder   *Worker
 }
 
+type mockOffsetManager struct {
+	topic         string
+	consumerGroup string
+}
+
+func (m *mockOffsetManager) Topic() string         { return m.topic }
+func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
+func (m *mockOffsetManager) GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+	return nil, nil
+}
+func (m *mockOffsetManager) FetchLastCommittedOffset(ctx context.Context, partition int32) (int64, error) {
+	return 0, nil
+}
+func (m *mockOffsetManager) FetchPartitionOffset(ctx context.Context, partition int32, position partition.SpecialOffset) (int64, error) {
+	return 0, nil
+}
+func (m *mockOffsetManager) Commit(ctx context.Context, partition int32, offset int64) error {
+	return nil
+}
+
 func newTestEnv(builderID string) *testEnv {
 	queue := NewJobQueue()
-	scheduler := NewScheduler(Config{}, queue, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	mockOffsetMgr := &mockOffsetManager{
+		topic:         "test-topic",
+		consumerGroup: "test-group",
+	}
+	scheduler := NewScheduler(Config{}, queue, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
 	transport := types.NewMemoryTransport(scheduler)
 	builder := NewWorker(builderID, transport)
 

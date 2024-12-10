@@ -214,17 +214,32 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context) (*types.Job, bool, er
 	}
 }
 
-func (s *BlockScheduler) HandleCompleteJob(_ context.Context, job *types.Job, success bool) error {
+func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, success bool) (err error) {
 	logger := log.With(s.logger, "job", job.ID())
 
 	if success {
-		level.Info(logger).Log("msg", "job completed successfully")
-		s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
-		return nil
+		// TODO(owen-d): do i need to increment offset here?
+		if err = s.offsetManager.Commit(
+			ctx,
+			job.Partition(),
+			job.Offsets().Max,
+		); err == nil {
+			s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
+			level.Info(logger).Log("msg", "job completed successfully")
+			return nil
+		}
+
+		level.Error(logger).Log("msg", "failed to commit offset", "err", err)
 	}
 
 	level.Error(logger).Log("msg", "job failed, re-enqueuing")
 	s.queue.MarkComplete(job.ID(), types.JobStatusFailed)
+	s.queue.pending.Push(
+		NewJobWithMetadata(
+			job,
+			DefaultPriority,
+		),
+	)
 	return nil
 }
 

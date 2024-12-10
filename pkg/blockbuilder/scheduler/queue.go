@@ -159,31 +159,32 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	jobMeta, ok := q.inProgress[id]
+	jobMeta, ok := q.existsLockLess(id)
 	if !ok {
+		level.Error(q.logger).Log("msg", "failed to mark job as complete", "job", id, "status", status)
 		return
 	}
 
-	// Update metadata for completion
+	switch jobMeta.Status {
+	case types.JobStatusInProgress:
+		// update & remove from in progress
+		delete(q.inProgress, id)
+	case types.JobStatusPending:
+		_, ok := q.pending.Remove(id)
+		if !ok {
+			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", id)
+		}
+	default:
+		level.Error(q.logger).Log("msg", "unknown job status, cannot mark as complete", "job", id, "status", status)
+	}
+
 	jobMeta.Status = status
 	jobMeta.UpdateTime = time.Now()
 
-	// Add to completed buffer
-	if old, evicted := q.completed.Push(jobMeta); evicted {
-		// If the buffer is full, evict the oldest job and remove it from the status map to avoid leaks
-		delete(q.statusMap, old.ID())
-	}
-
-	// Update status map and clean up
-	q.statusMap[id] = status
-	delete(q.inProgress, id)
-
-	// If the job failed, re-enqueue it with its original priority
-	if status == types.JobStatusFailed {
-		// Create new metadata for the re-enqueued job
-		newJobMeta := NewJobWithMetadata(jobMeta.Job, jobMeta.Priority)
-		q.pending.Push(newJobMeta)
-		q.statusMap[id] = types.JobStatusPending
+	// add it to the completed buffer, removing any evicted job from the statusMap
+	removal, evicted := q.completed.Push(jobMeta)
+	if evicted {
+		delete(q.statusMap, removal.ID())
 	}
 }
 
