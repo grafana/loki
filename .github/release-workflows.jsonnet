@@ -19,7 +19,7 @@ local imageJobs = {
   'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.image('promtail', 'clients/cmd/promtail'),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
-  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', 'clients/cmd/docker-driver', buildImage=buildImage),
+  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', 'clients/cmd/docker-driver', buildImage=buildImage, platform=['linux/amd64', 'linux/arm64']),
 };
 
 local weeklyImageJobs = {
@@ -27,7 +27,7 @@ local weeklyImageJobs = {
   'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary'),
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail'),
-  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', 'clients/cmd/docker-driver', buildImage=buildImage),
+  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', 'clients/cmd/docker-driver', buildImage=buildImage, platform=['linux/amd64', 'linux/arm64']),
 };
 
 {

@@ -114,7 +114,6 @@ local releaseLibStep = common.releaseLibStep;
     platform=[
       'linux/amd64',
       'linux/arm64',
-      'linux/arm',
     ]
                )
     job.new()
@@ -162,7 +161,14 @@ local releaseLibStep = common.releaseLibStep;
         push: false,
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }},GOARCH=${{ steps.platform.outputs.platform_short }},BUILD_IMAGE=%s' % buildImage,
+        // 'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }},GOARCH=${{ steps.platform.outputs.platform_short }},BUILD_IMAGE=%s' % buildImage,
+        'build-args': |||
+          %s
+        ||| % std.lines([
+          'IMAGE_TAG=${{ needs.version.outputs.version }}',
+          'GOARCH=${{ steps.platform.outputs.platform_short }}',
+          ('BUILD_IMAGE=%s' % buildImage),
+        ]),
       }),
 
       releaseStep('Package as Docker plugin')
