@@ -5,35 +5,35 @@ import (
 )
 
 // PriorityQueue is a generic priority queue with constant time lookups.
-type PriorityQueue[T any, K comparable] struct {
-	h   *priorityHeap[T]
-	m   map[K]*item[T] // Map for constant time lookups
-	key func(T) K      // Function to extract key from item
+type PriorityQueue[K comparable, V any] struct {
+	h   *priorityHeap[V]
+	m   map[K]*item[V] // Map for constant time lookups
+	key func(V) K      // Function to extract key from value
 }
 
 // item represents an item in the priority queue with its index
-type item[T any] struct {
-	value T
+type item[V any] struct {
+	value V
 	index int
 }
 
 // NewPriorityQueue creates a new priority queue.
-func NewPriorityQueue[T any, K comparable](less func(T, T) bool, key func(T) K) *PriorityQueue[T, K] {
-	h := &priorityHeap[T]{
+func NewPriorityQueue[K comparable, V any](less func(V, V) bool, key func(V) K) *PriorityQueue[K, V] {
+	h := &priorityHeap[V]{
 		less: less,
-		heap: make([]*item[T], 0),
-		idx:  make(map[int]*item[T]),
+		heap: make([]*item[V], 0),
+		idx:  make(map[int]*item[V]),
 	}
 	heap.Init(h)
-	return &PriorityQueue[T, K]{
+	return &PriorityQueue[K, V]{
 		h:   h,
-		m:   make(map[K]*item[T]),
+		m:   make(map[K]*item[V]),
 		key: key,
 	}
 }
 
 // Push adds an element to the queue.
-func (pq *PriorityQueue[T, K]) Push(v T) {
+func (pq *PriorityQueue[K, V]) Push(v V) {
 	k := pq.key(v)
 	if existing, ok := pq.m[k]; ok {
 		// Update existing item's value and fix heap
@@ -44,36 +44,36 @@ func (pq *PriorityQueue[T, K]) Push(v T) {
 
 	// Add new item
 	idx := pq.h.Len()
-	it := &item[T]{value: v, index: idx}
+	it := &item[V]{value: v, index: idx}
 	pq.m[k] = it
 	heap.Push(pq.h, it)
 }
 
 // Pop removes and returns the element with the highest priority from the queue.
-func (pq *PriorityQueue[T, K]) Pop() (T, bool) {
+func (pq *PriorityQueue[K, V]) Pop() (V, bool) {
 	if pq.Len() == 0 {
-		var zero T
+		var zero V
 		return zero, false
 	}
-	it := heap.Pop(pq.h).(*item[T])
+	it := heap.Pop(pq.h).(*item[V])
 	delete(pq.m, pq.key(it.value))
 	return it.value, true
 }
 
 // Lookup returns the item with the given key if it exists.
-func (pq *PriorityQueue[T, K]) Lookup(k K) (T, bool) {
+func (pq *PriorityQueue[K, V]) Lookup(k K) (V, bool) {
 	if it, ok := pq.m[k]; ok {
 		return it.value, true
 	}
-	var zero T
+	var zero V
 	return zero, false
 }
 
 // Remove removes and returns the item with the given key if it exists.
-func (pq *PriorityQueue[T, K]) Remove(k K) (T, bool) {
+func (pq *PriorityQueue[K, V]) Remove(k K) (V, bool) {
 	it, ok := pq.m[k]
 	if !ok {
-		var zero T
+		var zero V
 		return zero, false
 	}
 	heap.Remove(pq.h, it.index)
@@ -82,7 +82,7 @@ func (pq *PriorityQueue[T, K]) Remove(k K) (T, bool) {
 }
 
 // UpdatePriority updates the priority of an item and reorders the queue.
-func (pq *PriorityQueue[T, K]) UpdatePriority(k K, v T) bool {
+func (pq *PriorityQueue[K, V]) UpdatePriority(k K, v V) bool {
 	if it, ok := pq.m[k]; ok {
 		it.value = v
 		heap.Fix(pq.h, it.index)
@@ -92,26 +92,26 @@ func (pq *PriorityQueue[T, K]) UpdatePriority(k K, v T) bool {
 }
 
 // Len returns the number of elements in the queue.
-func (pq *PriorityQueue[T, K]) Len() int {
+func (pq *PriorityQueue[K, V]) Len() int {
 	return pq.h.Len()
 }
 
 // priorityHeap is the internal heap implementation that satisfies heap.Interface.
-type priorityHeap[T any] struct {
-	less func(T, T) bool
-	heap []*item[T]
-	idx  map[int]*item[T] // Maps index to item for efficient updates
+type priorityHeap[V any] struct {
+	less func(V, V) bool
+	heap []*item[V]
+	idx  map[int]*item[V] // Maps index to item for efficient updates
 }
 
-func (h *priorityHeap[T]) Len() int {
+func (h *priorityHeap[V]) Len() int {
 	return len(h.heap)
 }
 
-func (h *priorityHeap[T]) Less(i, j int) bool {
+func (h *priorityHeap[V]) Less(i, j int) bool {
 	return h.less(h.heap[i].value, h.heap[j].value)
 }
 
-func (h *priorityHeap[T]) Swap(i, j int) {
+func (h *priorityHeap[V]) Swap(i, j int) {
 	h.heap[i], h.heap[j] = h.heap[j], h.heap[i]
 	h.heap[i].index = i
 	h.heap[j].index = j
@@ -119,14 +119,14 @@ func (h *priorityHeap[T]) Swap(i, j int) {
 	h.idx[j] = h.heap[j]
 }
 
-func (h *priorityHeap[T]) Push(x any) {
-	it := x.(*item[T])
+func (h *priorityHeap[V]) Push(x any) {
+	it := x.(*item[V])
 	it.index = len(h.heap)
 	h.heap = append(h.heap, it)
 	h.idx[it.index] = it
 }
 
-func (h *priorityHeap[T]) Pop() any {
+func (h *priorityHeap[V]) Pop() any {
 	old := h.heap
 	n := len(old)
 	it := old[n-1]
@@ -136,17 +136,17 @@ func (h *priorityHeap[T]) Pop() any {
 }
 
 // CircularBuffer is a generic circular buffer.
-type CircularBuffer[T any] struct {
-	buffer []T
+type CircularBuffer[V any] struct {
+	buffer []V
 	size   int
 	head   int
 	tail   int
 }
 
 // NewCircularBuffer creates a new circular buffer with the given capacity.
-func NewCircularBuffer[T any](capacity int) *CircularBuffer[T] {
-	return &CircularBuffer[T]{
-		buffer: make([]T, capacity),
+func NewCircularBuffer[V any](capacity int) *CircularBuffer[V] {
+	return &CircularBuffer[V]{
+		buffer: make([]V, capacity),
 		size:   0,
 		head:   0,
 		tail:   0,
@@ -154,8 +154,8 @@ func NewCircularBuffer[T any](capacity int) *CircularBuffer[T] {
 }
 
 // Push adds an element to the circular buffer and returns the evicted element if any
-func (b *CircularBuffer[T]) Push(v T) (T, bool) {
-	var evicted T
+func (b *CircularBuffer[V]) Push(v V) (V, bool) {
+	var evicted V
 	hasEvicted := false
 
 	if b.size == len(b.buffer) {
@@ -174,9 +174,9 @@ func (b *CircularBuffer[T]) Push(v T) (T, bool) {
 }
 
 // Pop removes and returns the oldest element from the buffer
-func (b *CircularBuffer[T]) Pop() (T, bool) {
+func (b *CircularBuffer[V]) Pop() (V, bool) {
 	if b.size == 0 {
-		var zero T
+		var zero V
 		return zero, false
 	}
 
@@ -188,6 +188,6 @@ func (b *CircularBuffer[T]) Pop() (T, bool) {
 }
 
 // Len returns the number of elements in the buffer
-func (b *CircularBuffer[T]) Len() int {
+func (b *CircularBuffer[V]) Len() int {
 	return b.size
 }

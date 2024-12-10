@@ -39,7 +39,7 @@ func TestPriorityQueue(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				pq := NewPriorityQueue[int, int](
 					func(a, b int) bool { return a < b },
-					func(a int) int { return a },
+					func(v int) int { return v },
 				)
 				require.Equal(t, 0, pq.Len())
 
@@ -73,7 +73,7 @@ func TestPriorityQueue(t *testing.T) {
 			Priority int
 		}
 
-		pq := NewPriorityQueue[Job, string](
+		pq := NewPriorityQueue[string, Job](
 			func(a, b Job) bool { return a.Priority < b.Priority },
 			func(j Job) string { return j.ID },
 		)
@@ -130,7 +130,7 @@ func TestPriorityQueue(t *testing.T) {
 			Priority int
 		}
 
-		pq := NewPriorityQueue[Job, string](
+		pq := NewPriorityQueue[string, Job](
 			func(a, b Job) bool { return a.Priority < b.Priority },
 			func(j Job) string { return j.ID },
 		)
@@ -160,26 +160,26 @@ func TestPriorityQueue(t *testing.T) {
 	t.Run("mixed operations", func(t *testing.T) {
 		pq := NewPriorityQueue[int, int](
 			func(a, b int) bool { return a < b },
-			func(a int) int { return a },
+			func(v int) int { return v },
 		)
 
 		// Push some elements
 		pq.Push(3)
 		pq.Push(1)
-		require.Equal(t, 2, pq.Len())
+		pq.Push(4)
 
-		// Pop lowest
+		// Pop an element
 		v, ok := pq.Pop()
 		require.True(t, ok)
 		require.Equal(t, 1, v)
 
 		// Push more elements
 		pq.Push(2)
-		pq.Push(4)
+		pq.Push(5)
 
-		// Verify remaining elements come out in order
-		want := []int{2, 3, 4}
-		got := make([]int, 0, 3)
+		// Pop remaining elements and verify order
+		want := []int{2, 3, 4, 5}
+		got := make([]int, 0, len(want))
 		for range want {
 			v, ok := pq.Pop()
 			require.True(t, ok)

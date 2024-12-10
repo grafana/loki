@@ -10,6 +10,10 @@ type Job struct {
 	Offsets   Offsets
 }
 
+func (j *Job) GetID() string {
+	return j.ID
+}
+
 // JobStatus represents the current state of a job
 type JobStatus int
 

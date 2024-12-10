@@ -144,15 +144,53 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 
 	for _, job := range jobs {
 		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
-		if status, ok := s.queue.Exists(job.Job); ok {
-			level.Debug(s.logger).Log("msg", "job already exists", "job", job, "status", status)
-			// TODO: update priority
+
+		logger := log.With(
+			s.logger,
+			"job", job.Job.ID,
+			"priority", job.Priority,
+		)
+
+		status, ok := s.queue.Exists(job.Job)
+
+		// scheduler is unaware of incoming job; enqueue
+		if !ok {
+			level.Debug(logger).Log(
+				"msg", "job does not exist, enqueueing",
+			)
+
+			// enqueue
+			if err := s.queue.Enqueue(job.Job, job.Priority); err != nil {
+				level.Error(logger).Log("msg", "failed to enqueue job", "err", err)
+			}
+
 			continue
 		}
 
-		if err := s.queue.Enqueue(job.Job, job.Priority); err != nil {
-			level.Error(s.logger).Log("msg", "failed to enqueue job", "job", job, "err", err)
+		// scheduler is aware of incoming job; handling depends on status
+		switch status {
+		case types.JobStatusPending:
+			level.Debug(s.logger).Log(
+				"msg", "job is pending, updating priority",
+				"old_priority", job.Priority,
+			)
+			s.queue.pending.UpdatePriority(job.Job.ID, job)
+		case types.JobStatusInProgress:
+			level.Debug(s.logger).Log(
+				"msg", "job is in progress, ignoring",
+			)
+		case types.JobStatusComplete:
+			// shouldn't happen
+			level.Debug(s.logger).Log(
+				"msg", "job is complete, ignoring",
+			)
+		default:
+			level.Error(s.logger).Log(
+				"msg", "job has unknown status, ignoring",
+				"status", status,
+			)
 		}
+
 	}
 
 	return nil
@@ -178,8 +216,14 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, builderID string) (*t
 func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job, success bool) error {
 	logger := log.With(s.logger, "job", job.ID)
 
+	status, exists := s.queue.Exists(job)
+	if !exists {
+		level.Error(logger).Log("msg", "cannot complete job, job does not exist")
+		return nil
+	}
+
 	if !success {
-		level.Error(logger).Log("msg", "job failed")
+		level.Error(logger).Log("msg", "job failed, re-enqueuing")
 		return nil
 	}
 	s.queue.MarkComplete(job.ID)
