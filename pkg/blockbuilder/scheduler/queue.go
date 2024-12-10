@@ -163,7 +163,7 @@ func (q *JobQueue) GetStatus(id string) (types.JobStatus, bool) {
 }
 
 // SyncJob registers a job as in-progress, used for restoring state after scheduler restarts
-func (q *JobQueue) SyncJob(jobID string, _ string, job *types.Job) {
+func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

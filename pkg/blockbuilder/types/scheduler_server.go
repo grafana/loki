@@ -21,7 +21,7 @@ func NewSchedulerServer(handler SchedulerHandler) proto.SchedulerServiceServer {
 
 // GetJob implements proto.SchedulerServiceServer
 func (s *schedulerServer) GetJob(ctx context.Context, req *proto.GetJobRequest) (*proto.GetJobResponse, error) {
-	job, ok, err := s.handler.HandleGetJob(ctx, req.BuilderId)
+	job, ok, err := s.handler.HandleGetJob(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -39,7 +39,7 @@ func (s *schedulerServer) GetJob(ctx context.Context, req *proto.GetJobRequest) 
 
 // CompleteJob implements proto.SchedulerServiceServer
 func (s *schedulerServer) CompleteJob(ctx context.Context, req *proto.CompleteJobRequest) (*proto.CompleteJobResponse, error) {
-	if err := s.handler.HandleCompleteJob(ctx, req.BuilderId, protoToJob(req.Job), req.Success); err != nil {
+	if err := s.handler.HandleCompleteJob(ctx, protoToJob(req.Job), req.Success); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &proto.CompleteJobResponse{}, nil
@@ -47,7 +47,7 @@ func (s *schedulerServer) CompleteJob(ctx context.Context, req *proto.CompleteJo
 
 // SyncJob implements proto.SchedulerServiceServer
 func (s *schedulerServer) SyncJob(ctx context.Context, req *proto.SyncJobRequest) (*proto.SyncJobResponse, error) {
-	if err := s.handler.HandleSyncJob(ctx, req.BuilderId, protoToJob(req.Job)); err != nil {
+	if err := s.handler.HandleSyncJob(ctx, protoToJob(req.Job)); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &proto.SyncJobResponse{}, nil

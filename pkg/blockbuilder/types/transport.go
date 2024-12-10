@@ -37,7 +37,7 @@ func NewMemoryTransport(scheduler SchedulerHandler) *MemoryTransport {
 }
 
 func (t *MemoryTransport) SendGetJobRequest(ctx context.Context, req *GetJobRequest) (*GetJobResponse, error) {
-	job, ok, err := t.scheduler.HandleGetJob(ctx, req.BuilderID)
+	job, ok, err := t.scheduler.HandleGetJob(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -48,9 +48,9 @@ func (t *MemoryTransport) SendGetJobRequest(ctx context.Context, req *GetJobRequ
 }
 
 func (t *MemoryTransport) SendCompleteJob(ctx context.Context, req *CompleteJobRequest) error {
-	return t.scheduler.HandleCompleteJob(ctx, req.BuilderID, req.Job, req.Success)
+	return t.scheduler.HandleCompleteJob(ctx, req.Job, req.Success)
 }
 
 func (t *MemoryTransport) SendSyncJob(ctx context.Context, req *SyncJobRequest) error {
-	return t.scheduler.HandleSyncJob(ctx, req.BuilderID, req.Job)
+	return t.scheduler.HandleSyncJob(ctx, req.Job)
 }

@@ -204,7 +204,7 @@ func (s *BlockScheduler) publishLagMetrics(lag map[int32]kadm.GroupMemberLag) {
 	}
 }
 
-func (s *BlockScheduler) HandleGetJob(ctx context.Context, _ string) (*types.Job, bool, error) {
+func (s *BlockScheduler) HandleGetJob(ctx context.Context) (*types.Job, bool, error) {
 	select {
 	case <-ctx.Done():
 		return nil, false, ctx.Err()
@@ -214,7 +214,7 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context, _ string) (*types.Job
 	}
 }
 
-func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *types.Job, success bool) error {
+func (s *BlockScheduler) HandleCompleteJob(_ context.Context, job *types.Job, success bool) error {
 	logger := log.With(s.logger, "job", job.ID())
 
 	if success {
@@ -228,7 +228,7 @@ func (s *BlockScheduler) HandleCompleteJob(_ context.Context, _ string, job *typ
 	return nil
 }
 
-func (s *BlockScheduler) HandleSyncJob(_ context.Context, builderID string, job *types.Job) error {
-	s.queue.SyncJob(job.ID(), builderID, job)
+func (s *BlockScheduler) HandleSyncJob(_ context.Context, job *types.Job) error {
+	s.queue.SyncJob(job.ID(), job)
 	return nil
 }
