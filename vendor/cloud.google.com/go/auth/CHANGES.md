@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.2...auth/v0.11.0) (2024-11-21)
+
+
+### Features
+
+* **auth:** Add universe domain support to mTLS ([#11159](https://github.com/googleapis/google-cloud-go/issues/11159)) ([117748b](https://github.com/googleapis/google-cloud-go/commit/117748ba1cfd4ae62a6a4feb7e30951cb2bc9344))
+
 ## [0.10.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.1...auth/v0.10.2) (2024-11-12)
 
 

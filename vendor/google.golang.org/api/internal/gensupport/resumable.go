@@ -266,7 +266,7 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			// The upload should be retried if the rCtx is canceled due to a timeout.
 			select {
 			case <-rCtx.Done():
-				if errors.Is(rCtx.Err(), context.DeadlineExceeded) {
+				if rx.ChunkTransferTimeout != 0 && errors.Is(rCtx.Err(), context.DeadlineExceeded) {
 					// Cancel the context for rCtx
 					cancel()
 					continue

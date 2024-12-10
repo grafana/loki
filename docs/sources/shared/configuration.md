@@ -216,11 +216,10 @@ block_scheduler:
   # CLI flag: -block-scheduler.interval
   [interval: <duration> | default = 5m]
 
-  # Lookback period in milliseconds used by the scheduler to plan jobs when the
-  # consumer group has no commits. -1 consumes from the latest offset. -2
-  # consumes from the start of the partition.
+  # Lookback period used by the scheduler to plan jobs when the consumer group
+  # has no commits. 0 consumes from the start of the partition.
   # CLI flag: -block-scheduler.lookback-period
-  [lookback_period: <int> | default = -2]
+  [lookback_period: <duration> | default = 0s]
 
   # Strategy used by the planner to plan jobs. One of record-count
   # CLI flag: -block-scheduler.strategy
@@ -837,10 +836,8 @@ kafka_config:
   [sasl_password: <string> | default = ""]
 
   # The consumer group used by the consumer to track the last consumed offset.
-  # The consumer group must be different for each ingester. If the configured
-  # consumer group contains the '<partition>' placeholder, it is replaced with
-  # the actual partition ID owned by the ingester. When empty (recommended),
-  # Mimir uses the ingester instance ID to guarantee uniqueness.
+  # The consumer group must be different for each ingester zone.When empty, Loki
+  # uses the ingester instance ID.
   # CLI flag: -kafka.consumer-group
   [consumer_group: <string> | default = ""]
 
