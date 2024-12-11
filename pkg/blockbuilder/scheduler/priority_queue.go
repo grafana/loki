@@ -42,8 +42,7 @@ func (pq *PriorityQueue[K, V]) Push(v V) {
 	}
 
 	// Add new item
-	idx := pq.h.Len()
-	it := &item[V]{value: v, index: idx}
+	it := &item[V]{value: v}
 	pq.m[k] = it
 	heap.Push(pq.h, it)
 }
