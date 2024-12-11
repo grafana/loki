@@ -5,138 +5,233 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 const (
+	DefaultPriority              = 0 // TODO(owen-d): better determine priority when unknown
 	defaultCompletedJobsCapacity = 100
 )
 
-// JobWithPriority wraps a job with a priority value
-type JobWithPriority[T comparable] struct {
-	Job      *types.Job
-	Priority T
+// JobWithMetadata wraps a job with additional metadata for tracking its lifecycle
+type JobWithMetadata struct {
+	*types.Job
+	Priority   int
+	Status     types.JobStatus
+	StartTime  time.Time
+	UpdateTime time.Time
 }
 
-// NewJobWithPriority creates a new JobWithPriority instance
-func NewJobWithPriority[T comparable](job *types.Job, priority T) *JobWithPriority[T] {
-	return &JobWithPriority[T]{
-		Job:      job,
-		Priority: priority,
+// NewJobWithMetadata creates a new JobWithMetadata instance
+func NewJobWithMetadata(job *types.Job, priority int) *JobWithMetadata {
+	return &JobWithMetadata{
+		Job:        job,
+		Priority:   priority,
+		Status:     types.JobStatusPending,
+		UpdateTime: time.Now(),
 	}
-}
-
-// inProgressJob contains a job and its start time
-type inProgressJob struct {
-	job       *types.Job
-	startTime time.Time
-}
-
-// Duration returns how long the job has been running
-func (j *inProgressJob) Duration() time.Duration {
-	return time.Since(j.startTime)
 }
 
 // JobQueue manages the queue of pending jobs and tracks their state.
 type JobQueue struct {
-	pending    *PriorityQueue[*JobWithPriority[int]] // Jobs waiting to be processed, ordered by priority
-	inProgress map[string]*inProgressJob             // Jobs currently being processed, key is job ID
-	completed  *CircularBuffer[*types.Job]           // Last N completed jobs
-	statusMap  map[string]types.JobStatus            // Maps job ID to its current status
+	logger     log.Logger
+	pending    *PriorityQueue[string, *JobWithMetadata] // Jobs waiting to be processed, ordered by priority
+	inProgress map[string]*JobWithMetadata              // Jobs currently being processed
+	completed  *CircularBuffer[*JobWithMetadata]        // Last N completed jobs
+	statusMap  map[string]types.JobStatus               // Maps job ID to its current status
 	mu         sync.RWMutex
 }
 
-// NewJobQueue creates a new job queue instance
-func NewJobQueue() *JobQueue {
+func NewJobQueueWithLogger(logger log.Logger) *JobQueue {
 	return &JobQueue{
-		pending: NewPriorityQueue[*JobWithPriority[int]](func(a, b *JobWithPriority[int]) bool {
-			return a.Priority > b.Priority // Higher priority first
-		}),
-		inProgress: make(map[string]*inProgressJob),
-		completed:  NewCircularBuffer[*types.Job](defaultCompletedJobsCapacity),
+		logger: logger,
+		pending: NewPriorityQueue(
+			func(a, b *JobWithMetadata) bool {
+				return a.Priority > b.Priority // Higher priority first
+			},
+			func(j *JobWithMetadata) string { return j.ID() },
+		),
+		inProgress: make(map[string]*JobWithMetadata),
+		completed:  NewCircularBuffer[*JobWithMetadata](defaultCompletedJobsCapacity),
 		statusMap:  make(map[string]types.JobStatus),
 	}
 }
 
+// NewJobQueue creates a new job queue instance
+func NewJobQueue() *JobQueue {
+	return NewJobQueueWithLogger(log.NewNopLogger())
+}
+
+// Exists checks if a job exists in any state and returns its status
 func (q *JobQueue) Exists(job *types.Job) (types.JobStatus, bool) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	status, exists := q.statusMap[job.ID]
-	return status, exists
+	x, ok := q.existsLockLess(job.ID())
+	if !ok {
+		return types.JobStatusUnknown, false
+	}
+	return x.Status, ok
 }
 
-// Enqueue adds a new job to the pending queue with a priority
+func (q *JobQueue) existsLockLess(id string) (*JobWithMetadata, bool) {
+	status, ok := q.statusMap[id]
+	if !ok {
+		return nil, false
+	}
+
+	switch status {
+	case types.JobStatusPending:
+		return q.pending.Lookup(id)
+	case types.JobStatusInProgress:
+		res, ok := q.inProgress[id]
+		return res, ok
+	case types.JobStatusComplete:
+		return q.completed.Lookup(func(jwm *JobWithMetadata) bool {
+			return jwm.ID() == id
+		})
+	default:
+		return nil, false
+	}
+}
+
+// Enqueue adds a job to the pending queue with the given priority
 func (q *JobQueue) Enqueue(job *types.Job, priority int) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	// Check if job already exists
-	if status, exists := q.statusMap[job.ID]; exists {
-		return fmt.Errorf("job %s already exists with status %v", job.ID, status)
+	if status, exists := q.statusMap[job.ID()]; exists {
+		return fmt.Errorf("job %s already exists with status %v", job.ID(), status)
 	}
 
-	jobWithPriority := NewJobWithPriority(job, priority)
-	q.pending.Push(jobWithPriority)
-	q.statusMap[job.ID] = types.JobStatusPending
+	jobMeta := NewJobWithMetadata(job, priority)
+	q.pending.Push(jobMeta)
+	q.statusMap[job.ID()] = types.JobStatusPending
 	return nil
 }
 
-// Dequeue gets the next available job and assigns it to a builder
-func (q *JobQueue) Dequeue(_ string) (*types.Job, bool, error) {
+// Dequeue removes and returns the highest priority job from the pending queue
+func (q *JobQueue) Dequeue() (*types.Job, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if q.pending.Len() == 0 {
-		return nil, false, nil
-	}
-
-	jobWithPriority, ok := q.pending.Pop()
+	jobMeta, ok := q.pending.Pop()
 	if !ok {
-		return nil, false, nil
+		return nil, false
 	}
 
-	// Add to in-progress with current time
-	q.inProgress[jobWithPriority.Job.ID] = &inProgressJob{
-		job:       jobWithPriority.Job,
-		startTime: time.Now(),
-	}
-	q.statusMap[jobWithPriority.Job.ID] = types.JobStatusInProgress
+	// Update metadata for in-progress state
+	jobMeta.Status = types.JobStatusInProgress
+	jobMeta.StartTime = time.Now()
+	jobMeta.UpdateTime = jobMeta.StartTime
 
-	return jobWithPriority.Job, true, nil
+	q.inProgress[jobMeta.ID()] = jobMeta
+	q.statusMap[jobMeta.ID()] = types.JobStatusInProgress
+
+	return jobMeta.Job, true
 }
 
-// MarkComplete moves a job from in-progress to completed
-func (q *JobQueue) MarkComplete(jobID string) {
+// GetInProgressJob retrieves a job that is currently being processed
+func (q *JobQueue) GetInProgressJob(id string) (*types.Job, time.Time, bool) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	if jobMeta, ok := q.inProgress[id]; ok {
+		return jobMeta.Job, jobMeta.StartTime, true
+	}
+	return nil, time.Time{}, false
+}
+
+// RemoveInProgress removes a job from the in-progress map
+func (q *JobQueue) RemoveInProgress(id string) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Find job in in-progress map
-	inProgressJob, exists := q.inProgress[jobID]
-	// if it doesn't exist, it could be previously removed (duplicate job execution)
-	// or the scheduler may have restarted and not have the job state anymore.
-	if exists {
-		// Remove from in-progress
-		delete(q.inProgress, jobID)
-	}
-
-	// Add to completed buffer and handle evicted job
-	if evictedJob, hasEvicted := q.completed.Push(inProgressJob.job); hasEvicted {
-		// Remove evicted job from status map
-		delete(q.statusMap, evictedJob.ID)
-	}
-	q.statusMap[jobID] = types.JobStatusComplete
+	delete(q.inProgress, id)
 }
 
-// SyncJob registers a job as in-progress, used for restoring state after scheduler restarts
-func (q *JobQueue) SyncJob(jobID string, _ string, job *types.Job) {
+// MarkComplete moves a job from in-progress to completed with the given status
+func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Add directly to in-progress
-	q.inProgress[jobID] = &inProgressJob{
-		job:       job,
-		startTime: time.Now(),
+	jobMeta, ok := q.existsLockLess(id)
+	if !ok {
+		level.Error(q.logger).Log("msg", "failed to mark job as complete", "job", id, "status", status)
+		return
 	}
+
+	switch jobMeta.Status {
+	case types.JobStatusInProgress:
+		// update & remove from in progress
+		delete(q.inProgress, id)
+	case types.JobStatusPending:
+		_, ok := q.pending.Remove(id)
+		if !ok {
+			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", id)
+		}
+	default:
+		level.Error(q.logger).Log("msg", "unknown job status, cannot mark as complete", "job", id, "status", status)
+	}
+
+	jobMeta.Status = status
+	jobMeta.UpdateTime = time.Now()
+
+	// add it to the completed buffer, removing any evicted job from the statusMap
+	removal, evicted := q.completed.Push(jobMeta)
+	if evicted {
+		delete(q.statusMap, removal.ID())
+	}
+	q.statusMap[id] = status
+}
+
+// SyncJob registers a job as in-progress or updates its UpdateTime if already in progress
+func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Helper function to create a new job
+	registerInProgress := func() {
+		// Job does not exist; add it as in-progress
+		now := time.Now()
+		jobMeta := NewJobWithMetadata(job, DefaultPriority)
+		jobMeta.StartTime = now
+		jobMeta.UpdateTime = now
+		jobMeta.Status = types.JobStatusInProgress
+		q.inProgress[jobID] = jobMeta
+		q.statusMap[jobID] = types.JobStatusInProgress
+	}
+
+	jobMeta, ok := q.existsLockLess(jobID)
+
+	if !ok {
+		registerInProgress()
+		return
+	}
+
+	switch jobMeta.Status {
+	case types.JobStatusPending:
+		// Job already pending, move to in-progress
+		_, ok := q.pending.Remove(jobID)
+		if !ok {
+			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", jobID)
+		}
+		jobMeta.Status = types.JobStatusInProgress
+	case types.JobStatusInProgress:
+	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
+		// Job already completed, re-enqueue a new one
+		registerInProgress()
+		return
+	default:
+		registerInProgress()
+		return
+	}
+
+	jobMeta.UpdateTime = time.Now()
+	q.inProgress[jobID] = jobMeta
 	q.statusMap[jobID] = types.JobStatusInProgress
 }

@@ -18,7 +18,7 @@ type OffsetReader interface {
 
 type Planner interface {
 	Name() string
-	Plan(ctx context.Context) ([]*JobWithPriority[int], error)
+	Plan(ctx context.Context) ([]*JobWithMetadata, error)
 }
 
 const (
@@ -46,14 +46,14 @@ func (p *RecordCountPlanner) Name() string {
 	return RecordCountStrategy
 }
 
-func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int], error) {
+func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithMetadata, error) {
 	offsets, err := p.offsetReader.GroupLag(ctx)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
 		return nil, err
 	}
 
-	jobs := make([]*JobWithPriority[int], 0, len(offsets))
+	jobs := make([]*JobWithMetadata, 0, len(offsets))
 	for _, partitionOffset := range offsets {
 		// kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
 		// no additional validation is needed here
@@ -69,11 +69,12 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int],
 		for currentStart := startOffset; currentStart < endOffset; {
 			currentEnd := min(currentStart+p.targetRecordCount, endOffset)
 
-			job := NewJobWithPriority(
+			job := NewJobWithMetadata(
 				types.NewJob(partitionOffset.Partition, types.Offsets{
 					Min: currentStart,
 					Max: currentEnd,
-				}), int(endOffset-currentStart), // priority is remaining records to process
+				}),
+				int(endOffset-currentStart), // priority is remaining records to process
 			)
 			jobs = append(jobs, job)
 
@@ -83,8 +84,8 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int],
 
 	// Sort jobs by partition then priority
 	sort.Slice(jobs, func(i, j int) bool {
-		if jobs[i].Job.Partition != jobs[j].Job.Partition {
-			return jobs[i].Job.Partition < jobs[j].Job.Partition
+		if jobs[i].Job.Partition() != jobs[j].Job.Partition() {
+			return jobs[i].Job.Partition() < jobs[j].Job.Partition()
 		}
 		return jobs[i].Priority > jobs[j].Priority
 	})
