@@ -61,18 +61,18 @@ The logs are processed from Grafana Alloy to extract labels and structured metad
 
 ## Setup
 
-To get started, we need to clone the [Alloy Scenario](https://github.com/grafana/alloy-scenarios) repository and spin up the mail-house example:
+To get started, we need to clone the [Alloy Scenario](https://github.com/grafana/alloy-scenarios) repository and start the mail-house example:
 
 1. Clone the repository:
     ```bash
     git clone https://github.com/grafana/alloy-scenarios.git
     ```
-1. Spin up the mail-house example:
+1. Start the mail-house example:
     ```bash
     docker compose -f alloy-scenarios/mail-house/docker-compose.yml up -d
     ```
 
-This will start the mail-house example and expose the Loki instance on [`http://localhost:3100`](http://localhost:3100). We have also included a Grafana instance to verify the LogCLI results which can be accessed on [`http://localhost:3000`](http://localhost:3000).
+This will start the mail-house example and expose the Loki instance at [`http://localhost:3100`](http://localhost:3100). We have also included a Grafana instance to verify the LogCLI results which can be accessed at [`http://localhost:3000`](http://localhost:3000).
 
 ### Connecting LogCLI to Loki
 
@@ -80,7 +80,7 @@ To connect LogCLI to the Loki instance, you need to set the `LOKI_ADDR` environm
 
 {{< admonition type="tip" >}}
 
-If you are running this example against your own Loki instance and have configured authentication, you will need to set the `LOKI_USERNAME` and `LOKI_PASSWORD` environment variables as well.
+If you are running this example against your own Loki instance and have configured authentication, you will also need to set the `LOKI_USERNAME` and `LOKI_PASSWORD` environment variables.
 
 {{< /admonition >}}
 
@@ -182,7 +182,7 @@ This will return a result similar to the following:
 
 ### Writing query results to a file
 
-Another useful feature of LogCLI is the ability to write the query results to a file. This can be useful for offloading the results of our inventory report:
+Another useful feature of LogCLI is the ability to write the query results to a file. This can be useful for downloading the results of our inventory report:
 
 First we need to create a directory to store the logs:
 ```bash
@@ -258,7 +258,7 @@ service_name  1              15
 
 ### Detected Fields
 
-Another useful feature of LogCLI is the ability to detect fields in your logs. This can be useful for understanding the structure of your logs and the keys that are present. This will allow us to detect keys which could be promoted to labels and others to structured metadata. 
+Another useful feature of LogCLI is the ability to detect fields in your logs. This can be useful for understanding the structure of your logs and the keys that are present. This will let us detect keys which could be promoted to labels or to structured metadata. 
 
 ```bash
 logcli detected-fields --since 24h '{service_name="Delivery World"}'
@@ -378,7 +378,7 @@ This will provide a similar JSON object but will aggregate the log volume into b
 
 ## Queries against static log files
 
-In addition to querying logs from Loki, LogCLI also supports querying static log files. This can be useful for querying logs that are not stored in Loki using LogQL. Earlier in the tutorial we stored the logs in the `./inventory` directory. Lets run a similar query but pipe it into a log file:
+In addition to querying logs from Loki, LogCLI also supports querying static log files. This can be useful for querying logs that are not stored in Loki. Earlier in the tutorial we stored the logs in the `./inventory` directory. Lets run a similar query but pipe it into a log file:
 
 ```bash
   logcli query \
@@ -398,9 +398,9 @@ Next lets run a query against the static log file:
 cat ./inventory/complete.log |  logcli --stdin query '{service_name="Delivery World"} | json | package_status="critical"'
 ```
 
-Note that since we are querying a static log file labels are not automatically detected:
+Note that since we are querying a static log file, labels are not automatically detected:
 * `{service_name="Delivery World"}` is optional in this case but is recommended for clarity.
-* `json` is required to parse the log file as JSON. This allows us to extract the `package_status` field.
+* `json` is required to parse the log file as JSON. This lets us extract the `package_status` field.
 
 For example, suppose we try to query the log file without the `json` filter:
 
