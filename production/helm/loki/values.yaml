@@ -1066,6 +1066,8 @@ gateway:
       {{ else }} {{ htpasswd (required "'gateway.basicAuth.username' is required" .Values.gateway.basicAuth.username) (required "'gateway.basicAuth.password' is required" .Values.gateway.basicAuth.password) }} {{ end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
+  # -- liveness probe for the nginx container in the gateway pods.
+  livenessProbe: {}
   # Configures the readiness probe for the gateway
   readinessProbe:
     httpGet:
@@ -1073,6 +1075,8 @@ gateway:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  # -- startup probe for the nginx container in the gateway pods.
+  startupProbe: {}
   nginxConfig:
     # -- Which schema to be used when building URLs. Can be 'http' or 'https'.
     schema: http
@@ -1104,6 +1108,7 @@ gateway:
     # @default -- See values.yaml
     file: |
       {{- include "loki.nginxFile" . | indent 2 -}}
+
 # -- If running enterprise and using the default enterprise gateway, configs go here.
 enterpriseGateway:
   # -- Define the amount of instances
@@ -1173,6 +1178,7 @@ enterpriseGateway:
   tolerations: []
   # -- Grace period to allow the gateway to shutdown before it is killed
   terminationGracePeriodSeconds: 60
+
 # -- Ingress configuration Use either this ingress or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
 # You'll need to supply authn configuration for your ingress controller.

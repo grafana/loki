@@ -30,6 +30,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Fix `enterprise.image.tag` to `3.3.0`
 - [ENHANCEMENT] Bump Loki version to 3.3.2
 - [BUGFIX] Fix broken `readinessProbe` and `livenessProbe` helper template definitons.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the nginx container in the gateway pods.
 
 ## 6.23.0
 
