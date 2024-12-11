@@ -677,31 +677,44 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 	}
 }
 
-func TestChunkSize(t *testing.T) {
+func BenchmarkEncodingsAndChunkSize(b *testing.B) {
 	type res struct {
 		name           string
+		count          uint64
 		size           uint64
 		compressedSize uint64
 		ratio          float64
 	}
 	var result []res
-	for _, bs := range testBlockSizes {
-		for _, f := range allPossibleFormats {
-			for _, enc := range testEncodings {
-				name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
-				t.Run(name, func(t *testing.T) {
-					c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, bs, testTargetSize)
-					inserted := fillChunk(c)
-					b, err := c.Bytes()
-					if err != nil {
-						t.Fatal(err)
+
+	resBuffer := make([]byte, 0, 50*1024*1024)
+	for _, enc := range testEncodings {
+		for _, bs := range testBlockSizes {
+			for fi, f := range allPossibleFormats {
+				name := fmt.Sprintf("%s_block_size_%s_format_%d", enc.String(), humanize.Bytes(uint64(bs)), fi)
+				b.Run(name, func(b *testing.B) {
+					var insertedTotal, compressedTotal, count uint64
+					for range b.N {
+						c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, bs, testTargetSize)
+						inserted := fillChunk(c)
+						insertedTotal += uint64(inserted)
+						cb, err := c.BytesWith(resBuffer)
+						if err != nil {
+							b.Fatal(err)
+						}
+						compressedTotal += uint64(len(cb))
+						count++
 					}
+
+					averageRatio := float64(insertedTotal) / float64(compressedTotal)
 					result = append(result, res{
 						name:           name,
-						size:           uint64(inserted),
-						compressedSize: uint64(len(b)),
-						ratio:          float64(inserted) / float64(len(b)),
+						count:          count,
+						size:           uint64(insertedTotal),
+						compressedSize: uint64(compressedTotal),
+						ratio:          averageRatio,
 					})
+					b.ReportMetric(averageRatio, "compression_ratio")
 				})
 			}
 		}
@@ -709,9 +722,9 @@ func TestChunkSize(t *testing.T) {
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].ratio > result[j].ratio
 	})
-	fmt.Printf("%s\t%s\t%s\t%s\n", "name", "uncompressed", "compressed", "ratio")
+	fmt.Printf("%s\t%s\t%s\t%s\t%s\n", "name", "count", "uncompressed", "compressed", "ratio")
 	for _, r := range result {
-		fmt.Printf("%s\t%s\t%s\t%f\n", r.name, humanize.Bytes(r.size), humanize.Bytes(r.compressedSize), r.ratio)
+		fmt.Printf("%s\t(count %d)\n%s\t%s\t%f\n", r.name, r.count, humanize.Bytes(r.size/r.count), humanize.Bytes(r.compressedSize/r.count), r.ratio)
 	}
 }
 
