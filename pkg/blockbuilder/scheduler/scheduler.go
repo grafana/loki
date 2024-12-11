@@ -218,11 +218,10 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 	logger := log.With(s.logger, "job", job.ID())
 
 	if success {
-		// TODO(owen-d): do i need to increment offset here?
 		if err = s.offsetManager.Commit(
 			ctx,
 			job.Partition(),
-			job.Offsets().Max,
+			job.Offsets().Max-1, // max is exclusive, so commit max-1
 		); err == nil {
 			s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
 			level.Info(logger).Log("msg", "job completed successfully")
