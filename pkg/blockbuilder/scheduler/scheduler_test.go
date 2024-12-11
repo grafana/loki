@@ -7,8 +7,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 type testEnv struct {
@@ -18,9 +20,33 @@ type testEnv struct {
 	builder   *Worker
 }
 
+type mockOffsetManager struct {
+	topic         string
+	consumerGroup string
+}
+
+func (m *mockOffsetManager) Topic() string         { return m.topic }
+func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
+func (m *mockOffsetManager) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+	return nil, nil
+}
+func (m *mockOffsetManager) FetchLastCommittedOffset(_ context.Context, _ int32) (int64, error) {
+	return 0, nil
+}
+func (m *mockOffsetManager) FetchPartitionOffset(_ context.Context, _ int32, _ partition.SpecialOffset) (int64, error) {
+	return 0, nil
+}
+func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
+	return nil
+}
+
 func newTestEnv(builderID string) *testEnv {
 	queue := NewJobQueue()
-	scheduler := NewScheduler(Config{}, queue, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	mockOffsetMgr := &mockOffsetManager{
+		topic:         "test-topic",
+		consumerGroup: "test-group",
+	}
+	scheduler := NewScheduler(Config{}, queue, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
 	transport := types.NewMemoryTransport(scheduler)
 	builder := NewWorker(builderID, transport)
 
@@ -51,8 +77,8 @@ func TestScheduleAndProcessJob(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to receive job")
 	}
-	if receivedJob.ID != job.ID {
-		t.Errorf("got job ID %s, want %s", receivedJob.ID, job.ID)
+	if receivedJob.ID() != job.ID() {
+		t.Errorf("got job ID %s, want %s", receivedJob.ID(), job.ID())
 	}
 
 	// Builder completes job
@@ -124,7 +150,7 @@ func TestMultipleBuilders(t *testing.T) {
 	}
 
 	// Verify different jobs were assigned
-	if receivedJob1.ID == receivedJob2.ID {
+	if receivedJob1.ID() == receivedJob2.ID() {
 		t.Error("builders received same job")
 	}
 

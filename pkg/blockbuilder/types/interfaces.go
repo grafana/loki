@@ -15,11 +15,11 @@ type BuilderTransport interface {
 // SchedulerHandler defines the business logic for handling builder requests
 type SchedulerHandler interface {
 	// HandleGetJob processes a request for a new job
-	HandleGetJob(ctx context.Context, builderID string) (*Job, bool, error)
+	HandleGetJob(ctx context.Context) (*Job, bool, error)
 	// HandleCompleteJob processes a job completion notification
-	HandleCompleteJob(ctx context.Context, builderID string, job *Job, success bool) error
+	HandleCompleteJob(ctx context.Context, job *Job, success bool) error
 	// HandleSyncJob processes a job sync request
-	HandleSyncJob(ctx context.Context, builderID string, job *Job) error
+	HandleSyncJob(ctx context.Context, job *Job) error
 }
 
 // Request/Response message types

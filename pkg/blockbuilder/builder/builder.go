@@ -250,13 +250,13 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) (bool, error
 	logger := log.With(
 		i.logger,
 		"worker_id", workerID,
-		"partition", job.Partition,
-		"job_min_offset", job.Offsets.Min,
-		"job_max_offset", job.Offsets.Max,
+		"partition", job.Partition(),
+		"job_min_offset", job.Offsets().Min,
+		"job_max_offset", job.Offsets().Max,
 	)
 
 	i.jobsMtx.Lock()
-	i.inflightJobs[job.ID] = job
+	i.inflightJobs[job.ID()] = job
 	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
 	i.jobsMtx.Unlock()
 
@@ -284,7 +284,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) (bool, error
 	}
 
 	i.jobsMtx.Lock()
-	delete(i.inflightJobs, job.ID)
+	delete(i.inflightJobs, job.ID())
 	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
 	i.jobsMtx.Unlock()
 
@@ -315,7 +315,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 		"load records",
 		1,
 		func(ctx context.Context) error {
-			lastOffset, err = i.loadRecords(ctx, job.Partition, job.Offsets, inputCh)
+			lastOffset, err = i.loadRecords(ctx, job.Partition(), job.Offsets(), inputCh)
 			return err
 		},
 		func(ctx context.Context) error {
@@ -323,7 +323,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 				"msg", "finished loading records",
 				"ctx_error", ctx.Err(),
 				"last_offset", lastOffset,
-				"total_records", lastOffset-job.Offsets.Min,
+				"total_records", lastOffset-job.Offsets().Min,
 			)
 			close(inputCh)
 			return nil
@@ -488,7 +488,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 		}
 	}
 
-	if lastOffset <= job.Offsets.Min {
+	if lastOffset <= job.Offsets().Min {
 		return lastOffset, nil
 	}
 
