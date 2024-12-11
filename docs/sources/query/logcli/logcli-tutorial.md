@@ -144,13 +144,13 @@ logcli query --since 24h --limit 100 '{service_name="Delivery World"} | package_
 
 ### Metric Queries
 
-We can also use LogCLI to query logs based on metrics. For instance as part of the site report we want to count the totial number of packages sent from California in the last 24 hours in 1 hour intervals. We can use the following query:
+We can also use LogCLI to query logs based on metrics. For instance as part of the site report we want to count the total number of packages sent from California in the last 24 hours in 1 hour intervals. We can use the following query:
 
 ```bash
 logcli query --since 24h 'sum(count_over_time({state="California"}[1h]))'
 ```
 
-This will return a JSON object containing a list of timestamps and the number of packages sent from California in 1 hour intervals. Since we summing the count of logs over time, we will see the total number of logs steadly increase over time. The output will look similar to the following:
+This will return a JSON object containing a list of timestamps (Unix format) and the number of packages sent from California in 1 hour intervals. Since we summing the count of logs over time, we will see the total number of logs steadily increase over time. The output will look similar to the following:
 
 ```console
 [
