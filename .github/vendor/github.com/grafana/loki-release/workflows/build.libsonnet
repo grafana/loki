@@ -177,7 +177,7 @@ local releaseLibStep = common.releaseLibStep;
         mkdir "${{ env.BUILD_DIR }}/rootfs"
         tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
-      |||),
+      ||| % name),
 
       step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')

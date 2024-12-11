@@ -664,7 +664,7 @@ jobs:
       run: |
         rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
         mkdir "${{ env.BUILD_DIR }}/rootfs"
-        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "images/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
       working-directory: "release"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
