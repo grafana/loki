@@ -7,23 +7,48 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twmb/franz-go/pkg/kadm"
 
-	"github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 type testEnv struct {
 	queue     *JobQueue
 	scheduler *BlockScheduler
 	transport *types.MemoryTransport
-	builder   *builder.Worker
+	builder   *Worker
+}
+
+type mockOffsetManager struct {
+	topic         string
+	consumerGroup string
+}
+
+func (m *mockOffsetManager) Topic() string         { return m.topic }
+func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
+func (m *mockOffsetManager) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+	return nil, nil
+}
+func (m *mockOffsetManager) FetchLastCommittedOffset(_ context.Context, _ int32) (int64, error) {
+	return 0, nil
+}
+func (m *mockOffsetManager) FetchPartitionOffset(_ context.Context, _ int32, _ partition.SpecialOffset) (int64, error) {
+	return 0, nil
+}
+func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
+	return nil
 }
 
 func newTestEnv(builderID string) *testEnv {
 	queue := NewJobQueue()
-	scheduler := NewScheduler(Config{}, queue, nil, log.NewNopLogger(), prometheus.NewRegistry())
+	mockOffsetMgr := &mockOffsetManager{
+		topic:         "test-topic",
+		consumerGroup: "test-group",
+	}
+	scheduler := NewScheduler(Config{}, queue, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
 	transport := types.NewMemoryTransport(scheduler)
-	builder := builder.NewWorker(builderID, transport)
+	builder := NewWorker(builderID, transport)
 
 	return &testEnv{
 		queue:     queue,
@@ -52,8 +77,8 @@ func TestScheduleAndProcessJob(t *testing.T) {
 	if !ok {
 		t.Fatal("expected to receive job")
 	}
-	if receivedJob.ID != job.ID {
-		t.Errorf("got job ID %s, want %s", receivedJob.ID, job.ID)
+	if receivedJob.ID() != job.ID() {
+		t.Errorf("got job ID %s, want %s", receivedJob.ID(), job.ID())
 	}
 
 	// Builder completes job
@@ -89,7 +114,7 @@ func TestMultipleBuilders(t *testing.T) {
 	// Create first environment
 	env1 := newTestEnv("test-builder-1")
 	// Create second builder using same scheduler
-	builder2 := builder.NewWorker("test-builder-2", env1.transport)
+	builder2 := NewWorker("test-builder-2", env1.transport)
 
 	ctx := context.Background()
 
@@ -125,7 +150,7 @@ func TestMultipleBuilders(t *testing.T) {
 	}
 
 	// Verify different jobs were assigned
-	if receivedJob1.ID == receivedJob2.ID {
+	if receivedJob1.ID() == receivedJob2.ID() {
 		t.Error("builders received same job")
 	}
 
@@ -249,4 +274,48 @@ func TestConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Worker handles communication with the scheduler service.
+type Worker struct {
+	transport types.BuilderTransport
+	builderID string
+}
+
+// NewWorker creates a new Worker instance.
+func NewWorker(builderID string, transport types.BuilderTransport) *Worker {
+	return &Worker{
+		transport: transport,
+		builderID: builderID,
+	}
+}
+
+// GetJob requests a new job from the scheduler.
+func (w *Worker) GetJob(ctx context.Context) (*types.Job, bool, error) {
+	resp, err := w.transport.SendGetJobRequest(ctx, &types.GetJobRequest{
+		BuilderID: w.builderID,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return resp.Job, resp.OK, nil
+}
+
+// CompleteJob marks a job as finished.
+func (w *Worker) CompleteJob(ctx context.Context, job *types.Job, success bool) error {
+	err := w.transport.SendCompleteJob(ctx, &types.CompleteJobRequest{
+		BuilderID: w.builderID,
+		Job:       job,
+		Success:   success,
+	})
+	return err
+}
+
+// SyncJob informs the scheduler about an in-progress job.
+func (w *Worker) SyncJob(ctx context.Context, job *types.Job) error {
+	err := w.transport.SendSyncJob(ctx, &types.SyncJobRequest{
+		BuilderID: w.builderID,
+		Job:       job,
+	})
+	return err
 }

@@ -19,11 +19,19 @@ func (m *mockOffsetReader) GroupLag(_ context.Context) (map[int32]kadm.GroupMemb
 	return m.groupLag, nil
 }
 
+// compareJobs compares two JobWithMetadata instances ignoring UpdateTime
+func compareJobs(t *testing.T, expected, actual *JobWithMetadata) {
+	require.Equal(t, expected.Job, actual.Job)
+	require.Equal(t, expected.Priority, actual.Priority)
+	require.Equal(t, expected.Status, actual.Status)
+	require.Equal(t, expected.StartTime, actual.StartTime)
+}
+
 func TestRecordCountPlanner_Plan(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
 		recordCount  int64
-		expectedJobs []*JobWithPriority[int]
+		expectedJobs []*JobWithMetadata
 		groupLag     map[int32]kadm.GroupMemberLag
 	}{
 		{
@@ -40,8 +48,8 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 					Partition: 0,
 				},
 			},
-			expectedJobs: []*JobWithPriority[int]{
-				NewJobWithPriority(
+			expectedJobs: []*JobWithMetadata{
+				NewJobWithMetadata(
 					types.NewJob(0, types.Offsets{Min: 101, Max: 150}),
 					49, // 150-101
 				),
@@ -61,12 +69,12 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 					Partition: 0,
 				},
 			},
-			expectedJobs: []*JobWithPriority[int]{
-				NewJobWithPriority(
+			expectedJobs: []*JobWithMetadata{
+				NewJobWithMetadata(
 					types.NewJob(0, types.Offsets{Min: 101, Max: 151}),
 					99, // priority is total remaining: 200-101
 				),
-				NewJobWithPriority(
+				NewJobWithMetadata(
 					types.NewJob(0, types.Offsets{Min: 151, Max: 200}),
 					49, // priority is total remaining: 200-151
 				),
@@ -95,18 +103,18 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 					Partition: 1,
 				},
 			},
-			expectedJobs: []*JobWithPriority[int]{
-				NewJobWithPriority(
+			expectedJobs: []*JobWithMetadata{
+				NewJobWithMetadata(
+					types.NewJob(0, types.Offsets{Min: 101, Max: 150}),
+					49, // priority is total remaining: 150-101
+				),
+				NewJobWithMetadata(
 					types.NewJob(1, types.Offsets{Min: 201, Max: 301}),
 					199, // priority is total remaining: 400-201
 				),
-				NewJobWithPriority(
+				NewJobWithMetadata(
 					types.NewJob(1, types.Offsets{Min: 301, Max: 400}),
 					99, // priority is total remaining: 400-301
-				),
-				NewJobWithPriority(
-					types.NewJob(0, types.Offsets{Min: 101, Max: 150}),
-					49, // priority is total remaining: 150-101
 				),
 			},
 		},
@@ -145,7 +153,9 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, len(tc.expectedJobs), len(jobs))
-			require.ElementsMatch(t, tc.expectedJobs, jobs)
+			for i := range tc.expectedJobs {
+				compareJobs(t, tc.expectedJobs[i], jobs[i])
+			}
 		})
 	}
 }

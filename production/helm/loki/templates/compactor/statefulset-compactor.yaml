@@ -173,7 +173,9 @@ spec:
   {{- if .Values.compactor.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.compactor.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

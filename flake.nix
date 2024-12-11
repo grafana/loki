@@ -6,41 +6,21 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  # Nixpkgs / NixOS version to use.
-
   outputs = { self, nixpkgs, flake-utils }:
-    let
-      nix = import ./nix { inherit self; };
-    in
-    {
-      overlays = {
-        default = nix.overlay;
-      };
-    } //
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [
-            nix.overlay
-          ];
-          config = { allowUnfree = true; };
-        };
+        pkgs = import nixpkgs
+          {
+            inherit system;
+            config = { allowUnfree = true; };
+          };
       in
-      {
-        # The default package for 'nix build'. This makes sense if the
-        # flake provides only one package or there is a clear "main"
-        # package.
+      rec {
         defaultPackage = pkgs.loki;
 
-        packages = with pkgs; {
-          inherit
-            logcli
-            loki
-            loki-canary
-            loki-helm-test
-            loki-helm-test-docker
-            promtail;
+        packages = import ./nix {
+          inherit self pkgs;
+          inherit (pkgs) lib;
         };
 
         apps = {
@@ -56,18 +36,31 @@
 
           test = {
             type = "app";
-            program = with pkgs; "${
-                (writeShellScriptBin "test.sh" ''
-                  ${loki.overrideAttrs(old: { 
-                  buildInputs =
-                    let
-                      inherit (old) buildInputs;
-                    in
-                    if pkgs.stdenv.hostPlatform.isLinux then
-                      buildInputs ++ (with pkgs; [ systemd ])
-                    else buildInputs;
-                  doCheck = true; 
-                  })}/bin/loki --version
+            program =
+              let
+                loki = packages.loki.overrideAttrs (old: {
+                  buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
+                  doCheck = true;
+                  checkFlags = [
+                    "-covermode=atomic"
+                    "-coverprofile=coverage.txt"
+                    "-p=4"
+                  ];
+                  subPackages = [
+                    "./..." # for tests
+                    "cmd/loki"
+                    "cmd/logcli"
+                    "cmd/loki-canary"
+                    "clients/cmd/promtail"
+                  ];
+                });
+              in
+              "${
+                (pkgs.writeShellScriptBin "test.sh" ''
+                  ${loki}/bin/loki --version
+                  ${loki}/bin/logcli --version
+                  ${loki}/bin/loki-canary --version
+                  ${loki}/bin/promtail --version
                 '')
               }/bin/test.sh";
           };
@@ -80,10 +73,6 @@
               inherit (pkgs) buildGoModule fetchFromGitHub;
             })
 
-            (pkgs.callPackage ./nix/packages/faillint.nix {
-              inherit (pkgs) lib buildGoModule fetchFromGitHub;
-            })
-
             chart-testing
             gcc
             go
@@ -94,7 +83,7 @@
             nixpkgs-fmt
             statix
             yamllint
-          ];
+          ] // packages;
         };
       });
 }

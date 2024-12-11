@@ -1,6 +1,23 @@
 # Changes
 
 
+## [1.48.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.47.0...storage/v1.48.0) (2024-12-05)
+
+
+### Features
+
+* **storage/dataflux:** Run worksteal listing parallel to sequential listing ([#10966](https://github.com/googleapis/google-cloud-go/issues/10966)) ([3005f5a](https://github.com/googleapis/google-cloud-go/commit/3005f5a86c18254e569b8b1782bf014aa62f33cc))
+* **storage:** Add Writer.ChunkTransferTimeout ([#11111](https://github.com/googleapis/google-cloud-go/issues/11111)) ([fd1db20](https://github.com/googleapis/google-cloud-go/commit/fd1db203d0de898891b9920aacb141ea39228609))
+* **storage:** Allow non default service account ([#11137](https://github.com/googleapis/google-cloud-go/issues/11137)) ([19f01c3](https://github.com/googleapis/google-cloud-go/commit/19f01c3c48ed1272c8fc0af9e5f69646cb662808))
+
+
+### Bug Fixes
+
+* **storage:** Add backoff to gRPC write retries ([#11200](https://github.com/googleapis/google-cloud-go/issues/11200)) ([a7db927](https://github.com/googleapis/google-cloud-go/commit/a7db927da9cf4c6cf242a5db83e44a16d75a8291))
+* **storage:** Correct direct connectivity check ([#11152](https://github.com/googleapis/google-cloud-go/issues/11152)) ([a75c8b0](https://github.com/googleapis/google-cloud-go/commit/a75c8b0f72c38d9a85c908715c3e37eb5cffb131))
+* **storage:** Disable soft delete policy using 0 retentionDurationSeconds ([#11226](https://github.com/googleapis/google-cloud-go/issues/11226)) ([f087721](https://github.com/googleapis/google-cloud-go/commit/f087721b7b20ad28ded1d0a84756a8bbaa2bb95a))
+* **storage:** Retry SignBlob call for URL signing ([#11154](https://github.com/googleapis/google-cloud-go/issues/11154)) ([f198452](https://github.com/googleapis/google-cloud-go/commit/f198452fd2b29e779e9080ba79d7e873eb0c32ef))
+
 ## [1.47.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.46.0...storage/v1.47.0) (2024-11-14)
 
 
