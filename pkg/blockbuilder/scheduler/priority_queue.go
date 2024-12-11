@@ -22,7 +22,6 @@ func NewPriorityQueue[K comparable, V any](less func(V, V) bool, key func(V) K) 
 	h := &priorityHeap[V]{
 		less: less,
 		heap: make([]*item[V], 0),
-		idx:  make(map[int]*item[V]),
 	}
 	heap.Init(h)
 	return &PriorityQueue[K, V]{
@@ -100,7 +99,6 @@ func (pq *PriorityQueue[K, V]) Len() int {
 type priorityHeap[V any] struct {
 	less func(V, V) bool
 	heap []*item[V]
-	idx  map[int]*item[V] // Maps index to item for efficient updates
 }
 
 func (h *priorityHeap[V]) Len() int {
@@ -115,15 +113,12 @@ func (h *priorityHeap[V]) Swap(i, j int) {
 	h.heap[i], h.heap[j] = h.heap[j], h.heap[i]
 	h.heap[i].index = i
 	h.heap[j].index = j
-	h.idx[i] = h.heap[i]
-	h.idx[j] = h.heap[j]
 }
 
 func (h *priorityHeap[V]) Push(x any) {
 	it := x.(*item[V])
 	it.index = len(h.heap)
 	h.heap = append(h.heap, it)
-	h.idx[it.index] = it
 }
 
 func (h *priorityHeap[V]) Pop() any {
@@ -131,7 +126,6 @@ func (h *priorityHeap[V]) Pop() any {
 	n := len(old)
 	it := old[n-1]
 	h.heap = old[0 : n-1]
-	delete(h.idx, it.index)
 	return it
 }
 
