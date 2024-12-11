@@ -156,7 +156,7 @@ local releaseLibStep = common.releaseLibStep;
         platforms: '${{ matrix.platform }}',
         push: false,
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
-        outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        outputs: 'type=docker,dest=release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
         'build-args': |||
           %s
         ||| % std.rstripChars(std.lines([
@@ -166,24 +166,11 @@ local releaseLibStep = common.releaseLibStep;
         ]), '\n'),
       }),
 
-      releaseStep('Package as Docker plugin')
-      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
-      + step.withEnv({
-        IMAGE_TAG: '${{ needs.version.outputs.version }}',
-        BUILD_DIR: path,
-      })
-      + step.withRun(|||
-        rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
-        mkdir "${{ env.BUILD_DIR }}/rootfs"
-        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
-      ||| % name),
-
       step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
-        path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
-        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images',  //TODO: make bucket configurable
+        path: 'release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/plugins',
         process_gcloudignore: false,
       }),
     ]),

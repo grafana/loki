@@ -88,6 +88,7 @@
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     useGitHubAppToken=true,
+    dockerPluginPath='clients/cmd/docker-driver',
                   ) {
     name: 'create release',
     on: {
@@ -119,6 +120,7 @@
       shouldRelease: $.release.shouldRelease,
       createRelease: $.release.createRelease,
       publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
+      publishDockerDriver: $.release.publishDockerPlugin('loki-docker-driver', dockerPluginPath, getDockerCredsFromVault, dockerUsername),
       publishRelease: $.release.publishRelease,
     },
   },

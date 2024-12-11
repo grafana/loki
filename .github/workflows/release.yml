@@ -110,6 +110,46 @@ jobs:
         parent: false
         path: "release/dist"
         process_gcloudignore: false
+  publishDockerDriver:
+    needs:
+    - "createRelease"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
+        repository: "grafana/loki-release"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Cloud SDK"
+      uses: "google-github-actions/setup-gcloud@v2"
+      with:
+        version: ">= 452.0.0"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - name: "Login to DockerHub (from vault)"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+    - name: "download plugins"
+      run: |
+        echo "downloading images to $(pwd)/plugins"
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/plugins .
+    - env:
+        BUILD_DIR: "clients/cmd/docker-driver"
+        IMAGE_TAG: "${{ needs.version.outputs.version }}"
+      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "Package as Docker plugin"
+      run: |
+        rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
+        mkdir "${{ env.BUILD_DIR }}/rootfs"
+        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        docker plugin create "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}" "${{ env.BUILD_DIR }}"
+        docker plugin push "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
   publishImages:
     needs:
     - "createRelease"
