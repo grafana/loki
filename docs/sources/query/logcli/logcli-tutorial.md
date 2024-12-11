@@ -72,7 +72,7 @@ To get started, we need to clone the [Alloy Scenario](https://github.com/grafana
     docker compose -f alloy-scenarios/mail-house/docker-compose.yml up -d
     ```
 
-This will start the mail-house example and expose the Loki instance at [`http://localhost:3100`](http://localhost:3100). We have also included a Grafana instance to verify the LogCLI results which can be accessed at [`http://localhost:3000`](http://localhost:3000).
+This will start the mail-house example and expose the Loki instance at [`http://localhost:3100`](http://localhost:3100). We have also included a Grafana instance to verify the LogCLI results which can be accessed at [http://localhost:3000](http://localhost:3000).
 
 ### Connecting LogCLI to Loki
 
@@ -115,7 +115,7 @@ As part of our role within the logistics company, we need to build a report on t
 
 ### Find all critical packages
 
-To find all critical packages in the last hour, we can run the following query:
+To find all critical packages in the last hour (default lookback time), we can run the following query:
 
 ```bash
 logcli query '{service_name="Delivery World"} | package_status="critical"'
@@ -144,17 +144,59 @@ logcli query --since 24h --limit 100 '{service_name="Delivery World"} | package_
 
 ### Metric Queries
 
-We can also use LogCLI to query logs based on metrics. For instance as part of the site report we want to count how many packages are being sent from California in the last 5 minutes. We can use the following query:
+We can also use LogCLI to query logs based on metrics. For instance as part of the site report we want to count the totial number of packages sent from California in the last 24 hours in 1 hour intervals. We can use the following query:
 
 ```bash
-logcli query 'sum(count_over_time({state="California"}[5m]))'
+logcli query --since 24h 'sum(count_over_time({state="California"}[1h]))'
 ```
 
-Lets suppose we only want to know the number of packages of type `document` being sent from California in the last 5 minutes. We can use the following query:
+This will return a JSON object containing a list of timestamps and the number of packages sent from California in 1 hour intervals. Since we summing the count of logs over time, we will see the total number of logs steadly increase over time. The output will look similar to the following:
+
+```console
+[
+  {
+    "metric": {},
+    "values": [
+      [
+        1733913765,
+        "46"
+      ],
+      [
+        1733914110,
+        "114"
+      ],
+      [
+        1733914455,
+        "179"
+      ],
+      [
+        1733914800,
+        "250"
+      ],
+      [
+        1733915145,
+        "318"
+      ],
+      [
+        1733915490,
+        "392"
+      ],
+      [
+        1733915835,
+        "396"
+      ]
+    ]
+  }
+]
+```
+
+We can take this a step further and filter the logs based on the `package_type` label. For instance, we can count the number of documents sent from California in the last 24 hours in 1 hour intervals:
   
 ```bash
-logcli query 'count_over_time({state="California"}| json | package_type= "Documents" [5m])'
+logcli query --since 24h  'sum(count_over_time({state="California"}| json | package_type= "Documents" [1h]))'
 ```
+
+This will return a similar JSON object above but will only show a trend of the number of documents sent from California in 1 hour intervals.
 
 ### Instant Metric Queries
 
@@ -177,7 +219,7 @@ This will return a result similar to the following:
       "58"
     ]
   }
-]%
+]
 ```
 
 ### Writing query results to a file
