@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -116,7 +117,7 @@ type BlockBuilder struct {
 	logger          log.Logger
 
 	decoder       *kafka.Decoder
-	readerFactory func(partition int32) (partition.Reader, error)
+	readerFactory func(string) (partition.Reader, error)
 
 	store    stores.ChunkWriter
 	objStore *MultiStore
@@ -129,7 +130,7 @@ func NewBlockBuilder(
 	id string,
 	cfg Config,
 	periodicConfigs []config.PeriodConfig,
-	readerFactory func(partition int32) (partition.Reader, error),
+	readerFactory func(string) (partition.Reader, error),
 	store stores.ChunkWriter,
 	objStore *MultiStore,
 	logger log.Logger,
@@ -156,6 +157,7 @@ func NewBlockBuilder(
 		readerFactory:    readerFactory,
 		store:            store,
 		objStore:         objStore,
+		inflightJobs:     make(map[string]*types.Job),
 		BuilderTransport: t,
 	}
 
@@ -164,20 +166,24 @@ func NewBlockBuilder(
 }
 
 func (i *BlockBuilder) running(ctx context.Context) error {
-	wg := sync.WaitGroup{}
+	grp, ctx := errgroup.WithContext(ctx)
 
 	for j := 0; j < i.cfg.WorkerParallelism; j++ {
-		wg.Add(1)
-		go func(id string) {
-			defer wg.Done()
+		workedID := fmt.Sprintf("worker-%d", j)
+		grp.Go(func() error {
+			r, err := i.readerFactory(workedID)
+			if err != nil {
+				level.Error(i.logger).Log("msg", "failed to create reader", "worker", workedID, "err", err)
+				return err
+			}
 
 			var waitFor time.Duration
 			for {
 				select {
 				case <-ctx.Done():
-					return
+					return nil
 				case <-time.After(waitFor):
-					gotJob, err := i.runOne(ctx, id)
+					gotJob, err := i.runOne(ctx, r, workedID)
 					if err != nil {
 						level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
 					}
@@ -190,30 +196,26 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 					}
 				}
 			}
-		}(fmt.Sprintf("worker-%d", j))
+		})
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	grp.Go(func() error {
 		ticker := time.NewTicker(i.cfg.SyncInterval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return nil
 			case <-ticker.C:
 				if err := i.syncJobs(ctx); err != nil {
 					level.Error(i.logger).Log("msg", "failed to sync jobs", "err", err)
 				}
 			}
 		}
-	}()
+	})
 
-	wg.Wait()
-	return nil
+	return grp.Wait()
 }
 
 func (i *BlockBuilder) syncJobs(ctx context.Context) error {
@@ -232,7 +234,7 @@ func (i *BlockBuilder) syncJobs(ctx context.Context) error {
 	return nil
 }
 
-func (i *BlockBuilder) runOne(ctx context.Context, workerID string) (bool, error) {
+func (i *BlockBuilder) runOne(ctx context.Context, r partition.Reader, workerID string) (bool, error) {
 	// assuming GetJob blocks/polls until a job is available
 	resp, err := i.SendGetJobRequest(ctx, &types.GetJobRequest{
 		BuilderID: workerID,
@@ -265,7 +267,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) (bool, error
 		Job:       job,
 		Success:   true,
 	}
-	if _, err = i.processJob(ctx, job, logger); err != nil {
+	if _, err = i.processJob(ctx, r, job, logger); err != nil {
 		level.Error(i.logger).Log("msg", "failed to process job", "err", err)
 		completion.Success = false
 	}
@@ -291,7 +293,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, workerID string) (bool, error
 	return true, err
 }
 
-func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
+func (i *BlockBuilder) processJob(ctx context.Context, r partition.Reader, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
 	level.Debug(logger).Log("msg", "beginning job")
 
 	indexer := newTsdbCreator()
@@ -315,7 +317,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 		"load records",
 		1,
 		func(ctx context.Context) error {
-			lastOffset, err = i.loadRecords(ctx, job.Partition(), job.Offsets(), inputCh)
+			lastOffset, err = i.loadRecords(ctx, r, job.Partition(), job.Offsets(), inputCh)
 			return err
 		},
 		func(ctx context.Context) error {
@@ -501,13 +503,8 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 	return lastOffset, nil
 }
 
-func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
-	f, err := i.readerFactory(partitionID)
-	if err != nil {
-		return 0, err
-	}
-
-	f.SetOffsetForConsumption(offsets.Min)
+func (i *BlockBuilder) loadRecords(ctx context.Context, r partition.Reader, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
+	r.SetOffsetForConsumption(partitionID, offsets.Min)
 
 	var (
 		lastOffset = offsets.Min - 1
@@ -515,8 +512,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 	)
 
 	for lastOffset < offsets.Max && boff.Ongoing() {
-		var records []partition.Record
-		records, err = f.Poll(ctx, int(offsets.Max-lastOffset))
+		records, err := r.Poll(ctx, int(offsets.Max-lastOffset))
 		if err != nil {
 			boff.Wait()
 			continue

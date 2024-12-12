@@ -78,7 +78,6 @@ func NewReaderService(
 	readerMetrics := NewReaderMetrics(reg)
 	reader, err := NewKafkaReader(
 		kafkaCfg,
-		partitionID,
 		logger,
 		readerMetrics,
 	)
@@ -162,7 +161,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 		consumeOffset = lastCommittedOffset + 1
 	}
 	level.Debug(logger).Log("msg", "consuming from offset", "offset", consumeOffset)
-	s.reader.SetOffsetForConsumption(consumeOffset)
+	s.reader.SetOffsetForConsumption(s.partitionID, consumeOffset)
 
 	if err = s.processConsumerLagAtStartup(ctx, logger); err != nil {
 		return fmt.Errorf("failed to process consumer lag at startup: %w", err)

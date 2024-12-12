@@ -36,10 +36,9 @@ type Record struct {
 
 type Reader interface {
 	Topic() string
-	Partition() int32
 	Poll(ctx context.Context, maxPollRecords int) ([]Record, error)
-	// Set the target offset for consumption. reads will begin from here.
-	SetOffsetForConsumption(offset int64)
+	// Set the target partiton and offset for consumption. reads will begin from here.
+	SetOffsetForConsumption(partitionID int32, offset int64)
 }
 
 // ReaderMetrics contains metrics specific to Kafka reading operations
@@ -90,7 +89,6 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 type KafkaReader struct {
 	client        *kgo.Client
 	topic         string
-	partitionID   int32
 	consumerGroup string
 	metrics       *ReaderMetrics
 	logger        log.Logger
@@ -98,7 +96,6 @@ type KafkaReader struct {
 
 func NewKafkaReader(
 	cfg kafka.Config,
-	partitionID int32,
 	logger log.Logger,
 	metrics *ReaderMetrics,
 ) (*KafkaReader, error) {
@@ -113,22 +110,16 @@ func NewKafkaReader(
 	}
 
 	return &KafkaReader{
-		client:      c,
-		topic:       cfg.Topic,
-		partitionID: partitionID,
-		metrics:     metrics,
-		logger:      logger,
+		client:  c,
+		topic:   cfg.Topic,
+		metrics: metrics,
+		logger:  logger,
 	}, nil
 }
 
 // Topic returns the topic being read
 func (r *KafkaReader) Topic() string {
 	return r.topic
-}
-
-// Partition returns the partition being read
-func (r *KafkaReader) Partition() int32 {
-	return r.partitionID
 }
 
 // Poll retrieves the next batch of records from Kafka
@@ -179,8 +170,8 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	return records, nil
 }
 
-func (r *KafkaReader) SetOffsetForConsumption(offset int64) {
+func (r *KafkaReader) SetOffsetForConsumption(partitionID int32, offset int64) {
 	r.client.AddConsumePartitions(map[string]map[int32]kgo.Offset{
-		r.topic: {r.partitionID: kgo.NewOffset().At(offset)},
+		r.topic: {partitionID: kgo.NewOffset().At(offset)},
 	})
 }
