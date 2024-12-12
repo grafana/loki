@@ -136,6 +136,7 @@ local releaseLibStep = common.releaseLibStep;
       + step.withId('platform')
       + step.withRun(|||
         mkdir -p images
+        mkdir -p plugins
 
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT

@@ -120,6 +120,7 @@
       shouldRelease: $.release.shouldRelease,
       createRelease: $.release.createRelease,
       publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
+      //TODO: this will break if the image was not provided as a build job, and those are configurable, so we need a better way to establish this dependency
       publishDockerDriver: $.release.publishDockerPlugin('loki-docker-driver', dockerPluginPath, getDockerCredsFromVault, dockerUsername),
       publishRelease: $.release.publishRelease,
     },

@@ -1,11 +1,16 @@
 local lokiRelease = import 'main.jsonnet';
 local build = lokiRelease.build;
+
+
+local buildImage = 'grafana/loki-build-image:0.34.3';
+
 {
   '.github/workflows/release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
       imageJobs={
         loki: build.image('fake-loki', 'cmd/loki'),
       },
+      buildImage=buildImage,
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
       imagePrefix='trevorwhitney075',
@@ -22,6 +27,7 @@ local build = lokiRelease.build;
       imageJobs={
         loki: build.image('fake-loki', 'cmd/loki'),
       },
+      buildImage=buildImage,
       buildArtifactsBucket='loki-build-artifacts',
       branches=['release-[0-9]+.[0-9]+.x'],
       dryRun=true,

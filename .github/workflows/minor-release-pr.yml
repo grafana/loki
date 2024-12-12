@@ -631,6 +631,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
+        mkdir -p plugins
         
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
