@@ -2851,6 +2851,8 @@ patternIngester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty use `loki.livenessProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the pattern ingester
   resources: {}
   # -- Containers to add to the pattern ingester pods
@@ -2910,6 +2912,7 @@ patternIngester:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the ruler
 ruler:
   # -- The ruler component is optional and can be disabled if desired.
