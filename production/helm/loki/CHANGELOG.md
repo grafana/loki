@@ -53,6 +53,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the read pods.
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to ruler.
 - [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the single-binary pods.
+- [ENHANCEMENT] Add configurable `startupProbe` to table-manager.
 
 ## 6.23.0
 
