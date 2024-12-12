@@ -252,7 +252,6 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 
 	labels["key"] = record.S3.Object.Key
 	labels["bucket"] = record.S3.Bucket.Name
-	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
 	labels["bucket_region"] = record.AWSRegion
 	for key, p := range parsers {
 		if p.filenameRegex.MatchString(labels["key"]) {
@@ -292,10 +291,9 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 			&s3.GetObjectInput{
 				Bucket:              aws.String(labels["bucket"]),
 				Key:                 aws.String(labels["key"]),
-				ExpectedBucketOwner: aws.String(labels["bucket_owner"]),
 			})
 		if err != nil {
-			return fmt.Errorf("failed to get object %s from bucket %s on account %s, %s", labels["key"], labels["bucket"], labels["bucket_owner"], err)
+			return fmt.Errorf("failed to get object %s from bucket %s on account %s, %s", labels["key"], labels["bucket"], err)
 		}
 		err = parseS3Log(ctx, batch, labels, obj.Body, log)
 		if err != nil {
