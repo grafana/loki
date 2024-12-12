@@ -2377,6 +2377,7 @@ indexGateway:
     # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
     # rollingUpdate:
     #   partition: 0
+
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor
@@ -2428,6 +2429,8 @@ compactor:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the compactor
   resources: {}
   # -- Containers to add to the compactor pods
@@ -2485,6 +2488,7 @@ compactor:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the bloom-gateway
 bloomGateway:
   # -- Number of replicas for the bloom-gateway
