@@ -199,7 +199,6 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 		}
 
 		// The builder now has the up-to-date series data, we can now reset the stats
-		// TODO(h11): We need to write the stats to the builder here
 		head.ResetSeriesStats()
 
 		return nil

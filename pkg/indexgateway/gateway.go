@@ -607,44 +607,51 @@ func accumulateChunksToShards(
 
 	var mtx sync.Mutex
 
-	if err := forSeries.ForSeries(ctx, user, v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()), req.From, req.Through, func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta, stats *tsdb_index.StreamStats) (stop bool) {
-		mtx.Lock()
-		defer mtx.Unlock()
+	if err := forSeries.ForSeries(
+		ctx,
+		user,
+		v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()),
+		req.From, req.Through,
+		func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta, stats *tsdb_index.StreamStats) (stop bool) {
+			mtx.Lock()
+			defer mtx.Unlock()
 
-		// check if this is a fingerprint we need
-		if _, ok := filteredM[fp]; !ok {
-			return false
-		}
-
-		filteredChks := filteredM[fp]
-		var j int
-
-	outer:
-		for i := range filteredChks {
-			for j < len(chks) {
-				switch filteredChks[i].Cmp(chks[j]) {
-				case iter.Less:
-					// this chunk is not in the queried index, continue checking other chunks
-					continue outer
-				case iter.Greater:
-					// next chunk in index but didn't pass filter; continue
-					j++
-					continue
-				case iter.Eq:
-					// a match; set the sizing info
-					filteredChks[i].KB = chks[j].KB
-					filteredChks[i].Entries = chks[j].Entries
-					j++
-					continue outer
-				}
+			// check if this is a fingerprint we need
+			if _, ok := filteredM[fp]; !ok {
+				return false
 			}
 
-			// we've finished this index's chunks; no need to keep checking filtered chunks
-			break
-		}
+			filteredChks := filteredM[fp]
+			var j int
 
-		return false
-	}, nil, p.Matchers...); err != nil {
+		outer:
+			for i := range filteredChks {
+				for j < len(chks) {
+					switch filteredChks[i].Cmp(chks[j]) {
+					case iter.Less:
+						// this chunk is not in the queried index, continue checking other chunks
+						continue outer
+					case iter.Greater:
+						// next chunk in index but didn't pass filter; continue
+						j++
+						continue
+					case iter.Eq:
+						// a match; set the sizing info
+						filteredChks[i].KB = chks[j].KB
+						filteredChks[i].Entries = chks[j].Entries
+						j++
+						continue outer
+					}
+				}
+
+				// we've finished this index's chunks; no need to keep checking filtered chunks
+				break
+			}
+
+			return false
+		},
+		nil, p.Matchers...,
+	); err != nil {
 		return nil, nil, err
 	}
 

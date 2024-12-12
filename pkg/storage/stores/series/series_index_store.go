@@ -76,7 +76,7 @@ type IndexReaderWriter struct {
 	writeDedupeCache cache.Cache
 }
 
-func (c *IndexReaderWriter) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+func (c *IndexReaderWriter) UpdateSeriesStats(_ string, _ uint64, _ *index.StreamStats) {
 	level.Warn(util_log.Logger).Log("msg", "UpdateSeriesStats called on index gateway client store, but it does not support it")
 }
 

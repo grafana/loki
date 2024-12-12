@@ -37,7 +37,7 @@ type IndexGatewayClientStore struct {
 	logger log.Logger
 }
 
-func (c *IndexGatewayClientStore) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+func (c *IndexGatewayClientStore) UpdateSeriesStats(_ string, _ uint64, _ *index.StreamStats) {
 	level.Warn(c.logger).Log("msg", "UpdateSeriesStats called on index gateway client store, but it does not support it")
 }
 

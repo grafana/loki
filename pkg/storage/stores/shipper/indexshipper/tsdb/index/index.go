@@ -2619,11 +2619,6 @@ func overlap(from, through, chkFrom, chkThrough int64) bool {
 	return from <= chkThrough && through > chkFrom
 }
 
-// h11: add a mutex.
-// Reset takes the muted to reset all the stats
-// AddStructuredMetadata takes the mutes and updates the stats
-// The index manager calls Reset when the index is written
-// In the ingester push logic, we keep updating the index stats
 type StreamStats struct {
 	mu                           sync.RWMutex
 	StructuredMetadataFieldNames map[string]struct{}

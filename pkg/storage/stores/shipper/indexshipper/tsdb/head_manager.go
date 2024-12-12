@@ -840,7 +840,6 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					stats *index.StreamStats
 				)
 
-				// h11: Pass stream stats
 				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks, &stats)
 
 				if err != nil {

@@ -60,10 +60,6 @@ func (m *TsdbCreator) Append(userID string, ls labels.Labels, fprint uint64, chk
 	return nil
 }
 
-func (t *TsdbCreator) seriesStats(userID string, fp uint64) []string {
-	return nil
-}
-
 type chunkInfo struct {
 	chunkMetas index.ChunkMetas
 	tsdbFormat int

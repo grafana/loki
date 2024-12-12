@@ -125,7 +125,6 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
-	// h11: somehow check if the predicates have structured metadata labels
 	var filterLabelNames []string
 	filters := syntax.ExtractLabelFiltersBeforeParser(predicate.Plan().AST)
 	for _, f := range filters {

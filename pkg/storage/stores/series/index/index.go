@@ -16,7 +16,6 @@ type ReadClient interface {
 type WriteClient interface {
 	NewWriteBatch() WriteBatch
 	BatchWrite(context.Context, WriteBatch) error
-	// h11: UpdateSeriesStats(userID string, fp uint64, stats *StreamStats)??
 }
 
 // Client is a client for the storage of the index (e.g. DynamoDB or Bigtable).

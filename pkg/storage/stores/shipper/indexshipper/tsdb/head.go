@@ -311,7 +311,6 @@ func (s *stripeSeries) resetSeriesStats() {
 }
 
 type memSeries struct {
-	// (h11) potentially add stats?
 	sync.RWMutex
 	ref   uint64 // The unique reference within a *Head
 	ls    labels.Labels
