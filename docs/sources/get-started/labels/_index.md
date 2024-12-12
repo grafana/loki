@@ -111,7 +111,7 @@ Settling on the right labels for your business needs may require multiple rounds
 
 ## Create low cardinality labels
 
-[Cardinality](link) refers to the combination of unique labels and values which impacts the number of log streams you create.  High cardinality causes Loki to build a huge index and to flush thousands of tiny chunks to the object store. Loki performs very poorly when your labels have high cardinality. If not accounted for, high cardinality will significantly reduce the performance and cost-effectiveness of Loki.
+[Cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/) refers to the combination of unique labels and values which impacts the number of log streams you create.  High cardinality causes Loki to build a huge index and to flush thousands of tiny chunks to the object store. Loki performs very poorly when your labels have high cardinality. If not accounted for, high cardinality will significantly reduce the performance and cost-effectiveness of Loki.
 
 High cardinality can result from using labels with an unbounded or large set of possible values, such as timestamp or ip_address **or** applying too many labels, even if they have a small and finite set of values.
 
