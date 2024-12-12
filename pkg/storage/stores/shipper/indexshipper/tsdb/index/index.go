@@ -57,6 +57,9 @@ const (
 	// FormatV3 represents 3 version of index. It adds support for
 	// paging through batches of chunks within a series
 	FormatV3 = 3
+	// FormatV4 represents 4 version of index. It adds support for
+	// structured metadata stats
+	FormatV4 = 4
 
 	IndexFilename = "index"
 
@@ -468,25 +471,25 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 		w.buf2.PutUvarint32(valueIndex)
 	}
 
-	// h11: write stream stats
-	var smFields map[string]struct{}
-	if len(stats) > 0 {
-		smFields = stats[0].StructuredMetadataFieldNames
-	}
-
-	w.buf2.PutUvarint(len(smFields))
-	for sm := range smFields {
-		var err error
-		cacheEntry, ok := w.symbolCache[sm]
-		nameIndex := cacheEntry.index
-		if !ok {
-			nameIndex, err = w.symbols.ReverseLookup(sm)
-			if err != nil {
-				return errors.Errorf("symbol entry for %q does not exist, %v", sm, err)
-			}
+	if w.Version >= FormatV4 {
+		var smFields map[string]struct{}
+		if len(stats) > 0 {
+			smFields = stats[0].StructuredMetadataFieldNames
 		}
-		// h11: Should we add this to w.labelNames?
-		w.buf2.PutUvarint32(nameIndex)
+
+		w.buf2.PutUvarint(len(smFields))
+		for sm := range smFields {
+			var err error
+			cacheEntry, ok := w.symbolCache[sm]
+			nameIndex := cacheEntry.index
+			if !ok {
+				nameIndex, err = w.symbols.ReverseLookup(sm)
+				if err != nil {
+					return errors.Errorf("symbol entry for %q does not exist, %v", sm, err)
+				}
+			}
+			w.buf2.PutUvarint32(nameIndex)
+		}
 	}
 
 	w.addChunks(chunks, &w.buf2, &w.buf1, ChunkPageSize)
@@ -1305,7 +1308,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 	r.version = int(r.b.Range(4, 5)[0])
 
-	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 {
+	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 && r.version != FormatV4 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
@@ -1731,12 +1734,14 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, er
 			offsetsMap[off] = struct{}{}
 		}
 
-		smOffset, err := r.dec.SmNamesOffsetsFor(&d)
-		if err != nil {
-			return nil, nil, errors.Wrap(err, "get structured metadata offsets")
-		}
-		for _, off := range smOffset {
-			smOffsetsMap[off] = struct{}{}
+		if r.version >= FormatV4 {
+			smOffset, err := r.dec.SmNamesOffsetsFor(&d)
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "get structured metadata offsets")
+			}
+			for _, off := range smOffset {
+				smOffsetsMap[off] = struct{}{}
+			}
 		}
 	}
 
@@ -1752,6 +1757,7 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, er
 	sort.Strings(names)
 
 	// Lookup the unique structured metadata symbols.
+	// Note: empty if TSDB version is less than V4.
 	smNames := make([]string, 0, len(smOffsetsMap))
 	for o := range smOffsetsMap {
 		name, err := r.lookupSymbol(o)
@@ -2224,14 +2230,16 @@ func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
 
-	if err := dec.readSeriesStats(version, &d, stats); err != nil {
-		return nil, 0, errors.Wrap(err, "read series stats")
+	if version >= FormatV4 {
+		if err := dec.readSeriesStats(&d, stats); err != nil {
+			return nil, 0, errors.Wrap(err, "read series stats")
+		}
 	}
 
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats **StreamStats) error {
+func (dec *Decoder) readSeriesStats(d *encoding.Decbuf, stats **StreamStats) error {
 	nSMFieldNames := d.Uvarint()
 
 	fields := make(map[string]struct{}, nSMFieldNames)
@@ -2296,8 +2304,10 @@ func (dec *Decoder) prepSeriesBy(version int, b []byte, lbls *labels.Labels, chk
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
 
-	if err := dec.readSeriesStats(version, &d, stats); err != nil {
-		return nil, 0, errors.Wrap(err, "read series stats")
+	if version >= FormatV4 {
+		if err := dec.readSeriesStats(&d, stats); err != nil {
+			return nil, 0, errors.Wrap(err, "read series stats")
+		}
 	}
 
 	return &d, fprint, nil
