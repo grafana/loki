@@ -33,6 +33,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the nginx container in the gateway pods.
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for admin-api.
 - [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods.
 
 ## 6.23.0
 

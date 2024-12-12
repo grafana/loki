@@ -34,6 +34,7 @@ imagePullSecrets: []
 # - SimpleScalable<->Distributed: Migrate from SimpleScalable to Distributed (or vice versa)
 # Note: SimpleScalable and Distributed REQUIRE the use of object storage.
 deploymentMode: SimpleScalable
+
 ######################################################################################################################
 #
 # Base Loki Configs including kubernetes configurations and configurations for Loki itself,
@@ -43,6 +44,8 @@ deploymentMode: SimpleScalable
 # -- Configuration for running Loki
 # @default -- See values.yaml
 loki:
+  # Configures the liveness probe for all of the Loki pods
+  livenessProbe: {}
   # Configures the readiness probe for all of the Loki pods
   readinessProbe:
     httpGet:
@@ -50,6 +53,8 @@ loki:
       port: http-metrics
     initialDelaySeconds: 30
     timeoutSeconds: 1
+  # Configures the startup probe for all of the Loki pods
+  startupProbe: {}
   image:
     # -- The Docker registry
     registry: docker.io
