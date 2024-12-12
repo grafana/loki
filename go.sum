@@ -1932,8 +1932,8 @@ github.com/hashicorp/vic v1.5.1-0.20190403131502-bbfe86ec9443/go.mod h1:bEpDU35n
 github.com/hashicorp/yamux v0.0.0-20180604194846-3520598351bb/go.mod h1:+NfK9FKeTrX5uv1uIXGdwYDTeHna2qgaIlx54MXqjAM=
 github.com/hashicorp/yamux v0.0.0-20181012175058-2f1d1f20f75d/go.mod h1:+NfK9FKeTrX5uv1uIXGdwYDTeHna2qgaIlx54MXqjAM=
 github.com/hashicorp/yamux v0.0.0-20211028200310-0bc27b27de87/go.mod h1:CtWFDAQgb7dxtzFs4tWbplKIe2jSi3+5vKbgIO0SLnQ=
-github.com/heroku/x v0.4.0 h1:Bd8DERAUIrxqQ8p2TAXEoUYIFHCvpP4UJYp1+o7KoPQ=
-github.com/heroku/x v0.4.0/go.mod h1:3Ji2zMA37qO4BK/4yzXvjlDIUdeXJvArUm2PB0ZEW5g=
+github.com/heroku/x v0.4.1 h1:pndIhWqkqQ1e3qnpPz8+I7hNW5Yoge4llpOenhIJSm0=
+github.com/heroku/x v0.4.1/go.mod h1:3Ji2zMA37qO4BK/4yzXvjlDIUdeXJvArUm2PB0ZEW5g=
 github.com/hetznercloud/hcloud-go/v2 v2.10.2 h1:9gyTUPhfNbfbS40Spgij5mV5k37bOZgt8iHKCbfGs5I=
 github.com/hetznercloud/hcloud-go/v2 v2.10.2/go.mod h1:xQ+8KhIS62W0D78Dpi57jsufWh844gUw1az5OUvaeq8=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
