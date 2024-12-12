@@ -1719,6 +1719,11 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
 
+# Chunks fetched from queriers before this duration will not be written to the
+# cache. A value of 0 will write all chunks to the cache
+# CLI flag: -store.skip-query-writeback-older-than
+[skip_query_writeback_cache_older_than: <duration> | default = 0s]
+
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
 # CLI flag: -store.chunks-cache-l2.handoff
