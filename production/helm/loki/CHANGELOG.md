@@ -36,6 +36,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods.
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-builder.
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-gateway.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner.
 
 ## 6.23.0
 
