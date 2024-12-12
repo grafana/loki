@@ -7,7 +7,7 @@ keywords:
 
 # Deploy the Loki Helm chart on Azure
 
-This guide shows how to deploy a minimally viable Loki in **microservice** mode on Azure using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on AWS, such as:
+This guide shows how to deploy a minimally viable Loki in **microservice** mode on Azure using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on Azure, such as:
 
 - Full access to AKS (Azure Kubernetes Service)
 - Full access to Azure Blob Storage
@@ -23,7 +23,7 @@ In this guide, we will use the federated token method to deploy Loki on Azure. T
 ## Considerations
 
 {{< admonition type="caution" >}}
-This guide was accurate at the time it was last updated on **11th of Decemeber, 2024**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/?product=popular) before creating your storage account and assigning roles.
+This guide was accurate at the time it was last updated on **11th of December, 2024**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/?product=popular) before creating your storage account and assigning roles.
 {{< /admonition >}}
 
 - **AD Role:** In this tutorial we will create a role in Azure AD to allow Loki to read and write from Azure Blob Storage. This role will be assigned to the Loki service account. You may want to adjust the permissions based on your requirements.
@@ -32,23 +32,29 @@ This guide was accurate at the time it was last updated on **11th of Decemeber, 
 
 - **Retention:** The retention period is set to 28 days in the `values.yaml` file. You may wish to adjust this based on your requirements.
 
-- **Costs:** Running Loki on Azure will incur costs. Make sure to monitor your usage and costs to avoid any unexpected bills. In this guide we have used a simple AKS cluster with 3 nodes and Standard_E2ds_v5 instances. You may wish to adjust the instance types and number of nodes based on your workload.
+- **Costs:** Running Loki on Azure will incur costs. Make sure to monitor your usage and costs to avoid any unexpected bills. In this guide we have used a simple AKS cluster with 3 nodes and `Standard_E2ds_v5` instances. You may wish to adjust the instance types and number of nodes based on your workload.
 
 ## Prerequisites
 
 - Helm 3 or above. Refer to [Installing Helm](https://helm.sh/docs/intro/install/). This should be installed on your local machine.
 - Kubectl installed on your local machine. Refer to [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
-- Azure CLI installed on your local machine. Refer to [Installing the Azure CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html). This is a requirement for following this guide as all resources will be created using the Azure CLI.
+- Azure CLI installed on your local machine. Refer to [Installing the Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). This is a requirement for following this guide as all resources will be created using the Azure CLI.
   
 ### AKS Minimum Requirements
 
+Before creating an AKS cluster in Azure you need to create a resource group. You can create a resource group using the Azure CLI:
+
+```bash
+az group create --name <INSERT-NAME> -location <INSERT-AZURE-REGION>
+```
+
 {{< admonition type="caution" >}}
-These EKS requirements are the minimum specification needed to deploy Loki using this guide. You may wish to adjust plugins and instance types based on your AWS environment and workload. **If you choose to do so, we cannot guarantee that this sample configuration will still meet your needs.**
+These AKS requirements are the minimum specification needed to deploy Loki using this guide. You may wish to adjust the instance types based on your Azure environment and workload. **If you choose to do so, we cannot guarantee that this sample configuration will still meet your needs.**
 
 In this guide, we deploy Loki using `Standard_E2ds_v5` instances. This is to make sure we remain within the free tier limits for Azure. Which allows us to deploy up to 10 vCPUs within a region. We recommend for large production workloads to scale these nodes up to `Standard_D4_v5`.
 {{< /admonition >}}
 
-The minimum requirements for deploying Loki on EKS are: 
+The minimum requirements for deploying Loki on AKS are: 
 
 - Kubernetes version `1.30` or above.
 - `3` nodes for the AKS cluster.
@@ -67,118 +73,134 @@ az aks create \
   --enable-oidc-issuer
 ```
 
+Note in the above command we have enabled workload identity and OIDC issuer. This is required for the Loki service account to authenticate with Azure AD. If you have already created an AKS cluster, you can enable these features using the following command:
 
-The following plugins must also be installed within the EKS cluster:
-- **Amazon EBS CSI Driver**: Enables Kubernetes to dynamically provision and manage EBS volumes as persistent storage for applications. We use this to provision the node volumes for Loki.
-- **CoreDNS**: Provides internal DNS service for Kubernetes clusters, ensuring that services and pods can communicate with each other using DNS names. 
-- **kube-proxy**: Maintains network rules on nodes, enabling communication between pods and services within the cluster.
+```bash
+az aks update \
+  --resource-group <MY_RESOURCE_GROUP_NAME> \
+  --name <MY_AKS_CLUSTER_NAME> \
+  --enable-workload-identity \
+  --enable-oidc-issuer
+```
 
-You must also install an **OIDC (OpenID Connect) provider** on the EKS cluster. This is required for the IAM roles and policies to work correctly. If you are using EKSctl, you can install the OIDC provider using the following command:
+The Azure CLI also allows you to bind the AKS cluster to kubectl. You can do this by running the following command:
+
+```bash
+az aks get-credentials --resource-group <MY_RESOURCE_GROUP_NAME> --name <MY_AKS_CLUSTER_NAME>
+```
+
+## Configuring Azure Blob Storage
 
 {{< admonition type="tip" >}}
-If you used the above EKSctl configuration file to create the cluster, you do not need to run this command. The OIDC provider is automatically installed.
+ **Consider** using unique bucket names rather than;  `chunk`, `ruler` and `admin`. Although Azure Blog Storage is not directly affected by this [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/) it is best practise to use unique container names (buckets).
 {{< /admonition >}}
 
-```bash
-eksctl utils associate-iam-oidc-provider --cluster loki --approve
-```
-
-## Create S3 buckets
-
-{{< admonition type="warning" >}}
- **DO NOT** use the default bucket names;  `chunk`, `ruler` and `admin`. Choose a **unique** name for each bucket. For more information see the following [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/).
-{{< /admonition >}}
-
-Before deploying Loki, you need to create two S3 buckets; one to store logs (chunks), the second to store alert rules. You can create the bucket using the AWS Management Console or the AWS CLI. The bucket name must be globally unique.
+Before deploying Loki, you need to create two Azure storage containers; one to store logs (chunks), the second to store alert rules. You can create the containers using the Azure CLI. Containers must exist inside a storage account: 
 
 {{< admonition type="note" >}}
-GEL customers will require a third bucket to store the admin data. This bucket is not required for OSS users.
+GEL customers will require a third container to store the admin data. This container is not required for OSS users.
 {{< /admonition >}}
 
-```bash
-aws s3api create-bucket --bucket  <YOUR CHUNK BUCKET NAME e.g. `loki-aws-dev-chunks`> --region <S3 region your account is on, e.g. `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 region your account is on, e.g. `eu-west-2`> \
-aws s3api create-bucket --bucket  <YOUR RULER BUCKET NAME e.g. `loki-aws-dev-ruler`> --region <S3 REGION your account is on, e.g. `eu-west-2`> --create-bucket-configuration LocationConstraint=<S3 REGION your account is on, e.g. `eu-west-2`>
-```
-Make sure to replace the `region` and `bucket` name with your desired values. We will revisit the bucket policy later in this guide.
+1. Create a storage account:
 
-## Defining IAM roles and policies
+    ```bash
+    az storage account create \
+    --name <NAME> \
+    --location <REGION> \
+    --sku Standard_ZRS \
+    --encryption-services blob \
+    --resource-group <MY_RESOURCE_GROUP_NAME>
+    ```
+    **Replace the placeholders with your desired values.** We assume you have a resource group created.
 
-The recommended method for connecting Loki to AWS S3 is to use an IAM role. This method is more secure than using access keys and secret keys which are directly stored in the Loki configuration. The role and policy can be created using the AWS CLI or the AWS Management Console. The below steps show how to create the role and policy using the AWS CLI.
+1. Create the containers for chunks and ruler:
 
-1. Create a new directory and navigate to it. Make sure to create the files in this directory. All commands in this guide assume you are in this directory.
+    ```bash
+    az storage container create --account-name <STORAGE-ACCOUNT-NAME> --name <CHUNK-BUCKET-NAME> --auth-mode login && \
+    az storage container create --account-name <STORAGE-ACCOUNT-NAME> --name <RULER-BUCKET-NAME> --auth-mode login
+    ```
+    **Make sure `--account-name` matches the account you just created**
 
-1. Create a `loki-s3-policy.json` file with the following content:
 
+With the storage account and containers created, you can now proceed to creating the Azure AD role and federated credentials.
+
+## Creating the Azure AD Role and Federated Credentials
+
+The recommended way to authenticate Loki with Azure Blob Storage is to use federated credentials. This method is more secure than hard coding a connection string directly into the Loki configuration. In this next section, we will create an Azure AD role and federated credentials for Loki to allow it to read and write from Azure Blob Storage:
+
+1. Locate the OIDC issuer URL:
+
+    ```bash
+    az aks show \
+    --resource-group <MY_RESOURCE_GROUP_NAME> \
+    --name <MY_AKS_CLUSTER_NAME> \
+    --query "oidcIssuerProfile.issuerUrl" \
+    -o tsv
+    ```
+    This command will return the OIDC issuer URL. You will need this URL to create the federated credentials.
+
+1. Generate a `credentials.json` file with the following content:
     ```json
     {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Sid": "LokiStorage",
-                "Effect": "Allow",
-                "Action": [
-                    "s3:ListBucket",
-                    "s3:PutObject",
-                    "s3:GetObject",
-                    "s3:DeleteObject"
-                ],
-                "Resource": [
-                    "arn:aws:s3:::< CHUNK BUCKET NAME >",
-                    "arn:aws:s3:::< CHUNK BUCKET NAME >/*",
-                    "arn:aws:s3:::< RULER BUCKET NAME >",
-                    "arn:aws:s3:::< RULER BUCKET NAME >/*"
-                ]
-            }
+        "name": "LokiFederatedIdentity",
+        "issuer": "<OIDC-ISSUER-URL>",
+        "subject": "system:serviceaccount:loki:loki",
+        "description": "Federated identity for Loki accessing Azure resources",
+        "audiences": [
+          "api://AzureADTokenExchange"
         ]
     }
     ```
+    **Replace `<OIDC-ISSUER-URL>` with the OIDC issuer URL you found in the previous step.** Save this file for later use.
 
-    **Make sure to replace the placeholders with the names of the buckets you created earlier.**
+1. Next generate a azure directory `app` we will use this to assign our federated credentials to:
+   ```bash
+    az ad app create \
+    --display-name loki \
+    --query appId \
+    -o tsv
+   ```
+    This will return the app ID. Save this for later use. if you need to find the app ID later you can run the following command:
+    ```bash
+    az ad app list --display-name loki --query "[].appId" -o tsv
+    ```
 
-1. Create the IAM policy using the AWS CLI:
+1. The app requires a service principal to authenticate with Azure AD. Create a service principal for the app:
 
     ```bash
-    aws iam create-policy --policy-name LokiS3AccessPolicy --policy-document file://loki-s3-policy.json
+    az ad sp create --id <APP-ID>
     ```
+    **Replace `<APP-ID>` with the app ID you generated in the previous step.**
 
-2. Create a trust policy document named `trust-policy.json` with the following content:
-
-    ```json
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Principal": {
-                    "Federated": "arn:aws:iam::< ACCOUNT ID >:oidc-provider/oidc.eks.<INSERT REGION>.amazonaws.com/id/< OIDC ID >"
-                },
-                "Action": "sts:AssumeRoleWithWebIdentity",
-                "Condition": {
-                    "StringEquals": {
-                        "oidc.eks.<INSERT REGION>.amazonaws.com/id/< OIDC ID >:sub": "system:serviceaccount:loki:loki",
-                        "oidc.eks.<INSERT REGION>.amazonaws.com/id/< OIDC ID >:aud": "sts.amazonaws.com"
-                    }
-                }
-            }
-        ]
-    }
-    ```
-   **Make sure to replace the placeholders with your AWS account ID, region, and the OIDC ID (you can find this in the EKS cluster configuration).**
-
-3. Create the IAM role using the AWS CLI:
+1. Next assign the federated credentials to the app:
 
     ```bash
-    aws iam create-role --role-name LokiServiceAccountRole --assume-role-policy-document file://trust-policy.json
+    az ad app federated-credential create \
+      --id <APP-ID> \
+      --parameters credentials.json 
     ```
+    Replace `<APP-ID>` with the app ID you generated in the previous step. **Make sure you have also updated and saved the `credentials.json` file before running this step.**
 
-4. Attach the policy to the role:
+1. Lastly add a role assignment to the app:
 
     ```bash
-    aws iam attach-role-policy --role-name LokiServiceAccountRole --policy-arn arn:aws:iam::<Account ID>:policy/LokiS3AccessPolicy
+    az role assignment create \
+      --role "Storage Blob Data Contributor" \
+      --assignee <APP-ID> \
+      --scope /subscriptions/<SUBSCRIPTION-ID>/resourceGroups/<RESOURCE-GROUP>/providers/Microsoft.Storage/storageAccounts/<STORAGE-ACCOUNT-NAME>
     ```
-    **Make sure to replace the placeholder with your AWS account ID.**
+    **Replace the placeholders with your actual values.**
+
+With the Azure AD role and federated credentials created, you can now proceed to deploying Loki using the Helm chart.
+
 
 ## Deploying the Helm chart
+
+The following steps require the use of `helm` and `kubectl`. Make sure you have run the `az` command to bind your AKS cluster to `kubectl`:
+
+```bash
+az aks get-credentials --resource-group <MY_RESOURCE_GROUP_NAME> --name <MY_AKS_CLUSTER_NAME>
+```
 
 Before we can deploy the Loki Helm chart, we need to add the Grafana chart repository to Helm. This repository contains the Loki Helm chart.
 
@@ -199,7 +221,7 @@ Before we can deploy the Loki Helm chart, we need to add the Grafana chart repos
     ```
 ### Loki Basic Authentication
 
-Loki by default does not come with any authentication. Since we will be deploying Loki to AWS and exposing the gateway to the internet, we recommend adding at least basic authentication. In this guide we will give Loki a username and password:
+Loki by default does not come with any authentication. Since we will be deploying Loki to Azure and exposing the gateway to the internet, we recommend adding at least basic authentication. In this guide we will give Loki a username and password:
 
 1. To start we will need create a `.htpasswd` file with the username and password. You can use the `htpasswd` command to create the file:
 
@@ -237,20 +259,22 @@ Create a `values.yaml` file choosing the configuration options that best suit yo
 
 ```yaml
 loki:
+   podLabels:
+    "azure.workload.identity/use": "true" # Add this label to the Loki pods to enable workload identity
    schemaConfig:
      configs:
        - from: "2024-04-01"
          store: tsdb
-         object_store: s3
+         object_store: azure
          schema: v13
          index:
            prefix: loki_index_
            period: 24h
    storage_config:
-     aws:
-       region: <S3 BUCKET REGION> # for example, eu-west-2  
-       bucketnames: <CHUNK BUCKET NAME> # Your actual S3 bucket name, for example, loki-aws-dev-chunks
-       s3forcepathstyle: false
+     azure:
+      account_name: "<INSERT-STORAGE-ACCOUNT-NAME>" 
+      container_name: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
+      use_federated_token: true # Use federated token for authentication
    ingester:
        chunk_encoding: snappy
    pattern_ingester:
@@ -261,35 +285,37 @@ loki:
      retention_period: 672h # 28 days retention
    compactor:
      retention_enabled: true 
-     delete_request_store: s3
+     delete_request_store: azure
    ruler:
     enable_api: true
     storage:
-      type: s3
-      s3:
-        region: <S3 BUCKET REGION> # for example, eu-west-2
-        bucketnames: <RULER BUCKET NAME> # Your actual S3 bucket name, for example, loki-aws-dev-ruler
-        s3forcepathstyle: false
+      type: azure
+      azure:
+        account_name: <INSERT-STORAGE-ACCOUNT-NAME>
+        container_name: <RULER-CONTAINER-NAME> # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
+        use_federated_token: true # Use federated token for authentication
       alertmanager_url: http://prom:9093 # The URL of the Alertmanager to send alerts (Prometheus, Mimir, etc.)
 
    querier:
       max_concurrent: 4
 
    storage:
-      type: s3
+      type: azure
       bucketNames:
-        chunks: "<CHUNK BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-chunks)
-        ruler: "<RULER BUCKET NAME>" # Your actual S3 bucket name (loki-aws-dev-ruler)
-        # admin: "<Insert s3 bucket name>" # Your actual S3 bucket name (loki-aws-dev-admin) - GEL customers only
-      s3:
-        region: <S3 BUCKET REGION> # eu-west-2
-        #insecure: false
-      # s3forcepathstyle: false
+        chunks: "<CHUNK-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-chunks)
+        ruler: "<RULER-CONTAINER-NAME>" # Your actual Azure Blob Storage container name (loki-azure-dev-ruler)
+        # admin: "admin-loki-devrel" # Your actual Azure Blob Storage container name (loki-azure-dev-admin)
+      azure:
+        accountName: <INSERT-STORAGE-ACCOUNT-NAME>
+        useFederatedToken: true # Use federated token for authentication
 
+# Define the Azure workload identity
 serviceAccount:
- create: true
- annotations:
-   "eks.amazonaws.com/role-arn": "arn:aws:iam::<Account ID>:role/LokiServiceAccountRole" # The service role you created
+  name: loki
+  annotations:
+    "azure.workload.identity/client-id": "<APP-ID>" # The app ID of the Azure AD app
+  labels:
+    "azure.workload.identity/use": "true"
 
 deploymentMode: Distributed
 
@@ -368,24 +394,24 @@ singleBinary:
 Make sure to replace the placeholders with your actual values.
 {{< /admonition >}}
 
-It is critical to define a valid `values.yaml` file for the Loki deployment. To remove the risk of misconfiguration, let's break down the configuration options to keep in mind when deploying to AWS:
+It is critical to define a valid `values.yaml` file for the Loki deployment. To remove the risk of misconfiguration, let's break down the configuration options to keep in mind when deploying to Azure:
 
 - **Loki Config vs. Values Config:**
   - The `values.yaml` file contains a section called `loki`, which contains a direct representation of the Loki configuration file.
   - This section defines the Loki configuration, including the schema, storage, and querier configuration.
-  - The key configuration to focus on for chunks is the `storage_config` section, where you define the S3 bucket region and name. This tells Loki where to store the chunks.
-  - The `ruler` section defines the configuration for the ruler, including the S3 bucket region and name. This tells Loki where to store the alert and recording rules.
+  - The key configuration to focus on for chunks is the `storage_config` section, where you define the Azure container name and storage account. This tells Loki where to store the chunks.
+  - The `ruler` section defines the configuration for the ruler, including the Azure container name and storage account. This tells Loki where to store the alert and recording rules.
   - For the full Loki configuration, refer to the [Loki Configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/) documentation.
 
 - **Storage:**
   - Defines where the Helm chart stores data.
-  - Set the type to `s3` since we are using Amazon S3.
-  - Configure the bucket names for the chunks and ruler to match the buckets created earlier.
-  - The `s3` section specifies the region of the bucket.
+  - Set the type to `azure` since we are using Azure Blog Storage.
+  - Configure the container names for the chunks and ruler to match the containers created earlier.
+  - The `azure` section specifies the storage account name and also sets `useFederatedToken` to `true`. This tells Loki to use federated credentials for authentication.
 
 - **Service Account:**
-  - The `serviceAccount` section is used to define the IAM role for the Loki service account.
-  - This is where the IAM role created earlier is linked.
+  - The `serviceAccount` section is used to define the federated workload identity Loki will use to authenticate with Azure AD.
+  - We set the `azure.workload.identity/client-id` annotation to the app ID of the Azure AD app.
 
 - **Gateway:**
   - Defines how the Loki gateway will be exposed.
@@ -401,7 +427,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     helm install --values values.yaml loki grafana/loki -n loki --create-namespace
     ```
-    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
+    **It is important to create a namespace called `loki` as our federated credentials where generated with the subject value `system:serviceaccount:loki:loki`. This translates to the `loki` service account in the `loki` namespace. This is configurable but make sure to update the federated credentials file first.**
 
 1. Verify the deployment:
 
@@ -453,11 +479,11 @@ kubectl get svc -n loki
 You should see the Loki Gateway service with an external IP address. This is the address you will use to write to and query Loki.
 
 ```console
-  NAME                             TYPE           CLUSTER-IP       EXTERNAL-IP                                                               PORT(S)              AGE
-loki-gateway                     LoadBalancer   10.100.201.74    12345678975675456-1433434453245433545656563.eu-west-2.elb.amazonaws.com   80:30707/TCP         46m
+  NAME                             TYPE           CLUSTER-IP       EXTERNAL-IP    PORT(S)              AGE
+loki-gateway                     LoadBalancer   10.100.201.74     134.236.21.145  80:30707/TCP         46m
 ```
 
-Congratulations! You have successfully deployed Loki on AWS using the Helm chart. Before we finish, let's test the deployment.
+Congratulations! You have successfully deployed Loki on Azure using the Helm chart. Before we finish, let's test the deployment.
 
 ## Testing Your Loki Deployment
 
@@ -465,7 +491,7 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
 
 1. Install k6 with the Loki extension on your local machine. Refer to [Installing k6 and the xk6-loki extension](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/k6/).
 
-2. Create a `aws-test.js` file with the following content:
+2. Create a `azure-test.js` file with the following content:
 
    ```javascript
     import {sleep, check} from 'k6';
@@ -512,9 +538,6 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
       iterations: 10,
     };
 
-    **It is important to create a namespace called `loki` as our trust policy is set to allow the IAM role to be used by the `loki` service account in the `loki` namespace. This is configurable but make sure to update your service account.**
-    * "main" function for each VU iteration
-    */
     export default () => {
       // Push request with 10 streams and uncompressed logs between 800KB and 2MB
       var res = client.pushParameterized(10, 800 * KB, 2 * MB);
@@ -553,12 +576,12 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
 3. Run the test:
 
     ```bash
-    ./k6 run aws-test.js
+    ./k6 run azure-test.js
     ```
 
     This will run the test and output the results. You should see the test writing logs to Loki and querying logs from Loki.
 
-Now that you have successfully deployed Loki in microservices mode on AWS, you may wish to explore the following:
+Now that you have successfully deployed Loki in microservices mode on Microsoft Azure, you may wish to explore the following:
 
 - [Sending data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION/send-data/)
 - [Querying Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/query/)

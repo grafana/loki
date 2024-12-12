@@ -383,7 +383,8 @@ We are actively working on providing more guides for deploying Loki in productio
 {{< /admonition >}}
 
 We recommend running Loki at scale within a cloud environment like AWS, Azure, or GCP. The below guides will show you how to deploy a minimally viable production environment.
-- [Deploy Loki on AWS]({{< relref "../deployment-guides/aws" >}})
+- [Deploy Loki on AWS](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/aws/)
+- [Deploy Loki on Azure](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm/deployment-guides/azure/)
 
 ## Next Steps 
 * Configure an agent to [send log data to Loki](/docs/loki/<LOKI_VERSION>/send-data/).
