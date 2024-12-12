@@ -2536,6 +2536,8 @@ bloomGateway:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty, use `loki.startupProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the bloom-gateway
   resources: {}
   # -- Containers to add to the bloom-gateway pods

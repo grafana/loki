@@ -22,6 +22,19 @@ app.kubernetes.io/component: bloom-gateway
 {{- end }}
 
 {{/*
+bloom gateway livenessProbe
+*/}}
+{{- define "loki.bloomGateway.livenessProbe" }}
+{{- if .Values.bloomGateway.livenessProbe }}
+livenessProbe:
+  {{- toYaml .Values.bloomGateway.livenessProbe | nindent 2 }}
+{{- else if .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml .Values.loki.livenessProbe | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 bloom gateway readinessProbe
 */}}
 {{- define "loki.bloomGateway.readinessProbe" }}
@@ -31,6 +44,19 @@ readinessProbe:
 {{- else if .Values.loki.readinessProbe }}
 readinessProbe:
   {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+bloom gateway startupProbe
+*/}}
+{{- define "loki.bloomGateway.startupProbe" }}
+{{- if .Values.bloomGateway.startupProbe }}
+startupProbe:
+  {{- toYaml .Values.bloomGateway.startupProbe | nindent 2 }}
+{{- else if .Values.loki.startupProbe }}
+startupProbe:
+  {{- toYaml .Values.loki.startupProbe | nindent 2 }}
 {{- end }}
 {{- end }}
 
