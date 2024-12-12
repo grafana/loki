@@ -32,7 +32,7 @@ local weeklyImageJobs = {
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
     lokiRelease.releasePRWorkflow(
-      branches=['release-[0-9]+.[0-9]+.x', 'fix-docker-driver-again'],
+      branches=['release-[0-9]+.[0-9]+.x'],
       buildImage=buildImage,
       checkTemplate=checkTemplate,
       golangCiLintVersion=golangCiLintVersion,
@@ -42,7 +42,7 @@ local weeklyImageJobs = {
       releaseLibRef=releaseLibRef,
       releaseRepo='grafana/loki',
       skipArm=false,
-      skipValidation=true,
+      skipValidation=false,
       useGitHubAppToken=true,
       versioningStrategy='always-bump-patch',
     ) + {
