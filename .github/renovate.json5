@@ -24,7 +24,7 @@
     {
       // Disable Go version updates
       "matchManagers": ["gomod"],
-      "matchPackageNames": ["go"],
+      "matchPackageNames": ["go", "toolchain"],
       "enabled": false
     },
     {
