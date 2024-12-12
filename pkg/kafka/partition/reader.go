@@ -154,9 +154,6 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	// Build records slice
 	records := make([]Record, 0, fetches.NumRecords())
 	fetches.EachRecord(func(rec *kgo.Record) {
-		if rec.Partition != r.partitionID {
-			return
-		}
 		records = append(records, Record{
 			// This context carries the tracing data for this individual record;
 			// kotel populates this data when it fetches the messages.
