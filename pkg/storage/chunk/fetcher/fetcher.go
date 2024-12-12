@@ -140,10 +140,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	l2OnlyChunks := make([]chunk.Chunk, 0, len(chunks))
 
 	for _, m := range chunks {
-		if c.skipQueryWritebackCacheOlderThan > 0 && m.From.Time().Before(time.Now().UTC().Add(-c.skipQueryWritebackCacheOlderThan)) {
-			continue
-		}
-
 		// Similar to below, this is an optimization to not bother looking in the l1 cache if there isn't a reasonable
 		// expectation to find it there.
 		if c.l2CacheHandoff > 0 && m.From.Time().Before(time.Now().UTC().Add(-extendedHandoff)) {

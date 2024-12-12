@@ -97,7 +97,7 @@ func Test(t *testing.T) {
 			fetch:              makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{5 * 24 * time.Hour, 6 * 24 * time.Hour}, c{5 * 24 * time.Hour, 6 * 24 * time.Hour}),
 			l1KeysRequested:    3,
 			l1End:              makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l2KeysRequested:    0,
+			l2KeysRequested:    2,
 			l2End:              []chunk.Chunk{},
 		},
 		{
