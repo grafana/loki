@@ -1126,6 +1126,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}
 
+	// TODO: add SerializeHTTPHandler
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
 		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),

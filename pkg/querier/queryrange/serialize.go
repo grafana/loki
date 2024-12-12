@@ -70,6 +70,14 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// TODO(karsten): use rt.codec.EncodeResponse(ctx, r, response) which is the central encoding logic instead.
+	if r.Header.Get("Accept") == ParquetType {
+		w.Header().Add("Content-Type", ParquetType)
+		if err := encodeResponseParquetTo(ctx, response, w); err != nil {
+			serverutil.WriteError(err, w)
+		}
+		return
+	}
 	version := loghttp.GetVersion(r.RequestURI)
 	encodingFlags := httpreq.ExtractEncodingFlags(r)
 	if err := encodeResponseJSONTo(version, response, w, encodingFlags); err != nil {
