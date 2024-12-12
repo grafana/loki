@@ -715,6 +715,8 @@ func BenchmarkEncodingsAndChunkSize(b *testing.B) {
 						ratio:          averageRatio,
 					})
 					b.ReportMetric(averageRatio, "compression_ratio")
+					b.ReportMetric(float64(insertedTotal)/float64(count*1024), "avg_size_kb")
+					b.ReportMetric(float64(compressedTotal)/float64(count*1024), "avg_compressed_size_kb")
 				})
 			}
 		}
