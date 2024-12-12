@@ -43,7 +43,7 @@ spec:
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- end }}    
+      {{- end }}
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
       {{- if .Values.enterpriseGateway.priorityClassName }}
       priorityClassName: {{ .Values.enterpriseGateway.priorityClassName }}
@@ -110,8 +110,18 @@ spec:
             - name: http-metrics
               containerPort: 3100
               protocol: TCP
+          {{- with .Values.enterpriseGateway.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.enterpriseGateway.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.enterpriseGateway.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.enterpriseGateway.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.enterpriseGateway.resources | nindent 12 }}
           securityContext:
