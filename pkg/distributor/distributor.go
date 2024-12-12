@@ -848,7 +848,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 
 	d.streamShardCount.Inc()
 	if shardStreamsCfg.LoggingEnabled {
-		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
+		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount, "push_size", pushSize)
 	}
 
 	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
