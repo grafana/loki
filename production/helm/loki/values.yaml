@@ -3613,6 +3613,8 @@ sidecar:
   readinessProbe: {}
   # -- Liveness probe definition. Probe is disabled on the sidecar by default.
   livenessProbe: {}
+  # -- Startup probe definition. Probe is disabled on the sidecar by default.
+  startupProbe: {}
   rules:
     # -- Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets.
     enabled: true
