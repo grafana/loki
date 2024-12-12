@@ -51,6 +51,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to query-frontend.
 - [ENHANCEMENT] Add configurable `startupProbe` to query-scheduler.
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the read pods.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to ruler.
 
 ## 6.23.0
 
