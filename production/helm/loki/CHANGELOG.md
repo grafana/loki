@@ -40,6 +40,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe`, `readinessProbe` and `startupProbe` to the exporter container in the memcached pods.
 - [ENHANCEMENT] Add configurable `livenessProbe`, `readinessProbe` and `startupProbe` to the memcached container in the memcached pods.
 - [ENHANCEMENT] Add configurable `startupProbe` to compactor.
+- [ENHANCEMENT] Add configurable `startupProbe` to distributor.
 
 ## 6.23.0
 
