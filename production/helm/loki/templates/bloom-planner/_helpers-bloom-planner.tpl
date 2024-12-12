@@ -24,17 +24,15 @@ app.kubernetes.io/component: bloom-planner
 {{/*
 bloom planner readinessProbe
 */}}
-{{- define "loki.bloomPlanner.readinessProbe" -}}
-{{- with .Values.bloomPlanner.readinessProbe }}
+{{- define "loki.bloomPlanner.readinessProbe" }}
+{{- if .Values.bloomPlanner.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+  {{- toYaml .Values.bloomPlanner.readinessProbe | nindent 2 }}
+{{- else if .Values.loki.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
 bloom planner priority class name

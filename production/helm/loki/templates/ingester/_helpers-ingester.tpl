@@ -31,29 +31,31 @@ priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
 
-{{- define "loki.ingester.readinessProbe" -}}
-{{- with .Values.ingester.readinessProbe }}  
+{{/*
+ingester readiness probe
+*/}}
+{{- define "loki.ingester.readinessProbe" }}
+{{- if .Values.ingester.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+  {{- toYaml .Values.ingester.readinessProbe | nindent 2 }}
+{{- else if .Values.loki.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
-{{- define "loki.ingester.livenessProbe" -}}
-{{- with .Values.ingester.livenessProbe }}
+{{/*
+ingester liveness probe
+*/}}
+{{- define "loki.ingester.livenessProbe" }}
+{{- if .Values.ingester.livenessProbe }}
 livenessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.livenessProbe }}
+  {{- toYaml .Values.ingester.livenessProbe | nindent 2 }}
+{{- else if .Values.loki.livenessProbe }}
 livenessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.livenessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
 expects global context

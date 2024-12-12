@@ -29,6 +29,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Disables the Helm test pod when `test.enabled=false`.
 - [BUGFIX] Fix `enterprise.image.tag` to `3.3.0`
 - [ENHANCEMENT] Bump Loki version to 3.3.2
+- [BUGFIX] Fix broken `readinessProbe` and `livenessProbe` helper template definitons.
 
 ## 6.23.0
 

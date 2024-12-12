@@ -24,17 +24,15 @@ app.kubernetes.io/component: bloom-gateway
 {{/*
 bloom gateway readinessProbe
 */}}
-{{- define "loki.bloomGateway.readinessProbe" -}}
-{{- with .Values.bloomGateway.readinessProbe }}
+{{- define "loki.bloomGateway.readinessProbe" }}
+{{- if .Values.bloomGateway.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+  {{- toYaml .Values.bloomGateway.readinessProbe | nindent 2 }}
+{{- else if .Values.loki.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
 bloom gateway priority class name

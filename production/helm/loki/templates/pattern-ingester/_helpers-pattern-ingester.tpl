@@ -24,17 +24,15 @@ app.kubernetes.io/component: pattern-ingester
 {{/*
 pattern ingester readinessProbe
 */}}
-{{- define "loki.patternIngester.readinessProbe" -}}
-{{- with .Values.patternIngester.readinessProbe }}
+{{- define "loki.patternIngester.readinessProbe" }}
+{{- if .Values.patternIngester.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+  {{- toYaml .Values.patternIngester.readinessProbe | nindent 2 }}
+{{- else if .Values.loki.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
 pattern ingester priority class name

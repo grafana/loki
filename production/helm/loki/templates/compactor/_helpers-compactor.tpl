@@ -32,32 +32,28 @@ compactor image
 {{/*
 compactor readinessProbe
 */}}
-{{- define "loki.compactor.readinessProbe" -}}
-{{- with .Values.compactor.readinessProbe }}
+{{- define "loki.compactor.readinessProbe" }}
+{{- if .Values.compactor.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.readinessProbe }}
+  {{- toYaml .Values.compactor.readinessProbe | nindent 2 }}
+{{- else if .Values.loki.readinessProbe }}
 readinessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.readinessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
 compactor livenessProbe
 */}}
-{{- define "loki.compactor.livenessProbe" -}}
-{{- with .Values.compactor.livenessProbe }}
+{{- define "loki.compactor.livenessProbe" }}
+{{- if .Values.compactor.livenessProbe }}
 livenessProbe:
-  {{- toYaml . | nindent 2 }}
-{{- else }}
-{{- with .Values.loki.livenessProbe }}
+  {{- toYaml .Values.compactor.livenessProbe | nindent 2 }}
+{{- else if .Values.loki.livenessProbe }}
 livenessProbe:
-  {{- toYaml . | nindent 2 }}
+  {{- toYaml .Values.loki.livenessProbe | nindent 2 }}
 {{- end }}
 {{- end }}
-{{- end -}}
 
 {{/*
 compactor priority class name
