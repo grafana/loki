@@ -722,12 +722,14 @@ lokiCanary:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  livenessProbe: {}
   readinessProbe:
     httpGet:
       path: /metrics
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  startupProbe: {}
 
 ######################################################################################################################
 #

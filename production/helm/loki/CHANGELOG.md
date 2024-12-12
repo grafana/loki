@@ -45,6 +45,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `startupProbe` to index-gateway.
 - [ENHANCEMENT] Add configurable `startupProbe` to ingester.
 - [ENHANCEMENT] Make `readinessProbe` configurable in loki-canary.
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to loki-canary.
 
 ## 6.23.0
 
