@@ -44,6 +44,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the gateway container in the enterprise-gateway pods.
 - [ENHANCEMENT] Add configurable `startupProbe` to index-gateway.
 - [ENHANCEMENT] Add configurable `startupProbe` to ingester.
+- [ENHANCEMENT] Make `readinessProbe` configurable in loki-canary.
 
 ## 6.23.0
 

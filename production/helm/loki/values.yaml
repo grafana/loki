@@ -666,6 +666,7 @@ test:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+
 # The Loki canary pushes logs to and queries from this loki installation to test
 # that it's working correctly
 lokiCanary:
@@ -721,6 +722,13 @@ lokiCanary:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  readinessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 15
+    timeoutSeconds: 1
+
 ######################################################################################################################
 #
 # Service Accounts and Kubernetes RBAC
