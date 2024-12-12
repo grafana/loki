@@ -38,6 +38,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-gateway.
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner.
 - [ENHANCEMENT] Add configurable `livenessProbe`, `readinessProbe` and `startupProbe` to the exporter container in the memcached pods.
+- [ENHANCEMENT] Add configurable `livenessProbe`, `readinessProbe` and `startupProbe` to the memcached container in the memcached pods.
 
 ## 6.23.0
 

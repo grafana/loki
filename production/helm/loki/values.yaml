@@ -3131,6 +3131,9 @@ memcached:
     capabilities:
       drop: [ALL]
     allowPrivilegeEscalation: false
+  livenessProbe: {}
+  readinessProbe: {}
+  startupProbe: {}
 
 memcachedExporter:
   # -- Whether memcached metrics should be exported
