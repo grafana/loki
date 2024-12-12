@@ -66,9 +66,11 @@ You can set up tab-completion for `logcli` with one of the two options, dependin
 
 Once you have installed logcli, you can run it in the following way:
 
-`logcli [<flags>] <command> [<args> ...]`
+`logcli <command> [<flags>, <args> ...]`
 
-`<command>` points to one of the commands, detailed in the command reference {ADD LINK} below.
+`<command>` points to one of the commands, detailed in the [command reference](http://localhost:3002/docs/loki/<LOKI_VERSION>/query/logcli/getting-started/#logcli-command-reference) below.
+
+`<flags>` is one of the subcommands available for each command.
 
 `<args>` is a list of space separated arguments. Arguments can optionally be overridden using environment variables. Environment variables will always take precedence over command line arguments.
 
@@ -122,8 +124,8 @@ Configuration values are considered in the following order (lowest to highest):
 
 The output of `logcli help`:
 
-```nohighlight
-usage: logcli [<flags>] <command> [<args> ...]
+```shell
+usage: logcli <command> [<flags>][<args> ...]
 
 A command-line for Loki.
 
@@ -239,7 +241,7 @@ Commands:
 
 The output of `logcli help query`:
 
-```nohighlight
+```shell
 usage: logcli query [<flags>] <query>
 
 Run a LogQL query.
@@ -382,7 +384,7 @@ Flags:
                                 file. Default will skip a range if it's part file is already downloaded.
       --merge-parts             Reads the part files in order and writes the output to stdout. Original part files will be deleted with this
                                 option.
-      --keep-parts              Overrides the default behaviour of --merge-parts which will delete the part files once all the files have been
+      --keep-parts              Overrides the default behavior of --merge-parts which will delete the part files once all the files have been
                                 read. This option will keep the part files.
       --forward                 Scan forwards through logs.
       --no-labels               Do not print any labels
@@ -407,7 +409,7 @@ Args:
 
 The output of `logcli help instant-query`:
 
-```nohighlight
+```shell
 usage: logcli instant-query [<flags>] <query>
 
 Run an instant LogQL query.
@@ -478,7 +480,7 @@ Args:
 
 The output of `logcli help labels`:
 
-```nohighlight
+```shell
 usage: logcli labels [<flags>] [<label>]
 
 Find values for a given label.
@@ -529,7 +531,7 @@ Args:
 
 The output of `logcli help series`:
 
-```nohighlight
+```shell
 usage: logcli series [<flags>] <matcher>
 
 Run series query.
@@ -588,7 +590,7 @@ Args:
 
 The output of `logcli help fmt`:
 
-```nohighlight
+```shell
 usage: logcli fmt
 
 Formats a LogQL query.
@@ -633,7 +635,7 @@ Flags:
 
 The output of `logcli help stats`:
 
-```nohighlight
+```shell
 usage: logcli stats [<flags>] <query>
 
 Run a stats query.
@@ -701,7 +703,7 @@ Args:
 
 The output of `logcli help volume`:
 
-```nohighlight
+```shell
 usage: logcli volume [<flags>] <query>
 
 Run a volume query.
@@ -773,7 +775,7 @@ Args:
 
 The output of `logcli help volume_range`:
 
-```nohighlight
+```shell
 usage: logcli volume_range [<flags>] <query>
 
 Run a volume query and return timeseries data.
@@ -847,7 +849,7 @@ Args:
 
 The output of `logcli help detected-fields`:
 
-```nohighlight
+```shell
 usage: logcli detected-fields [<flags>] <query> [<field>]
 
 Run a query for detected fields..
@@ -995,17 +997,17 @@ logcli series '{cluster="vinson"}' --analyze-labels
 Total Streams:  10
 Unique Labels:  10
 
-Label Name          	Unique Values  Found In Streams
-service_name        	8          	10
-pod                 	7          	7
-job                 	6          	10
-app_kubernetes_io_name  6          	6
-container           	5          	7
-namespace           	3          	10
-stream              	2          	7
-flags               	1          	7
-instance            	1          	3
-cluster             	1          	10
+Label Name       Unique Values  Found In Streams
+service_name        8          10
+pod                 7          7
+job                 6          10
+app_kubernetes_io_name  6          6
+container           5          7
+namespace           3          10
+stream              2          7
+flags               1          7
+instance            1          3
+cluster             1          10
 ```
 
 Get all logs for a given stream
