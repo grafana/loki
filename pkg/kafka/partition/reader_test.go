@@ -214,7 +214,7 @@ func TestPartitionReader_ProcessCommits(t *testing.T) {
 	require.NoError(t, err)
 
 	// Init the client: This usually happens in "start" but we want to manage our own lifecycle for this test.
-	partitionReader.SetOffsetForConsumption(int64(KafkaStartOffset))
+	partitionReader.SetOffsetForConsumption(partitionID, int64(KafkaStartOffset))
 
 	stream := logproto.Stream{
 		Labels:  labels.FromStrings("foo", "bar").String(),
