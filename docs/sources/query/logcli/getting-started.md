@@ -9,9 +9,9 @@ weight: 150
 
 # LogCLI getting started
 
-logcli is a command-line client for Loki that allows you to run [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query) queries against your Loki instance.  The "query" command will output extra information about the query and its results, such as the API URL, set of common labels, and set of excluded labels.
+logcli is a command-line client for Loki that lets you run [LogQL](https://grafana.com/docs/loki/<LOKI_VERSION>/query) queries against your Loki instance. The `query` command will output extra information about the query and its results, such as the API URL, set of common labels, and set of excluded labels.
 
-This is useful, for example, if you want to download a range of logs from Loki.  Or want to perform analytical administration tasks, for example, discover the number of log streams to understand your label cardinality, or find out the estimated volume of data that a query will search over.  You can also use logcli as part of shell scripts.
+This is useful, for example, if you want to download a range of logs from Loki. Or want to perform analytical administration tasks, for example, discover the number of log streams to understand your label cardinality, or find out the estimated volume of data that a query will search over. You can also use logcli as part of shell scripts.
 
 If you are a Grafana Cloud user, you can also use logcli to query logs that you have exported to long-term storage with [Cloud Logs Export](https://grafana.com/docs/grafana-cloud/send-data/logs/export/), or any other Loki formatted log data.
 
@@ -21,7 +21,7 @@ Note that logcli is a querying tool, it cannot be used to ingest logs.
 
 ## Install logcli
 
-As a best practice, you should download the version of logcli that matches your Loki version.  And upgrade your logcli when you upgrade your version of Loki.
+As a best practice, you should download the version of logcli that matches your Loki version. And upgrade your logcli when you upgrade your version of Loki.
 
 ### Binary (Recommended)
 
@@ -112,13 +112,6 @@ If you are running Loki behind a proxy server and you have
 [authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) configured, you will also have to pass in LOKI_USERNAME
 and LOKI_PASSWORD, LOKI_BEARER_TOKEN or LOKI_BEARER_TOKEN_FILE accordingly.
 {{< /admonition >}}
-
-### Configuration
-
-Configuration values are considered in the following order (lowest to highest):
-
-- Environment variables
-- Command-line options
 
 ## LogCLI command reference
 
@@ -918,9 +911,9 @@ Args:
 
 ### Use `--stdin` to query locally
 
-You can use the logcli –stdin argument to run a command against a log file on your local machine, instead of a Loki instance.  This lets you use LogQL to query a local log file without having to load the file into Loki, for example if you have downloaded a log file and want to query it outside of Loki.
+You can use the logcli `–stdin` argument to run a command against a log file on your local machine, instead of a Loki instance. This lets you use LogQL to query a local log file without having to load the file into Loki, for example if you have downloaded a log file and want to query it outside of Loki.
 
-Say you have log files in your local, and just want to do run some LogQL queries for that, `--stdin` flag can help.
+If you have log files in your local machine, and just want to run some LogQL queries against those log files, `--stdin` flag can help.
 
 You may use `stdin` flag to do the following:
 
@@ -930,10 +923,10 @@ You may use `stdin` flag to do the following:
 - Use LogQL to parse and extract data from a local log file without ingesting the data into Loki.
 - Enable discussion on public forums, for example submitting questions and answers, and sharing LogQL expressions.
 
-#### NOTES on `stdin` usage
+#### Notes on `stdin` usage
 
-1. The `--limits` flag doesn't have any meaning when using `--stdin` (use pager like `less` for that)
-1. Be aware there are no **labels** when using `--stdin`. So the stream selector in the query is optional, for example, just `|="timeout"|logfmt|level="error"` is same as `{foo="bar"}|="timeout|logfmt|level="error"`
+1. The `--limits` flag doesn't have any meaning when using `--stdin` (use pager like `less` for that).
+1. Be aware there are no **labels** when using `--stdin`. So the stream selector in the query is optional, for example, just `|="timeout"|logfmt|level="error"` is same as `{foo="bar"}|="timeout|logfmt|level="error"`.
 
 {{< admonition type="note" >}}
 Currently `stdin` doesn't support any type of metric queries.
@@ -941,10 +934,10 @@ Currently `stdin` doesn't support any type of metric queries.
 
 #### `stdin` examples
 
-1. Line filter - `cat mylog.log | logcli --stdin query '|="too many open connections"'`
-1. Label matcher - `echo 'msg="timeout happened" level="warning"' | logcli --stdin query '|logfmt|level="warning"'`
-1. Different parsers (logfmt, json, pattern, regexp) - `cat mylog.log | logcli --stdin query '|pattern <ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>'`
-1. Line formatters - `cat mylog.log | logcli --stdin query '|logfmt|line_format "{{.query}} {{.duration}}"'`
+- Line filter - `cat mylog.log | logcli --stdin query '|="too many open connections"'`
+- Label matcher - `echo 'msg="timeout happened" level="warning"' | logcli --stdin query '|logfmt|level="warning"'`
+- Different parsers (logfmt, json, pattern, regexp) - `cat mylog.log | logcli --stdin query '|pattern <ip> - - <_> "<method> <uri> <_>" <status> <size> <_> "<agent>" <_>'`
+- Line formatters - `cat mylog.log | logcli --stdin query '|logfmt|line_format "{{.query}} {{.duration}}"'`
 
 ## Batching
 
@@ -963,7 +956,7 @@ requests from logcli to Loki to be batched.
 
 When you run a query in Loki, it will return up to a certain number of log lines. By default, this limit is 5000 lines. You can configure this server limit with the `limits_config.max_entries_limit_per_query` in Loki's configuration.
 
-Batching allows you to query for a results set that is larger than this server-side limit, as long as the `--batch` value is less than the server limit.
+Batching lets you query for a results set that is larger than this server-side limit, as long as the `--batch` value is less than the server limit.
 
 Query metadata is output to `stderr` for each batch.
 To suppress the output of the query metadata, set the `--quiet` option on the `logcli query` command line.
@@ -984,9 +977,7 @@ loki-ops/consul
 loki-ops/loki-gw
 ```
 
-Print all labels and their unique values.
-
-This command is especially useful for finding [high-cardinality labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#cardinality) in the index.
+Print all labels and their unique values. This command is especially useful for finding [high-cardinality labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/#cardinality) in the index.
 
 ```bash
 logcli series '{cluster="vinson"}' --analyze-labels
@@ -1023,9 +1014,7 @@ Common labels: {job="loki-ops/consul", namespace="loki-ops"}
 2018-06-25T12:52:09Z {instance="consul-8576459955-pl75w"} 2018/06/25 12:52:09 [INFO] raft: Compacting logs from 456973 to 465169
 ```
 
-Print all log streams for the given stream selector.
-
-This example shows all known label combinations that match your query.
+Print all log streams for the given stream selector. This example shows all known label combinations that match your query.
 
 ```bash
 logcli series -q --match='{namespace="loki",container_name="loki"}'
@@ -1035,7 +1024,7 @@ logcli series -q --match='{namespace="loki",container_name="loki"}'
 {app="loki", container_name="loki", controller_revision_hash="loki-57c9df47f4", filename="/var/log/pods/loki_loki-0_8ed03ded-bacb-4b13-a6fe-53a445a15887/loki/0.log", instance="loki-0", job="loki/loki", name="loki", namespace="loki", release="loki", statefulset_kubernetes_io_pod_name="loki-0", stream="stderr"}
 ```
 
-## Troubleshooting logcli
+## Troubleshoot logcli
 
 Make sure that the version of Logcli you are using matches your Loki version.
 You can check your logcli version with the following command:
