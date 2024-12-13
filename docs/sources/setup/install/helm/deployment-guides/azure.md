@@ -112,7 +112,7 @@ GEL customers will require a third container to store the admin data. This conta
     --encryption-services blob \
     --resource-group <MY_RESOURCE_GROUP_NAME>
     ```
-    **Replace the placeholders with your desired values.**
+    Replace the placeholders with your desired values.
 
 1. Create the containers for chunks and ruler:
 
@@ -120,7 +120,7 @@ GEL customers will require a third container to store the admin data. This conta
     az storage container create --account-name <STORAGE-ACCOUNT-NAME> --name <CHUNK-BUCKET-NAME> --auth-mode login && \
     az storage container create --account-name <STORAGE-ACCOUNT-NAME> --name <RULER-BUCKET-NAME> --auth-mode login
     ```
-    **Make sure `--account-name` matches the account you just created**
+    Make sure `--account-name` matches the account you just created
 
 
 With the storage account and containers created, you can now proceed to creating the Azure AD role and federated credentials.
@@ -152,7 +152,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
         ]
     }
     ```
-    **Replace `<OIDC-ISSUER-URL>` with the OIDC issuer URL you found in the previous step.**
+    Replace `<OIDC-ISSUER-URL>` with the OIDC issuer URL you found in the previous step.
 
 1. Make sure you to save the `credentials.json` file before continuing.
 
@@ -173,7 +173,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
     ```bash
     az ad sp create --id <APP-ID>
     ```
-    **Replace `<APP-ID>` with the app ID you generated in the previous step.**
+    Replace `<APP-ID>` with the app ID you generated in the previous step.
 
 1. Next assign the federated credentials to the app:
 
@@ -192,7 +192,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
       --assignee <APP-ID> \
       --scope /subscriptions/<SUBSCRIPTION-ID>/resourceGroups/<RESOURCE-GROUP>/providers/Microsoft.Storage/storageAccounts/<STORAGE-ACCOUNT-NAME>
     ```
-    **Replace the placeholders with your actual values.**
+    Replace the placeholders with your actual values.
 
 With the Azure AD role and federated credentials created, you can now proceed to deploying Loki using the Helm chart.
 
@@ -253,8 +253,7 @@ Loki by default does not come with any authentication. Since we will be deployin
       --from-literal=password=<PASSWORD> \
       -n loki
     ```
-    We create a literal secret with the username and password for Loki canary to authenticate with the Loki gateway.
-    **Make sure to replace the placeholders with your desired username and password.** 
+    We create a literal secret with the username and password for Loki canary to authenticate with the Loki gateway. Make sure to replace the placeholders with your desired username and password.
 
 ### Loki Helm chart configuration
 
@@ -430,7 +429,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     helm install --values values.yaml loki grafana/loki -n loki --create-namespace
     ```
-    **It is important to create a namespace called `loki` as our federated credentials where generated with the subject value `system:serviceaccount:loki:loki`. This translates to the `loki` service account in the `loki` namespace. This is configurable but make sure to update the federated credentials file first.**
+    It is important to create a namespace called `loki` as our federated credentials where generated with the subject value `system:serviceaccount:loki:loki`. This translates to the `loki` service account in the `loki` namespace. This is configurable but make sure to update the federated credentials file first.
 
 1. Verify the deployment:
 
@@ -572,7 +571,7 @@ k6 is one of the fastest ways to test your Loki deployment. This will allow you 
     }
    ```
 
-   **Replace `<EXTERNAL-IP>` with the external IP address of the Loki Gateway service.**
+   Replace `<EXTERNAL-IP>` with the external IP address of the Loki Gateway service.
 
    This script will write logs to Loki and query logs from Loki. It will write logs in a random format between 800KB and 2MB and query logs in a random format over the last 5 minutes.
   
