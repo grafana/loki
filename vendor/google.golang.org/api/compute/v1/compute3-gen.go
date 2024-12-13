@@ -1650,8 +1650,8 @@ type RegionBackendServicesListUsableCall struct {
 	header_      http.Header
 }
 
-// ListUsable: Retrieves an aggregated list of all usable backend services in
-// the specified project in the given region.
+// ListUsable: Retrieves a list of all usable backend services in the specified
+// project in the given region.
 //
 //   - project: Project ID for this request.
 //   - region: Name of the region scoping this request. It must be a string that
@@ -9634,6 +9634,142 @@ func (c *RegionInstanceGroupManagersResizeCall) Do(opts ...googleapi.CallOption)
 	return ret, nil
 }
 
+type RegionInstanceGroupManagersResumeInstancesCall struct {
+	s                                                 *Service
+	project                                           string
+	region                                            string
+	instanceGroupManager                              string
+	regioninstancegroupmanagersresumeinstancesrequest *RegionInstanceGroupManagersResumeInstancesRequest
+	urlParams_                                        gensupport.URLParams
+	ctx_                                              context.Context
+	header_                                           http.Header
+}
+
+// ResumeInstances: Flags the specified instances in the managed instance group
+// to be resumed. This method increases the targetSize and decreases the
+// targetSuspendedSize of the managed instance group by the number of instances
+// that you resume. The resumeInstances operation is marked DONE if the
+// resumeInstances request is successful. The underlying actions take
+// additional time. You must separately verify the status of the RESUMING
+// action with the listmanagedinstances method. In this request, you can only
+// specify instances that are suspended. For example, if an instance was
+// previously suspended using the suspendInstances method, it can be resumed
+// using the resumeInstances method. If a health check is attached to the
+// managed instance group, the specified instances will be verified as healthy
+// after they are resumed. You can specify a maximum of 1000 instances with
+// this method per request.
+//
+// - instanceGroupManager: Name of the managed instance group.
+// - project: Project ID for this request.
+// - region: Name of the region scoping this request.
+func (r *RegionInstanceGroupManagersService) ResumeInstances(project string, region string, instanceGroupManager string, regioninstancegroupmanagersresumeinstancesrequest *RegionInstanceGroupManagersResumeInstancesRequest) *RegionInstanceGroupManagersResumeInstancesCall {
+	c := &RegionInstanceGroupManagersResumeInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.instanceGroupManager = instanceGroupManager
+	c.regioninstancegroupmanagersresumeinstancesrequest = regioninstancegroupmanagersresumeinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *RegionInstanceGroupManagersResumeInstancesCall) RequestId(requestId string) *RegionInstanceGroupManagersResumeInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RegionInstanceGroupManagersResumeInstancesCall) Fields(s ...googleapi.Field) *RegionInstanceGroupManagersResumeInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RegionInstanceGroupManagersResumeInstancesCall) Context(ctx context.Context) *RegionInstanceGroupManagersResumeInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RegionInstanceGroupManagersResumeInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RegionInstanceGroupManagersResumeInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.regioninstancegroupmanagersresumeinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/resumeInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"region":               c.region,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.regionInstanceGroupManagers.resumeInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *RegionInstanceGroupManagersResumeInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 type RegionInstanceGroupManagersSetInstanceTemplateCall struct {
 	s                                             *Service
 	project                                       string
@@ -9854,6 +9990,424 @@ func (c *RegionInstanceGroupManagersSetTargetPoolsCall) doRequest(alt string) (*
 // error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
 // whether the returned error was because http.StatusNotModified was returned.
 func (c *RegionInstanceGroupManagersSetTargetPoolsCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type RegionInstanceGroupManagersStartInstancesCall struct {
+	s                                                *Service
+	project                                          string
+	region                                           string
+	instanceGroupManager                             string
+	regioninstancegroupmanagersstartinstancesrequest *RegionInstanceGroupManagersStartInstancesRequest
+	urlParams_                                       gensupport.URLParams
+	ctx_                                             context.Context
+	header_                                          http.Header
+}
+
+// StartInstances: Flags the specified instances in the managed instance group
+// to be started. This method increases the targetSize and decreases the
+// targetStoppedSize of the managed instance group by the number of instances
+// that you start. The startInstances operation is marked DONE if the
+// startInstances request is successful. The underlying actions take additional
+// time. You must separately verify the status of the STARTING action with the
+// listmanagedinstances method. In this request, you can only specify instances
+// that are stopped. For example, if an instance was previously stopped using
+// the stopInstances method, it can be started using the startInstances method.
+// If a health check is attached to the managed instance group, the specified
+// instances will be verified as healthy after they are started. You can
+// specify a maximum of 1000 instances with this method per request.
+//
+// - instanceGroupManager: Name of the managed instance group.
+// - project: Project ID for this request.
+// - region: Name of the region scoping this request.
+func (r *RegionInstanceGroupManagersService) StartInstances(project string, region string, instanceGroupManager string, regioninstancegroupmanagersstartinstancesrequest *RegionInstanceGroupManagersStartInstancesRequest) *RegionInstanceGroupManagersStartInstancesCall {
+	c := &RegionInstanceGroupManagersStartInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.instanceGroupManager = instanceGroupManager
+	c.regioninstancegroupmanagersstartinstancesrequest = regioninstancegroupmanagersstartinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *RegionInstanceGroupManagersStartInstancesCall) RequestId(requestId string) *RegionInstanceGroupManagersStartInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RegionInstanceGroupManagersStartInstancesCall) Fields(s ...googleapi.Field) *RegionInstanceGroupManagersStartInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RegionInstanceGroupManagersStartInstancesCall) Context(ctx context.Context) *RegionInstanceGroupManagersStartInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RegionInstanceGroupManagersStartInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RegionInstanceGroupManagersStartInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.regioninstancegroupmanagersstartinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/startInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"region":               c.region,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.regionInstanceGroupManagers.startInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *RegionInstanceGroupManagersStartInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type RegionInstanceGroupManagersStopInstancesCall struct {
+	s                                               *Service
+	project                                         string
+	region                                          string
+	instanceGroupManager                            string
+	regioninstancegroupmanagersstopinstancesrequest *RegionInstanceGroupManagersStopInstancesRequest
+	urlParams_                                      gensupport.URLParams
+	ctx_                                            context.Context
+	header_                                         http.Header
+}
+
+// StopInstances: Flags the specified instances in the managed instance group
+// to be immediately stopped. You can only specify instances that are running
+// in this request. This method reduces the targetSize and increases the
+// targetStoppedSize of the managed instance group by the number of instances
+// that you stop. The stopInstances operation is marked DONE if the
+// stopInstances request is successful. The underlying actions take additional
+// time. You must separately verify the status of the STOPPING action with the
+// listmanagedinstances method. If the standbyPolicy.initialDelaySec field is
+// set, the group delays stopping the instances until initialDelaySec have
+// passed from instance.creationTimestamp (that is, when the instance was
+// created). This delay gives your application time to set itself up and
+// initialize on the instance. If more than initialDelaySec seconds have passed
+// since instance.creationTimestamp when this method is called, there will be
+// zero delay. If the group is part of a backend service that has enabled
+// connection draining, it can take up to 60 seconds after the connection
+// draining duration has elapsed before the VM instance is stopped. Stopped
+// instances can be started using the startInstances method. You can specify a
+// maximum of 1000 instances with this method per request.
+//
+// - instanceGroupManager: The name of the managed instance group.
+// - project: Project ID for this request.
+// - region: Name of the region scoping this request.
+func (r *RegionInstanceGroupManagersService) StopInstances(project string, region string, instanceGroupManager string, regioninstancegroupmanagersstopinstancesrequest *RegionInstanceGroupManagersStopInstancesRequest) *RegionInstanceGroupManagersStopInstancesCall {
+	c := &RegionInstanceGroupManagersStopInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.instanceGroupManager = instanceGroupManager
+	c.regioninstancegroupmanagersstopinstancesrequest = regioninstancegroupmanagersstopinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *RegionInstanceGroupManagersStopInstancesCall) RequestId(requestId string) *RegionInstanceGroupManagersStopInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RegionInstanceGroupManagersStopInstancesCall) Fields(s ...googleapi.Field) *RegionInstanceGroupManagersStopInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RegionInstanceGroupManagersStopInstancesCall) Context(ctx context.Context) *RegionInstanceGroupManagersStopInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RegionInstanceGroupManagersStopInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RegionInstanceGroupManagersStopInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.regioninstancegroupmanagersstopinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/stopInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"region":               c.region,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.regionInstanceGroupManagers.stopInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *RegionInstanceGroupManagersStopInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type RegionInstanceGroupManagersSuspendInstancesCall struct {
+	s                                                  *Service
+	project                                            string
+	region                                             string
+	instanceGroupManager                               string
+	regioninstancegroupmanagerssuspendinstancesrequest *RegionInstanceGroupManagersSuspendInstancesRequest
+	urlParams_                                         gensupport.URLParams
+	ctx_                                               context.Context
+	header_                                            http.Header
+}
+
+// SuspendInstances: Flags the specified instances in the managed instance
+// group to be immediately suspended. You can only specify instances that are
+// running in this request. This method reduces the targetSize and increases
+// the targetSuspendedSize of the managed instance group by the number of
+// instances that you suspend. The suspendInstances operation is marked DONE if
+// the suspendInstances request is successful. The underlying actions take
+// additional time. You must separately verify the status of the SUSPENDING
+// action with the listmanagedinstances method. If the
+// standbyPolicy.initialDelaySec field is set, the group delays suspension of
+// the instances until initialDelaySec have passed from
+// instance.creationTimestamp (that is, when the instance was created). This
+// delay gives your application time to set itself up and initialize on the
+// instance. If more than initialDelaySec seconds have passed since
+// instance.creationTimestamp when this method is called, there will be zero
+// delay. If the group is part of a backend service that has enabled connection
+// draining, it can take up to 60 seconds after the connection draining
+// duration has elapsed before the VM instance is suspended. Suspended
+// instances can be resumed using the resumeInstances method. You can specify a
+// maximum of 1000 instances with this method per request.
+//
+// - instanceGroupManager: Name of the managed instance group.
+// - project: Project ID for this request.
+// - region: Name of the region scoping this request.
+func (r *RegionInstanceGroupManagersService) SuspendInstances(project string, region string, instanceGroupManager string, regioninstancegroupmanagerssuspendinstancesrequest *RegionInstanceGroupManagersSuspendInstancesRequest) *RegionInstanceGroupManagersSuspendInstancesCall {
+	c := &RegionInstanceGroupManagersSuspendInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.instanceGroupManager = instanceGroupManager
+	c.regioninstancegroupmanagerssuspendinstancesrequest = regioninstancegroupmanagerssuspendinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *RegionInstanceGroupManagersSuspendInstancesCall) RequestId(requestId string) *RegionInstanceGroupManagersSuspendInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RegionInstanceGroupManagersSuspendInstancesCall) Fields(s ...googleapi.Field) *RegionInstanceGroupManagersSuspendInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RegionInstanceGroupManagersSuspendInstancesCall) Context(ctx context.Context) *RegionInstanceGroupManagersSuspendInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RegionInstanceGroupManagersSuspendInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RegionInstanceGroupManagersSuspendInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.regioninstancegroupmanagerssuspendinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/instanceGroupManagers/{instanceGroupManager}/suspendInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"region":               c.region,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.regionInstanceGroupManagers.suspendInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *RegionInstanceGroupManagersSuspendInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
 	if res != nil && res.StatusCode == http.StatusNotModified {
@@ -17868,6 +18422,131 @@ func (c *RegionSecurityPoliciesRemoveRuleCall) doRequest(alt string) (*http.Resp
 // error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
 // whether the returned error was because http.StatusNotModified was returned.
 func (c *RegionSecurityPoliciesRemoveRuleCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type RegionSecurityPoliciesSetLabelsCall struct {
+	s                      *Service
+	project                string
+	region                 string
+	resource               string
+	regionsetlabelsrequest *RegionSetLabelsRequest
+	urlParams_             gensupport.URLParams
+	ctx_                   context.Context
+	header_                http.Header
+}
+
+// SetLabels: Sets the labels on a security policy. To learn more about labels,
+// read the Labeling Resources documentation.
+//
+// - project: Project ID for this request.
+// - region: The region for this request.
+// - resource: Name or id of the resource for this request.
+func (r *RegionSecurityPoliciesService) SetLabels(project string, region string, resource string, regionsetlabelsrequest *RegionSetLabelsRequest) *RegionSecurityPoliciesSetLabelsCall {
+	c := &RegionSecurityPoliciesSetLabelsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.region = region
+	c.resource = resource
+	c.regionsetlabelsrequest = regionsetlabelsrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *RegionSecurityPoliciesSetLabelsCall) RequestId(requestId string) *RegionSecurityPoliciesSetLabelsCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *RegionSecurityPoliciesSetLabelsCall) Fields(s ...googleapi.Field) *RegionSecurityPoliciesSetLabelsCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *RegionSecurityPoliciesSetLabelsCall) Context(ctx context.Context) *RegionSecurityPoliciesSetLabelsCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *RegionSecurityPoliciesSetLabelsCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *RegionSecurityPoliciesSetLabelsCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.regionsetlabelsrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/regions/{region}/securityPolicies/{resource}/setLabels")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":  c.project,
+		"region":   c.region,
+		"resource": c.resource,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.regionSecurityPolicies.setLabels" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *RegionSecurityPoliciesSetLabelsCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
 	if res != nil && res.StatusCode == http.StatusNotModified {

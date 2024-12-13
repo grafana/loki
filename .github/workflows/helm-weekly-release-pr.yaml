@@ -1,0 +1,68 @@
+name: Helm weekly release PR
+
+on:
+  schedule:
+    - cron: '0 10 * * 2' # 10 UTC every Tuesday (since ks get cut on Monday)
+
+  workflow_dispatch: # for manual testing
+
+permissions:
+  contents: "read"
+  id-token: "write"
+  pull-requests: "write"
+
+jobs:
+  weekly-release-pr:
+    runs-on: ubuntu-latest
+    env:
+      BUILD_IN_CONTAINER: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: gabe565/setup-helm-docs-action@v1
+        with:
+          version: v1.11.2
+
+      - id: "get_github_app_token"
+        name: "get github app token"
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
+      - name: "Login to DockerHub (from vault)"
+        uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+
+      - uses: imjasonh/setup-crane@v0.4
+
+      - name: Update/regenerate files for k release
+        id: update-k
+        run: |
+          bash .github/workflows/scripts/helm-weekly-release.sh -k
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.get_github_app_token.outputs.token }}
+          title: "chore: release loki helm chart ${{ steps.update-k.outputs.new_chart_version }}"
+          body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
+          commit-message: Update loki chart to ${{ steps.update-k.outputs.new_chart_version }}
+          branch: helm-chart-weekly-${{ steps.update-k.outputs.new_chart_version }}
+          base: ${{ steps.update-k.outputs.weekly }}
+          labels: helm
+
+      - name: Update/regenerate files for standard release
+        id: update
+        run: |
+          bash .github/workflows/scripts/helm-weekly-release.sh
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.get_github_app_token.outputs.token }}
+          title: "chore: release loki helm chart ${{ steps.update.outputs.new_chart_version }}"
+          body: Automated PR created by [helm-weekly-release-pr.yaml](https://github.com/grafana/loki/blob/main/.github/workflows/helm-weekly-release-pr.yaml)
+          commit-message: Update loki chart to ${{ steps.update.outputs.new_chart_version }}
+          branch: helm-chart-weekly-${{ steps.update.outputs.new_chart_version }}
+          base: main
+          labels: helm

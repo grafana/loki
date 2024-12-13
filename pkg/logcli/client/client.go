@@ -28,17 +28,18 @@ import (
 )
 
 const (
-	queryPath          = "/loki/api/v1/query"
-	queryRangePath     = "/loki/api/v1/query_range"
-	labelsPath         = "/loki/api/v1/labels"
-	labelValuesPath    = "/loki/api/v1/label/%s/values"
-	seriesPath         = "/loki/api/v1/series"
-	tailPath           = "/loki/api/v1/tail"
-	statsPath          = "/loki/api/v1/index/stats"
-	volumePath         = "/loki/api/v1/index/volume"
-	volumeRangePath    = "/loki/api/v1/index/volume_range"
-	detectedFieldsPath = "/loki/api/v1/detected_fields"
-	defaultAuthHeader  = "Authorization"
+	queryPath               = "/loki/api/v1/query"
+	queryRangePath          = "/loki/api/v1/query_range"
+	labelsPath              = "/loki/api/v1/labels"
+	labelValuesPath         = "/loki/api/v1/label/%s/values"
+	seriesPath              = "/loki/api/v1/series"
+	tailPath                = "/loki/api/v1/tail"
+	statsPath               = "/loki/api/v1/index/stats"
+	volumePath              = "/loki/api/v1/index/volume"
+	volumeRangePath         = "/loki/api/v1/index/volume_range"
+	detectedFieldsPath      = "/loki/api/v1/detected_fields"
+	detectedFieldValuesPath = "/loki/api/v1/detected_field/%s/values"
+	defaultAuthHeader       = "Authorization"
 
 	// HTTP header keys
 	HTTPScopeOrgID          = "X-Scope-OrgID"
@@ -61,7 +62,7 @@ type Client interface {
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
 	GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error)
-	GetDetectedFields(queryStr string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration, quiet bool) (*loghttp.DetectedFieldsResponse, error)
+	GetDetectedFields(queryStr, fieldName string, fieldLimit, lineLimit int, start, end time.Time, step time.Duration, quiet bool) (*loghttp.DetectedFieldsResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -73,20 +74,22 @@ type BackoffConfig struct {
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
-	TLSConfig       config.TLSConfig
-	Username        string
-	Password        string
-	Address         string
-	OrgID           string
-	Tripperware     Tripperware
-	BearerToken     string
-	BearerTokenFile string
-	Retries         int
-	QueryTags       string
-	NoCache         bool
-	AuthHeader      string
-	ProxyURL        string
-	BackoffConfig   BackoffConfig
+	TLSConfig        config.TLSConfig
+	Username         string
+	Password         string
+	Address          string
+	OrgID            string
+	Tripperware      Tripperware
+	BearerToken      string
+	BearerTokenFile  string
+	Retries          int
+	QueryTags        string
+	NoCache          bool
+	AuthHeader       string
+	ProxyURL         string
+	BackoffConfig    BackoffConfig
+	Compression      bool
+	EnvironmentProxy bool
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -234,15 +237,16 @@ func (c *DefaultClient) getVolume(path string, query *volume.Query) (*loghttp.Qu
 }
 
 func (c *DefaultClient) GetDetectedFields(
-	queryStr string,
-	fieldLimit, lineLimit int,
+	queryStr, fieldName string,
+	limit, lineLimit int,
 	start, end time.Time,
 	step time.Duration,
 	quiet bool,
 ) (*loghttp.DetectedFieldsResponse, error) {
+
 	qsb := util.NewQueryStringBuilder()
 	qsb.SetString("query", queryStr)
-	qsb.SetInt("field_limit", int64(fieldLimit))
+	qsb.SetInt("limit", int64(limit))
 	qsb.SetInt("line_limit", int64(lineLimit))
 	qsb.SetInt("start", start.UnixNano())
 	qsb.SetInt("end", end.UnixNano())
@@ -251,7 +255,12 @@ func (c *DefaultClient) GetDetectedFields(
 	var err error
 	var r loghttp.DetectedFieldsResponse
 
-	if err = c.doRequest(detectedFieldsPath, qsb.Encode(), quiet, &r); err != nil {
+	path := detectedFieldsPath
+	if fieldName != "" {
+		path = fmt.Sprintf(detectedFieldValuesPath, url.PathEscape(fieldName))
+	}
+
+	if err = c.doRequest(path, qsb.Encode(), quiet, &r); err != nil {
 		return nil, err
 	}
 
@@ -298,6 +307,10 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		TLSConfig: c.TLSConfig,
 	}
 
+	if c.EnvironmentProxy {
+		clientConfig.ProxyFromEnvironment = true
+	}
+
 	if c.ProxyURL != "" {
 		prox, err := url.Parse(c.ProxyURL)
 		if err != nil {
@@ -312,6 +325,16 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 	if c.Tripperware != nil {
 		client.Transport = c.Tripperware(client.Transport)
+	}
+	if c.Compression {
+		// NewClientFromConfig() above returns an http.Client that uses a transport which
+		// has compression explicitly disabled. Here we re-enable it. If the caller
+		// defines a custom Tripperware that isn't an http.Transport then this won't work,
+		// but in that case they control the transport anyway and can configure
+		// compression that way.
+		if transport, ok := client.Transport.(*http.Transport); ok {
+			transport.DisableCompression = false
+		}
 	}
 
 	var resp *http.Response

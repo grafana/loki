@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -27,12 +28,12 @@ var BloomPagePool = mempool.New("test", []mempool.Bucket{
 type singleKeyTest []byte
 
 // Matches implements BloomTest.
-func (s singleKeyTest) Matches(bloom filter.Checker) bool {
+func (s singleKeyTest) Matches(_ labels.Labels, bloom filter.Checker) bool {
 	return bloom.Test(s)
 }
 
 // MatchesWithPrefixBuf implements BloomTest.
-func (s singleKeyTest) MatchesWithPrefixBuf(bloom filter.Checker, buf []byte, prefixLen int) bool {
+func (s singleKeyTest) MatchesWithPrefixBuf(_ labels.Labels, bloom filter.Checker, buf []byte, prefixLen int) bool {
 	return bloom.Test(append(buf[:prefixLen], s...))
 }
 
@@ -58,17 +59,14 @@ func TestFusedQuerier(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
 		},
 		writer,
 	)
 	require.Nil(t, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -99,7 +97,7 @@ func TestFusedQuerier(t *testing.T) {
 
 	var itrs []v2.PeekIterator[Request]
 	for _, reqs := range inputs {
-		itrs = append(itrs, v2.NewPeekIter[Request](v2.NewSliceIter[Request](reqs)))
+		itrs = append(itrs, v2.NewPeekIter(v2.NewSliceIter(reqs)))
 	}
 
 	resps := make([][]Output, nReqs)
@@ -145,10 +143,7 @@ func TestFusedQuerier_MultiPage(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one bloom per page
 		},
@@ -294,17 +289,14 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 			SeriesPageSize: 100,
 			BloomPageSize:  10, // So we force one series per page
 		},
 		writer,
 	)
 	require.Nil(t, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -352,10 +344,7 @@ func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.EncNone,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 			SeriesPageSize: 100,
 			BloomPageSize:  10 << 10,
 		},
@@ -379,7 +368,7 @@ func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 		Blooms: v2.NewSliceIter([]*Bloom{NewBloom()}),
 	}
 
-	itr := v2.NewSliceIter[SeriesWithBlooms]([]SeriesWithBlooms{data})
+	itr := v2.NewSliceIter([]SeriesWithBlooms{data})
 	_, err = builder.BuildFrom(itr)
 	require.NoError(t, err)
 	require.False(t, itr.Next())
@@ -394,7 +383,7 @@ func TestFusedQuerier_SkipsEmptyBlooms(t *testing.T) {
 	}
 	err = NewBlockQuerier(block, BloomPagePool, DefaultMaxPageSize).Fuse(
 		[]v2.PeekIterator[Request]{
-			v2.NewPeekIter[Request](v2.NewSliceIter[Request]([]Request{req})),
+			v2.NewPeekIter(v2.NewSliceIter([]Request{req})),
 		},
 		log.NewNopLogger(),
 	).Run()
@@ -413,17 +402,14 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 
 	builder, err := NewBlockBuilder(
 		BlockOptions{
-			Schema: Schema{
-				version:  CurrentSchemaVersion,
-				encoding: compression.EncSnappy,
-			},
+			Schema:         NewSchema(CurrentSchemaVersion, compression.Snappy),
 			SeriesPageSize: 256 << 10, // 256k
 			BloomPageSize:  1 << 20,   // 1MB
 		},
 		writer,
 	)
 	require.Nil(b, err)
-	itr := v2.NewSliceIter[SeriesWithBlooms](data)
+	itr := v2.NewSliceIter(data)
 	_, err = builder.BuildFrom(itr)
 	require.Nil(b, err)
 	block := NewBlock(reader, NewMetrics(nil))
@@ -485,7 +471,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			itrs = itrs[:0]
 			for _, reqs := range requestChains {
-				itrs = append(itrs, v2.NewPeekIter[Request](v2.NewSliceIter[Request](reqs)))
+				itrs = append(itrs, v2.NewPeekIter(v2.NewSliceIter(reqs)))
 			}
 			fused := querier.Fuse(itrs, log.NewNopLogger())
 			_ = fused.Run()

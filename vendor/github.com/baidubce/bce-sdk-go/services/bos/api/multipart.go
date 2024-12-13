@@ -66,6 +66,14 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 					args.StorageClass)
 			}
 		}
+		if len(args.ObjectTagging) != 0 {
+			if ok, encodeTagging := validObjectTagging(args.ObjectTagging); ok {
+				req.SetHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
+			}
+		}
+		if validMetadataDirective(args.TaggingDirective) {
+			req.SetHeader(http.BCE_COPY_TAGGING_DIRECTIVE, args.TaggingDirective)
+		}
 	}
 
 	// Send request and get the result
@@ -202,7 +210,7 @@ func UploadPartFromBytes(cli bce.Client, bucket, object, uploadId string, partNu
 	}
 	// Send request and get the result
 	resp := &bce.BceResponse{}
-	if err := cli.SendRequestFromBytes(req, resp, content); err != nil {
+	if err := SendRequestFromBytes(cli, req, resp, ctx, content); err != nil {
 		return "", err
 	}
 	if resp.IsFail() {

@@ -230,7 +230,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
+		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS
 	}
 
 	if cfg.HTTPConfig.CAFile != "" {
@@ -310,37 +310,54 @@ func buckets(cfg S3Config) ([]string, error) {
 func (a *S3ObjectClient) Stop() {}
 
 func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	if _, err := a.objectAttributes(ctx, objectKey, "S3.ObjectExists"); err != nil {
+		if a.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (a *S3ObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return a.objectAttributes(ctx, objectKey, "S3.GetAttributes")
+}
+
+func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method string) (client.ObjectAttributes, error) {
 	var lastErr error
+	var objectSize int64
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
-			return false, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
+			return client.ObjectAttributes{}, errors.Wrap(ctx.Err(), "ctx related error during s3 objectExists")
 		}
-		lastErr = instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		lastErr = instrument.CollectedRequest(ctx, method, s3RequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			headObjectInput := &s3.HeadObjectInput{
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(objectKey),
 			}
-			_, requestErr := a.S3.HeadObject(headObjectInput)
-			return requestErr
+			headOutput, requestErr := a.S3.HeadObject(headObjectInput)
+			if requestErr != nil {
+				return requestErr
+			}
+			if headOutput != nil && headOutput.ContentLength != nil {
+				objectSize = *headOutput.ContentLength
+			}
+			return nil
 		})
 		if lastErr == nil {
-			return true, nil
+			return client.ObjectAttributes{Size: objectSize}, nil
 		}
 
 		if a.IsObjectNotFoundErr(lastErr) {
-			return false, lastErr
+			return client.ObjectAttributes{}, lastErr
 		}
 
 		retries.Wait()
 	}
 
-	if lastErr != nil {
-		return false, lastErr
-	}
-
-	return true, nil
+	return client.ObjectAttributes{}, lastErr
 }
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
@@ -376,7 +393,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	// Map the key into a bucket
 	bucket := a.bucketFromKey(objectKey)
 
-	var lastErr error
+	lastErr := ctx.Err()
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
@@ -546,7 +563,7 @@ func isContextErr(err error) bool {
 }
 
 // IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
-func (a *S3ObjectClient) IsStorageTimeoutErr(err error) bool {
+func IsStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
 	// context errors are all client-side
 	if isContextErr(err) {
@@ -582,7 +599,7 @@ func (a *S3ObjectClient) IsStorageTimeoutErr(err error) bool {
 }
 
 // IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
-func (a *S3ObjectClient) IsStorageThrottledErr(err error) bool {
+func IsStorageThrottledErr(err error) bool {
 	if rerr, ok := err.(awserr.RequestFailure); ok {
 
 		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
@@ -592,6 +609,11 @@ func (a *S3ObjectClient) IsStorageThrottledErr(err error) bool {
 
 	return false
 }
+
+func IsRetryableErr(err error) bool {
+	return IsStorageTimeoutErr(err) || IsStorageThrottledErr(err)
+}
+
 func (a *S3ObjectClient) IsRetryableErr(err error) bool {
-	return a.IsStorageTimeoutErr(err) || a.IsStorageThrottledErr(err)
+	return IsRetryableErr(err)
 }

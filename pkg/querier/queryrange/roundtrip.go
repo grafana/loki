@@ -445,7 +445,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 			"msg", "executing query",
 			"type", "detected_fields",
 			"end", op.End,
-			"field_limit", op.FieldLimit,
+			"field_limit", op.Limit,
 			"length", op.End.Sub(op.Start),
 			"line_limit", op.LineLimit,
 			"query", op.Query,
@@ -508,7 +508,7 @@ func getOperation(path string) string {
 		return QueryRangeOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
-	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label") || strings.HasSuffix(path, "/values"):
+	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
 		return LabelNamesOp
 	case strings.HasSuffix(path, "/v1/query"):
 		return InstantQueryOp
@@ -521,6 +521,12 @@ func getOperation(path string) string {
 	case path == "/loki/api/v1/index/shards":
 		return IndexShardsOp
 	case path == "/loki/api/v1/detected_fields":
+		return DetectedFieldsOp
+	case strings.HasSuffix(path, "/values"):
+		if strings.HasPrefix(path, "/loki/api/v1/label") || strings.HasPrefix(path, "/api/prom/label") {
+			return LabelNamesOp
+		}
+
 		return DetectedFieldsOp
 	case path == "/loki/api/v1/patterns":
 		return PatternsQueryOp
@@ -1214,7 +1220,7 @@ func sharedIndexTripperware(
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
 	limits Limits,
-	schema config.SchemaConfig,
+	_ config.SchemaConfig,
 	limitedTripperware base.Middleware,
 	logTripperware base.Middleware,
 ) (base.Middleware, error) {
@@ -1222,7 +1228,6 @@ func NewDetectedFieldsTripperware(
 		limitedHandler := limitedTripperware.Wrap(next)
 		logHandler := logTripperware.Wrap(next)
 
-		detectedFieldsHandler := NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
-		return NewLimitedRoundTripper(next, limits, schema.Configs, detectedFieldsHandler)
+		return NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
 	}), nil
 }

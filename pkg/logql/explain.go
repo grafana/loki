@@ -67,6 +67,10 @@ func (e *mergeOverTimeStepEvaluator) Explain(parent Node) {
 	parent.Child("MergeFirstOverTime")
 }
 
+func (e *CountMinSketchVectorStepEvaluator) Explain(parent Node) {
+	parent.Child("CountMinSketchVector")
+}
+
 func (EmptyEvaluator[SampleVector]) Explain(parent Node) {
 	parent.Child("Empty")
 }

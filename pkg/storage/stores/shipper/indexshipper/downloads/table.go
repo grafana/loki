@@ -3,9 +3,11 @@ package downloads
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -271,9 +273,22 @@ func (t *table) Sync(ctx context.Context) error {
 	level.Debug(t.logger).Log("msg", fmt.Sprintf("syncing files for table %s", t.name))
 
 	t.indexSetsMtx.RLock()
-	defer t.indexSetsMtx.RUnlock()
+	users := slices.Collect(maps.Keys(t.indexSets))
+	t.indexSetsMtx.RUnlock()
 
-	for userID, indexSet := range t.indexSets {
+	for _, userID := range users {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		t.indexSetsMtx.RLock()
+		indexSet, ok := t.indexSets[userID]
+		t.indexSetsMtx.RUnlock()
+
+		if !ok {
+			continue
+		}
+
 		if err := indexSet.Sync(ctx); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("failed to sync index set %s for table %s", userID, t.name))
 		}

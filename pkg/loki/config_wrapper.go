@@ -244,6 +244,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.KafkaIngestion.PartitionRingConfig.KVStore = rc.KVStore
 	}
 
 	if mergeWithExisting {
@@ -540,9 +541,35 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.AlibabaCloud, defaults.StorageConfig.AlibabaStorageConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "alibaba"
+			r.Ruler.StoreConfig.AlibabaCloud = r.Common.Storage.AlibabaCloud
+			r.StorageConfig.AlibabaStorageConfig = r.Common.Storage.AlibabaCloud
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.COS, defaults.StorageConfig.COSConfig) {
+		configsFound++
+
+		applyConfig = func(r *ConfigWrapper) {
+			r.Ruler.StoreConfig.Type = "cos"
+			r.Ruler.StoreConfig.COS = r.Common.Storage.COS
+			r.StorageConfig.COSConfig = r.Common.Storage.COS
+		}
+	}
+
 	if !reflect.DeepEqual(cfg.Common.Storage.CongestionControl, defaults.StorageConfig.CongestionControl) {
 		applyConfig = func(r *ConfigWrapper) {
 			r.StorageConfig.CongestionControl = r.Common.Storage.CongestionControl
+		}
+	}
+
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
+		applyConfig = func(r *ConfigWrapper) {
+			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
 		}
 	}
 

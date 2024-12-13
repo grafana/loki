@@ -427,7 +427,7 @@ func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaCon
 	if err != errNotExists {
 		return nil, err
 	}
-	return nil, errNotExists
+	return nil, errors.Wrap(err, "could not find a schema config file matching any of the known patterns. First verify --org-id is correct. Then check the root of the bucket for a file with `schemaconfig` in the name. If no such file exists it may need to be created or re-synced from the source.")
 }
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
@@ -538,15 +538,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 }
 
 func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
-	oc, err := storage.NewObjectClient(
-		store,
-		conf.StorageConfig,
-		cm,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return oc, nil
+	return storage.NewObjectClient(store, "logcli-query", conf.StorageConfig, cm)
 }
 
 var errNotExists = stdErrors.New("doesn't exist")
@@ -561,11 +553,11 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.Sc
 	defer cancel()
 
 	ok, err := oc.ObjectExists(ctx, name)
-	if !ok {
-		return nil, errNotExists
-	}
 	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, errNotExists
 	}
 
 	rdr, _, err := oc.GetObject(ctx, name)

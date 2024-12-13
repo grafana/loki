@@ -59,7 +59,8 @@ type PrefixType struct {
 }
 
 type PutBucketArgs struct {
-	TagList string
+	TagList string `json:"-"`
+	EnableMultiAz bool `json:"enableMultiAz"`
 }
 
 // ListObjectsResult defines the result structure of ListObjects api.
@@ -280,10 +281,13 @@ type CopyObjectArgs struct {
 	IfUnmodifiedSince string
 	TrafficLimit      int64
 	CannedAcl         string
+	TaggingDirective  string
 }
 
 type MultiCopyObjectArgs struct {
 	StorageClass string
+	ObjectTagging string
+	TaggingDirective string
 }
 
 type CallbackResult struct {
@@ -394,6 +398,7 @@ type EndMessage struct {
 type FetchObjectArgs struct {
 	FetchMode    string
 	StorageClass string
+	FetchCallBackAddress string
 }
 
 // FetchObjectResult defines the result json structure for the fetch object api.
@@ -455,6 +460,8 @@ type InitiateMultipartUploadArgs struct {
 	ContentDisposition string
 	Expires            string
 	StorageClass       string
+	ObjectTagging      string
+	TaggingDirective   string
 }
 
 // InitiateMultipartUploadResult defines the result structure to initiate a multipart upload.
@@ -662,4 +669,18 @@ type ObjectTags struct {
 type ObjectTag struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+type BosShareLinkArgs struct {
+	Bucket          string `json:"bucket"`
+	Endpoint        string `json:"endpoint"`
+	Prefix          string `json:"prefix"`
+	ShareCode       string `json:"shareCode"`
+	DurationSeconds int64  `json:"durationSeconds"`
+}
+
+type BosShareResBody struct {
+	ShareUrl       string `json:"shareUrl"`
+	LinkExpireTime int64  `json:"linkExpireTime"`
+	ShareCode      string `json:"shareCode"`
 }

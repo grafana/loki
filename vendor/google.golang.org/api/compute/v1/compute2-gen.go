@@ -5413,8 +5413,8 @@ type BackendServicesListUsableCall struct {
 	header_      http.Header
 }
 
-// ListUsable: Retrieves an aggregated list of all usable backend services in
-// the specified project.
+// ListUsable: Retrieves a list of all usable backend services in the specified
+// project.
 //
 // - project: Project ID for this request.
 func (r *BackendServicesService) ListUsable(project string) *BackendServicesListUsableCall {
@@ -14137,1055 +14137,6 @@ func (c *ForwardingRulesSetTargetCall) doRequest(alt string) (*http.Response, er
 // error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
 // whether the returned error was because http.StatusNotModified was returned.
 func (c *ForwardingRulesSetTargetCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type FutureReservationsAggregatedListCall struct {
-	s            *Service
-	project      string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// AggregatedList: Retrieves an aggregated list of future reservations. To
-// prevent failure, Google recommends that you set the `returnPartialSuccess`
-// parameter to `true`.
-//
-// - project: Project ID for this request.
-func (r *FutureReservationsService) AggregatedList(project string) *FutureReservationsAggregatedListCall {
-	c := &FutureReservationsAggregatedListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	return c
-}
-
-// Filter sets the optional parameter "filter": A filter expression that
-// filters resources listed in the response. Most Compute resources support two
-// types of filter expressions: expressions that support regular expressions
-// and expressions that follow API improvement proposal AIP-160. These two
-// types of filter expressions cannot be mixed in one request. If you want to
-// use AIP-160, your expression must specify the field name, an operator, and
-// the value that you want to use for filtering. The value must be a string, a
-// number, or a boolean. The operator must be either `=`, `!=`, `>`, `<`, `<=`,
-// `>=` or `:`. For example, if you are filtering Compute Engine instances, you
-// can exclude instances named `example-instance` by specifying `name !=
-// example-instance`. The `:*` comparison can be used to test whether a key has
-// been defined. For example, to find all objects with `owner` label use: ```
-// labels.owner:* ``` You can also filter nested fields. For example, you could
-// specify `scheduling.automaticRestart = false` to include instances only if
-// they are not scheduled for automatic restarts. You can use filtering on
-// nested fields to filter based on resource labels. To filter on multiple
-// expressions, provide each separate expression within parentheses. For
-// example: ``` (scheduling.automaticRestart = true) (cpuPlatform = "Intel
-// Skylake") ``` By default, each expression is an `AND` expression. However,
-// you can include `AND` and `OR` expressions explicitly. For example: ```
-// (cpuPlatform = "Intel Skylake") OR (cpuPlatform = "Intel Broadwell") AND
-// (scheduling.automaticRestart = true) ``` If you want to use a regular
-// expression, use the `eq` (equal) or `ne` (not equal) operator against a
-// single un-parenthesized expression with or without quotes or against
-// multiple parenthesized expressions. Examples: `fieldname eq unquoted
-// literal` `fieldname eq 'single quoted literal'` `fieldname eq "double quoted
-// literal" `(fieldname1 eq literal) (fieldname2 ne "literal")` The literal
-// value is interpreted as a regular expression using Google RE2 library
-// syntax. The literal value must match the entire field. For example, to
-// filter for instances that do not end with name "instance", you would use
-// `name ne .*instance`. You cannot combine constraints on multiple fields
-// using regular expressions.
-func (c *FutureReservationsAggregatedListCall) Filter(filter string) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("filter", filter)
-	return c
-}
-
-// IncludeAllScopes sets the optional parameter "includeAllScopes": Indicates
-// whether every visible scope for each scope type (zone, region, global)
-// should be included in the response. For new resource types added after this
-// field, the flag has no effect as new resource types will always include
-// every visible scope for each scope type in response. For resource types
-// which predate this field, if this flag is omitted or false, only scopes of
-// the scope types where the resource type is expected to be found will be
-// included.
-func (c *FutureReservationsAggregatedListCall) IncludeAllScopes(includeAllScopes bool) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("includeAllScopes", fmt.Sprint(includeAllScopes))
-	return c
-}
-
-// MaxResults sets the optional parameter "maxResults": The maximum number of
-// results per page that should be returned. If the number of available results
-// is larger than `maxResults`, Compute Engine returns a `nextPageToken` that
-// can be used to get the next page of results in subsequent list requests.
-// Acceptable values are `0` to `500`, inclusive. (Default: `500`)
-func (c *FutureReservationsAggregatedListCall) MaxResults(maxResults int64) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
-	return c
-}
-
-// OrderBy sets the optional parameter "orderBy": Sorts list results by a
-// certain order. By default, results are returned in alphanumerical order
-// based on the resource name. You can also sort results in descending order
-// based on the creation timestamp using `orderBy="creationTimestamp desc".
-// This sorts results based on the `creationTimestamp` field in reverse
-// chronological order (newest result first). Use this to sort resources like
-// operations so that the newest operation is returned first. Currently, only
-// sorting by `name` or `creationTimestamp desc` is supported.
-func (c *FutureReservationsAggregatedListCall) OrderBy(orderBy string) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("orderBy", orderBy)
-	return c
-}
-
-// PageToken sets the optional parameter "pageToken": Specifies a page token to
-// use. Set `pageToken` to the `nextPageToken` returned by a previous list
-// request to get the next page of results.
-func (c *FutureReservationsAggregatedListCall) PageToken(pageToken string) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("pageToken", pageToken)
-	return c
-}
-
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in case
-// of failure. The default value is false. For example, when partial success
-// behavior is enabled, aggregatedList for a single zone scope either returns
-// all resources in the zone or no resources, with an error code.
-func (c *FutureReservationsAggregatedListCall) ReturnPartialSuccess(returnPartialSuccess bool) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
-// ServiceProjectNumber sets the optional parameter "serviceProjectNumber": The
-// Shared VPC service project id or service project number for which aggregated
-// list request is invoked for subnetworks list-usable api.
-func (c *FutureReservationsAggregatedListCall) ServiceProjectNumber(serviceProjectNumber int64) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("serviceProjectNumber", fmt.Sprint(serviceProjectNumber))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *FutureReservationsAggregatedListCall) Fields(s ...googleapi.Field) *FutureReservationsAggregatedListCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *FutureReservationsAggregatedListCall) IfNoneMatch(entityTag string) *FutureReservationsAggregatedListCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *FutureReservationsAggregatedListCall) Context(ctx context.Context) *FutureReservationsAggregatedListCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *FutureReservationsAggregatedListCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *FutureReservationsAggregatedListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	var body io.Reader = nil
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/aggregated/futureReservations")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.futureReservations.aggregatedList" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *FutureReservationsAggregatedListResponse.ServerResponse.Header or (if a
-// response was returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *FutureReservationsAggregatedListCall) Do(opts ...googleapi.CallOption) (*FutureReservationsAggregatedListResponse, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &FutureReservationsAggregatedListResponse{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-// Pages invokes f for each page of results.
-// A non-nil error returned from f will halt the iteration.
-// The provided context supersedes any context provided to the Context method.
-func (c *FutureReservationsAggregatedListCall) Pages(ctx context.Context, f func(*FutureReservationsAggregatedListResponse) error) error {
-	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken"))
-	for {
-		x, err := c.Do()
-		if err != nil {
-			return err
-		}
-		if err := f(x); err != nil {
-			return err
-		}
-		if x.NextPageToken == "" {
-			return nil
-		}
-		c.PageToken(x.NextPageToken)
-	}
-}
-
-type FutureReservationsCancelCall struct {
-	s                 *Service
-	project           string
-	zone              string
-	futureReservation string
-	urlParams_        gensupport.URLParams
-	ctx_              context.Context
-	header_           http.Header
-}
-
-// Cancel: Cancel the specified future reservation.
-//
-//   - futureReservation: Name of the future reservation to retrieve. Name should
-//     conform to RFC1035.
-//   - project: Project ID for this request.
-//   - zone: Name of the zone for this request. Name should conform to RFC1035.
-func (r *FutureReservationsService) Cancel(project string, zone string, futureReservation string) *FutureReservationsCancelCall {
-	c := &FutureReservationsCancelCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.zone = zone
-	c.futureReservation = futureReservation
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so that if you must retry
-// your request, the server will know to ignore the request if it has already
-// been completed. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported ( 00000000-0000-0000-0000-000000000000).
-func (c *FutureReservationsCancelCall) RequestId(requestId string) *FutureReservationsCancelCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *FutureReservationsCancelCall) Fields(s ...googleapi.Field) *FutureReservationsCancelCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *FutureReservationsCancelCall) Context(ctx context.Context) *FutureReservationsCancelCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *FutureReservationsCancelCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *FutureReservationsCancelCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations/{futureReservation}/cancel")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":           c.project,
-		"zone":              c.zone,
-		"futureReservation": c.futureReservation,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.futureReservations.cancel" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *FutureReservationsCancelCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type FutureReservationsDeleteCall struct {
-	s                 *Service
-	project           string
-	zone              string
-	futureReservation string
-	urlParams_        gensupport.URLParams
-	ctx_              context.Context
-	header_           http.Header
-}
-
-// Delete: Deletes the specified future reservation.
-//
-//   - futureReservation: Name of the future reservation to retrieve. Name should
-//     conform to RFC1035.
-//   - project: Project ID for this request.
-//   - zone: Name of the zone for this request. Name should conform to RFC1035.
-func (r *FutureReservationsService) Delete(project string, zone string, futureReservation string) *FutureReservationsDeleteCall {
-	c := &FutureReservationsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.zone = zone
-	c.futureReservation = futureReservation
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so that if you must retry
-// your request, the server will know to ignore the request if it has already
-// been completed. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported ( 00000000-0000-0000-0000-000000000000).
-func (c *FutureReservationsDeleteCall) RequestId(requestId string) *FutureReservationsDeleteCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *FutureReservationsDeleteCall) Fields(s ...googleapi.Field) *FutureReservationsDeleteCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *FutureReservationsDeleteCall) Context(ctx context.Context) *FutureReservationsDeleteCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *FutureReservationsDeleteCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *FutureReservationsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	var body io.Reader = nil
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations/{futureReservation}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":           c.project,
-		"zone":              c.zone,
-		"futureReservation": c.futureReservation,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.futureReservations.delete" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *FutureReservationsDeleteCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type FutureReservationsGetCall struct {
-	s                 *Service
-	project           string
-	zone              string
-	futureReservation string
-	urlParams_        gensupport.URLParams
-	ifNoneMatch_      string
-	ctx_              context.Context
-	header_           http.Header
-}
-
-// Get: Retrieves information about the specified future reservation.
-//
-//   - futureReservation: Name of the future reservation to retrieve. Name should
-//     conform to RFC1035.
-//   - project: Project ID for this request.
-//   - zone: Name of the zone for this request. Name should conform to RFC1035.
-func (r *FutureReservationsService) Get(project string, zone string, futureReservation string) *FutureReservationsGetCall {
-	c := &FutureReservationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.zone = zone
-	c.futureReservation = futureReservation
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *FutureReservationsGetCall) Fields(s ...googleapi.Field) *FutureReservationsGetCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *FutureReservationsGetCall) IfNoneMatch(entityTag string) *FutureReservationsGetCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *FutureReservationsGetCall) Context(ctx context.Context) *FutureReservationsGetCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *FutureReservationsGetCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *FutureReservationsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	var body io.Reader = nil
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations/{futureReservation}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":           c.project,
-		"zone":              c.zone,
-		"futureReservation": c.futureReservation,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.futureReservations.get" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *FutureReservation.ServerResponse.Header or (if a response was returned at
-// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified was
-// returned.
-func (c *FutureReservationsGetCall) Do(opts ...googleapi.CallOption) (*FutureReservation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &FutureReservation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type FutureReservationsInsertCall struct {
-	s                 *Service
-	project           string
-	zone              string
-	futurereservation *FutureReservation
-	urlParams_        gensupport.URLParams
-	ctx_              context.Context
-	header_           http.Header
-}
-
-// Insert: Creates a new Future Reservation.
-//
-// - project: Project ID for this request.
-// - zone: Name of the zone for this request. Name should conform to RFC1035.
-func (r *FutureReservationsService) Insert(project string, zone string, futurereservation *FutureReservation) *FutureReservationsInsertCall {
-	c := &FutureReservationsInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.zone = zone
-	c.futurereservation = futurereservation
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so that if you must retry
-// your request, the server will know to ignore the request if it has already
-// been completed. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported ( 00000000-0000-0000-0000-000000000000).
-func (c *FutureReservationsInsertCall) RequestId(requestId string) *FutureReservationsInsertCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *FutureReservationsInsertCall) Fields(s ...googleapi.Field) *FutureReservationsInsertCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *FutureReservationsInsertCall) Context(ctx context.Context) *FutureReservationsInsertCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *FutureReservationsInsertCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *FutureReservationsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.futurereservation)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"zone":    c.zone,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.futureReservations.insert" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *FutureReservationsInsertCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &Operation{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-type FutureReservationsListCall struct {
-	s            *Service
-	project      string
-	zone         string
-	urlParams_   gensupport.URLParams
-	ifNoneMatch_ string
-	ctx_         context.Context
-	header_      http.Header
-}
-
-// List: A list of all the future reservations that have been configured for
-// the specified project in specified zone.
-//
-// - project: Project ID for this request.
-// - zone: Name of the zone for this request. Name should conform to RFC1035.
-func (r *FutureReservationsService) List(project string, zone string) *FutureReservationsListCall {
-	c := &FutureReservationsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.zone = zone
-	return c
-}
-
-// Filter sets the optional parameter "filter": A filter expression that
-// filters resources listed in the response. Most Compute resources support two
-// types of filter expressions: expressions that support regular expressions
-// and expressions that follow API improvement proposal AIP-160. These two
-// types of filter expressions cannot be mixed in one request. If you want to
-// use AIP-160, your expression must specify the field name, an operator, and
-// the value that you want to use for filtering. The value must be a string, a
-// number, or a boolean. The operator must be either `=`, `!=`, `>`, `<`, `<=`,
-// `>=` or `:`. For example, if you are filtering Compute Engine instances, you
-// can exclude instances named `example-instance` by specifying `name !=
-// example-instance`. The `:*` comparison can be used to test whether a key has
-// been defined. For example, to find all objects with `owner` label use: ```
-// labels.owner:* ``` You can also filter nested fields. For example, you could
-// specify `scheduling.automaticRestart = false` to include instances only if
-// they are not scheduled for automatic restarts. You can use filtering on
-// nested fields to filter based on resource labels. To filter on multiple
-// expressions, provide each separate expression within parentheses. For
-// example: ``` (scheduling.automaticRestart = true) (cpuPlatform = "Intel
-// Skylake") ``` By default, each expression is an `AND` expression. However,
-// you can include `AND` and `OR` expressions explicitly. For example: ```
-// (cpuPlatform = "Intel Skylake") OR (cpuPlatform = "Intel Broadwell") AND
-// (scheduling.automaticRestart = true) ``` If you want to use a regular
-// expression, use the `eq` (equal) or `ne` (not equal) operator against a
-// single un-parenthesized expression with or without quotes or against
-// multiple parenthesized expressions. Examples: `fieldname eq unquoted
-// literal` `fieldname eq 'single quoted literal'` `fieldname eq "double quoted
-// literal" `(fieldname1 eq literal) (fieldname2 ne "literal")` The literal
-// value is interpreted as a regular expression using Google RE2 library
-// syntax. The literal value must match the entire field. For example, to
-// filter for instances that do not end with name "instance", you would use
-// `name ne .*instance`. You cannot combine constraints on multiple fields
-// using regular expressions.
-func (c *FutureReservationsListCall) Filter(filter string) *FutureReservationsListCall {
-	c.urlParams_.Set("filter", filter)
-	return c
-}
-
-// MaxResults sets the optional parameter "maxResults": The maximum number of
-// results per page that should be returned. If the number of available results
-// is larger than `maxResults`, Compute Engine returns a `nextPageToken` that
-// can be used to get the next page of results in subsequent list requests.
-// Acceptable values are `0` to `500`, inclusive. (Default: `500`)
-func (c *FutureReservationsListCall) MaxResults(maxResults int64) *FutureReservationsListCall {
-	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
-	return c
-}
-
-// OrderBy sets the optional parameter "orderBy": Sorts list results by a
-// certain order. By default, results are returned in alphanumerical order
-// based on the resource name. You can also sort results in descending order
-// based on the creation timestamp using `orderBy="creationTimestamp desc".
-// This sorts results based on the `creationTimestamp` field in reverse
-// chronological order (newest result first). Use this to sort resources like
-// operations so that the newest operation is returned first. Currently, only
-// sorting by `name` or `creationTimestamp desc` is supported.
-func (c *FutureReservationsListCall) OrderBy(orderBy string) *FutureReservationsListCall {
-	c.urlParams_.Set("orderBy", orderBy)
-	return c
-}
-
-// PageToken sets the optional parameter "pageToken": Specifies a page token to
-// use. Set `pageToken` to the `nextPageToken` returned by a previous list
-// request to get the next page of results.
-func (c *FutureReservationsListCall) PageToken(pageToken string) *FutureReservationsListCall {
-	c.urlParams_.Set("pageToken", pageToken)
-	return c
-}
-
-// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
-// Opt-in for partial success behavior which provides partial results in case
-// of failure. The default value is false. For example, when partial success
-// behavior is enabled, aggregatedList for a single zone scope either returns
-// all resources in the zone or no resources, with an error code.
-func (c *FutureReservationsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *FutureReservationsListCall {
-	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *FutureReservationsListCall) Fields(s ...googleapi.Field) *FutureReservationsListCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// IfNoneMatch sets an optional parameter which makes the operation fail if the
-// object's ETag matches the given value. This is useful for getting updates
-// only after the object has changed since the last request.
-func (c *FutureReservationsListCall) IfNoneMatch(entityTag string) *FutureReservationsListCall {
-	c.ifNoneMatch_ = entityTag
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *FutureReservationsListCall) Context(ctx context.Context) *FutureReservationsListCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *FutureReservationsListCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *FutureReservationsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
-	if c.ifNoneMatch_ != "" {
-		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
-	}
-	var body io.Reader = nil
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project": c.project,
-		"zone":    c.zone,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.futureReservations.list" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *FutureReservationsListResponse.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was because
-// http.StatusNotModified was returned.
-func (c *FutureReservationsListCall) Do(opts ...googleapi.CallOption) (*FutureReservationsListResponse, error) {
-	gensupport.SetOptions(c.urlParams_, opts...)
-	res, err := c.doRequest("json")
-	if res != nil && res.StatusCode == http.StatusNotModified {
-		if res.Body != nil {
-			res.Body.Close()
-		}
-		return nil, gensupport.WrapError(&googleapi.Error{
-			Code:   res.StatusCode,
-			Header: res.Header,
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer googleapi.CloseBody(res)
-	if err := googleapi.CheckResponse(res); err != nil {
-		return nil, gensupport.WrapError(err)
-	}
-	ret := &FutureReservationsListResponse{
-		ServerResponse: googleapi.ServerResponse{
-			Header:         res.Header,
-			HTTPStatusCode: res.StatusCode,
-		},
-	}
-	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
-		return nil, err
-	}
-	return ret, nil
-}
-
-// Pages invokes f for each page of results.
-// A non-nil error returned from f will halt the iteration.
-// The provided context supersedes any context provided to the Context method.
-func (c *FutureReservationsListCall) Pages(ctx context.Context, f func(*FutureReservationsListResponse) error) error {
-	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken"))
-	for {
-		x, err := c.Do()
-		if err != nil {
-			return err
-		}
-		if err := f(x); err != nil {
-			return err
-		}
-		if x.NextPageToken == "" {
-			return nil
-		}
-		c.PageToken(x.NextPageToken)
-	}
-}
-
-type FutureReservationsUpdateCall struct {
-	s                 *Service
-	project           string
-	zone              string
-	futureReservation string
-	futurereservation *FutureReservation
-	urlParams_        gensupport.URLParams
-	ctx_              context.Context
-	header_           http.Header
-}
-
-// Update: Updates the specified future reservation.
-//
-//   - futureReservation: Name of the reservation to update. Name should conform
-//     to RFC1035.
-//   - project: Project ID for this request.
-//   - zone: Name of the zone for this request. Name should conform to RFC1035.
-func (r *FutureReservationsService) Update(project string, zone string, futureReservation string, futurereservation *FutureReservation) *FutureReservationsUpdateCall {
-	c := &FutureReservationsUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
-	c.project = project
-	c.zone = zone
-	c.futureReservation = futureReservation
-	c.futurereservation = futurereservation
-	return c
-}
-
-// RequestId sets the optional parameter "requestId": An optional request ID to
-// identify requests. Specify a unique request ID so that if you must retry
-// your request, the server will know to ignore the request if it has already
-// been completed. For example, consider a situation where you make an initial
-// request and the request times out. If you make the request again with the
-// same request ID, the server can check if original operation with the same
-// request ID was received, and if so, will ignore the second request. This
-// prevents clients from accidentally creating duplicate commitments. The
-// request ID must be a valid UUID with the exception that zero UUID is not
-// supported ( 00000000-0000-0000-0000-000000000000).
-func (c *FutureReservationsUpdateCall) RequestId(requestId string) *FutureReservationsUpdateCall {
-	c.urlParams_.Set("requestId", requestId)
-	return c
-}
-
-// UpdateMask sets the optional parameter "updateMask": update_mask indicates
-// fields to be updated as part of this request.
-func (c *FutureReservationsUpdateCall) UpdateMask(updateMask string) *FutureReservationsUpdateCall {
-	c.urlParams_.Set("updateMask", updateMask)
-	return c
-}
-
-// Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
-// details.
-func (c *FutureReservationsUpdateCall) Fields(s ...googleapi.Field) *FutureReservationsUpdateCall {
-	c.urlParams_.Set("fields", googleapi.CombineFields(s))
-	return c
-}
-
-// Context sets the context to be used in this call's Do method.
-func (c *FutureReservationsUpdateCall) Context(ctx context.Context) *FutureReservationsUpdateCall {
-	c.ctx_ = ctx
-	return c
-}
-
-// Header returns a http.Header that can be modified by the caller to add
-// headers to the request.
-func (c *FutureReservationsUpdateCall) Header() http.Header {
-	if c.header_ == nil {
-		c.header_ = make(http.Header)
-	}
-	return c.header_
-}
-
-func (c *FutureReservationsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.futurereservation)
-	if err != nil {
-		return nil, err
-	}
-	c.urlParams_.Set("alt", alt)
-	c.urlParams_.Set("prettyPrint", "false")
-	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/futureReservations/{futureReservation}")
-	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("PATCH", urls, body)
-	if err != nil {
-		return nil, err
-	}
-	req.Header = reqHeaders
-	googleapi.Expand(req.URL, map[string]string{
-		"project":           c.project,
-		"zone":              c.zone,
-		"futureReservation": c.futureReservation,
-	})
-	return gensupport.SendRequest(c.ctx_, c.s.client, req)
-}
-
-// Do executes the "compute.futureReservations.update" call.
-// Any non-2xx status code is an error. Response headers are in either
-// *Operation.ServerResponse.Header or (if a response was returned at all) in
-// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
-// whether the returned error was because http.StatusNotModified was returned.
-func (c *FutureReservationsUpdateCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
 	if res != nil && res.StatusCode == http.StatusNotModified {
@@ -27111,6 +26062,142 @@ func (c *InstanceGroupManagersResizeCall) Do(opts ...googleapi.CallOption) (*Ope
 	return ret, nil
 }
 
+type InstanceGroupManagersResumeInstancesCall struct {
+	s                                           *Service
+	project                                     string
+	zone                                        string
+	instanceGroupManager                        string
+	instancegroupmanagersresumeinstancesrequest *InstanceGroupManagersResumeInstancesRequest
+	urlParams_                                  gensupport.URLParams
+	ctx_                                        context.Context
+	header_                                     http.Header
+}
+
+// ResumeInstances: Flags the specified instances in the managed instance group
+// to be resumed. This method increases the targetSize and decreases the
+// targetSuspendedSize of the managed instance group by the number of instances
+// that you resume. The resumeInstances operation is marked DONE if the
+// resumeInstances request is successful. The underlying actions take
+// additional time. You must separately verify the status of the RESUMING
+// action with the listmanagedinstances method. In this request, you can only
+// specify instances that are suspended. For example, if an instance was
+// previously suspended using the suspendInstances method, it can be resumed
+// using the resumeInstances method. If a health check is attached to the
+// managed instance group, the specified instances will be verified as healthy
+// after they are resumed. You can specify a maximum of 1000 instances with
+// this method per request.
+//
+// - instanceGroupManager: The name of the managed instance group.
+// - project: Project ID for this request.
+// - zone: The name of the zone where the managed instance group is located.
+func (r *InstanceGroupManagersService) ResumeInstances(project string, zone string, instanceGroupManager string, instancegroupmanagersresumeinstancesrequest *InstanceGroupManagersResumeInstancesRequest) *InstanceGroupManagersResumeInstancesCall {
+	c := &InstanceGroupManagersResumeInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.zone = zone
+	c.instanceGroupManager = instanceGroupManager
+	c.instancegroupmanagersresumeinstancesrequest = instancegroupmanagersresumeinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *InstanceGroupManagersResumeInstancesCall) RequestId(requestId string) *InstanceGroupManagersResumeInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *InstanceGroupManagersResumeInstancesCall) Fields(s ...googleapi.Field) *InstanceGroupManagersResumeInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *InstanceGroupManagersResumeInstancesCall) Context(ctx context.Context) *InstanceGroupManagersResumeInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *InstanceGroupManagersResumeInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *InstanceGroupManagersResumeInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.instancegroupmanagersresumeinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/resumeInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"zone":                 c.zone,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.instanceGroupManagers.resumeInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *InstanceGroupManagersResumeInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
 type InstanceGroupManagersSetInstanceTemplateCall struct {
 	s                                               *Service
 	project                                         string
@@ -27336,6 +26423,424 @@ func (c *InstanceGroupManagersSetTargetPoolsCall) doRequest(alt string) (*http.R
 // error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
 // whether the returned error was because http.StatusNotModified was returned.
 func (c *InstanceGroupManagersSetTargetPoolsCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type InstanceGroupManagersStartInstancesCall struct {
+	s                                          *Service
+	project                                    string
+	zone                                       string
+	instanceGroupManager                       string
+	instancegroupmanagersstartinstancesrequest *InstanceGroupManagersStartInstancesRequest
+	urlParams_                                 gensupport.URLParams
+	ctx_                                       context.Context
+	header_                                    http.Header
+}
+
+// StartInstances: Flags the specified instances in the managed instance group
+// to be started. This method increases the targetSize and decreases the
+// targetStoppedSize of the managed instance group by the number of instances
+// that you start. The startInstances operation is marked DONE if the
+// startInstances request is successful. The underlying actions take additional
+// time. You must separately verify the status of the STARTING action with the
+// listmanagedinstances method. In this request, you can only specify instances
+// that are stopped. For example, if an instance was previously stopped using
+// the stopInstances method, it can be started using the startInstances method.
+// If a health check is attached to the managed instance group, the specified
+// instances will be verified as healthy after they are started. You can
+// specify a maximum of 1000 instances with this method per request.
+//
+// - instanceGroupManager: The name of the managed instance group.
+// - project: Project ID for this request.
+// - zone: The name of the zone where the managed instance group is located.
+func (r *InstanceGroupManagersService) StartInstances(project string, zone string, instanceGroupManager string, instancegroupmanagersstartinstancesrequest *InstanceGroupManagersStartInstancesRequest) *InstanceGroupManagersStartInstancesCall {
+	c := &InstanceGroupManagersStartInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.zone = zone
+	c.instanceGroupManager = instanceGroupManager
+	c.instancegroupmanagersstartinstancesrequest = instancegroupmanagersstartinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *InstanceGroupManagersStartInstancesCall) RequestId(requestId string) *InstanceGroupManagersStartInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *InstanceGroupManagersStartInstancesCall) Fields(s ...googleapi.Field) *InstanceGroupManagersStartInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *InstanceGroupManagersStartInstancesCall) Context(ctx context.Context) *InstanceGroupManagersStartInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *InstanceGroupManagersStartInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *InstanceGroupManagersStartInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.instancegroupmanagersstartinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/startInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"zone":                 c.zone,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.instanceGroupManagers.startInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *InstanceGroupManagersStartInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type InstanceGroupManagersStopInstancesCall struct {
+	s                                         *Service
+	project                                   string
+	zone                                      string
+	instanceGroupManager                      string
+	instancegroupmanagersstopinstancesrequest *InstanceGroupManagersStopInstancesRequest
+	urlParams_                                gensupport.URLParams
+	ctx_                                      context.Context
+	header_                                   http.Header
+}
+
+// StopInstances: Flags the specified instances in the managed instance group
+// to be immediately stopped. You can only specify instances that are running
+// in this request. This method reduces the targetSize and increases the
+// targetStoppedSize of the managed instance group by the number of instances
+// that you stop. The stopInstances operation is marked DONE if the
+// stopInstances request is successful. The underlying actions take additional
+// time. You must separately verify the status of the STOPPING action with the
+// listmanagedinstances method. If the standbyPolicy.initialDelaySec field is
+// set, the group delays stopping the instances until initialDelaySec have
+// passed from instance.creationTimestamp (that is, when the instance was
+// created). This delay gives your application time to set itself up and
+// initialize on the instance. If more than initialDelaySec seconds have passed
+// since instance.creationTimestamp when this method is called, there will be
+// zero delay. If the group is part of a backend service that has enabled
+// connection draining, it can take up to 60 seconds after the connection
+// draining duration has elapsed before the VM instance is stopped. Stopped
+// instances can be started using the startInstances method. You can specify a
+// maximum of 1000 instances with this method per request.
+//
+// - instanceGroupManager: The name of the managed instance group.
+// - project: Project ID for this request.
+// - zone: The name of the zone where the managed instance group is located.
+func (r *InstanceGroupManagersService) StopInstances(project string, zone string, instanceGroupManager string, instancegroupmanagersstopinstancesrequest *InstanceGroupManagersStopInstancesRequest) *InstanceGroupManagersStopInstancesCall {
+	c := &InstanceGroupManagersStopInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.zone = zone
+	c.instanceGroupManager = instanceGroupManager
+	c.instancegroupmanagersstopinstancesrequest = instancegroupmanagersstopinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *InstanceGroupManagersStopInstancesCall) RequestId(requestId string) *InstanceGroupManagersStopInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *InstanceGroupManagersStopInstancesCall) Fields(s ...googleapi.Field) *InstanceGroupManagersStopInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *InstanceGroupManagersStopInstancesCall) Context(ctx context.Context) *InstanceGroupManagersStopInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *InstanceGroupManagersStopInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *InstanceGroupManagersStopInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.instancegroupmanagersstopinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/stopInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"zone":                 c.zone,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.instanceGroupManagers.stopInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *InstanceGroupManagersStopInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Operation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type InstanceGroupManagersSuspendInstancesCall struct {
+	s                                            *Service
+	project                                      string
+	zone                                         string
+	instanceGroupManager                         string
+	instancegroupmanagerssuspendinstancesrequest *InstanceGroupManagersSuspendInstancesRequest
+	urlParams_                                   gensupport.URLParams
+	ctx_                                         context.Context
+	header_                                      http.Header
+}
+
+// SuspendInstances: Flags the specified instances in the managed instance
+// group to be immediately suspended. You can only specify instances that are
+// running in this request. This method reduces the targetSize and increases
+// the targetSuspendedSize of the managed instance group by the number of
+// instances that you suspend. The suspendInstances operation is marked DONE if
+// the suspendInstances request is successful. The underlying actions take
+// additional time. You must separately verify the status of the SUSPENDING
+// action with the listmanagedinstances method. If the
+// standbyPolicy.initialDelaySec field is set, the group delays suspension of
+// the instances until initialDelaySec have passed from
+// instance.creationTimestamp (that is, when the instance was created). This
+// delay gives your application time to set itself up and initialize on the
+// instance. If more than initialDelaySec seconds have passed since
+// instance.creationTimestamp when this method is called, there will be zero
+// delay. If the group is part of a backend service that has enabled connection
+// draining, it can take up to 60 seconds after the connection draining
+// duration has elapsed before the VM instance is suspended. Suspended
+// instances can be resumed using the resumeInstances method. You can specify a
+// maximum of 1000 instances with this method per request.
+//
+// - instanceGroupManager: The name of the managed instance group.
+// - project: Project ID for this request.
+// - zone: The name of the zone where the managed instance group is located.
+func (r *InstanceGroupManagersService) SuspendInstances(project string, zone string, instanceGroupManager string, instancegroupmanagerssuspendinstancesrequest *InstanceGroupManagersSuspendInstancesRequest) *InstanceGroupManagersSuspendInstancesCall {
+	c := &InstanceGroupManagersSuspendInstancesCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.zone = zone
+	c.instanceGroupManager = instanceGroupManager
+	c.instancegroupmanagerssuspendinstancesrequest = instancegroupmanagerssuspendinstancesrequest
+	return c
+}
+
+// RequestId sets the optional parameter "requestId": An optional request ID to
+// identify requests. Specify a unique request ID so that if you must retry
+// your request, the server will know to ignore the request if it has already
+// been completed. For example, consider a situation where you make an initial
+// request and the request times out. If you make the request again with the
+// same request ID, the server can check if original operation with the same
+// request ID was received, and if so, will ignore the second request. This
+// prevents clients from accidentally creating duplicate commitments. The
+// request ID must be a valid UUID with the exception that zero UUID is not
+// supported ( 00000000-0000-0000-0000-000000000000).
+func (c *InstanceGroupManagersSuspendInstancesCall) RequestId(requestId string) *InstanceGroupManagersSuspendInstancesCall {
+	c.urlParams_.Set("requestId", requestId)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *InstanceGroupManagersSuspendInstancesCall) Fields(s ...googleapi.Field) *InstanceGroupManagersSuspendInstancesCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *InstanceGroupManagersSuspendInstancesCall) Context(ctx context.Context) *InstanceGroupManagersSuspendInstancesCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *InstanceGroupManagersSuspendInstancesCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *InstanceGroupManagersSuspendInstancesCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	var body io.Reader = nil
+	body, err := googleapi.WithoutDataWrapper.JSONReader(c.instancegroupmanagerssuspendinstancesrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/zones/{zone}/instanceGroupManagers/{instanceGroupManager}/suspendInstances")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":              c.project,
+		"zone":                 c.zone,
+		"instanceGroupManager": c.instanceGroupManager,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.instanceGroupManagers.suspendInstances" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Operation.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *InstanceGroupManagersSuspendInstancesCall) Do(opts ...googleapi.CallOption) (*Operation, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
 	if res != nil && res.StatusCode == http.StatusNotModified {
@@ -32000,7 +31505,9 @@ func (c *InstancesGetSerialPortOutputCall) Port(port int64) *InstancesGetSerialP
 // adjusted start position is returned as the `start` property value. You can
 // also provide a negative start position, which translates to the most recent
 // number of bytes written to the serial port. For example, -3 is interpreted
-// as the most recent 3 bytes written to the serial console.
+// as the most recent 3 bytes written to the serial console. Note that the
+// negative start is bounded by the retained buffer size, and the returned
+// serial console output will not exceed the max buffer size.
 func (c *InstancesGetSerialPortOutputCall) Start(start int64) *InstancesGetSerialPortOutputCall {
 	c.urlParams_.Set("start", fmt.Sprint(start))
 	return c
@@ -48436,6 +47943,325 @@ func (c *NetworkFirewallPoliciesTestIamPermissionsCall) Do(opts ...googleapi.Cal
 		return nil, err
 	}
 	return ret, nil
+}
+
+type NetworkProfilesGetCall struct {
+	s              *Service
+	project        string
+	networkProfile string
+	urlParams_     gensupport.URLParams
+	ifNoneMatch_   string
+	ctx_           context.Context
+	header_        http.Header
+}
+
+// Get: Returns the specified network profile.
+//
+// - networkProfile: Name of the network profile to return.
+// - project: Project ID for this request.
+func (r *NetworkProfilesService) Get(project string, networkProfile string) *NetworkProfilesGetCall {
+	c := &NetworkProfilesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	c.networkProfile = networkProfile
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *NetworkProfilesGetCall) Fields(s ...googleapi.Field) *NetworkProfilesGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *NetworkProfilesGetCall) IfNoneMatch(entityTag string) *NetworkProfilesGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *NetworkProfilesGetCall) Context(ctx context.Context) *NetworkProfilesGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *NetworkProfilesGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *NetworkProfilesGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	var body io.Reader = nil
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/networkProfiles/{networkProfile}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project":        c.project,
+		"networkProfile": c.networkProfile,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.networkProfiles.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *NetworkProfile.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *NetworkProfilesGetCall) Do(opts ...googleapi.CallOption) (*NetworkProfile, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &NetworkProfile{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+type NetworkProfilesListCall struct {
+	s            *Service
+	project      string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Retrieves a list of network profiles available to the specified
+// project.
+//
+// - project: Project ID for this request.
+func (r *NetworkProfilesService) List(project string) *NetworkProfilesListCall {
+	c := &NetworkProfilesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.project = project
+	return c
+}
+
+// Filter sets the optional parameter "filter": A filter expression that
+// filters resources listed in the response. Most Compute resources support two
+// types of filter expressions: expressions that support regular expressions
+// and expressions that follow API improvement proposal AIP-160. These two
+// types of filter expressions cannot be mixed in one request. If you want to
+// use AIP-160, your expression must specify the field name, an operator, and
+// the value that you want to use for filtering. The value must be a string, a
+// number, or a boolean. The operator must be either `=`, `!=`, `>`, `<`, `<=`,
+// `>=` or `:`. For example, if you are filtering Compute Engine instances, you
+// can exclude instances named `example-instance` by specifying `name !=
+// example-instance`. The `:*` comparison can be used to test whether a key has
+// been defined. For example, to find all objects with `owner` label use: ```
+// labels.owner:* ``` You can also filter nested fields. For example, you could
+// specify `scheduling.automaticRestart = false` to include instances only if
+// they are not scheduled for automatic restarts. You can use filtering on
+// nested fields to filter based on resource labels. To filter on multiple
+// expressions, provide each separate expression within parentheses. For
+// example: ``` (scheduling.automaticRestart = true) (cpuPlatform = "Intel
+// Skylake") ``` By default, each expression is an `AND` expression. However,
+// you can include `AND` and `OR` expressions explicitly. For example: ```
+// (cpuPlatform = "Intel Skylake") OR (cpuPlatform = "Intel Broadwell") AND
+// (scheduling.automaticRestart = true) ``` If you want to use a regular
+// expression, use the `eq` (equal) or `ne` (not equal) operator against a
+// single un-parenthesized expression with or without quotes or against
+// multiple parenthesized expressions. Examples: `fieldname eq unquoted
+// literal` `fieldname eq 'single quoted literal'` `fieldname eq "double quoted
+// literal" `(fieldname1 eq literal) (fieldname2 ne "literal")` The literal
+// value is interpreted as a regular expression using Google RE2 library
+// syntax. The literal value must match the entire field. For example, to
+// filter for instances that do not end with name "instance", you would use
+// `name ne .*instance`. You cannot combine constraints on multiple fields
+// using regular expressions.
+func (c *NetworkProfilesListCall) Filter(filter string) *NetworkProfilesListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// MaxResults sets the optional parameter "maxResults": The maximum number of
+// results per page that should be returned. If the number of available results
+// is larger than `maxResults`, Compute Engine returns a `nextPageToken` that
+// can be used to get the next page of results in subsequent list requests.
+// Acceptable values are `0` to `500`, inclusive. (Default: `500`)
+func (c *NetworkProfilesListCall) MaxResults(maxResults int64) *NetworkProfilesListCall {
+	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
+	return c
+}
+
+// OrderBy sets the optional parameter "orderBy": Sorts list results by a
+// certain order. By default, results are returned in alphanumerical order
+// based on the resource name. You can also sort results in descending order
+// based on the creation timestamp using `orderBy="creationTimestamp desc".
+// This sorts results based on the `creationTimestamp` field in reverse
+// chronological order (newest result first). Use this to sort resources like
+// operations so that the newest operation is returned first. Currently, only
+// sorting by `name` or `creationTimestamp desc` is supported.
+func (c *NetworkProfilesListCall) OrderBy(orderBy string) *NetworkProfilesListCall {
+	c.urlParams_.Set("orderBy", orderBy)
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": Specifies a page token to
+// use. Set `pageToken` to the `nextPageToken` returned by a previous list
+// request to get the next page of results.
+func (c *NetworkProfilesListCall) PageToken(pageToken string) *NetworkProfilesListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess":
+// Opt-in for partial success behavior which provides partial results in case
+// of failure. The default value is false. For example, when partial success
+// behavior is enabled, aggregatedList for a single zone scope either returns
+// all resources in the zone or no resources, with an error code.
+func (c *NetworkProfilesListCall) ReturnPartialSuccess(returnPartialSuccess bool) *NetworkProfilesListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *NetworkProfilesListCall) Fields(s ...googleapi.Field) *NetworkProfilesListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *NetworkProfilesListCall) IfNoneMatch(entityTag string) *NetworkProfilesListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *NetworkProfilesListCall) Context(ctx context.Context) *NetworkProfilesListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *NetworkProfilesListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *NetworkProfilesListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	var body io.Reader = nil
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{project}/global/networkProfiles")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"project": c.project,
+	})
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "compute.networkProfiles.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *NetworkProfilesListResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *NetworkProfilesListCall) Do(opts ...googleapi.CallOption) (*NetworkProfilesListResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &NetworkProfilesListResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	if err := gensupport.DecodeResponse(target, res); err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *NetworkProfilesListCall) Pages(ctx context.Context, f func(*NetworkProfilesListResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
 }
 
 type NetworksAddPeeringCall struct {

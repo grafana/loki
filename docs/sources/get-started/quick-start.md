@@ -18,6 +18,9 @@ killercoda:
         replacement: evaluate-loki_${1}_
   title: Loki Quickstart Demo
   description: This sandbox provides an online enviroment for testing the Loki quickstart demo.
+  details:
+    intro:
+      foreground: setup.sh
   backend:
     imageid: ubuntu
 ---
@@ -37,7 +40,7 @@ The Docker Compose configuration runs the following components, each in its own 
 - **Gateway** (nginx) which receives requests and redirects them to the appropriate container based on the request's URL.
 - **Loki read component**: which runs a Query Frontend and a Querier.
 - **Loki write component**: which runs a Distributor and an Ingester.
-- **Loki backend component**: which runs an Index Gateway, Compactor, Ruler, Bloom Compactor (experimental), and Bloom Gateway (experimental).
+- **Loki backend component**: which runs an Index Gateway, Compactor, Ruler, Bloom Planner (experimental), Bloom Builder (experimental), and Bloom Gateway (experimental).
 - **Minio**: which Loki uses to store its index and chunks.
 - **Grafana**: which provides visualization of the log lines captured within Loki.
 
@@ -99,21 +102,9 @@ This quickstart assumes you are running Linux.
 
    With `evaluate-loki` as the current working directory, start the demo environment using `docker compose`:
 
-   <!-- INTERACTIVE ignore START -->
-
    ```bash
    docker compose up -d
    ```
-
-   <!-- INTERACTIVE ignore END -->
-
-   {{< docs/ignore >}}
-
-   ```bash
-   docker-compose up -d
-   ```
-
-   {{< /docs/ignore >}}
 
    At the end of the command, you should see something similar to the following:
 
@@ -141,9 +132,9 @@ This quickstart assumes you are running Linux.
    - You can access the Grafana Alloy UI at [http://localhost:12345](http://localhost:12345).
 
 6. (Optional) You can check all the containers are running by running the following command:
-   
+
    ```bash
-   docker ps -a 
+   docker ps -a
    ```
 
 
@@ -321,7 +312,7 @@ Within the entrypoint section, the Loki data source is configured with the follo
 - `URL: http://gateway:3100` (URL of the Loki data source. Loki uses an nginx gateway to direct traffic to the appropriate component)
 - `jsonData.httpHeaderName1: "X-Scope-OrgID"` (header name for the organization ID)
 - `secureJsonData.httpHeaderValue1: "tenant1"` (header value for the organization ID)
-  
+
 It is important to note when Loki is configured in any other mode other than monolithic deployment, you are required to pass a tenant ID in the header. Without this, queries will return an authorization error.
 
 <!-- INTERACTIVE page step2.md END -->

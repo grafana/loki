@@ -1,9 +1,9 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.33.6
+ARG BUILD_IMAGE=grafana/loki-build-image:0.34.0
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f cmd/promtail/Dockerfile .
-ARG GO_VERSION=1.22
-FROM golang:${GO_VERSION} as goenv
+ARG GO_VERSION=1.23
+FROM golang:${GO_VERSION} AS goenv
 RUN go env GOARCH > /goarch && \
   go env GOARM > /goarm
 
@@ -13,7 +13,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki-querytee
 
-FROM gcr.io/distroless/base-nossl:debug
+FROM gcr.io/distroless/static:debug
 COPY --from=build /src/loki/cmd/querytee/querytee /usr/bin/querytee
 SHELL [ "/busybox/sh", "-c" ]
 RUN ln -s /busybox/sh /bin/sh

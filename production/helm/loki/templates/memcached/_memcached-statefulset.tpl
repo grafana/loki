@@ -102,9 +102,11 @@ spec:
           ports:
             - containerPort: {{ .port }}
               name: client
+          {{- /* Calculate storage size as round(.persistence.storageSize * 0.9). But with integer built-in operators. */}}
+          {{- $persistenceSize := (div (mul (trimSuffix "Gi" .persistence.storageSize | trimSuffix "G") 9) 10 ) }}
           args:
             - -m {{ .allocatedMemory }}
-            - --extended=modern,track_sizes{{ if .persistence.enabled }},ext_path={{ .persistence.mountPath }}/file:{{ .persistence.storageSize }}{{ end }}{{ with .extraExtendedOptions }},{{ . }}{{ end }}
+            - --extended=modern,track_sizes{{ if .persistence.enabled }},ext_path={{ .persistence.mountPath }}/file:{{ $persistenceSize }}G,ext_wbuf_size=16{{ end }}{{ with .extraExtendedOptions }},{{ . }}{{ end }}
             - -I {{ .maxItemMemory }}m
             - -c {{ .connectionLimit }}
             - -v
@@ -159,7 +161,9 @@ spec:
       {{- end }}
   {{- if .persistence.enabled }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: [ "ReadWriteOnce" ]

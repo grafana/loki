@@ -369,6 +369,26 @@ func TestJSONExpressionParser(t *testing.T) {
 			NoParserHints(),
 		},
 		{
+			"object element not present",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("undefined", `pod[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("undefined", ""),
+			NoParserHints(),
+		},
+		{
+			"accessing invalid array index",
+			testLine,
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("param", `pod.deployment.params[""]`),
+			},
+			labels.EmptyLabels(),
+			labels.FromStrings("param", ""),
+			NoParserHints(),
+		},
+		{
 			"array string element",
 			testLine,
 			[]LabelExtractionExpr{
@@ -522,13 +542,35 @@ func TestJSONExpressionParser(t *testing.T) {
 			),
 			NoParserHints(),
 		},
+		{
+			"nested object with escaped value",
+			[]byte(`{"app":{"name":"great \"loki\""}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"app", `{"name":"great \"loki\""}`,
+			),
+			NoParserHints(),
+		},
+		{
+			"field with escaped value inside the json string",
+			[]byte(`{"app":"{\"name\":\"great \\\"loki\\\"\"}"}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"app", `{"name":"great \"loki\""}`,
+			),
+			NoParserHints(),
+		},
 	}
 	for _, tt := range tests {
-		j, err := NewJSONExpressionParser(tt.expressions)
-		if err != nil {
-			t.Fatalf("cannot create JSON expression parser: %s", err.Error())
-		}
 		t.Run(tt.name, func(t *testing.T) {
+			j, err := NewJSONExpressionParser(tt.expressions)
+			require.NoError(t, err, "cannot create JSON expression parser")
 			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
 			b.Reset()
 			_, _ = j.Process(0, tt.line, b)
@@ -1386,7 +1428,6 @@ func Test_PatternParser(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.pattern, func(t *testing.T) {
 			t.Parallel()
 			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())

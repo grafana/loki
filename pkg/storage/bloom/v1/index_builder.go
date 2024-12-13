@@ -35,6 +35,10 @@ func NewIndexBuilder(opts BlockOptions, writer io.WriteCloser) *IndexBuilder {
 	}
 }
 
+func (b *IndexBuilder) UnflushedSize() int {
+	return b.scratch.Len() + b.page.UnflushedSize()
+}
+
 func (b *IndexBuilder) WriteOpts() error {
 	b.scratch.Reset()
 	b.opts.Encode(b.scratch)

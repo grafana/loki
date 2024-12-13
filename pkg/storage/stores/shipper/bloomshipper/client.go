@@ -73,7 +73,7 @@ func (r Ref) Interval() Interval {
 
 type BlockRef struct {
 	Ref
-	compression.Encoding
+	compression.Codec
 }
 
 func (r BlockRef) String() string {
@@ -220,18 +220,21 @@ func newRefFrom(tenant, table string, md v1.BlockMetadata) Ref {
 	}
 }
 
-func newBlockRefWithEncoding(ref Ref, enc compression.Encoding) BlockRef {
-	return BlockRef{Ref: ref, Encoding: enc}
+func newBlockRefWithEncoding(ref Ref, enc compression.Codec) BlockRef {
+	return BlockRef{Ref: ref, Codec: enc}
 }
 
-func BlockFrom(enc compression.Encoding, tenant, table string, blk *v1.Block) (Block, error) {
-	md, _ := blk.Metadata()
+func BlockFrom(enc compression.Codec, tenant, table string, blk *v1.Block) (Block, error) {
+	md, err := blk.Metadata()
+	if err != nil {
+		return Block{}, errors.Wrap(err, "decoding index")
+	}
+
 	ref := newBlockRefWithEncoding(newRefFrom(tenant, table, md), enc)
 
 	// TODO(owen-d): pool
 	buf := bytes.NewBuffer(nil)
-	err := v1.TarCompress(ref.Encoding, buf, blk.Reader())
-
+	err = v1.TarCompress(ref.Codec, buf, blk.Reader())
 	if err != nil {
 		return Block{}, err
 	}
@@ -330,7 +333,7 @@ func (b *BloomClient) GetBlock(ctx context.Context, ref BlockRef) (BlockDirector
 		return BlockDirectory{}, fmt.Errorf("failed to create block directory %s: %w", path, err)
 	}
 
-	err = v1.UnTarCompress(ref.Encoding, path, rc)
+	err = v1.UnTarCompress(ref.Codec, path, rc)
 	if err != nil {
 		return BlockDirectory{}, fmt.Errorf("failed to extract block file %s: %w", key, err)
 	}

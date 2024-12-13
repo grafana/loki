@@ -66,6 +66,7 @@ const (
 
 	NAMESPACE_BUCKET  = "namespace"
 	BOS_CONFIG_PREFIX = "bos://"
+	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
 )
 
 var DEFAULT_CNAME_LIKE_LIST = []string{
@@ -300,6 +301,35 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx
 	return err
 }
 
+func SendRequestFromBytes(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse, ctx *BosContext, content []byte) error {
+	var (
+		err        error
+		need_retry bool
+	)
+	setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().Endpoint)
+	if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+		if serviceErr, isServiceErr := err.(*bce.BceServiceError); isServiceErr {
+			if serviceErr.StatusCode == net_http.StatusInternalServerError ||
+				serviceErr.StatusCode == net_http.StatusBadGateway ||
+				serviceErr.StatusCode == net_http.StatusServiceUnavailable ||
+				(serviceErr.StatusCode == net_http.StatusBadRequest && serviceErr.Code == "Http400") {
+				need_retry = true
+			}
+		}
+		if _, isClientErr := err.(*bce.BceClientError); isClientErr {
+			need_retry = true
+		}
+		// retry backup endpoint
+		if need_retry && cli.GetBceClientConfig().BackupEndpoint != "" {
+			setUriAndEndpoint(cli, req, ctx, cli.GetBceClientConfig().BackupEndpoint)
+			if err = cli.SendRequestFromBytes(req, resp, content); err != nil {
+				return err
+			}
+		}
+	}
+	return err
+}
+
 func isVirtualHost(host string) bool {
 	domain := getDomainWithoutPort(host)
 	arr := strings.Split(domain, ".")
@@ -366,12 +396,12 @@ func replaceEndpointByBucket(bucket, endpoint string) string {
 func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, endpoint string) {
 	origin_uri := req.Uri()
 	bucket := ctx.Bucket
+	protocol := bce.DEFAULT_PROTOCOL
 	// deal with protocal
 	if strings.HasPrefix(endpoint, "https://") {
-		req.SetProtocol(bce.HTTPS_PROTOCAL)
+		protocol = bce.HTTPS_PROTOCAL
 		endpoint = strings.TrimPrefix(endpoint, "https://")
 	} else if strings.HasPrefix(endpoint, "http://") {
-		req.SetProtocol(bce.DEFAULT_PROTOCOL)
 		endpoint = strings.TrimPrefix(endpoint, "http://")
 	}
 	// set uri, endpoint for cname, cdn, virtual host
@@ -394,6 +424,7 @@ func setUriAndEndpoint(cli bce.Client, req *bce.BceRequest, ctx *BosContext, end
 			req.SetEndpoint(endpoint)
 		}
 	}
+	req.SetProtocol(protocol)
 }
 
 func getDefaultContentType(object string) string {

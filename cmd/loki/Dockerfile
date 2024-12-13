@@ -1,11 +1,11 @@
-ARG GO_VERSION=1.22
-FROM golang:${GO_VERSION} as build
+ARG GO_VERSION=1.23
+FROM golang:${GO_VERSION} AS build
 
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki
 
-FROM gcr.io/distroless/base-nossl:debug
+FROM gcr.io/distroless/static:debug
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml

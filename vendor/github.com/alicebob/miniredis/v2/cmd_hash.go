@@ -27,6 +27,7 @@ func commandsHash(m *Miniredis) {
 	m.srv.Register("HSTRLEN", m.cmdHstrlen)
 	m.srv.Register("HVALS", m.cmdHvals)
 	m.srv.Register("HSCAN", m.cmdHscan)
+	m.srv.Register("HRANDFIELD", m.cmdHrandfield)
 }
 
 // HSET
@@ -105,7 +106,7 @@ func (m *Miniredis) cmdHsetnx(c *server.Peer, cmd string, args []string) {
 			return
 		}
 		db.hashKeys[opts.key][opts.field] = opts.value
-		db.keyVersion[opts.key]++
+		db.incr(opts.key)
 		c.WriteInt(1)
 	})
 }
@@ -680,4 +681,97 @@ func (m *Miniredis) cmdHscan(c *server.Peer, cmd string, args []string) {
 			c.WriteBulk(db.hashGet(opts.key, k))
 		}
 	})
+}
+
+// HRANDFIELD
+func (m *Miniredis) cmdHrandfield(c *server.Peer, cmd string, args []string) {
+	if len(args) > 3 || len(args) < 1 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	opts := struct {
+		key        string
+		count      int
+		countSet   bool
+		withValues bool
+	}{
+		key: args[0],
+	}
+
+	if len(args) > 1 {
+		if ok := optIntErr(c, args[1], &opts.count, msgInvalidInt); !ok {
+			return
+		}
+		opts.countSet = true
+	}
+
+	if len(args) == 3 {
+		if strings.ToLower(args[2]) == "withvalues" {
+			opts.withValues = true
+		} else {
+			setDirty(c)
+			c.WriteError(msgSyntaxError)
+			return
+		}
+	}
+
+	withTx(m, c, func(peer *server.Peer, ctx *connCtx) {
+		db := m.db(ctx.selectedDB)
+		members := db.hashFields(opts.key)
+		m.shuffle(members)
+
+		if !opts.countSet {
+			// > When called with just the key argument, return a random field from the
+			// hash value stored at key.
+			if len(members) == 0 {
+				peer.WriteNull()
+				return
+			}
+			peer.WriteBulk(members[0])
+			return
+		}
+
+		if len(members) > abs(opts.count) {
+			members = members[:abs(opts.count)]
+		}
+		switch {
+		case opts.count >= 0:
+			// if count is positive there can't be duplicates, and the length is restricted
+		case opts.count < 0:
+			// if count is negative there can be duplicates, but length will match
+			if len(members) > 0 {
+				for len(members) < -opts.count {
+					members = append(members, members[m.randIntn(len(members))])
+				}
+			}
+		}
+
+		if opts.withValues {
+			peer.WriteMapLen(len(members))
+			for _, m := range members {
+				peer.WriteBulk(m)
+				peer.WriteBulk(db.hashGet(opts.key, m))
+			}
+			return
+		}
+		peer.WriteLen(len(members))
+		for _, m := range members {
+			peer.WriteBulk(m)
+		}
+	})
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
 }

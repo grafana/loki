@@ -326,11 +326,14 @@ func (b *BucketHandle) defaultSignBytesFunc(email string) func([]byte) ([]byte, 
 		if err != nil {
 			return nil, fmt.Errorf("unable to create iamcredentials client: %w", err)
 		}
-
-		resp, err := svc.Projects.ServiceAccounts.SignBlob(fmt.Sprintf("projects/-/serviceAccounts/%s", email), &iamcredentials.SignBlobRequest{
-			Payload: base64.StdEncoding.EncodeToString(in),
-		}).Do()
-		if err != nil {
+		// Do the SignBlob call with a retry for transient errors.
+		var resp *iamcredentials.SignBlobResponse
+		if err := run(ctx, func(ctx context.Context) error {
+			resp, err = svc.Projects.ServiceAccounts.SignBlob(fmt.Sprintf("projects/-/serviceAccounts/%s", email), &iamcredentials.SignBlobRequest{
+				Payload: base64.StdEncoding.EncodeToString(in),
+			}).Do()
+			return err
+		}, b.retry, true); err != nil {
 			return nil, fmt.Errorf("unable to sign bytes: %w", err)
 		}
 		out, err := base64.StdEncoding.DecodeString(resp.SignedBlob)
@@ -415,6 +418,10 @@ type BucketAttrs struct {
 	// Created is the creation time of the bucket.
 	// This field is read-only.
 	Created time.Time
+
+	// Updated is the time at which the bucket was last modified.
+	// This field is read-only.
+	Updated time.Time
 
 	// VersioningEnabled reports whether this bucket has versioning enabled.
 	VersioningEnabled bool
@@ -824,6 +831,7 @@ func newBucket(b *raw.Bucket) (*BucketAttrs, error) {
 		DefaultEventBasedHold:    b.DefaultEventBasedHold,
 		StorageClass:             b.StorageClass,
 		Created:                  convertTime(b.TimeCreated),
+		Updated:                  convertTime(b.Updated),
 		VersioningEnabled:        b.Versioning != nil && b.Versioning.Enabled,
 		ACL:                      toBucketACLRules(b.Acl),
 		DefaultObjectACL:         toObjectACLRules(b.DefaultObjectAcl),
@@ -861,6 +869,7 @@ func newBucketFromProto(b *storagepb.Bucket) *BucketAttrs {
 		DefaultEventBasedHold:    b.GetDefaultEventBasedHold(),
 		StorageClass:             b.GetStorageClass(),
 		Created:                  b.GetCreateTime().AsTime(),
+		Updated:                  b.GetUpdateTime().AsTime(),
 		VersioningEnabled:        b.GetVersioning().GetEnabled(),
 		ACL:                      toBucketACLRulesFromProto(b.GetAcl()),
 		DefaultObjectACL:         toObjectACLRulesFromProto(b.GetDefaultObjectAcl()),
@@ -1332,8 +1341,10 @@ func (ua *BucketAttrsToUpdate) toRawBucket() *raw.Bucket {
 	}
 	if ua.SoftDeletePolicy != nil {
 		if ua.SoftDeletePolicy.RetentionDuration == 0 {
-			rb.NullFields = append(rb.NullFields, "SoftDeletePolicy")
-			rb.SoftDeletePolicy = nil
+			rb.SoftDeletePolicy = &raw.BucketSoftDeletePolicy{
+				RetentionDurationSeconds: 0,
+				ForceSendFields:          []string{"RetentionDurationSeconds"},
+			}
 		} else {
 			rb.SoftDeletePolicy = ua.SoftDeletePolicy.toRawSoftDeletePolicy()
 		}

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -148,7 +147,6 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			promql.Vector{promql.Sample{T: 60 * 1000, F: 0.46666766666666665, Metric: labels.FromStrings("app", "foo")}},
 		},
 	} {
-		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
@@ -955,7 +953,6 @@ func TestEngine_InstantQuery(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
@@ -2257,7 +2254,6 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 		},
 	} {
-		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
 			t.Parallel()
 
@@ -2426,7 +2422,6 @@ func TestStepEvaluator_Error(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, tc.querier, NoLimits, log.NewNopLogger())
 
@@ -2618,23 +2613,14 @@ func TestHashingStability(t *testing.T) {
 		expectedQueryHash := util.HashedQuery(test.qs)
 
 		// check that both places will end up having the same query hash, even though they're emitting different log lines.
-		require.Regexp(t,
-			regexp.MustCompile(
-				fmt.Sprintf(
-					`level=info org_id=fake msg="executing query" type=range query=.* length=5s step=1m0s query_hash=%d.*`, expectedQueryHash,
-				),
-			),
-			queryWithEngine(),
-		)
+		withEngine := queryWithEngine()
+		require.Contains(t, withEngine, fmt.Sprintf("query_hash=%d", expectedQueryHash))
+		require.Contains(t, withEngine, "step=1m0s")
 
-		require.Regexp(t,
-			regexp.MustCompile(
-				fmt.Sprintf(
-					`level=info org_id=fake latency=slow query=".*" query_hash=%d query_type=metric range_type=range.*\n`, expectedQueryHash,
-				),
-			),
-			queryDirectly(),
-		)
+		directly := queryDirectly()
+		require.Contains(t, directly, fmt.Sprintf("query_hash=%d", expectedQueryHash))
+		require.Contains(t, directly, "length=5s")
+		require.Contains(t, directly, "latency=slow")
 	}
 }
 

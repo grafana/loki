@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.22
+ARG GO_VERSION=1.23
 FROM golang:${GO_VERSION} as build
 
 # build via Makefile target helm-test-image in root
@@ -8,6 +8,6 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false helm-test
 
-FROM gcr.io/distroless/base-nossl:debug
+FROM gcr.io/distroless/static:debug
 COPY --from=build /src/loki/production/helm/loki/src/helm-test/helm-test /usr/bin/helm-test
 ENTRYPOINT [ "/usr/bin/helm-test" ]

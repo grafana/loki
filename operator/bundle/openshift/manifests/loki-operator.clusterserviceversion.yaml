@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2024-09-25T09:56:44Z"
+    createdAt: "2024-11-25T18:28:06Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -161,19 +161,19 @@ metadata:
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
     features.operators.openshift.io/disconnected: "true"
-    features.operators.openshift.io/fips-compliant: "false"
+    features.operators.openshift.io/fips-compliant: "true"
     features.operators.openshift.io/proxy-aware: "true"
     features.operators.openshift.io/tls-profiles: "true"
     features.operators.openshift.io/token-auth-aws: "true"
     features.operators.openshift.io/token-auth-azure: "true"
-    features.operators.openshift.io/token-auth-gcp: "false"
-    olm.skipRange: '>=5.8.0-0 <6.0.0'
+    features.operators.openshift.io/token-auth-gcp: "true"
+    olm.skipRange: '>=5.9.0-0 <6.1.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift
       Platform Plus"]'
     operators.operatorframework.io/builder: operator-sdk-unknown
-    operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
     support: AOS Cluster Logging
   labels:
     operatorframework.io/arch.amd64: supported
@@ -198,8 +198,9 @@ spec:
       - description: List of groups for alerting rules.
         displayName: Groups
         path: groups
-      - description: Interval defines the time interval between evaluation of the
-          given alerting rule.
+      - description: |-
+          Interval defines the time interval between evaluation of the given
+          alerting rule.
         displayName: Evaluation Interval
         path: groups[0].interval
       - description: Limit defines the number of alerts an alerting rule can produce.
@@ -221,14 +222,15 @@ spec:
       - description: Annotations to add to each alert.
         displayName: Annotations
         path: groups[0].rules[0].annotations
-      - description: The LogQL expression to evaluate. Every evaluation cycle this
-          is evaluated at the current time, and all resultant time series become pending/firing
-          alerts.
+      - description: |-
+          The LogQL expression to evaluate. Every evaluation cycle this is
+          evaluated at the current time, and all resultant time series become
+          pending/firing alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
-      - description: Alerts are considered firing once they have been returned for
-          this long. Alerts which have not yet fired for long enough are considered
-          pending.
+      - description: |-
+          Alerts are considered firing once they have been returned for this long.
+          Alerts which have not yet fired for long enough are considered pending.
         displayName: Firing Threshold
         path: groups[0].rules[0].for
       - description: Labels to add to each alert.
@@ -285,17 +287,21 @@ spec:
       - description: MemberList configuration spec
         displayName: Memberlist Config
         path: hashRing.memberlist
-      - description: "EnableIPv6 enables IPv6 support for the memberlist based hash
-          ring. \n Currently this also forces the instanceAddrType to podIP to avoid
-          local address lookup for the memberlist."
+      - description: |-
+          EnableIPv6 enables IPv6 support for the memberlist based hash ring.
+
+
+          Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+          for the memberlist.
         displayName: Enable IPv6
         path: hashRing.memberlist.enableIPv6
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: InstanceAddrType defines the type of address to use to advertise
-          to the ring. Defaults to the first address from any private network interfaces
-          of the current pod. Alternatively the public pod IP can be used in case
-          private networks (RFC 1918 and RFC 6598) are not available.
+      - description: |-
+          InstanceAddrType defines the type of address to use to advertise to the ring.
+          Defaults to the first address from any private network interfaces of the current pod.
+          Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
+          are not available.
         displayName: Instance Address
         path: hashRing.memberlist.instanceAddrType
         x-descriptors:
@@ -314,9 +320,10 @@ spec:
       - description: Global defines the limits applied globally across the cluster.
         displayName: Global Limits
         path: limits.global
-      - description: IngestionBurstSize defines the local rate-limited sample size
-          per distributor replica. It should be set to the set at least to the maximum
-          logs size expected in a single push request.
+      - description: |-
+          IngestionBurstSize defines the local rate-limited sample size per
+          distributor replica. It should be set to the set at least to the
+          maximum logs size expected in a single push request.
         displayName: Ingestion Burst Size (in MB)
         path: limits.global.ingestion.ingestionBurstSize
         x-descriptors:
@@ -326,26 +333,30 @@ spec:
         path: limits.global.ingestion.ingestionRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxGlobalStreamsPerTenant defines the maximum number of active
-          streams per tenant, across the cluster.
+      - description: |-
+          MaxGlobalStreamsPerTenant defines the maximum number of active streams
+          per tenant, across the cluster.
         displayName: Max Global Streams per  Tenant
         path: limits.global.ingestion.maxGlobalStreamsPerTenant
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNameLength defines the maximum number of characters allowed
+      - description: |-
+          MaxLabelNameLength defines the maximum number of characters allowed
           for label keys in log streams.
         displayName: Max Label Name Length
         path: limits.global.ingestion.maxLabelNameLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNamesPerSeries defines the maximum number of label names
-          per series in each log stream.
+      - description: |-
+          MaxLabelNamesPerSeries defines the maximum number of label names per series
+          in each log stream.
         displayName: Max Labels Names per Series
         path: limits.global.ingestion.maxLabelNamesPerSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelValueLength defines the maximum number of characters
-          allowed for label values in log streams.
+      - description: |-
+          MaxLabelValueLength defines the maximum number of characters allowed
+          for label values in log streams.
         displayName: Max Label Value Length
         path: limits.global.ingestion.maxLabelValueLength
         x-descriptors:
@@ -356,8 +367,9 @@ spec:
         path: limits.global.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: PerStreamDesiredRate defines the desired ingestion rate per second
-          that LokiStack should target applying automatic stream sharding. Units MB.
+      - description: |-
+          PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+          target applying automatic stream sharding. Units MB.
         displayName: Per Stream Desired Rate (in MB)
         path: limits.global.ingestion.perStreamDesiredRate
         x-descriptors:
@@ -374,84 +386,84 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: IndexedResourceAttributes contains the global configuration for
-          resource attributes to store them as index labels.
-        displayName: Indexed Resource Attributes
-        path: limits.global.otlp.indexedResourceAttributes
-      - description: LogAttributes contains the configuration for log attributes to
-          store them as structured metadata or drop them altogether.
-        displayName: Log Attributes
-        path: limits.global.otlp.logAttributes
-      - description: Action defines the indexing action for the selected attributes.
-          They can be either added to structured metadata or drop altogether.
-        displayName: Action
-        path: limits.global.otlp.logAttributes[0].action
-      - description: Attributes allows choosing the attributes by listing their names.
-        displayName: Attribute Names
-        path: limits.global.otlp.logAttributes[0].attributes
-      - description: Regex allows choosing the attributes by matching a regular expression.
-        displayName: Regular Expression
-        path: limits.global.otlp.logAttributes[0].regex
-      - description: ResourceAttributes contains the configuration for resource attributes
-          to store them as index labels or structured metadata or drop them altogether.
+      - description: StreamLabels configures which resource attributes are converted
+          to Loki stream labels.
+        displayName: Stream Labels
+        path: limits.global.otlp.streamLabels
+      - description: ResourceAttributes lists the names of the resource attributes
+          that should be converted into Loki stream labels.
         displayName: Resource Attributes
-        path: limits.global.otlp.resourceAttributes
-      - description: Attributes contains the configuration for resource attributes
-          to store them as index labels or structured metadata or drop them altogether.
-        displayName: Attributes
-        path: limits.global.otlp.resourceAttributes.attributes
-      - description: Action defines the indexing action for the selected resoure attributes.
-          They can be either indexed as labels, added to structured metadata or drop
-          altogether.
-        displayName: Action
-        path: limits.global.otlp.resourceAttributes.attributes[0].action
-      - description: Attributes is the list of attributes to configure indexing or
-          drop them altogether.
-        displayName: Attribute Names
-        path: limits.global.otlp.resourceAttributes.attributes[0].attributes
-      - description: Regex allows choosing the attributes by matching a regular expression.
-        displayName: Regular Expression
-        path: limits.global.otlp.resourceAttributes.attributes[0].regex
-      - description: "IgnoreDefaults controls whether to ignore the global configuration
-          for resource attributes indexed as labels. \n If IgnoreDefaults is true,
-          then this spec needs to contain at least one mapping to a index label."
-        displayName: Ignore Global Defaults
-        path: limits.global.otlp.resourceAttributes.ignoreDefaults
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: ScopeAttributes contains the configuration for scope attributes
-          to store them as structured metadata or drop them altogether.
+        path: limits.global.otlp.streamLabels.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.streamLabels.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.streamLabels.resourceAttributes[0].regex
+      - description: StructuredMetadata configures which attributes are saved in structured
+          metadata.
+        displayName: Structured Metadata
+        path: limits.global.otlp.structuredMetadata
+      - description: LogAttributes lists the names of log attributes that should be
+          included in structured metadata.
+        displayName: Log Attributes
+        path: limits.global.otlp.structuredMetadata.logAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.structuredMetadata.logAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.structuredMetadata.logAttributes[0].regex
+      - description: ResourceAttributes lists the names of resource attributes that
+          should be included in structured metadata.
+        displayName: Resource Attributes
+        path: limits.global.otlp.structuredMetadata.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].regex
+      - description: ScopeAttributes lists the names of scope attributes that should
+          be included in structured metadata.
         displayName: Scope Attributes
-        path: limits.global.otlp.scopeAttributes
-      - description: Action defines the indexing action for the selected attributes.
-          They can be either added to structured metadata or drop altogether.
-        displayName: Action
-        path: limits.global.otlp.scopeAttributes[0].action
-      - description: Attributes allows choosing the attributes by listing their names.
-        displayName: Attribute Names
-        path: limits.global.otlp.scopeAttributes[0].attributes
-      - description: Regex allows choosing the attributes by matching a regular expression.
-        displayName: Regular Expression
-        path: limits.global.otlp.scopeAttributes[0].regex
+        path: limits.global.otlp.structuredMetadata.scopeAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.global.queries.cardinalityLimit
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxChunksPerQuery defines the maximum number of chunks that can
-          be fetched by a single query.
+      - description: |-
+          MaxChunksPerQuery defines the maximum number of chunks
+          that can be fetched by a single query.
         displayName: Max Chunk per Query
         path: limits.global.queries.maxChunksPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries
+      - description: |-
+          MaxEntriesLimitsPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that is returned
-          by a metric query.
+      - description: |-
+          MaxQuerySeries defines the maximum of unique series
+          that is returned by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -469,9 +481,10 @@ spec:
       - description: Tenants defines the limits applied per tenant.
         displayName: Limits per Tenant
         path: limits.tenants
-      - description: IngestionBurstSize defines the local rate-limited sample size
-          per distributor replica. It should be set to the set at least to the maximum
-          logs size expected in a single push request.
+      - description: |-
+          IngestionBurstSize defines the local rate-limited sample size per
+          distributor replica. It should be set to the set at least to the
+          maximum logs size expected in a single push request.
         displayName: Ingestion Burst Size (in MB)
         path: limits.tenants.ingestion.ingestionBurstSize
         x-descriptors:
@@ -481,26 +494,30 @@ spec:
         path: limits.tenants.ingestion.ingestionRate
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxGlobalStreamsPerTenant defines the maximum number of active
-          streams per tenant, across the cluster.
+      - description: |-
+          MaxGlobalStreamsPerTenant defines the maximum number of active streams
+          per tenant, across the cluster.
         displayName: Max Global Streams per  Tenant
         path: limits.tenants.ingestion.maxGlobalStreamsPerTenant
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNameLength defines the maximum number of characters allowed
+      - description: |-
+          MaxLabelNameLength defines the maximum number of characters allowed
           for label keys in log streams.
         displayName: Max Label Name Length
         path: limits.tenants.ingestion.maxLabelNameLength
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelNamesPerSeries defines the maximum number of label names
-          per series in each log stream.
+      - description: |-
+          MaxLabelNamesPerSeries defines the maximum number of label names per series
+          in each log stream.
         displayName: Max Labels Names per Series
         path: limits.tenants.ingestion.maxLabelNamesPerSeries
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxLabelValueLength defines the maximum number of characters
-          allowed for label values in log streams.
+      - description: |-
+          MaxLabelValueLength defines the maximum number of characters allowed
+          for label values in log streams.
         displayName: Max Label Value Length
         path: limits.tenants.ingestion.maxLabelValueLength
         x-descriptors:
@@ -511,8 +528,9 @@ spec:
         path: limits.tenants.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: PerStreamDesiredRate defines the desired ingestion rate per second
-          that LokiStack should target applying automatic stream sharding. Units MB.
+      - description: |-
+          PerStreamDesiredRate defines the desired ingestion rate per second that LokiStack should
+          target applying automatic stream sharding. Units MB.
         displayName: Per Stream Desired Rate (in MB)
         path: limits.tenants.ingestion.perStreamDesiredRate
         x-descriptors:
@@ -529,61 +547,62 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: LogAttributes contains the configuration for log attributes to
-          store them as structured metadata or drop them altogether.
-        displayName: Log Attributes
-        path: limits.tenants.otlp.logAttributes
-      - description: Action defines the indexing action for the selected attributes.
-          They can be either added to structured metadata or drop altogether.
-        displayName: Action
-        path: limits.tenants.otlp.logAttributes[0].action
-      - description: Attributes allows choosing the attributes by listing their names.
-        displayName: Attribute Names
-        path: limits.tenants.otlp.logAttributes[0].attributes
-      - description: Regex allows choosing the attributes by matching a regular expression.
-        displayName: Regular Expression
-        path: limits.tenants.otlp.logAttributes[0].regex
-      - description: ResourceAttributes contains the configuration for resource attributes
-          to store them as index labels or structured metadata or drop them altogether.
+      - description: StreamLabels configures which resource attributes are converted
+          to Loki stream labels.
+        displayName: Stream Labels
+        path: limits.tenants.otlp.streamLabels
+      - description: ResourceAttributes lists the names of the resource attributes
+          that should be converted into Loki stream labels.
         displayName: Resource Attributes
-        path: limits.tenants.otlp.resourceAttributes
-      - description: Attributes contains the configuration for resource attributes
-          to store them as index labels or structured metadata or drop them altogether.
-        displayName: Attributes
-        path: limits.tenants.otlp.resourceAttributes.attributes
-      - description: Action defines the indexing action for the selected resoure attributes.
-          They can be either indexed as labels, added to structured metadata or drop
-          altogether.
-        displayName: Action
-        path: limits.tenants.otlp.resourceAttributes.attributes[0].action
-      - description: Attributes is the list of attributes to configure indexing or
-          drop them altogether.
-        displayName: Attribute Names
-        path: limits.tenants.otlp.resourceAttributes.attributes[0].attributes
-      - description: Regex allows choosing the attributes by matching a regular expression.
-        displayName: Regular Expression
-        path: limits.tenants.otlp.resourceAttributes.attributes[0].regex
-      - description: "IgnoreDefaults controls whether to ignore the global configuration
-          for resource attributes indexed as labels. \n If IgnoreDefaults is true,
-          then this spec needs to contain at least one mapping to a index label."
-        displayName: Ignore Global Defaults
-        path: limits.tenants.otlp.resourceAttributes.ignoreDefaults
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: ScopeAttributes contains the configuration for scope attributes
-          to store them as structured metadata or drop them altogether.
+        path: limits.tenants.otlp.streamLabels.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.streamLabels.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.streamLabels.resourceAttributes[0].regex
+      - description: StructuredMetadata configures which attributes are saved in structured
+          metadata.
+        displayName: Structured Metadata
+        path: limits.tenants.otlp.structuredMetadata
+      - description: LogAttributes lists the names of log attributes that should be
+          included in structured metadata.
+        displayName: Log Attributes
+        path: limits.tenants.otlp.structuredMetadata.logAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].regex
+      - description: ResourceAttributes lists the names of resource attributes that
+          should be included in structured metadata.
+        displayName: Resource Attributes
+        path: limits.tenants.otlp.structuredMetadata.resourceAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].regex
+      - description: ScopeAttributes lists the names of scope attributes that should
+          be included in structured metadata.
         displayName: Scope Attributes
-        path: limits.tenants.otlp.scopeAttributes
-      - description: Action defines the indexing action for the selected attributes.
-          They can be either added to structured metadata or drop altogether.
-        displayName: Action
-        path: limits.tenants.otlp.scopeAttributes[0].action
-      - description: Attributes allows choosing the attributes by listing their names.
-        displayName: Attribute Names
-        path: limits.tenants.otlp.scopeAttributes[0].attributes
-      - description: Regex allows choosing the attributes by matching a regular expression.
-        displayName: Regular Expression
-        path: limits.tenants.otlp.scopeAttributes[0].regex
+        path: limits.tenants.otlp.structuredMetadata.scopeAttributes
+      - description: Name contains either a verbatim name of an attribute or a regular
+          expression matching many attributes.
+        displayName: Name
+        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].name
+      - description: If Regex is true, then Name is treated as a regular expression
+          instead of as a verbatim attribute name.
+        displayName: Treat name as regular expression
+        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: Blocked defines the list of rules to block matching queries.
         displayName: Blocked
         path: limits.tenants.queries.blocked
@@ -610,20 +629,23 @@ spec:
         path: limits.tenants.queries.cardinalityLimit
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxChunksPerQuery defines the maximum number of chunks that can
-          be fetched by a single query.
+      - description: |-
+          MaxChunksPerQuery defines the maximum number of chunks
+          that can be fetched by a single query.
         displayName: Max Chunk per Query
         path: limits.tenants.queries.maxChunksPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries
+      - description: |-
+          MaxEntriesLimitsPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that is returned
-          by a metric query.
+      - description: |-
+          MaxQuerySeries defines the maximum of unique series
+          that is returned by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:
@@ -638,8 +660,9 @@ spec:
           of a query request.
         displayName: Query Timeout
         path: limits.tenants.queries.queryTimeout
-      - description: ManagementState defines if the CR should be managed by the operator
-          or not. Default is managed.
+      - description: |-
+          ManagementState defines if the CR should be managed by the operator or not.
+          Default is managed.
         displayName: Management State
         path: managementState
         x-descriptors:
@@ -666,9 +689,9 @@ spec:
         path: replication.factor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
-          to satisfy. IMPORTANT: Make sure that the replication factor defined is
-          less than or equal to the number of available zones.'
+      - description: |-
+          Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
+          IMPORTANT: Make sure that the replication factor defined is less than or equal to the number of available zones.
         displayName: Zones Spec
         path: replication.zones
       - description: MaxSkew describes the maximum degree to which Pods can be unevenly
@@ -681,9 +704,9 @@ spec:
           labels.
         displayName: Topology Key
         path: replication.zones[0].topologyKey
-      - description: 'Deprecated: Please use replication.factor instead. This field
-          will be removed in future versions of this CRD. ReplicationFactor defines
-          the policy for log stream replication.'
+      - description: |-
+          Deprecated: Please use replication.factor instead. This field will be removed in future versions of this CRD.
+          ReplicationFactor defines the policy for log stream replication.
         displayName: Replication Factor
         path: replicationFactor
         x-descriptors:
@@ -698,11 +721,13 @@ spec:
         path: rules.enabled
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: Namespaces to be selected for PrometheusRules discovery. If unspecified,
-          only the same namespace as the LokiStack object is in is used.
+      - description: |-
+          Namespaces to be selected for PrometheusRules discovery. If unspecified, only
+          the same namespace as the LokiStack object is in is used.
         displayName: Namespace Selector
         path: rules.namespaceSelector
-      - description: A selector to select which LokiRules to mount for loading alerting/recording
+      - description: |-
+          A selector to select which LokiRules to mount for loading alerting/recording
           rules from.
         displayName: Selector
         path: rules.selector
@@ -710,6 +735,7 @@ spec:
         displayName: LokiStack Size
         path: size
         x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:1x.pico
         - urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small
         - urn:alm:descriptor:com.tectonic.ui:select:1x.small
         - urn:alm:descriptor:com.tectonic.ui:select:1x.medium
@@ -742,13 +768,15 @@ spec:
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
-      - description: Key is the data key of a ConfigMap containing a CA certificate.
-          It needs to be in the same namespace as the LokiStack custom resource. If
-          empty, it defaults to "service-ca.crt".
+      - description: |-
+          Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
+          If empty, it defaults to "service-ca.crt".
         displayName: CA ConfigMap Key
         path: storage.tls.caKey
-      - description: CA is the name of a ConfigMap containing a CA certificate. It
-          needs to be in the same namespace as the LokiStack custom resource.
+      - description: |-
+          CA is the name of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
         path: storage.tls.caName
         x-descriptors:
@@ -768,8 +796,9 @@ spec:
       - description: Compactor defines the compaction component spec.
         displayName: Compactor pods
         path: template.compactor
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.compactor.podAntiAffinity
         x-descriptors:
@@ -782,8 +811,9 @@ spec:
       - description: Distributor defines the distributor component spec.
         displayName: Distributor pods
         path: template.distributor
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.distributor.podAntiAffinity
         x-descriptors:
@@ -796,8 +826,9 @@ spec:
       - description: Gateway defines the lokistack gateway component spec.
         displayName: Gateway pods
         path: template.gateway
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.gateway.podAntiAffinity
         x-descriptors:
@@ -810,8 +841,9 @@ spec:
       - description: IndexGateway defines the index gateway component spec.
         displayName: Index Gateway pods
         path: template.indexGateway
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.indexGateway.podAntiAffinity
         x-descriptors:
@@ -824,8 +856,9 @@ spec:
       - description: Ingester defines the ingester component spec.
         displayName: Ingester pods
         path: template.ingester
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.ingester.podAntiAffinity
         x-descriptors:
@@ -838,8 +871,9 @@ spec:
       - description: Querier defines the querier component spec.
         displayName: Querier pods
         path: template.querier
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.querier.podAntiAffinity
         x-descriptors:
@@ -852,8 +886,9 @@ spec:
       - description: QueryFrontend defines the query frontend component spec.
         displayName: Query Frontend pods
         path: template.queryFrontend
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.queryFrontend.podAntiAffinity
         x-descriptors:
@@ -866,8 +901,9 @@ spec:
       - description: Ruler defines the ruler component spec.
         displayName: Ruler pods
         path: template.ruler
-      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
-          to schedule pods of a component.
+      - description: |-
+          PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+          of a component.
         displayName: PodAntiAffinity
         path: template.ruler.podAntiAffinity
         x-descriptors:
@@ -891,13 +927,15 @@ spec:
       - description: CA defines the spec for the custom CA for tenant's authentication.
         displayName: CA ConfigMap
         path: tenants.authentication[0].mTLS.ca
-      - description: Key is the data key of a ConfigMap containing a CA certificate.
-          It needs to be in the same namespace as the LokiStack custom resource. If
-          empty, it defaults to "service-ca.crt".
+      - description: |-
+          Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
+          If empty, it defaults to "service-ca.crt".
         displayName: CA ConfigMap Key
         path: tenants.authentication[0].mTLS.ca.caKey
-      - description: CA is the name of a ConfigMap containing a CA certificate. It
-          needs to be in the same namespace as the LokiStack custom resource.
+      - description: |-
+          CA is the name of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
         path: tenants.authentication[0].mTLS.ca.caName
         x-descriptors:
@@ -908,13 +946,15 @@ spec:
       - description: IssuerCA defines the spec for the issuer CA for tenant's authentication.
         displayName: IssuerCA ConfigMap
         path: tenants.authentication[0].oidc.issuerCA
-      - description: Key is the data key of a ConfigMap containing a CA certificate.
-          It needs to be in the same namespace as the LokiStack custom resource. If
-          empty, it defaults to "service-ca.crt".
+      - description: |-
+          Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
+          If empty, it defaults to "service-ca.crt".
         displayName: CA ConfigMap Key
         path: tenants.authentication[0].oidc.issuerCA.caKey
-      - description: CA is the name of a ConfigMap containing a CA certificate. It
-          needs to be in the same namespace as the LokiStack custom resource.
+      - description: |-
+          CA is the name of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource.
         displayName: CA ConfigMap Name
         path: tenants.authentication[0].oidc.issuerCA.caName
         x-descriptors:
@@ -970,12 +1010,39 @@ spec:
       - description: Openshift defines the configuration specific to Openshift modes.
         displayName: Openshift
         path: tenants.openshift
-      - description: "AdminGroups defines a list of groups, whose members are considered
-          to have admin-privileges by the Loki Operator. Setting this to an empty
-          array disables admin groups. \n By default the following groups are considered
-          admin-groups: - system:cluster-admins - cluster-admin - dedicated-admin"
+      - description: |-
+          AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
+          Setting this to an empty array disables admin groups.
+
+
+          By default the following groups are considered admin-groups:
+           - system:cluster-admins
+           - cluster-admin
+           - dedicated-admin
         displayName: Admin Groups
         path: tenants.openshift.adminGroups
+      - description: OTLP contains settings for ingesting data using OTLP in the OpenShift
+          tenancy mode.
+        displayName: OpenTelemetry Protocol
+        path: tenants.openshift.otlp
+      - description: |-
+          DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
+          metadata.
+
+
+          Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
+          meta information to not be available as stream labels or structured metadata, potentially making queries more
+          expensive and less performant.
+
+
+          Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
+          added to the configuration, even if this field is set to true.
+
+
+          This option is supposed to be combined with a custom label configuration customizing the labels for the specific
+          usecase.
+        displayName: Disable recommended OTLP attributes
+        path: tenants.openshift.otlp.disableRecommendedAttributes
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment
@@ -1039,8 +1106,9 @@ spec:
       - description: List of groups for recording rules.
         displayName: Groups
         path: groups
-      - description: Interval defines the time interval between evaluation of the
-          given recoding rule.
+      - description: |-
+          Interval defines the time interval between evaluation of the given
+          recoding rule.
         displayName: Evaluation Interval
         path: groups[0].interval
       - description: Limit defines the number of series a recording rule can produce.
@@ -1056,9 +1124,10 @@ spec:
       - description: Rules defines a list of recording rules
         displayName: Rules
         path: groups[0].rules
-      - description: The LogQL expression to evaluate. Every evaluation cycle this
-          is evaluated at the current time, and all resultant time series become pending/firing
-          alerts.
+      - description: |-
+          The LogQL expression to evaluate. Every evaluation cycle this is
+          evaluated at the current time, and all resultant time series become
+          pending/firing alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
       - description: Labels to add to each recording rule.
@@ -1161,9 +1230,10 @@ spec:
         path: alertmanager.enableV2
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
-          URL is treated as a separate group in the configuration. Multiple Alertmanagers
-          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+      - description: |-
+          List of AlertManager URLs to send notifications to. Each Alertmanager URL is treated as
+          a separate group in the configuration. Multiple Alertmanagers in HA per group can be
+          supported by using DNS resolution (See EnableDNSDiscovery).
         displayName: AlertManager Endpoints
         path: alertmanager.endpoints
       - description: Additional labels to add to all alerts.
@@ -1183,9 +1253,9 @@ spec:
         path: alertmanager.notificationQueue.capacity
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Minimum duration between alert and restored "for" state. This
-          is maintained only for alerts with configured "for" time greater than the
-          grace period.
+      - description: |-
+          Minimum duration between alert and restored "for" state. This is maintained
+          only for alerts with configured "for" time greater than the grace period.
         displayName: Firing Grace Period
         path: alertmanager.notificationQueue.forGracePeriod
       - description: Max time to tolerate outage for restoring "for" state of alert.
@@ -1218,21 +1288,23 @@ spec:
           Default is '(.*)'
         displayName: Regex
         path: alertmanager.relabelConfigs[0].regex
-      - description: Replacement value against which a regex replace is performed
-          if the regular expression matches. Regex capture groups are available. Default
-          is '$1'
+      - description: |-
+          Replacement value against which a regex replace is performed if the
+          regular expression matches. Regex capture groups are available. Default is '$1'
         displayName: Replacement
         path: alertmanager.relabelConfigs[0].replacement
       - description: Separator placed between concatenated source label values. default
           is ';'.
         displayName: Separator
         path: alertmanager.relabelConfigs[0].separator
-      - description: The source labels select values from existing labels. Their content
-          is concatenated using the configured separator and matched against the configured
-          regular expression for the replace, keep, and drop actions.
+      - description: |-
+          The source labels select values from existing labels. Their content is concatenated
+          using the configured separator and matched against the configured regular expression
+          for the replace, keep, and drop actions.
         displayName: Source Labels
         path: alertmanager.relabelConfigs[0].sourceLabels
-      - description: Label to which the resulting value is written in a replace action.
+      - description: |-
+          Label to which the resulting value is written in a replace action.
           It is mandatory for replace actions. Regex capture groups are available.
         displayName: Target Label
         path: alertmanager.relabelConfigs[0].targetLabel
@@ -1313,9 +1385,10 @@ spec:
         path: overrides.alertmanager.enableV2
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
-          URL is treated as a separate group in the configuration. Multiple Alertmanagers
-          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+      - description: |-
+          List of AlertManager URLs to send notifications to. Each Alertmanager URL is treated as
+          a separate group in the configuration. Multiple Alertmanagers in HA per group can be
+          supported by using DNS resolution (See EnableDNSDiscovery).
         displayName: AlertManager Endpoints
         path: overrides.alertmanager.endpoints
       - description: Additional labels to add to all alerts.
@@ -1335,9 +1408,9 @@ spec:
         path: overrides.alertmanager.notificationQueue.capacity
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Minimum duration between alert and restored "for" state. This
-          is maintained only for alerts with configured "for" time greater than the
-          grace period.
+      - description: |-
+          Minimum duration between alert and restored "for" state. This is maintained
+          only for alerts with configured "for" time greater than the grace period.
         displayName: Firing Grace Period
         path: overrides.alertmanager.notificationQueue.forGracePeriod
       - description: Max time to tolerate outage for restoring "for" state of alert.
@@ -1370,21 +1443,23 @@ spec:
           Default is '(.*)'
         displayName: Regex
         path: overrides.alertmanager.relabelConfigs[0].regex
-      - description: Replacement value against which a regex replace is performed
-          if the regular expression matches. Regex capture groups are available. Default
-          is '$1'
+      - description: |-
+          Replacement value against which a regex replace is performed if the
+          regular expression matches. Regex capture groups are available. Default is '$1'
         displayName: Replacement
         path: overrides.alertmanager.relabelConfigs[0].replacement
       - description: Separator placed between concatenated source label values. default
           is ';'.
         displayName: Separator
         path: overrides.alertmanager.relabelConfigs[0].separator
-      - description: The source labels select values from existing labels. Their content
-          is concatenated using the configured separator and matched against the configured
-          regular expression for the replace, keep, and drop actions.
+      - description: |-
+          The source labels select values from existing labels. Their content is concatenated
+          using the configured separator and matched against the configured regular expression
+          for the replace, keep, and drop actions.
         displayName: Source Labels
         path: overrides.alertmanager.relabelConfigs[0].sourceLabels
-      - description: Label to which the resulting value is written in a replace action.
+      - description: |-
+          Label to which the resulting value is written in a replace action.
           It is mandatory for replace actions. Regex capture groups are available.
         displayName: Target Label
         path: overrides.alertmanager.relabelConfigs[0].targetLabel
@@ -1446,21 +1521,23 @@ spec:
           Default is '(.*)'
         displayName: Regex
         path: remoteWrite.client.relabelConfigs[0].regex
-      - description: Replacement value against which a regex replace is performed
-          if the regular expression matches. Regex capture groups are available. Default
-          is '$1'
+      - description: |-
+          Replacement value against which a regex replace is performed if the
+          regular expression matches. Regex capture groups are available. Default is '$1'
         displayName: Replacement
         path: remoteWrite.client.relabelConfigs[0].replacement
       - description: Separator placed between concatenated source label values. default
           is ';'.
         displayName: Separator
         path: remoteWrite.client.relabelConfigs[0].separator
-      - description: The source labels select values from existing labels. Their content
-          is concatenated using the configured separator and matched against the configured
-          regular expression for the replace, keep, and drop actions.
+      - description: |-
+          The source labels select values from existing labels. Their content is concatenated
+          using the configured separator and matched against the configured regular expression
+          for the replace, keep, and drop actions.
         displayName: Source Labels
         path: remoteWrite.client.relabelConfigs[0].sourceLabels
-      - description: Label to which the resulting value is written in a replace action.
+      - description: |-
+          Label to which the resulting value is written in a replace action.
           It is mandatory for replace actions. Regex capture groups are available.
         displayName: Target Label
         path: remoteWrite.client.relabelConfigs[0].targetLabel
@@ -1613,83 +1690,8 @@ spec:
           - loki.grafana.com
           resources:
           - alertingrules
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - alertingrules/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - alertingrules/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
           - lokistacks
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - lokistacks/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - lokistacks/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
           - recordingrules
-          verbs:
-          - create
-          - delete
-          - get
-          - list
-          - patch
-          - update
-          - watch
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - recordingrules/finalizers
-          verbs:
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
-          - recordingrules/status
-          verbs:
-          - get
-          - patch
-          - update
-        - apiGroups:
-          - loki.grafana.com
-          resources:
           - rulerconfigs
           verbs:
           - create
@@ -1702,12 +1704,18 @@ spec:
         - apiGroups:
           - loki.grafana.com
           resources:
+          - alertingrules/finalizers
+          - lokistacks/finalizers
+          - recordingrules/finalizers
           - rulerconfigs/finalizers
           verbs:
           - update
         - apiGroups:
           - loki.grafana.com
           resources:
+          - alertingrules/status
+          - lokistacks/status
+          - recordingrules/status
           - rulerconfigs/status
           verbs:
           - get
@@ -1831,7 +1839,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v3.1.1
+                  value: quay.io/openshift-logging/loki:v3.2.1
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1955,7 +1963,7 @@ spec:
   provider:
     name: Red Hat
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v3.1.1
+  - image: quay.io/openshift-logging/loki:v3.2.1
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

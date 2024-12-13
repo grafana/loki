@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestValidateModes_StaticMode(t *testing.T) {
@@ -227,7 +227,6 @@ func TestValidateModes_StaticMode(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -434,7 +433,6 @@ func TestValidateModes_DynamicMode(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -533,7 +531,6 @@ func TestValidateModes_OpenshiftLoggingMode(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -320,20 +320,40 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 }
 
 func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	if _, err := c.objectAttributes(ctx, objectKey, "COS.ObjectExists"); err != nil {
+		if c.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func (c *COSObjectClient) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return c.objectAttributes(ctx, objectKey, "COS.GetAttributes")
+}
+
+func (c *COSObjectClient) objectAttributes(ctx context.Context, objectKey, source string) (client.ObjectAttributes, error) {
 	bucket := c.bucketFromKey(objectKey)
-	err := instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-		var requestErr error
-		_, requestErr = c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
+	var objectSize int64
+	err := instrument.CollectedRequest(ctx, source, cosRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
+		headOutput, requestErr := c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
 			Bucket: ibm.String(bucket),
 			Key:    ibm.String(objectKey),
 		})
-		return requestErr
+		if requestErr != nil {
+			return requestErr
+		}
+		if headOutput != nil && headOutput.ContentLength != nil {
+			objectSize = *headOutput.ContentLength
+		}
+		return nil
 	})
 	if err != nil {
-		return false, err
+		return client.ObjectAttributes{}, err
 	}
 
-	return true, nil
+	return client.ObjectAttributes{Size: objectSize}, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.

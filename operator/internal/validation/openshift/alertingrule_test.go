@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestAlertingRuleValidator(t *testing.T) {
@@ -514,7 +514,6 @@ func TestAlertingRuleValidator(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 

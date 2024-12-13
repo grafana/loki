@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	FileMode       = 0644
 	BloomFileName  = "bloom"
 	SeriesFileName = "series"
 )

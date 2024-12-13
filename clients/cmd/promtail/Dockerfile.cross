@@ -1,5 +1,5 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.33.6
-ARG GO_VERSION=1.22
+ARG BUILD_IMAGE=grafana/loki-build-image:0.34.0
+ARG GO_VERSION=1.23
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile .
@@ -13,8 +13,8 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail
 
-# Promtail requires debian as the base image to support systemd journal reading
-FROM debian:12.5-slim
+# Promtail requires debian or ubuntu as the base image to support systemd journal reading
+FROM public.ecr.aws/ubuntu/ubuntu:noble
 # tzdata required for the timestamp stage to work
 RUN apt-get update && \
   apt-get install -qy tzdata ca-certificates wget libsystemd-dev && \

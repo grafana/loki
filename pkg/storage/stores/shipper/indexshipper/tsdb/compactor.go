@@ -409,5 +409,5 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 }
 
 func getUnsafeBytes(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s)))
+	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated
 }

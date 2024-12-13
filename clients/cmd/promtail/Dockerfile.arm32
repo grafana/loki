@@ -1,12 +1,12 @@
-FROM golang:1.22.6-bookworm as build
+FROM golang:1.23-bookworm as build
 
 COPY . /src/loki
 WORKDIR /src/loki
 RUN apt-get update && apt-get install -qy libsystemd-dev
 RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail
 
-# Promtail requires debian as the base image to support systemd journal reading
-FROM debian:12.5-slim
+# Promtail requires debian or ubuntu as the base image to support systemd journal reading
+FROM public.ecr.aws/ubuntu/ubuntu:noble
 # tzdata required for the timestamp stage to work
 RUN apt-get update && \
   apt-get install -qy tzdata ca-certificates wget libsystemd-dev && \

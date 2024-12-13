@@ -2,6 +2,7 @@ package resultscache
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"

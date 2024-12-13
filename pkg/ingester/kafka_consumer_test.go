@@ -74,6 +74,8 @@ func (f *fakePusher) Push(ctx context.Context, in *logproto.PushRequest) (*logpr
 
 type noopCommitter struct{}
 
+func (nc *noopCommitter) EnqueueOffset(_ int64) {}
+
 func (noopCommitter) Commit(_ context.Context, _ int64) error { return nil }
 
 func TestConsumer(t *testing.T) {
@@ -83,7 +85,7 @@ func TestConsumer(t *testing.T) {
 		pusher = &fakePusher{t: t}
 	)
 
-	consumer, err := NewKafkaConsumerFactory(pusher, log.NewLogfmtLogger(os.Stdout), prometheus.NewRegistry())(&noopCommitter{})
+	consumer, err := NewKafkaConsumerFactory(pusher, prometheus.NewRegistry())(&noopCommitter{}, log.NewLogfmtLogger(os.Stdout))
 	require.NoError(t, err)
 
 	records, err := kafka.Encode(0, tenantID, streamBar, 10000)

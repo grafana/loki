@@ -9,7 +9,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -126,11 +126,11 @@ func marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logp
 // It caches parsed labels for efficiency.
 type Decoder struct {
 	stream *logproto.Stream
-	cache  *lru.Cache
+	cache  *lru.Cache[string, labels.Labels]
 }
 
 func NewDecoder() (*Decoder, error) {
-	cache, err := lru.New(5000) // Set LRU size to 5000, adjust as needed
+	cache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
@@ -154,7 +154,7 @@ func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 
 	var ls labels.Labels
 	if cachedLabels, ok := d.cache.Get(d.stream.Labels); ok {
-		ls = cachedLabels.(labels.Labels)
+		ls = cachedLabels
 	} else {
 		var err error
 		ls, err = syntax.ParseLabels(d.stream.Labels)

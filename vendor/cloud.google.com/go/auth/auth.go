@@ -12,6 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package auth provides utilities for managing Google Cloud credentials,
+// including functionality for creating, caching, and refreshing OAuth2 tokens.
+// It offers customizable options for different OAuth2 flows, such as 2-legged
+// (2LO) and 3-legged (3LO) OAuth, along with support for PKCE and automatic
+// token management.
 package auth
 
 import (
@@ -130,7 +135,9 @@ func (t *Token) isEmpty() bool {
 }
 
 // Credentials holds Google credentials, including
-// [Application Default Credentials](https://developers.google.com/accounts/docs/application-default-credentials).
+// [Application Default Credentials].
+//
+// [Application Default Credentials]: https://developers.google.com/accounts/docs/application-default-credentials
 type Credentials struct {
 	json           []byte
 	projectID      CredentialsPropertyProvider
@@ -220,9 +227,7 @@ type CredentialsOptions struct {
 	UniverseDomainProvider CredentialsPropertyProvider
 }
 
-// NewCredentials returns new [Credentials] from the provided options. Most users
-// will want to build this object a function from the
-// [cloud.google.com/go/auth/credentials] package.
+// NewCredentials returns new [Credentials] from the provided options.
 func NewCredentials(opts *CredentialsOptions) *Credentials {
 	creds := &Credentials{
 		TokenProvider:  opts.TokenProvider,
@@ -235,8 +240,8 @@ func NewCredentials(opts *CredentialsOptions) *Credentials {
 	return creds
 }
 
-// CachedTokenProviderOptions provided options for configuring a
-// CachedTokenProvider.
+// CachedTokenProviderOptions provides options for configuring a cached
+// [TokenProvider].
 type CachedTokenProviderOptions struct {
 	// DisableAutoRefresh makes the TokenProvider always return the same token,
 	// even if it is expired. The default is false. Optional.
@@ -246,7 +251,7 @@ type CachedTokenProviderOptions struct {
 	// seconds. Optional.
 	ExpireEarly time.Duration
 	// DisableAsyncRefresh configures a synchronous workflow that refreshes
-	// stale tokens while blocking. The default is false. Optional.
+	// tokens in a blocking manner. The default is false. Optional.
 	DisableAsyncRefresh bool
 }
 
@@ -258,7 +263,7 @@ func (ctpo *CachedTokenProviderOptions) autoRefresh() bool {
 }
 
 func (ctpo *CachedTokenProviderOptions) expireEarly() time.Duration {
-	if ctpo == nil {
+	if ctpo == nil || ctpo.ExpireEarly == 0 {
 		return defaultExpiryDelta
 	}
 	return ctpo.ExpireEarly
@@ -273,12 +278,7 @@ func (ctpo *CachedTokenProviderOptions) blockingRefresh() bool {
 
 // NewCachedTokenProvider wraps a [TokenProvider] to cache the tokens returned
 // by the underlying provider. By default it will refresh tokens asynchronously
-// (non-blocking mode) within a window that starts 3 minutes and 45 seconds
-// before they expire. The asynchronous (non-blocking) refresh can be changed to
-// a synchronous (blocking) refresh using the
-// CachedTokenProviderOptions.DisableAsyncRefresh option. The time-before-expiry
-// duration can be configured using the CachedTokenProviderOptions.ExpireEarly
-// option.
+// a few minutes before they expire.
 func NewCachedTokenProvider(tp TokenProvider, opts *CachedTokenProviderOptions) TokenProvider {
 	if ctp, ok := tp.(*cachedTokenProvider); ok {
 		return ctp
@@ -321,7 +321,9 @@ func (c *cachedTokenProvider) tokenNonBlocking(ctx context.Context) (*Token, err
 		defer c.mu.Unlock()
 		return c.cachedToken, nil
 	case stale:
-		c.tokenAsync(ctx)
+		// Call tokenAsync with a new Context because the user-provided context
+		// may have a short timeout incompatible with async token refresh.
+		c.tokenAsync(context.Background())
 		// Return the stale token immediately to not block customer requests to Cloud services.
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -336,13 +338,14 @@ func (c *cachedTokenProvider) tokenState() tokenState {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	t := c.cachedToken
+	now := timeNow()
 	if t == nil || t.Value == "" {
 		return invalid
 	} else if t.Expiry.IsZero() {
 		return fresh
-	} else if timeNow().After(t.Expiry.Round(0)) {
+	} else if now.After(t.Expiry.Round(0)) {
 		return invalid
-	} else if timeNow().After(t.Expiry.Round(0).Add(-c.expireEarly)) {
+	} else if now.After(t.Expiry.Round(0).Add(-c.expireEarly)) {
 		return stale
 	}
 	return fresh

@@ -65,6 +65,7 @@ const (
 
 	// BOS HTTP Headers
 	BCE_COPY_METADATA_DIRECTIVE         = "x-bce-metadata-directive"
+	BCE_COPY_TAGGING_DIRECTIVE          = "x-bce-tagging-directive"
 	BCE_COPY_SOURCE                     = "x-bce-copy-source"
 	BCE_COPY_SOURCE_IF_MATCH            = "x-bce-copy-source-if-match"
 	BCE_COPY_SOURCE_IF_MODIFIED_SINCE   = "x-bce-copy-source-if-modified-since"
@@ -85,4 +86,5 @@ const (
 	BCE_TRAFFIC_LIMIT                   = "x-bce-traffic-limit"
 	BCE_BUCKET_TYPE                     = "x-bce-bucket-type"
 	BCE_OBJECT_TAGGING                  = "x-bce-tagging"
+	BCE_FETCH_CALLBACK_ADDRESS          = "x-bce-callback-address"
 )
