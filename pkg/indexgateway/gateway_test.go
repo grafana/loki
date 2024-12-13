@@ -454,6 +454,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 					_ labels.Labels,
 					fp model.Fingerprint,
 					chks []tsdb_index.ChunkMeta,
+					_ *tsdb_index.StreamStats,
 				) (stop bool), _ ...*labels.Matcher) error {
 
 				for _, s := range series {
@@ -466,7 +467,7 @@ func TestAccumulateChunksToShards(t *testing.T) {
 						})
 					}
 
-					if stop := fn(nil, s[0].ref.FingerprintModel(), chks); stop {
+					if stop := fn(nil, s[0].ref.FingerprintModel(), chks, nil); stop {
 						return nil
 					}
 				}

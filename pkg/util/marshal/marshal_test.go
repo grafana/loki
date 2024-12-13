@@ -456,8 +456,12 @@ var labelTests = []struct {
 				"test",
 				"value",
 			},
+			StructuredMetadata: []string{
+				"traceID",
+				"email",
+			},
 		},
-		`{"status": "success", "data": ["label1", "test", "value"]}`,
+		`{"status": "success", "data": ["label1", "test", "value"], "structured_metadata": ["traceID", "email"]}`,
 	},
 }
 
@@ -622,7 +626,7 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 func Test_WriteLabelResponseJSON(t *testing.T) {
 	for i, labelTest := range labelTests {
 		var b bytes.Buffer
-		err := WriteLabelResponseJSON(labelTest.actual.GetValues(), &b)
+		err := WriteLabelResponseJSON(labelTest.actual.GetValues(), labelTest.actual.GetStructuredMetadata(), &b)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, labelTest.expected, b.String(), "Label Test %d failed", i)

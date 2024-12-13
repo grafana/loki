@@ -1508,7 +1508,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		uniqueNames := make(map[string]struct{})
 		names := []string{}
 		uniqueSmNames := make(map[string]struct{})
-		smNames := []string{}
+		var smNames []string
 
 		// only unique name should be merged
 		for _, res := range responses {

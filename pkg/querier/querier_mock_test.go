@@ -378,7 +378,7 @@ func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string,
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, m ...*labels.Matcher) ([]string, []string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, m)
 	return args.Get(0).([]string), nil, args.Error(1)
 }

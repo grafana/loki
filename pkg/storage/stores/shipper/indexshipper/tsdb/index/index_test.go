@@ -786,12 +786,6 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				d.Uvarint()
 			}
 
-			// Read structured metadata names stats
-			k = d.Uvarint()
-			for i := 0; i < k; i++ {
-				d.Uvarint()
-			}
-
 			require.Equal(t, len(tc.chunkMetas), d.Uvarint())
 			for i, cs := range ir.dec.chunksSample[postings.At()].chunks {
 				require.Equal(t, tc.expectedChunkSamples[i].idx, cs.idx)
