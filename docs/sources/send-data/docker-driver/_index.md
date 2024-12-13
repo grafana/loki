@@ -39,7 +39,7 @@ To check installed plugins, use the `docker plugin ls` command.
 Plugins that have started successfully are listed as enabled:
 
 ```bash
-$ docker plugin ls
+docker plugin ls
 ```
 You should see output similar to the following:
 
