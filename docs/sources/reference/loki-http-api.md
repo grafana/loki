@@ -438,6 +438,17 @@ curl -u "User:$API_TOKEN" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
+### Response Format
+
+The Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
+
+```bash
+curl -G -s  "http://localhost:3100/loki/api/v1/query" \
+  -H "Accept: application/vnd.apache.parquet" \
+  --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)'
+  -o result.parquet
+```
+
 ## Query logs within a range of time
 
 ```bash
