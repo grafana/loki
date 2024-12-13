@@ -3062,7 +3062,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.3.0"
+    "tag": "3.3.1"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3235,7 +3235,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.3.0"
+"3.3.1"
 </pre>
 </td>
 		</tr>
@@ -5012,6 +5012,7 @@ null
 			<td>Configuration for the ingester</td>
 			<td><pre lang="json">
 {
+  "addIngesterNamePrefix": false,
   "affinity": {
     "podAntiAffinity": {
       "requiredDuringSchedulingIgnoredDuringExecution": [
@@ -5080,6 +5081,7 @@ null
   "readinessProbe": {},
   "replicas": 0,
   "resources": {},
+  "rolloutGroupPrefix": null,
   "serviceAnnotations": {},
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 300,
@@ -6090,7 +6092,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.3.0"
+"3.3.1"
 </pre>
 </td>
 		</tr>
@@ -6247,7 +6249,11 @@ null
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler</td>
 			<td><pre lang="json">
-{}
+{
+  "wal": {
+    "dir": "/var/loki/ruler-wal"
+  }
+}
 </pre>
 </td>
 		</tr>
@@ -6727,7 +6733,7 @@ false
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.32-alpine"
+"1.6.33-alpine"
 </pre>
 </td>
 		</tr>
