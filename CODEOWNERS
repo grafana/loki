@@ -3,7 +3,6 @@
 
 # Documentation.
 /docs/ @grafana/docs-logs @grafana/loki-team
-/.github/workflows/deploy-pr-preview.yml @grafana/docs-logs
 
 # Loki operator
 /operator/ @grafana/loki-team @periklis @xperimental @JoaoBraveCoding
