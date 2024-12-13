@@ -32,8 +32,6 @@ Loki is designed to be run in two states:
 Loki can also be deployed in [Simple Scalable mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable). For the best possible experience in production, we recommend deploying Loki in *microservices* mode.
 {{< /admonition >}}
 
-If you plan to use Loki to store logs for a large number of; applications, services or Kubernetes clusters, we recommend deploying Loki in *microservices* mode.
-
 ## Cloud Deployment Guides
 
 The following guides provide step-by-step instructions for deploying Loki on cloud providers:

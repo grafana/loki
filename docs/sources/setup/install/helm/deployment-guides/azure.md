@@ -152,7 +152,9 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
         ]
     }
     ```
-    **Replace `<OIDC-ISSUER-URL>` with the OIDC issuer URL you found in the previous step.** Save this file for later use.
+    **Replace `<OIDC-ISSUER-URL>` with the OIDC issuer URL you found in the previous step.**
+
+1. Make sure you to save the `credentials.json` file before continuing.
 
 1. Next generate an Azure directory `app`. We will use this to assign our federated credentials to:
    ```bash
@@ -180,7 +182,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
       --id <APP-ID> \
       --parameters credentials.json 
     ```
-    Replace `<APP-ID>` with the app ID you generated in the previous step. **Make sure you have also updated and saved the `credentials.json` file before running this step.**
+    Replace `<APP-ID>` with the app ID you generated in the previous step.
 
 1. Lastly add a role assignment to the app:
 
