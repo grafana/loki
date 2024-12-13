@@ -55,7 +55,7 @@ var (
 	// file with more than MaxRowGroups row groups.
 	ErrTooManyRowGroups = errors.New("the limit of 32767 row groups has been reached")
 
-	// ErrConversion is used to indicate that a conversion between two values
+	// ErrConversion is used to indicate that a conversion betwen two values
 	// cannot be done because there are no rules to translate between their
 	// physical types.
 	ErrInvalidConversion = errors.New("invalid conversion between parquet values")

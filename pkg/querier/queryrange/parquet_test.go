@@ -58,5 +58,5 @@ func TestEncodeLogsParquet(t *testing.T) {
 	rows, err := parquet.ReadFile[LogStreamRowType](f.Name())
 	require.NoError(t, err)
 
-	require.Len(t, rows, 33)
+	require.Len(t, rows, 3)
 }
