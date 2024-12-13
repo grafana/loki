@@ -24,7 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 )
 
-func Test_parseDetectedFeilds(t *testing.T) {
+func Test_parseDetectedFields(t *testing.T) {
 	now := time.Now()
 
 	t.Run("when no parsers are supplied", func(t *testing.T) {
@@ -1317,6 +1317,70 @@ func TestQuerier_DetectedFields(t *testing.T) {
 			}, secondValues)
 		},
 	)
+
+	t.Run("correctly formats bytes values for detected fields", func(t *testing.T) {
+		lbls := `{cluster="us-east-1", namespace="mimir-dev", pod="mimir-ruler-nfb37", service_name="mimir-ruler"}`
+		metric, err := parser.ParseMetric(lbls)
+		require.NoError(t, err)
+		now := time.Now()
+
+		infoDetectdFiledMetadata := []push.LabelAdapter{
+			{
+				Name:  "detected_level",
+				Value: "info",
+			},
+		}
+
+		lines := []push.Entry{
+			{
+				Timestamp:          now,
+				Line:               "ts=2024-09-05T15:36:38.757788067Z caller=metrics.go:66 tenant=2419 level=info bytes=1,024",
+				StructuredMetadata: infoDetectdFiledMetadata,
+			},
+			{
+				Timestamp:          now,
+				Line:               `ts=2024-09-05T15:36:38.698375619Z caller=grpc_logging.go:66 tenant=29 level=info bytes="1024 MB"`,
+				StructuredMetadata: infoDetectdFiledMetadata,
+			},
+			{
+				Timestamp:          now,
+				Line:               "ts=2024-09-05T15:36:38.629424175Z caller=grpc_logging.go:66 tenant=2919 level=info bytes=1024KB",
+				StructuredMetadata: infoDetectdFiledMetadata,
+			},
+		}
+		stream := push.Stream{
+			Labels:  lbls,
+			Entries: lines,
+			Hash:    metric.Hash(),
+		}
+
+		handler := NewDetectedFieldsHandler(
+			limitedHandler(stream),
+			logHandler(stream),
+			limits,
+		)
+
+		request := DetectedFieldsRequest{
+			logproto.DetectedFieldsRequest{
+				Start:     time.Now().Add(-1 * time.Minute),
+				End:       time.Now(),
+				Query:     `{cluster="us-east-1"} | logfmt`,
+				LineLimit: 1000,
+				Limit:     3,
+				Values:    true,
+				Name:      "bytes",
+			},
+			"/loki/api/v1/detected_field/bytes/values",
+		}
+
+		detectedFieldValues := handleRequest(handler, request).Values
+		slices.Sort(detectedFieldValues)
+		require.Equal(t, []string{
+			"1.0GB",
+			"1.0MB",
+			"1.0kB",
+		}, detectedFieldValues)
+	})
 }
 
 func BenchmarkQuerierDetectedFields(b *testing.B) {

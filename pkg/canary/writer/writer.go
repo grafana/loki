@@ -82,8 +82,8 @@ func (w *Writer) run() {
 		select {
 		case <-t.C:
 			t := time.Now()
-			if i := rand.Intn(100); i < w.outOfOrderPercentage {
-				n := rand.Intn(int(w.outOfOrderMax.Seconds()-w.outOfOrderMin.Seconds())) + int(w.outOfOrderMin.Seconds())
+			if i := rand.Intn(100); i < w.outOfOrderPercentage { //#nosec G404 -- Random sampling for testing purposes, does not require secure random.
+				n := rand.Intn(int(w.outOfOrderMax.Seconds()-w.outOfOrderMin.Seconds())) + int(w.outOfOrderMin.Seconds()) //#nosec G404 -- Random sampling for testing purposes, does not require secure random.
 				t = t.Add(-time.Duration(n) * time.Second)
 			}
 			ts := strconv.FormatInt(t.UnixNano(), 10)

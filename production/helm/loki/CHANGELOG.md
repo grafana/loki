@@ -13,6 +13,20 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
+- [BUGFIX] Disables the Helm test pod when `test.enabled=false`.
+
+## 6.23.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.3.1
+- [CHANGE] Changed version of Minio helm chart to 5.3.0 (#14834)
+- [BUGFIX] Add default wal dir to ruler config ([#14920](https://github.com/grafana/loki/pull/14920))
+- [FIX] Fix statefulset templates to not show diffs in ArgoCD
+
+## 6.22.0
+
+## 6.21.0
+
 ## 6.20.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.3.0
@@ -97,7 +111,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.7.3
 
 - [BUGFIX] Removed Helm test binary
-  
+
 ## 6.7.2
 
 - [BUGFIX] Fix imagePullSecrets for statefulset-results-cache
