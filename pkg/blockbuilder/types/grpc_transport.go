@@ -6,6 +6,9 @@ import (
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/dskit/middleware"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -47,7 +50,16 @@ func NewGRPCTransportFromAddress(
 	cfg grpcclient.Config,
 	reg prometheus.Registerer,
 ) (*GRPCTransport, error) {
-	dialOpts, err := cfg.DialOption(grpcclient.Instrument(newGRPCTransportMetrics(reg).requestLatency))
+	metrics := newGRPCTransportMetrics(reg)
+	dialOpts, err := cfg.DialOption(
+		[]grpc.UnaryClientInterceptor{
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.UnaryClientInstrumentInterceptor(metrics.requestLatency),
+		}, []grpc.StreamClientInterceptor{
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.StreamClientInstrumentInterceptor(metrics.requestLatency),
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
