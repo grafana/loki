@@ -55,15 +55,14 @@ var (
 	testTargetSize = 1536 << 10
 
 	benchBlockSizes = []int{
+		64 << 10,
 		256 << 10,
-		512 << 10,
 		1 << 20,
-		2 << 20,
 	}
 	benchTargetSizes = []int{
-		1536 << 10, // 1.5MiB
-		2 << 20,    // 2MiB
-		4 << 20,    // 4MiB
+		1 << 20, // 1MiB
+		2 << 20, // 2MiB
+		4 << 20, // 4MiB
 	}
 
 	countExtractor = func() log.StreamSampleExtractor {
@@ -928,7 +927,8 @@ func BenchmarkRead(b *testing.B) {
 			for _, enc := range benchEncodings {
 				name := fmt.Sprintf("%s %s %s", humanize.IBytes(uint64(ts)), humanize.IBytes(uint64(bs)), enc.String())
 				b.Run(name, func(b *testing.B) {
-					chunks, lines, compressed, uncompressed := generateData(enc, 100, bs, ts)
+					numChunks := 100
+					chunks, lines, compressed, uncompressed := generateData(enc, numChunks, bs, ts)
 					_, ctx := stats.NewContext(context.Background())
 					b.ResetTimer()
 					b.ReportAllocs()
@@ -949,7 +949,7 @@ func BenchmarkRead(b *testing.B) {
 					}
 					b.SetBytes(int64(uncompressed))
 					b.ReportMetric(float64(lines), "num_lines")
-					b.ReportMetric(float64(lines)/float64(b.N), "num_lines_per_chunk")
+					b.ReportMetric(float64(lines)/float64(numChunks), "num_lines_per_chunk")
 					b.ReportMetric(float64(compressed), "compressed_size")
 					b.ReportMetric(float64(uncompressed), "uncompressed_size")
 					b.ReportMetric(float64(uncompressed)/float64(compressed), "ratio")
