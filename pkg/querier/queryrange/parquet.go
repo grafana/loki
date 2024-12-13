@@ -6,10 +6,11 @@ import (
 	"io"
 	"net/http"
 
-	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/prometheus/prometheus/promql/parser"
+
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
