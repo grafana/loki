@@ -143,7 +143,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	s.metrics.reportStarting()
 
 	logger := log.With(s.logger, "phase", phaseStarting)
-
+	s.reader.SetPhase(phaseStarting)
 	// Fetch the last committed offset to determine where to start reading
 	lastCommittedOffset, err := s.offsetManager.FetchLastCommittedOffset(ctx, s.partitionID)
 	if err != nil {
@@ -174,6 +174,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 func (s *ReaderService) running(ctx context.Context) error {
 	level.Info(s.logger).Log("msg", "reader service running")
 	s.metrics.reportRunning()
+	s.reader.SetPhase(phaseRunning)
 
 	consumer, err := s.consumerFactory(s.committer, log.With(s.logger, "phase", phaseRunning))
 	if err != nil {
