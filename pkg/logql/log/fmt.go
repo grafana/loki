@@ -215,6 +215,9 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 	}
 	lf.Template = t
 
+	// determine if the template is a simple key substitution, e.g. line_format `{{.message}}`
+	// if it is, save the key name and we can use it later to directly copy the string
+	// bytes of the value to avoid copying and allocating a new string.
 	if len(t.Root.Nodes) == 1 && t.Root.Nodes[0].Type() == parse.NodeAction {
 		actionNode := t.Root.Nodes[0].(*parse.ActionNode)
 		if len(actionNode.Pipe.Cmds) == 1 && len(actionNode.Pipe.Cmds[0].Args) == 1 {
