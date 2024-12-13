@@ -449,6 +449,24 @@ curl -G -s  "http://localhost:3100/loki/api/v1/query" \
   -o result.parquet
 ```
 
+The Parquet schema is the following for streams:
+
+│ column_name │       column_type        │
+│   varchar   │         varchar          │
+|-------------|--------------------------|
+│ timestamp   │ TIMESTAMP WITH TIME ZONE │
+│ labels      │ MAP(VARCHAR, VARCHAR)    │
+│ line        │ VARCHAR                  │
+
+and for metrics:
+
+│ column_name │       column_type        │
+│   varchar   │         varchar          │
+|-------------|--------------------------|
+│ timestamp   │ TIMESTAMP WITH TIME ZONE │
+│ labels      │ MAP(VARCHAR, VARCHAR)    │
+│ line        │ DOUBLE                   │
+
 ## Query logs within a range of time
 
 ```bash
