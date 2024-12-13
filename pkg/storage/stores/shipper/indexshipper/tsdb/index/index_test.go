@@ -174,10 +174,10 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	// Postings lists are only written if a series with the respective
 	// reference was added before.
-	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash()), nil))
-	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash()), nil))
-	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash()), nil))
-	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash()), nil))
+	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash()), nil, nil))
+	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash()), nil, nil))
+	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash()), nil, nil))
+	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash()), nil, nil))
 
 	_, err = iw.Close(false)
 	require.NoError(t, err)
@@ -266,7 +266,7 @@ func TestPostingsMany(t *testing.T) {
 	})
 
 	for i, s := range series {
-		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash()), nil))
+		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash()), nil, nil))
 	}
 	_, err = iw.Close(false)
 	require.NoError(t, err)
@@ -394,7 +394,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 	mi := newMockIndex()
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks, nil)
 		require.NoError(t, err)
 		require.NoError(t, mi.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...))
 
@@ -740,7 +740,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			}
 
 			for i, l := range lbls {
-				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas)
+				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas, nil)
 				require.NoError(t, err)
 			}
 
@@ -797,6 +797,143 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 				chunkMeta := ChunkMeta{}
 				require.NoError(t, readChunkMeta(&dw, cs.prevChunkMaxt, &chunkMeta))
 				require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
+			}
+
+			require.NoError(t, ir.Close())
+		})
+	}
+}
+
+func TestStreamStats(t *testing.T) {
+	dir := t.TempDir()
+	streams := []labels.Labels{
+		{{Name: "fizz", Value: "buzz"}},
+		{{Name: "ping", Value: "pong"}},
+	}
+	smLabels := []string{"traceID", "email"}
+
+	symbSeen := map[string]struct{}{}
+	var symbols []string
+	for _, lbs := range streams {
+		for _, l := range lbs {
+			if _, ok := symbSeen[l.Name]; !ok {
+				symbSeen[l.Name] = struct{}{}
+				symbols = append(symbols, l.Name)
+			}
+			if _, ok := symbSeen[l.Value]; !ok {
+				symbSeen[l.Value] = struct{}{}
+				symbols = append(symbols, l.Value)
+			}
+		}
+	}
+	for _, l := range smLabels {
+		if _, ok := symbSeen[l]; !ok {
+			symbSeen[l] = struct{}{}
+			symbols = append(symbols, l)
+		}
+	}
+	sort.Strings(symbols)
+
+	now := model.Now()
+	chunkMetas := []ChunkMeta{
+		{
+			MinTime: int64(now),
+			MaxTime: int64(now.Add(30 * time.Minute)),
+		},
+		{
+			MinTime: int64(now.Add(40 * time.Minute)),
+			MaxTime: int64(now.Add(80 * time.Minute)),
+		},
+		{
+			MinTime: int64(now.Add(90 * time.Minute)),
+			MaxTime: int64(now.Add(120 * time.Minute)),
+		},
+		{
+			MinTime: int64(now.Add(130 * time.Minute)),
+			MaxTime: int64(now.Add(150 * time.Minute)),
+		},
+	}
+
+	for _, tc := range []struct {
+		name                     string
+		format                   int
+		writeStructuredMetadata  bool
+		expectStructuredMetadata bool
+	}{
+		{
+			name:                     "Old index format",
+			format:                   FormatV3,
+			writeStructuredMetadata:  true,
+			expectStructuredMetadata: false,
+		},
+		{
+			name:                     "with structured metadata",
+			format:                   FormatV4,
+			writeStructuredMetadata:  true,
+			expectStructuredMetadata: true,
+		},
+		{
+			name:                     "without structured metadata",
+			format:                   FormatV4,
+			writeStructuredMetadata:  false,
+			expectStructuredMetadata: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			iw, err := NewFileWriterWithVersion(context.Background(), tc.format, filepath.Join(dir, tc.name))
+			require.NoError(t, err)
+
+			for _, s := range symbols {
+				require.NoError(t, iw.AddSymbol(s))
+			}
+
+			var stats *StreamStats
+			if tc.writeStructuredMetadata {
+				stats = &StreamStats{
+					StructuredMetadataFieldNames: map[string]struct{}{
+						"traceID": {},
+						"email":   {},
+					},
+				}
+			}
+
+			for i, l := range streams {
+				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), chunkMetas, stats)
+				require.NoError(t, err)
+			}
+
+			_, err = iw.Close(false)
+			require.NoError(t, err)
+
+			ir, err := NewFileReader(filepath.Join(dir, tc.name))
+			require.NoError(t, err)
+
+			postings, err := ir.Postings("fizz", nil, "buzz")
+			require.NoError(t, err)
+
+			require.True(t, postings.Next())
+			var outStats *StreamStats
+			var lset labels.Labels
+			var chks []ChunkMeta
+
+			// there should be no chunk samples
+			require.Nil(t, ir.dec.chunksSample[postings.At()])
+
+			// read series so that chunk samples get built
+			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks, &outStats)
+			require.NoError(t, err)
+
+			require.Equal(t, chunkMetas, chks)
+			require.Equal(t, lset, streams[0])
+
+			if tc.expectStructuredMetadata {
+				require.Equal(t, len(outStats.StructuredMetadataFieldNames), len(stats.StructuredMetadataFieldNames))
+				for k := range stats.StructuredMetadataFieldNames {
+					_, ok := outStats.StructuredMetadataFieldNames[k]
+					require.True(t, ok)
+				}
+			} else {
+				require.Empty(t, outStats.StructuredMetadataFieldNames)
 			}
 
 			require.NoError(t, ir.Close())
@@ -997,7 +1134,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 	}
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks, nil)
 		require.NoError(b, err)
 	}
 

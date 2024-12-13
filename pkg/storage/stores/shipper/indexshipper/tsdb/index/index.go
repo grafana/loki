@@ -409,7 +409,7 @@ func (w *Creator) writeMeta() error {
 // fingerprint differs from what labels.Hash() produces. For example,
 // multitenant TSDBs embed a tenant label, but the actual series has no such
 // label and so the derived fingerprint differs.
-func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks []ChunkMeta, stats ...*StreamStats) error {
+func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks []ChunkMeta, stats *StreamStats) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -473,8 +473,8 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 
 	if w.Version >= FormatV4 {
 		var smFields map[string]struct{}
-		if len(stats) > 0 {
-			smFields = stats[0].StructuredMetadataFieldNames
+		if stats != nil {
+			smFields = stats.StructuredMetadataFieldNames
 		}
 
 		w.buf2.PutUvarint(len(smFields))
@@ -2230,16 +2230,24 @@ func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
 
-	if version >= FormatV4 {
-		if err := dec.readSeriesStats(&d, stats); err != nil {
-			return nil, 0, errors.Wrap(err, "read series stats")
-		}
+	if err := dec.readSeriesStats(version, &d, stats); err != nil {
+		return nil, 0, errors.Wrap(err, "read series stats")
 	}
 
 	return &d, fprint, nil
 }
 
-func (dec *Decoder) readSeriesStats(d *encoding.Decbuf, stats **StreamStats) error {
+func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats **StreamStats) error {
+	// Even if < V4, we want to return up empty stats if requested
+	if stats != nil {
+		if *stats == nil {
+			*stats = NewStreamStats()
+		}
+	}
+	if version < FormatV4 {
+		return nil
+	}
+
 	nSMFieldNames := d.Uvarint()
 
 	fields := make(map[string]struct{}, nSMFieldNames)
@@ -2253,13 +2261,7 @@ func (dec *Decoder) readSeriesStats(d *encoding.Decbuf, stats **StreamStats) err
 
 		fields[ln] = struct{}{}
 	}
-
-	if stats != nil {
-		if *stats == nil {
-			*stats = NewStreamStats()
-		}
-		(*stats).StructuredMetadataFieldNames = fields
-	}
+	(*stats).StructuredMetadataFieldNames = fields
 
 	return nil
 }
@@ -2304,10 +2306,8 @@ func (dec *Decoder) prepSeriesBy(version int, b []byte, lbls *labels.Labels, chk
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
 
-	if version >= FormatV4 {
-		if err := dec.readSeriesStats(&d, stats); err != nil {
-			return nil, 0, errors.Wrap(err, "read series stats")
-		}
+	if err := dec.readSeriesStats(version, &d, stats); err != nil {
+		return nil, 0, errors.Wrap(err, "read series stats")
 	}
 
 	return &d, fprint, nil
