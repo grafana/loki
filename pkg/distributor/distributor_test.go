@@ -643,6 +643,16 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 		topVal := ingester.Peek()
 		require.Nil(t, topVal)
 	})
+
+	t.Run("it returns unprocessable entity error if the streams is empty", func(t *testing.T) {
+		limits, ingester := setup()
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 1, []string{}))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg))
+		topVal := ingester.Peek()
+		require.Nil(t, topVal)
+	})
 }
 
 func TestStreamShard(t *testing.T) {
