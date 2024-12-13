@@ -1,5 +1,5 @@
 {
-  "image": "grafana/loki-build-image:0.29.0",
+  "image": "grafana/loki-build-image:0.34.1",
   "containerEnv": {
     "BUILD_IN_CONTAINER": "false"
   },

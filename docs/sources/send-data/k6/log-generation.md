@@ -1,7 +1,7 @@
 ---
 title: Generating log data for testing
 menuTitle: Log generation
-description: Using K6 to generate log data for load testing.
+description: Using k6 to generate log data for load testing.
 aliases: 
 - ../../clients/k6/log-generation/
 weight: 910
@@ -61,8 +61,8 @@ export default () => {
 
 The second and third argument of the method take the lower and upper bound of
 the batch size. The resulting batch size is a random value between the two
-arguments. This mimics the behaviour of a log client, such as Promtail or
-the Grafana Agent, where logs are buffered and pushed once a certain batch size
+arguments. This mimics the behavior of a log client, such as Grafana Alloy or Promtail,
+where logs are buffered and pushed once a certain batch size
 is reached or after a certain size when no logs have been received.
 
 The batch size is not equal to the payload size, as the batch size only counts

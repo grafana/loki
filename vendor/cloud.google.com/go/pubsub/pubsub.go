@@ -16,6 +16,7 @@ package pubsub // import "cloud.google.com/go/pubsub"
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -23,10 +24,12 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/internal/detect"
 	vkit "cloud.google.com/go/pubsub/apiv1"
 	"cloud.google.com/go/pubsub/internal"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
+	"google.golang.org/api/option/internaloption"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 )
@@ -46,15 +49,24 @@ const (
 // Clients should be reused rather than being created as needed.
 // A Client may be shared by multiple goroutines.
 type Client struct {
-	projectID string
-	pubc      *vkit.PublisherClient
-	subc      *vkit.SubscriberClient
+	projectID     string
+	pubc          *vkit.PublisherClient
+	subc          *vkit.SubscriberClient
+	enableTracing bool
 }
 
 // ClientConfig has configurations for the client.
 type ClientConfig struct {
 	PublisherCallOptions  *vkit.PublisherCallOptions
 	SubscriberCallOptions *vkit.SubscriberCallOptions
+
+	// EnableOpenTelemetryTracing enables tracing for this client.
+	// This option allows selectively disabling Pub/Sub traces.
+	// This defaults to false.
+	// OpenTelemetry tracing standards are in active development, and thus
+	// attributes, links, and span names are EXPERIMENTAL and subject to
+	// change or removal without notice.
+	EnableOpenTelemetryTracing bool
 }
 
 // mergePublisherCallOptions merges two PublisherCallOptions into one and the first argument has
@@ -113,23 +125,42 @@ func mergeSubscriberCallOptions(a *vkit.SubscriberCallOptions, b *vkit.Subscribe
 	return res
 }
 
+// DetectProjectID is a sentinel value that instructs NewClient to detect the
+// project ID. It is given in place of the projectID argument. NewClient will
+// use the project ID from the given credentials or the default credentials
+// (https://developers.google.com/accounts/docs/application-default-credentials)
+// if no credentials were provided. When providing credentials, not all
+// options will allow NewClient to extract the project ID. Specifically a JWT
+// does not have the project ID encoded.
+const DetectProjectID = "*detect-project-id*"
+
+// ErrEmptyProjectID denotes that the project string passed into NewClient was empty.
+// Please provide a valid project ID or use the DetectProjectID sentinel value to detect
+// project ID from well defined sources.
+var ErrEmptyProjectID = errors.New("pubsub: projectID string is empty")
+
 // NewClient creates a new PubSub client. It uses a default configuration.
 func NewClient(ctx context.Context, projectID string, opts ...option.ClientOption) (c *Client, err error) {
 	return NewClientWithConfig(ctx, projectID, nil, opts...)
 }
 
 // NewClientWithConfig creates a new PubSub client.
-func NewClientWithConfig(ctx context.Context, projectID string, config *ClientConfig, opts ...option.ClientOption) (c *Client, err error) {
+func NewClientWithConfig(ctx context.Context, projectID string, config *ClientConfig, opts ...option.ClientOption) (*Client, error) {
+	if projectID == "" {
+		return nil, ErrEmptyProjectID
+	}
 	var o []option.ClientOption
 	// Environment variables for gcloud emulator:
 	// https://cloud.google.com/sdk/gcloud/reference/beta/emulators/pubsub/
 	if addr := os.Getenv("PUBSUB_EMULATOR_HOST"); addr != "" {
-		conn, err := grpc.Dial(addr, grpc.WithInsecure())
-		if err != nil {
-			return nil, fmt.Errorf("grpc.Dial: %w", err)
+		emulatorOpts := []option.ClientOption{
+			option.WithEndpoint(addr),
+			option.WithGRPCDialOption(grpc.WithInsecure()),
+			option.WithoutAuthentication(),
+			option.WithTelemetryDisabled(),
+			internaloption.SkipDialSettingsValidation(),
 		}
-		o = []option.ClientOption{option.WithGRPCConn(conn)}
-		o = append(o, option.WithTelemetryDisabled())
+		opts = append(emulatorOpts, opts...)
 	} else {
 		numConns := runtime.GOMAXPROCS(0)
 		if numConns > 4 {
@@ -157,11 +188,29 @@ func NewClientWithConfig(ctx context.Context, projectID string, config *ClientCo
 		subc.CallOptions = mergeSubscriberCallOptions(subc.CallOptions, config.SubscriberCallOptions)
 	}
 	pubc.SetGoogleClientInfo("gccl", internal.Version)
-	return &Client{
+	subc.SetGoogleClientInfo("gccl", internal.Version)
+
+	// Handle project autodetection.
+	projectID, err = detect.ProjectID(ctx, projectID, "", opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	c := &Client{
 		projectID: projectID,
 		pubc:      pubc,
 		subc:      subc,
-	}, nil
+	}
+	if config != nil {
+		c.enableTracing = config.EnableOpenTelemetryTracing
+	}
+	return c, nil
+}
+
+// Project returns the project ID or number for this instance of the client, which may have
+// either been explicitly specified or autodetected.
+func (c *Client) Project() string {
+	return c.projectID
 }
 
 // Close releases any resources held by the client,

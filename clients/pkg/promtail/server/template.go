@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/template"
 
-	"github.com/grafana/loki/clients/pkg/promtail/server/ui"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/server/ui"
 )
 
 // templateOptions is a set of options to render a template.

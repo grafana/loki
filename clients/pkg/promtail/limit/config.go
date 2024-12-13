@@ -3,7 +3,7 @@ package limit
 import (
 	"flag"
 
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 type Config struct {

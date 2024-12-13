@@ -47,8 +47,12 @@ func Test_Parse(t *testing.T) {
 			expr{capture("ip"), literals(" - "), capture("user"), literals(" ["), capture("_"), literals(`] "`), capture("method"), literals(" "), capture("path"), literals(" "), capture('_'), literals(`" `), capture("status"), literals(" "), capture("size"), literals(" "), capture("url"), literals(" "), capture("user_agent")},
 			nil,
 		},
+		{
+			"▶",
+			expr{literals("▶")},
+			nil,
+		},
 	} {
-		tc := tc
 		actual, err := parseExpr(tc.input)
 		if tc.err != nil || err != nil {
 			require.Equal(t, tc.err, err)
@@ -56,4 +60,15 @@ func Test_Parse(t *testing.T) {
 		}
 		require.Equal(t, tc.expected, actual)
 	}
+}
+
+var result expr
+
+func BenchmarkParseExpr(b *testing.B) {
+	var err error
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		result, err = parseExpr(`level=info <_> caller=main.go:107 msg="Starting Grafana Enterprise Traces" version="version=weekly-r138-f1920489, branch=weekly-r138, revision=f1920489"`)
+	}
+	require.NoError(b, err)
 }

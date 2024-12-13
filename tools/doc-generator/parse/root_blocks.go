@@ -4,6 +4,7 @@ package parse
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/grpcclient"
@@ -13,33 +14,40 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
 
-	"github.com/grafana/loki/pkg/analytics"
-	"github.com/grafana/loki/pkg/distributor"
-	"github.com/grafana/loki/pkg/ingester"
-	ingester_client "github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/loki/common"
-	frontend "github.com/grafana/loki/pkg/lokifrontend"
-	"github.com/grafana/loki/pkg/querier"
-	"github.com/grafana/loki/pkg/querier/queryrange"
-	querier_worker "github.com/grafana/loki/pkg/querier/worker"
-	"github.com/grafana/loki/pkg/ruler"
-	"github.com/grafana/loki/pkg/scheduler"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
-	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
-	storage_config "github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/bloombuild"
+	"github.com/grafana/loki/v3/pkg/bloomgateway"
+	"github.com/grafana/loki/v3/pkg/compactor"
+	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/indexgateway"
+	"github.com/grafana/loki/v3/pkg/ingester"
+	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/loki/common"
+	frontend "github.com/grafana/loki/v3/pkg/lokifrontend"
+	"github.com/grafana/loki/v3/pkg/querier"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	querier_worker "github.com/grafana/loki/v3/pkg/querier/worker"
+	"github.com/grafana/loki/v3/pkg/ruler"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/scheduler"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/alibaba"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/azure"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/baidubce"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/openstack"
+	storage_config "github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -118,9 +126,19 @@ var (
 			Desc:       "The compactor block configures the compactor component, which compacts index shards for performance.",
 		},
 		{
+			Name:       "bloom_gateway",
+			StructType: []reflect.Type{reflect.TypeOf(bloomgateway.Config{})},
+			Desc:       "Experimental: The bloom_gateway block configures the Loki bloom gateway server, responsible for serving queries for filtering chunks based on filter expressions.",
+		},
+		{
+			Name:       "bloom_build",
+			StructType: []reflect.Type{reflect.TypeOf(bloombuild.Config{})},
+			Desc:       "Experimental: The bloom_build block configures the Loki bloom planner and builder servers, responsible for building bloom filters.",
+		},
+		{
 			Name:       "limits_config",
 			StructType: []reflect.Type{reflect.TypeOf(validation.Limits{})},
-			Desc:       "The limits_config block configures global and per-tenant limits in Loki.",
+			Desc:       "The limits_config block configures global and per-tenant limits in Loki. The values here can be overridden in the `overrides` section of the runtime_config file",
 		},
 		{
 			Name:       "frontend_worker",
@@ -139,6 +157,11 @@ var (
 			Desc:       "Configuration for 'runtime config' module, responsible for reloading runtime configuration file.",
 		},
 		{
+			Name:       "operational_config",
+			StructType: []reflect.Type{reflect.TypeOf(runtime.Config{})},
+			Desc:       "These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the `runtime_config` file.",
+		},
+		{
 			Name:       "tracing",
 			StructType: []reflect.Type{reflect.TypeOf(tracing.Config{})},
 			Desc:       "Configuration for tracing.",
@@ -147,6 +170,11 @@ var (
 			Name:       "analytics",
 			StructType: []reflect.Type{reflect.TypeOf(analytics.Config{})},
 			Desc:       "Configuration for analytics.",
+		},
+		{
+			Name:       "profiling",
+			StructType: []reflect.Type{reflect.TypeOf(loki.ProfilingConfig{})},
+			Desc:       "Configuration for profiling options.",
 		},
 
 		{
@@ -178,7 +206,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 		{
 			Name:       "grpc_client",
 			StructType: []reflect.Type{reflect.TypeOf(grpcclient.Config{})},
-			Desc:       "The grpc_client block configures the gRPC client used to communicate between two Loki components.",
+			Desc:       "The grpc_client block configures the gRPC client used to communicate between a client and server component in Loki.",
 		},
 		// TLS config
 		{
@@ -190,7 +218,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 		{
 			Name:       "cache_config",
 			StructType: []reflect.Type{reflect.TypeOf(cache.Config{})},
-			Desc:       "The cache block configures the cache backend.",
+			Desc:       "The cache_config block configures the cache backend for a specific Loki component.",
 		},
 		// Schema periodic config
 		{
@@ -254,12 +282,45 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 			Desc: `Configures additional object stores for a given storage provider.
 Supported stores: aws, azure, bos, filesystem, gcs, swift.
 Example:
-storage_config:
-  named_stores:
-    aws:
-      store-1:
-        endpoint: s3://foo-bucket
-        region: us-west1
-Named store from this example can be used by setting object_store to store-1 in period_config.`},
+` + "```yaml" + `
+    storage_config:
+      named_stores:
+        aws:
+          store-1:
+            endpoint: s3://foo-bucket
+            region: us-west1
+` + "```" + `
+Named store from this example can be used by setting object_store to store-1 in period_config.`,
+		},
+		{
+			Name:       "attributes_config",
+			StructType: []reflect.Type{reflect.TypeOf(push.AttributesConfig{})},
+			Desc:       "Define actions for matching OpenTelemetry (OTEL) attributes.",
+		},
+		{
+			Name:       "gcs_storage_backend",
+			StructType: []reflect.Type{reflect.TypeOf(gcs.Config{})},
+			Desc:       "The gcs_storage_backend block configures the connection to Google Cloud Storage object storage backend.",
+		},
+		{
+			Name:       "ruler_storage_config",
+			StructType: []reflect.Type{reflect.TypeOf(rulestore.Config{})},
+			Desc: `The ruler_storage_config configures ruler storage backend.
+It uses thanos-io/objstore clients for connecting to object storage backends. This will become the default way of configuring object store clients in future releases.
+Currently this is opt-in and takes effect only when ` + "`-use-thanos-objstore` " + "is set to true.",
+		},
 	}
 )
+
+func init() {
+	slices.SortFunc(RootBlocks, func(a, b RootBlock) int {
+		if a.Name < b.Name {
+			return -1
+		}
+		if a.Name > b.Name {
+			return 1
+		}
+
+		return 0
+	})
+}

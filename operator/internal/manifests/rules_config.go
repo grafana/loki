@@ -6,7 +6,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
@@ -17,7 +17,7 @@ type RuleName struct {
 	filename string
 }
 
-// RulesConfigMap returns a ConfigMap resource that contains
+// RulesConfigMapShards returns a ConfigMap resource that contains
 // all loki alerting and recording rules as YAML data.
 // If the size of the data is more than 1MB, the ConfigMap will
 // be split into multiple shards, and this function will return
@@ -29,7 +29,6 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	shardedCM := NewShardedConfigMap(template, RulesConfigMapName(opts.Name))
 
 	for _, r := range opts.AlertingRules {
-		r := r
 		if opts.Stack.Tenants != nil {
 			configureAlertingRuleForMode(&r, opts.Stack.Tenants.Mode)
 		}
@@ -46,7 +45,6 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	}
 
 	for _, r := range opts.RecordingRules {
-		r := r
 		if opts.Stack.Tenants != nil {
 			configureRecordingRuleForMode(&r, opts.Stack.Tenants.Mode)
 		}

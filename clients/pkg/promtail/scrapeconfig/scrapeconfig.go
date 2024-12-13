@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/dskit/server"
@@ -27,8 +27,8 @@ import (
 	"github.com/prometheus/prometheus/discovery/zookeeper"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/discovery/consulagent"
 )
 
 // Config describes a job to scrape.
@@ -174,6 +174,15 @@ type JournalTargetConfig struct {
 	Matches string `yaml:"matches"`
 }
 
+type SyslogFormat string
+
+const (
+	// A modern Syslog RFC
+	SyslogFormatRFC5424 = "rfc5424"
+	// A legacy Syslog RFC also known as BSD-syslog
+	SyslogFormatRFC3164 = "rfc3164"
+)
+
 // SyslogTargetConfig describes a scrape config that listens for log lines over syslog.
 type SyslogTargetConfig struct {
 	// ListenAddress is the address to listen on for syslog messages.
@@ -202,10 +211,18 @@ type SyslogTargetConfig struct {
 	// message should be pushed to Loki
 	UseRFC5424Message bool `yaml:"use_rfc5424_message"`
 
+	// Syslog format used at the target. Acceptable value is rfc5424 or rfc3164.
+	// Default is rfc5424.
+	SyslogFormat SyslogFormat `yaml:"syslog_format"`
+
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
 
 	TLSConfig promconfig.TLSConfig `yaml:"tls_config,omitempty"`
+}
+
+func (config SyslogTargetConfig) IsRFC3164Message() bool {
+	return config.SyslogFormat == SyslogFormatRFC3164
 }
 
 // WindowsEventsTargetConfig describes a scrape config that listen for windows event logs.

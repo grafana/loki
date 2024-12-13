@@ -13,7 +13,7 @@ keywords:
 
 # Migrate from `loki-distributed` Helm chart
 
-This guide will walk you through migrating to the `loki` Helm Chart, v3.0 or higher, from the `loki-distributed` Helm Chart (v0.63.2 at time of writing). The process consists of deploying the new `loki` Helm Chart alongside the existing `loki-distributed` installation. By joining the new cluster to the exsiting cluster's ring, you will create one large cluster. This will allow you to manually bring down the `loki-distributed` components in a safe way to avoid any data loss.
+This guide will walk you through migrating to the `loki` Helm Chart, v3.0 or higher, from the `loki-distributed` Helm Chart (v0.63.2 at time of writing). The process consists of deploying the new `loki` Helm Chart alongside the existing `loki-distributed` installation. By joining the new cluster to the existing cluster's ring, you will create one large cluster. This will allow you to manually bring down the `loki-distributed` components in a safe way to avoid any data loss.
 
 **Before you begin:**
 
@@ -48,7 +48,7 @@ This leverages the fact that the new deployment adds a `app.kubernetes.io/compon
    Once the new cluster is up, add the appropriate data source in Grafana for the new cluster. Check that the following queries return results:
 
    - Confirm new and old logs are in the new deployment. Using the new deployment's Loki data source in Grafana, look for:
-     - Logs with a job that is unqiue to your existing Promtail or Grafana Agent, the one we adjusted above to exclude logs from the new deployment which is not yet pushing logs to the new deployment. If you can query those via the new deployment in shows we have not lost historical logs.
+     - Logs with a job that is unique to your existing Promtail or Grafana Agent, the one we adjusted above to exclude logs from the new deployment which is not yet pushing logs to the new deployment. If you can query those via the new deployment in shows we have not lost historical logs.
      - Logs with the label `job="loki/loki-read"`. The read component does not exist in `loki-distributed`, so this show the new Loki cluster's self monitoring is working correctly.
    - Confirm new logs are in the old deployment. Using the old deployment's Loki data source in Grafana, look for:
      - Logs with the label `job="loki/loki-read"`. Since you have excluded logs from the new deployment from going to the `loki-distributed` deployment, if you can query them through the `loki-distributed` Loki data source that show the ingesters have joined the same ring, and are queryable from the `loki-distributed` queriers.

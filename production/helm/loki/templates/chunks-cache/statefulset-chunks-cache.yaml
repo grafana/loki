@@ -1,0 +1,1 @@
+{{- include "loki.memcached.statefulSet" (dict "ctx" $ "valuesSection" "chunksCache" "component" "chunks-cache" ) }}

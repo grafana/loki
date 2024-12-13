@@ -3,6 +3,8 @@ package logql
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"sort"
 	"testing"
 	"time"
 
@@ -11,9 +13,11 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/sketch"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/vector"
 )
 
 var samples = []logproto.Sample{
@@ -55,11 +59,11 @@ func newfakePeekingSampleIterator(samples []logproto.Sample) iter.PeekingSampleI
 }
 
 func newSample(t time.Time, v float64, metric labels.Labels) promql.Sample {
-	return promql.Sample{Metric: metric, T: t.UnixNano() / 1e+6, F: v}
+	return promql.Sample{Metric: metric, T: t.UnixMilli(), F: v}
 }
 
 func newPoint(t time.Time, v float64) promql.FPoint {
-	return promql.FPoint{T: t.UnixNano() / 1e+6, F: v}
+	return promql.FPoint{T: t.UnixMilli(), F: v}
 }
 
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
@@ -211,6 +215,138 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 		}
 	}
 
+}
+
+func Test_RangeVectorIterator_InstantQuery(t *testing.T) {
+	now := time.Date(2024, 7, 3, 0, 0, 0, 0, time.UTC)
+
+	samples := []logproto.Sample{
+		{Timestamp: now.Add(-2 * time.Hour).UnixNano(), Value: 1.23},
+		{Timestamp: now.Add(-1 * time.Hour).UnixNano(), Value: 2.34},
+		{Timestamp: now.UnixNano(), Value: 3.45},
+	}
+
+	tests := []struct {
+		selRange       time.Duration
+		now            time.Time
+		expectedVector promql.Vector
+		expectedTs     time.Time
+	}{
+		{
+			// query range:    (----]
+			// samples:        x        x        x
+			selRange:       30 * time.Minute,
+			now:            now.Add(-90 * time.Minute),
+			expectedVector: []promql.Sample{},
+			expectedTs:     now.Add(-90 * time.Minute),
+		},
+		{
+			// query range:    (--------]
+			// samples:        x        x        x
+			selRange: 60 * time.Minute,
+			now:      now.Add(-60 * time.Minute),
+			expectedVector: []promql.Sample{
+				newSample(now.Add(-60*time.Minute), 1, labelFoo),
+				newSample(now.Add(-60*time.Minute), 1, labelBar),
+			},
+			expectedTs: now.Add(-60 * time.Minute),
+		},
+		{
+			// query range:        (----]
+			// samples:        x        x        x
+			selRange: 30 * time.Minute,
+			now:      now.Add(-60 * time.Minute),
+			expectedVector: []promql.Sample{
+				newSample(now.Add(-60*time.Minute), 1, labelFoo),
+				newSample(now.Add(-60*time.Minute), 1, labelBar),
+			},
+			expectedTs: now.Add(-60 * time.Minute),
+		},
+		{
+			// query range:        (---------]
+			// samples:        x        x        x
+			selRange: 60 * time.Minute,
+			now:      now.Add(-30 * time.Minute),
+			expectedVector: []promql.Sample{
+				newSample(now.Add(-30*time.Minute), 1, labelFoo),
+				newSample(now.Add(-30*time.Minute), 1, labelBar),
+			},
+			expectedTs: now.Add(-30 * time.Minute),
+		},
+		{
+			// query range:             (----]
+			// samples:        x        x        x
+			selRange:       30 * time.Minute,
+			now:            now.Add(-30 * time.Minute),
+			expectedVector: []promql.Sample{},
+			expectedTs:     now.Add(-30 * time.Minute),
+		},
+		{
+			// query range:             (--------]
+			// samples:        x        x        x
+			selRange: 60 * time.Minute,
+			now:      now,
+			expectedVector: []promql.Sample{
+				newSample(now, 1, labelFoo),
+				newSample(now, 1, labelBar),
+			},
+			expectedTs: now,
+		},
+		{
+			// query range:                 (----]
+			// samples:        x        x        x
+			selRange: 30 * time.Minute,
+			now:      now,
+			expectedVector: []promql.Sample{
+				newSample(now, 1, labelFoo),
+				newSample(now, 1, labelBar),
+			},
+			expectedTs: now,
+		},
+		{
+			// query range:    (-----------------]
+			// samples:        x        x        x
+			selRange: 120 * time.Minute,
+			now:      now,
+			expectedVector: []promql.Sample{
+				newSample(now, 2, labelFoo),
+				newSample(now, 2, labelBar),
+			},
+			expectedTs: now,
+		},
+		{
+			// query range:               (----]
+			// samples:        x        x        x
+			selRange:       30 * time.Minute,
+			now:            now.Add(-15 * time.Minute),
+			expectedVector: []promql.Sample{},
+			expectedTs:     now.Add(-15 * time.Minute),
+		},
+	}
+
+	for i, tt := range tests {
+		t.Run(
+			fmt.Sprintf("%d logs[%s] - start %s - end %s", i, tt.selRange, tt.now.Add(-tt.selRange), tt.now),
+			func(t *testing.T) {
+				it, err := newRangeVectorIterator(
+					newfakePeekingSampleIterator(samples),
+					&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount},
+					tt.selRange.Nanoseconds(),
+					0,                 // step
+					tt.now.UnixNano(), // start
+					tt.now.UnixNano(), // end
+					0,                 // offset
+				)
+				require.NoError(t, err)
+
+				hasNext := it.Next()
+				require.True(t, hasNext)
+
+				ts, v := it.At()
+				require.ElementsMatch(t, tt.expectedVector, v)
+				require.Equal(t, tt.expectedTs.UnixMilli(), ts)
+			})
+	}
 }
 
 func Test_RangeVectorIterator(t *testing.T) {
@@ -368,6 +504,7 @@ func Test_RangeVectorIteratorBadLabels(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer cancel()
+		//nolint:revive
 		for it.Next() {
 		}
 	}()
@@ -410,10 +547,11 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 				3, 1, start, end, 0)
 			require.NoError(t, err)
 
+			//nolint:revive
 			for it.Next() {
 			}
 			_, value := it.At()
-			require.Equal(t, tt.expectedValue, value[0].F)
+			require.Equal(t, tt.expectedValue, value.SampleVector()[0].F)
 		})
 	}
 }
@@ -439,4 +577,70 @@ func value(value float64, negative bool) float64 {
 		return -1. * value
 	}
 	return value
+}
+
+func TestQuantiles(t *testing.T) {
+	// v controls the distribution of values along the curve, a greater v
+	// value means there's a large distance between generated values
+	vs := []float64{1.0, 5.0, 10.0}
+	// s controls the exponential curve of the distribution
+	// the higher the s values the faster the drop off from max value to lesser values
+	// s must be > 1.0
+	ss := []float64{1.01, 2.0, 3.0, 4.0}
+
+	// T-Digest is too big for 1_000 samples. However, we did not optimize
+	// the format for size.
+	nSamples := []int{5_000, 10_000, 100_000, 1_000_000}
+
+	factories := []struct {
+		newSketch     sketch.QuantileSketchFactory
+		name          string
+		relativeError float64
+	}{
+		{newSketch: func() sketch.QuantileSketch { return sketch.NewDDSketch() }, name: "DDSketch", relativeError: 0.02},
+		{newSketch: sketch.NewTDigestSketch, name: "T-Digest", relativeError: 0.05},
+	}
+
+	for _, tc := range factories {
+		for _, samplesCount := range nSamples {
+			for _, s := range ss {
+				for _, v := range vs {
+					t.Run(fmt.Sprintf("sketch=%s, s=%.2f, v=%.2f, events=%d", tc.name, s, v, samplesCount), func(t *testing.T) {
+						sk := tc.newSketch()
+
+						r := rand.New(rand.NewSource(42))
+						z := rand.NewZipf(r, s, v, 1_000)
+						values := make(vector.HeapByMaxValue, 0)
+						for i := 0; i < samplesCount; i++ {
+
+							value := float64(z.Uint64())
+							values = append(values, promql.Sample{F: value})
+							err := sk.Add(value)
+							require.NoError(t, err)
+						}
+						sort.Sort(values)
+
+						// Size
+						var buf []byte
+						var err error
+						switch s := sk.(type) {
+						case *sketch.DDSketchQuantile:
+							buf, err = proto.Marshal(s.DDSketch.ToProto())
+							require.NoError(t, err)
+						case *sketch.TDigestQuantile:
+							buf, err = proto.Marshal(s.ToProto())
+							require.NoError(t, err)
+						}
+						require.Less(t, len(buf), samplesCount*8)
+
+						// Accuracy
+						expected := Quantile(0.99, values)
+						actual, err := sk.Quantile(0.99)
+						require.NoError(t, err)
+						require.InEpsilonf(t, expected, actual, tc.relativeError, "expected quantile %f, actual quantile %f", expected, actual)
+					})
+				}
+			}
+		}
+	}
 }

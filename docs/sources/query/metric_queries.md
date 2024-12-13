@@ -1,10 +1,10 @@
 ---
 title: Metric queries 
 menuTItle:  
-description: Metric queries extend log queries by applying a function to log query results. This powerful feature creates metrics from logs.
+description: Provides an overview of how metric queries are constructed and parsed. Metric queries extend log queries by applying a function to log query results.
 aliases: 
 - ../logql/metric_queries/
-weight: 20  
+weight: 400  
 ---
 
 # Metric queries
@@ -56,6 +56,15 @@ Examples:
     ```logql
     sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
     ```
+
+#### Offset modifier
+The offset modifier allows changing the time offset for individual range vectors in a query.
+
+For example, the following expression counts all the logs within the last ten minutes to five minutes rather than last five minutes for the MySQL job. Note that the `offset` modifier always needs to follow the range vector selector immediately.
+```logql
+count_over_time({job="mysql"}[5m] offset 5m) // GOOD
+count_over_time({job="mysql"}[5m]) offset 5m // INVALID
+```
 
 ### Unwrapped range aggregations
 
@@ -144,3 +153,14 @@ Examples:
       or
     vector(0) # will return 0
     ```
+
+## Probabilistic aggregation
+
+The `topk` keyword lets you find the largest 1,000 elements in a data stream by sample size. When  `topk` hits the maximum series limit, LogQL also supports using a probable approximation; `approx_topk`  is a drop-in replacement when `topk` hits the maximum series limit.
+
+```logql
+approx_topk(k, <vector expression>)
+```
+
+It is only supported for instant queries and does not support grouping. It is useful when the cardinality of the inner
+vector is too high, for example, when it uses an aggregation by a structured metadata label.

@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func TestInstanceCountDelegateCounting(t *testing.T) {
@@ -102,6 +102,8 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	delegate = &sentryDelegate{BasicLifecyclerDelegate: delegate, calls: sentry2} // sentry delegate AFTER newHealthyInstancesDelegate
 
 	ringCfg := &RingConfig{}
+	ringCfg.InstanceAddr = "localhost"
+
 	logger := log.With(util_log.Logger, "component", "lifecycler")
 	lifecyclerCfg, err := ringCfg.ToBasicLifecyclerConfig(logger)
 	require.NoError(t, err)
@@ -109,7 +111,7 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	require.NoError(t, err)
 
 	ingesters := ring.NewDesc()
-	ingesters.AddIngester("ingester-0", "ingester-0:3100", "zone-a", []uint32{1}, ring.ACTIVE, time.Now())
+	ingesters.AddIngester("ingester-0", "ingester-0:3100", "zone-a", []uint32{1}, ring.ACTIVE, time.Now(), false, time.Now())
 
 	// initial state.
 	require.Equal(t, 0, sentry1["Heartbeat"])
@@ -125,7 +127,9 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	require.Equal(t, 1, sentry1["Heartbeat"])
 	require.Equal(t, 1, sentry2["Heartbeat"])
 
-	delegate.OnRingInstanceRegister(lifecycler, *ingesters, true, "ingester-0", ring.InstanceDesc{})
+	cfg := ring.BasicLifecyclerConfig{}
+	l, _ := ring.NewBasicLifecycler(cfg, "", "", nil, nil, nil, nil)
+	delegate.OnRingInstanceRegister(l, *ingesters, true, "ingester-0", ring.InstanceDesc{})
 	require.Equal(t, 1, sentry1["Register"])
 	require.Equal(t, 1, sentry2["Register"])
 

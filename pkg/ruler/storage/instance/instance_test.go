@@ -25,10 +25,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
 func TestConfig_Unmarshal_Defaults(t *testing.T) {
@@ -246,6 +247,7 @@ type mockWalStorage struct {
 func (s *mockWalStorage) Directory() string                          { return s.directory }
 func (s *mockWalStorage) StartTime() (int64, error)                  { return 0, nil }
 func (s *mockWalStorage) WriteStalenessMarkers(_ func() int64) error { return nil }
+func (s *mockWalStorage) SetWriteNotified(_ wlog.WriteNotified)      {}
 func (s *mockWalStorage) Close() error                               { return nil }
 func (s *mockWalStorage) Truncate(_ int64) error                     { return nil }
 
@@ -296,6 +298,10 @@ func (a *mockAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ me
 }
 
 func (a *mockAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *mockAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
 	return 0, nil
 }
 

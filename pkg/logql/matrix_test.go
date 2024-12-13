@@ -37,7 +37,7 @@ func TestMatrixStepper(t *testing.T) {
 		},
 	}
 
-	s := NewMatrixStepper(start, end, step, m)
+	s := NewMatrixStepEvaluator(start, end, step, m)
 
 	expected := []promql.Vector{
 		{
@@ -91,7 +91,7 @@ func TestMatrixStepper(t *testing.T) {
 		ok, ts, vec := s.Next()
 		require.Equal(t, ok, true)
 		require.Equal(t, start.Add(step*time.Duration(i)).UnixNano()/int64(time.Millisecond), ts)
-		require.Equal(t, expected[i], vec)
+		require.Equal(t, expected[i], vec.SampleVector())
 	}
 
 	ok, _, _ := s.Next()
@@ -115,7 +115,7 @@ func Test_SingleStepMatrix(t *testing.T) {
 		},
 	}
 
-	s := NewMatrixStepper(start, end, step, m)
+	s := NewMatrixStepEvaluator(start, end, step, m)
 
 	ok, ts, vec := s.Next()
 	require.True(t, ok)
@@ -123,7 +123,7 @@ func Test_SingleStepMatrix(t *testing.T) {
 	require.Equal(t, promql.Vector{promql.Sample{
 		T: start.UnixNano(), F: 10,
 		Metric: labels.EmptyLabels(),
-	}}, vec)
+	}}, vec.SampleVector())
 
 	ok, _, _ = s.Next()
 	require.False(t, ok)

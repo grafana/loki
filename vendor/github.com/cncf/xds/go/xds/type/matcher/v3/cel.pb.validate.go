@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,23 +32,62 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on CelMatcher with the rules defined in the
-// proto definition for this message. If any rules are violated, an error is returned.
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
 func (m *CelMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on CelMatcher with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in CelMatcherMultiError, or
+// nil if none found.
+func (m *CelMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *CelMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if m.GetExprMatch() == nil {
-		return CelMatcherValidationError{
+		err := CelMatcherValidationError{
 			field:  "ExprMatch",
 			reason: "value is required",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
-	if v, ok := interface{}(m.GetExprMatch()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetExprMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, CelMatcherValidationError{
+					field:  "ExprMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, CelMatcherValidationError{
+					field:  "ExprMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetExprMatch()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return CelMatcherValidationError{
 				field:  "ExprMatch",
@@ -57,8 +97,30 @@ func (m *CelMatcher) Validate() error {
 		}
 	}
 
+	// no validation rules for Description
+
+	if len(errors) > 0 {
+		return CelMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// CelMatcherMultiError is an error wrapping multiple validation errors
+// returned by CelMatcher.ValidateAll() if the designated constraints aren't met.
+type CelMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m CelMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m CelMatcherMultiError) AllErrors() []error { return m }
 
 // CelMatcherValidationError is the validation error returned by
 // CelMatcher.Validate if the designated constraints aren't met.

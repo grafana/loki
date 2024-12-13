@@ -27,7 +27,7 @@ var (
 
 	lokiConfigYAMLTmpl = template.Must(template.ParseFS(lokiConfigYAMLTmplFile, "loki-config.yaml"))
 
-	lokiRuntimeConfigYAMLTmpl = template.Must(template.ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
+	lokiRuntimeConfigYAMLTmpl = template.Must(template.New("loki-runtime-config.yaml").ParseFS(lokiRuntimeConfigYAMLTmplFile, "loki-runtime-config.yaml"))
 )
 
 // Build builds a loki stack configuration files

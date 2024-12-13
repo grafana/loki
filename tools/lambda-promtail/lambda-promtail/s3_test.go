@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -9,9 +10,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 func Test_getLabels(t *testing.T) {
@@ -93,6 +94,38 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "s3_guardduty",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "s3_guardduty_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "AWSLogs/123456789012/GuardDuty/us-east-1/2024/05/30/07a3f2ce-1485-3031-b842-e1f324c4a48d.jsonl.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "s3_guardduty_test",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-1",
+				"day":           "30",
+				"key":           "AWSLogs/123456789012/GuardDuty/us-east-1/2024/05/30/07a3f2ce-1485-3031-b842-e1f324c4a48d.jsonl.gz",
+				"month":         "05",
+				"region":        "us-east-1",
+				"type":          GUARDDUTY_LOG_TYPE,
+				"year":          "2024",
+			},
+			wantErr: false,
+		},
+		{
 			name: "s3_flow_logs",
 			args: args{
 				record: events.S3EventRecord{
@@ -119,6 +152,39 @@ func Test_getLabels(t *testing.T) {
 				"key":           "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-east-1/2022/01/24/123456789012_vpcflowlogs_us-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
 				"month":         "01",
 				"region":        "us-east-1",
+				"src":           "fl-1234abcd",
+				"type":          FLOW_LOG_TYPE,
+				"year":          "2022",
+			},
+			wantErr: false,
+		},
+		{
+			name: "s3_govcloud_flow_logs",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-gov-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "vpc_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-gov-east-1/2022/01/24/123456789012_vpcflowlogs_us-gov-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "vpc_logs_test",
+				"bucket_owner":  "test",
+				"bucket_region": "us-gov-east-1",
+				"day":           "24",
+				"key":           "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-gov-east-1/2022/01/24/123456789012_vpcflowlogs_us-gov-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
+				"month":         "01",
+				"region":        "us-gov-east-1",
 				"src":           "fl-1234abcd",
 				"type":          FLOW_LOG_TYPE,
 				"year":          "2022",
@@ -192,6 +258,39 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "cloudtrail_govcloud_logs",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-gov-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "cloudtrail_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "my-bucket/AWSLogs/123456789012/CloudTrail/us-gov-east-1/2022/01/24/123456789012_CloudTrail_us-gov-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "123456789012",
+				"bucket":        "cloudtrail_logs_test",
+				"bucket_owner":  "test",
+				"bucket_region": "us-gov-east-1",
+				"day":           "24",
+				"key":           "my-bucket/AWSLogs/123456789012/CloudTrail/us-gov-east-1/2022/01/24/123456789012_CloudTrail_us-gov-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
+				"month":         "01",
+				"region":        "us-gov-east-1",
+				"src":           "4jhzXFO2Jlvu2b3y",
+				"type":          CLOUDTRAIL_LOG_TYPE,
+				"year":          "2022",
+			},
+			wantErr: false,
+		},
+		{
 			name: "organization_cloudtrail_logs",
 			args: args{
 				record: events.S3EventRecord{
@@ -258,6 +357,76 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "s3_waf",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "waf_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "prefix/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "11111111111",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-1",
+				"bucket":        "waf_logs_test",
+				"day":           "28",
+				"hour":          "19",
+				"key":           "prefix/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz",
+				"minute":        "50",
+				"month":         "10",
+				"region":        "us-east-1",
+				"src":           "TEST-WEBACL",
+				"type":          WAF_LOG_TYPE,
+				"year":          "2021",
+			},
+			wantErr: false,
+		},
+		{
+			name: "s3_govcloud_waf",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-gov-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "waf_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "prefix/AWSLogs/11111111111/WAFLogs/us-gov-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-gov-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"account_id":    "11111111111",
+				"bucket_owner":  "test",
+				"bucket_region": "us-gov-east-1",
+				"bucket":        "waf_logs_test",
+				"day":           "28",
+				"hour":          "19",
+				"key":           "prefix/AWSLogs/11111111111/WAFLogs/us-gov-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-gov-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz",
+				"minute":        "50",
+				"month":         "10",
+				"region":        "us-gov-east-1",
+				"src":           "TEST-WEBACL",
+				"type":          WAF_LOG_TYPE,
+				"year":          "2021",
+			},
+			wantErr: false,
+		},
+		{
 			name: "missing_type",
 			args: args{
 				record: events.S3EventRecord{
@@ -313,6 +482,7 @@ func Test_parseS3Log(t *testing.T) {
 		expectedLen        int
 		expectedStream     string
 		expectedTimestamps []time.Time
+		expectedLog        string
 	}{
 		{
 			name: "vpcflowlogs",
@@ -444,6 +614,27 @@ func Test_parseS3Log(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "waflogs",
+			args: args{
+				batchSize: 131072, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/waflog.log.gz",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"account_id": "11111111111",
+					"src":        "TEST-WEBACL",
+					"type":       WAF_LOG_TYPE,
+				},
+			},
+			expectedLen:    1,
+			expectedStream: `{__aws_log_type="s3_waf", __aws_s3_waf="TEST-WEBACL", __aws_s3_waf_owner="11111111111"}`,
+			expectedTimestamps: []time.Time{
+				time.Date(2023, time.August, 31, 4, 57, 42, 729000000, time.UTC),
+			},
+			wantErr: false,
+		},
+		{
 			name: "missing_parser",
 			args: args{
 				batchSize: 131072, // Set large enough we don't try and send to promtail
@@ -463,6 +654,31 @@ func Test_parseS3Log(t *testing.T) {
 			expectedStream: "",
 			wantErr:        true,
 		},
+		{
+			name: "no_timestamp_type",
+			args: args{
+				batchSize: 131072, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/waflog.log.gz",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"account_id": "11111111111",
+					"src":        "TEST-WEBACL",
+					"type":       "no_type",
+				},
+			},
+			expectedLen:    1,
+			expectedStream: `{__aws_log_type="s3_waf", __aws_s3_waf="TEST-WEBACL", __aws_s3_waf_owner="11111111111"}`,
+			expectedLog:    `level=warn msg="timestamp type of no_type parser unknown, using current time"` + "\n",
+			wantErr:        false,
+		},
+	}
+	parsers["no_type"] = parserConfig{
+		logTypeLabel:   "s3_waf",
+		filenameRegex:  wafFilenameRegex,
+		ownerLabelKey:  "account_id",
+		timestampRegex: wafTimestampRegex,
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -472,7 +688,9 @@ func Test_parseS3Log(t *testing.T) {
 			if err != nil {
 				t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
 			}
-			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
+			buf := &bytes.Buffer{}
+			log := log.NewLogfmtLogger(buf)
+			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj, &log); (err != nil) != tt.wantErr {
 				t.Errorf("parseS3Log() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			require.Len(t, tt.args.b.streams, tt.expectedLen)
@@ -486,6 +704,7 @@ func Test_parseS3Log(t *testing.T) {
 						require.Equal(t, tt.expectedTimestamps[i], entry.Timestamp)
 					}
 				}
+				require.Equal(t, tt.expectedLog, buf.String())
 			}
 		})
 	}
@@ -594,4 +813,73 @@ func TestProcessSQSEvent(t *testing.T) {
 	})
 	require.Nil(t, err)
 	require.True(t, handlerCalled)
+}
+
+func TestGetUnixSecNsec(t *testing.T) {
+	type args struct {
+		s string
+	}
+	tests := []struct {
+		name         string
+		args         args
+		wantErr      bool
+		expectedSec  int64
+		expectedNsec int64
+	}{
+		{
+			name: "timestamp_in_seconds",
+			args: args{
+				s: "1234567890",
+			},
+			expectedSec:  1234567890,
+			expectedNsec: 0,
+			wantErr:      false,
+		},
+		{
+			name: "timestamp_in_milliseconds",
+			args: args{
+				s: "1234567890123",
+			},
+			expectedSec:  1234567890,
+			expectedNsec: 123000000,
+			wantErr:      false,
+		},
+		{
+			name: "timestamp_in_microseconds",
+			args: args{
+				s: "1234567890123456",
+			},
+			expectedSec:  1234567890,
+			expectedNsec: 123456000,
+			wantErr:      false,
+		},
+		{
+			name: "timestamp_in_nanoseconds",
+			args: args{
+				s: "1234567890123456789",
+			},
+			expectedSec:  1234567890,
+			expectedNsec: 123456789,
+			wantErr:      false,
+		},
+		{
+			name: "strconv_error",
+			args: args{
+				s: "string",
+			},
+			expectedSec:  0,
+			expectedNsec: 0,
+			wantErr:      true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sec, nsec, err := getUnixSecNsec(tt.args.s)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getUnixSecNsec() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			require.Equal(t, tt.expectedSec, sec)
+			require.Equal(t, tt.expectedNsec, nsec)
+		})
+	}
 }

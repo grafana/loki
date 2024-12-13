@@ -244,7 +244,7 @@ func (am *andMatcher) match(data *rpcData) bool {
 type alwaysMatcher struct {
 }
 
-func (am *alwaysMatcher) match(data *rpcData) bool {
+func (am *alwaysMatcher) match(*rpcData) bool {
 	return true
 }
 
@@ -285,6 +285,12 @@ func newHeaderMatcher(headerMatcherConfig *v3route_componentspb.HeaderMatcher) (
 		m = internalmatcher.NewHeaderSuffixMatcher(headerMatcherConfig.Name, headerMatcherConfig.GetSuffixMatch(), headerMatcherConfig.InvertMatch)
 	case *v3route_componentspb.HeaderMatcher_ContainsMatch:
 		m = internalmatcher.NewHeaderContainsMatcher(headerMatcherConfig.Name, headerMatcherConfig.GetContainsMatch(), headerMatcherConfig.InvertMatch)
+	case *v3route_componentspb.HeaderMatcher_StringMatch:
+		sm, err := internalmatcher.StringMatcherFromProto(headerMatcherConfig.GetStringMatch())
+		if err != nil {
+			return nil, fmt.Errorf("invalid string matcher %+v: %v", headerMatcherConfig.GetStringMatch(), err)
+		}
+		m = internalmatcher.NewHeaderStringMatcher(headerMatcherConfig.Name, sm, headerMatcherConfig.InvertMatch)
 	default:
 		return nil, errors.New("unknown header matcher type")
 	}

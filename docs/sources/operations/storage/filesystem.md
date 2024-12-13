@@ -1,8 +1,10 @@
 ---
-title: Filesystem
-description: Filesystem Object Store
+title: Filesystem object store
+menuTitle: Filesystem object store
+description: Describes the features and limitations of using a filesystem object store with Loki.
+weight: 300
 ---
-# Filesystem
+# Filesystem object store
 
 The filesystem object store is the easiest to get started with Grafana Loki but there are some pros/cons to this approach.
 
@@ -18,7 +20,7 @@ A folder is created for every tenant all the chunks for one tenant are stored in
 
 If Loki is run in single-tenant mode, all the chunks are put in a folder named `fake` which is the synthesized tenant name used for single tenant mode.
 
-See [multi-tenancy]({{< relref "../multi-tenancy" >}}) for more information.
+See [multi-tenancy](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/multi-tenancy/) for more information.
 
 ## Pros
 
@@ -27,6 +29,8 @@ Very simple, no additional software required to use Loki when paired with the Bo
 Great for low volume applications, proof of concepts, and just playing around with Loki.
 
 ## Cons
+
+The filesystem is not supported by Grafana Labs for production environments (for those customers who have purchased a support contract).
 
 ### Scaling
 
@@ -42,4 +46,4 @@ The durability of the objects is at the mercy of the filesystem itself where oth
 
 ### High Availability
 
-Running Loki clustered is not possible with the filesystem store unless the filesystem is shared in some fashion (NFS for example).  However using shared filesystems is likely going to be a bad experience with Loki just as it is for almost every other application.
+Running Loki clustered is not possible with the filesystem store unless the filesystem is shared in some fashion (NFS for example). However using shared filesystems is likely going to be a bad experience with Loki just as it is for almost every other application.

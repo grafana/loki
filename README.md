@@ -24,6 +24,8 @@ A Loki-based logging stack consists of 3 components:
 - `loki` is the main server, responsible for storing logs and processing queries.
 - [Grafana](https://github.com/grafana/grafana) for querying and displaying the logs.
 
+**Note that Promtail is considered to be feature complete, and future development for logs collection will be in [Grafana Alloy](https://github.com/grafana/alloy)**
+
 Loki is like Prometheus, but for logs: we prefer a multidimensional label-based approach to indexing, and want a single-binary, easy to operate system with no dependencies.
 Loki differs from Prometheus by focusing on logs instead of metrics, and delivering logs via push, instead of pull.
 
@@ -31,7 +33,7 @@ Loki differs from Prometheus by focusing on logs instead of metrics, and deliver
 
 * [Installing Loki](https://grafana.com/docs/loki/latest/installation/)
 * [Installing Promtail](https://grafana.com/docs/loki/latest/clients/promtail/installation/)
-* [Getting Started](https://grafana.com/docs/loki/latest/getting-started/)
+* [Getting Started](https://grafana.com/docs/loki/latest/get-started/)
 
 ## Upgrading
 
@@ -50,7 +52,7 @@ Commonly used sections:
 - [Promtail](https://grafana.com/docs/loki/latest/clients/promtail/) is an agent which tails log files and pushes them to Loki.
 - [Pipelines](https://grafana.com/docs/loki/latest/clients/promtail/pipelines/) details the log processing pipeline.
 - [Docker Driver Client](https://grafana.com/docs/loki/latest/clients/docker-driver/) is a Docker plugin to send logs directly to Loki from Docker containers.
-- [LogCLI](https://grafana.com/docs/loki/latest/logcli/) provides a command-line interface for querying logs.
+- [LogCLI](https://grafana.com/docs/loki/latest/query/logcli/) provides a command-line interface for querying logs.
 - [Loki Canary](https://grafana.com/docs/loki/latest/operations/loki-canary/) monitors your Loki installation for missing logs.
 - [Troubleshooting](https://grafana.com/docs/loki/latest/operations/troubleshooting/) presents help dealing with error messages.
 - [Loki in Grafana](https://grafana.com/docs/loki/latest/operations/grafana/) describes how to set up a Loki datasource in Grafana.

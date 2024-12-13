@@ -9,9 +9,22 @@ metadata:
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.read.annotations))}}
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.read.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
 spec:
 {{- if not .Values.read.autoscaling.enabled }}
+  {{- if eq .Values.deploymentMode "SingleBinary" }}
+  replicas: 0
+  {{- else }}
   replicas: {{ .Values.read.replicas }}
+  {{- end }}
 {{- end }}
   podManagementPolicy: {{ .Values.read.podManagementPolicy }}
   updateStrategy:
@@ -19,7 +32,7 @@ spec:
       partition: 0
   serviceName: {{ printf "%s-headless" (include "loki.readFullname" .) }}
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.read.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.read.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
     Data on the read nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -34,7 +47,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -77,10 +90,10 @@ spec:
             {{- end }}
           ports:
             - name: http-metrics
-              containerPort: 3100
+              containerPort: {{ .Values.loki.server.http_listen_port }}
               protocol: TCP
             - name: grpc
-              containerPort: 9095
+              containerPort: {{ .Values.loki.server.grpc_listen_port }}
               protocol: TCP
             - name: http-memberlist
               containerPort: 7946
@@ -119,12 +132,23 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.read.resources | nindent 12 }}
+        {{- with .Values.read.extraContainers }}
+        {{- toYaml . | nindent 8}}
+        {{- end }}
       {{- with .Values.read.affinity }}
       affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.read.dnsConfig }}
+      dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
       {{- with .Values.read.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.read.topologySpreadConstraints }}
+      topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.read.tolerations }}
@@ -135,13 +159,7 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
-          {{- end }}
+          {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime
@@ -158,8 +176,14 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
+        {{- with .Values.read.persistence.annotations }}
+        annotations:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
           - ReadWriteOnce

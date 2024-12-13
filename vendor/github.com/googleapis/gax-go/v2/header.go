@@ -31,9 +31,15 @@ package gax
 
 import (
 	"bytes"
+	"context"
+	"fmt"
+	"net/http"
 	"runtime"
 	"strings"
 	"unicode"
+
+	"github.com/googleapis/gax-go/v2/callctx"
+	"google.golang.org/grpc/metadata"
 )
 
 var (
@@ -97,7 +103,9 @@ func goVersion() string {
 	return "UNKNOWN"
 }
 
-// XGoogHeader is for use by the Google Cloud Libraries only.
+// XGoogHeader is for use by the Google Cloud Libraries only. See package
+// [github.com/googleapis/gax-go/v2/callctx] for help setting/retrieving
+// request/response headers.
 //
 // XGoogHeader formats key-value pairs.
 // The resulting string is suitable for x-goog-api-client header.
@@ -116,4 +124,77 @@ func XGoogHeader(keyval ...string) string {
 		buf.WriteString(keyval[i+1])
 	}
 	return buf.String()[1:]
+}
+
+// InsertMetadataIntoOutgoingContext is for use by the Google Cloud Libraries
+// only. See package [github.com/googleapis/gax-go/v2/callctx] for help
+// setting/retrieving request/response headers.
+//
+// InsertMetadataIntoOutgoingContext returns a new context that merges the
+// provided keyvals metadata pairs with any existing metadata/headers in the
+// provided context. keyvals should have a corresponding value for every key
+// provided. If there is an odd number of keyvals this method will panic.
+// Existing values for keys will not be overwritten, instead provided values
+// will be appended to the list of existing values.
+func InsertMetadataIntoOutgoingContext(ctx context.Context, keyvals ...string) context.Context {
+	return metadata.NewOutgoingContext(ctx, insertMetadata(ctx, keyvals...))
+}
+
+// BuildHeaders is for use by the Google Cloud Libraries only. See package
+// [github.com/googleapis/gax-go/v2/callctx] for help setting/retrieving
+// request/response headers.
+//
+// BuildHeaders returns a new http.Header that merges the provided
+// keyvals header pairs with any existing metadata/headers in the provided
+// context. keyvals should have a corresponding value for every key provided.
+// If there is an odd number of keyvals this method will panic.
+// Existing values for keys will not be overwritten, instead provided values
+// will be appended to the list of existing values.
+func BuildHeaders(ctx context.Context, keyvals ...string) http.Header {
+	return http.Header(insertMetadata(ctx, keyvals...))
+}
+
+func insertMetadata(ctx context.Context, keyvals ...string) metadata.MD {
+	if len(keyvals)%2 != 0 {
+		panic(fmt.Sprintf("gax: an even number of key value pairs must be provided, got %d", len(keyvals)))
+	}
+	out, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		out = metadata.MD(make(map[string][]string))
+	}
+	headers := callctx.HeadersFromContext(ctx)
+
+	// x-goog-api-client is a special case that we want to make sure gets merged
+	// into a single header.
+	const xGoogHeader = "x-goog-api-client"
+	var mergedXgoogHeader strings.Builder
+
+	for k, vals := range headers {
+		if k == xGoogHeader {
+			// Merge all values for the x-goog-api-client header set on the ctx.
+			for _, v := range vals {
+				mergedXgoogHeader.WriteString(v)
+				mergedXgoogHeader.WriteRune(' ')
+			}
+			continue
+		}
+		out[k] = append(out[k], vals...)
+	}
+	for i := 0; i < len(keyvals); i = i + 2 {
+		out[keyvals[i]] = append(out[keyvals[i]], keyvals[i+1])
+
+		if keyvals[i] == xGoogHeader {
+			// Merge the x-goog-api-client header values set on the ctx with any
+			// values passed in for it from the client.
+			mergedXgoogHeader.WriteString(keyvals[i+1])
+			mergedXgoogHeader.WriteRune(' ')
+		}
+	}
+
+	// Add the x goog header back in, replacing the separate values that were set.
+	if mergedXgoogHeader.Len() > 0 {
+		out[xGoogHeader] = []string{mergedXgoogHeader.String()[:mergedXgoogHeader.Len()-1]}
+	}
+
+	return out
 }

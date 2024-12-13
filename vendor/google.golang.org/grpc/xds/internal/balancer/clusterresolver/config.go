@@ -23,9 +23,9 @@ import (
 	"fmt"
 
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/serviceconfig"
 	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
 // DiscoveryMechanismType is the type of discovery mechanism.
@@ -102,11 +102,15 @@ type DiscoveryMechanism struct {
 	DNSHostname string `json:"dnsHostname,omitempty"`
 	// OutlierDetection is the Outlier Detection LB configuration for this
 	// priority.
-	OutlierDetection outlierdetection.LBConfig `json:"outlierDetection,omitempty"`
+	OutlierDetection json.RawMessage `json:"outlierDetection,omitempty"`
+	// TelemetryLabels are the telemetry labels associated with this cluster.
+	TelemetryLabels  map[string]string `json:"telemetryLabels,omitempty"`
+	outlierDetection outlierdetection.LBConfig
 }
 
 // Equal returns whether the DiscoveryMechanism is the same with the parameter.
 func (dm DiscoveryMechanism) Equal(b DiscoveryMechanism) bool {
+	od := &dm.outlierDetection
 	switch {
 	case dm.Cluster != b.Cluster:
 		return false
@@ -118,7 +122,7 @@ func (dm DiscoveryMechanism) Equal(b DiscoveryMechanism) bool {
 		return false
 	case dm.DNSHostname != b.DNSHostname:
 		return false
-	case !dm.OutlierDetection.EqualIgnoringChildPolicy(&b.OutlierDetection):
+	case !od.EqualIgnoringChildPolicy(&b.outlierDetection):
 		return false
 	}
 
@@ -151,16 +155,6 @@ type LBConfig struct {
 	DiscoveryMechanisms []DiscoveryMechanism `json:"discoveryMechanisms,omitempty"`
 
 	// XDSLBPolicy specifies the policy for locality picking and endpoint picking.
-	//
-	// Note that it's not normal balancing policy, and it can only be either
-	// ROUND_ROBIN or RING_HASH.
-	//
-	// For ROUND_ROBIN, the policy name will be "ROUND_ROBIN", and the config
-	// will be empty. This sets the locality-picking policy to weighted_target
-	// and the endpoint-picking policy to round_robin.
-	//
-	// For RING_HASH, the policy name will be "RING_HASH", and the config will
-	// be lb config for the ring_hash_experimental LB Policy. ring_hash policy
-	// is responsible for both locality picking and endpoint picking.
-	XDSLBPolicy *internalserviceconfig.BalancerConfig `json:"xdsLbPolicy,omitempty"`
+	XDSLBPolicy json.RawMessage `json:"xdsLbPolicy,omitempty"`
+	xdsLBPolicy internalserviceconfig.BalancerConfig
 }

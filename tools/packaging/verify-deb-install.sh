@@ -21,7 +21,7 @@ cat <<EOF | docker exec --interactive "${image}" sh
 
     # Write some logs
     mkdir -p /var/log/
-    echo "blablabla" > /var/log/test.log
+    echo "blablabla" >> /var/log/messages
 
     # Install logcli
     dpkg -i ${dir}/dist/logcli_*_amd64.deb

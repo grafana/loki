@@ -12,11 +12,11 @@ requires:
 - chart: grafana/grafana
   version: 6.20.1
 - chart: prometheus-community/prometheus
-  version: 15.0.1
+  version: 24.0.0
 - chart: minio/minio
   version: 4.0.12
 - chart: grafana/loki-distributed
   version: 0.42.0
 - chart: prometheus-community/kube-prometheus-stack
-  version: 36.0.1
+  version: 49.0.0
 version: 1

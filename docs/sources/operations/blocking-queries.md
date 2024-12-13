@@ -1,7 +1,8 @@
 ---
 title: Blocking Queries
-description: Blocking Queries
-weight: 60
+menuTitle:  
+description: Describes how to configure Loki to block expensive queries using per-tenant overrides.
+weight: 
 ---
 # Blocking Queries
 
@@ -9,7 +10,7 @@ In certain situations, you may not be able to control the queries being sent to 
 may be intentionally or unintentionally expensive to run, and they may affect the overall stability or cost of running
 your service.
 
-You can block queries using [per-tenant overrides]({{< relref "../configure#runtime-configuration-file" >}}), like so:
+You can block queries using [per-tenant overrides](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file), like so:
 
 ```yaml
 overrides:
@@ -34,8 +35,9 @@ overrides:
       - hash: 2943214005          # hash of {stream="stdout",pod="loki-canary-9w49x"}
         types: filter,limited
 ```
-
-NOTE: changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file]({{< relref "../configure#runtime-configuration-file" >}}).
+{{< admonition type="note" >}}
+Changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime-configuration-file).
+{{< /admonition >}}
 
 The available query types are:
 
@@ -51,8 +53,9 @@ is logged with every query request in the `query-frontend` and `querier` logs, f
 level=info ts=2023-03-30T09:08:15.2614555Z caller=metrics.go:152 component=frontend org_id=29 latency=fast 
 query="{stream=\"stdout\",pod=\"loki-canary-9w49x\"}" query_hash=2943214005 query_type=limited range_type=range ...
 ```
-
-**Note:** the order of patterns is preserved, so the first matching pattern will be used
+{{< admonition type="note" >}}
+The order of patterns is preserved, so the first matching pattern will be used.
+{{< /admonition >}}
 
 ## Observing blocked queries
 

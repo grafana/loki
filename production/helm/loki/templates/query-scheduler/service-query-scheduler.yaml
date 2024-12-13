@@ -1,0 +1,38 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.querySchedulerFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.querySchedulerLabels" . | nindent 4 }}
+    {{- with .Values.queryScheduler.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.queryScheduler.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpclb
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- with .Values.queryScheduler.appProtocol.grpc }}
+      appProtocol: {{ . }}
+      {{- end }}
+  selector:
+    {{- include "loki.querySchedulerSelectorLabels" . | nindent 4 }}
+{{- end }}

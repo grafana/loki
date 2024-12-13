@@ -1,8 +1,8 @@
 ---
 title: Caching 
 menuTitle: Caching 
-description: Enable and configure memcached for caching. 
-weight: 100
+description: Describes how to enable and configure memcached to speed query performance. 
+weight: 
 keywords:
   - memcached
   - caching
@@ -45,8 +45,8 @@ To enable and configure Memcached:
        
        The options `host` and `service` depend on the type of installation. For example, using the `bitnami/memcached` Helm Charts with the following commands, the `service` values are always `memcached`.
        ```
-       helm upgrade --install chunk-cache -n loki bitnami/memcached -f memcached-overrides.yaml
-       helm upgrade --install results-cache -n loki bitnami/memcached -f memcached-overrides.yaml
+       helm upgrade --install chunk-cache -n loki bitnami/memcached -f memcached-overrides-chunk.yaml
+       helm upgrade --install results-cache -n loki bitnami/memcached -f memcached-overrides-results.yaml
        ```
        The current Helm Chart only supports the chunk and results cache.
 
@@ -57,13 +57,13 @@ To enable and configure Memcached:
            chunk_cache:
              enabled: true
              host: chunk-cache-memcached.loki.svc
-             service: memcache
+             service: memcached-client
              batch_size: 256
              parallelism: 10
            results_cache:
              enabled: true
              host: results-cache-memcached.loki.svc
-             service: memcache
+             service: memcached-client
              default_validity: 12h
        ```
     1. If the Loki configuration is used, modify the following three sections in

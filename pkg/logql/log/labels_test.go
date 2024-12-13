@@ -1,34 +1,50 @@
 package log
 
 import (
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 func TestLabelsBuilder_Get(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 	b.Reset()
-	b.Set("foo", "bar")
-	b.Set("bar", "buzz")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(ParsedLabel, "bar", "buzz")
+
+	_, category, ok := b.GetWithCategory("bar")
+	require.Equal(t, ParsedLabel, category)
+	require.True(t, ok)
+	require.False(t, b.referencedStructuredMetadata)
+
+	_, category, ok = b.GetWithCategory("foo")
+	require.Equal(t, StructuredMetadataLabel, category)
+	require.True(t, ok)
+	require.True(t, b.referencedStructuredMetadata)
+
 	b.Del("foo")
-	_, ok := b.Get("foo")
+	_, _, ok = b.GetWithCategory("foo")
 	require.False(t, ok)
-	v, ok := b.Get("bar")
+	v, category, ok := b.GetWithCategory("bar")
 	require.True(t, ok)
 	require.Equal(t, "buzz", v)
-	v, ok = b.Get("already")
+	require.Equal(t, ParsedLabel, category)
+	v, category, ok = b.GetWithCategory("already")
 	require.True(t, ok)
 	require.Equal(t, "in", v)
+	require.Equal(t, StreamLabel, category)
 	b.Del("bar")
-	_, ok = b.Get("bar")
+	_, _, ok = b.GetWithCategory("bar")
 	require.False(t, ok)
 	b.Del("already")
-	_, ok = b.Get("already")
+	_, _, ok = b.GetWithCategory("already")
 	require.False(t, ok)
 }
 
@@ -37,22 +53,113 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 	b.Reset()
 	b.SetErr("err")
-	lbsWithErr := b.LabelsResult().Labels()
-	require.Equal(
-		t,
-		labels.FromStrings(logqlmodel.ErrorLabel, "err",
-			"already", "in",
-		),
-		lbsWithErr,
+	lbsWithErr := b.LabelsResult()
+
+	expectedLbs := labels.FromStrings(
+		logqlmodel.ErrorLabel, "err",
+		"already", "in",
 	)
+	require.Equal(t, expectedLbs, lbsWithErr.Labels())
+	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
+	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
+	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
+	require.Nil(t, lbsWithErr.StructuredMetadata())
+	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsWithErr.Parsed())
+
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
 }
 
-func TestLabelsBuilder_LabelsResult(t *testing.T) {
-	strs := []string{"namespace", "loki",
+func TestLabelsBuilder_LabelsErrorFromAdd(t *testing.T) {
+	lbs := labels.FromStrings("already", "in")
+	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b.Reset()
+
+	// This works for any category
+	b.Add(StructuredMetadataLabel, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details")...)
+	lbsWithErr := b.LabelsResult()
+
+	expectedLbs := labels.FromStrings(
+		logqlmodel.ErrorLabel, "test error",
+		logqlmodel.ErrorDetailsLabel, "test details",
+		"already", "in",
+	)
+	require.Equal(t, expectedLbs, lbsWithErr.Labels())
+	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
+	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
+	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
+	require.Nil(t, lbsWithErr.StructuredMetadata())
+	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "test error", logqlmodel.ErrorDetailsLabel, "test details"), lbsWithErr.Parsed())
+
+	// make sure the original labels is unchanged.
+	require.Equal(t, labels.FromStrings("already", "in"), lbs)
+}
+
+func TestLabelsBuilder_IntoMap(t *testing.T) {
+	strs := []string{
+		"namespace", "loki",
 		"job", "us-central1/loki",
-		"cluster", "us-central1"}
+		"cluster", "us-central1",
+		"ToReplace", "text",
+	}
+	lbs := labels.FromStrings(strs...)
+
+	t.Run("it still copies the map after a Reset", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+		m := map[string]string{}
+		b.IntoMap(m)
+
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
+
+		b.Reset()
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
+
+	t.Run("it can copy the map several times", func(t *testing.T) {
+		b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+		m := map[string]string{}
+		b.IntoMap(m)
+
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m)
+
+		m2 := map[string]string{}
+		b.IntoMap(m2)
+		require.Equal(t, map[string]string{
+			"namespace": "loki",
+			"job":       "us-central1/loki",
+			"cluster":   "us-central1",
+			"ToReplace": "text",
+		}, m2)
+	})
+}
+
+func TestLabelsBuilder_LabelsResult(t *testing.T) {
+	strs := []string{
+		"namespace", "loki",
+		"job", "us-central1/loki",
+		"cluster", "us-central1",
+		"ToReplace", "text",
+	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 	b.Reset()
@@ -61,19 +168,217 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	withErr := labels.FromStrings(append(strs, logqlmodel.ErrorLabel, "err")...)
 	assertLabelResult(t, withErr, b.LabelsResult())
 
-	b.Set("foo", "bar")
-	b.Set("namespace", "tempo")
-	b.Set("buzz", "fuzz")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "namespace", "tempo")
+	b.Set(ParsedLabel, "buzz", "fuzz")
+	b.Set(ParsedLabel, "ToReplace", "other")
 	b.Del("job")
-	expected := labels.FromStrings(logqlmodel.ErrorLabel, "err",
+
+	expectedStreamLbls := labels.FromStrings(
 		"namespace", "tempo",
 		"cluster", "us-central1",
-		"foo", "bar",
-		"buzz", "fuzz",
 	)
+	expectedStucturedMetadataLbls := labels.FromStrings(
+		"foo", "bar",
+	)
+	expectedParsedLbls := labels.FromStrings(
+		logqlmodel.ErrorLabel, "err",
+		"buzz", "fuzz",
+		"ToReplace", "other",
+	)
+	expected := make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+
 	assertLabelResult(t, expected, b.LabelsResult())
 	// cached.
 	assertLabelResult(t, expected, b.LabelsResult())
+
+	actual := b.LabelsResult()
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
+
+	b.Reset()
+	b.Set(StreamLabel, "namespace", "tempo")
+	b.Set(StreamLabel, "bazz", "tazz")
+	b.Set(StructuredMetadataLabel, "bazz", "sazz")
+	b.Set(ParsedLabel, "ToReplace", "other")
+
+	expectedStreamLbls = labels.FromStrings(
+		"namespace", "tempo",
+		"cluster", "us-central1",
+		"job", "us-central1/loki",
+	)
+	expectedStucturedMetadataLbls = labels.FromStrings(
+		"bazz", "sazz",
+	)
+	expectedParsedLbls = labels.FromStrings(
+		"ToReplace", "other",
+	)
+
+	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+	assertLabelResult(t, expected, b.LabelsResult())
+	// cached.
+	assertLabelResult(t, expected, b.LabelsResult())
+	actual = b.LabelsResult()
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
+}
+
+func TestLabelsBuilder_Set(t *testing.T) {
+	strs := []string{
+		"namespace", "loki",
+		"cluster", "us-central1",
+		"toreplace", "fuzz",
+	}
+	lbs := labels.FromStrings(strs...)
+	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+
+	// test duplicating stream label with parsed label
+	b.Set(StructuredMetadataLabel, "stzz", "stvzz")
+	b.Set(ParsedLabel, "toreplace", "buzz")
+	expectedStreamLbls := labels.FromStrings("namespace", "loki", "cluster", "us-central1")
+	expectedStucturedMetadataLbls := labels.FromStrings("stzz", "stvzz")
+	expectedParsedLbls := labels.FromStrings("toreplace", "buzz")
+
+	expected := make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+
+	actual := b.LabelsResult()
+	assertLabelResult(t, expected, actual)
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
+
+	b.Reset()
+
+	// test duplicating structured metadata label with parsed label
+	b.Set(StructuredMetadataLabel, "stzz", "stvzz")
+	b.Set(StructuredMetadataLabel, "toreplace", "muzz")
+	b.Set(ParsedLabel, "toreplace", "buzz")
+	expectedStreamLbls = labels.FromStrings("namespace", "loki", "cluster", "us-central1")
+	expectedStucturedMetadataLbls = labels.FromStrings("stzz", "stvzz")
+	expectedParsedLbls = labels.FromStrings("toreplace", "buzz")
+
+	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+
+	actual = b.LabelsResult()
+	assertLabelResult(t, expected, actual)
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
+
+	b.Reset()
+
+	// test duplicating stream label with structured meta data label
+	b.Set(StructuredMetadataLabel, "toreplace", "muzz")
+	b.Set(ParsedLabel, "stzz", "stvzz")
+	expectedStreamLbls = labels.FromStrings("namespace", "loki", "cluster", "us-central1")
+	expectedStucturedMetadataLbls = labels.FromStrings("toreplace", "muzz")
+	expectedParsedLbls = labels.FromStrings("stzz", "stvzz")
+
+	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+
+	actual = b.LabelsResult()
+	assertLabelResult(t, expected, actual)
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
+
+	b.Reset()
+
+	// test duplicating parsed label with structured meta data label
+	b.Set(ParsedLabel, "toreplace", "puzz")
+	b.Set(StructuredMetadataLabel, "stzz", "stvzzz")
+	b.Set(StructuredMetadataLabel, "toreplace", "muzz")
+	expectedStreamLbls = labels.FromStrings("namespace", "loki", "cluster", "us-central1")
+	expectedStucturedMetadataLbls = labels.FromStrings("stzz", "stvzzz")
+	expectedParsedLbls = labels.FromStrings("toreplace", "puzz")
+
+	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+
+	actual = b.LabelsResult()
+	assertLabelResult(t, expected, actual)
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
+
+	b.Reset()
+
+	// test duplicating structured meta data label with stream label
+	b.Set(ParsedLabel, "stzz", "stvzzz")
+	b.Set(StructuredMetadataLabel, "toreplace", "muzz")
+	expectedStreamLbls = labels.FromStrings("namespace", "loki", "cluster", "us-central1")
+	expectedStucturedMetadataLbls = labels.FromStrings("toreplace", "muzz")
+	expectedParsedLbls = labels.FromStrings("stzz", "stvzzz")
+
+	expected = make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+
+	actual = b.LabelsResult()
+	assertLabelResult(t, expected, actual)
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
+}
+
+func TestLabelsBuilder_UnsortedLabels(t *testing.T) {
+	strs := []string{
+		"namespace", "loki",
+		"cluster", "us-central1",
+		"toreplace", "fuzz",
+	}
+	lbs := labels.FromStrings(strs...)
+	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+	b.add[StructuredMetadataLabel] = labels.FromStrings("toreplace", "buzz", "fzz", "bzz")
+	b.add[ParsedLabel] = labels.FromStrings("pzz", "pvzz")
+	expected := labels.FromStrings("cluster", "us-central1", "namespace", "loki", "fzz", "bzz", "toreplace", "buzz", "pzz", "pvzz")
+	actual := b.UnsortedLabels(nil)
+	require.ElementsMatch(t, expected, actual)
+
+	b.Reset()
+	b.add[StructuredMetadataLabel] = labels.FromStrings("fzz", "bzz")
+	b.add[ParsedLabel] = labels.FromStrings("toreplace", "buzz", "pzz", "pvzz")
+	expected = labels.FromStrings("cluster", "us-central1", "namespace", "loki", "fzz", "bzz", "toreplace", "buzz", "pzz", "pvzz")
+	actual = b.UnsortedLabels(nil)
+	sort.Sort(expected)
+	sort.Sort(actual)
+	assert.Equal(t, expected, actual)
+
+	b.Reset()
+	b.add[StructuredMetadataLabel] = labels.FromStrings("fzz", "bzz", "toreplacezz", "test")
+	b.add[ParsedLabel] = labels.FromStrings("toreplacezz", "buzz", "pzz", "pvzz")
+	expected = labels.FromStrings("cluster", "us-central1", "namespace", "loki", "fzz", "bzz", "toreplace", "fuzz", "pzz", "pvzz", "toreplacezz", "buzz")
+	actual = b.UnsortedLabels(nil)
+	sort.Sort(expected)
+	sort.Sort(actual)
+	assert.Equal(t, expected, actual)
 }
 
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
@@ -89,9 +394,9 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, withErr, b.GroupedLabels())
 
 	b.Reset()
-	b.Set("foo", "bar")
-	b.Set("namespace", "tempo")
-	b.Set("buzz", "fuzz")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "namespace", "tempo")
+	b.Set(ParsedLabel, "buzz", "fuzz")
 	b.Del("job")
 	expected := labels.FromStrings("namespace", "tempo")
 	assertLabelResult(t, expected, b.GroupedLabels())
@@ -104,22 +409,38 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b.Del("job")
 	assertLabelResult(t, labels.EmptyLabels(), b.GroupedLabels())
 	b.Reset()
-	b.Set("namespace", "tempo")
+	b.Set(StreamLabel, "namespace", "tempo")
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
+	require.False(t, b.referencedStructuredMetadata)
+
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, false, false).ForLabels(lbs, lbs.Hash())
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	assertLabelResult(t, labels.FromStrings("foo", "bar"), b.GroupedLabels())
+	require.True(t, b.referencedStructuredMetadata)
 
 	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, true, false).ForLabels(lbs, lbs.Hash())
 	b.Del("job")
-	b.Set("foo", "bar")
-	b.Set("job", "something")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "job", "something")
 	expected = labels.FromStrings("namespace", "loki",
 		"cluster", "us-central1",
 		"foo", "bar",
 	)
 	assertLabelResult(t, expected, b.GroupedLabels())
+	require.False(t, b.referencedStructuredMetadata)
+
+	b = NewBaseLabelsBuilderWithGrouping([]string{"foo"}, nil, true, false).ForLabels(lbs, lbs.Hash())
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	expected = labels.FromStrings("namespace", "loki",
+		"job", "us-central1/loki",
+		"cluster", "us-central1",
+	)
+	assertLabelResult(t, expected, b.GroupedLabels())
+	require.True(t, b.referencedStructuredMetadata)
 
 	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, lbs.Hash())
-	b.Set("foo", "bar")
-	b.Set("job", "something")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "job", "something")
 	expected = labels.FromStrings("namespace", "loki",
 		"job", "something",
 		"cluster", "us-central1",
@@ -142,4 +463,42 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 		lbs.String(),
 		res.String(),
 	)
+}
+
+// benchmark streamLineSampleExtractor.Process method
+func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
+	// Setup some test data
+	baseLabels := labels.FromStrings(
+		"namespace", "prod",
+		"cluster", "us-east-1",
+		"pod", "my-pod-123",
+		"container", "main",
+		"stream", "stdout",
+	)
+
+	structuredMeta := []labels.Label{
+		{Name: "level", Value: "info"},
+		{Name: "caller", Value: "http.go:42"},
+		{Name: "user", Value: "john"},
+		{Name: "trace_id", Value: "abc123"},
+	}
+
+	testLine := []byte(`{"timestamp":"2024-01-01T00:00:00Z","level":"info","message":"test message","duration_ms":150}`)
+
+	// JSON parsing + filtering + label extraction
+	matcher := labels.MustNewMatcher(labels.MatchEqual, "level", "info")
+	filter := NewStringLabelFilter(matcher)
+	stages := []Stage{
+		NewJSONParser(),
+		filter,
+	}
+	ex, err := NewLineSampleExtractor(CountExtractor, stages, []string{}, false, false)
+	require.NoError(b, err)
+	streamEx := ex.ForStream(baseLabels)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		_, _, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta...)
+	}
 }

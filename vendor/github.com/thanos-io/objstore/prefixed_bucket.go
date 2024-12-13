@@ -54,6 +54,19 @@ func (p *PrefixedBucket) Iter(ctx context.Context, dir string, f func(string) er
 	}, options...)
 }
 
+func (p *PrefixedBucket) IterWithAttributes(ctx context.Context, dir string, f func(IterObjectAttributes) error, options ...IterOption) error {
+	pdir := withPrefix(p.prefix, dir)
+
+	return p.bkt.IterWithAttributes(ctx, pdir, func(attrs IterObjectAttributes) error {
+		attrs.Name = strings.TrimPrefix(attrs.Name, p.prefix+DirDelim)
+		return f(attrs)
+	}, options...)
+}
+
+func (p *PrefixedBucket) SupportedIterOptions() []IterOptionType {
+	return p.bkt.SupportedIterOptions()
+}
+
 // Get returns a reader for the given object name.
 func (p *PrefixedBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 	return p.bkt.Get(ctx, conditionalPrefix(p.prefix, name))
@@ -72,6 +85,11 @@ func (p *PrefixedBucket) Exists(ctx context.Context, name string) (bool, error) 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (p *PrefixedBucket) IsObjNotFoundErr(err error) bool {
 	return p.bkt.IsObjNotFoundErr(err)
+}
+
+// IsAccessDeniedErr returns true if access to object is denied.
+func (p *PrefixedBucket) IsAccessDeniedErr(err error) bool {
+	return p.bkt.IsAccessDeniedErr(err)
 }
 
 // Attributes returns information about the specified object.

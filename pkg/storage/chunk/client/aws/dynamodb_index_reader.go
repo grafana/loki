@@ -17,8 +17,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 type dynamodbIndexReader struct {
@@ -80,8 +80,7 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 
 	var readerGroup errgroup.Group
 	// Start a goroutine for each processor
-	for i, processor := range processors {
-		segment, processor := i, processor // https://golang.org/doc/faq#closures_and_goroutines
+	for segment, processor := range processors {
 		readerGroup.Go(func() error {
 			input := &dynamodb.ScanInput{
 				TableName:              aws.String(tableName),
@@ -93,7 +92,7 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 			withRetrys := func(req *request.Request) {
 				req.Retryer = client.DefaultRetryer{NumMaxRetries: r.maxRetries}
 			}
-			err := r.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, lastPage bool) bool {
+			err := r.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, _ bool) bool {
 				if cc := page.ConsumedCapacity; cc != nil {
 					r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
 						Add(*cc.CapacityUnits)

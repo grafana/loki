@@ -41,6 +41,12 @@ local tenant = 'loki';
         enabled: false,
       },
 
+      // the CRDs are failing to be created due to an annotation being too many characters
+      // they shouldn't be needed as they are already installed in the create_cluster.sh script
+      crds+: {
+        enabled: false,
+      },
+
       kubelet: {
         serviceMonitor: {
           cAdvisorRelabelings: [

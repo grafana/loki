@@ -1,54 +1,56 @@
 package logql
 
 import (
-	"errors"
-
 	"github.com/prometheus/prometheus/promql"
 )
+
+type StepResult interface {
+	SampleVector() promql.Vector
+	QuantileSketchVec() ProbabilisticQuantileVector
+	CountMinSketchVec() CountMinSketchVector
+}
+
+type SampleVector promql.Vector
+
+var _ StepResult = SampleVector{}
+
+func (p SampleVector) SampleVector() promql.Vector {
+	return promql.Vector(p)
+}
+
+func (p SampleVector) QuantileSketchVec() ProbabilisticQuantileVector {
+	return ProbabilisticQuantileVector{}
+}
+
+func (SampleVector) CountMinSketchVec() CountMinSketchVector {
+	return CountMinSketchVector{}
+}
 
 // StepEvaluator evaluate a single step of a query.
 type StepEvaluator interface {
 	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
-	Next() (ok bool, ts int64, vec promql.Vector)
+	Next() (ok bool, ts int64, r StepResult)
 	// Close all resources used.
 	Close() error
 	// Reports any error
 	Error() error
+	// Explain returns a print of the step evaluation tree
+	Explain(Node)
 }
 
-type stepEvaluator struct {
-	fn    func() (bool, int64, promql.Vector)
-	close func() error
-	err   func() error
+type EmptyEvaluator[R StepResult] struct {
+	value R
 }
 
-func newStepEvaluator(fn func() (bool, int64, promql.Vector), closeFn func() error, err func() error) (StepEvaluator, error) {
-	if fn == nil {
-		return nil, errors.New("nil step evaluator fn")
-	}
+var _ StepEvaluator = EmptyEvaluator[SampleVector]{}
 
-	if closeFn == nil {
-		closeFn = func() error { return nil }
-	}
+// Close implements StepEvaluator.
+func (EmptyEvaluator[_]) Close() error { return nil }
 
-	if err == nil {
-		err = func() error { return nil }
-	}
-	return &stepEvaluator{
-		fn:    fn,
-		close: closeFn,
-		err:   err,
-	}, nil
-}
+// Error implements StepEvaluator.
+func (EmptyEvaluator[_]) Error() error { return nil }
 
-func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
-	return e.fn()
-}
-
-func (e *stepEvaluator) Close() error {
-	return e.close()
-}
-
-func (e *stepEvaluator) Error() error {
-	return e.err()
+// Next implements StepEvaluator.
+func (e EmptyEvaluator[_]) Next() (ok bool, ts int64, r StepResult) {
+	return false, 0, e.value
 }

@@ -11,16 +11,15 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigtable"
-	"github.com/go-kit/log"
 	"github.com/grafana/dskit/grpcclient"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -57,7 +56,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
 }
 
-func (cfg *Config) Validate(_ log.Logger) error {
+func (cfg *Config) Validate() error {
 	return cfg.GRPCClientConfig.Validate()
 }
 

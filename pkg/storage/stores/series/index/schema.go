@@ -13,8 +13,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/querier/astmapper"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -589,4 +589,8 @@ func (v11Entries) GetLabelNamesForSeries(bucket Bucket, seriesID []byte) ([]Quer
 
 type v12Entries struct {
 	v11Entries
+}
+
+type v13Entries struct {
+	v12Entries
 }

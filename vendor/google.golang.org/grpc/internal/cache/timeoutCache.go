@@ -23,7 +23,7 @@ import (
 )
 
 type cacheEntry struct {
-	item interface{}
+	item any
 	// Note that to avoid deadlocks (potentially caused by lock ordering),
 	// callback can only be called without holding cache's mutex.
 	callback func()
@@ -38,14 +38,14 @@ type cacheEntry struct {
 type TimeoutCache struct {
 	mu      sync.Mutex
 	timeout time.Duration
-	cache   map[interface{}]*cacheEntry
+	cache   map[any]*cacheEntry
 }
 
 // NewTimeoutCache creates a TimeoutCache with the given timeout.
 func NewTimeoutCache(timeout time.Duration) *TimeoutCache {
 	return &TimeoutCache{
 		timeout: timeout,
-		cache:   make(map[interface{}]*cacheEntry),
+		cache:   make(map[any]*cacheEntry),
 	}
 }
 
@@ -57,7 +57,7 @@ func NewTimeoutCache(timeout time.Duration) *TimeoutCache {
 // If the Add was successful, it returns (newly added item, true). If there is
 // an existing entry for the specified key, the cache entry is not be updated
 // with the specified item and it returns (existing item, false).
-func (c *TimeoutCache) Add(key, item interface{}, callback func()) (interface{}, bool) {
+func (c *TimeoutCache) Add(key, item any, callback func()) (any, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.cache[key]; ok {
@@ -88,7 +88,7 @@ func (c *TimeoutCache) Add(key, item interface{}, callback func()) (interface{},
 // If the specified key exists in the cache, it returns (item associated with
 // key, true) and the callback associated with the item is guaranteed to be not
 // called. If the given key is not found in the cache, it returns (nil, false)
-func (c *TimeoutCache) Remove(key interface{}) (item interface{}, ok bool) {
+func (c *TimeoutCache) Remove(key any) (item any, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry, ok := c.removeInternal(key)
@@ -101,7 +101,7 @@ func (c *TimeoutCache) Remove(key interface{}) (item interface{}, ok bool) {
 // removeInternal removes and returns the item with key.
 //
 // caller must hold c.mu.
-func (c *TimeoutCache) removeInternal(key interface{}) (*cacheEntry, bool) {
+func (c *TimeoutCache) removeInternal(key any) (*cacheEntry, bool) {
 	entry, ok := c.cache[key]
 	if !ok {
 		return nil, false
@@ -141,4 +141,11 @@ func (c *TimeoutCache) Clear(runCallback bool) {
 	for _, entry := range entries {
 		entry.callback()
 	}
+}
+
+// Len returns the number of entries in the cache.
+func (c *TimeoutCache) Len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.cache)
 }

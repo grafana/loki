@@ -20,6 +20,7 @@ import (
 	gojson "encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -125,6 +126,29 @@ func NestedInt64(obj map[string]interface{}, fields ...string) (int64, bool, err
 	return i, true, nil
 }
 
+// NestedNumberAsFloat64 returns the float64 value of a nested field. If the field's value is a
+// float64, it is returned. If the field's value is an int64 that can be losslessly converted to
+// float64, it will be converted and returned.  Returns false if value is not found and an error if
+// not a float64 or an int64 that can be accurately represented as a float64.
+func NestedNumberAsFloat64(obj map[string]interface{}, fields ...string) (float64, bool, error) {
+	val, found, err := NestedFieldNoCopy(obj, fields...)
+	if !found || err != nil {
+		return 0, found, err
+	}
+	switch x := val.(type) {
+	case int64:
+		f, accuracy := big.NewInt(x).Float64()
+		if accuracy != big.Exact {
+			return 0, false, fmt.Errorf("%v accessor error: int64 value %v cannot be losslessly converted to float64", jsonPath(fields), x)
+		}
+		return f, true, nil
+	case float64:
+		return x, true, nil
+	default:
+		return 0, false, fmt.Errorf("%v accessor error: %v is of the type %T, expected float64 or int64", jsonPath(fields), val, val)
+	}
+}
+
 // NestedStringSlice returns a copy of []string value of a nested field.
 // Returns false if value is not found and an error if not a []interface{} or contains non-string items in the slice.
 func NestedStringSlice(obj map[string]interface{}, fields ...string) ([]string, bool, error) {
@@ -173,7 +197,7 @@ func NestedStringMap(obj map[string]interface{}, fields ...string) (map[string]s
 		if str, ok := v.(string); ok {
 			strMap[k] = str
 		} else {
-			return nil, false, fmt.Errorf("%v accessor error: contains non-string key in the map: %v is of the type %T, expected string", jsonPath(fields), v, v)
+			return nil, false, fmt.Errorf("%v accessor error: contains non-string value in the map under key %q: %v is of the type %T, expected string", jsonPath(fields), k, v, v)
 		}
 	}
 	return strMap, true, nil

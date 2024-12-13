@@ -20,11 +20,11 @@ This guide will walk you through migrating from the old, two target, scalable co
 
 We recommend having a Grafana instance available to monitor both the existing and new clusters, to make sure there is no data loss during the migration process. The `loki` chart ships with self-monitoring features, including dashboards. These are useful for monitoring the health of the cluster during migration.
 
-**To Migrate from a "read & write" to a "backend, read & write" deployment**
+**To Migrate from a "read and write" to a "backend, read and write" deployment**
 
-1. Make sure your deployment is using a new enough version of loki
+1. Make sure your deployment is using a new enough version of Loki
 
-This feature landed as an option in the helm chart while still in the `main` branch of Loki. As a result, depending on when you run this migration, you may neeed to manually override the Loki or GEL image being used to one that has the third, `backend` target available. For loki, add the following to your `values.yaml`.
+This feature landed as an option in the helm chart while still in the `main` branch of Loki. As a result, depending on when you run this migration, you may neeed to manually override the Loki or GEL image being used to one that has the third, `backend` target available. For Loki, add the following to your `values.yaml`.
 
 ```yaml
 loki:

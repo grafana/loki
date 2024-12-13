@@ -60,13 +60,13 @@ rejected pushes. Users are recommended to do one of the following:
 
 1. Have a dedicated Promtail instance for receiving pushes. This also applies to
    using the syslog target.
-1. Have a separatee k8s service that always resolves to the same Promtail pod,
+1. Have a separate Kubernetes service that always resolves to the same Promtail pod,
    bypassing the load balancing issue.
 
 ## Implementation
 
 As discussed in this document, this feature will be implemented by copying the
-existing [Loki Push API](/docs/loki/latest/api/#post-lokiapiv1push)
+existing [Loki Push API](/docs/loki/<LOKI_VERSION>/api/#post-lokiapiv1push)
 and exposing it via Promtail.
 
 ## Considered Alternatives

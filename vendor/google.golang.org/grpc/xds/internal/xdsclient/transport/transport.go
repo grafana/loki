@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -33,9 +34,11 @@ import (
 	"google.golang.org/grpc/internal/buffer"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	xdsclientinternal "google.golang.org/grpc/xds/internal/xdsclient/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
+	transportinternal "google.golang.org/grpc/xds/internal/xdsclient/transport/internal"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 	"google.golang.org/protobuf/types/known/anypb"
 
@@ -47,9 +50,21 @@ import (
 
 type adsStream = v3adsgrpc.AggregatedDiscoveryService_StreamAggregatedResourcesClient
 
+func init() {
+	transportinternal.GRPCNewClient = grpc.NewClient
+	xdsclientinternal.NewADSStream = func(ctx context.Context, cc *grpc.ClientConn) (adsStream, error) {
+		return v3adsgrpc.NewAggregatedDiscoveryServiceClient(cc).StreamAggregatedResources(ctx)
+	}
+}
+
+// Any per-RPC level logs which print complete request or response messages
+// should be gated at this verbosity level. Other per-RPC level logs which print
+// terse output should be at `INFO` and verbosity 2.
+const perRPCVerbosityLevel = 9
+
 // Transport provides a resource-type agnostic implementation of the xDS
 // transport protocol. At this layer, resource contents are supposed to be
-// opaque blobs which should be be meaningful only to the xDS data model layer
+// opaque blobs which should be meaningful only to the xDS data model layer
 // which is implemented by the `xdsresource` package.
 //
 // Under the hood, it owns the gRPC connection to a single management server and
@@ -57,20 +72,21 @@ type adsStream = v3adsgrpc.AggregatedDiscoveryService_StreamAggregatedResourcesC
 // protocol version.
 type Transport struct {
 	// These fields are initialized at creation time and are read-only afterwards.
-	cc                  *grpc.ClientConn        // ClientConn to the mangement server.
-	serverURI           string                  // URI of the management server.
-	updateHandler       UpdateHandlerFunc       // Resource update handler. xDS data model layer.
-	adsStreamErrHandler func(error)             // To report underlying stream errors.
-	lrsStore            *load.Store             // Store returned to user for pushing loads.
-	backoff             func(int) time.Duration // Backoff after stream failures.
-	nodeProto           *v3corepb.Node          // Identifies the gRPC application.
-	logger              *grpclog.PrefixLogger   // Prefix logger for transport logs.
-	adsRunnerCancel     context.CancelFunc      // CancelFunc for the ADS goroutine.
-	adsRunnerDoneCh     chan struct{}           // To notify exit of ADS goroutine.
-	lrsRunnerDoneCh     chan struct{}           // To notify exit of LRS goroutine.
+	cc              *grpc.ClientConn        // ClientConn to the management server.
+	serverURI       string                  // URI of the management server.
+	onRecvHandler   OnRecvHandlerFunc       // Resource update handler. xDS data model layer.
+	onErrorHandler  func(error)             // To report underlying stream errors.
+	onSendHandler   OnSendHandlerFunc       // To report resources requested on ADS stream.
+	lrsStore        *load.Store             // Store returned to user for pushing loads.
+	backoff         func(int) time.Duration // Backoff after stream failures.
+	nodeProto       *v3corepb.Node          // Identifies the gRPC application.
+	logger          *grpclog.PrefixLogger   // Prefix logger for transport logs.
+	adsRunnerCancel context.CancelFunc      // CancelFunc for the ADS goroutine.
+	adsRunnerDoneCh chan struct{}           // To notify exit of ADS goroutine.
+	lrsRunnerDoneCh chan struct{}           // To notify exit of LRS goroutine.
 
 	// These channels enable synchronization amongst the different goroutines
-	// spawned by the transport, and between asynchorous events resulting from
+	// spawned by the transport, and between asynchronous events resulting from
 	// receipt of responses from the management server.
 	adsStreamCh  chan adsStream    // New ADS streams are pushed here.
 	adsRequestCh *buffer.Unbounded // Resource and ack requests are pushed here.
@@ -96,7 +112,7 @@ type Transport struct {
 	lrsRefCount     int                // Reference count on the load store.
 }
 
-// UpdateHandlerFunc is the implementation at the xDS data model layer, which
+// OnRecvHandlerFunc is the implementation at the xDS data model layer, which
 // determines if the configuration received from the management server can be
 // applied locally or not.
 //
@@ -105,7 +121,14 @@ type Transport struct {
 // cause the transport layer to send an ACK to the management server. A non-nil
 // error is returned from this function when the data model layer believes
 // otherwise, and this will cause the transport layer to send a NACK.
-type UpdateHandlerFunc func(update ResourceUpdate) error
+//
+// The implementation is expected to invoke onDone when local processing of the
+// update is complete, i.e. it is consumed by all watchers.
+type OnRecvHandlerFunc func(update ResourceUpdate, onDone func()) error
+
+// OnSendHandlerFunc is the implementation at the authority, which handles state
+// changes for the resource watch and stop watch timers accordingly.
+type OnSendHandlerFunc func(update *ResourceSendInfo)
 
 // ResourceUpdate is a representation of the configuration update received from
 // the management server. It only contains fields which are useful to the data
@@ -124,18 +147,28 @@ type ResourceUpdate struct {
 type Options struct {
 	// ServerCfg contains all the configuration required to connect to the xDS
 	// management server.
-	ServerCfg bootstrap.ServerConfig
-	// UpdateHandler is the component which makes ACK/NACK decisions based on
+	ServerCfg *bootstrap.ServerConfig
+	// OnRecvHandler is the component which makes ACK/NACK decisions based on
 	// the received resources.
 	//
 	// Invoked inline and implementations must not block.
-	UpdateHandler UpdateHandlerFunc
-	// StreamErrorHandler provides a way for the transport layer to report
+	OnRecvHandler OnRecvHandlerFunc
+	// OnErrorHandler provides a way for the transport layer to report
 	// underlying stream errors. These can be bubbled all the way up to the user
 	// of the xdsClient.
 	//
 	// Invoked inline and implementations must not block.
-	StreamErrorHandler func(error)
+	OnErrorHandler func(error)
+	// OnSendHandler provides a way for the transport layer to report underlying
+	// resource requests sent on the stream. However, Send() on the ADS stream will
+	// return successfully as long as:
+	//   1. there is enough flow control quota to send the message.
+	//   2. the message is added to the send buffer.
+	// However, the connection may fail after the callback is invoked and before
+	// the message is actually sent on the wire. This is accepted.
+	//
+	// Invoked inline and implementations must not block.
+	OnSendHandler func(*ResourceSendInfo)
 	// Backoff controls the amount of time to backoff before recreating failed
 	// ADS streams. If unspecified, a default exponential backoff implementation
 	// is used. For more details, see:
@@ -143,58 +176,52 @@ type Options struct {
 	Backoff func(retries int) time.Duration
 	// Logger does logging with a prefix.
 	Logger *grpclog.PrefixLogger
+	// NodeProto contains the Node proto to be used in xDS requests. This will be
+	// of type *v3corepb.Node.
+	NodeProto *v3corepb.Node
 }
-
-// For overriding in unit tests.
-var grpcDial = grpc.Dial
 
 // New creates a new Transport.
 func New(opts Options) (*Transport, error) {
 	switch {
-	case opts.ServerCfg.ServerURI == "":
-		return nil, errors.New("missing server URI when creating a new transport")
-	case opts.ServerCfg.Creds == nil:
-		return nil, errors.New("missing credentials when creating a new transport")
-	case opts.UpdateHandler == nil:
-		return nil, errors.New("missing update handler when creating a new transport")
-	case opts.StreamErrorHandler == nil:
-		return nil, errors.New("missing stream error handler when creating a new transport")
+	case opts.OnRecvHandler == nil:
+		return nil, errors.New("missing OnRecv callback handler when creating a new transport")
+	case opts.OnErrorHandler == nil:
+		return nil, errors.New("missing OnError callback handler when creating a new transport")
+	case opts.OnSendHandler == nil:
+		return nil, errors.New("missing OnSend callback handler when creating a new transport")
 	}
 
-	node, ok := opts.ServerCfg.NodeProto.(*v3corepb.Node)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T for NodeProto, want %T", opts.ServerCfg.NodeProto, &v3corepb.Node{})
-	}
-
-	// Dial the xDS management with the passed in credentials.
-	dopts := []grpc.DialOption{
-		opts.ServerCfg.Creds,
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			// We decided to use these sane defaults in all languages, and
-			// kicked the can down the road as far making these configurable.
-			Time:    5 * time.Minute,
-			Timeout: 20 * time.Second,
-		}),
-	}
-	cc, err := grpcDial(opts.ServerCfg.ServerURI, dopts...)
+	// Dial the xDS management server with dial options specified by the server
+	// configuration and a static keepalive configuration that is common across
+	// gRPC language implementations.
+	kpCfg := grpc.WithKeepaliveParams(keepalive.ClientParameters{
+		Time:    5 * time.Minute,
+		Timeout: 20 * time.Second,
+	})
+	dopts := append([]grpc.DialOption{kpCfg}, opts.ServerCfg.DialOptions()...)
+	grpcNewClient := transportinternal.GRPCNewClient.(func(string, ...grpc.DialOption) (*grpc.ClientConn, error))
+	cc, err := grpcNewClient(opts.ServerCfg.ServerURI(), dopts...)
 	if err != nil {
 		// An error from a non-blocking dial indicates something serious.
-		return nil, fmt.Errorf("failed to create a transport to the management server %q: %v", opts.ServerCfg.ServerURI, err)
+		return nil, fmt.Errorf("failed to create a transport to the management server %q: %v", opts.ServerCfg.ServerURI(), err)
 	}
+	cc.Connect()
 
 	boff := opts.Backoff
 	if boff == nil {
 		boff = backoff.DefaultExponential.Backoff
 	}
 	ret := &Transport{
-		cc:                  cc,
-		serverURI:           opts.ServerCfg.ServerURI,
-		updateHandler:       opts.UpdateHandler,
-		adsStreamErrHandler: opts.StreamErrorHandler,
-		lrsStore:            load.NewStore(),
-		backoff:             boff,
-		nodeProto:           node,
-		logger:              opts.Logger,
+		cc:             cc,
+		serverURI:      opts.ServerCfg.ServerURI(),
+		onRecvHandler:  opts.OnRecvHandler,
+		onErrorHandler: opts.OnErrorHandler,
+		onSendHandler:  opts.OnSendHandler,
+		lrsStore:       load.NewStore(),
+		backoff:        boff,
+		nodeProto:      opts.NodeProto,
+		logger:         opts.Logger,
 
 		adsStreamCh:     make(chan adsStream, 1),
 		adsRequestCh:    buffer.NewUnbounded(),
@@ -241,24 +268,23 @@ func (t *Transport) SendRequest(url string, resources []string) {
 	})
 }
 
-func (t *Transport) newAggregatedDiscoveryServiceStream(ctx context.Context, cc *grpc.ClientConn) (adsStream, error) {
-	// The transport retries the stream with an exponential backoff whenever the
-	// stream breaks. But if the channel is broken, we don't want the backoff
-	// logic to continuously retry the stream. Setting WaitForReady() blocks the
-	// stream creation until the channel is READY.
-	//
-	// TODO(easwars): Make changes required to comply with A57:
-	// https://github.com/grpc/proposal/blob/master/A57-xds-client-failure-mode-behavior.md
-	return v3adsgrpc.NewAggregatedDiscoveryServiceClient(cc).StreamAggregatedResources(ctx, grpc.WaitForReady(true))
+// ResourceSendInfo wraps the names and url of resources sent to the management
+// server. This is used by the `authority` type to start/stop the watch timer
+// associated with every resource in the update.
+type ResourceSendInfo struct {
+	ResourceNames []string
+	URL           string
 }
 
-func (t *Transport) sendAggregatedDiscoveryServiceRequest(stream adsStream, resourceNames []string, resourceURL, version, nonce string, nackErr error) error {
+func (t *Transport) sendAggregatedDiscoveryServiceRequest(stream adsStream, sendNodeProto bool, resourceNames []string, resourceURL, version, nonce string, nackErr error) error {
 	req := &v3discoverypb.DiscoveryRequest{
-		Node:          t.nodeProto,
 		TypeUrl:       resourceURL,
 		ResourceNames: resourceNames,
 		VersionInfo:   version,
 		ResponseNonce: nonce,
+	}
+	if sendNodeProto {
+		req.Node = t.nodeProto
 	}
 	if nackErr != nil {
 		req.ErrorDetail = &statuspb.Status{
@@ -266,19 +292,29 @@ func (t *Transport) sendAggregatedDiscoveryServiceRequest(stream adsStream, reso
 		}
 	}
 	if err := stream.Send(req); err != nil {
-		return fmt.Errorf("sending ADS request %s failed: %v", pretty.ToJSON(req), err)
+		return err
 	}
-	t.logger.Debugf("ADS request sent: %v", pretty.ToJSON(req))
+	if t.logger.V(perRPCVerbosityLevel) {
+		t.logger.Infof("ADS request sent: %v", pretty.ToJSON(req))
+	} else {
+		if t.logger.V(2) {
+			t.logger.Infof("ADS request sent for type %q, resources: %v, version %q, nonce %q", resourceURL, resourceNames, version, nonce)
+		}
+	}
+	t.onSendHandler(&ResourceSendInfo{URL: resourceURL, ResourceNames: resourceNames})
 	return nil
 }
 
 func (t *Transport) recvAggregatedDiscoveryServiceResponse(stream adsStream) (resources []*anypb.Any, resourceURL, version, nonce string, err error) {
 	resp, err := stream.Recv()
 	if err != nil {
-		return nil, "", "", "", fmt.Errorf("failed to read ADS response: %v", err)
+		return nil, "", "", "", err
 	}
-	t.logger.Infof("ADS response received, type: %v", resp.GetTypeUrl())
-	t.logger.Debugf("ADS response received: %v", pretty.ToJSON(resp))
+	if t.logger.V(perRPCVerbosityLevel) {
+		t.logger.Infof("ADS response received: %v", pretty.ToJSON(resp))
+	} else if t.logger.V(2) {
+		t.logger.Infof("ADS response received for type %q, version %q, nonce %q", resp.GetTypeUrl(), resp.GetVersionInfo(), resp.GetNonce())
+	}
 	return resp.GetResources(), resp.GetTypeUrl(), resp.GetVersionInfo(), resp.GetNonce(), nil
 }
 
@@ -290,46 +326,30 @@ func (t *Transport) adsRunner(ctx context.Context) {
 
 	go t.send(ctx)
 
-	// TODO: start a goroutine monitoring ClientConn's connectivity state, and
-	// report error (and log) when stats is transient failure.
+	// We reset backoff state when we successfully receive at least one
+	// message from the server.
+	runStreamWithBackoff := func() error {
+		newStream := xdsclientinternal.NewADSStream.(func(context.Context, *grpc.ClientConn) (adsStream, error))
+		stream, err := newStream(ctx, t.cc)
+		if err != nil {
+			t.onErrorHandler(err)
+			t.logger.Warningf("Creating new ADS stream failed: %v", err)
+			return nil
+		}
+		t.logger.Infof("ADS stream created")
 
-	backoffAttempt := 0
-	backoffTimer := time.NewTimer(0)
-	for ctx.Err() == nil {
 		select {
-		case <-backoffTimer.C:
-		case <-ctx.Done():
-			backoffTimer.Stop()
-			return
+		case <-t.adsStreamCh:
+		default:
 		}
-
-		// We reset backoff state when we successfully receive at least one
-		// message from the server.
-		resetBackoff := func() bool {
-			stream, err := t.newAggregatedDiscoveryServiceStream(ctx, t.cc)
-			if err != nil {
-				t.adsStreamErrHandler(err)
-				t.logger.Warningf("ADS stream creation failed: %v", err)
-				return false
-			}
-			t.logger.Infof("ADS stream created")
-
-			select {
-			case <-t.adsStreamCh:
-			default:
-			}
-			t.adsStreamCh <- stream
-			return t.recv(stream)
-		}()
-
-		if resetBackoff {
-			backoffTimer.Reset(0)
-			backoffAttempt = 0
-		} else {
-			backoffTimer.Reset(t.backoff(backoffAttempt))
-			backoffAttempt++
+		t.adsStreamCh <- stream
+		msgReceived := t.recv(ctx, stream)
+		if msgReceived {
+			return backoff.ErrResetBackoff
 		}
+		return nil
 	}
+	backoff.RunF(ctx, runStreamWithBackoff, t.backoff)
 }
 
 // send is a separate goroutine for sending resource requests on the ADS stream.
@@ -342,17 +362,29 @@ func (t *Transport) adsRunner(ctx context.Context) {
 // there are new streams) and the appropriate request is sent out.
 func (t *Transport) send(ctx context.Context) {
 	var stream adsStream
+	// The xDS protocol only requires that we send the node proto in the first
+	// discovery request on every stream. Sending the node proto in every
+	// request message wastes CPU resources on the client and the server.
+	sentNodeProto := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case stream = <-t.adsStreamCh:
-			if !t.sendExisting(stream) {
+			// We have a new stream and we've to ensure that the node proto gets
+			// sent out in the first request on the stream.
+			var err error
+			if sentNodeProto, err = t.sendExisting(stream); err != nil {
 				// Send failed, clear the current stream. Attempt to resend will
 				// only be made after a new stream is created.
 				stream = nil
+				continue
 			}
-		case u := <-t.adsRequestCh.Get():
+		case u, ok := <-t.adsRequestCh.Get():
+			if !ok {
+				// No requests will be sent after the adsRequestCh buffer is closed.
+				return
+			}
 			t.adsRequestCh.Load()
 
 			var (
@@ -378,11 +410,12 @@ func (t *Transport) send(ctx context.Context) {
 				// sending response back).
 				continue
 			}
-			if err := t.sendAggregatedDiscoveryServiceRequest(stream, resources, url, version, nonce, nackErr); err != nil {
-				t.logger.Warningf("ADS request for {resources: %q, url: %v, version: %q, nonce: %q} failed: %v", resources, url, version, nonce, err)
+			if err := t.sendAggregatedDiscoveryServiceRequest(stream, !sentNodeProto, resources, url, version, nonce, nackErr); err != nil {
+				t.logger.Warningf("Sending ADS request for resources: %q, url: %q, version: %q, nonce: %q failed: %v", resources, url, version, nonce, err)
 				// Send failed, clear the current stream.
 				stream = nil
 			}
+			sentNodeProto = true
 		}
 	}
 }
@@ -394,7 +427,9 @@ func (t *Transport) send(ctx context.Context) {
 // that here because the stream has just started and Send() usually returns
 // quickly (once it pushes the message onto the transport layer) and is only
 // ever blocked if we don't have enough flow control quota.
-func (t *Transport) sendExisting(stream adsStream) bool {
+//
+// Returns true if the node proto was sent.
+func (t *Transport) sendExisting(stream adsStream) (sentNodeProto bool, err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -410,36 +445,63 @@ func (t *Transport) sendExisting(stream adsStream) bool {
 	// seen by the client on the previous stream
 	t.nonces = make(map[string]string)
 
+	// Send node proto only in the first request on the stream.
 	for url, resources := range t.resources {
-		if err := t.sendAggregatedDiscoveryServiceRequest(stream, mapToSlice(resources), url, t.versions[url], "", nil); err != nil {
-			t.logger.Warningf("ADS request failed: %v", err)
-			return false
+		if len(resources) == 0 {
+			continue
 		}
+		if err := t.sendAggregatedDiscoveryServiceRequest(stream, !sentNodeProto, mapToSlice(resources), url, t.versions[url], "", nil); err != nil {
+			t.logger.Warningf("Sending ADS request for resources: %q, url: %q, version: %q, nonce: %q failed: %v", resources, url, t.versions[url], "", err)
+			return false, err
+		}
+		sentNodeProto = true
 	}
 
-	return true
+	return sentNodeProto, nil
 }
 
 // recv receives xDS responses on the provided ADS stream and branches out to
 // message specific handlers. Returns true if at least one message was
 // successfully received.
-func (t *Transport) recv(stream adsStream) bool {
+func (t *Transport) recv(ctx context.Context, stream adsStream) bool {
+	// Initialize the flow control quota for the stream. This helps to block the
+	// next read until the previous one is consumed by all watchers.
+	fc := newADSFlowControl()
+
 	msgReceived := false
 	for {
+		// Wait for ADS stream level flow control to be available.
+		if !fc.wait(ctx) {
+			if t.logger.V(2) {
+				t.logger.Infof("ADS stream context canceled")
+			}
+			return msgReceived
+		}
+
 		resources, url, rVersion, nonce, err := t.recvAggregatedDiscoveryServiceResponse(stream)
 		if err != nil {
-			t.adsStreamErrHandler(err)
-			t.logger.Warningf("ADS stream is closed with error: %v", err)
+			// Note that we do not consider it an error if the ADS stream was closed
+			// after having received a response on the stream. This is because there
+			// are legitimate reasons why the server may need to close the stream during
+			// normal operations, such as needing to rebalance load or the underlying
+			// connection hitting its max connection age limit.
+			// (see [gRFC A9](https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md)).
+			if msgReceived {
+				err = xdsresource.NewErrorf(xdsresource.ErrTypeStreamFailedAfterRecv, err.Error())
+			}
+			t.onErrorHandler(err)
+			t.logger.Warningf("ADS stream closed: %v", err)
 			return msgReceived
 		}
 		msgReceived = true
 
-		err = t.updateHandler(ResourceUpdate{
+		u := ResourceUpdate{
 			Resources: resources,
 			URL:       url,
 			Version:   rVersion,
-		})
-		if xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceTypeUnsupported {
+		}
+		fc.setPending()
+		if err = t.onRecvHandler(u, fc.onDone); xdsresource.ErrType(err) == xdsresource.ErrorTypeResourceTypeUnsupported {
 			t.logger.Warningf("%v", err)
 			continue
 		}
@@ -456,7 +518,7 @@ func (t *Transport) recv(stream adsStream) bool {
 				nackErr: err,
 			})
 			t.mu.Unlock()
-			t.logger.Warningf("Sending NACK for resource type: %v, version: %v, nonce: %v, reason: %v", url, rVersion, nonce, err)
+			t.logger.Warningf("Sending NACK for resource type: %q, version: %q, nonce: %q, reason: %v", url, rVersion, nonce, err)
 			continue
 		}
 		t.adsRequestCh.Put(&ackRequest{
@@ -465,7 +527,9 @@ func (t *Transport) recv(stream adsStream) bool {
 			stream:  stream,
 			version: rVersion,
 		})
-		t.logger.Infof("Sending ACK for resource type: %v, version: %v, nonce: %v", url, rVersion, nonce)
+		if t.logger.V(2) {
+			t.logger.Infof("Sending ACK for resource type: %q, version: %q, nonce: %q", url, rVersion, nonce)
+		}
 	}
 }
 
@@ -560,6 +624,7 @@ func (t *Transport) processAckRequest(ack *ackRequest, stream grpc.ClientStream)
 func (t *Transport) Close() {
 	t.adsRunnerCancel()
 	<-t.adsRunnerDoneCh
+	t.adsRequestCh.Close()
 	t.cc.Close()
 }
 
@@ -569,4 +634,69 @@ func (t *Transport) Close() {
 // Only for testing purposes.
 func (t *Transport) ChannelConnectivityStateForTesting() connectivity.State {
 	return t.cc.GetState()
+}
+
+// adsFlowControl implements ADS stream level flow control that enables the
+// transport to block the reading of the next message off of the stream until
+// the previous update is consumed by all watchers.
+//
+// The lifetime of the flow control is tied to the lifetime of the stream.
+type adsFlowControl struct {
+	logger *grpclog.PrefixLogger
+
+	// Whether the most recent update is pending consumption by all watchers.
+	pending atomic.Bool
+	// Channel used to notify when all the watchers have consumed the most
+	// recent update. Wait() blocks on reading a value from this channel.
+	readyCh chan struct{}
+}
+
+// newADSFlowControl returns a new adsFlowControl.
+func newADSFlowControl() *adsFlowControl {
+	return &adsFlowControl{readyCh: make(chan struct{}, 1)}
+}
+
+// setPending changes the internal state to indicate that there is an update
+// pending consumption by all watchers.
+func (fc *adsFlowControl) setPending() {
+	fc.pending.Store(true)
+}
+
+// wait blocks until all the watchers have consumed the most recent update and
+// returns true. If the context expires before that, it returns false.
+func (fc *adsFlowControl) wait(ctx context.Context) bool {
+	// If there is no pending update, there is no need to block.
+	if !fc.pending.Load() {
+		// If all watchers finished processing the most recent update before the
+		// `recv` goroutine made the next call to `Wait()`, there would be an
+		// entry in the readyCh channel that needs to be drained to ensure that
+		// the next call to `Wait()` doesn't unblock before it actually should.
+		select {
+		case <-fc.readyCh:
+		default:
+		}
+		return true
+	}
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-fc.readyCh:
+		return true
+	}
+}
+
+// onDone indicates that all watchers have consumed the most recent update.
+func (fc *adsFlowControl) onDone() {
+	fc.pending.Store(false)
+
+	select {
+	// Writes to the readyCh channel should not block ideally. The default
+	// branch here is to appease the paranoid mind.
+	case fc.readyCh <- struct{}{}:
+	default:
+		if fc.logger.V(2) {
+			fc.logger.Infof("ADS stream flow control readyCh is full")
+		}
+	}
 }

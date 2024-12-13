@@ -8,7 +8,7 @@
 // HKDF is a cryptographic key derivation function (KDF) with the goal of
 // expanding limited input keying material into one or more cryptographically
 // strong secret keys.
-package hkdf // import "golang.org/x/crypto/hkdf"
+package hkdf
 
 import (
 	"crypto/hmac"
@@ -56,7 +56,9 @@ func (f *hkdf) Read(p []byte) (int, error) {
 
 	// Fill the rest of the buffer
 	for len(p) > 0 {
-		f.expander.Reset()
+		if f.counter > 1 {
+			f.expander.Reset()
+		}
 		f.expander.Write(f.prev)
 		f.expander.Write(f.info)
 		f.expander.Write([]byte{f.counter})

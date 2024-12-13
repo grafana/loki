@@ -33,7 +33,6 @@ ruler:
     kvstore:
       store: inmemory
   enable_api: true
-
 ```
 
 We support two kinds of rules: [alerting](#alerting-rules) rules and [recording](#recording-rules) rules.
@@ -62,17 +61,17 @@ groups:
             > 0.05
         for: 10m
         labels:
-            severity: page
+          severity: page
         annotations:
-            summary: High request latency
+          summary: High request latency
   - name: credentials_leak
-    rules: 
+    rules:
       - alert: http-credentials-leaked
-        annotations: 
+        annotations:
           message: "{{ $labels.job }} is leaking http basic auth credentials."
         expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
         for: 10m
-        labels: 
+        labels:
           severity: critical
 ```
 
@@ -106,7 +105,6 @@ This query (`expr`) will be executed every 1 minute (`interval`), the result of 
 name we have defined (`record`). This metric named `nginx:requests:rate1m` can now be sent to Prometheus, where it will be stored
 just like any other metric.
 
-
 ### Limiting Alerts and Recording Rule Samples
 
 Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), you can configure a limit for alerts produced by alerting rules and samples produced by recording rules. This limit can be configured per-group. Using limits can prevent a faulty rule from generating a large number of alerts or recording samples. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it is an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. The default value for limit is `0` meaning no limit.
@@ -114,8 +112,6 @@ Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/rec
 #### Example
 
 Here is an example of a rule group along with its limit configured.
-
-
 
 ```yaml
 groups:
@@ -131,9 +127,9 @@ groups:
             > 0.05
         for: 10m
         labels:
-            severity: page
+          severity: page
         annotations:
-            summary: High request latency
+          summary: High request latency
       - record: nginx:requests:rate1m
         expr: |
           sum(
@@ -155,19 +151,19 @@ At the time of writing, these are the compatible backends that support this:
 - [Grafana Mimir](/docs/mimir/latest/operators-guide/reference-http-api/#remote-write)
 - [Thanos (`Receiver`)](https://thanos.io/tip/components/receive.md/)
 
-Here is an example remote-write configuration for sending to a local Prometheus instance:
+Here is an example of a remote-write configuration for sending data to a local Prometheus instance:
 
 ```yaml
 ruler:
   ... other settings ...
-  
+
   remote_write:
     enabled: true
     client:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler]({{< relref "../configure#ruler" >}}).
+Further configuration options can be found under [ruler](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#ruler).
 
 ### Operations
 
@@ -179,20 +175,21 @@ The Ruler's Prometheus compatibility further accentuates the marriage between me
 
 ### Black box monitoring
 
-We don't always control the source code of applications we run. Load balancers and a myriad of other components, both open source and closed third-party, support our applications while they don't expose the metrics we want. Some don't expose any metrics at all. Loki's alerting and recording rules can produce metrics and alert on the state of the system, bringing the components into our observability stack by using the logs. This is an incredibly powerful way to introduce advanced observability into legacy architectures.
+We don't always control the source code of applications we run. Load balancers and a myriad of other components, both open source and closed third-party, support our applications while they don't expose the metrics we want. Some don't expose any metrics at all. The Loki alerting and recording rules can produce metrics and alert on the state of the system, bringing the components into our observability stack by using the logs. This is an incredibly powerful way to introduce advanced observability into legacy architectures.
 
 ### Event alerting
 
 Sometimes you want to know whether _any_ instance of something has occurred. Alerting based on logs can be a great way to handle this, such as finding examples of leaked authentication credentials:
+
 ```yaml
 - name: credentials_leak
-  rules: 
+  rules:
     - alert: http-credentials-leaked
-      annotations: 
+      annotations:
         message: "{{ $labels.job }} is leaking http basic auth credentials."
       expr: 'sum by (cluster, job, pod) (count_over_time({namespace="prod"} |~ "http(s?)://(\\w+):(\\w+)@" [5m]) > 0)'
       for: 10m
-      labels: 
+      labels:
         severity: critical
 ```
 
@@ -202,73 +199,109 @@ Another great use case is alerting on high cardinality sources. These are things
 
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
-> **Note** As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m]))`
+{{< admonition type="note" >}}
+As an example, we can use LogQL v2 to help Loki to monitor _itself_, alerting us when specific tenants have queries that take longer than 10s to complete! To do so, we'd use the following query: `sum by (org_id) (rate({job="loki-prod/query-frontend"} |= "metrics.go" | logfmt | duration > 10s [1m])`.
+{{< /admonition >}}
 
 ## Interacting with the Ruler
 
-Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but it works with both Loki and Cortex. Pass the `--backend=loki` option when using it with Loki.
+### Lokitool
 
-> **Note:** Not all commands in cortextool currently support Loki.
+Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via `lokitool`.
 
-> **Note:** cortextool was intended to run against multi-tenant Loki, commands need an `--id=` flag set to the Loki instance ID or set the environment variable `CORTEX_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake` (yes we know this might seem alarming but it's totally fine, no it can't be changed) 
+{{< admonition type="note" >}}
+lokitool is intended to run against multi-tenant Loki.  The commands need an `--id=` flag set to the Loki instance ID or set the environment variable `LOKI_TENANT_ID`.  If Loki is running in single tenant mode, the required ID is `fake`.
+{{< /admonition >}}
 
 An example workflow is included below:
 
 ```sh
 # lint the rules.yaml file ensuring it's valid and reformatting it if necessary
-cortextool rules lint --backend=loki ./output/rules.yaml
+lokitool rules lint ./output/rules.yaml
 
 # diff rules against the currently managed ruleset in Loki
-cortextool rules diff --rule-dirs=./output --backend=loki
+lokitool rules diff --rule-dirs=./output
 
 # ensure the remote ruleset matches your local ruleset, creating/updating/deleting remote rules which differ from your local specification.
-cortextool rules sync --rule-dirs=./output --backend=loki
+lokitool rules sync --rule-dirs=./output
 
 # print the remote ruleset
-cortextool rules print --backend=loki
+lokitool rules print
 ```
 
-There is also a [github action](https://github.com/grafana/cortex-rules-action) available for `cortex-tool`, so you can add it into your CI/CD pipelines!
+### Terraform
 
-For instance, you can sync rules on master builds via
+With the [Terraform provider for Loki](https://registry.terraform.io/providers/fgouteroux/loki/latest), you can manage alerts and recording rules in Terraform HCL format:
+
+```tf
+terraform {
+  required_providers {
+    loki = {
+      source = "fgouteroux/loki"
+    }
+  }
+}
+
+# Provider config
+provider "loki" {
+  uri = "http://127.0.0.1:3100"
+  org_id = "mytenant"
+}
+
+# Create an alert rule
+resource "loki_rule_group_alerting" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    alert       = "HighPercentageError"
+    expr        = <<EOT
+sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+  /
+sum(rate({app="foo", env="production"}[5m])) by (job)
+  > 0.05
+EOT
+    for         = "10m"
+    labels      = {
+      severity = "warning"
+    }
+    annotations = {
+      summary = "High request latency"
+    }
+  }
+}
+
+# Create a recording rule
+resource "loki_rule_group_recording" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    expr   = "sum by (job) (http_inprogress_requests)"
+    record = "job:http_inprogress_requests:sum"
+  }
+}
+
+```
+
+### Cortex rules action
+
+The [Cortex rules action](https://github.com/grafana/cortex-rules-action) introduced Loki as a backend which can be handy for managing rules in a CI/CD pipeline. It can be used to lint, diff, and sync rules between a local directory and a remote Loki instance.
+
 ```yaml
-name: sync-cortex-rules-and-alerts
-on:
-  push:
-    branches:
-      - master
-env:
-  CORTEX_ADDRESS: '<fill me in>'
-  CORTEX_TENANT_ID: '<fill me in>'
-  CORTEX_API_KEY: ${{ secrets.API_KEY }}
-  RULES_DIR: 'output/'
-jobs:
-  sync-loki-alerts:
-    runs-on: ubuntu-18.04
-    steps:
-      - name: Lint Rules
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'lint'
-        with:
-          args: --backend=loki
-      - name: Diff rules
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'diff'
-        with:
-          args: --backend=loki
-      - name: Sync rules
-        if: ${{ !contains(steps.diff-rules.outputs.detailed, 'no changes detected') }}
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'sync'
-        with:
-          args: --backend=loki
-      - name: Print rules
-        uses: grafana/cortex-rules-action@v0.4.0
-        env:
-          ACTION: 'print'
+- name: Lint Loki rules
+  uses: grafana/cortex-rules-action@master
+  env:
+    ACTION: check
+    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    BACKEND: loki
+
+- name: Deploy rules to Loki staging
+  uses: grafana/cortex-rules-action@master
+  env:
+    CORTEX_ADDRESS: <loki_ingress_addr>
+    CORTEX_TENANT_ID: fake
+    ACTION: sync
+    RULES_DIR: <source_dir_of_rules> # Example: logs/recording_rules/,logs/alerts/
+    BACKEND: loki
 ```
 
 ## Scheduling and best practices
@@ -281,47 +314,53 @@ A full sharding-enabled Ruler example is:
 
 ```yaml
 ruler:
-    alertmanager_url: <alertmanager_endpoint>
-    enable_alertmanager_v2: true
-    enable_api: true
-    enable_sharding: true
-    ring:
-        kvstore:
-            consul:
-                host: consul.loki-dev.svc.cluster.local:8500
-            store: consul
-    rule_path: /tmp/rules
-    storage:
-        gcs:
-            bucket_name: <loki-rules-bucket>
+  alertmanager_url: <alertmanager_endpoint>
+  enable_alertmanager_v2: true # true by default since Loki 3.2.0
+  enable_api: true
+  enable_sharding: true
+  ring:
+    kvstore:
+      consul:
+        host: consul.loki-dev.svc.cluster.local:8500
+      store: consul
+  rule_path: /tmp/rules
+  storage:
+    gcs:
+      bucket_name: <loki-rules-bucket>
 ```
 
 ## Ruler storage
 
 The Ruler supports the following types of storage: `azure`, `gcs`, `s3`, `swift`, `cos` and `local`. Most kinds of storage work with the sharded Ruler configuration in an obvious way, that is, configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API]({{< relref "../reference/api#ruler" >}}). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ruler). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
+
 ```
   -ruler.storage.type=local
   -ruler.storage.local.directory=/tmp/loki/rules
 ```
 
 With the above configuration, the Ruler would expect the following layout:
+
 ```
 /tmp/loki/rules/<tenant id>/rules1.yaml
                            /rules2.yaml
 ```
+
 Yaml files are expected to be [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/) but include LogQL expressions as specified in the beginning of this doc.
+
+## Remote rule evaluation
+
+With larger deployments and complex rules, running a ruler in local evaluation mode causes problems where results could be inconsistent or incomplete compared to what you see in Grafana. To solve this, use the remote evaluation mode to evaluate rules against the query frontend. A more detailed explanation can be found in [scalability documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/scalability/#remote-rule-evaluation).
 
 ## Future improvements
 
 There are a few things coming to increase the robustness of this service. In no particular order:
 
-- WAL for recording rule.
 - Backend metric stores adapters for generated alert rule data.
 
 ## Misc Details: Metrics backends vs in-memory
 
-Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing & performance benefits.
+Currently the Loki Ruler is decoupled from a backing Prometheus store. Generally, the result of evaluating rules as well as the history of the alert's state are stored as a time series. Loki is unable to store/retrieve these in order to allow it to run independently of i.e. Prometheus. As a workaround, Loki keeps a small in memory store whose purpose is to lazy load past evaluations when rescheduling or resharding Rulers. In the future, Loki will support optional metrics backends, allowing storage of these metrics for auditing and performance benefits.

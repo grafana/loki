@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 )
 
 type dnsProviderMock struct {
@@ -36,7 +36,7 @@ func createMemberlist(t *testing.T, port, memberID int) *memberlist.KV {
 	var cfg memberlist.KVConfig
 	flagext.DefaultValues(&cfg)
 	cfg.TCPTransport = memberlist.TCPTransportConfig{
-		BindAddrs: []string{"localhost"},
+		BindAddrs: []string{"127.0.0.1"},
 		BindPort:  0,
 	}
 	cfg.GossipInterval = 100 * time.Millisecond

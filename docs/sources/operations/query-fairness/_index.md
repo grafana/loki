@@ -1,8 +1,8 @@
 ---
 title: Query fairness within tenants
 menuTitle: Query fairness
-description: The scheduler can guarantee query fairness across multiple actors within a single tenant.
-weight: 101
+description: Describes methods for guaranteeing query fairness across multiple actors within a single tenant using the scheduler.
+weight:
 ---
 
 # Query fairness within tenants
@@ -95,7 +95,7 @@ curl -s http://localhost:3100/loki/api/v1/query_range?xxx \
 ```
 
 There is a limit to how deep a path and thus the queue tree can be. This is
-controlled by Loki's `-query-scheduler.max-queue-hierarchy-levels` CLI argument
+controlled by the Loki `-query-scheduler.max-queue-hierarchy-levels` CLI argument
 or its respective YAML configuration block:
 
 ```yaml
@@ -113,9 +113,9 @@ In the examples above the client that invoked the query directly against Loki al
 HTTP header that controls where in the queue tree the sub-queries are enqueued. However, as an operator,
 you would usually want to avoid this scenario and control yourself where the header is set.
 
-When using Grafana as the Loki user interface, you can, for example, create multiple datasources
+When using Grafana as the Loki user interface, you can, for example, create multiple data sources
 with the same tenant, but with a different additional HTTP header
-`X-Loki-Scope-Actor` and restrict which Grafana user can use which datasource.
+`X-Loki-Actor-Path` and restrict which Grafana user can use which data source.
 
 Alternatively, if you have a proxy for authentication in front of Loki, you can
 pass the (hashed) user from the authentication as downstream header to Loki.

@@ -1,7 +1,8 @@
 ---
-title: "Overrides exporter"
-description: "Overrides Exporter"
-weight: 20
+title: Overrides exporter
+menuTitle:  
+description: Describes how the Overrides Exporter module exposes tenant limits as Prometheus metrics.
+weight: 
 ---
 
 # Overrides exporter
@@ -10,7 +11,7 @@ Loki is a multi-tenant system that supports applying limits to each tenant as a 
 
 ## Context
 
-Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`]({{< relref "../configure#runtime_config" >}}) feature.
+Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#runtime_config) feature.
 
 ## Example
 

@@ -1,6 +1,15 @@
 # Change history of go-restful
 
-## [v3.10.1] - 2022-11-19
+## [v3.11.0] - 2023-08-19
+
+- restored behavior as <= v3.9.0 with option to change path strategy using TrimRightSlashEnabled. 
+
+## [v3.10.2] - 2023-03-09 - DO NOT USE
+
+- introduced MergePathStrategy to be able to revert behaviour of path concatenation to 3.9.0
+  see comment in Readme how to customize this behaviour.
+
+## [v3.10.1] - 2022-11-19 - DO NOT USE
 
 - fix broken 3.10.0 by using path package for joining paths
 

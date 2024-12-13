@@ -14,10 +14,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
@@ -28,20 +29,19 @@ type HeadBlock interface {
 	CheckpointBytes(b []byte) ([]byte, error)
 	CheckpointSize() int
 	LoadBytes(b []byte) error
-	Serialise(pool WriterPool) ([]byte, error)
+	Serialise(pool compression.WriterPool) ([]byte, error)
 	Reset()
 	Bounds() (mint, maxt int64)
 	Entries() int
 	UncompressedSize() int
 	Convert(HeadBlockFmt, *symbolizer) (HeadBlock, error)
-	Append(int64, string, labels.Labels) error
+	Append(int64, string, labels.Labels) (bool, error)
 	Iterator(
 		ctx context.Context,
 		direction logproto.Direction,
 		mint,
 		maxt int64,
 		pipeline log.StreamPipeline,
-		options ...iter.EntryIteratorOption,
 	) iter.EntryIterator
 	SampleIterator(
 		ctx context.Context,
@@ -97,8 +97,8 @@ func (hb *unorderedHeadBlock) Reset() {
 }
 
 type nsEntry struct {
-	line                    string
-	nonIndexedLabelsSymbols symbols
+	line                      string
+	structuredMetadataSymbols symbols
 }
 
 // collection of entries belonging to the same nanosecond
@@ -111,10 +111,11 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 	return e.ts
 }
 
-func (hb *unorderedHeadBlock) Append(ts int64, line string, nonIndexedLabels labels.Labels) error {
-	if hb.format < UnorderedWithNonIndexedLabelsHeadBlockFmt {
-		// nonIndexedLabels must be ignored for the previous head block formats
-		nonIndexedLabels = nil
+// unorderedHeadBlock will return true if the entry is a duplicate, false otherwise
+func (hb *unorderedHeadBlock) Append(ts int64, line string, structuredMetadata labels.Labels) (bool, error) {
+	if hb.format < UnorderedWithStructuredMetadataHeadBlockFmt {
+		// structuredMetadata must be ignored for the previous head block formats
+		structuredMetadata = nil
 	}
 	// This is an allocation hack. The rangetree lib does not
 	// support the ability to pass a "mutate" function during an insert
@@ -136,12 +137,12 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, nonIndexedLabels lab
 		for _, et := range displaced[0].(*nsEntries).entries {
 			if et.line == line {
 				e.entries = displaced[0].(*nsEntries).entries
-				return nil
+				return true, nil
 			}
 		}
-		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(nonIndexedLabels)})
+		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(structuredMetadata)})
 	} else {
-		e.entries = []nsEntry{{line, hb.symbolizer.Add(nonIndexedLabels)}}
+		e.entries = []nsEntry{{line, hb.symbolizer.Add(structuredMetadata)}}
 	}
 
 	// Update hb metdata
@@ -154,10 +155,10 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, nonIndexedLabels lab
 	}
 
 	hb.size += len(line)
-	hb.size += len(nonIndexedLabels) * 2 * 4 // 4 bytes per label and value pair as nonIndexedLabelsSymbols
+	hb.size += len(structuredMetadata) * 2 * 4 // 4 bytes per label and value pair as structuredMetadataSymbols
 	hb.lines++
 
-	return nil
+	return false, nil
 }
 
 func metaLabelsLen(metaLabels labels.Labels) int {
@@ -215,12 +216,12 @@ func (hb *unorderedHeadBlock) forEntries(
 
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i].line
-			nonIndexedLabelsSymbols := es.entries[i].nonIndexedLabelsSymbols
-			nonIndexedLabelsBytes := int64(2 * len(nonIndexedLabelsSymbols) * 4) // 2 * num_symbols * 4 bytes(uint32)
-			chunkStats.AddHeadChunkNonIndexedLabelsBytes(nonIndexedLabelsBytes)
-			chunkStats.AddHeadChunkBytes(int64(len(line)) + nonIndexedLabelsBytes)
+			structuredMetadataSymbols := es.entries[i].structuredMetadataSymbols
+			structuredMetadataBytes := int64(2 * len(structuredMetadataSymbols) * 4) // 2 * num_symbols * 4 bytes(uint32)
+			chunkStats.AddHeadChunkStructuredMetadataBytes(structuredMetadataBytes)
+			chunkStats.AddHeadChunkBytes(int64(len(line)) + structuredMetadataBytes)
 
-			err = entryFn(chunkStats, es.ts, line, nonIndexedLabelsSymbols)
+			err = entryFn(chunkStats, es.ts, line, structuredMetadataSymbols)
 
 		}
 	}
@@ -244,25 +245,22 @@ func (hb *unorderedHeadBlock) forEntries(
 	return nil
 }
 
-func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) iter.EntryIterator {
-	var iterOptions iter.EntryIteratorOptions
-	for _, option := range options {
-		option(&iterOptions)
-	}
-
+func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
+	var structuredMetadata labels.Labels
 	_ = hb.forEntries(
 		ctx,
 		direction,
 		mint,
 		maxt,
-		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)...)
+		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata...)
 			if !matches {
 				return nil
 			}
@@ -278,30 +276,33 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 				streams[labels] = stream
 			}
 
-			entry := logproto.Entry{
-				Timestamp: time.Unix(0, ts),
-				Line:      newLine,
-			}
-
-			// Most of the time, there is no need to send back the non-indexed labels, as they are already part of the labels results.
-			// Still it might be needed for example when appending entries from one chunk into another one.
-			if iterOptions.KeepNonIndexedLabels {
-				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols))
-			}
-
-			stream.Entries = append(stream.Entries, entry)
+			stream.Entries = append(stream.Entries, logproto.Entry{
+				Timestamp:          time.Unix(0, ts),
+				Line:               newLine,
+				StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+				Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
+			})
 			return nil
 		},
 	)
 
+	if pipeline.ReferencedStructuredMetadata() {
+		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
+	}
 	if len(streams) == 0 {
-		return iter.NoopIterator
+		return iter.NoopEntryIterator
 	}
 	streamsResult := make([]logproto.Stream, 0, len(streams))
 	for _, stream := range streams {
 		streamsResult = append(streamsResult, *stream)
 	}
-	return iter.NewStreamsIterator(streamsResult, direction)
+
+	return iter.EntryIteratorWithClose(iter.NewStreamsIterator(streamsResult, direction), func() error {
+		if structuredMetadata != nil {
+			structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		}
+		return nil
+	})
 }
 
 // nolint:unused
@@ -313,13 +314,15 @@ func (hb *unorderedHeadBlock) SampleIterator(
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	baseHash := extractor.BaseLabels().Hash()
+	var structuredMetadata labels.Labels
 	_ = hb.forEntries(
 		ctx,
 		logproto.FORWARD,
 		mint,
 		maxt,
-		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
-			value, parsedLabels, ok := extractor.ProcessString(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)...)
+		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
+			value, parsedLabels, ok := extractor.ProcessString(ts, line, structuredMetadata...)
 			if !ok {
 				return nil
 			}
@@ -347,8 +350,12 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		},
 	)
 
+	if extractor.ReferencedStructuredMetadata() {
+		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
+	}
+
 	if len(series) == 0 {
-		return iter.NoopIterator
+		return iter.NoopSampleIterator
 	}
 	seriesRes := make([]logproto.Series, 0, len(series))
 	for _, s := range series {
@@ -358,13 +365,16 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		for _, s := range series {
 			SamplesPool.Put(s.Samples)
 		}
+		if structuredMetadata != nil {
+			structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		}
 		return nil
 	})
 }
 
 // nolint:unused
 // serialise is used in creating an ordered, compressed block from an unorderedHeadBlock
-func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
+func (hb *unorderedHeadBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
 	defer func() {
 		inBuf.Reset()
@@ -388,7 +398,7 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
 			n := binary.PutVarint(encBuf, ts)
 			inBuf.Write(encBuf[:n])
 
@@ -397,17 +407,17 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 
 			inBuf.WriteString(line)
 
-			if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
+			if hb.format >= UnorderedWithStructuredMetadataHeadBlockFmt {
 				symbolsSectionBuf.Reset()
-				// Serialize non-indexed labels symbols to symbolsSectionBuf so that we can find and write its length before
+				// Serialize structured metadata symbols to symbolsSectionBuf so that we can find and write its length before
 				// writing symbols section to inbuf since we can't estimate its size beforehand due to variable length encoding.
 
 				// write the number of symbol pairs
-				n = binary.PutUvarint(encBuf, uint64(len(nonIndexedLabelsSymbols)))
+				n = binary.PutUvarint(encBuf, uint64(len(structuredMetadataSymbols)))
 				symbolsSectionBuf.Write(encBuf[:n])
 
 				// write the symbols
-				for _, l := range nonIndexedLabelsSymbols {
+				for _, l := range structuredMetadataSymbols {
 					n = binary.PutUvarint(encBuf, uint64(l.Name))
 					symbolsSectionBuf.Write(encBuf[:n])
 
@@ -447,8 +457,9 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
-			return out.Append(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols))
+		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
+			_, err := out.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil))
+			return err
 		},
 	)
 	return out, err
@@ -460,8 +471,8 @@ func (hb *unorderedHeadBlock) CheckpointSize() int {
 	size += binary.MaxVarintLen32 * 2                                  // total entries + total size
 	size += binary.MaxVarintLen64 * 2                                  // mint,maxt
 	size += (binary.MaxVarintLen64 + binary.MaxVarintLen32) * hb.lines // ts + len of log line.
-	if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
-		// number of non-indexed labels stored for each log entry
+	if hb.format >= UnorderedWithStructuredMetadataHeadBlockFmt {
+		// number of labels of structured metadata stored for each log entry
 		size += binary.MaxVarintLen32 * hb.lines
 	}
 	size += hb.size // uncompressed bytes of lines
@@ -504,7 +515,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+		func(_ *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
 			eb.putVarint64(ts)
 			eb.putUvarint(len(line))
 			_, err = w.Write(eb.get())
@@ -518,20 +529,20 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 				return errors.Wrap(err, "write headblock entry line")
 			}
 
-			if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
-				// non-indexed labels
-				eb.putUvarint(len(nonIndexedLabelsSymbols))
+			if hb.format >= UnorderedWithStructuredMetadataHeadBlockFmt {
+				// structured metadata
+				eb.putUvarint(len(structuredMetadataSymbols))
 				_, err = w.Write(eb.get())
 				if err != nil {
 					return errors.Wrap(err, "write headBlock entry meta labels length")
 				}
 				eb.reset()
-				for _, l := range nonIndexedLabelsSymbols {
+				for _, l := range structuredMetadataSymbols {
 					eb.putUvarint(int(l.Name))
 					eb.putUvarint(int(l.Value))
 					_, err = w.Write(eb.get())
 					if err != nil {
-						return errors.Wrap(err, "write headBlock entry nonIndexedLabelsSymbols")
+						return errors.Wrap(err, "write headBlock entry structuredMetadataSymbols")
 					}
 					eb.reset()
 				}
@@ -574,21 +585,20 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 		lineLn := db.uvarint()
 		line := string(db.bytes(lineLn))
 
-		var nonIndexedLabelsSymbols symbols
-		if version >= UnorderedWithNonIndexedLabelsHeadBlockFmt.Byte() {
+		var structuredMetadataSymbols symbols
+		if version >= UnorderedWithStructuredMetadataHeadBlockFmt.Byte() {
 			metaLn := db.uvarint()
 			if metaLn > 0 {
-				nonIndexedLabelsSymbols = make([]symbol, metaLn)
+				structuredMetadataSymbols = make([]symbol, metaLn)
 				for j := 0; j < metaLn && db.err() == nil; j++ {
-					nonIndexedLabelsSymbols[j] = symbol{
+					structuredMetadataSymbols[j] = symbol{
 						Name:  uint32(db.uvarint()),
 						Value: uint32(db.uvarint()),
 					}
 				}
 			}
 		}
-
-		if err := hb.Append(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)); err != nil {
+		if _, err := hb.Append(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols, nil)); err != nil {
 			return err
 		}
 	}
@@ -615,7 +625,7 @@ func HeadFromCheckpoint(b []byte, desiredIfNotUnordered HeadBlockFmt, symbolizer
 		return nil, errors.Wrap(db.err(), "verifying headblock header")
 	}
 	format := HeadBlockFmt(version)
-	if format > UnorderedWithNonIndexedLabelsHeadBlockFmt {
+	if format > UnorderedWithStructuredMetadataHeadBlockFmt {
 		return nil, fmt.Errorf("unexpected head block version: %v", format)
 	}
 

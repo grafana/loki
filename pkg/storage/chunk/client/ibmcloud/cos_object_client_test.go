@@ -24,8 +24,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 var (
@@ -584,7 +584,7 @@ func mockCOSServer(accessToken, tokenType, resp string) *httptest.Server {
 }
 
 func mockAuthServer(accessToken, tokenType string) *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		token := token.Token{
 			AccessToken:  accessToken,
 			RefreshToken: "test",

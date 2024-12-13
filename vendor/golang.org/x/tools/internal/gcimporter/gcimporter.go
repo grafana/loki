@@ -29,7 +29,6 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -221,7 +220,7 @@ func Import(packages map[string]*types.Package, path, srcDir string, lookup func
 	switch hdr {
 	case "$$B\n":
 		var data []byte
-		data, err = ioutil.ReadAll(buf)
+		data, err = io.ReadAll(buf)
 		if err != nil {
 			break
 		}
@@ -230,20 +229,22 @@ func Import(packages map[string]*types.Package, path, srcDir string, lookup func
 		// Or, define a new standard go/types/gcexportdata package.
 		fset := token.NewFileSet()
 
-		// The indexed export format starts with an 'i'; the older
-		// binary export format starts with a 'c', 'd', or 'v'
-		// (from "version"). Select appropriate importer.
+		// Select appropriate importer.
 		if len(data) > 0 {
 			switch data[0] {
+			case 'v', 'c', 'd':
+				// binary: emitted by cmd/compile till go1.10; obsolete.
+				return nil, fmt.Errorf("binary (%c) import format is no longer supported", data[0])
+
 			case 'i':
+				// indexed: emitted by cmd/compile till go1.19;
+				// now used only for serializing go/types.
+				// See https://github.com/golang/go/issues/69491.
 				_, pkg, err := IImportData(fset, packages, data[1:], id)
 				return pkg, err
 
-			case 'v', 'c', 'd':
-				_, pkg, err := BImportData(fset, packages, data, id)
-				return pkg, err
-
 			case 'u':
+				// unified: emitted by cmd/compile since go1.20.
 				_, pkg, err := UImportData(fset, packages, data[1:size], id)
 				return pkg, err
 
@@ -261,13 +262,6 @@ func Import(packages map[string]*types.Package, path, srcDir string, lookup func
 	}
 
 	return
-}
-
-func deref(typ types.Type) types.Type {
-	if p, _ := typ.(*types.Pointer); p != nil {
-		return p.Elem()
-	}
-	return typ
 }
 
 type byPath []*types.Package

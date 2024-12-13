@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/util/strutil"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var tokens = map[string]int{
@@ -23,8 +23,10 @@ var tokens = map[string]int{
 	OpTypeNEQ:      NEQ,
 	"=~":           RE,
 	"!~":           NRE,
+	"!>":           NPA,
 	"|=":           PIPE_EXACT,
 	"|~":           PIPE_MATCH,
+	"|>":           PIPE_PATTERN,
 	OpPipe:         PIPE,
 	OpUnwrap:       UNWRAP,
 	"(":            OPEN_PARENTHESIS,
@@ -70,9 +72,8 @@ var tokens = map[string]int{
 	OpFmtLine:  LINE_FMT,
 
 	// filter functions
-	OpFilterIP:       IP,
-	OpDecolorize:     DECOLORIZE,
-	OpFilterDistinct: DISTINCT,
+	OpFilterIP:   IP,
+	OpDecolorize: DECOLORIZE,
 
 	// drop labels
 	OpDrop: DROP,
@@ -119,6 +120,8 @@ var functionTokens = map[string]int{
 	OpTypeSort:     SORT,
 	OpTypeSortDesc: SORT_DESC,
 	OpLabelReplace: LABEL_REPLACE,
+
+	OpTypeApproxTopK: APPROX_TOPK,
 
 	// conversion Op
 	OpConvBytes:           BYTES_CONV,
@@ -216,7 +219,9 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	}
 
 	tokenText := l.TokenText()
-	tokenNext := tokenText + string(l.Peek())
+	tokenTextLower := strings.ToLower(l.TokenText())
+	tokenNext := strings.ToLower(tokenText + string(l.Peek()))
+
 	if tok, ok := functionTokens[tokenNext]; ok {
 		// create a copy to advance to the entire token for testing suffix
 		sc := l.Scanner
@@ -227,7 +232,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 	}
 
-	if tok, ok := functionTokens[tokenText]; ok {
+	if tok, ok := functionTokens[tokenTextLower]; ok {
 		if !isFunction(l.Scanner) {
 			lval.str = tokenText
 			return IDENTIFIER
@@ -240,7 +245,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return tok
 	}
 
-	if tok, ok := tokens[tokenText]; ok {
+	if tok, ok := tokens[tokenTextLower]; ok {
 		return tok
 	}
 
@@ -391,7 +396,7 @@ func isFunction(sc Scanner) bool {
 	sc = trimSpace(sc)
 	for r := sc.Next(); r != scanner.EOF; r = sc.Next() {
 		sb.WriteRune(r)
-		switch sb.String() {
+		switch strings.ToLower(sb.String()) {
 		case "(":
 			return true
 		case "by", "without":

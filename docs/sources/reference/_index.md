@@ -1,7 +1,7 @@
 ---
 title: Loki reference topics
 menuTitle: Reference
-description:  Reference topics for Loki.
+description:  Overview page for Loki reference topics.
 weight: 1000
 ---
 
@@ -9,4 +9,4 @@ weight: 1000
 
 This section provides reference material for Loki.
 
-1. [Loki HTTP API]({{< relref "./api" >}})
+1. [Loki HTTP API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api/)

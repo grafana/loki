@@ -68,13 +68,13 @@ type sharedConfig struct {
 	//	aws_session_token
 	Creds credentials.Value
 
-	CredentialSource     string
-	CredentialProcess    string
+	CredentialSource  string
+	CredentialProcess string
 
-	RoleARN            string
-	RoleSessionName    string
-	ExternalID         string
-	MFASerial          string
+	RoleARN         string
+	RoleSessionName string
+	ExternalID      string
+	MFASerial       string
 
 	SourceProfileName string
 	SourceProfile     *sharedConfig
@@ -349,7 +349,8 @@ func updateBool(dst *bool, section ini.Section, key string) {
 	if !section.Has(key) {
 		return
 	}
-	*dst = section.Bool(key)
+	v, _ := section.Bool(key)
+	*dst = v
 }
 
 // updateBoolPtr will only update the dst with the value in the section key,
@@ -358,8 +359,9 @@ func updateBoolPtr(dst **bool, section ini.Section, key string) {
 	if !section.Has(key) {
 		return
 	}
+	v, _ := section.Bool(key)
 	*dst = new(bool)
-	**dst = section.Bool(key)
+	**dst = v
 }
 
 // SharedConfigLoadError is an error for the shared config file failed to load.

@@ -75,3 +75,21 @@ type Entry struct {
 	// New for v6 schema, label value is not written as part of the range key.
 	Value []byte
 }
+
+func QueryKey(q Query) string {
+	ret := q.TableName + sep + q.HashValue
+
+	if len(q.RangeValuePrefix) != 0 {
+		ret += sep + string(q.RangeValuePrefix)
+	}
+
+	if len(q.RangeValueStart) != 0 {
+		ret += sep + string(q.RangeValueStart)
+	}
+
+	if len(q.ValueEqual) != 0 {
+		ret += sep + string(q.ValueEqual)
+	}
+
+	return ret
+}

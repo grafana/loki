@@ -9,14 +9,14 @@ import (
 	"github.com/grafana/dskit/middleware"
 )
 
-func Instrument(requestDuration *prometheus.HistogramVec) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+func Instrument(requestDuration *prometheus.HistogramVec, instrumentationLabelOptions ...middleware.InstrumentationOption) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	return []grpc.UnaryClientInterceptor{
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,
-			middleware.UnaryClientInstrumentInterceptor(requestDuration),
+			middleware.UnaryClientInstrumentInterceptor(requestDuration, instrumentationLabelOptions...),
 		}, []grpc.StreamClientInterceptor{
 			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
 			middleware.StreamClientUserHeaderInterceptor,
-			middleware.StreamClientInstrumentInterceptor(requestDuration),
+			middleware.StreamClientInstrumentInterceptor(requestDuration, instrumentationLabelOptions...),
 		}
 }

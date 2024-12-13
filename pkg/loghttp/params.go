@@ -8,15 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/c2h5oh/datasize"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 const (
 	defaultQueryLimit = 100
+	defaultLimit      = 1000
 	defaultSince      = 1 * time.Hour
+	defaultDirection  = logproto.BACKWARD
 )
 
 func limit(r *http.Request) (uint32, error) {
@@ -24,6 +29,35 @@ func limit(r *http.Request) (uint32, error) {
 	if err != nil {
 		return 0, err
 	}
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
+	return uint32(l), nil
+}
+
+func lineLimit(r *http.Request) (uint32, error) {
+	l, err := parseInt(r.Form.Get("line_limit"), defaultQueryLimit)
+	if err != nil {
+		return 0, err
+	}
+	if l <= 0 {
+		return 0, errors.New("limit must be a positive value")
+	}
+	return uint32(l), nil
+}
+
+func detectedFieldsLimit(r *http.Request) (uint32, error) {
+	limit := r.Form.Get("limit")
+	if limit == "" {
+		// for backwards compatibility
+		limit = r.Form.Get("field_limit")
+	}
+
+	l, err := parseInt(limit, defaultLimit)
+	if err != nil {
+		return 0, err
+	}
+
 	if l <= 0 {
 		return 0, errors.New("limit must be a positive value")
 	}
@@ -39,7 +73,7 @@ func ts(r *http.Request) (time.Time, error) {
 }
 
 func direction(r *http.Request) (logproto.Direction, error) {
-	return parseDirection(r.Form.Get("direction"), logproto.BACKWARD)
+	return parseDirection(r.Form.Get("direction"), defaultDirection)
 }
 
 func shards(r *http.Request) []string {
@@ -177,4 +211,41 @@ func parseSecondsOrDuration(value string) (time.Duration, error) {
 		return time.Duration(d), nil
 	}
 	return 0, errors.Errorf("cannot parse %q to a valid duration", value)
+}
+
+// parseRegexQuery parses regex and query querystring from httpRequest and returns the combined LogQL query.
+// This is used only to keep regexp query string support until it gets fully deprecated.
+func parseRegexQuery(httpRequest *http.Request) (string, error) {
+	query := httpRequest.Form.Get("query")
+	regexp := httpRequest.Form.Get("regexp")
+	if regexp != "" {
+		expr, err := syntax.ParseLogSelector(query, true)
+		if err != nil {
+			return "", err
+		}
+		newExpr, err := syntax.AddFilterExpr(expr, log.LineMatchRegexp, "", regexp)
+		if err != nil {
+			return "", err
+		}
+		query = newExpr.String()
+	}
+	return query, nil
+}
+
+func parseBytes(r *http.Request, field string, optional bool) (val datasize.ByteSize, err error) {
+	s := r.Form.Get(field)
+
+	if s == "" {
+		if !optional {
+			return 0, fmt.Errorf("missing %s", field)
+		}
+		return val, nil
+	}
+
+	if err := val.UnmarshalText([]byte(s)); err != nil {
+		return 0, errors.Wrapf(err, "invalid %s: %s", field, s)
+	}
+
+	return val, nil
+
 }

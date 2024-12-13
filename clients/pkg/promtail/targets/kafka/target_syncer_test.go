@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,14 +18,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
 
 func Test_TopicDiscovery(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	group := &testConsumerGroupHandler{}
+	group := &testConsumerGroupHandler{mu: &sync.Mutex{}}
 	TopicPollInterval = time.Microsecond
 	var closed bool
 	client := &mockKafkaClient{
@@ -45,28 +46,35 @@ func Test_TopicDiscovery(t *testing.T) {
 			cancel:        func() {},
 			ConsumerGroup: group,
 			logger:        log.NewNopLogger(),
-			discoverer: DiscovererFn(func(s sarama.ConsumerGroupSession, c sarama.ConsumerGroupClaim) (RunnableTarget, error) {
+			discoverer: DiscovererFn(func(_ sarama.ConsumerGroupSession, _ sarama.ConsumerGroupClaim) (RunnableTarget, error) {
 				return nil, nil
 			}),
 		},
 	}
 
 	ts.loop()
+	tmpTopics := []string{}
 	require.Eventually(t, func() bool {
 		if !group.consuming.Load() {
 			return false
 		}
+		group.mu.Lock()
+		defer group.mu.Unlock()
+		tmpTopics = group.topics
 		return reflect.DeepEqual([]string{"topic1"}, group.topics)
-	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1"}, group.topics)
+	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1"}, tmpTopics)
 
+	client.mu.Lock()
 	client.topics = []string{"topic1", "topic2"} // introduce new topics
+	client.mu.Unlock()
 
 	require.Eventually(t, func() bool {
 		if !group.consuming.Load() {
 			return false
 		}
+		tmpTopics = group.topics
 		return reflect.DeepEqual([]string{"topic1", "topic2"}, group.topics)
-	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1", "topic2"}, group.topics)
+	}, 200*time.Millisecond, time.Millisecond, "expected topics: %v, got: %v", []string{"topic1", "topic2"}, tmpTopics)
 
 	require.NoError(t, ts.Stop())
 	require.True(t, closed)
@@ -187,7 +195,6 @@ func Test_validateConfig(t *testing.T) {
 	}
 
 	for i, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			err := validateConfig(tt.cfg)
 			if (err != nil) != tt.wantErr {

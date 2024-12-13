@@ -5,23 +5,29 @@ metadata:
   name: {{ include "loki.fullname" . }}-table-manager
   labels:
     {{- include "loki.labels" . | nindent 4 }}
-    {{- with .Values.tableManager.serviceLabels }}
-    {{- toYaml . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.tableManager.service.labels }}
+    {{- toYaml . | nindent 4}}
     {{- end }}
     app.kubernetes.io/component: table-manager
-  {{- with .Values.loki.serviceAnnotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.tableManager.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
 spec:
   type: ClusterIP
   ports:
     - name: http-metrics
-      port: 3100
+      port: {{ .Values.loki.server.http_listen_port }}
       targetPort: http-metrics
       protocol: TCP
     - name: grpc
-      port: 9095
+      port: {{ .Values.loki.server.grpc_listen_port }}
       targetPort: grpc
       protocol: TCP
   selector:

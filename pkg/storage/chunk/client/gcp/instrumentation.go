@@ -12,11 +12,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 var (
 	bigtableRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "bigtable_request_duration_seconds",
 		Help:      "Time spent doing Bigtable requests.",
 
@@ -26,7 +28,7 @@ var (
 	}, []string{"operation", "status_code"})
 
 	gcsRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "gcs_request_duration_seconds",
 		Help:      "Time spent doing GCS requests.",
 

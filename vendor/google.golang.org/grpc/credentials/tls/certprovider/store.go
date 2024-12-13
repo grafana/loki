@@ -19,8 +19,10 @@
 package certprovider
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 )
 
 // provStore is the global singleton certificate provider store.
@@ -31,8 +33,8 @@ var provStore = &store{
 // storeKey acts as the key to the map of providers maintained by the store. A
 // combination of provider name and configuration is used to uniquely identify
 // every provider instance in the store. Go maps need to be indexed by
-// comparable types, so the provider configuration is converted from
-// `interface{}` to string using the ParseConfig method while creating this key.
+// comparable types, so the provider configuration is converted from `any` to
+// `string` using the ParseConfig method while creating this key.
 type storeKey struct {
 	// name of the certificate provider.
 	name string
@@ -51,6 +53,22 @@ type wrappedProvider struct {
 	// Close method on the provider.
 	storeKey storeKey
 	store    *store
+}
+
+// closedProvider always returns errProviderClosed error.
+type closedProvider struct{}
+
+func (c closedProvider) KeyMaterial(context.Context) (*KeyMaterial, error) {
+	return nil, errProviderClosed
+}
+
+func (c closedProvider) Close() {
+}
+
+// singleCloseWrappedProvider wraps a provider instance with a reference count
+// to properly handle multiple calls to Close.
+type singleCloseWrappedProvider struct {
+	provider atomic.Pointer[Provider]
 }
 
 // store is a collection of provider instances, safe for concurrent access.
@@ -73,6 +91,28 @@ func (wp *wrappedProvider) Close() {
 		wp.Provider.Close()
 		delete(ps.providers, wp.storeKey)
 	}
+}
+
+// Close overrides the Close method of the embedded provider to avoid release the
+// already released reference.
+func (w *singleCloseWrappedProvider) Close() {
+	newProvider := Provider(closedProvider{})
+	oldProvider := w.provider.Swap(&newProvider)
+	(*oldProvider).Close()
+}
+
+// KeyMaterial returns the key material sourced by the Provider.
+// Callers are expected to use the returned value as read-only.
+func (w *singleCloseWrappedProvider) KeyMaterial(ctx context.Context) (*KeyMaterial, error) {
+	return (*w.provider.Load()).KeyMaterial(ctx)
+}
+
+// newSingleCloseWrappedProvider create wrapper a provider instance with a reference count
+// to properly handle multiple calls to Close.
+func newSingleCloseWrappedProvider(provider Provider) *singleCloseWrappedProvider {
+	w := &singleCloseWrappedProvider{}
+	w.provider.Store(&provider)
+	return w
 }
 
 // BuildableConfig wraps parsed provider configuration and functionality to
@@ -112,7 +152,7 @@ func (bc *BuildableConfig) Build(opts BuildOptions) (Provider, error) {
 	}
 	if wp, ok := provStore.providers[sk]; ok {
 		wp.refCount++
-		return wp, nil
+		return newSingleCloseWrappedProvider(wp), nil
 	}
 
 	provider := bc.starter(opts)
@@ -126,7 +166,7 @@ func (bc *BuildableConfig) Build(opts BuildOptions) (Provider, error) {
 		store:    provStore,
 	}
 	provStore.providers[sk] = wp
-	return wp, nil
+	return newSingleCloseWrappedProvider(wp), nil
 }
 
 // String returns the provider name and config as a colon separated string.
@@ -137,7 +177,7 @@ func (bc *BuildableConfig) String() string {
 // ParseConfig is a convenience function to create a BuildableConfig given a
 // provider name and configuration. Returns an error if there is no registered
 // builder for the given name or if the config parsing fails.
-func ParseConfig(name string, config interface{}) (*BuildableConfig, error) {
+func ParseConfig(name string, config any) (*BuildableConfig, error) {
 	parser := getBuilder(name)
 	if parser == nil {
 		return nil, fmt.Errorf("no certificate provider builder found for %q", name)
@@ -147,7 +187,7 @@ func ParseConfig(name string, config interface{}) (*BuildableConfig, error) {
 
 // GetProvider is a convenience function to create a provider given the name,
 // config and build options.
-func GetProvider(name string, config interface{}, opts BuildOptions) (Provider, error) {
+func GetProvider(name string, config any, opts BuildOptions) (Provider, error) {
 	bc, err := ParseConfig(name, config)
 	if err != nil {
 		return nil, err

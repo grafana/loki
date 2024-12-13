@@ -1,3 +1,170 @@
+## v1.13.0 (2024-07-08)
+
+* [GH-3044](https://github.com/gophercloud/gophercloud/pull/3044) [v1] Add ci jobs for openstack caracal
+* [GH-3073](https://github.com/gophercloud/gophercloud/pull/3073) [v1] Adding missing QoS field for router
+* [GH-3080](https://github.com/gophercloud/gophercloud/pull/3080) [networking]: add BGP VPNs support (backport to 1.x)
+
+## v1.12.0 (2024-05-27)
+
+* [GH-2979](https://github.com/gophercloud/gophercloud/pull/2979) [v1] CI backports
+* [GH-2985](https://github.com/gophercloud/gophercloud/pull/2985) [v1] baremetal: fix handling of the "fields" query argument
+* [GH-2989](https://github.com/gophercloud/gophercloud/pull/2989) [v1] [CI] Fix portbiding tests
+* [GH-2992](https://github.com/gophercloud/gophercloud/pull/2992) [v1] [CI] Fix portbiding tests
+* [GH-2993](https://github.com/gophercloud/gophercloud/pull/2993) [v1] build(deps): bump EmilienM/devstack-action from 0.14 to 0.15
+* [GH-2998](https://github.com/gophercloud/gophercloud/pull/2998) [v1] testhelper: mark all helpers with t.Helper
+* [GH-3043](https://github.com/gophercloud/gophercloud/pull/3043) [v1] CI: remove Zed from testing coverage
+
+## v1.11.0 (2024-03-07)
+
+This version reverts the inclusion of Context in the v1 branch. This inclusion
+didn't add much value because no packages were using it; on the other hand, it
+introduced a bug when using the Context property of the Provider client.
+
+## v1.10.0 (2024-02-27) **RETRACTED**: see https://github.com/gophercloud/gophercloud/issues/2969
+
+* [GH-2893](https://github.com/gophercloud/gophercloud/pull/2893) [v1] authentication: Add WithContext functions
+* [GH-2894](https://github.com/gophercloud/gophercloud/pull/2894) [v1] pager: Add WithContext functions
+* [GH-2899](https://github.com/gophercloud/gophercloud/pull/2899) [v1] Authenticate with a clouds.yaml
+* [GH-2917](https://github.com/gophercloud/gophercloud/pull/2917) [v1] Add ParseOption type to made clouds.Parse() more usable for optional With* funcs
+* [GH-2924](https://github.com/gophercloud/gophercloud/pull/2924) [v1] build(deps): bump EmilienM/devstack-action from 0.11 to 0.14
+* [GH-2933](https://github.com/gophercloud/gophercloud/pull/2933) [v1]  Fix AllowReauth reauthentication
+* [GH-2950](https://github.com/gophercloud/gophercloud/pull/2950) [v1] compute: Use volumeID, not attachmentID for volume attachments
+
+## v1.9.0 (2024-02-02) **RETRACTED**: see https://github.com/gophercloud/gophercloud/issues/2969
+
+New features and improvements:
+
+* [GH-2884](https://github.com/gophercloud/gophercloud/pull/2884) [v1] Context-aware methods to ProviderClient and ServiceClient
+* [GH-2887](https://github.com/gophercloud/gophercloud/pull/2887) [v1] Add support of Flavors and FlavorProfiles for Octavia
+* [GH-2875](https://github.com/gophercloud/gophercloud/pull/2875) [v1] [db/v1/instance]: adding support for availability_zone for a db instance
+
+CI changes:
+
+* [GH-2856](https://github.com/gophercloud/gophercloud/pull/2856) [v1] Fix devstack install on EOL magnum branches
+* [GH-2857](https://github.com/gophercloud/gophercloud/pull/2857) [v1] Fix networking acceptance tests
+* [GH-2858](https://github.com/gophercloud/gophercloud/pull/2858) [v1] build(deps): bump actions/upload-artifact from 3 to 4
+* [GH-2859](https://github.com/gophercloud/gophercloud/pull/2859) [v1] build(deps): bump github/codeql-action from 2 to 3
+
+## v1.8.0 (2023-11-30)
+
+New features and improvements:
+
+* [GH-2800](https://github.com/gophercloud/gophercloud/pull/2800) [v1] Fix options initialization in ServiceClient.Request (fixes #2798)
+* [GH-2823](https://github.com/gophercloud/gophercloud/pull/2823) [v1] Add more godoc to GuestFormat
+* [GH-2826](https://github.com/gophercloud/gophercloud/pull/2826) Allow objects.CreateTempURL with names containing /v1/
+
+CI changes:
+
+* [GH-2802](https://github.com/gophercloud/gophercloud/pull/2802) [v1] Add job for bobcat stable/2023.2
+* [GH-2819](https://github.com/gophercloud/gophercloud/pull/2819) [v1] Test files alongside code
+* [GH-2814](https://github.com/gophercloud/gophercloud/pull/2814) Make fixtures part of tests
+* [GH-2796](https://github.com/gophercloud/gophercloud/pull/2796) [v1] ci/unit: switch to coverallsapp/github-action
+* [GH-2840](https://github.com/gophercloud/gophercloud/pull/2840) unit tests: Fix the installation of tools
+
+## v1.7.0 (2023-09-22)
+
+New features and improvements:
+
+* [GH-2782](https://github.com/gophercloud/gophercloud/pull/2782) [v1] (manual clean backport) Add tag field to compute block_device_v2
+
+CI changes:
+
+* [GH-2760](https://github.com/gophercloud/gophercloud/pull/2760) [v1 backports] semver auto labels
+* [GH-2775](https://github.com/gophercloud/gophercloud/pull/2775) [v1] Fix typos in comments
+* [GH-2783](https://github.com/gophercloud/gophercloud/pull/2783) [v1] (clean manual backport) ci/functional: fix ubuntu version & add antelope
+* [GH-2785](https://github.com/gophercloud/gophercloud/pull/2785) [v1] Acceptance: Handle numerical version names in version comparison helpers
+* [GH-2787](https://github.com/gophercloud/gophercloud/pull/2787) backport-v1: fixes to semver label
+* [GH-2788](https://github.com/gophercloud/gophercloud/pull/2788) [v1] Make acceptance tests internal
+
+
+## v1.6.0 (2023-08-30)
+
+New features and improvements:
+
+* [GH-2712](https://github.com/gophercloud/gophercloud/pull/2712) [v1] README: minor change to test backport workflow
+* [GH-2713](https://github.com/gophercloud/gophercloud/pull/2713) [v1] tests: run MultiAttach with a capable Cinder Type
+* [GH-2714](https://github.com/gophercloud/gophercloud/pull/2714) [v1] Add CRUD support for encryption in volume v3 types
+* [GH-2715](https://github.com/gophercloud/gophercloud/pull/2715) [v1] Add projectID to fwaas_v2 policy CreateOpts and ListOpts
+* [GH-2716](https://github.com/gophercloud/gophercloud/pull/2716) [v1] Add projectID to fwaas_v2 CreateOpts
+* [GH-2717](https://github.com/gophercloud/gophercloud/pull/2717) [v1] [manila]: add reset and force delete actions to a snapshot
+* [GH-2718](https://github.com/gophercloud/gophercloud/pull/2718) [v1] [cinder]: add reset and force delete actions to volumes and snapshots
+* [GH-2721](https://github.com/gophercloud/gophercloud/pull/2721) [v1] orchestration: Explicit error in optionsmap creation
+* [GH-2723](https://github.com/gophercloud/gophercloud/pull/2723) [v1] Add conductor API to Baremetal V1
+* [GH-2729](https://github.com/gophercloud/gophercloud/pull/2729) [v1] networking/v2/ports: allow list filter by security group
+
+CI changes:
+
+* [GH-2675](https://github.com/gophercloud/gophercloud/pull/2675) [v1][CI] Drop periodic jobs from stable branch
+* [GH-2683](https://github.com/gophercloud/gophercloud/pull/2683) [v1] CI tweaks
+
+
+## v1.5.0 (2023-06-21)
+
+New features and improvements:
+
+* [GH-2634](https://github.com/gophercloud/gophercloud/pull/2634) baremetal: update inspection inventory with recent additions
+* [GH-2635](https://github.com/gophercloud/gophercloud/pull/2635) [manila]: Add Share Replicas support
+* [GH-2637](https://github.com/gophercloud/gophercloud/pull/2637) [FWaaS_v2]: Add FWaaS_V2 workflow and enable tests
+* [GH-2639](https://github.com/gophercloud/gophercloud/pull/2639) Implement errors.Unwrap() on unexpected status code errors
+* [GH-2648](https://github.com/gophercloud/gophercloud/pull/2648) [manila]: implement share transfer API
+
+
+## v1.4.0 (2023-05-25)
+
+New features and improvements:
+
+* [GH-2465](https://github.com/gophercloud/gophercloud/pull/2465) keystone: add v3 limits update operation
+* [GH-2596](https://github.com/gophercloud/gophercloud/pull/2596) keystone: add v3 limits get operation
+* [GH-2618](https://github.com/gophercloud/gophercloud/pull/2618) keystone: add v3 limits delete operation
+* [GH-2616](https://github.com/gophercloud/gophercloud/pull/2616) Add CRUD support for register limit APIs
+* [GH-2610](https://github.com/gophercloud/gophercloud/pull/2610) Add PUT/HEAD/DELETE for identity/v3/OS-INHERIT
+* [GH-2597](https://github.com/gophercloud/gophercloud/pull/2597) Add validation and optimise objects.BulkDelete
+* [GH-2602](https://github.com/gophercloud/gophercloud/pull/2602) [swift v1]: introduce a TempURLKey argument for objects.CreateTempURLOpts struct
+* [GH-2623](https://github.com/gophercloud/gophercloud/pull/2623) Add the ability to remove ingress/egress policies from fwaas_v2 groups
+* [GH-2625](https://github.com/gophercloud/gophercloud/pull/2625) neutron: Support trunk_details extension
+
+CI changes:
+
+* [GH-2608](https://github.com/gophercloud/gophercloud/pull/2608) Drop train and ussuri jobs
+* [GH-2589](https://github.com/gophercloud/gophercloud/pull/2589) Bump EmilienM/devstack-action from 0.10 to 0.11
+* [GH-2604](https://github.com/gophercloud/gophercloud/pull/2604) Bump mheap/github-action-required-labels from 3 to 4
+* [GH-2620](https://github.com/gophercloud/gophercloud/pull/2620) Pin goimport dep to a version that works with go 1.14
+* [GH-2619](https://github.com/gophercloud/gophercloud/pull/2619) Fix version comparison for acceptance tests
+* [GH-2627](https://github.com/gophercloud/gophercloud/pull/2627) Limits: Fix ToDo to create registered limit and use it
+* [GH-2629](https://github.com/gophercloud/gophercloud/pull/2629) [manila]: Add share from snapshot restore functional test
+
+
+## v1.3.0 (2023-03-28)
+
+* [GH-2464](https://github.com/gophercloud/gophercloud/pull/2464) keystone: add v3 limits create operation
+* [GH-2512](https://github.com/gophercloud/gophercloud/pull/2512) Manila: add List for share-access-rules API
+* [GH-2529](https://github.com/gophercloud/gophercloud/pull/2529) Added target state "rebuild" for Ironic nodes
+* [GH-2539](https://github.com/gophercloud/gophercloud/pull/2539) Add release instructions
+* [GH-2540](https://github.com/gophercloud/gophercloud/pull/2540) [all] IsEmpty to check for HTTP status 204
+* [GH-2543](https://github.com/gophercloud/gophercloud/pull/2543) keystone: add v3 OS-FEDERATION mappings get operation
+* [GH-2545](https://github.com/gophercloud/gophercloud/pull/2545) baremetal: add inspection_{started,finished}_at to Node
+* [GH-2546](https://github.com/gophercloud/gophercloud/pull/2546) Drop train job for baremetal
+* [GH-2549](https://github.com/gophercloud/gophercloud/pull/2549) objects: Clarify ExtractContent usage
+* [GH-2550](https://github.com/gophercloud/gophercloud/pull/2550) keystone: add v3 OS-FEDERATION mappings update operation
+* [GH-2552](https://github.com/gophercloud/gophercloud/pull/2552) objectstorage: Reject container names with a slash
+* [GH-2555](https://github.com/gophercloud/gophercloud/pull/2555) nova: introduce servers.ListSimple along with the more detailed servers.List
+* [GH-2558](https://github.com/gophercloud/gophercloud/pull/2558) Expand docs on 'clientconfig' usage
+* [GH-2563](https://github.com/gophercloud/gophercloud/pull/2563) Support propagate_uplink_status for Ports
+* [GH-2567](https://github.com/gophercloud/gophercloud/pull/2567) Fix invalid baremetal-introspection service type
+* [GH-2568](https://github.com/gophercloud/gophercloud/pull/2568) Prefer github mirrors over opendev repos
+* [GH-2571](https://github.com/gophercloud/gophercloud/pull/2571) Swift V1: support object versioning
+* [GH-2572](https://github.com/gophercloud/gophercloud/pull/2572) networking v2: add extraroutes Add and Remove methods
+* [GH-2573](https://github.com/gophercloud/gophercloud/pull/2573) Enable tests for object versioning
+* [GH-2576](https://github.com/gophercloud/gophercloud/pull/2576) keystone: add v3 OS-FEDERATION mappings delete operation
+* [GH-2578](https://github.com/gophercloud/gophercloud/pull/2578) Add periodic jobs for OpenStack zed release and reduce periodic jobs frequency
+* [GH-2580](https://github.com/gophercloud/gophercloud/pull/2580) [neutron v2]: Add support for network segments update
+* [GH-2583](https://github.com/gophercloud/gophercloud/pull/2583) Add missing rule protocol constants for IPIP
+* [GH-2584](https://github.com/gophercloud/gophercloud/pull/2584) CI: workaround mongodb dependency for messaging and clustering master jobs
+* [GH-2587](https://github.com/gophercloud/gophercloud/pull/2587) fix: Incorrect Documentation
+* [GH-2593](https://github.com/gophercloud/gophercloud/pull/2593) Make TestMTUNetworkCRUDL deterministic
+* [GH-2594](https://github.com/gophercloud/gophercloud/pull/2594) Bump actions/setup-go from 3 to 4
+
+
 ## v1.2.0 (2023-01-27)
 
 Starting with this version, Gophercloud sends its actual version in the

@@ -30,78 +30,96 @@ type schemaPropsValidator struct {
 	AnyOf           []spec.Schema
 	Not             *spec.Schema
 	Dependencies    spec.Dependencies
-	anyOfValidators []SchemaValidator
-	allOfValidators []SchemaValidator
-	oneOfValidators []SchemaValidator
+	anyOfValidators []*SchemaValidator
+	allOfValidators []*SchemaValidator
+	oneOfValidators []*SchemaValidator
 	notValidator    *SchemaValidator
 	Root            interface{}
 	KnownFormats    strfmt.Registry
-	Options         SchemaValidatorOptions
+	Options         *SchemaValidatorOptions
 }
 
 func (s *schemaPropsValidator) SetPath(path string) {
 	s.Path = path
 }
 
-func newSchemaPropsValidator(path string, in string, allOf, oneOf, anyOf []spec.Schema, not *spec.Schema, deps spec.Dependencies, root interface{}, formats strfmt.Registry, options ...Option) *schemaPropsValidator {
-	anyValidators := make([]SchemaValidator, 0, len(anyOf))
-	for _, v := range anyOf {
-		v := v
-		anyValidators = append(anyValidators, *NewSchemaValidator(&v, root, path, formats, options...))
+func newSchemaPropsValidator(
+	path string, in string, allOf, oneOf, anyOf []spec.Schema, not *spec.Schema, deps spec.Dependencies, root interface{}, formats strfmt.Registry,
+	opts *SchemaValidatorOptions) *schemaPropsValidator {
+	if opts == nil {
+		opts = new(SchemaValidatorOptions)
 	}
-	allValidators := make([]SchemaValidator, 0, len(allOf))
-	for _, v := range allOf {
-		v := v
-		allValidators = append(allValidators, *NewSchemaValidator(&v, root, path, formats, options...))
+
+	anyValidators := make([]*SchemaValidator, 0, len(anyOf))
+	for i := range anyOf {
+		anyValidators = append(anyValidators, newSchemaValidator(&anyOf[i], root, path, formats, opts))
 	}
-	oneValidators := make([]SchemaValidator, 0, len(oneOf))
-	for _, v := range oneOf {
-		v := v
-		oneValidators = append(oneValidators, *NewSchemaValidator(&v, root, path, formats, options...))
+	allValidators := make([]*SchemaValidator, 0, len(allOf))
+	for i := range allOf {
+		allValidators = append(allValidators, newSchemaValidator(&allOf[i], root, path, formats, opts))
+	}
+	oneValidators := make([]*SchemaValidator, 0, len(oneOf))
+	for i := range oneOf {
+		oneValidators = append(oneValidators, newSchemaValidator(&oneOf[i], root, path, formats, opts))
 	}
 
 	var notValidator *SchemaValidator
 	if not != nil {
-		notValidator = NewSchemaValidator(not, root, path, formats, options...)
+		notValidator = newSchemaValidator(not, root, path, formats, opts)
 	}
 
-	schOptions := &SchemaValidatorOptions{}
-	for _, o := range options {
-		o(schOptions)
+	var s *schemaPropsValidator
+	if opts.recycleValidators {
+		s = poolOfSchemaPropsValidators.BorrowValidator()
+	} else {
+		s = new(schemaPropsValidator)
 	}
-	return &schemaPropsValidator{
-		Path:            path,
-		In:              in,
-		AllOf:           allOf,
-		OneOf:           oneOf,
-		AnyOf:           anyOf,
-		Not:             not,
-		Dependencies:    deps,
-		anyOfValidators: anyValidators,
-		allOfValidators: allValidators,
-		oneOfValidators: oneValidators,
-		notValidator:    notValidator,
-		Root:            root,
-		KnownFormats:    formats,
-		Options:         *schOptions,
-	}
+
+	s.Path = path
+	s.In = in
+	s.AllOf = allOf
+	s.OneOf = oneOf
+	s.AnyOf = anyOf
+	s.Not = not
+	s.Dependencies = deps
+	s.anyOfValidators = anyValidators
+	s.allOfValidators = allValidators
+	s.oneOfValidators = oneValidators
+	s.notValidator = notValidator
+	s.Root = root
+	s.KnownFormats = formats
+	s.Options = opts
+
+	return s
 }
 
-func (s *schemaPropsValidator) Applies(source interface{}, kind reflect.Kind) bool {
-	r := reflect.TypeOf(source) == specSchemaType
-	debugLog("schema props validator for %q applies %t for %T (kind: %v)\n", s.Path, r, source, kind)
-	return r
+func (s *schemaPropsValidator) Applies(source interface{}, _ reflect.Kind) bool {
+	_, isSchema := source.(*spec.Schema)
+	return isSchema
 }
 
 func (s *schemaPropsValidator) Validate(data interface{}) *Result {
-	mainResult := new(Result)
+	var mainResult *Result
+	if s.Options.recycleValidators {
+		mainResult = poolOfResults.BorrowResult()
+	} else {
+		mainResult = new(Result)
+	}
 
 	// Intermediary error results
 
 	// IMPORTANT! messages from underlying validators
-	keepResultAnyOf := new(Result)
-	keepResultOneOf := new(Result)
-	keepResultAllOf := new(Result)
+	keepResultAnyOf := poolOfResults.BorrowResult()
+	keepResultOneOf := poolOfResults.BorrowResult()
+	keepResultAllOf := poolOfResults.BorrowResult()
+
+	if s.Options.recycleValidators {
+		defer func() {
+			s.redeem()
+
+			// results are redeemed when merged
+		}()
+	}
 
 	// Validates at least one in anyOf schemas
 	var firstSuccess *Result
@@ -115,10 +133,9 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 			if result.IsValid() {
 				bestFailures = nil
 				succeededOnce = true
-				if firstSuccess == nil {
-					firstSuccess = result
-				}
-				keepResultAnyOf = new(Result)
+				firstSuccess = result
+				_ = keepResultAnyOf.cleared()
+
 				break
 			}
 			// MatchCount is used to select errors from the schema with most positive checks
@@ -132,6 +149,9 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 		}
 		if bestFailures != nil {
 			mainResult.Merge(bestFailures)
+			if firstSuccess != nil && firstSuccess.wantsRedeemOnMerge {
+				poolOfResults.RedeemResult(firstSuccess)
+			}
 		} else if firstSuccess != nil {
 			mainResult.Merge(firstSuccess)
 		}
@@ -153,7 +173,7 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 				if firstSuccess == nil {
 					firstSuccess = result
 				}
-				keepResultOneOf = new(Result)
+				_ = keepResultOneOf.cleared()
 				continue
 			}
 			// MatchCount is used to select errors from the schema with most positive checks
@@ -174,8 +194,14 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 			if bestFailures != nil {
 				mainResult.Merge(bestFailures)
 			}
+			if firstSuccess != nil && firstSuccess.wantsRedeemOnMerge {
+				poolOfResults.RedeemResult(firstSuccess)
+			}
 		} else if firstSuccess != nil {
 			mainResult.Merge(firstSuccess)
+			if bestFailures != nil && bestFailures.wantsRedeemOnMerge {
+				poolOfResults.RedeemResult(bestFailures)
+			}
 		}
 	}
 
@@ -187,7 +213,6 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 			result := allOfSchema.Validate(data)
 			// We keep inner IMPORTANT! errors no matter what MatchCount tells us
 			keepResultAllOf.Merge(result.keepRelevantErrors())
-			// keepResultAllOf.Merge(result)
 			if result.IsValid() {
 				validated++
 			}
@@ -218,7 +243,9 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 			if dep, ok := s.Dependencies[key]; ok {
 
 				if dep.Schema != nil {
-					mainResult.Merge(NewSchemaValidator(dep.Schema, s.Root, s.Path+"."+key, s.KnownFormats, s.Options.Options()...).Validate(data))
+					mainResult.Merge(
+						newSchemaValidator(dep.Schema, s.Root, s.Path+"."+key, s.KnownFormats, s.Options).Validate(data),
+					)
 					continue
 				}
 
@@ -237,4 +264,32 @@ func (s *schemaPropsValidator) Validate(data interface{}) *Result {
 	// In the end we retain best failures for schema validation
 	// plus, if any, composite errors which may explain special cases (tagged as IMPORTANT!).
 	return mainResult.Merge(keepResultAllOf, keepResultOneOf, keepResultAnyOf)
+}
+
+func (s *schemaPropsValidator) redeem() {
+	poolOfSchemaPropsValidators.RedeemValidator(s)
+}
+
+func (s *schemaPropsValidator) redeemChildren() {
+	for _, v := range s.anyOfValidators {
+		v.redeemChildren()
+		v.redeem()
+	}
+	s.anyOfValidators = nil
+	for _, v := range s.allOfValidators {
+		v.redeemChildren()
+		v.redeem()
+	}
+	s.allOfValidators = nil
+	for _, v := range s.oneOfValidators {
+		v.redeemChildren()
+		v.redeem()
+	}
+	s.oneOfValidators = nil
+
+	if s.notValidator != nil {
+		s.notValidator.redeemChildren()
+		s.notValidator.redeem()
+		s.notValidator = nil
+	}
 }

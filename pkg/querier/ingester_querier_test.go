@@ -7,6 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/user"
+	"go.uber.org/atomic"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -17,8 +22,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
@@ -64,9 +70,10 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 		},
 	}
 
+	var cnt atomic.Int32
+
 	for testName, testData := range tests {
 		for _, retErr := range []bool{true, false} {
-			testName, testData, retErr := testName, testData, retErr
 			if retErr {
 				testName += " call should return early on breaching max errors"
 			} else {
@@ -74,9 +81,9 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			}
 
 			t.Run(testName, func(t *testing.T) {
-				cnt := 0
 				wg := sync.WaitGroup{}
 				wait := make(chan struct{})
+				cnt.Store(0)
 
 				runFn := func(args mock.Arguments) {
 					wg.Done()
@@ -87,7 +94,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 						// ctx should be cancelled after the first two replicas return
 						require.ErrorIs(t, ctx.Err(), context.Canceled)
 					case <-wait:
-						cnt++
+						cnt.Add(1)
 					case <-time.After(time.Second):
 						t.Error("timed out waiting for ctx cancellation")
 					}
@@ -99,12 +106,8 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				} else {
 					ingesterClient.On(testData.method, mock.Anything, mock.Anything, mock.Anything).Return(testData.retVal, nil).Run(runFn)
 				}
-				ingesterQuerier, err := newIngesterQuerier(
-					mockIngesterClientConfig(),
-					newReadRingMock(ringIngesters, 1),
-					mockQuerierConfig().ExtraQueryDelay,
-					newIngesterClientMockFactory(ingesterClient),
-				)
+
+				ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock(ringIngesters, 1), ingesterClient)
 				require.NoError(t, err)
 
 				wg.Add(3)
@@ -119,7 +122,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 
 				err = testData.testFn(ingesterQuerier)
 				ingesterClient.AssertNumberOfCalls(t, testData.method, 3)
-				require.Equal(t, 2, cnt)
+				require.Equal(t, int32(2), cnt.Load())
 				if retErr {
 					require.ErrorContains(t, err, testData.method+" failed")
 				} else {
@@ -166,7 +169,6 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 
 	for testName, testData := range tests {
 		for _, retErr := range []bool{true, false} {
-			testName, testData, retErr := testName, testData, retErr
 			if retErr {
 				testName += " call should not return early on breaching max errors"
 			} else {
@@ -174,7 +176,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			}
 
 			t.Run(testName, func(t *testing.T) {
-				cnt := 0
+				cnt.Store(0)
 				wg := sync.WaitGroup{}
 				wait := make(chan struct{})
 
@@ -187,7 +189,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 						// should not be cancelled by the tracker
 						require.NoError(t, ctx.Err())
 					case <-wait:
-						cnt++
+						cnt.Add(1)
 					case <-time.After(time.Second):
 					}
 				}
@@ -198,12 +200,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				} else {
 					ingesterClient.On(testData.method, mock.Anything, mock.Anything, mock.Anything).Return(testData.retVal, nil).Run(runFn)
 				}
-				ingesterQuerier, err := newIngesterQuerier(
-					mockIngesterClientConfig(),
-					newReadRingMock(ringIngesters, 1),
-					mockQuerierConfig().ExtraQueryDelay,
-					newIngesterClientMockFactory(ingesterClient),
-				)
+				ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock(ringIngesters, 1), ingesterClient)
 				require.NoError(t, err)
 
 				wg.Add(3)
@@ -218,7 +215,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 
 				err = testData.testFn(ingesterQuerier)
 				ingesterClient.AssertNumberOfCalls(t, testData.method, 3)
-				require.Equal(t, 2, cnt)
+				require.Equal(t, int32(2), cnt.Load())
 				if retErr {
 					require.ErrorContains(t, err, testData.method+" failed")
 				} else {
@@ -226,6 +223,260 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+
+	ingesters := []ring.InstanceDesc{
+		mockInstanceDescWithZone("1.1.1.1", ring.ACTIVE, "A"),
+		mockInstanceDescWithZone("2.2.2.2", ring.ACTIVE, "B"),
+		mockInstanceDescWithZone("3.3.3.3", ring.ACTIVE, "A"),
+		mockInstanceDescWithZone("4.4.4.4", ring.ACTIVE, "B"),
+		mockInstanceDescWithZone("5.5.5.5", ring.ACTIVE, "A"),
+		mockInstanceDescWithZone("6.6.6.6", ring.ACTIVE, "B"),
+	}
+
+	tests := map[string]struct {
+		method string
+		testFn func(*IngesterQuerier) error
+		retVal interface{}
+		shards int
+	}{
+		"label": {
+			method: "Label",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.Label(ctx, nil)
+				return err
+			},
+			retVal: new(logproto.LabelResponse),
+		},
+		"series": {
+			method: "Series",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.Series(ctx, nil)
+				return err
+			},
+			retVal: new(logproto.SeriesResponse),
+		},
+		"get_chunk_ids": {
+			method: "GetChunkIDs",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.GetChunkIDs(ctx, model.Time(0), model.Time(0))
+				return err
+			},
+			retVal: new(logproto.GetChunkIDsResponse),
+		},
+		"select_logs": {
+			method: "Query",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
+					QueryRequest: new(logproto.QueryRequest),
+				})
+				return err
+			},
+			retVal: newQueryClientMock(),
+		},
+		"select_sample": {
+			method: "QuerySample",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectSample(ctx, logql.SelectSampleParams{
+					SampleQueryRequest: new(logproto.SampleQueryRequest),
+				})
+				return err
+			},
+			retVal: newQuerySampleClientMock(),
+		},
+		"select_logs_shuffle_sharded": {
+			method: "Query",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
+					QueryRequest: new(logproto.QueryRequest),
+				})
+				return err
+			},
+			retVal: newQueryClientMock(),
+			shards: 2, // Must be less than number of partitions
+		},
+	}
+
+	for testName, testData := range tests {
+		cnt := atomic.NewInt32(0)
+
+		t.Run(testName, func(t *testing.T) {
+			cnt.Store(0)
+			runFn := func(args mock.Arguments) {
+				ctx := args[0].(context.Context)
+
+				select {
+				case <-ctx.Done():
+					// should not be cancelled by the tracker
+					require.NoErrorf(t, ctx.Err(), "tracker should not cancel ctx: %v", context.Cause(ctx))
+				default:
+					cnt.Add(1)
+				}
+			}
+
+			instanceRing := newReadRingMock(ingesters, 0)
+			ingesterClient := newQuerierClientMock()
+			ingesterClient.On(testData.method, mock.Anything, mock.Anything, mock.Anything).Return(testData.retVal, nil).Run(runFn)
+
+			partitions := 3
+			ingestersPerPartition := len(ingesters) / partitions
+			assert.Greaterf(t, ingestersPerPartition, 1, "must have more than one ingester per partition")
+
+			ingesterQuerier, err := newTestPartitionIngesterQuerier(newIngesterClientMockFactory(ingesterClient), instanceRing, newPartitionInstanceRingMock(instanceRing, ingesters, partitions, ingestersPerPartition), testData.shards)
+			require.NoError(t, err)
+
+			ingesterQuerier.querierConfig.QueryPartitionIngesters = true
+
+			err = testData.testFn(ingesterQuerier)
+			require.NoError(t, err)
+
+			if testData.shards == 0 {
+				testData.shards = partitions
+			}
+			expectedCalls := min(testData.shards, partitions)
+			// Wait for responses: We expect one request per queried partition because we have request minimization enabled & ingesters are in multiple zones.
+			// If shuffle sharding is enabled, we expect one query per shard as we write to a subset of partitions.
+			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*100, time.Millisecond*1, "expected all ingesters to respond")
+			ingesterClient.AssertNumberOfCalls(t, testData.method, expectedCalls)
+		})
+	}
+}
+
+func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) {
+	t.Parallel()
+	userCtx := user.InjectOrgID(context.Background(), "test-user")
+	testCtx, cancel := context.WithTimeout(userCtx, time.Second*10)
+	defer cancel()
+
+	ingesters := []ring.InstanceDesc{
+		mockInstanceDescWithZone("1.1.1.1", ring.ACTIVE, "A"),
+		mockInstanceDescWithZone("2.2.2.2", ring.ACTIVE, "B"),
+		mockInstanceDescWithZone("3.3.3.3", ring.ACTIVE, "A"),
+		mockInstanceDescWithZone("4.4.4.4", ring.ACTIVE, "B"),
+		mockInstanceDescWithZone("5.5.5.5", ring.ACTIVE, "A"),
+		mockInstanceDescWithZone("6.6.6.6", ring.ACTIVE, "B"),
+	}
+
+	tests := map[string]struct {
+		method string
+		testFn func(context.Context, *IngesterQuerier) error
+		retVal interface{}
+		shards int
+	}{
+		"select_logs": {
+			method: "Query",
+			testFn: func(ctx context.Context, ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
+					QueryRequest: new(logproto.QueryRequest),
+				})
+				return err
+			},
+			retVal: newQueryClientMock(),
+		},
+		"select_sample": {
+			method: "QuerySample",
+			testFn: func(ctx context.Context, ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectSample(ctx, logql.SelectSampleParams{
+					SampleQueryRequest: new(logproto.SampleQueryRequest),
+				})
+				return err
+			},
+			retVal: newQuerySampleClientMock(),
+		},
+		"select_logs_shuffle_sharded": {
+			method: "Query",
+			testFn: func(ctx context.Context, ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectLogs(ctx, logql.SelectLogParams{
+					QueryRequest: new(logproto.QueryRequest),
+				})
+				return err
+			},
+			retVal: newQueryClientMock(),
+			shards: 2, // Must be less than number of partitions
+		},
+	}
+
+	for testName, testData := range tests {
+		cnt := atomic.NewInt32(0)
+		ctx := NewPartitionContext(testCtx)
+
+		t.Run(testName, func(t *testing.T) {
+			cnt.Store(0)
+			runFn := func(args mock.Arguments) {
+				ctx := args[0].(context.Context)
+
+				select {
+				case <-ctx.Done():
+					// should not be cancelled by the tracker
+					require.NoErrorf(t, ctx.Err(), "tracker should not cancel ctx: %v", context.Cause(ctx))
+				default:
+					cnt.Add(1)
+				}
+			}
+
+			instanceRing := newReadRingMock(ingesters, 0)
+			ingesterClient := newQuerierClientMock()
+			ingesterClient.On(testData.method, mock.Anything, mock.Anything, mock.Anything).Return(testData.retVal, nil).Run(runFn)
+			ingesterClient.On("GetChunkIDs", mock.Anything, mock.Anything, mock.Anything).Return(new(logproto.GetChunkIDsResponse), nil).Run(runFn)
+
+			partitions := 3
+			ingestersPerPartition := len(ingesters) / partitions
+			assert.Greaterf(t, ingestersPerPartition, 1, "must have more than one ingester per partition")
+
+			mockClientFactory := mockIngesterClientFactory{
+				requestedClients: make(map[string]int),
+			}
+
+			ingesterQuerier, err := newTestPartitionIngesterQuerier(mockClientFactory.newIngesterClientMockFactory(ingesterClient), instanceRing, newPartitionInstanceRingMock(instanceRing, ingesters, partitions, ingestersPerPartition), testData.shards)
+			require.NoError(t, err)
+
+			ingesterQuerier.querierConfig.QueryPartitionIngesters = true
+
+			err = testData.testFn(ctx, ingesterQuerier)
+			require.NoError(t, err)
+
+			if testData.shards == 0 {
+				testData.shards = partitions
+			}
+			expectedCalls := min(testData.shards, partitions)
+			expectedIngesterCalls := expectedCalls
+			// Wait for responses: We expect one request per queried partition because we have request minimization enabled & ingesters are in multiple zones.
+			// If shuffle sharding is enabled, we expect one query per shard as we write to a subset of partitions.
+			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*100, time.Millisecond*1, "expected ingesters to respond")
+			ingesterClient.AssertNumberOfCalls(t, testData.method, expectedCalls)
+
+			partitionCtx := ExtractPartitionContext(ctx)
+			require.Equal(t, expectedIngesterCalls, len(partitionCtx.ingestersUsed))
+			require.Equal(t, expectedIngesterCalls, len(mockClientFactory.requestedClients))
+
+			for _, ingester := range partitionCtx.ingestersUsed {
+				count, ok := mockClientFactory.requestedClients[ingester.addr]
+				require.True(t, ok)
+				require.Equal(t, count, 1)
+			}
+
+			// Now call getChunkIDs to ensure we only call the same ingesters as before.
+			_, err = ingesterQuerier.GetChunkIDs(ctx, model.Time(0), model.Time(1))
+			require.NoError(t, err)
+
+			require.Eventually(t, func() bool { return cnt.Load() >= int32(expectedCalls) }, time.Millisecond*100, time.Millisecond*1, "expected ingesters to respond")
+			ingesterClient.AssertNumberOfCalls(t, "GetChunkIDs", expectedCalls)
+
+			// Finally, confirm we called the same ingesters again and didn't ask for any new clients
+			require.Equal(t, expectedIngesterCalls, len(mockClientFactory.requestedClients))
+			for _, ingester := range partitionCtx.ingestersUsed {
+				count, ok := mockClientFactory.requestedClients[ingester.addr]
+				require.True(t, ok)
+				require.Equal(t, count, 1)
+			}
+		})
 	}
 }
 
@@ -280,8 +531,6 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			req := logproto.TailRequest{
 				Query:    "{type=\"test\"}",
@@ -295,12 +544,7 @@ func TestQuerier_tailDisconnectedIngesters(t *testing.T) {
 			ingesterClient := newQuerierClientMock()
 			ingesterClient.On("Tail", mock.Anything, &req, mock.Anything).Return(newTailClientMock(), nil)
 
-			ingesterQuerier, err := newIngesterQuerier(
-				mockIngesterClientConfig(),
-				newReadRingMock(testData.ringIngesters, 0),
-				mockQuerierConfig().ExtraQueryDelay,
-				newIngesterClientMockFactory(ingesterClient),
-			)
+			ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock(testData.ringIngesters, 0), ingesterClient)
 			require.NoError(t, err)
 
 			actualClients, err := ingesterQuerier.TailDisconnectedIngesters(context.Background(), &req, testData.connectedIngestersAddr)
@@ -357,12 +601,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 		ingesterClient := newQuerierClientMock()
 		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
-		ingesterQuerier, err := newIngesterQuerier(
-			mockIngesterClientConfig(),
-			newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0),
-			mockQuerierConfig().ExtraQueryDelay,
-			newIngesterClientMockFactory(ingesterClient),
-		)
+		ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0), ingesterClient)
 		require.NoError(t, err)
 
 		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
@@ -377,12 +616,7 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 		ingesterClient := newQuerierClientMock()
 		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(nil, status.Error(codes.Unimplemented, "something bad"))
 
-		ingesterQuerier, err := newIngesterQuerier(
-			mockIngesterClientConfig(),
-			newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0),
-			mockQuerierConfig().ExtraQueryDelay,
-			newIngesterClientMockFactory(ingesterClient),
-		)
+		ingesterQuerier, err := newTestIngesterQuerier(newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0), ingesterClient)
 		require.NoError(t, err)
 
 		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
@@ -390,4 +624,58 @@ func TestIngesterQuerier_Volume(t *testing.T) {
 
 		require.Equal(t, []logproto.Volume(nil), volumes.Volumes)
 	})
+}
+
+func TestIngesterQuerier_DetectedLabels(t *testing.T) {
+	t.Run("it returns all unique detected labels from all ingesters", func(t *testing.T) {
+		req := logproto.DetectedLabelsRequest{}
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetDetectedLabels", mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"cluster": {Values: []string{"ingester"}},
+			"foo":     {Values: []string{"abc", "abc", "ghi"}},
+			"bar":     {Values: []string{"cgi", "def"}},
+			"all-ids": {Values: []string{"1", "3", "3", "3"}},
+		}}, nil)
+
+		readRingMock := newReadRingMock([]ring.InstanceDesc{mockInstanceDesc("1.1.1.1", ring.ACTIVE), mockInstanceDesc("3.3.3.3", ring.ACTIVE)}, 0)
+		ingesterQuerier, err := newTestIngesterQuerier(readRingMock, ingesterClient)
+		require.NoError(t, err)
+
+		detectedLabels, err := ingesterQuerier.DetectedLabel(context.Background(), &req)
+		require.NoError(t, err)
+
+		require.Equal(t, &logproto.LabelToValuesResponse{Labels: map[string]*logproto.UniqueLabelValues{
+			"all-ids": {Values: []string{"1", "3"}},
+			"bar":     {Values: []string{"cgi", "def"}},
+			"cluster": {Values: []string{"ingester"}},
+			"foo":     {Values: []string{"abc", "ghi"}},
+		}}, detectedLabels)
+	})
+}
+
+func newTestIngesterQuerier(readRingMock *readRingMock, ingesterClient *querierClientMock) (*IngesterQuerier, error) {
+	return newIngesterQuerier(
+		mockQuerierConfig(),
+		mockIngesterClientConfig(),
+		readRingMock,
+		nil,
+		func(string) int { return 0 },
+		newIngesterClientMockFactory(ingesterClient),
+		constants.Loki,
+		log.NewNopLogger(),
+	)
+}
+
+func newTestPartitionIngesterQuerier(clientFactory client.PoolFactory, instanceRing *readRingMock, partitionRing *ring.PartitionInstanceRing, tenantShards int) (*IngesterQuerier, error) {
+	return newIngesterQuerier(
+		mockQuerierConfig(),
+		mockIngesterClientConfig(),
+		instanceRing,
+		partitionRing,
+		func(string) int { return tenantShards },
+		clientFactory,
+		constants.Loki,
+		log.NewNopLogger(),
+	)
 }

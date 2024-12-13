@@ -32,7 +32,7 @@ const pathKey = pathKeyType("grpc.internal.address.hierarchical_path")
 
 type pathValue []string
 
-func (p pathValue) Equal(o interface{}) bool {
+func (p pathValue) Equal(o any) bool {
 	op, ok := o.(pathValue)
 	if !ok {
 		return false

@@ -25,6 +25,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math/bits"
+	"net/http"
 )
 
 // ChecksumType contains information about the checksum type.
@@ -78,6 +79,11 @@ func (c ChecksumType) Key() string {
 	return ""
 }
 
+// KeyCapitalized returns the capitalized key as used in HTTP headers.
+func (c ChecksumType) KeyCapitalized() string {
+	return http.CanonicalHeaderKey(c.Key())
+}
+
 // RawByteLen returns the size of the un-encoded checksum.
 func (c ChecksumType) RawByteLen() int {
 	switch c & checksumMask {
@@ -110,6 +116,13 @@ func (c ChecksumType) Hasher() hash.Hash {
 // IsSet returns whether the type is valid and known.
 func (c ChecksumType) IsSet() bool {
 	return bits.OnesCount32(uint32(c)) == 1
+}
+
+// SetDefault will set the checksum if not already set.
+func (c *ChecksumType) SetDefault(t ChecksumType) {
+	if !c.IsSet() {
+		*c = t
+	}
 }
 
 // String returns the type as a string.

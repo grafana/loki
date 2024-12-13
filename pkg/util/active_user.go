@@ -128,3 +128,13 @@ func (s *ActiveUsersCleanupService) iteration(_ context.Context) error {
 	}
 	return nil
 }
+
+func (s *ActiveUsersCleanupService) ActiveUsers() []string {
+	s.activeUsers.mu.RLock()
+	defer s.activeUsers.mu.RUnlock()
+	users := make([]string, 0, len(s.activeUsers.timestamps))
+	for u := range s.activeUsers.timestamps {
+		users = append(users, u)
+	}
+	return users
+}

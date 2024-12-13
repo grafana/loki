@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,10 +19,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/ruler/storage/instance"
-	"github.com/grafana/loki/pkg/ruler/util"
-	"github.com/grafana/loki/pkg/util/test"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
+	"github.com/grafana/loki/v3/pkg/ruler/util"
+	"github.com/grafana/loki/v3/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const enabledRWTenant = "enabled"
@@ -46,6 +47,7 @@ const remote2 = "remote-2"
 var remoteURL, _ = url.Parse("http://remote-write")
 var backCompatCfg = Config{
 	RemoteWrite: RemoteWriteConfig{
+		AddOrgIDHeader: true,
 		Client: &config.RemoteWriteConfig{
 			URL: &promConfig.URL{URL: remoteURL},
 			QueueConfig: config.QueueConfig{
@@ -104,6 +106,7 @@ var backCompatCfg = Config{
 var remoteURL2, _ = url.Parse("http://remote-write2")
 var cfg = Config{
 	RemoteWrite: RemoteWriteConfig{
+		AddOrgIDHeader: true,
 		Clients: map[string]config.RemoteWriteConfig{
 			remote1: {
 				URL: &promConfig.URL{URL: remoteURL},
@@ -374,6 +377,56 @@ func TestTenantRemoteWriteConfigWithOverride(t *testing.T) {
 	}
 
 	assert.ElementsMatch(t, actual, expected, "QueueConfig capacity do not match")
+}
+
+func TestTenantRemoteWriteConfigWithOverrideConcurrentAccess(t *testing.T) {
+	require.NotPanics(t, func() {
+		reg := setupRegistry(t, cfg, newFakeLimits())
+		var wg sync.WaitGroup
+		for i := 0; i < 1000; i++ {
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_, err := reg.getTenantConfig(enabledRWTenant)
+				require.NoError(t, err)
+			}(reg)
+
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_, err := reg.getTenantConfig(additionalHeadersRWTenant)
+				require.NoError(t, err)
+			}(reg)
+		}
+
+		wg.Wait()
+	})
+}
+
+func TestAppenderConcurrentAccess(t *testing.T) {
+	require.NotPanics(t, func() {
+		reg := setupRegistry(t, cfg, newFakeLimits())
+		var wg sync.WaitGroup
+		for i := 0; i < 1000; i++ {
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), enabledRWTenant))
+			}(reg)
+
+			wg.Add(1)
+			go func(reg *walRegistry) {
+				defer wg.Done()
+
+				_ = reg.Appender(user.InjectOrgID(context.Background(), additionalHeadersRWTenant))
+			}(reg)
+		}
+
+		wg.Wait()
+	})
 }
 
 func TestTenantRemoteWriteConfigWithoutOverride(t *testing.T) {
@@ -713,6 +766,43 @@ func TestTenantRemoteWriteHeadersNoOverride(t *testing.T) {
 		{
 			user.OrgIDHeaderName: enabledRWTenant,
 			"Base":               "value2",
+		},
+	}
+
+	actual := []map[string]string{}
+	for _, rw := range tenantCfg.RemoteWrite {
+		actual = append(actual, rw.Headers)
+	}
+
+	assert.ElementsMatch(t, actual, expected, "Headers do not match")
+}
+
+func TestTenantRemoteWriteHeadersNoOrgIDHeader(t *testing.T) {
+	backCompatCfg.RemoteWrite.AddOrgIDHeader = false
+	reg := setupRegistry(t, backCompatCfg, newFakeLimitsBackwardCompat())
+
+	tenantCfg, err := reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	assert.Len(t, tenantCfg.RemoteWrite[0].Headers, 1)
+	// ensure that X-Scope-OrgId header is missing
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers[user.OrgIDHeaderName], "")
+	// the original header must be present
+	assert.Equal(t, tenantCfg.RemoteWrite[0].Headers["Base"], "value")
+
+	cfg.RemoteWrite.AddOrgIDHeader = false
+	reg = setupRegistry(t, cfg, newFakeLimits())
+
+	tenantCfg, err = reg.getTenantConfig(enabledRWTenant)
+	require.NoError(t, err)
+
+	// Ensure that overrides take plus and that X-Scope-OrgID header is still missing
+	expected := []map[string]string{
+		{
+			"Base": "value",
+		},
+		{
+			"Base": "value2",
 		},
 	}
 

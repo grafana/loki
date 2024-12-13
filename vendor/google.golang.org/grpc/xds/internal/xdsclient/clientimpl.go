@@ -25,7 +25,7 @@ import (
 	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 )
 
 var _ XDSClient = &clientImpl{}
@@ -37,7 +37,8 @@ type clientImpl struct {
 	config             *bootstrap.Config
 	logger             *grpclog.PrefixLogger
 	watchExpiryTimeout time.Duration
-	serializer         *callbackSerializer
+	backoff            func(int) time.Duration // Backoff for ADS and LRS stream failures.
+	serializer         *grpcsync.CallbackSerializer
 	serializerClose    func()
 	resourceTypes      *resourceTypeRegistry
 
@@ -85,5 +86,17 @@ func (c *clientImpl) close() {
 	c.authorityMu.Unlock()
 	c.serializerClose()
 
+	for _, s := range c.config.XDSServers() {
+		for _, f := range s.Cleanups() {
+			f()
+		}
+	}
+	for _, a := range c.config.Authorities() {
+		for _, s := range a.XDSServers {
+			for _, f := range s.Cleanups() {
+				f()
+			}
+		}
+	}
 	c.logger.Infof("Shutdown")
 }

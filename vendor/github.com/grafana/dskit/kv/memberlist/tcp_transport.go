@@ -39,7 +39,7 @@ const colonColon = "::"
 
 // TCPTransportConfig is a configuration structure for creating new TCPTransport.
 type TCPTransportConfig struct {
-	// BindAddrs is a list of addresses to bind to.
+	// BindAddrs is a list of IP addresses to bind to.
 	BindAddrs flagext.StringSlice `yaml:"bind_addr"`
 
 	// BindPort is the port to listen on, for each address above.
@@ -147,6 +147,9 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger, registerer pr
 	port := config.BindPort
 	for _, addr := range config.BindAddrs {
 		ip := net.ParseIP(addr)
+		if ip == nil {
+			return nil, fmt.Errorf("could not parse bind addr %q as IP address", addr)
+		}
 
 		tcpAddr := &net.TCPAddr{IP: ip, Port: port}
 

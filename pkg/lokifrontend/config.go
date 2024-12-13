@@ -5,9 +5,9 @@ import (
 
 	"github.com/grafana/dskit/crypto/tls"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
-	v1 "github.com/grafana/loki/pkg/lokifrontend/frontend/v1"
-	v2 "github.com/grafana/loki/pkg/lokifrontend/frontend/v2"
+	"github.com/grafana/loki/v3/pkg/lokifrontend/frontend/transport"
+	v1 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v1"
+	v2 "github.com/grafana/loki/v3/pkg/lokifrontend/frontend/v2"
 )
 
 type Config struct {
@@ -29,7 +29,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.FrontendV2.RegisterFlags(f)
 	cfg.TLS.RegisterFlagsWithPrefix("frontend.tail-tls-config", f)
 
-	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
+	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", true, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Loki.")
 	f.StringVar(&cfg.TailProxyURL, "frontend.tail-proxy-url", "", "URL of querier for tail proxy.")
 }

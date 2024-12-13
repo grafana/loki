@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
-	openapi_v2 "github.com/google/gnostic/openapiv2"
-	"gopkg.in/yaml.v2"
+	openapi_v2 "github.com/google/gnostic-models/openapiv2"
+	yaml "sigs.k8s.io/yaml/goyaml.v2"
 )
 
 func newSchemaError(path *Path, format string, a ...interface{}) error {

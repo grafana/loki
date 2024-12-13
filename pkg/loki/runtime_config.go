@@ -9,9 +9,9 @@ import (
 	"github.com/grafana/dskit/runtimeconfig"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/runtime"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // runtimeConfigValues are values that can be reloaded from configuration file while Loki is running.
@@ -20,9 +20,6 @@ import (
 type runtimeConfigValues struct {
 	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
 	TenantConfig map[string]*runtime.Config    `yaml:"configs"`
-
-	// DefaultConfig defines the default runtime configuration. Used if a tenant runtime configuration wasn't given.
-	DefaultConfig *runtime.Config `yaml:"default"`
 
 	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
 }
@@ -55,6 +52,7 @@ func loadRuntimeConfig(r io.Reader) (interface{}, error) {
 	return overrides, nil
 }
 
+// tenantLimitsFromRuntimeConfig implements validation.Limits
 type tenantLimitsFromRuntimeConfig struct {
 	c *runtimeconfig.Manager
 }
@@ -85,20 +83,28 @@ func newtenantLimitsFromRuntimeConfig(c *runtimeconfig.Manager) validation.Tenan
 	return &tenantLimitsFromRuntimeConfig{c: c}
 }
 
-func tenantConfigFromRuntimeConfig(c *runtimeconfig.Manager) runtime.TenantConfig {
-	if c == nil {
+type tenantConfigProvider struct {
+	c *runtimeconfig.Manager
+}
+
+func newTenantConfigProvider(c *runtimeconfig.Manager) runtime.TenantConfigProvider {
+	return &tenantConfigProvider{c: c}
+}
+
+// TenantConfig returns the user config or default config if none was defined.
+func (t *tenantConfigProvider) TenantConfig(userID string) *runtime.Config {
+	if t.c == nil {
 		return nil
 	}
-	return func(userID string) *runtime.Config {
-		cfg, ok := c.GetConfig().(*runtimeConfigValues)
-		if !ok || cfg == nil {
-			return nil
-		}
-		if tenantCfg, ok := cfg.TenantConfig[userID]; ok {
-			return tenantCfg
-		}
-		return cfg.DefaultConfig
+
+	cfg, ok := t.c.GetConfig().(*runtimeConfigValues)
+	if !ok || cfg == nil {
+		return nil
 	}
+	if tenantCfg, ok := cfg.TenantConfig[userID]; ok {
+		return tenantCfg
+	}
+	return nil
 }
 
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {

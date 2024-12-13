@@ -5,15 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -759,7 +761,7 @@ func GetSumOfHistogramSampleCount(families []*dto.MetricFamily, metricName strin
 	return sum
 }
 
-// GetLables returns list of label combinations used by this collector at the time of call.
+// GetLabels returns list of label combinations used by this collector at the time of call.
 // This can be used to find and delete unused metrics.
 func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Labels, error) {
 	ch := make(chan prometheus.Metric, 16)
@@ -840,4 +842,9 @@ func RegisterCounterVec(registerer prometheus.Registerer, namespace, name, help 
 		}
 	}
 	return vec
+}
+
+// HumanizeBytes returns a human readable string representation of the given byte value and removes all whitespaces.
+func HumanizeBytes(val uint64) string {
+	return strings.Replace(humanize.Bytes(val), " ", "", 1)
 }

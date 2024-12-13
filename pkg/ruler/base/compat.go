@@ -15,15 +15,14 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
-	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/ruler/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ruler/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Pusher is an ingester server that accepts pushes.
@@ -35,30 +34,17 @@ type PusherAppender struct {
 	failedWrites prometheus.Counter
 	totalWrites  prometheus.Counter
 
-	ctx             context.Context
-	pusher          Pusher
-	labels          []labels.Labels
-	samples         []logproto.LegacySample
-	userID          string
-	evaluationDelay time.Duration
+	ctx     context.Context
+	pusher  Pusher
+	labels  []labels.Labels
+	samples []logproto.LegacySample
+	userID  string
 }
 
 var _ storage.Appender = (*PusherAppender)(nil)
 
 func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
 	a.labels = append(a.labels, l)
-
-	// Adapt staleness markers for ruler evaluation delay. As the upstream code
-	// is using the actual time, when there is a no longer available series.
-	// This then causes 'out of order' append failures once the series is
-	// becoming available again.
-	// see https://github.com/prometheus/prometheus/blob/6c56a1faaaad07317ff585bda75b99bdba0517ad/rules/manager.go#L647-L660
-	// Similar to staleness markers, the rule manager also appends actual time to the ALERTS and ALERTS_FOR_STATE series.
-	// See: https://github.com/prometheus/prometheus/blob/ae086c73cb4d6db9e8b67d5038d3704fea6aec4a/rules/alerting.go#L414-L417
-	metricName := l.Get(labels.MetricName)
-	if a.evaluationDelay > 0 && (value.IsStaleNaN(v) || metricName == "ALERTS" || metricName == "ALERTS_FOR_STATE") {
-		t -= a.evaluationDelay.Milliseconds()
-	}
 
 	a.samples = append(a.samples, logproto.LegacySample{
 		TimestampMs: t,
@@ -77,6 +63,10 @@ func (a *PusherAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ 
 
 func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, errors.New("native histograms are unsupported")
+}
+
+func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _ int64, _ int64) (storage.SeriesRef, error) {
+	return 0, errors.New("created timestamps are unsupported")
 }
 
 func (a *PusherAppender) Commit() error {
@@ -105,19 +95,17 @@ func (a *PusherAppender) Rollback() error {
 
 // PusherAppendable fulfills the storage.Appendable interface for prometheus manager
 type PusherAppendable struct {
-	pusher      Pusher
-	userID      string
-	rulesLimits RulesLimits
+	pusher Pusher
+	userID string
 
 	totalWrites  prometheus.Counter
 	failedWrites prometheus.Counter
 }
 
-func NewPusherAppendable(pusher Pusher, userID string, limits RulesLimits, totalWrites, failedWrites prometheus.Counter) *PusherAppendable {
+func NewPusherAppendable(pusher Pusher, userID string, totalWrites, failedWrites prometheus.Counter) *PusherAppendable {
 	return &PusherAppendable{
 		pusher:       pusher,
 		userID:       userID,
-		rulesLimits:  limits,
 		totalWrites:  totalWrites,
 		failedWrites: failedWrites,
 	}
@@ -129,32 +117,18 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 		failedWrites: t.failedWrites,
 		totalWrites:  t.totalWrites,
 
-		ctx:             ctx,
-		pusher:          t.pusher,
-		userID:          t.userID,
-		evaluationDelay: t.rulesLimits.EvaluationDelay(t.userID),
+		ctx:    ctx,
+		pusher: t.pusher,
+		userID: t.userID,
 	}
 }
 
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
-	EvaluationDelay(userID string) time.Duration
 	RulerTenantShardSize(userID string) int
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerAlertManagerConfig(userID string) *config.AlertManagerConfig
-}
-
-// EngineQueryFunc returns a new query function using the rules.EngineQueryFunc function
-// and passing an altered timestamp.
-func EngineQueryFunc(engine *promql.Engine, q storage.Queryable, overrides RulesLimits, userID string) rules.QueryFunc {
-	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
-		orig := rules.EngineQueryFunc(engine, q)
-		// Delay the evaluation of all rules by a set interval to give a buffer
-		// to metric that haven't been forwarded to cortex yet.
-		evaluationDelay := overrides.EvaluationDelay(userID)
-		return orig(ctx, qs, t.Add(-evaluationDelay))
-	}
 }
 
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
@@ -234,29 +208,34 @@ type RulesManager interface {
 // ManagerFactory is a function that creates new RulesManager for given user and notifier.Manager.
 type ManagerFactory func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, reg prometheus.Registerer) RulesManager
 
-func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, overrides RulesLimits, reg prometheus.Registerer) ManagerFactory {
+func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engine *promql.Engine, reg prometheus.Registerer, metricsNamespace string) ManagerFactory {
 	totalWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_total",
-		Help: "Number of write requests to ingesters.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_write_requests_total",
+		Help:      "Number of write requests to ingesters.",
 	})
 	failedWrites := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_write_requests_failed_total",
-		Help: "Number of failed write requests to ingesters.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_write_requests_failed_total",
+		Help:      "Number of failed write requests to ingesters.",
 	})
 
 	totalQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_total",
-		Help: "Number of queries executed by ruler.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_queries_total",
+		Help:      "Number of queries executed by ruler.",
 	})
 	failedQueries := promauto.With(reg).NewCounter(prometheus.CounterOpts{
-		Name: "cortex_ruler_queries_failed_total",
-		Help: "Number of failed queries by ruler.",
+		Namespace: metricsNamespace,
+		Name:      "ruler_queries_failed_total",
+		Help:      "Number of failed queries by ruler.",
 	})
 	var rulerQuerySeconds *prometheus.CounterVec
 	if cfg.EnableQueryStats {
 		rulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ruler_query_seconds_total",
-			Help: "Total amount of wall clock time spent processing queries by the ruler.",
+			Namespace: metricsNamespace,
+			Name:      "ruler_query_seconds_total",
+			Help:      "Total amount of wall clock time spent processing queries by the ruler.",
 		}, []string{"user"})
 	}
 
@@ -272,9 +251,9 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		}
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:      NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
+			Appendable:      NewPusherAppendable(p, userID, totalWrites, failedWrites),
 			Queryable:       q,
-			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
+			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(rules.EngineQueryFunc(engine, q), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
 			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),

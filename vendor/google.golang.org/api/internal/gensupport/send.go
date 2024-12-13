@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2"
+	"github.com/googleapis/gax-go/v2/callctx"
 )
 
 // Use this error type to return an error which allows introspection of both
@@ -43,6 +44,32 @@ func (e wrappedCallErr) Is(target error) bool {
 // req.WithContext, then calls any functions returned by the hooks in
 // reverse order.
 func SendRequest(ctx context.Context, client *http.Client, req *http.Request) (*http.Response, error) {
+	// Add headers set in context metadata.
+	if ctx != nil {
+		headers := callctx.HeadersFromContext(ctx)
+		for k, vals := range headers {
+			if k == "x-goog-api-client" {
+				// Merge all values into a single "x-goog-api-client" header.
+				var mergedVal strings.Builder
+				baseXGoogHeader := req.Header.Get("X-Goog-Api-Client")
+				if baseXGoogHeader != "" {
+					mergedVal.WriteString(baseXGoogHeader)
+					mergedVal.WriteRune(' ')
+				}
+				for _, v := range vals {
+					mergedVal.WriteString(v)
+					mergedVal.WriteRune(' ')
+				}
+				// Remove the last space and replace the header on the request.
+				req.Header.Set(k, mergedVal.String()[:mergedVal.Len()-1])
+			} else {
+				for _, v := range vals {
+					req.Header.Add(k, v)
+				}
+			}
+		}
+	}
+
 	// Disallow Accept-Encoding because it interferes with the automatic gzip handling
 	// done by the default http.Transport. See https://github.com/google/google-api-go-client/issues/219.
 	if _, ok := req.Header["Accept-Encoding"]; ok {
@@ -77,6 +104,16 @@ func send(ctx context.Context, client *http.Client, req *http.Request) (*http.Re
 // req.WithContext, then calls any functions returned by the hooks in
 // reverse order.
 func SendRequestWithRetry(ctx context.Context, client *http.Client, req *http.Request, retry *RetryConfig) (*http.Response, error) {
+	// Add headers set in context metadata.
+	if ctx != nil {
+		headers := callctx.HeadersFromContext(ctx)
+		for k, vals := range headers {
+			for _, v := range vals {
+				req.Header.Add(k, v)
+			}
+		}
+	}
+
 	// Disallow Accept-Encoding because it interferes with the automatic gzip handling
 	// done by the default http.Transport. See https://github.com/google/google-api-go-client/issues/219.
 	if _, ok := req.Header["Accept-Encoding"]; ok {
@@ -97,7 +134,9 @@ func sendAndRetry(ctx context.Context, client *http.Client, req *http.Request, r
 	var err error
 	attempts := 1
 	invocationID := uuid.New().String()
-	baseXGoogHeader := req.Header.Get("X-Goog-Api-Client")
+
+	xGoogHeaderVals := req.Header.Values("X-Goog-Api-Client")
+	baseXGoogHeader := strings.Join(xGoogHeaderVals, " ")
 
 	// Loop to retry the request, up to the context deadline.
 	var pause time.Duration

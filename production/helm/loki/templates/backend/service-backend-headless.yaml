@@ -8,19 +8,34 @@ metadata:
   namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.backend.service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    variant: headless
     prometheus.io/service-monitor: "false"
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.backend.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
 spec:
   type: ClusterIP
   clusterIP: None
   ports:
     - name: http-metrics
-      port: 3100
+      port: {{ .Values.loki.server.http_listen_port }}
       targetPort: http-metrics
       protocol: TCP
     - name: grpc
-      port: 9095
+      port: {{ .Values.loki.server.grpc_listen_port }}
       targetPort: grpc
       protocol: TCP
+      appProtocol: tcp
   selector:
     {{- include "loki.backendSelectorLabels" . | nindent 4 }}
 {{- end }}

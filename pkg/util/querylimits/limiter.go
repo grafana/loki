@@ -8,8 +8,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/util/limiter"
-	logutil "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/limiter"
+	logutil "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type Limiter struct {

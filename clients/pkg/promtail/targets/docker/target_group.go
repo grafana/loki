@@ -15,11 +15,11 @@ import (
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/build"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 const DockerSource = "Docker"
@@ -36,6 +36,7 @@ type targetGroup struct {
 	httpClientConfig config.HTTPClientConfig
 	client           client.APIClient
 	refreshInterval  model.Duration
+	maxLineSize      int
 
 	mtx     sync.Mutex
 	targets map[string]*Target
@@ -120,6 +121,7 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 		discoveredLabels.Merge(tg.defaultLabels),
 		tg.relabelConfig,
 		tg.client,
+		tg.maxLineSize,
 	)
 	if err != nil {
 		return err

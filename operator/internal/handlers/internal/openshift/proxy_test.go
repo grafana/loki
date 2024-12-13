@@ -4,13 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	configv1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 func TestGetProxy_ReturnError_WhenOtherThanNotFound(t *testing.T) {

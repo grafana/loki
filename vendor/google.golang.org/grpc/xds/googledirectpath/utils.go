@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -85,9 +86,13 @@ var (
 // Defined as var to be overridden in tests.
 var getIPv6Capable = func(timeout time.Duration) bool {
 	ipv6CapableOnce.Do(func() {
-		_, err := getFromMetadata(timeout, ipv6URL)
+		addr, err := getFromMetadata(timeout, ipv6URL)
 		if err != nil {
 			logger.Warningf("could not discover ipv6 capability: %v", err)
+			return
+		}
+		if trimmedAddr := strings.TrimSpace(string(addr)); trimmedAddr == "" {
+			logger.Warningf("metadata server returned empty ipv6 address")
 			return
 		}
 		ipv6Capable = true

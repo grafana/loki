@@ -1,5 +1,177 @@
 # Changes
 
+## [0.116.0](https://github.com/googleapis/google-cloud-go/compare/v0.115.1...v0.116.0) (2024-10-09)
+
+
+### Features
+
+* **genai:** Add tokenizer package ([#10699](https://github.com/googleapis/google-cloud-go/issues/10699)) ([214af16](https://github.com/googleapis/google-cloud-go/commit/214af1604bf3837f68e96dbf81c1331b90c9375f))
+
+## [0.115.1](https://github.com/googleapis/google-cloud-go/compare/v0.115.0...v0.115.1) (2024-08-13)
+
+
+### Bug Fixes
+
+* **cloud.google.com/go:** Bump google.golang.org/grpc@v1.64.1 ([8ecc4e9](https://github.com/googleapis/google-cloud-go/commit/8ecc4e9622e5bbe9b90384d5848ab816027226c5))
+
+## [0.115.0](https://github.com/googleapis/google-cloud-go/compare/v0.114.0...v0.115.0) (2024-06-12)
+
+
+### Features
+
+* **internal/trace:** Deprecate OpenCensus support ([#10287](https://github.com/googleapis/google-cloud-go/issues/10287)) ([430ce8a](https://github.com/googleapis/google-cloud-go/commit/430ce8adea2d0be43461e2ca783b7c17794e983f)), refs [#2205](https://github.com/googleapis/google-cloud-go/issues/2205) [#8655](https://github.com/googleapis/google-cloud-go/issues/8655)
+
+
+### Bug Fixes
+
+* **internal/postprocessor:** Use approved image tag ([#10341](https://github.com/googleapis/google-cloud-go/issues/10341)) ([a388fe5](https://github.com/googleapis/google-cloud-go/commit/a388fe5cf075d0af986861c70dcb7b9f97c31019))
+
+## [0.114.0](https://github.com/googleapis/google-cloud-go/compare/v0.113.0...v0.114.0) (2024-05-23)
+
+
+### Features
+
+* **civil:** Add Compare method to Date, Time, and DateTime ([#10193](https://github.com/googleapis/google-cloud-go/issues/10193)) ([c2920d7](https://github.com/googleapis/google-cloud-go/commit/c2920d7c9007a11d9232c628fba5496197deeba4))
+
+
+### Bug Fixes
+
+* **internal/postprocessor:** Add scopes to all appropriate commit lines ([#10192](https://github.com/googleapis/google-cloud-go/issues/10192)) ([c21399b](https://github.com/googleapis/google-cloud-go/commit/c21399bdc362c6c646c2c0f8c2c55903898e0eab))
+
+## [0.113.0](https://github.com/googleapis/google-cloud-go/compare/v0.112.2...v0.113.0) (2024-05-08)
+
+
+### Features
+
+* **civil:** Add Compare method to Date, Time, and DateTime ([#10010](https://github.com/googleapis/google-cloud-go/issues/10010)) ([34455c1](https://github.com/googleapis/google-cloud-go/commit/34455c15d62b089f3281ff4c663245e72b257f37))
+
+
+### Bug Fixes
+
+* **all:** Bump x/net to v0.24.0 ([#10000](https://github.com/googleapis/google-cloud-go/issues/10000)) ([ba31ed5](https://github.com/googleapis/google-cloud-go/commit/ba31ed5fda2c9664f2e1cf972469295e63deb5b4))
+* **debugger:** Add internaloption.WithDefaultEndpointTemplate ([3b41408](https://github.com/googleapis/google-cloud-go/commit/3b414084450a5764a0248756e95e13383a645f90))
+* **internal/aliasfix:** Handle import paths correctly ([#10097](https://github.com/googleapis/google-cloud-go/issues/10097)) ([fafaf0d](https://github.com/googleapis/google-cloud-go/commit/fafaf0d0a293096559a4655ea61062cb896f1568))
+* **rpcreplay:** Properly unmarshal dynamic message ([#9774](https://github.com/googleapis/google-cloud-go/issues/9774)) ([53ccb20](https://github.com/googleapis/google-cloud-go/commit/53ccb20d925ccb00f861958d9658b55738097dc6)), refs [#9773](https://github.com/googleapis/google-cloud-go/issues/9773)
+
+
+### Documentation
+
+* **testing:** Switch deprecated WithInsecure to WithTransportCredentials ([#10091](https://github.com/googleapis/google-cloud-go/issues/10091)) ([2b576ab](https://github.com/googleapis/google-cloud-go/commit/2b576abd1c3bfca2f962de0e024524f72d3652c0))
+
+## [0.112.2](https://github.com/googleapis/google-cloud-go/compare/v0.112.1...v0.112.2) (2024-03-27)
+
+
+### Bug Fixes
+
+* **all:** Release protobuf dep bump ([#9586](https://github.com/googleapis/google-cloud-go/issues/9586)) ([30b038d](https://github.com/googleapis/google-cloud-go/commit/30b038d8cac0b8cd5dd4761c87f3f298760dd33a))
+
+## [0.112.1](https://github.com/googleapis/google-cloud-go/compare/v0.112.0...v0.112.1) (2024-02-26)
+
+
+### Bug Fixes
+
+* **internal/postprocessor:** Handle googleapis link in commit body ([#9251](https://github.com/googleapis/google-cloud-go/issues/9251)) ([1dd3515](https://github.com/googleapis/google-cloud-go/commit/1dd35157bff871a2b3e5b0e3cac33502737fd631))
+
+
+### Documentation
+
+* **main:** Add OpenTelemetry-Go compatibility warning to debug.md ([#9268](https://github.com/googleapis/google-cloud-go/issues/9268)) ([18f9bb9](https://github.com/googleapis/google-cloud-go/commit/18f9bb94fbc239255a873b29462fc7c2eac3c0aa)), refs [#9267](https://github.com/googleapis/google-cloud-go/issues/9267)
+
+## [0.112.0](https://github.com/googleapis/google-cloud-go/compare/v0.111.0...v0.112.0) (2024-01-11)
+
+
+### Features
+
+* **internal/trace:** Export internal/trace package constants and vars ([#9242](https://github.com/googleapis/google-cloud-go/issues/9242)) ([941c16f](https://github.com/googleapis/google-cloud-go/commit/941c16f3a2602e9bdc737b139060a7dd8318f9dd))
+
+
+### Documentation
+
+* **main:** Add telemetry discussion to debug.md ([#9074](https://github.com/googleapis/google-cloud-go/issues/9074)) ([90ed12e](https://github.com/googleapis/google-cloud-go/commit/90ed12e1dffe722b42f58556f0e17b808da9714d)), refs [#8655](https://github.com/googleapis/google-cloud-go/issues/8655)
+
+## [0.111.0](https://github.com/googleapis/google-cloud-go/compare/v0.110.10...v0.111.0) (2023-11-29)
+
+
+### Features
+
+* **internal/trace:** Add OpenTelemetry support ([#8655](https://github.com/googleapis/google-cloud-go/issues/8655)) ([7a46b54](https://github.com/googleapis/google-cloud-go/commit/7a46b5428f239871993d66be2c7c667121f60a6f)), refs [#2205](https://github.com/googleapis/google-cloud-go/issues/2205)
+
+
+### Bug Fixes
+
+* **all:** Bump google.golang.org/api to v0.149.0 ([#8959](https://github.com/googleapis/google-cloud-go/issues/8959)) ([8d2ab9f](https://github.com/googleapis/google-cloud-go/commit/8d2ab9f320a86c1c0fab90513fc05861561d0880))
+
+## [0.110.10](https://github.com/googleapis/google-cloud-go/compare/v0.110.9...v0.110.10) (2023-10-31)
+
+
+### Bug Fixes
+
+* **all:** Update grpc-go to v1.56.3 ([#8916](https://github.com/googleapis/google-cloud-go/issues/8916)) ([343cea8](https://github.com/googleapis/google-cloud-go/commit/343cea8c43b1e31ae21ad50ad31d3b0b60143f8c))
+* **all:** Update grpc-go to v1.59.0 ([#8922](https://github.com/googleapis/google-cloud-go/issues/8922)) ([81a97b0](https://github.com/googleapis/google-cloud-go/commit/81a97b06cb28b25432e4ece595c55a9857e960b7))
+* **internal/godocfx:** Fix links to other packages in summary ([#8756](https://github.com/googleapis/google-cloud-go/issues/8756)) ([6220a9a](https://github.com/googleapis/google-cloud-go/commit/6220a9afeb89df3080e9e663e97648939fd4e15f))
+
+## [0.110.9](https://github.com/googleapis/google-cloud-go/compare/v0.110.8...v0.110.9) (2023-10-19)
+
+
+### Bug Fixes
+
+* **all:** Update golang.org/x/net to v0.17.0 ([#8705](https://github.com/googleapis/google-cloud-go/issues/8705)) ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+* **internal/aliasgen:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+* **internal/examples/fake:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+* **internal/gapicgen:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+* **internal/generated/snippets:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+* **internal/godocfx:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+* **internal/postprocessor:** Add ability to override release level ([#8643](https://github.com/googleapis/google-cloud-go/issues/8643)) ([26c608a](https://github.com/googleapis/google-cloud-go/commit/26c608a8204d740767dfebf6aa473cdf1873e5f0))
+* **internal/postprocessor:** Add missing assignment ([#8646](https://github.com/googleapis/google-cloud-go/issues/8646)) ([d8c5746](https://github.com/googleapis/google-cloud-go/commit/d8c5746e6dde1bd34c01a9886804f861c88c0cb7))
+* **internal/postprocessor:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+
+## [0.110.8](https://github.com/googleapis/google-cloud-go/compare/v0.110.7...v0.110.8) (2023-09-11)
+
+
+### Documentation
+
+* **postprocessor:** Nudge users towards stable clients ([#8513](https://github.com/googleapis/google-cloud-go/issues/8513)) ([05a1484](https://github.com/googleapis/google-cloud-go/commit/05a1484b0752aaa3d6a164d37686d6de070cc78d))
+
+## [0.110.7](https://github.com/googleapis/google-cloud-go/compare/v0.110.6...v0.110.7) (2023-07-31)
+
+
+### Bug Fixes
+
+* **main:** Add more docs to base package ([c401ab4](https://github.com/googleapis/google-cloud-go/commit/c401ab4a576c64ab2b8840a90f7ccd5d031cea57))
+
+## [0.110.6](https://github.com/googleapis/google-cloud-go/compare/v0.110.5...v0.110.6) (2023-07-13)
+
+
+### Bug Fixes
+
+* **httpreplay:** Ignore GCS header by default ([#8260](https://github.com/googleapis/google-cloud-go/issues/8260)) ([b961a1a](https://github.com/googleapis/google-cloud-go/commit/b961a1abe7aeafe420c88eed38035fed0bbf7bbe)), refs [#8233](https://github.com/googleapis/google-cloud-go/issues/8233)
+
+## [0.110.5](https://github.com/googleapis/google-cloud-go/compare/v0.110.4...v0.110.5) (2023-07-07)
+
+
+### Bug Fixes
+
+* **logadmin:** Use consistent filter in paging example ([#8221](https://github.com/googleapis/google-cloud-go/issues/8221)) ([9570159](https://github.com/googleapis/google-cloud-go/commit/95701597b1d709543ea22a4b6ff9b28b14a2d4fc))
+
+## [0.110.4](https://github.com/googleapis/google-cloud-go/compare/v0.110.3...v0.110.4) (2023-07-05)
+
+
+### Bug Fixes
+
+* **internal/retry:** Simplify gRPC status code mapping of retry error ([#8196](https://github.com/googleapis/google-cloud-go/issues/8196)) ([e8b224a](https://github.com/googleapis/google-cloud-go/commit/e8b224a3bcb0ca9430990ef6ae8ddb7b60f5225d))
+
+## [0.110.3](https://github.com/googleapis/google-cloud-go/compare/v0.110.2...v0.110.3) (2023-06-23)
+
+
+### Bug Fixes
+
+* **internal/retry:** Never return nil from GRPCStatus() ([#8128](https://github.com/googleapis/google-cloud-go/issues/8128)) ([005d2df](https://github.com/googleapis/google-cloud-go/commit/005d2dfb6b68bf5a35bfb8db449d3f0084b34d6e))
+
+
+### Documentation
+
+* **v1:** Minor clarifications for TaskGroup and min_cpu_platform ([3382ef8](https://github.com/googleapis/google-cloud-go/commit/3382ef81b6bcefe1c7bfc14aa5ff9bbf25850966))
+
 ## [0.110.2](https://github.com/googleapis/google-cloud-go/compare/v0.110.1...v0.110.2) (2023-05-08)
 
 

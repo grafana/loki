@@ -23,9 +23,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/clients/pkg/promtail/server/ui"
-	"github.com/grafana/loki/clients/pkg/promtail/targets"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/server/ui"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 var (
@@ -321,25 +321,25 @@ func computeExternalURL(u string, port int) (*url.URL, error) {
 	return eu, nil
 }
 
-type noopServer struct {
+type NoopServer struct {
 	log  log.Logger
 	sigs chan os.Signal
 }
 
-func newNoopServer(log log.Logger) *noopServer {
-	return &noopServer{
+func newNoopServer(log log.Logger) *NoopServer {
+	return &NoopServer{
 		log:  log,
 		sigs: make(chan os.Signal, 1),
 	}
 }
 
-func (s *noopServer) Run() error {
+func (s *NoopServer) Run() error {
 	signal.Notify(s.sigs, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-s.sigs
 	level.Info(s.log).Log("msg", "received shutdown signal", "sig", sig)
 	return nil
 }
 
-func (s *noopServer) Shutdown() {
+func (s *NoopServer) Shutdown() {
 	s.sigs <- syscall.SIGTERM
 }

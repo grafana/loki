@@ -7,9 +7,11 @@ import (
 	"math"
 	"time"
 
+	"github.com/go-kit/log"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
 // AIMDController implements the Additive-Increase/Multiplicative-Decrease algorithm which is used in TCP congestion avoidance.
@@ -24,6 +26,8 @@ type AIMDController struct {
 	limiter       *rate.Limiter
 	backoffFactor float64
 	upperBound    rate.Limit
+
+	logger log.Logger
 }
 
 func NewAIMDController(cfg Config) *AIMDController {
@@ -74,7 +78,12 @@ func (a *AIMDController) withMetrics(m *Metrics) Controller {
 	return a
 }
 
-func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (a *AIMDController) withLogger(logger log.Logger) Controller {
+	a.logger = logger
+	return a
+}
+
+func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return a.inner.PutObject(ctx, objectKey, object)
 }
 
@@ -83,6 +92,9 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 	// cannot be retried, or are too low volume to care about
 
 	// TODO(dannyk): use hedging client to handle requests, do NOT hedge retries
+
+	start := time.Now()
+	statsCtx := stats.FromContext(ctx)
 
 	rc, sz, err := a.retrier.Do(
 		func(attempt int) (io.ReadCloser, int64, error) {
@@ -103,6 +115,8 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 				a.metrics.backoffSec.Add(delay.Seconds())
 			}
 
+			statsCtx.AddCongestionControlLatency(time.Since(start))
+
 			// It is vitally important that retries are DISABLED in the inner implementation.
 			// Some object storage clients implement retries internally, and this will interfere here.
 			return a.inner.GetObject(ctx, objectKey)
@@ -119,8 +133,20 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 	return rc, sz, err
 }
 
+func (a *AIMDController) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	return a.inner.GetObjectRange(ctx, objectKey, offset, length)
+}
+
 func (a *AIMDController) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	return a.inner.List(ctx, prefix, delimiter)
+}
+
+func (a *AIMDController) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	return a.inner.ObjectExists(ctx, objectKey)
+}
+
+func (a *AIMDController) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return a.inner.GetAttributes(ctx, objectKey)
 }
 
 func (a *AIMDController) DeleteObject(ctx context.Context, objectKey string) error {
@@ -134,7 +160,9 @@ func (a *AIMDController) IsObjectNotFoundErr(err error) bool {
 func (a *AIMDController) IsRetryableErr(err error) bool {
 	retryable := a.inner.IsRetryableErr(err)
 	if !retryable {
-		a.metrics.nonRetryableErrors.Inc()
+		if !errors.Is(err, context.Canceled) {
+			a.metrics.nonRetryableErrors.Inc()
+		}
 	}
 
 	return retryable
@@ -181,16 +209,25 @@ type NoopController struct {
 	retrier Retrier
 	hedger  Hedger
 	metrics *Metrics
+	logger  log.Logger
 }
 
 func NewNoopController(Config) *NoopController {
 	return &NoopController{}
 }
 
-func (n *NoopController) PutObject(context.Context, string, io.ReadSeeker) error { return nil }
+func (n *NoopController) GetAttributes(context.Context, string) (client.ObjectAttributes, error) {
+	return client.ObjectAttributes{}, nil
+}
+func (n *NoopController) ObjectExists(context.Context, string) (bool, error) { return true, nil }
+func (n *NoopController) PutObject(context.Context, string, io.Reader) error { return nil }
 func (n *NoopController) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
 	return nil, 0, nil
 }
+func (n *NoopController) GetObjectRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
+	return nil, nil
+}
+
 func (n *NoopController) List(context.Context, string, string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	return nil, nil, nil
 }
@@ -199,14 +236,22 @@ func (n *NoopController) IsObjectNotFoundErr(error) bool                 { retur
 func (n *NoopController) IsRetryableErr(error) bool                      { return false }
 func (n *NoopController) Stop()                                          {}
 func (n *NoopController) Wrap(c client.ObjectClient) client.ObjectClient { return c }
+
+func (n *NoopController) withLogger(logger log.Logger) Controller {
+	n.logger = logger
+	return n
+}
+
 func (n *NoopController) withRetrier(r Retrier) Controller {
 	n.retrier = r
 	return n
 }
+
 func (n *NoopController) withHedger(h Hedger) Controller {
 	n.hedger = h
 	return n
 }
+
 func (n *NoopController) withMetrics(m *Metrics) Controller {
 	n.metrics = m
 	return n

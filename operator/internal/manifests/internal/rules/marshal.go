@@ -4,7 +4,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"gopkg.in/yaml.v2"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 const tenantLabel = "tenantId"
