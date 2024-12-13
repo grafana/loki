@@ -3,10 +3,10 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 
+	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -42,7 +42,7 @@ func encodeResponseParquetTo(_ context.Context, res queryrangebase.Response, w i
 	case *LokiResponse:
 		return encodeLogsParquetTo(response, w)
 	default:
-		return fmt.Errorf("unsupported response type: %T", res)
+		return serverutil.UserError("request does not support Parquet responses")
 	}
 }
 
