@@ -44,10 +44,28 @@ var testEncodings = []compression.Codec{
 	compression.Zstd,
 }
 
+var benchEncodings = []compression.Codec{
+	compression.LZ4_64k,
+	compression.Snappy,
+	compression.GZIP,
+}
+
 var (
-	testBlockSize  = 256 * 1024
-	testTargetSize = 1500 * 1024
-	testBlockSizes = []int{64 * 1024, 256 * 1024, 512 * 1024}
+	testBlockSize  = 256 << 10
+	testTargetSize = 1536 << 10
+
+	benchBlockSizes = []int{
+		256 << 10,
+		512 << 10,
+		1 << 20,
+		2 << 20,
+	}
+	benchTargetSizes = []int{
+		1536 << 10, // 1.5MiB
+		2 << 20,    // 2MiB
+		4 << 20,    // 4MiB
+	}
+
 	countExtractor = func() log.StreamSampleExtractor {
 		ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 		if err != nil {
@@ -688,14 +706,14 @@ func BenchmarkEncodingsAndChunkSize(b *testing.B) {
 	var result []res
 
 	resBuffer := make([]byte, 0, 50*1024*1024)
-	for _, enc := range testEncodings {
-		for _, bs := range testBlockSizes {
-			for fi, f := range allPossibleFormats {
-				name := fmt.Sprintf("%s_block_size_%s_format_%d", enc.String(), humanize.Bytes(uint64(bs)), fi)
+	for _, enc := range benchEncodings {
+		for _, bs := range benchBlockSizes {
+			for _, ts := range benchTargetSizes {
+				name := fmt.Sprintf("%s - %s - %s", humanize.Bytes(uint64(ts)), humanize.Bytes(uint64(bs)), enc.String())
 				b.Run(name, func(b *testing.B) {
 					var insertedTotal, compressedTotal, count uint64
 					for range b.N {
-						c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, bs, testTargetSize)
+						c := newMemChunkWithFormat(ChunkFormatV4, enc, UnorderedWithStructuredMetadataHeadBlockFmt, bs, ts)
 						inserted := fillChunk(c)
 						insertedTotal += uint64(inserted)
 						cb, err := c.BytesWith(resBuffer)
@@ -718,6 +736,7 @@ func BenchmarkEncodingsAndChunkSize(b *testing.B) {
 					b.ReportMetric(float64(insertedTotal)/float64(count*1024), "avg_size_kb")
 					b.ReportMetric(float64(compressedTotal)/float64(count*1024), "avg_compressed_size_kb")
 				})
+
 			}
 		}
 	}
@@ -901,55 +920,41 @@ func (nomatchPipeline) ReferencedStructuredMetadata() bool {
 }
 
 func BenchmarkRead(b *testing.B) {
-	for _, bs := range testBlockSizes {
-		for _, enc := range testEncodings {
-			name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
-			b.Run(name, func(b *testing.B) {
-				chunks, size := generateData(enc, 5, bs, testTargetSize)
-				_, ctx := stats.NewContext(context.Background())
-				b.ResetTimer()
-				for n := 0; n < b.N; n++ {
-					for _, c := range chunks {
-						// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-						iterator, err := c.Iterator(ctx, time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
-						if err != nil {
-							panic(err)
-						}
-						for iterator.Next() {
-							_ = iterator.At()
-						}
-						if err := iterator.Close(); err != nil {
-							b.Fatal(err)
-						}
-					}
-				}
-				b.SetBytes(int64(size))
-			})
-		}
-	}
-
-	for _, bs := range testBlockSizes {
-		for _, enc := range testEncodings {
-			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
-			b.Run(name, func(b *testing.B) {
-				chunks, size := generateData(enc, 5, bs, testTargetSize)
-				_, ctx := stats.NewContext(context.Background())
-				b.ResetTimer()
-				bytesRead := uint64(0)
-				for n := 0; n < b.N; n++ {
-					for _, c := range chunks {
-						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
-						for iterator.Next() {
-							_ = iterator.At()
-						}
-						if err := iterator.Close(); err != nil {
-							b.Fatal(err)
+	for _, ts := range benchTargetSizes {
+		for _, bs := range benchBlockSizes {
+			if bs >= ts {
+				continue
+			}
+			for _, enc := range benchEncodings {
+				name := fmt.Sprintf("%s %s %s", humanize.IBytes(uint64(ts)), humanize.IBytes(uint64(bs)), enc.String())
+				b.Run(name, func(b *testing.B) {
+					chunks, lines, compressed, uncompressed := generateData(enc, 100, bs, ts)
+					_, ctx := stats.NewContext(context.Background())
+					b.ResetTimer()
+					b.ReportAllocs()
+					for n := 0; n < b.N; n++ {
+						for _, c := range chunks {
+							// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
+							iterator, err := c.Iterator(ctx, time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
+							if err != nil {
+								panic(err)
+							}
+							for iterator.Next() {
+								_ = iterator.At()
+							}
+							if err := iterator.Close(); err != nil {
+								b.Fatal(err)
+							}
 						}
 					}
-					bytesRead += size
-				}
-				b.SetBytes(int64(bytesRead) / int64(b.N))
-			})
+					b.SetBytes(int64(uncompressed))
+					b.ReportMetric(float64(lines), "num_lines")
+					b.ReportMetric(float64(lines)/float64(b.N), "num_lines_per_chunk")
+					b.ReportMetric(float64(compressed), "compressed_size")
+					b.ReportMetric(float64(uncompressed), "uncompressed_size")
+					b.ReportMetric(float64(uncompressed)/float64(compressed), "ratio")
+				})
+			}
 		}
 	}
 }
@@ -970,7 +975,7 @@ func (noopTestPipeline) ReferencedStructuredMetadata() bool {
 }
 
 func BenchmarkBackwardIterator(b *testing.B) {
-	for _, bs := range testBlockSizes {
+	for _, bs := range benchBlockSizes {
 		b.Run(humanize.Bytes(uint64(bs)), func(b *testing.B) {
 			b.ReportAllocs()
 			c := NewMemChunk(ChunkFormatV4, compression.Snappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
@@ -996,7 +1001,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 func TestGenerateDataSize(t *testing.T) {
 	for _, enc := range testEncodings {
 		t.Run(enc.String(), func(t *testing.T) {
-			chunks, size := generateData(enc, 50, testBlockSize, testTargetSize)
+			chunks, size, _, _ := generateData(enc, 50, testBlockSize, testTargetSize)
 
 			bytesRead := uint64(0)
 			for _, c := range chunks {

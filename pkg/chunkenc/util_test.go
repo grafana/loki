@@ -24,24 +24,29 @@ func logprotoEntryWithStructuredMetadata(ts int64, line string, structuredMetada
 	}
 }
 
-func generateData(enc compression.Codec, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
+func generateData(enc compression.Codec, chunksCount, blockSize, targetSize int) ([]Chunk, uint64, uint64, uint64) {
 	chunks := []Chunk{}
-	i := int64(0)
-	size := uint64(0)
+	var i int64
+	var size, compressed, uncompressed uint64
 
 	for n := 0; n < chunksCount; n++ {
 		entry := logprotoEntry(0, testdata.LogString(0))
 		c := NewMemChunk(ChunkFormatV4, enc, UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 		for c.SpaceFor(entry) {
-			size += uint64(len(entry.Line))
+			// size += uint64(len(entry.Line))
+			size += 1
 			_, _ = c.Append(entry)
 			i++
 			entry = logprotoEntry(i, testdata.LogString(i))
 		}
 		c.Close()
 		chunks = append(chunks, c)
+
+		compressed += uint64(c.CompressedSize())
+		uncompressed += uint64(c.UncompressedSize())
+
 	}
-	return chunks, size
+	return chunks, size, compressed, uncompressed
 }
 
 func fillChunk(c Chunk) int64 {
