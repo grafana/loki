@@ -205,7 +205,9 @@ loki:
     {{- toYaml .Values.loki.testSchemaConfig | nindent 2}}
     {{- end }}
 
+    {{- if .Values.ruler.enabled }}
     {{ include "loki.rulerConfig" . }}
+    {{- end }}
 
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
