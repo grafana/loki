@@ -246,7 +246,7 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 // run pulls lines out of the channel and sends them to Loki
 func (p *Push) run(pushPeriod time.Duration) {
-	p.running.Done()
+	defer p.running.Done()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	pushTicker := time.NewTimer(pushPeriod)
