@@ -32,9 +32,7 @@ We do not recommend running in Microservice mode with `filesystem` storage. For 
 - A running Kubernetes cluster (must have at least 3 nodes).
 
 
-
 ## Deploying the Helm chart for development and testing
-
 
 1. Add [Grafana's chart repository](https://github.com/grafana/helm-charts) to Helm:
 
@@ -71,10 +69,7 @@ We do not recommend running in Microservice mode with `filesystem` storage. For 
         limits_config:
           allow_structured_metadata: true
           volume_enabled: true
-          retention_period: 672h
-        compactor:
-          retention_enabled: true 
-          delete_request_store: s3
+
 
      deploymentMode: Distributed
 

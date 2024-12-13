@@ -58,10 +58,6 @@ loki:
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
-    retention_period: 672h # 28 days retention
-  compactor:
-    retention_enabled: true 
-    delete_request_store: s3
   ruler:
     enable_api: true
 
@@ -136,10 +132,6 @@ loki:
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
-    retention_period: 672h # 28 days retention
-  compactor:
-    retention_enabled: true 
-    delete_request_store: s3
   ruler:
     enable_api: true
 
