@@ -293,7 +293,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 				Key:                 aws.String(labels["key"]),
 			})
 		if err != nil {
-			return fmt.Errorf("failed to get object %s from bucket %s on account %s, %s", labels["key"], labels["bucket"], err)
+			return fmt.Errorf("failed to get object %s from bucket %s, %s", labels["key"], labels["bucket"], err)
 		}
 		err = parseS3Log(ctx, batch, labels, obj.Body, log)
 		if err != nil {
