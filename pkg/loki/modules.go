@@ -1877,13 +1877,16 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 		return nil, fmt.Errorf("creating kafka offset manager: %w", err)
 	}
 
-	s := blockscheduler.NewScheduler(
+	s, err := blockscheduler.NewScheduler(
 		t.Cfg.BlockScheduler,
 		blockscheduler.NewJobQueueWithLogger(logger),
 		offsetManager,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	blockprotos.RegisterSchedulerServiceServer(
 		t.Server.GRPC,

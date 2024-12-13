@@ -40,13 +40,17 @@ func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
 	return nil
 }
 
-func newTestEnv(builderID string) *testEnv {
+func newTestEnv(builderID string) (*testEnv, error) {
 	queue := NewJobQueue()
 	mockOffsetMgr := &mockOffsetManager{
 		topic:         "test-topic",
 		consumerGroup: "test-group",
 	}
-	scheduler := NewScheduler(Config{}, queue, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
+	scheduler, err := NewScheduler(Config{Strategy: RecordCountStrategy}, queue, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
+	if err != nil {
+		return nil, err
+	}
+
 	transport := types.NewMemoryTransport(scheduler)
 	builder := NewWorker(builderID, transport)
 
@@ -55,16 +59,20 @@ func newTestEnv(builderID string) *testEnv {
 		scheduler: scheduler,
 		transport: transport,
 		builder:   builder,
-	}
+	}, err
 }
 
 func TestScheduleAndProcessJob(t *testing.T) {
-	env := newTestEnv("test-builder-1")
+	env, err := newTestEnv("test-builder-1")
+	if err != nil {
+		t.Fatalf("failed to create test environment: %v", err)
+	}
+
 	ctx := context.Background()
 
 	// Create and enqueue a test job
 	job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
-	err := env.queue.Enqueue(job, 100)
+	err = env.queue.Enqueue(job, 100)
 	if err != nil {
 		t.Fatalf("failed to enqueue job: %v", err)
 	}
@@ -98,13 +106,16 @@ func TestScheduleAndProcessJob(t *testing.T) {
 }
 
 func TestContextCancellation(t *testing.T) {
-	env := newTestEnv("test-builder-1")
+	env, err := newTestEnv("test-builder-1")
+	if err != nil {
+		t.Fatalf("failed to create test environment: %v", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
 	// Try to get job after context timeout
 	time.Sleep(20 * time.Millisecond)
-	_, _, err := env.builder.GetJob(ctx)
+	_, _, err = env.builder.GetJob(ctx)
 	if err == nil {
 		t.Error("expected error from cancelled context")
 	}
@@ -112,7 +123,10 @@ func TestContextCancellation(t *testing.T) {
 
 func TestMultipleBuilders(t *testing.T) {
 	// Create first environment
-	env1 := newTestEnv("test-builder-1")
+	env1, err := newTestEnv("test-builder-1")
+	if err != nil {
+		t.Fatalf("failed to create test environment: %v", err)
+	}
 	// Create second builder using same scheduler
 	builder2 := NewWorker("test-builder-2", env1.transport)
 
@@ -123,7 +137,7 @@ func TestMultipleBuilders(t *testing.T) {
 	job2 := types.NewJob(2, types.Offsets{Min: 300, Max: 400})
 
 	// Enqueue jobs
-	err := env1.queue.Enqueue(job1, 100)
+	err = env1.queue.Enqueue(job1, 100)
 	if err != nil {
 		t.Fatalf("failed to enqueue job1: %v", err)
 	}
@@ -267,10 +281,6 @@ func TestConfig_Validate(t *testing.T) {
 			}
 			if err != nil {
 				t.Errorf("Validate() error = %v, wantErr nil", err)
-			}
-			// Check that planner is set for valid configs
-			if tt.cfg.planner == nil {
-				t.Error("Validate() did not set planner for valid config")
 			}
 		})
 	}

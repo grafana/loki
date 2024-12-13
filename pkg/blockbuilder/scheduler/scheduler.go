@@ -28,7 +28,6 @@ type Config struct {
 	Interval          time.Duration `yaml:"interval"`
 	LookbackPeriod    time.Duration `yaml:"lookback_period"`
 	Strategy          string        `yaml:"strategy"`
-	planner           Planner       `yaml:"-"` // validated planner
 	TargetRecordCount int64         `yaml:"target_record_count"`
 }
 
@@ -74,7 +73,6 @@ func (cfg *Config) Validate() error {
 		if cfg.TargetRecordCount <= 0 {
 			return errors.New("target record count must be a non-zero value")
 		}
-		cfg.planner = NewRecordCountPlanner(cfg.TargetRecordCount)
 	default:
 		return fmt.Errorf("invalid strategy: %s", cfg.Strategy)
 	}
@@ -96,17 +94,25 @@ type BlockScheduler struct {
 }
 
 // NewScheduler creates a new scheduler instance
-func NewScheduler(cfg Config, queue *JobQueue, offsetManager partition.OffsetManager, logger log.Logger, r prometheus.Registerer) *BlockScheduler {
+func NewScheduler(cfg Config, queue *JobQueue, offsetManager partition.OffsetManager, logger log.Logger, r prometheus.Registerer) (*BlockScheduler, error) {
+	var planner Planner
+	switch cfg.Strategy {
+	case RecordCountStrategy:
+		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, cfg.LookbackPeriod, logger)
+	default:
+		return nil, fmt.Errorf("invalid strategy: %s", cfg.Strategy)
+	}
+
 	s := &BlockScheduler{
 		cfg:           cfg,
-		planner:       cfg.planner,
+		planner:       planner,
 		offsetManager: offsetManager,
 		logger:        logger,
 		metrics:       NewMetrics(r),
 		queue:         queue,
 	}
 	s.Service = services.NewBasicService(nil, s.running, nil)
-	return s
+	return s, nil
 }
 
 func (s *BlockScheduler) running(ctx context.Context) error {
