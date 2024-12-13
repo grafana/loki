@@ -14,9 +14,10 @@ This guide shows how to deploy a minimally viable Loki in **microservice** mode 
 - Sufficient permissions to create federated credentials and roles in Azure AD (Active Directory)
 
 There are three primary methods for deploying Loki on Azure:
-1. Hard coding a connection string - this is the simplest method but is not recommended for production environments.
-2. Manged Identity
-3. Federated Token
+
+- Hard coding a connection string - this is the simplest method but is not recommended for production environments.
+- Manged Identity
+- Federated Token
 
 In this guide, we will use the federated token method to deploy Loki on Azure. This method is more secure than hard coding a connection string and is more suitable for production environments.
 
@@ -83,7 +84,7 @@ az aks update \
   --enable-oidc-issuer
 ```
 
-The Azure CLI also allows you to bind the AKS cluster to kubectl. You can do this by running the following command:
+The Azure CLI also lets you bind the AKS cluster to kubectl. You can do this by running the following command:
 
 ```bash
 az aks get-credentials --resource-group <MY_RESOURCE_GROUP_NAME> --name <MY_AKS_CLUSTER_NAME>
@@ -92,10 +93,10 @@ az aks get-credentials --resource-group <MY_RESOURCE_GROUP_NAME> --name <MY_AKS_
 ## Configuring Azure Blob Storage
 
 {{< admonition type="tip" >}}
- **Consider** using unique bucket names rather than;  `chunk`, `ruler` and `admin`. Although Azure Blog Storage is not directly affected by this [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/) it is best practise to use unique container names (buckets).
+ Consider using unique bucket names rather than:  `chunk`, `ruler` and `admin`. Although Azure Blog Storage is not directly affected by this [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/) it is a best practice to use unique container names for buckets.
 {{< /admonition >}}
 
-Before deploying Loki, you need to create two Azure storage containers; one to store logs (chunks), the second to store alert rules. You can create the containers using the Azure CLI. Containers must exist inside a storage account: 
+Before deploying Loki, you need to create two Azure storage containers; one to store logs (chunks), the second to store alert rules. You can create the containers using the Azure CLI. Containers must exist inside a storage account.
 
 {{< admonition type="note" >}}
 GEL customers will require a third container to store the admin data. This container is not required for OSS users.
@@ -111,7 +112,7 @@ GEL customers will require a third container to store the admin data. This conta
     --encryption-services blob \
     --resource-group <MY_RESOURCE_GROUP_NAME>
     ```
-    **Replace the placeholders with your desired values.** We assume you have a resource group created.
+    **Replace the placeholders with your desired values.**
 
 1. Create the containers for chunks and ruler:
 
@@ -153,7 +154,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
     ```
     **Replace `<OIDC-ISSUER-URL>` with the OIDC issuer URL you found in the previous step.** Save this file for later use.
 
-1. Next generate a azure directory `app` we will use this to assign our federated credentials to:
+1. Next generate an Azure directory `app`. We will use this to assign our federated credentials to:
    ```bash
     az ad app create \
     --display-name loki \
@@ -585,4 +586,4 @@ Now that you have successfully deployed Loki in microservices mode on Microsoft 
 
 - [Sending data to Loki](https://grafana.com/docs/loki/<LOKI_VERSION/send-data/)
 - [Querying Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/query/)
-- [Manage](https://grafana.com/docs/loki/<LOKI_VERSION/operations/)
+- [Manage Loki](https://grafana.com/docs/loki/<LOKI_VERSION/operations/)
