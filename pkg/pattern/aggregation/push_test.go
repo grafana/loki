@@ -169,6 +169,7 @@ func Test_Push(t *testing.T) {
 			lbls2,
 		)
 
+		p.running.Add(1)
 		go p.run(time.Nanosecond)
 
 		select {
