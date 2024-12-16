@@ -318,12 +318,24 @@ func TestFlushMaxAge(t *testing.T) {
 	now := time.Unix(0, 0)
 
 	firstEntries := []logproto.Entry{
-		{Timestamp: now.Add(time.Nanosecond), Line: "1"},
-		{Timestamp: now.Add(time.Minute), Line: "2"},
+		{
+			Timestamp:          now.Add(time.Nanosecond),
+			Line:               "1",
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "1234")),
+		},
+		{
+			Timestamp:          now.Add(time.Minute),
+			Line:               "2",
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "5678", "user", "fake1")),
+		},
 	}
 
 	secondEntries := []logproto.Entry{
-		{Timestamp: now.Add(time.Second * 61), Line: "3"},
+		{
+			Timestamp:          now.Add(time.Second * 61),
+			Line:               "3",
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "fake2")),
+		},
 	}
 
 	req := &logproto.PushRequest{Streams: []logproto.Stream{
@@ -341,6 +353,19 @@ func TestFlushMaxAge(t *testing.T) {
 	// ensure chunk is not flushed after flush period elapses
 	store.checkData(t, map[string][]logproto.Stream{})
 
+	// Structured metadata stats shouldn't be on the store
+	store.checkStats(t, map[string]map[uint64]*index.StreamStats{})
+	// but they should be available on the ingester
+	start, end := now.Add(-time.Hour), now.Add(time.Hour)
+	lbs, err := ing.Label(ctx, &logproto.LabelRequest{
+		Start: &end,
+		End:   &start,
+		Query: `{app="l"}`,
+	})
+	require.NoError(t, err)
+	require.ElementsMatch(t, lbs.Values, []string{"app"})
+	require.ElementsMatch(t, lbs.StructuredMetadata, []string{"traceID", "user"})
+
 	req2 := &logproto.PushRequest{Streams: []logproto.Stream{
 		{Labels: model.LabelSet{"app": "l"}.String(), Entries: secondEntries},
 	}}
@@ -356,6 +381,27 @@ func TestFlushMaxAge(t *testing.T) {
 			{Labels: model.LabelSet{"app": "l"}.String(), Entries: append(firstEntries, secondEntries...)},
 		},
 	})
+
+	// Structured metadata stats should now be on the store
+	store.checkStats(t, map[string]map[uint64]*index.StreamStats{
+		userID: {
+			labels.FromStrings("app", "l").Hash(): {
+				StructuredMetadataFieldNames: map[string]struct{}{
+					"traceID": {},
+					"user":    {},
+				},
+			},
+		},
+	})
+	// and they should be on the ingester anymore
+	lbs, err = ing.Label(ctx, &logproto.LabelRequest{
+		Start: &end,
+		End:   &start,
+		Query: `{app="l"}`,
+	})
+	require.NoError(t, err)
+	require.Empty(t, lbs.Values)
+	require.Empty(t, lbs.StructuredMetadata)
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
@@ -379,7 +425,9 @@ type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
 	chunks map[string][]chunk.Chunk
-	onPut  func(ctx context.Context, chunks []chunk.Chunk) error
+	// Stats keyed by userID and stream
+	stats map[string]map[uint64]*index.StreamStats
+	onPut func(ctx context.Context, chunks []chunk.Chunk) error
 }
 
 // Note: the ingester New() function creates it's own WAL first which we then override if specified.
@@ -388,6 +436,7 @@ type testStore struct {
 func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, *Ingester) {
 	store := &testStore{
 		chunks: map[string][]chunk.Chunk{},
+		stats:  map[string]map[uint64]*index.StreamStats{},
 	}
 
 	readRingMock := mockReadRingWithOneActiveIngester()
@@ -463,7 +512,19 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (s *testStore) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index.StreamStats) error {
+func (s *testStore) UpdateSeriesStats(_ context.Context, _, _ model.Time, userID string, fp uint64, stats *index.StreamStats) error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	if _, ok := s.stats[userID]; !ok {
+		s.stats[userID] = map[uint64]*index.StreamStats{}
+	}
+
+	if _, ok := s.stats[userID][fp]; !ok {
+		s.stats[userID][fp] = index.NewStreamStats()
+	}
+	s.stats[userID][fp].Merge(stats)
+
 	return nil
 }
 
@@ -585,6 +646,24 @@ func (s *testStore) getChunksForUser(userID string) []chunk.Chunk {
 	defer s.mtx.Unlock()
 
 	return s.chunks[userID]
+}
+
+func (s *testStore) checkStats(t *testing.T, expected map[string]map[uint64]*index.StreamStats) {
+	for userID, expectedStreams := range expected {
+		userStreams, ok := s.stats[userID]
+		require.True(t, ok)
+
+		for fp, expectedStats := range expectedStreams {
+			stat, ok := userStreams[fp]
+			require.True(t, ok)
+
+			require.Len(t, stat.StructuredMetadataFieldNames, len(expectedStats.StructuredMetadataFieldNames))
+			for name := range expectedStats.StructuredMetadataFieldNames {
+				_, ok := stat.StructuredMetadataFieldNames[name]
+				require.True(t, ok)
+			}
+		}
+	}
 }
 
 func buildStreamsFromChunk(t *testing.T, lbs string, chk chunkenc.Chunk) logproto.Stream {

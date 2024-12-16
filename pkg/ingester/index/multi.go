@@ -85,7 +85,7 @@ func (m *Multi) Lookup(t time.Time, matchers []*labels.Matcher, shard *logql.Sha
 	return m.indexFor(t).Lookup(matchers, shard)
 }
 
-func (m *Multi) LabelNames(t time.Time, shard *logql.Shard) ([]string, []string, error) {
+func (m *Multi) LabelNames(t time.Time, shard *logql.Shard) ([]string, error) {
 	return m.indexFor(t).LabelNames(shard)
 }
 
@@ -116,8 +116,8 @@ func (noopInvertedIndex) Lookup(_ []*labels.Matcher, _ *logql.Shard) ([]model.Fi
 	return nil, nil
 }
 
-func (noopInvertedIndex) LabelNames(shard *logql.Shard) ([]string, []string, error) {
-	return nil, nil, nil
+func (noopInvertedIndex) LabelNames(_ *logql.Shard) ([]string, error) {
+	return nil, nil
 }
 
 func (noopInvertedIndex) LabelValues(_ string, _ *logql.Shard) ([]string, error) {

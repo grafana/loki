@@ -362,8 +362,6 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 			s.handleLoggingOfDuplicateEntry(entries[i])
 		}
 
-		// h11: index fliushing and chunks flushing happen independently
-		// we need to have the stats in sync: when the index stats are flushed, we need to reset the stats
 		s.openStreamStats.AddStructuredMetadata(entries[i].StructuredMetadata)
 
 		s.entryCt++

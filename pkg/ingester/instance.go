@@ -581,17 +581,14 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 				Values: labels,
 			}, nil
 		}
-		names, smNames, err := i.index.LabelNames(*req.Start, nil)
+		names, err := i.index.LabelNames(*req.Start, nil)
 		if err != nil {
 			return nil, err
 		}
 		labels = make([]string, len(names))
 		copy(labels, names)
-		smLabels := make([]string, len(smNames))
-		copy(smLabels, smNames)
 		return &logproto.LabelResponse{
-			Values:             labels,
-			StructuredMetadata: smLabels,
+			Values: labels,
 		}, nil
 	}
 
@@ -631,7 +628,7 @@ type UniqueValues map[string]struct{}
 func (i *instance) LabelsWithValues(ctx context.Context, startTime time.Time, matchers ...*labels.Matcher) (map[string]UniqueValues, error) {
 	labelMap := make(map[string]UniqueValues)
 	if len(matchers) == 0 {
-		labelsFromIndex, _, err := i.index.LabelNames(startTime, nil)
+		labelsFromIndex, err := i.index.LabelNames(startTime, nil)
 		if err != nil {
 			return nil, err
 		}
