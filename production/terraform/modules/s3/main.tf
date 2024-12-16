@@ -51,7 +51,7 @@ resource "aws_s3_bucket_policy" "grant-access" {
             Sid: "Statement1",
             Effect: "Allow",
             Principal: {
-                AWS: aws_iam_role.loki.arn  
+                AWS: aws_iam_role.loki.arn
             },
             Action: [
               "s3:PutObject",
