@@ -1835,21 +1835,11 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, err
 	}
 
-	readerMetrics := partition.NewReaderMetrics(prometheus.DefaultRegisterer)
-	readerFactory := func(partitionID int32) (partition.Reader, error) {
-		return partition.NewKafkaReader(
-			t.Cfg.KafkaConfig,
-			partitionID,
-			logger,
-			readerMetrics,
-		)
-	}
-
 	bb, err := blockbuilder.NewBlockBuilder(
 		id,
 		t.Cfg.BlockBuilder,
+		t.Cfg.KafkaConfig,
 		t.Cfg.SchemaConfig.Configs,
-		readerFactory,
 		t.Store,
 		objectStore,
 		logger,
