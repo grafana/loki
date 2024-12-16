@@ -465,7 +465,7 @@ and for metrics:
 |-------------|--------------------------|
 │ timestamp   │ TIMESTAMP WITH TIME ZONE │
 │ labels      │ MAP(VARCHAR, VARCHAR)    │
-│ line        │ DOUBLE                   │
+│ value       │ DOUBLE                   │
 
 ## Query logs within a range of time
 
