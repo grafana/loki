@@ -71,8 +71,6 @@ resource "aws_s3_bucket_policy" "grant-access" {
 resource "aws_iam_role" "loki" {
   name               = "LokiStorage-${var.cluster_name}"
   assume_role_policy = data.aws_iam_policy_document.oidc.json
-
-  inline_policy {}
 }
 
 resource "aws_iam_policy" "loki" {
