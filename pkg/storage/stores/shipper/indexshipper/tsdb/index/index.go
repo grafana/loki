@@ -2248,6 +2248,11 @@ func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats **Str
 		return nil
 	}
 
+	// If stats are not requested (stats are nil), we can just skip through the stats
+	if stats == nil {
+		return dec.skipSeriesStats(d)
+	}
+
 	nSMFieldNames := d.Uvarint()
 
 	fields := make(map[string]struct{}, nSMFieldNames)
@@ -2264,6 +2269,14 @@ func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats **Str
 	(*stats).StructuredMetadataFieldNames = fields
 
 	return nil
+}
+
+func (dec *Decoder) skipSeriesStats(d *encoding.Decbuf) error {
+	nSMFieldNames := d.Uvarint()
+	for i := 0; i < nSMFieldNames; i++ {
+		_ = d.Uvarint()
+	}
+	return d.Err()
 }
 
 // prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
