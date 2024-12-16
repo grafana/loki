@@ -350,21 +350,19 @@ Parquet can be request as a response format by setting the `Accept` header to `a
 
 The schema is the following for streams:
 
-│ column_name │       column_type        │
-│   varchar   │         varchar          │
+| column_name |       column_type        |
 |-------------|--------------------------|
-│ timestamp   │ TIMESTAMP WITH TIME ZONE │
-│ labels      │ MAP(VARCHAR, VARCHAR)    │
-│ line        │ VARCHAR                  │
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| line        |VARCHAR                   |
 
 and for metrics:
 
-│ column_name │       column_type        │
-│   varchar   │         varchar          │
+| column_name |       column_type        |
 |-------------|--------------------------|
-│ timestamp   │ TIMESTAMP WITH TIME ZONE │
-│ labels      │ MAP(VARCHAR, VARCHAR)    │
-│ value       │ DOUBLE                   │
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| value       | DOUBLE                   |
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
@@ -542,21 +540,19 @@ Parquet can be request as a response format by setting the `Accept` header to `a
 
 The schema is the following for streams:
 
-│ column_name │       column_type        │
-│   varchar   │         varchar          │
+| column_name |       column_type        |
 |-------------|--------------------------|
-│ timestamp   │ TIMESTAMP WITH TIME ZONE │
-│ labels      │ MAP(VARCHAR, VARCHAR)    │
-│ line        │ VARCHAR                  │
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| line        |VARCHAR                   |
 
 and for metrics:
 
-│ column_name │       column_type        │
-│   varchar   │         varchar          │
+| column_name |       column_type        |
 |-------------|--------------------------|
-│ timestamp   │ TIMESTAMP WITH TIME ZONE │
-│ labels      │ MAP(VARCHAR, VARCHAR)    │
-│ value       │ DOUBLE                   │
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| value       | DOUBLE                   |
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
