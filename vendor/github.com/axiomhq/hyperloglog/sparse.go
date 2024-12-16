@@ -2,8 +2,6 @@ package hyperloglog
 
 import (
 	"math/bits"
-
-	"github.com/kamstrup/intmap"
 )
 
 func getIndex(k uint32, p, pp uint8) uint32 {
@@ -36,61 +34,37 @@ func decodeHash(k uint32, p, pp uint8) (uint32, uint8) {
 	return getIndex(k, p, pp), r
 }
 
-type set struct {
-	m *intmap.Set[uint32]
-}
+type set map[uint32]struct{}
 
-func newSet(size int) *set {
-	return &set{m: intmap.NewSet[uint32](size)}
-}
-
-func (s *set) ForEach(fn func(v uint32)) {
-	s.m.ForEach(func(v uint32) bool {
-		fn(v)
-		return true
-	})
-}
-
-func (s *set) Merge(other *set) {
-	other.m.ForEach(func(v uint32) bool {
-		s.m.Add(v)
-		return true
-	})
-}
-
-func (s *set) Len() int {
-	return s.m.Len()
-}
-
-func (s *set) add(v uint32) bool {
-	if s.m.Has(v) {
+func (s set) add(v uint32) bool {
+	_, ok := s[v]
+	if ok {
 		return false
 	}
-	s.m.Add(v)
+	s[v] = struct{}{}
 	return true
 }
 
-func (s *set) Clone() *set {
+func (s set) Clone() set {
 	if s == nil {
 		return nil
 	}
 
-	newS := intmap.NewSet[uint32](s.m.Len())
-	s.m.ForEach(func(v uint32) bool {
-		newS.Add(v)
-		return true
-	})
-	return &set{m: newS}
+	newS := make(map[uint32]struct{}, len(s))
+	for k, v := range s {
+		newS[k] = v
+	}
+	return newS
 }
 
-func (s *set) MarshalBinary() (data []byte, err error) {
+func (s set) MarshalBinary() (data []byte, err error) {
 	// 4 bytes for the size of the set, and 4 bytes for each key.
 	// list.
-	data = make([]byte, 0, 4+(4*s.m.Len()))
+	data = make([]byte, 0, 4+(4*len(s)))
 
 	// Length of the set. We only need 32 bits because the size of the set
 	// couldn't exceed that on 32 bit architectures.
-	sl := s.m.Len()
+	sl := len(s)
 	data = append(data, []byte{
 		byte(sl >> 24),
 		byte(sl >> 16),
@@ -99,15 +73,14 @@ func (s *set) MarshalBinary() (data []byte, err error) {
 	}...)
 
 	// Marshal each element in the set.
-	s.m.ForEach(func(k uint32) bool {
+	for k := range s {
 		data = append(data, []byte{
 			byte(k >> 24),
 			byte(k >> 16),
 			byte(k >> 8),
 			byte(k),
 		}...)
-		return true
-	})
+	}
 
 	return data, nil
 }
