@@ -281,7 +281,9 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	level.Debug(log).Log("msg", "rule evaluation succeeded")
 	r.metrics.successfulEvals.WithLabelValues(orgID).Inc()
 
-	return r.decodeResponse(ctx, resp, orgID)
+	dr, err := r.decodeResponse(ctx, resp, orgID)
+	level.Info(log).Log("msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name", ruleName, "rule_type", ruleType, "total", dr.Statistics.Summary.ExecTime, "total_bytes", dr.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(query))
+	return dr, err
 }
 
 func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTTPResponse, orgID string) (*logqlmodel.Result, error) {

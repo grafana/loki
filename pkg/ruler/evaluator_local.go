@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -49,5 +51,9 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 		return nil, err
 	}
 
+	// Retrieve rule details from context
+	ruleName, ruleType := GetRuleDetailsFromContext(ctx)
+
+	level.Info(l.logger).Log("msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name", ruleName, "rule_type", ruleType, "total", res.Statistics.Summary.ExecTime, "total_bytes", res.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(qs))
 	return &res, nil
 }
