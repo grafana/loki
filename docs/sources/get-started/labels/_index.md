@@ -25,7 +25,6 @@ A label is a key-value pair, for example all of the following are labels:
 
 - deployment_environment = development
 - host = server-1
-- pod_name = myapp-abcdef
 - cloud_region = us-west-1
 - service_namespace = grafana-server
 
@@ -99,7 +98,7 @@ Because Loki has a default limit of 15 index labels, we recommend storing only s
 For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs).
 {{< /admonition >}}
 
-The default list of Resource Attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor).  If you are using Grafana Cloud, contact support to configure this setting.
+The default list of Resource Attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
 
 ## Labeling is iterative
 

@@ -43,7 +43,7 @@ To avoid high cardinality in Loki, you should:
 
 - Avoid assigning labels with unbounded values, for example timestamp, trace ID, order ID.
 - Prefer static labels that describe the origin or context of the log message, for example, application, namespace, environment.
-- Don't assign "dynamic" labels, which are values from the log message itself, unless it is low-cardinality, or a long-lived value
+- Don't assign "dynamic" labels, which are values from the log message itself, unless it is low-cardinality, or a long-lived value.
 - Use structured metadata to store frequently-searched, high-cardinality metadata fields, such as customer IDs or transaction IDs, without impacting Loki's index.
 
 {{< admonition type="note" >}}
