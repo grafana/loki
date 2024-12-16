@@ -346,6 +346,26 @@ The items in the `values` array are sorted by timestamp.
 The most recent item is first when using `direction=backward`.
 The oldest item is first when using `direction=forward`.
 
+Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
+
+The schema is the following for streams:
+
+│ column_name │       column_type        │
+│   varchar   │         varchar          │
+|-------------|--------------------------|
+│ timestamp   │ TIMESTAMP WITH TIME ZONE │
+│ labels      │ MAP(VARCHAR, VARCHAR)    │
+│ line        │ VARCHAR                  │
+
+and for metrics:
+
+│ column_name │       column_type        │
+│   varchar   │         varchar          │
+|-------------|--------------------------|
+│ timestamp   │ TIMESTAMP WITH TIME ZONE │
+│ labels      │ MAP(VARCHAR, VARCHAR)    │
+│ value       │ DOUBLE                   │
+
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
@@ -438,35 +458,6 @@ curl -u "User:$API_TOKEN" \
   --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)' | jq
 ```
 
-### Response Format
-
-The Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
-
-```bash
-curl -G -s  "http://localhost:3100/loki/api/v1/query" \
-  -H "Accept: application/vnd.apache.parquet" \
-  --data-urlencode 'query=sum(rate({job="varlogs"}[10m])) by (level)'
-  -o result.parquet
-```
-
-The Parquet schema is the following for streams:
-
-│ column_name │       column_type        │
-│   varchar   │         varchar          │
-|-------------|--------------------------|
-│ timestamp   │ TIMESTAMP WITH TIME ZONE │
-│ labels      │ MAP(VARCHAR, VARCHAR)    │
-│ line        │ VARCHAR                  │
-
-and for metrics:
-
-│ column_name │       column_type        │
-│   varchar   │         varchar          │
-|-------------|--------------------------|
-│ timestamp   │ TIMESTAMP WITH TIME ZONE │
-│ labels      │ MAP(VARCHAR, VARCHAR)    │
-│ value       │ DOUBLE                   │
-
 ## Query logs within a range of time
 
 ```bash
@@ -546,6 +537,26 @@ And `<stream value>` is:
 The items in the `values` array are sorted by timestamp.
 The most recent item is first when using `direction=backward`.
 The oldest item is first when using `direction=forward`.
+
+Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
+
+The schema is the following for streams:
+
+│ column_name │       column_type        │
+│   varchar   │         varchar          │
+|-------------|--------------------------|
+│ timestamp   │ TIMESTAMP WITH TIME ZONE │
+│ labels      │ MAP(VARCHAR, VARCHAR)    │
+│ line        │ VARCHAR                  │
+
+and for metrics:
+
+│ column_name │       column_type        │
+│   varchar   │         varchar          │
+|-------------|--------------------------|
+│ timestamp   │ TIMESTAMP WITH TIME ZONE │
+│ labels      │ MAP(VARCHAR, VARCHAR)    │
+│ value       │ DOUBLE                   │
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
