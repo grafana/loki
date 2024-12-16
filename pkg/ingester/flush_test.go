@@ -393,7 +393,7 @@ func TestFlushMaxAge(t *testing.T) {
 			},
 		},
 	})
-	// and they should be on the ingester anymore
+	// but not in the ingester anymore
 	lbs, err = ing.Label(ctx, &logproto.LabelRequest{
 		Start: &end,
 		End:   &start,
