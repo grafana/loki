@@ -40,6 +40,9 @@ type Reader interface {
 	Poll(ctx context.Context, maxPollRecords int) ([]Record, error)
 	// Set the target offset for consumption. reads will begin from here.
 	SetOffsetForConsumption(offset int64)
+	// SetPhase sets the phase for the reader. This is used to differentiate between different phases of the reader.
+	// For example, we can use this to differentiate between the startup phase and the running phase.
+	SetPhase(phase string)
 }
 
 // ReaderMetrics contains metrics specific to Kafka reading operations
@@ -48,7 +51,7 @@ type ReaderMetrics struct {
 	fetchesErrors       prometheus.Counter
 	fetchesTotal        prometheus.Counter
 	fetchWaitDuration   prometheus.Histogram
-	receiveDelay        prometheus.Histogram
+	receiveDelay        *prometheus.HistogramVec
 	lastCommittedOffset prometheus.Gauge
 	kprom               *kprom.Metrics
 }
@@ -73,7 +76,7 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			Name: "loki_kafka_reader_fetches_total",
 			Help: "Total number of Kafka fetches performed.",
 		}),
-		receiveDelay: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+		receiveDelay: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Name:                            "loki_kafka_reader_receive_delay_seconds",
 			Help:                            "Delay between producing a record and receiving it.",
 			NativeHistogramZeroThreshold:    math.Pow(2, -10),
@@ -81,7 +84,7 @@ func NewReaderMetrics(r prometheus.Registerer) *ReaderMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(0.125, 2, 18),
-		}),
+		}, []string{"phase"}),
 		kprom: client.NewReaderClientMetrics("partition-reader", r),
 	}
 }
@@ -93,6 +96,7 @@ type KafkaReader struct {
 	partitionID   int32
 	consumerGroup string
 	metrics       *ReaderMetrics
+	phase         string
 	logger        log.Logger
 }
 
@@ -131,6 +135,12 @@ func (r *KafkaReader) Partition() int32 {
 	return r.partitionID
 }
 
+// SetPhase sets the phase for the reader. This is used to differentiate between different phases of the reader.
+// For example, we can use this to differentiate between the startup phase and the running phase.
+func (r *KafkaReader) SetPhase(phase string) {
+	r.phase = phase
+}
+
 // Poll retrieves the next batch of records from Kafka
 // Number of records fetched can be limited by configuring maxPollRecords to a non-zero value.
 func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, error) {
@@ -143,7 +153,7 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 	var numRecords int
 	fetches.EachRecord(func(record *kgo.Record) {
 		numRecords++
-		r.metrics.receiveDelay.Observe(time.Since(record.Timestamp).Seconds())
+		r.metrics.receiveDelay.WithLabelValues(r.phase).Observe(time.Since(record.Timestamp).Seconds())
 	})
 	r.metrics.recordsPerFetch.Observe(float64(numRecords))
 

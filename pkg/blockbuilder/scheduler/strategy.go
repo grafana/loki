@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -13,7 +14,7 @@ import (
 
 // OffsetReader is an interface to list offsets for all partitions of a topic from Kafka.
 type OffsetReader interface {
-	GroupLag(context.Context) (map[int32]kadm.GroupMemberLag, error)
+	GroupLag(context.Context, time.Duration) (map[int32]kadm.GroupMemberLag, error)
 }
 
 type Planner interface {
@@ -32,13 +33,17 @@ var validStrategies = []string{
 // tries to consume upto targetRecordCount records per partition
 type RecordCountPlanner struct {
 	targetRecordCount int64
+	lookbackPeriod    time.Duration
 	offsetReader      OffsetReader
 	logger            log.Logger
 }
 
-func NewRecordCountPlanner(targetRecordCount int64) *RecordCountPlanner {
+func NewRecordCountPlanner(offsetReader OffsetReader, targetRecordCount int64, lookbackPeriod time.Duration, logger log.Logger) *RecordCountPlanner {
 	return &RecordCountPlanner{
 		targetRecordCount: targetRecordCount,
+		lookbackPeriod:    lookbackPeriod,
+		offsetReader:      offsetReader,
+		logger:            logger,
 	}
 }
 
@@ -47,7 +52,7 @@ func (p *RecordCountPlanner) Name() string {
 }
 
 func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithMetadata, error) {
-	offsets, err := p.offsetReader.GroupLag(ctx)
+	offsets, err := p.offsetReader.GroupLag(ctx, p.lookbackPeriod)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
 		return nil, err
