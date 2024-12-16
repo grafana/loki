@@ -384,7 +384,7 @@ func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through mo
 	})
 }
 
-func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
+func (i MultiIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), _ []string, matchers ...*labels.Matcher) error {
 	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
 		return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 	})

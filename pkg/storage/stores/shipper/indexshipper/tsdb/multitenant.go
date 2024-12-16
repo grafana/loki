@@ -98,6 +98,6 @@ func (m *MultiTenantIndex) Volume(ctx context.Context, userID string, from, thro
 	return m.idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, withTenantLabelMatcher(userID, matchers)...)
 }
 
-func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
+func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), _ []string, matchers ...*labels.Matcher) error {
 	return m.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, withTenantLabelMatcher(userID, matchers)...)
 }

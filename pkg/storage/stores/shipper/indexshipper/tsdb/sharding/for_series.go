@@ -38,6 +38,6 @@ type ForSeriesFunc func(
 	matchers ...*labels.Matcher,
 ) error
 
-func (f ForSeriesFunc) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), filterLabelNames []string, matchers ...*labels.Matcher) error {
+func (f ForSeriesFunc) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), _ []string, matchers ...*labels.Matcher) error {
 	return f(ctx, userID, fpFilter, from, through, fn, matchers...)
 }
