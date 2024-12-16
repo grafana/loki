@@ -4256,7 +4256,7 @@ The `period_config` block configures what index schemas should be used for from 
 # gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
 [object_store: <string> | default = ""]
 
-# The schema version to use, current recommended schema is v13.
+# The schema version to use, current recommended schema is v14.
 [schema: <string> | default = ""]
 
 # Configures how the index is updated and stored.
