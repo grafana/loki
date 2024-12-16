@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
@@ -35,6 +37,29 @@ func NewJobWithMetadata(job *types.Job, priority int) *JobWithMetadata {
 	}
 }
 
+type jobQueueMetrics struct {
+	pending    prometheus.Gauge
+	inProgress prometheus.Gauge
+	completed  *prometheus.CounterVec
+}
+
+func newJobQueueMetrics(r prometheus.Registerer) *jobQueueMetrics {
+	return &jobQueueMetrics{
+		pending: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_block_scheduler_pending_jobs",
+			Help: "Number of jobs in the block scheduler queue",
+		}),
+		inProgress: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Name: "loki_block_scheduler_in_progress_jobs",
+			Help: "Number of jobs currently being processed",
+		}),
+		completed: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_block_scheduler_completed_jobs_total",
+			Help: "Total number of jobs completed by the block scheduler",
+		}, []string{"status"}),
+	}
+}
+
 // JobQueue manages the queue of pending jobs and tracks their state.
 type JobQueue struct {
 	logger     log.Logger
@@ -42,10 +67,12 @@ type JobQueue struct {
 	inProgress map[string]*JobWithMetadata              // Jobs currently being processed
 	completed  *CircularBuffer[*JobWithMetadata]        // Last N completed jobs
 	statusMap  map[string]types.JobStatus               // Maps job ID to its current status
-	mu         sync.RWMutex
+	metrics    *jobQueueMetrics
+
+	mu sync.RWMutex
 }
 
-func NewJobQueueWithLogger(logger log.Logger) *JobQueue {
+func NewJobQueueWithLogger(logger log.Logger, reg prometheus.Registerer) *JobQueue {
 	return &JobQueue{
 		logger: logger,
 		pending: NewPriorityQueue(
@@ -57,12 +84,13 @@ func NewJobQueueWithLogger(logger log.Logger) *JobQueue {
 		inProgress: make(map[string]*JobWithMetadata),
 		completed:  NewCircularBuffer[*JobWithMetadata](defaultCompletedJobsCapacity),
 		statusMap:  make(map[string]types.JobStatus),
+		metrics:    newJobQueueMetrics(reg),
 	}
 }
 
 // NewJobQueue creates a new job queue instance
 func NewJobQueue() *JobQueue {
-	return NewJobQueueWithLogger(log.NewNopLogger())
+	return NewJobQueueWithLogger(log.NewNopLogger(), prometheus.DefaultRegisterer)
 }
 
 // Exists checks if a job exists in any state and returns its status
@@ -111,6 +139,7 @@ func (q *JobQueue) Enqueue(job *types.Job, priority int) error {
 	jobMeta := NewJobWithMetadata(job, priority)
 	q.pending.Push(jobMeta)
 	q.statusMap[job.ID()] = types.JobStatusPending
+	q.metrics.pending.Inc()
 	return nil
 }
 
@@ -123,6 +152,7 @@ func (q *JobQueue) Dequeue() (*types.Job, bool) {
 	if !ok {
 		return nil, false
 	}
+	q.metrics.pending.Dec()
 
 	// Update metadata for in-progress state
 	jobMeta.Status = types.JobStatusInProgress
@@ -131,6 +161,7 @@ func (q *JobQueue) Dequeue() (*types.Job, bool) {
 
 	q.inProgress[jobMeta.ID()] = jobMeta
 	q.statusMap[jobMeta.ID()] = types.JobStatusInProgress
+	q.metrics.inProgress.Inc()
 
 	return jobMeta.Job, true
 }
@@ -152,6 +183,7 @@ func (q *JobQueue) RemoveInProgress(id string) {
 	defer q.mu.Unlock()
 
 	delete(q.inProgress, id)
+	q.metrics.inProgress.Dec()
 }
 
 // MarkComplete moves a job from in-progress to completed with the given status
@@ -169,11 +201,13 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 	case types.JobStatusInProgress:
 		// update & remove from in progress
 		delete(q.inProgress, id)
+		q.metrics.inProgress.Dec()
 	case types.JobStatusPending:
 		_, ok := q.pending.Remove(id)
 		if !ok {
 			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", id)
 		}
+		q.metrics.pending.Dec()
 	default:
 		level.Error(q.logger).Log("msg", "unknown job status, cannot mark as complete", "job", id, "status", status)
 	}
@@ -187,6 +221,7 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 		delete(q.statusMap, removal.ID())
 	}
 	q.statusMap[id] = status
+	q.metrics.completed.WithLabelValues(status.String()).Inc()
 }
 
 // SyncJob registers a job as in-progress or updates its UpdateTime if already in progress
@@ -204,6 +239,7 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 		jobMeta.Status = types.JobStatusInProgress
 		q.inProgress[jobID] = jobMeta
 		q.statusMap[jobID] = types.JobStatusInProgress
+		q.metrics.inProgress.Inc()
 	}
 
 	jobMeta, ok := q.existsLockLess(jobID)
@@ -221,6 +257,8 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", jobID)
 		}
 		jobMeta.Status = types.JobStatusInProgress
+		q.metrics.pending.Dec()
+		q.metrics.inProgress.Inc()
 	case types.JobStatusInProgress:
 	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
 		// Job already completed, re-enqueue a new one

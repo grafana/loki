@@ -1879,7 +1879,7 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 
 	s, err := blockscheduler.NewScheduler(
 		t.Cfg.BlockScheduler,
-		blockscheduler.NewJobQueueWithLogger(logger),
+		blockscheduler.NewJobQueueWithLogger(logger, prometheus.DefaultRegisterer),
 		offsetManager,
 		logger,
 		prometheus.DefaultRegisterer,
