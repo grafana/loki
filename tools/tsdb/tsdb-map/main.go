@@ -85,7 +85,7 @@ func main() {
 				MaxTime:  int64(entry.Through),
 				KB:       ((3 << 20) / 4) / 1024, // guess: 0.75mb, 1/2 of the max size, rounded to KB
 				Entries:  10000,                  // guess: 10k entries
-			}})
+			}}, nil)
 			return false, nil
 		})
 	}); err != nil {

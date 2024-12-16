@@ -76,7 +76,7 @@ func TestMigrateTables(t *testing.T) {
 				KB:       1,
 				Entries:  1,
 			},
-		})
+		}, nil)
 
 		id, err := b.Build(context.Background(), tempDir, func(from, through model.Time, checksum uint32) tsdb.Identifier {
 			id := tsdb.SingleTenantTSDBIdentifier{

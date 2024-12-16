@@ -43,7 +43,7 @@ func NewBuilder(version int) *Builder {
 }
 
 // TODO(h11): stats should be variadic but I added it to avoid changinf it in many places
-func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, stats ...*index.StreamStats) {
+func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, stats *index.StreamStats) {
 	id := ls.String()
 	s, ok := b.streams[id]
 	if !ok {
@@ -61,8 +61,8 @@ func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index
 	// But I'm not sure if then we should only reset the stream stats when we rotate the index.
 	s.chunks = append(s.chunks, chks...)
 
-	if len(stats) > 0 {
-		s.stats.Merge(stats[0])
+	if stats != nil {
+		s.stats.Merge(stats)
 	}
 }
 

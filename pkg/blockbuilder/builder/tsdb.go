@@ -121,6 +121,7 @@ func (m *TsdbCreator) create(ctx context.Context, nodeName string, tableRanges [
 					// so queries route to the chunks which actually exist.
 					model.Fingerprint(fp),
 					matchingChks,
+					nil,
 				)
 			}
 

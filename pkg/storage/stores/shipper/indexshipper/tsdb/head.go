@@ -201,7 +201,9 @@ func newSeriesHashmap() *seriesHashmap {
 
 func (m *seriesHashmap) get(hash uint64, ls labels.Labels) *memSeries {
 	for _, s := range m.m[hash] {
-		if labels.Equal(s.ls, ls) {
+		// We might pass nil labels to get the series by hash only.
+		// Passing the labels is an extra check to ensure we have the right series.
+		if ls == nil || labels.Equal(s.ls, ls) {
 			return s
 		}
 	}
@@ -260,6 +262,13 @@ func (s *stripeSeries) getByID(id uint64) *memSeries {
 	return x.m[id]
 }
 
+func (s *stripeSeries) getByFP(fp uint64) *memSeries {
+	x := s.hashes[fp&uint64(s.shards-1)]
+	x.RLock()
+	defer x.RUnlock()
+	return x.get(fp, nil)
+}
+
 // Append adds chunks to the correct series and returns whether a new series was added
 func (s *stripeSeries) Append(
 	ls labels.Labels,
@@ -293,7 +302,7 @@ func (s *stripeSeries) Append(
 }
 
 func (s *stripeSeries) updateSeriesStats(fp uint64, stats *index.StreamStats) {
-	series := s.getByID(fp)
+	series := s.getByFP(fp)
 
 	series.Lock()
 	defer series.Unlock()
@@ -316,13 +325,14 @@ type memSeries struct {
 	ls    labels.Labels
 	fp    uint64
 	chks  index.ChunkMetas
-	stats index.StreamStats
+	stats *index.StreamStats
 }
 
 func newMemSeries(ref uint64, ls labels.Labels, fp uint64) *memSeries {
 	return &memSeries{
-		ref: ref,
-		ls:  ls,
-		fp:  fp,
+		ref:   ref,
+		ls:    ls,
+		fp:    fp,
+		stats: index.NewStreamStats(),
 	}
 }

@@ -41,6 +41,13 @@ func TestSingleIdx(t *testing.T) {
 					Checksum: 2,
 				},
 			},
+			Stats: &index.StreamStats{
+				StructuredMetadataFieldNames: map[string]struct{}{
+					"traceID": {},
+					"spanID":  {},
+					"email":   {},
+				},
+			},
 		},
 		{
 			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
@@ -51,6 +58,13 @@ func TestSingleIdx(t *testing.T) {
 					Checksum: 3,
 				},
 			},
+			Stats: &index.StreamStats{
+				StructuredMetadataFieldNames: map[string]struct{}{
+					"traceID": {},
+					"spanID":  {},
+					"userID":  {},
+				},
+			},
 		},
 		{
 			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
@@ -59,6 +73,13 @@ func TestSingleIdx(t *testing.T) {
 					MinTime:  1,
 					MaxTime:  7,
 					Checksum: 4,
+				},
+			},
+			Stats: &index.StreamStats{
+				StructuredMetadataFieldNames: map[string]struct{}{
+					"traceID":   {},
+					"spanID":    {},
+					"userAgent": {},
 				},
 			},
 		},
@@ -80,6 +101,7 @@ func TestSingleIdx(t *testing.T) {
 				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
 				for _, x := range cases {
 					_, _ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
+					head.updateSeriesStats(x.Labels.Hash(), x.Stats)
 				}
 				reader := head.Index()
 				return NewTSDBIndex(reader)
@@ -176,18 +198,19 @@ func TestSingleIdx(t *testing.T) {
 
 			t.Run("LabelNames", func(t *testing.T) {
 				// request data at the end of the tsdb range, but it should return all labels present
-				ls, _, err := idx.LabelNames(context.Background(), "fake", 9, 10)
+				ls, sm, err := idx.LabelNames(context.Background(), "fake", 9, 10)
 				require.Nil(t, err)
 				sort.Strings(ls)
 				require.Equal(t, []string{"bazz", "bonk", "foo"}, ls)
+				require.Empty(t, sm)
 			})
 
 			t.Run("LabelNamesWithMatchers", func(t *testing.T) {
 				// request data at the end of the tsdb range, but it should return all labels present
-				ls, _, err := idx.LabelNames(context.Background(), "fake", 9, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+				ls, sm, err := idx.LabelNames(context.Background(), "fake", 9, 10, labels.MustNewMatcher(labels.MatchRegexp, "bazz", "buzz|bozz"))
 				require.Nil(t, err)
-				sort.Strings(ls)
-				require.Equal(t, []string{"bazz", "foo"}, ls)
+				require.ElementsMatch(t, []string{"bazz", "bonk", "foo"}, ls)
+				require.ElementsMatch(t, []string{"spanID", "traceID", "userAgent", "userID"}, sm)
 			})
 
 			t.Run("LabelValues", func(t *testing.T) {

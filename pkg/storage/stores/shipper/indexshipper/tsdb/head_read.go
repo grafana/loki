@@ -94,26 +94,29 @@ func (h *headIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, []s
 		labelNames := h.head.postings.LabelNames()
 		sort.Strings(labelNames)
 
-		SMFieldNames := make(map[string]struct{})
-		for _, s := range h.head.series.series {
-			s.RLock()
-			for _, ms := range s.m {
-				ms.RLock()
-				for ln := range ms.stats.StructuredMetadataFieldNames {
-					SMFieldNames[ln] = struct{}{}
-				}
-				ms.RUnlock()
-			}
-			s.RUnlock()
-		}
+		// On the file index we don't return the SM fields unless we pass some matchers.
+		// For consistency, we won't return them here.
+		// Here's the code that would return them:
+		//SMFieldNames := make(map[string]struct{})
+		//for _, s := range h.head.series.series {
+		//	s.RLock()
+		//	for _, ms := range s.m {
+		//		ms.RLock()
+		//		for ln := range ms.stats.StructuredMetadataFieldNames {
+		//			SMFieldNames[ln] = struct{}{}
+		//		}
+		//		ms.RUnlock()
+		//	}
+		//	s.RUnlock()
+		//}
+		//
+		//structuredMetadataFieldNames := make([]string, 0, len(SMFieldNames))
+		//for name := range SMFieldNames {
+		//	structuredMetadataFieldNames = append(structuredMetadataFieldNames, name)
+		//}
+		//sort.Strings(structuredMetadataFieldNames)
 
-		structuredMetadataFieldNames := make([]string, 0, len(SMFieldNames))
-		for name := range SMFieldNames {
-			structuredMetadataFieldNames = append(structuredMetadataFieldNames, name)
-		}
-		sort.Strings(structuredMetadataFieldNames)
-
-		return labelNames, structuredMetadataFieldNames, nil
+		return labelNames, nil, nil
 	}
 
 	return labelNamesWithMatchers(h, matchers...)
@@ -152,7 +155,7 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 	*lbls = append((*lbls)[:0], s.ls...)
 
 	if stats != nil {
-		*stats = &s.stats
+		*stats = s.stats
 	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))

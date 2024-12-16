@@ -182,7 +182,6 @@ func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-// h11: Stopped implementing the interface, needs fix
 func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, []string, error) {
 	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }

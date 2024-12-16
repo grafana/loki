@@ -15,13 +15,14 @@ import (
 type LoadableSeries struct {
 	Labels labels.Labels
 	Chunks index.ChunkMetas
+	Stats  *index.StreamStats
 }
 
 func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	b := NewBuilder(index.FormatV4)
 
 	for _, s := range cases {
-		b.AddSeries(s.Labels, model.Fingerprint(s.Labels.Hash()), s.Chunks)
+		b.AddSeries(s.Labels, model.Fingerprint(s.Labels.Hash()), s.Chunks, s.Stats)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {

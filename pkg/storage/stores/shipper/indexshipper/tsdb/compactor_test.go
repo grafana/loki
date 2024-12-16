@@ -124,10 +124,17 @@ func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string
 			lb.Set(TenantLabel, userID)
 			withTenant := lb.Labels()
 
+			stats := index.NewStreamStats()
+			stats.AddStructuredMetadata(logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+				"traceID", "123",
+				"spanID", "456",
+			)))
+
 			b.AddSeries(
 				withTenant,
 				stream.fp,
 				stream.chunks,
+				stats,
 			)
 		}
 	}
@@ -161,6 +168,7 @@ func setupPerTenantIndex(t *testing.T, indexFormat int, streams []stream, destDi
 			stream.labels,
 			stream.fp,
 			stream.chunks,
+			stream.stats,
 		)
 	}
 
@@ -186,10 +194,18 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	if userLabel != "" {
 		lbls = labels.NewBuilder(lbls.Copy()).Set("user_id", userLabel).Labels()
 	}
+
+	stats := index.NewStreamStats()
+	stats.AddStructuredMetadata(logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+		"traceID", "123",
+		"spanID", "456",
+	)))
+
 	return stream{
 		labels: lbls,
 		fp:     model.Fingerprint(lbls.Hash()),
 		chunks: chunks,
+		stats:  stats,
 	}
 }
 
@@ -893,10 +909,10 @@ func setupCompactedIndex(t *testing.T) *testContext {
 		require.NoError(t, err)
 		builder := NewBuilder(indexFormat)
 		stream := buildStream(lbls1, buildChunkMetas(shiftTableStart(0), shiftTableStart(10)), "")
-		builder.AddSeries(stream.labels, stream.fp, stream.chunks)
+		builder.AddSeries(stream.labels, stream.fp, stream.chunks, stream.stats)
 
 		stream = buildStream(lbls2, buildChunkMetas(shiftTableStart(0), shiftTableStart(20)), "")
-		builder.AddSeries(stream.labels, stream.fp, stream.chunks)
+		builder.AddSeries(stream.labels, stream.fp, stream.chunks, stream.stats)
 
 		builder.FinalizeChunks()
 

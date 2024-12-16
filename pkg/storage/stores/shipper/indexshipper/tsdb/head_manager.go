@@ -697,7 +697,6 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chk
 }
 
 func (t *tenantHeads) updateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
-	// (h11) : don't create head.extract to a different function to just get
 	head := t.getOrCreateTenantHead(userID)
 	head.updateSeriesStats(fp, stats)
 }
@@ -821,7 +820,7 @@ func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter ind
 }
 
 // helper only used in building TSDBs
-func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas, head *Head) error) error {
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas, stats *index.StreamStats, head *Head) error) error {
 	for i, shard := range t.tenants {
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
@@ -846,7 +845,7 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 					return errors.Wrapf(err, "iterating postings for tenant: %s", tenant)
 				}
 
-				if err := fn(tenant, ls, fp, chks, head); err != nil {
+				if err := fn(tenant, ls, fp, chks, stats, head); err != nil {
 					return err
 				}
 			}

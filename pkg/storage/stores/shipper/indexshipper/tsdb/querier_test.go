@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -28,6 +29,7 @@ func TestQueryIndex(t *testing.T) {
 	cases := []struct {
 		labels labels.Labels
 		chunks []index.ChunkMeta
+		stats  *index.StreamStats
 	}{
 		{
 			labels: mustParseLabels(`{foo="bar"}`),
@@ -87,8 +89,15 @@ func TestQueryIndex(t *testing.T) {
 			},
 		},
 	}
+
+	inStats := index.NewStreamStats()
+	inStats.AddStructuredMetadata(logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+		"traceID", "123",
+		"spanID", "456",
+	)))
+
 	for _, s := range cases {
-		b.AddSeries(s.labels, model.Fingerprint(s.labels.Hash()), s.chunks)
+		b.AddSeries(s.labels, model.Fingerprint(s.labels.Hash()), s.chunks, inStats)
 	}
 
 	dst, err := b.Build(context.Background(), dir, func(from, through model.Time, checksum uint32) Identifier {
@@ -109,20 +118,29 @@ func TestQueryIndex(t *testing.T) {
 	require.Nil(t, err)
 
 	var (
-		chks []index.ChunkMeta
-		ls   labels.Labels
+		chks  []index.ChunkMeta
+		ls    labels.Labels
+		stats *index.StreamStats
 	)
 
 	require.True(t, p.Next())
-	_, err = reader.Series(p.At(), 0, math.MaxInt64, &ls, &chks, nil)
+	_, err = reader.Series(p.At(), 0, math.MaxInt64, &ls, &chks, &stats)
 	require.Nil(t, err)
 	require.Equal(t, cases[0].labels.String(), ls.String())
 	require.Equal(t, cases[0].chunks, chks)
+	require.Len(t, stats.StructuredMetadataFieldNames, len(inStats.StructuredMetadataFieldNames))
+	for f := range inStats.StructuredMetadataFieldNames {
+		require.Contains(t, stats.StructuredMetadataFieldNames, f)
+	}
 	require.True(t, p.Next())
-	_, err = reader.Series(p.At(), 0, math.MaxInt64, &ls, &chks, nil)
+	_, err = reader.Series(p.At(), 0, math.MaxInt64, &ls, &chks, &stats)
 	require.Nil(t, err)
 	require.Equal(t, cases[1].labels.String(), ls.String())
 	require.Equal(t, cases[1].chunks, chks)
+	require.Len(t, stats.StructuredMetadataFieldNames, len(inStats.StructuredMetadataFieldNames))
+	for f := range inStats.StructuredMetadataFieldNames {
+		require.Contains(t, stats.StructuredMetadataFieldNames, f)
+	}
 	require.False(t, p.Next())
 
 	mint, maxt := reader.Bounds()
