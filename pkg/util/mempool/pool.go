@@ -49,7 +49,6 @@ func (s *slab) get(size int) ([]byte, error) {
 	waitStart := time.Now()
 	// wait for available buffer on channel
 	buf := <-s.buffer
-	buf = buf[:size]
 	s.metrics.waitDuration.WithLabelValues(s.name).Observe(time.Since(waitStart).Seconds())
 
 	return buf[:size], nil
