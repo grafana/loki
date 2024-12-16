@@ -186,15 +186,12 @@ func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbin
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }
 
-func (f failingIndexWriter) UpdateSeriesStats(userID string, fp uint64, stats *tsdbindex.StreamStats) {
-	return
+func (f failingIndexWriter) UpdateSeriesStats(_ string, _ uint64, _ *tsdbindex.StreamStats) {
 }
 
 type noopIndexWriter struct{}
 
-func (f noopIndexWriter) UpdateSeriesStats(userID string, fp uint64, stats *tsdbindex.StreamStats) {
-	return
-}
+func (f noopIndexWriter) UpdateSeriesStats(_ string, _ uint64, _ *tsdbindex.StreamStats) {}
 
 func (f noopIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
 	return nil

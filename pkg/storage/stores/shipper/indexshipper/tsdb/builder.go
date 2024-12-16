@@ -42,7 +42,6 @@ func NewBuilder(version int) *Builder {
 	}
 }
 
-// TODO(h11): stats should be variadic but I added it to avoid changinf it in many places
 func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, stats *index.StreamStats) {
 	id := ls.String()
 	s, ok := b.streams[id]

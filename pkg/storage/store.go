@@ -596,7 +596,7 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 
 type failingChunkWriter struct{}
 
-func (f failingChunkWriter) UpdateSeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64, stats *index2.StreamStats) error {
+func (f failingChunkWriter) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index2.StreamStats) error {
 	return nil
 }
 

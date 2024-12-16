@@ -71,7 +71,7 @@ type NoopIndex struct{}
 
 func (NoopIndex) Close() error                    { return nil }
 func (NoopIndex) Bounds() (_, through model.Time) { return }
-func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, filterLabelNames []string, _ []ChunkRef, _ index.FingerprintFilter, _ ...*labels.Matcher) ([]ChunkRef, error) {
+func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ []string, _ []ChunkRef, _ index.FingerprintFilter, _ ...*labels.Matcher) ([]ChunkRef, error) {
 	return nil, nil
 }
 
@@ -79,7 +79,7 @@ func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, filt
 func (NoopIndex) Series(_ context.Context, _ string, _, _ model.Time, _ []Series, _ index.FingerprintFilter, _ ...*labels.Matcher) ([]Series, error) {
 	return nil, nil
 }
-func (NoopIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
+func (NoopIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([]string, []string, error) {
 	return nil, nil, nil
 }
 func (NoopIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {

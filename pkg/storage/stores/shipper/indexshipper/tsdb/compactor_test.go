@@ -124,17 +124,11 @@ func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string
 			lb.Set(TenantLabel, userID)
 			withTenant := lb.Labels()
 
-			stats := index.NewStreamStats()
-			stats.AddStructuredMetadata(logproto.FromLabelsToLabelAdapters(labels.FromStrings(
-				"traceID", "123",
-				"spanID", "456",
-			)))
-
 			b.AddSeries(
 				withTenant,
 				stream.fp,
 				stream.chunks,
-				stats,
+				stream.stats,
 			)
 		}
 	}
@@ -253,7 +247,7 @@ func TestCompactor_Compact(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		IndexTables: config.IndexPeriodicTableConfig{
 			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
-		Schema: "v12",
+		Schema: "v14",
 	}
 	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 
@@ -627,6 +621,13 @@ func TestCompactor_Compact(t *testing.T) {
 						actualChunks = map[string]index.ChunkMetas{}
 						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta, stats *index.StreamStats) (stop bool) {
 							actualChunks[lbls.String()] = chks
+
+							require.NotNil(t, stats)
+							require.Len(t, stats.StructuredMetadataFieldNames, 2)
+							for _, k := range []string{"traceID", "spanID"} {
+								require.Contains(t, stats.StructuredMetadataFieldNames, k)
+							}
+
 							return false
 						}, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 						require.NoError(t, err)
@@ -840,7 +841,7 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta, stats *index.StreamStats) (stop bool) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
 				return false
 			}, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))

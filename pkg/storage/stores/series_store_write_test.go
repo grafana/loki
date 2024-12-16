@@ -48,9 +48,7 @@ type mockIndexWriter struct {
 	called int
 }
 
-func (m *mockIndexWriter) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
-	return
-}
+func (m *mockIndexWriter) UpdateSeriesStats(_ string, _ uint64, _ *index.StreamStats) {}
 
 func (m *mockIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	m.called++

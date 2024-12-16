@@ -292,7 +292,7 @@ func (i *TSDBIndex) Series(ctx context.Context, _ string, from, through model.Ti
 	return res, nil
 }
 
-func (i *TSDBIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
+func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
 	if len(matchers) == 0 {
 		return i.reader.LabelNames()
 	}

@@ -89,7 +89,7 @@ func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, _ string, from,
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
 	resp, err := c.client.LabelNamesForMetricName(ctx, &logproto.LabelNamesForMetricNameRequest{
 		MetricName: metricName,
 		From:       from,
