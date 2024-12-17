@@ -45,7 +45,7 @@ You can use environment variable references in the configuration file to set val
 To do this, pass `-config.expand-env=true` and use:
 
 ```bash
-{VAR}
+${VAR}
 ```
 
 Where VAR is the name of the environment variable.
@@ -57,7 +57,7 @@ References to undefined variables are replaced by empty strings unless you speci
 To specify a default value, use:
 
 ```bash
-{VAR:-default_value}
+${VAR:-default_value}
 ```
 
 Where default_value is the value to use if the environment variable is undefined.
