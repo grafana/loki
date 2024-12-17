@@ -653,10 +653,16 @@ jobs:
           BUILD_IMAGE=grafana/loki-build-image:0.34.3
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
-        outputs: "type=docker,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
         platforms: "${{ matrix.platform }}"
         push: false
         tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "compress rootfs"
+      run: |
+        tar -cf release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar \
+        -C release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }} \
+        .
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"

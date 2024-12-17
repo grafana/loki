@@ -186,12 +186,13 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       ]
     ),
 
-  publishDockerPlugin: function(name, path, getDockerCredsFromVault=false, dockerUsername='grafanabot')
+  publishDockerPlugins: function(path, getDockerCredsFromVault=false, dockerUsername='grafanabot')
     job.new()
     + job.withNeeds(['createRelease'])
     + job.withSteps(
       [
         common.fetchReleaseLib,
+        common.fetchReleaseRepo,
         common.googleAuth,
         common.setupGoogleCloudSdk,
         step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
@@ -206,40 +207,36 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
              }),
            ]) +
       [
-        step.new('download plugins')
+        step.new('download and prepare plugins')
         + step.withRun(|||
           echo "downloading images to $(pwd)/plugins"
           gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/plugins .
-        |||),
-        step.new('Package as Docker plugin')
-        + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
-        + step.withEnv({
-          IMAGE_TAG: '${{ needs.version.outputs.version }}',
-          BUILD_DIR: path,
-        })
-        + step.withRun(|||
-          rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
-          mkdir "${{ env.BUILD_DIR }}/rootfs"
-          tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-          docker plugin create "${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}" "${{ env.BUILD_DIR }}"
-          docker plugin push "${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-        ||| % [name, name, name]),
+          mkdir -p "release/%s"
+        ||| % path),
+        step.new('publish docker driver', './lib/actions/push-images')
+        + step.with({
+          imageDir: 'plugins',
+          imagePrefix: '${{ env.IMAGE_PREFIX }}',
+          isPlugin: true,
+          buildDir: 'release/%s' % path,
+        }),
       ]
     ),
 
-  publishRelease: job.new()
-                  + job.withNeeds(['createRelease', 'publishImages'])
-                  + job.withSteps([
-                    common.fetchReleaseRepo,
-                    common.githubAppToken,
-                    common.setToken,
-                    releaseStep('publish release')
-                    + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
-                    + step.withEnv({
-                      GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
-                    })
-                    + step.withRun(|||
-                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
-                    |||),
-                  ]),
+  publishRelease: function(dependencies=['createRelease'])
+    job.new()
+    + job.withNeeds(dependencies)
+    + job.withSteps([
+      common.fetchReleaseRepo,
+      common.githubAppToken,
+      common.setToken,
+      releaseStep('publish release')
+      + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
+      + step.withEnv({
+        GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+      })
+      + step.withRun(|||
+        gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
+      |||),
+    ]),
 }

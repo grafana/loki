@@ -110,7 +110,7 @@ jobs:
         parent: false
         path: "release/dist"
         process_gcloudignore: false
-  publishDockerDriver:
+  publishDockerPlugins:
     needs:
     - "createRelease"
     runs-on: "ubuntu-latest"
@@ -121,6 +121,11 @@ jobs:
         path: "lib"
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
     - name: "auth gcs"
       uses: "google-github-actions/auth@v2"
       with:
@@ -135,21 +140,18 @@ jobs:
       uses: "docker/setup-buildx-action@v3"
     - name: "Login to DockerHub (from vault)"
       uses: "grafana/shared-workflows/actions/dockerhub-login@main"
-    - name: "download plugins"
+    - name: "download and prepare plugins"
       run: |
         echo "downloading images to $(pwd)/plugins"
         gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/plugins .
-    - env:
-        BUILD_DIR: "clients/cmd/docker-driver"
-        IMAGE_TAG: "${{ needs.version.outputs.version }}"
-      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Package as Docker plugin"
-      run: |
-        rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
-        mkdir "${{ env.BUILD_DIR }}/rootfs"
-        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        docker plugin create "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}" "${{ env.BUILD_DIR }}"
-        docker plugin push "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
+        mkdir -p "release/clients/cmd/docker-driver"
+    - name: "publish docker driver"
+      uses: "./lib/actions/push-images"
+      with:
+        buildDir: "release/clients/cmd/docker-driver"
+        imageDir: "plugins"
+        imagePrefix: "${{ env.IMAGE_PREFIX }}"
+        isPlugin: true
   publishImages:
     needs:
     - "createRelease"
@@ -188,6 +190,7 @@ jobs:
     needs:
     - "createRelease"
     - "publishImages"
+    - "publishDockerPlugins"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"
