@@ -106,7 +106,7 @@ func Benchmark_HeapCountMinSketchVectorAdd(b *testing.B) {
 		for _, event := range events {
 			v.Add(event, rand.Float64())
 			if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels {
-				b.Fail()
+				b.Errorf("Length or capcity of metrics is too high: len=%d cap=%d", len(v.Metrics), cap(v.Metrics))
 			}
 		}
 	}
