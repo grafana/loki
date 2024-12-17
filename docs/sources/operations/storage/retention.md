@@ -211,19 +211,15 @@ policy set correctly. For more details check
 or
 [GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
 
-The retention policy for Table manager can only be set globally.
-Per-tenant and per-stream retention policies along with support for deleting
-ingested logs using an API are only supported by Compactor retention.
-
-Since a design goal of Loki is to make storing logs cheap, a volume-based
-deletion API is deprioritized. Until this feature is released, if you suddenly
-must delete ingested logs, you can delete old chunks in your object store. Note,
+If you must delete ingested logs, you can delete old chunks in your object store. Note,
 however, that this only deletes the log content and keeps the label index
 intact; you will still be able to see related labels but will be unable to
 retrieve the deleted log content.
 
 For further details on the Table Manager internals, refer to the
 [Table Manager](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/table-manager/) documentation.
+
+Alternatively, if the BoltDB Shipper is configured for the index store, you can enable [Log entry deletion](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/logs-deletion/) to delete log entries from a specific stream.
 
 
 ## Example Configuration
