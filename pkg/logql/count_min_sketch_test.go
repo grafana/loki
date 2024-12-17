@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -85,4 +86,23 @@ func TestCountMinSketchSerialization(t *testing.T) {
 
 	// The HeapCountMinSketchVector is serialized to a CountMinSketchVector.
 	require.Equal(t, round, vec.CountMinSketchVector)
+}
+
+func Benchmark_HeapCountMinSketchVectorAdd(b *testing.B) {
+	v := NewHeapCountMinSketchVector(0, 10_000, 10_000)
+	eventsCount := 100_000
+	uniqueEventsCount := 20_000
+	events := make([]labels.Labels, eventsCount)
+	for i := range events {
+		events[i] = labels.Labels{{Name: "event", Value: fmt.Sprintf("%d", i%uniqueEventsCount)}}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		for _, event := range events {
+			v.Add(event, 42.0)
+		}
+	}
 }
