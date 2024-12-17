@@ -68,8 +68,7 @@ type JobQueue struct {
 	completed  *CircularBuffer[*JobWithMetadata]        // Last N completed jobs
 	statusMap  map[string]types.JobStatus               // Maps job ID to its current status
 	metrics    *jobQueueMetrics
-
-	mu sync.RWMutex
+	mu         sync.RWMutex
 }
 
 func NewJobQueueWithLogger(logger log.Logger, reg prometheus.Registerer) *JobQueue {
