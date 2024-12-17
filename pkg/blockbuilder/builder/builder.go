@@ -116,9 +116,9 @@ type BlockBuilder struct {
 	kafkaCfg        kafka.Config
 	periodicConfigs []config.PeriodConfig
 
-	metrics *builderMetrics
-	logger  log.Logger
-	reg     prometheus.Registerer
+	metrics    *builderMetrics
+	logger     log.Logger
+	registered prometheus.Registerer
 
 	decoder  *kafka.Decoder
 	store    stores.ChunkWriter
@@ -156,7 +156,7 @@ func NewBlockBuilder(
 		periodicConfigs:  periodicConfigs,
 		metrics:          newBuilderMetrics(reg),
 		logger:           logger,
-		reg:              reg,
+		registered:       reg,
 		decoder:          decoder,
 		store:            store,
 		objStore:         objStore,
@@ -175,7 +175,7 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 		errgrp.Go(func() error {
 			c, err := client.NewReaderClient(
 				i.kafkaCfg,
-				client.NewReaderClientMetrics(workerID, i.reg),
+				client.NewReaderClientMetrics(workerID, i.registered),
 				log.With(i.logger, "component", workerID),
 			)
 			if err != nil {
