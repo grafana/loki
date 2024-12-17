@@ -71,7 +71,8 @@ type JobQueue struct {
 	mu         sync.RWMutex
 }
 
-func NewJobQueueWithLogger(logger log.Logger, reg prometheus.Registerer) *JobQueue {
+// NewJobQueue creates a new job queue instance
+func NewJobQueue(logger log.Logger, reg prometheus.Registerer) *JobQueue {
 	return &JobQueue{
 		logger: logger,
 		pending: NewPriorityQueue(
@@ -85,11 +86,6 @@ func NewJobQueueWithLogger(logger log.Logger, reg prometheus.Registerer) *JobQue
 		statusMap:  make(map[string]types.JobStatus),
 		metrics:    newJobQueueMetrics(reg),
 	}
-}
-
-// NewJobQueue creates a new job queue instance
-func NewJobQueue() *JobQueue {
-	return NewJobQueueWithLogger(log.NewNopLogger(), prometheus.DefaultRegisterer)
 }
 
 // Exists checks if a job exists in any state and returns its status
