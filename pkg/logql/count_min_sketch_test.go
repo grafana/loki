@@ -92,6 +92,10 @@ func TestCountMinSketchSerialization(t *testing.T) {
 func Benchmark_HeapCountMinSketchVectorAdd(b *testing.B) {
 	maxLabels := 10_000
 	v := NewHeapCountMinSketchVector(0, maxLabels, maxLabels)
+	if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels+1 {
+		b.Errorf("Length or capcity of metrics is too high: len=%d cap=%d", len(v.Metrics), cap(v.Metrics))
+	}
+
 	eventsCount := 100_000
 	uniqueEventsCount := 20_000
 	events := make([]labels.Labels, eventsCount)
@@ -105,7 +109,7 @@ func Benchmark_HeapCountMinSketchVectorAdd(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for _, event := range events {
 			v.Add(event, rand.Float64())
-			if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels {
+			if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels+1 {
 				b.Errorf("Length or capcity of metrics is too high: len=%d cap=%d", len(v.Metrics), cap(v.Metrics))
 			}
 		}

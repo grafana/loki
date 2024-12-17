@@ -172,7 +172,7 @@ func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCou
 		CountMinSketchVector: CountMinSketchVector{
 			T:       ts,
 			F:       f,
-			Metrics: make([]labels.Labels, 0, metricsLength),
+			Metrics: make([]labels.Labels, 0, metricsLength+1),
 		},
 		observed:  make(map[string]struct{}),
 		maxLabels: maxLabels,
