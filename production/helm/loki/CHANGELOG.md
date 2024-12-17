@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.24.0-weekly.233
+
+- [CHANGE] Changed version of Grafana Loki to k233-4077196
+- [CHANGE] Changed version of Grafana Enterprise Logs to weekly-k233-de4a90a
+
 - [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
 - [BUGFIX] Disables the Helm test pod when `test.enabled=false`.
 
