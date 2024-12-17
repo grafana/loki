@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/common/sigv4"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 	"golang.org/x/time/rate"
 	"gopkg.in/yaml.v2"
 
@@ -553,6 +554,11 @@ var defaultLimits *Limits
 // those values.
 func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
+	for i := range defaultLimits.OTLPConfig.ResourceAttributes.AttributesConfig {
+		if defaultLimits.OTLPConfig.ResourceAttributes.AttributesConfig[i].Regex.Regexp == nil {
+			defaultLimits.OTLPConfig.ResourceAttributes.AttributesConfig[i].Regex = relabel.DefaultRelabelConfig.Regex
+		}
+	}
 }
 
 type TenantLimits interface {

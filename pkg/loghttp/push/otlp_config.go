@@ -33,6 +33,7 @@ func DefaultOTLPConfig(cfg GlobalOTLPConfig) OTLPConfig {
 				{
 					Action:     IndexLabel,
 					Attributes: cfg.DefaultOTLPResourceAttributesAsIndexLabels,
+					Regex:      relabel.DefaultRelabelConfig.Regex,
 				},
 			},
 		},
@@ -81,6 +82,7 @@ func (c *OTLPConfig) ApplyGlobalOTLPConfig(config GlobalOTLPConfig) {
 			{
 				Action:     IndexLabel,
 				Attributes: config.DefaultOTLPResourceAttributesAsIndexLabels,
+				Regex:      relabel.DefaultRelabelConfig.Regex,
 			},
 		}, c.ResourceAttributes.AttributesConfig...)
 	}
@@ -157,6 +159,9 @@ func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 		return errAttributesAndRegexBothSet
 	}
 
+	if c.Regex.Regexp == nil {
+		c.Regex = relabel.DefaultRelabelConfig.Regex
+	}
 	return nil
 }
 
