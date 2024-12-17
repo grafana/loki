@@ -189,6 +189,7 @@ func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 		heap.Push(v, metric)
 		v.observed[metricString] = struct{}{}
 	} else if v.Metrics[0].String() == metricString {
+		// TODO: This check seems wrong.
 		// The smalles element has been updated to fix the heap.
 		heap.Fix(v, 0)
 	}
@@ -197,7 +198,6 @@ func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 	if len(v.Metrics) > v.maxLabels {
 		metric := heap.Pop(v).(labels.Labels)
 		delete(v.observed, metric.String())
-		v.Metrics = v.Metrics[1:]
 	}
 }
 
