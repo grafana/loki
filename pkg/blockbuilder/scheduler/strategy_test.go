@@ -147,8 +147,7 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			}
 			require.NoError(t, cfg.Validate())
 			planner := NewRecordCountPlanner(mockReader, tc.recordCount, time.Hour, log.NewNopLogger())
-
-			jobs, err := planner.Plan(context.Background())
+			jobs, err := planner.Plan(context.Background(), 0)
 			require.NoError(t, err)
 
 			require.Equal(t, len(tc.expectedJobs), len(jobs))

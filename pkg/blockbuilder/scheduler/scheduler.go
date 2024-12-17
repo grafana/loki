@@ -24,11 +24,12 @@ var (
 )
 
 type Config struct {
-	ConsumerGroup     string        `yaml:"consumer_group"`
-	Interval          time.Duration `yaml:"interval"`
-	LookbackPeriod    time.Duration `yaml:"lookback_period"`
-	Strategy          string        `yaml:"strategy"`
-	TargetRecordCount int64         `yaml:"target_record_count"`
+	ConsumerGroup             string        `yaml:"consumer_group"`
+	Interval                  time.Duration `yaml:"interval"`
+	LookbackPeriod            time.Duration `yaml:"lookback_period"`
+	Strategy                  string        `yaml:"strategy"`
+	TargetRecordCount         int64         `yaml:"target_record_count"`
+	MaxJobsPlannedPerInterval int           `yaml:"max_jobs_planned_per_interval"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -52,6 +53,12 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 			"Target record count used by the planner to plan jobs. Only used when strategy is %s",
 			RecordCountStrategy,
 		),
+	)
+	f.IntVar(
+		&cfg.MaxJobsPlannedPerInterval,
+		prefix+"max-jobs-planned-per-interval",
+		100,
+		"Maximum number of jobs that the planner can return.",
 	)
 }
 
@@ -143,7 +150,7 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 
 	s.publishLagMetrics(lag)
 
-	jobs, err := s.planner.Plan(ctx)
+	jobs, err := s.planner.Plan(ctx, s.cfg.MaxJobsPlannedPerInterval)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to plan jobs", "err", err)
 	}
