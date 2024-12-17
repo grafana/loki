@@ -197,6 +197,7 @@ func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 	if len(v.Metrics) > v.maxLabels {
 		metric := heap.Pop(v).(labels.Labels)
 		delete(v.observed, metric.String())
+		v.Metrics = v.Metrics[1:]
 	}
 }
 
