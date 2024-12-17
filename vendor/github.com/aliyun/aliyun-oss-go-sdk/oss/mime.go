@@ -567,6 +567,28 @@ func TypeByExtension(filePath string) string {
 	typ := mime.TypeByExtension(path.Ext(filePath))
 	if typ == "" {
 		typ = extToMimeType[strings.ToLower(path.Ext(filePath))]
+	} else {
+		if strings.HasPrefix(typ, "text/") && strings.Contains(typ, "charset=") {
+			typ = removeCharsetInMimeType(typ)
+		}
 	}
 	return typ
+}
+
+// Remove charset from mime type
+func removeCharsetInMimeType(typ string) (str string) {
+	temArr := strings.Split(typ, ";")
+	var builder strings.Builder
+	for i, s := range temArr {
+		tmpStr := strings.Trim(s, " ")
+		if strings.Contains(tmpStr, "charset=") {
+			continue
+		}
+		if i == 0 {
+			builder.WriteString(s)
+		} else {
+			builder.WriteString("; " + s)
+		}
+	}
+	return builder.String()
 }

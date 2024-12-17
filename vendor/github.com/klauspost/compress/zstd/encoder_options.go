@@ -39,7 +39,7 @@ func (o *encoderOptions) setDefault() {
 		blockSize:     maxCompressedBlockSize,
 		windowSize:    8 << 20,
 		level:         SpeedDefault,
-		allLitEntropy: true,
+		allLitEntropy: false,
 		lowMem:        false,
 	}
 }
@@ -94,7 +94,7 @@ func WithEncoderConcurrency(n int) EOption {
 // The value must be a power of two between MinWindowSize and MaxWindowSize.
 // A larger value will enable better compression but allocate more memory and,
 // for above-default values, take considerably longer.
-// The default value is determined by the compression level.
+// The default value is determined by the compression level and max 8MB.
 func WithWindowSize(n int) EOption {
 	return func(o *encoderOptions) error {
 		switch {
@@ -129,7 +129,7 @@ func WithEncoderPadding(n int) EOption {
 		}
 		// No need to waste our time.
 		if n == 1 {
-			o.pad = 0
+			n = 0
 		}
 		if n > 1<<30 {
 			return fmt.Errorf("padding must less than 1GB (1<<30 bytes) ")
@@ -232,13 +232,13 @@ func WithEncoderLevel(l EncoderLevel) EOption {
 			case SpeedDefault:
 				o.windowSize = 8 << 20
 			case SpeedBetterCompression:
-				o.windowSize = 16 << 20
+				o.windowSize = 8 << 20
 			case SpeedBestCompression:
-				o.windowSize = 32 << 20
+				o.windowSize = 8 << 20
 			}
 		}
 		if !o.customALEntropy {
-			o.allLitEntropy = l > SpeedFastest
+			o.allLitEntropy = l > SpeedDefault
 		}
 
 		return nil

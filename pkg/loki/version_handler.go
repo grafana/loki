@@ -6,11 +6,11 @@ import (
 
 	prom "github.com/prometheus/prometheus/web/api/v1"
 
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
 func versionHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		info := prom.PrometheusVersion{
 			Version:   build.Version,
 			Revision:  build.Revision,

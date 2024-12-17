@@ -1,3 +1,4 @@
+//go:build !go1.7
 // +build !go1.7
 
 // "golang.org/x/time/rate" is depended on golang context package  go1.7 onward

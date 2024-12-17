@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  creationTimestamp: null
+  labels:
+    app.kubernetes.io/instance: loki-operator-v0.7.1
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
+    app.kubernetes.io/name: loki-operator
+    app.kubernetes.io/part-of: loki-operator
+    app.kubernetes.io/version: 0.7.1
+  name: loki-operator-controller-manager-read-metrics
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: loki-operator-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: loki-operator-controller-manager-metrics-reader
+  namespace: kubernetes-operators

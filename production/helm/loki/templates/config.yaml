@@ -1,0 +1,21 @@
+{{- if .Values.loki.generatedConfigObjectName -}}
+apiVersion: v1
+{{- if eq .Values.loki.configStorageType "Secret" }}
+kind: Secret
+{{- else }}
+kind: ConfigMap
+{{- end }}
+metadata:
+  name: {{ tpl .Values.loki.generatedConfigObjectName . }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+{{- if eq .Values.loki.configStorageType "Secret" }}
+data:
+  config.yaml: {{ include "loki.calculatedConfig" . | b64enc }}
+{{- else }}
+data:
+  config.yaml: |
+    {{ include "loki.calculatedConfig" . | nindent 4 }}
+{{- end -}}
+{{- end }}

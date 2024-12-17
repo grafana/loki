@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 var _ admission.CustomValidator = &RulerConfigValidator{}
@@ -29,25 +29,25 @@ func (v *RulerConfigValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 // ValidateCreate implements admission.CustomValidator.
-func (v *RulerConfigValidator) ValidateCreate(ctx context.Context, obj runtime.Object) error {
+func (v *RulerConfigValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	return v.validate(ctx, obj)
 }
 
 // ValidateUpdate implements admission.CustomValidator.
-func (v *RulerConfigValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) error {
+func (v *RulerConfigValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	return v.validate(ctx, newObj)
 }
 
 // ValidateDelete implements admission.CustomValidator.
-func (v *RulerConfigValidator) ValidateDelete(_ context.Context, _ runtime.Object) error {
+func (v *RulerConfigValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	// No validation on delete
-	return nil
+	return nil, nil
 }
 
-func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object) error {
+func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	rulerConfig, ok := obj.(*lokiv1.RulerConfig)
 	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type RulerConfig: %t", obj))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("object is not of type RulerConfig: %t", obj))
 	}
 
 	var allErrs field.ErrorList
@@ -93,10 +93,10 @@ func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object)
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "loki.grafana.com", Kind: "RulerConfig"},
 		rulerConfig.Name,
 		allErrs,

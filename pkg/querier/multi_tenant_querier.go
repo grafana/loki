@@ -2,19 +2,25 @@ package querier
 
 import (
 	"context"
+	"fmt"
+	"strings"
+
+	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 )
 
 const (
@@ -25,12 +31,14 @@ const (
 // MultiTenantQuerier is able to query across different tenants.
 type MultiTenantQuerier struct {
 	Querier
+	logger log.Logger
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
 func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
 		Querier: querier,
+		logger:  logger,
 	}
 }
 
@@ -51,11 +59,32 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
 	params.Selector = replaceMatchers(selector, filteredMatchers).String()
 
+	parsed, err := syntax.ParseLogSelector(params.Selector, true)
+	if err != nil {
+		return nil, fmt.Errorf("log selector is invalid after matcher update: %w", err)
+	}
+	params.Plan = &plan.QueryPlan{
+		AST: parsed,
+	}
+
+	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
+	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
+	if overrides := params.GetStoreChunks(); overrides != nil {
+		storeOverridesByTenant = partitionChunkRefsByTenant(overrides.Refs)
+	}
+
 	iters := make([]iter.EntryIterator, len(matchedTenants))
 	i := 0
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
-		iter, err := q.Querier.SelectLogs(singleContext, params)
+
+		tenantParams := params
+
+		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
+			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
+		}
+
+		iter, err := q.Querier.SelectLogs(singleContext, tenantParams)
 		if err != nil {
 			return nil, err
 		}
@@ -82,11 +111,23 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	}
 	params.Selector = updatedSelector.String()
 
+	// in case of multiple tenants, we need to filter the store chunks by tenant if they are provided
+	storeOverridesByTenant := make(map[string][]*logproto.ChunkRef)
+	if overrides := params.GetStoreChunks(); overrides != nil {
+		storeOverridesByTenant = partitionChunkRefsByTenant(params.GetStoreChunks().Refs)
+	}
+
 	iters := make([]iter.SampleIterator, len(matchedTenants))
 	i := 0
 	for id := range matchedTenants {
 		singleContext := user.InjectOrgID(ctx, id)
-		iter, err := q.Querier.SelectSamples(singleContext, params)
+		tenantParams := params
+
+		if tenantChunkOverrides, ok := storeOverridesByTenant[id]; ok {
+			tenantParams = tenantParams.WithStoreChunks(&logproto.ChunkRefGroup{Refs: tenantChunkOverrides})
+		}
+
+		iter, err := q.Querier.SelectSamples(singleContext, tenantParams)
 		if err != nil {
 			return nil, err
 		}
@@ -148,9 +189,10 @@ func (q *MultiTenantQuerier) Series(ctx context.Context, req *logproto.SeriesReq
 			return nil, err
 		}
 
-		for _, s := range resp.GetSeries() {
-			if _, ok := s.Labels[defaultTenantLabel]; !ok {
-				s.Labels[defaultTenantLabel] = id
+		for i := range resp.GetSeries() {
+			s := &resp.Series[i]
+			if s.Get(defaultTenantLabel) == "" {
+				s.Labels = append(s.Labels, logproto.SeriesIdentifier_LabelsEntry{Key: defaultTenantLabel, Value: id})
 			}
 		}
 
@@ -186,6 +228,108 @@ func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQ
 	return &merged, nil
 }
 
+func (q *MultiTenantQuerier) IndexShards(
+	ctx context.Context,
+	req *loghttp.RangeQuery,
+	targetBytesPerShard uint64,
+) (*logproto.ShardsResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.IndexShards(ctx, req, targetBytesPerShard)
+	}
+
+	responses := make([]*logproto.ShardsResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectOrgID(ctx, id)
+		resp, err := q.Querier.IndexShards(singleContext, req, targetBytesPerShard)
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	// TODO(owen-d): better merging
+	var highestIdx int
+	var highestVal int
+	for i, resp := range responses {
+		if len(resp.Shards) > highestVal {
+			highestIdx = i
+			highestVal = len(resp.Shards)
+		}
+	}
+
+	return responses[highestIdx], nil
+}
+
+func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]*logproto.VolumeResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectOrgID(ctx, id)
+		resp, err := q.Querier.Volume(singleContext, req)
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	merged := seriesvolume.Merge(responses, req.Limit)
+	return merged, nil
+}
+
+func (q *MultiTenantQuerier) DetectedFields(ctx context.Context, req *logproto.DetectedFieldsRequest) (*logproto.DetectedFieldsResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.DetectedFields(ctx, req)
+	}
+
+	level.Debug(q.logger).Log(
+		"msg", "detected fields requested for multiple tenants, but not yet supported",
+		"tenantIDs", strings.Join(tenantIDs, ","),
+	)
+
+	return &logproto.DetectedFieldsResponse{
+		Fields: []*logproto.DetectedField{},
+		Limit:  req.GetLimit(),
+	}, nil
+}
+
+func (q *MultiTenantQuerier) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(tenantIDs) == 1 {
+		return q.Querier.DetectedLabels(ctx, req)
+	}
+
+	level.Debug(q.logger).Log(
+		"msg", "detected labels requested for multiple tenants, but not yet supported. returning static labels",
+		"tenantIDs", strings.Join(tenantIDs, ","),
+	)
+
+	return &logproto.DetectedLabelsResponse{
+		DetectedLabels: []*logproto.DetectedLabel{
+			{Label: "multi_tenant_querier_not_implemented"},
+		},
+	}, nil
+}
+
 // removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.
 func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (map[string]struct{}, syntax.Expr, error) {
 	expr, err := params.Expr()
@@ -204,7 +348,7 @@ func removeTenantSelector(params logql.SelectSampleParams, tenantIDs []string) (
 // replaceMatchers traverses the passed expression and replaces all matchers.
 func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) syntax.Expr {
 	expr, _ = syntax.Clone(expr)
-	expr.Walk(func(e interface{}) {
+	expr.Walk(func(e syntax.Expr) {
 		switch concrete := e.(type) {
 		case *syntax.MatchersExpr:
 			concrete.Mts = matchers
@@ -214,7 +358,7 @@ func replaceMatchers(expr syntax.Expr, matchers []*labels.Matcher) syntax.Expr {
 }
 
 // See https://github.com/grafana/mimir/blob/114ab88b50638a2047e2ca2a60640f6ca6fe8c17/pkg/querier/tenantfederation/tenant_federation.go#L29-L69
-// filterValuesByMatchers applies matchers to inputed `idLabelName` and
+// filterValuesByMatchers applies matchers to inputted `idLabelName` and
 // `ids`. A set of matched IDs is returned and also all label matchers not
 // targeting the `idLabelName` label.
 //
@@ -284,7 +428,7 @@ func (r relabel) relabel(original string) string {
 	}
 	builder.Set(defaultTenantLabel, r.tenantID)
 
-	lbls = builder.Labels(nil)
+	lbls = builder.Labels()
 	r.cache[original] = lbls
 	return lbls.String()
 }
@@ -328,4 +472,12 @@ func NewTenantSampleIterator(iter iter.SampleIterator, id string) *TenantSampleI
 
 func (i *TenantSampleIterator) Labels() string {
 	return i.relabel.relabel(i.SampleIterator.Labels())
+}
+
+func partitionChunkRefsByTenant(refs []*logproto.ChunkRef) map[string][]*logproto.ChunkRef {
+	filtered := make(map[string][]*logproto.ChunkRef)
+	for _, ref := range refs {
+		filtered[ref.UserID] = append(filtered[ref.UserID], ref)
+	}
+	return filtered
 }

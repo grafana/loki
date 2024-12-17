@@ -7,10 +7,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 // This includes test for all RPCs in
@@ -26,11 +28,12 @@ func TestGrpcStore(t *testing.T) {
 			IndexType:  "grpc-store",
 			ObjectType: "grpc-store",
 			Schema:     "v10",
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: "index_",
-				Period: 604800000000000,
-				Tags:   nil,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: 604800000000000,
+					Tags:   nil,
+				}},
 			RowShards: 16,
 		},
 	}}
@@ -76,6 +79,12 @@ func TestGrpcStore(t *testing.T) {
 
 	// rpc calls for storageClient
 	storageClient, _ := NewTestStorageClient(cfg, schemaCfg)
+	newChunkData := func() chunk.Data {
+		return chunkenc.NewFacade(
+			chunkenc.NewMemChunk(
+				chunkenc.ChunkFormatV3, compression.None, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0,
+			), 0, 0)
+	}
 
 	putChunksTestData := []chunk.Chunk{
 		{
@@ -100,8 +109,8 @@ func TestGrpcStore(t *testing.T) {
 					Value: "prometheus",
 				},
 			},
-			Encoding: chunk.Bigchunk,
-			Data:     chunk.New(),
+			Encoding: chunkenc.LogChunk,
+			Data:     newChunkData(),
 		},
 	}
 	err = storageClient.PutChunks(context.Background(), putChunksTestData)
@@ -130,8 +139,8 @@ func TestGrpcStore(t *testing.T) {
 					Value: "prometheus",
 				},
 			},
-			Encoding: chunk.Bigchunk,
-			Data:     chunk.New(),
+			Encoding: chunkenc.LogChunk,
+			Data:     newChunkData(),
 		},
 	}
 	_, err = storageClient.GetChunks(context.Background(), getChunksTestData)
@@ -149,7 +158,7 @@ func TestGrpcStore(t *testing.T) {
 		{TableName: "table", HashValue: "foo"},
 	}
 	results := 0
-	err = storageClient.QueryPages(context.Background(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = storageClient.QueryPages(context.Background(), queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++

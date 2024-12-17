@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 )
 
 // Consumergroup handler
@@ -21,6 +21,7 @@ type testConsumerGroupHandler struct {
 	handler sarama.ConsumerGroupHandler
 	ctx     context.Context
 	topics  []string
+	mu      *sync.Mutex
 
 	returnErr error
 
@@ -32,7 +33,9 @@ func (c *testConsumerGroupHandler) Consume(ctx context.Context, topics []string,
 		return c.returnErr
 	}
 	c.ctx = ctx
+	c.mu.Lock()
 	c.topics = topics
+	c.mu.Unlock()
 	c.handler = handler
 	c.consuming.Store(true)
 	<-ctx.Done()
@@ -48,22 +51,22 @@ func (c testConsumerGroupHandler) Close() error {
 	return nil
 }
 
-func (c testConsumerGroupHandler) Pause(partitions map[string][]int32)  {}
-func (c testConsumerGroupHandler) Resume(partitions map[string][]int32) {}
-func (c testConsumerGroupHandler) PauseAll()                            {}
-func (c testConsumerGroupHandler) ResumeAll()                           {}
+func (c testConsumerGroupHandler) Pause(_ map[string][]int32)  {}
+func (c testConsumerGroupHandler) Resume(_ map[string][]int32) {}
+func (c testConsumerGroupHandler) PauseAll()                   {}
+func (c testConsumerGroupHandler) ResumeAll()                  {}
 
 type testSession struct {
 	markedMessage []*sarama.ConsumerMessage
 }
 
-func (s *testSession) Claims() map[string][]int32                                               { return nil }
-func (s *testSession) MemberID() string                                                         { return "foo" }
-func (s *testSession) GenerationID() int32                                                      { return 10 }
-func (s *testSession) MarkOffset(topic string, partition int32, offset int64, metadata string)  {}
-func (s *testSession) Commit()                                                                  {}
-func (s *testSession) ResetOffset(topic string, partition int32, offset int64, metadata string) {}
-func (s *testSession) MarkMessage(msg *sarama.ConsumerMessage, metadata string) {
+func (s *testSession) Claims() map[string][]int32                       { return nil }
+func (s *testSession) MemberID() string                                 { return "foo" }
+func (s *testSession) GenerationID() int32                              { return 10 }
+func (s *testSession) MarkOffset(_ string, _ int32, _ int64, _ string)  {}
+func (s *testSession) Commit()                                          {}
+func (s *testSession) ResetOffset(_ string, _ int32, _ int64, _ string) {}
+func (s *testSession) MarkMessage(msg *sarama.ConsumerMessage, _ string) {
 	s.markedMessage = append(s.markedMessage, msg)
 }
 func (s *testSession) Context() context.Context { return context.Background() }

@@ -8,11 +8,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 type mockCache struct {
@@ -25,7 +26,7 @@ func (m *mockCache) Store(_ context.Context, _ []string, _ [][]byte) error {
 	return nil
 }
 
-func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (m *mockCache) Fetch(_ context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	for _, key := range keys {
 		val, ok := m.data[key]
 		if !ok {
@@ -55,34 +56,44 @@ type mockChunksClient struct {
 	called int
 }
 
-func (m *mockChunksClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (m *mockChunksClient) PutChunks(_ context.Context, _ []chunk.Chunk) error {
 	m.called++
 	return nil
 }
 
 func (m *mockChunksClient) Stop() {
 }
-func (m *mockChunksClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+
+func (m *mockChunksClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chunk.Chunk, error) {
 	panic("GetChunks not implemented")
 }
-func (m *mockChunksClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+
+func (m *mockChunksClient) DeleteChunk(_ context.Context, _, _ string) error {
 	panic("DeleteChunk not implemented")
 }
-func (m *mockChunksClient) IsChunkNotFoundErr(err error) bool {
+
+func (m *mockChunksClient) IsChunkNotFoundErr(_ error) bool {
 	panic("IsChunkNotFoundErr not implemented")
 }
 
+func (m *mockChunksClient) IsRetryableErr(_ error) bool {
+	panic("IsRetryableErr not implemented")
+}
+
 func TestChunkWriter_PutOne(t *testing.T) {
-	schemaConfig := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:   config.DayTime{Time: 0},
-				Schema: "v11",
-			},
-		},
+	periodConfig := config.PeriodConfig{
+		From:   config.DayTime{Time: 0},
+		Schema: "v13",
 	}
 
-	memchk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{periodConfig},
+	}
+
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
+	memchk := chunkenc.NewMemChunk(chunkfmt, compression.GZIP, headfmt, 256*1024, 0)
 	chk := chunk.NewChunk("fake", model.Fingerprint(0), []labels.Label{{Name: "foo", Value: "bar"}}, chunkenc.NewFacade(memchk, 0, 0), 100, 400)
 
 	for name, tc := range map[string]struct {
@@ -149,7 +160,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 			idx := &mockIndexWriter{}
 			client := &mockChunksClient{}
 
-			f, err := fetcher.New(cache, false, schemaConfig, client, 1, 1)
+			f, err := fetcher.New(cache, nil, false, schemaConfig, client, 0)
 			require.NoError(t, err)
 
 			cw := NewChunkWriter(f, schemaConfig, idx, true)

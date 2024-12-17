@@ -4,7 +4,7 @@ syntax = "proto3";
 // in order to not break backward compatibility.
 package frontend;
 
-import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
 import "pkg/querier/stats/stats.proto";
 

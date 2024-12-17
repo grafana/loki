@@ -1,9 +1,7 @@
-package manifests_test
+package manifests
 
 import (
 	"testing"
-
-	"github.com/grafana/loki/operator/internal/manifests"
 
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -11,10 +9,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
@@ -29,8 +28,8 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 			OwnerReferences: []metav1.OwnerReference{
 				{
 					APIVersion:         "loki.grafana.com/v1",
-					BlockOwnerDeletion: pointer.Bool(true),
-					Controller:         pointer.Bool(true),
+					BlockOwnerDeletion: ptr.To(true),
+					Controller:         ptr.To(true),
 					Kind:               "LokiStack",
 					Name:               "lokistack-testing",
 					UID:                "6128aa83-de7f-47c0-abf2-4a380713b599",
@@ -40,7 +39,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 	}
 
 	got := &corev1.ConfigMap{}
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -53,7 +52,7 @@ func TestGetMutateFunc_MutateObjectMeta(t *testing.T) {
 func TestGetMutateFunc_ReturnErrOnNotSupportedType(t *testing.T) {
 	got := &corev1.Endpoints{}
 	want := &corev1.Endpoints{}
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 
 	require.Error(t, f())
 }
@@ -69,7 +68,7 @@ func TestGetMutateFunc_MutateConfigMap(t *testing.T) {
 		BinaryData: map[string][]byte{"btest": []byte("btestss")},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -116,7 +115,7 @@ func TestGetMutateFunc_MutateServiceSpec(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -228,10 +227,9 @@ func TestGetMutateFunc_MutateServiceAccountObjectMeta(t *testing.T) {
 	}
 
 	for _, tt := range table {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tt.got, tt.want, nil)
+			f := MutateFuncFor(tt.got, tt.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -293,7 +291,7 @@ func TestGetMutateFunc_MutateClusterRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -358,7 +356,7 @@ func TestGetMutateFunc_MutateClusterRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -413,7 +411,7 @@ func TestGetMutateFunc_MutateRole(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -478,7 +476,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -489,7 +487,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 	require.Exactly(t, got.Subjects, want.Subjects)
 }
 
-func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
+func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.Deployment
@@ -505,7 +503,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -526,7 +524,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -553,7 +551,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -575,7 +573,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -592,12 +590,44 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
+			f := MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -616,7 +646,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 	}
 }
 
-func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
+func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.StatefulSet
@@ -633,7 +663,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -661,7 +691,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -696,7 +726,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"test": "test",
 						},
 					},
-					Replicas: pointer.Int32Ptr(1),
+					Replicas: ptr.To[int32](1),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -725,7 +755,7 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 							"and":  "another",
 						},
 					},
-					Replicas: pointer.Int32Ptr(2),
+					Replicas: ptr.To[int32](2),
 					Template: corev1.PodTemplateSpec{
 						Spec: corev1.PodSpec{
 							Containers: []corev1.Container{
@@ -749,12 +779,44 @@ func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
+			f := MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -790,12 +852,12 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -817,24 +879,24 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 						{
 							Port:            "loki-test",
 							Path:            "/some-new-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -861,12 +923,12 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -893,24 +955,24 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 							Port:            "loki-test",
 							Path:            "/some-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 						{
 							Port:            "loki-test",
 							Path:            "/some-new-path",
 							Scheme:          "https",
-							BearerTokenFile: manifests.BearerTokenFile,
+							BearerTokenFile: BearerTokenFile,
 							TLSConfig: &monitoringv1.TLSConfig{
 								SafeTLSConfig: monitoringv1.SafeTLSConfig{
-									ServerName: "loki-test.some-ns.svc.cluster.local",
+									ServerName: ptr.To("loki-test.some-ns.svc.cluster.local"),
 								},
-								CAFile: manifests.PrometheusCAFile,
+								CAFile: PrometheusCAFile,
 							},
 						},
 					},
@@ -928,10 +990,9 @@ func TestGetMutateFunc_MutateServiceMonitorSpec(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
-			f := manifests.MutateFuncFor(tst.got, tst.want, nil)
+			f := MutateFuncFor(tst.got, tst.want, nil)
 			err := f()
 			require.NoError(t, err)
 
@@ -1003,7 +1064,7 @@ func TestGetMutateFunc_MutateIngress(t *testing.T) {
 		},
 	}
 
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 	err := f()
 	require.NoError(t, err)
 
@@ -1043,7 +1104,7 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 			To: routev1.RouteTargetReference{
 				Kind:   "Service",
 				Name:   "a-service",
-				Weight: pointer.Int32(100),
+				Weight: ptr.To[int32](100),
 			},
 			TLS: &routev1.TLSConfig{
 				Termination:                   routev1.TLSTerminationReencrypt,
@@ -1055,7 +1116,7 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 			},
 		},
 	}
-	f := manifests.MutateFuncFor(got, want, nil)
+	f := MutateFuncFor(got, want, nil)
 
 	err := f()
 	require.NoError(t, err)
@@ -1063,5 +1124,42 @@ func TestGetMutateFunc_MutateRoute(t *testing.T) {
 	// Partial mutation checks
 	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Annotations, want.Annotations)
+	require.Exactly(t, got.Spec, want.Spec)
+}
+
+func TestGetMutateFunc_MutatePodDisruptionBudget(t *testing.T) {
+	mu := intstr.FromInt(1)
+	got := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"test":  "test",
+				"other": "label",
+			},
+		},
+	}
+
+	want := &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"other": "label",
+				"new":   "label",
+			},
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MinAvailable: &mu,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"label": "test",
+					"and":   "another",
+				},
+			},
+		},
+	}
+
+	f := MutateFuncFor(got, want, nil)
+	err := f()
+
+	require.NoError(t, err)
+	require.Exactly(t, got.Labels, want.Labels)
 	require.Exactly(t, got.Spec, want.Spec)
 }

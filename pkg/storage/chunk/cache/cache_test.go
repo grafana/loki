@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -13,11 +14,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 )
 
 const userID = "1"
@@ -31,13 +34,14 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 	chunks := []chunk.Chunk{}
 	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		promChunk := chunk.New()
-		nc, err := promChunk.Add(model.SamplePair{
-			Timestamp: ts,
-			Value:     model.SampleValue(i),
+
+		cs := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.GZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
+
+		_, err := cs.Append(&logproto.Entry{
+			Timestamp: ts.Time(),
+			Line:      fmt.Sprintf("line ts=%d", ts),
 		})
 		require.NoError(t, err)
-		require.Nil(t, nc)
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
@@ -45,7 +49,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 			},
-			promChunk,
+			chunkenc.NewFacade(cs, 0, 0),
 			ts,
 			ts.Add(chunkLen),
 		)
@@ -117,7 +121,7 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 	require.Equal(t, chunks, result)
 }
 
-func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
+func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
@@ -128,11 +132,11 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk
 		},
 	}
 
-	fetcher, err := fetcher.New(c, false, s, nil, 10, 100)
+	fetcher, err := fetcher.New(c, nil, false, s, nil, 0)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 
-	found, err := fetcher.FetchChunks(context.Background(), chunks, keys)
+	found, err := fetcher.FetchChunks(context.Background(), chunks)
 	require.NoError(t, err)
 	sort.Sort(byExternalKey{found, s})
 	sort.Sort(byExternalKey{chunks, s})
@@ -181,7 +185,7 @@ func testCache(t *testing.T, cache cache.Cache) {
 		testCacheMiss(t, cache)
 	})
 	t.Run("Fetcher", func(t *testing.T) {
-		testChunkFetcher(t, cache, keys, chunks)
+		testChunkFetcher(t, cache, chunks)
 	})
 }
 
@@ -201,8 +205,8 @@ func TestMemcache(t *testing.T) {
 	})
 }
 
-func TestFifoCache(t *testing.T) {
-	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 1e3, TTL: 1 * time.Hour},
+func TestEmbeddedCache(t *testing.T) {
+	cache := cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 1e3, TTL: 1 * time.Hour},
 		nil, log.NewNopLogger(), "test")
 	testCache(t, cache)
 }

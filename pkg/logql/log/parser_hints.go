@@ -3,10 +3,12 @@ package log
 import (
 	"strings"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-var noParserHints = &Hints{}
+func NoParserHints() ParserHint {
+	return &Hints{}
+}
 
 // ParserHint are hints given to LogQL parsers.
 // This is specially useful for parser that extract implicitly all possible label keys.
@@ -34,7 +36,7 @@ type ParserHint interface {
 	// labels. This assumes that only required labels are ever extracted
 	RecordExtracted(string)
 
-	// Returns true if all the extracted labels have already been extracted
+	// Returns true if all the required labels have already been extracted
 	AllRequiredExtracted() bool
 
 	// Resets the state of extracted labels
@@ -43,7 +45,7 @@ type ParserHint interface {
 	// PreserveError returns true when parsing errors were specifically requested
 	PreserveError() bool
 
-	// ShouldContinueParsingLine ShouldContinueParsing line retruns true when there is no label matcher for the
+	// ShouldContinueParsingLine returns true when there is no label matcher for the
 	// provided label or the passed label and value match what's in the pipeline
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
 }
@@ -58,10 +60,6 @@ type Hints struct {
 }
 
 func (p *Hints) ShouldExtract(key string) bool {
-	if len(p.requiredLabels) == 0 {
-		return true
-	}
-
 	for _, l := range p.extracted {
 		if l == key {
 			return false
@@ -74,7 +72,7 @@ func (p *Hints) ShouldExtract(key string) bool {
 		}
 	}
 
-	return false
+	return len(p.requiredLabels) == 0
 }
 
 func (p *Hints) ShouldExtractPrefix(prefix string) bool {
@@ -95,19 +93,25 @@ func (p *Hints) NoLabels() bool {
 }
 
 func (p *Hints) RecordExtracted(key string) {
-	for _, l := range p.requiredLabels {
-		if l == key {
-			p.extracted = append(p.extracted, key)
-			return
-		}
-	}
+	p.extracted = append(p.extracted, key)
 }
 
 func (p *Hints) AllRequiredExtracted() bool {
-	if len(p.requiredLabels) == 0 {
+	if len(p.requiredLabels) == 0 || len(p.extracted) < len(p.requiredLabels) {
 		return false
 	}
-	return len(p.extracted) == len(p.requiredLabels)
+
+	found := 0
+	for _, l := range p.requiredLabels {
+		for _, e := range p.extracted {
+			if l == e {
+				found++
+				break
+			}
+		}
+	}
+
+	return len(p.requiredLabels) == found
 }
 
 func (p *Hints) Reset() {
@@ -171,9 +175,6 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 	if without || len(groups) == 0 {
 		return ph
 	}
-
-	ph.requiredLabels = hints
-	ph.shouldPreserveError = containsError(hints)
 
 	return &Hints{requiredLabels: hints, extracted: extracted, shouldPreserveError: containsError(hints)}
 }

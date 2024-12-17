@@ -4,24 +4,28 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
-	"github.com/bmatcuk/doublestar"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/tail/watch"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 const (
 	FilenameLabel = "filename"
 )
+
+var errFileTargetStopped = errors.New("File target is stopped")
 
 // Config describes behavior for Target
 type Config struct {
@@ -38,6 +42,30 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(flags *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", flags)
+}
+
+type WatchConfig struct {
+	MinPollFrequency time.Duration `mapstructure:"min_poll_frequency" yaml:"min_poll_frequency"`
+	MaxPollFrequency time.Duration `mapstructure:"max_poll_frequency" yaml:"max_poll_frequency"`
+}
+
+var DefaultWatchConig = WatchConfig{
+	MinPollFrequency: 250 * time.Millisecond,
+	MaxPollFrequency: 250 * time.Millisecond,
+}
+
+// RegisterFlags with prefix registers flags where every name is prefixed by
+// prefix. If prefix is a non-empty string, prefix should end with a period.
+func (cfg *WatchConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	d := DefaultWatchConig
+
+	f.DurationVar(&cfg.MinPollFrequency, prefix+"min_poll_frequency", d.MinPollFrequency, "Minimum period to poll for file changes")
+	f.DurationVar(&cfg.MaxPollFrequency, prefix+"max_poll_frequency", d.MaxPollFrequency, "Maximum period to poll for file changes")
+}
+
+// RegisterFlags register flags.
+func (cfg *WatchConfig) RegisterFlags(flags *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", flags)
 }
 
@@ -67,14 +95,17 @@ type FileTarget struct {
 	fileEventWatcher   chan fsnotify.Event
 	targetEventHandler chan fileTargetEvent
 	watches            map[string]struct{}
+	watchesMutex       sync.Mutex
 	path               string
 	pathExclude        string
 	quit               chan struct{}
 	done               chan struct{}
 
-	readers map[string]Reader
+	readers      map[string]Reader
+	readersMutex sync.Mutex
 
 	targetConfig *Config
+	watchConfig  WatchConfig
 
 	decompressCfg *scrapeconfig.DecompressionConfig
 
@@ -92,6 +123,7 @@ func NewFileTarget(
 	labels model.LabelSet,
 	discoveredLabels model.LabelSet,
 	targetConfig *Config,
+	watchConfig WatchConfig,
 	fileEventWatcher chan fsnotify.Event,
 	targetEventHandler chan fileTargetEvent,
 	encoding string,
@@ -110,6 +142,7 @@ func NewFileTarget(
 		done:               make(chan struct{}),
 		readers:            map[string]Reader{},
 		targetConfig:       targetConfig,
+		watchConfig:        watchConfig,
 		fileEventWatcher:   fileEventWatcher,
 		targetEventHandler: targetEventHandler,
 		encoding:           encoding,
@@ -122,7 +155,7 @@ func NewFileTarget(
 
 // Ready if at least one file is being tailed
 func (t *FileTarget) Ready() bool {
-	return len(t.readers) > 0
+	return t.getReadersLen() > 0
 }
 
 // Stop the target.
@@ -150,17 +183,21 @@ func (t *FileTarget) Labels() model.LabelSet {
 // Details implements a Target
 func (t *FileTarget) Details() interface{} {
 	files := map[string]int64{}
+	t.readersMutex.Lock()
 	for fileName := range t.readers {
 		files[fileName], _ = t.positions.Get(fileName)
 	}
+	t.readersMutex.Unlock()
 	return files
 }
 
 func (t *FileTarget) run() {
 	defer func() {
+		t.readersMutex.Lock()
 		for _, v := range t.readers {
 			v.Stop()
 		}
+		t.readersMutex.Unlock()
 		level.Info(t.logger).Log("msg", "filetarget: watcher closed, tailer stopped, positions saved", "path", t.path)
 		close(t.done)
 	}()
@@ -188,6 +225,11 @@ func (t *FileTarget) run() {
 			}
 		case <-ticker.C:
 			err := t.sync()
+			if errors.Is(err, errFileTargetStopped) {
+				// This file target has been stopped.
+				// This is normal and there is no need to log an error.
+				return
+			}
 			if err != nil {
 				level.Error(t.logger).Log("msg", "error running sync function", "error", err)
 			}
@@ -204,7 +246,8 @@ func (t *FileTarget) sync() error {
 		matches = []string{t.path}
 	} else {
 		// Gets current list of files to tail.
-		matches, err = doublestar.Glob(t.path)
+		matches, err = doublestar.FilepathGlob(t.path)
+
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 		}
@@ -213,7 +256,8 @@ func (t *FileTarget) sync() error {
 	if fi, err := os.Stat(t.pathExclude); err == nil && !fi.IsDir() {
 		matchesExcluded = []string{t.pathExclude}
 	} else {
-		matchesExcluded, err = doublestar.Glob(t.pathExclude)
+		matchesExcluded, err = doublestar.FilepathGlob(t.pathExclude)
+
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
 		}
@@ -253,15 +297,28 @@ func (t *FileTarget) sync() error {
 	}
 
 	// Add any directories which are not already being watched.
+	t.watchesMutex.Lock()
 	toStartWatching := missing(t.watches, dirs)
-	t.startWatching(toStartWatching)
+	t.watchesMutex.Unlock()
+	err := t.startWatching(toStartWatching)
+	if errors.Is(err, errFileTargetStopped) {
+		return err
+	}
 
 	// Remove any directories which no longer need watching.
+	t.watchesMutex.Lock()
 	toStopWatching := missing(dirs, t.watches)
-	t.stopWatching(toStopWatching)
+	t.watchesMutex.Unlock()
+
+	err = t.stopWatching(toStopWatching)
+	if errors.Is(err, errFileTargetStopped) {
+		return err
+	}
 
 	// fsnotify.Watcher doesn't allow us to see what is currently being watched so we have to track it ourselves.
+	t.watchesMutex.Lock()
 	t.watches = dirs
+	t.watchesMutex.Unlock()
 
 	// Check if any running tailers have stopped because of errors and remove them from the running list
 	// (They will be restarted in startTailing)
@@ -271,41 +328,55 @@ func (t *FileTarget) sync() error {
 	t.startTailing(matches)
 
 	// Stop tailing any files which no longer exist
+	t.readersMutex.Lock()
 	toStopTailing := toStopTailing(matches, t.readers)
+	t.readersMutex.Unlock()
 	t.stopTailingAndRemovePosition(toStopTailing)
 
 	return nil
 }
 
-func (t *FileTarget) startWatching(dirs map[string]struct{}) {
+func (t *FileTarget) startWatching(dirs map[string]struct{}) error {
 	for dir := range dirs {
-		if _, ok := t.watches[dir]; ok {
+		if _, ok := t.getWatch(dir); ok {
 			continue
 		}
+
 		level.Info(t.logger).Log("msg", "watching new directory", "directory", dir)
-		t.targetEventHandler <- fileTargetEvent{
+		select {
+		case <-t.quit:
+			return errFileTargetStopped
+		case t.targetEventHandler <- fileTargetEvent{
 			path:      dir,
 			eventType: fileTargetEventWatchStart,
+		}:
 		}
 	}
+	return nil
 }
 
-func (t *FileTarget) stopWatching(dirs map[string]struct{}) {
+func (t *FileTarget) stopWatching(dirs map[string]struct{}) error {
 	for dir := range dirs {
-		if _, ok := t.watches[dir]; !ok {
+		if _, ok := t.getWatch(dir); !ok {
 			continue
 		}
+
 		level.Info(t.logger).Log("msg", "removing directory from watcher", "directory", dir)
-		t.targetEventHandler <- fileTargetEvent{
+		select {
+		case <-t.quit:
+			return errFileTargetStopped
+		case t.targetEventHandler <- fileTargetEvent{
 			path:      dir,
 			eventType: fileTargetEventWatchStop,
+		}:
 		}
 	}
+	return nil
 }
 
 func (t *FileTarget) startTailing(ps []string) {
 	for _, p := range ps {
-		if _, ok := t.readers[p]; ok {
+		if _, ok := t.getReader(p); ok {
 			continue
 		}
 
@@ -322,6 +393,20 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 
+		if t.pathExclude != "" {
+			matched, err := doublestar.Match(t.pathExclude, p)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "ignoring file, exclude pattern match failed", "error", err, "filename", p, "pathExclude", t.pathExclude)
+				t.metrics.totalBytes.DeleteLabelValues(p)
+				continue
+			}
+			if matched {
+				level.Info(t.logger).Log("msg", "ignoring file", "error", "file matches exclude pattern", "filename", p, "pathExclude", t.pathExclude)
+				t.metrics.totalBytes.DeleteLabelValues(p)
+				continue
+			}
+		}
+
 		var reader Reader
 		if t.decompressCfg != nil && t.decompressCfg.Enabled {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
@@ -332,15 +417,20 @@ func (t *FileTarget) startTailing(ps []string) {
 			}
 			reader = decompressor
 		} else {
+			watchOptions := watch.PollingFileWatcherOptions{
+				MinPollFrequency: t.watchConfig.MinPollFrequency,
+				MaxPollFrequency: t.watchConfig.MaxPollFrequency,
+			}
+
 			level.Debug(t.logger).Log("msg", "tailing new file", "filename", p)
-			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, p, t.encoding)
+			tailer, err := newTailer(t.metrics, t.logger, t.handler, t.positions, watchOptions, p, t.encoding)
 			if err != nil {
 				level.Error(t.logger).Log("msg", "failed to start tailer", "error", err, "filename", p)
 				continue
 			}
 			reader = tailer
 		}
-		t.readers[p] = reader
+		t.setReader(p, reader)
 	}
 }
 
@@ -348,10 +438,10 @@ func (t *FileTarget) startTailing(ps []string) {
 // Call this when a file no longer exists and you want to remove all traces of it.
 func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 	for _, p := range ps {
-		if reader, ok := t.readers[p]; ok {
+		if reader, ok := t.getReader(p); ok {
 			reader.Stop()
 			t.positions.Remove(reader.Path())
-			delete(t.readers, p)
+			t.removeReader(p)
 		}
 	}
 }
@@ -359,6 +449,7 @@ func (t *FileTarget) stopTailingAndRemovePosition(ps []string) {
 // pruneStoppedTailers removes any tailers which have stopped running from
 // the list of active tailers. This allows them to be restarted if there were errors.
 func (t *FileTarget) pruneStoppedTailers() {
+	t.readersMutex.Lock()
 	toRemove := make([]string, 0, len(t.readers))
 	for k, t := range t.readers {
 		if !t.IsRunning() {
@@ -368,6 +459,45 @@ func (t *FileTarget) pruneStoppedTailers() {
 	for _, tr := range toRemove {
 		delete(t.readers, tr)
 	}
+	t.readersMutex.Unlock()
+}
+
+func (t *FileTarget) getReadersLen() int {
+	t.readersMutex.Lock()
+	defer t.readersMutex.Unlock()
+	return len(t.readers)
+}
+
+func (t *FileTarget) getReader(val string) (Reader, bool) {
+	t.readersMutex.Lock()
+	defer t.readersMutex.Unlock()
+	reader, ok := t.readers[val]
+	return reader, ok
+}
+
+func (t *FileTarget) setReader(val string, reader Reader) {
+	t.readersMutex.Lock()
+	defer t.readersMutex.Unlock()
+	t.readers[val] = reader
+}
+
+func (t *FileTarget) getWatch(val string) (struct{}, bool) {
+	t.watchesMutex.Lock()
+	defer t.watchesMutex.Unlock()
+	fileTarget, ok := t.watches[val]
+	return fileTarget, ok
+}
+
+func (t *FileTarget) removeReader(val string) {
+	t.readersMutex.Lock()
+	defer t.readersMutex.Unlock()
+	delete(t.readers, val)
+}
+
+func (t *FileTarget) getWatchesLen() int {
+	t.watchesMutex.Lock()
+	defer t.watchesMutex.Unlock()
+	return len(t.watches)
 }
 
 func toStopTailing(nt []string, et map[string]Reader) []string {
@@ -395,7 +525,7 @@ func toStopTailing(nt []string, et map[string]Reader) []string {
 func (t *FileTarget) reportSize(ms []string) {
 	for _, m := range ms {
 		// Ask the tailer to update the size if a tailer exists, this keeps position and size metrics in sync
-		if reader, ok := t.readers[m]; ok {
+		if reader, ok := t.getReader(m); ok {
 			err := reader.MarkPositionAndSize()
 			if err != nil {
 				level.Warn(t.logger).Log("msg", "failed to get file size from tailer, ", "file", m, "error", err)
@@ -412,7 +542,6 @@ func (t *FileTarget) reportSize(ms []string) {
 			}
 			t.metrics.totalBytes.WithLabelValues(m).Set(float64(fi.Size()))
 		}
-
 	}
 }
 

@@ -94,14 +94,23 @@ func (gsb *Balancer) balancerCurrentOrPending(bw *balancerWrapper) bool {
 // process is not complete when this method returns. This method must be called
 // synchronously alongside the rest of the balancer.Balancer methods this
 // Graceful Switch Balancer implements.
+//
+// Deprecated: use ParseConfig and pass a parsed config to UpdateClientConnState
+// to cause the Balancer to automatically change to the new child when necessary.
 func (gsb *Balancer) SwitchTo(builder balancer.Builder) error {
+	_, err := gsb.switchTo(builder)
+	return err
+}
+
+func (gsb *Balancer) switchTo(builder balancer.Builder) (*balancerWrapper, error) {
 	gsb.mu.Lock()
 	if gsb.closed {
 		gsb.mu.Unlock()
-		return errBalancerClosed
+		return nil, errBalancerClosed
 	}
 	bw := &balancerWrapper{
-		gsb: gsb,
+		builder: builder,
+		gsb:     gsb,
 		lastState: balancer.State{
 			ConnectivityState: connectivity.Connecting,
 			Picker:            base.NewErrPicker(balancer.ErrNoSubConnAvailable),
@@ -129,7 +138,7 @@ func (gsb *Balancer) SwitchTo(builder balancer.Builder) error {
 			gsb.balancerCurrent = nil
 		}
 		gsb.mu.Unlock()
-		return balancer.ErrBadResolverState
+		return nil, balancer.ErrBadResolverState
 	}
 
 	// This write doesn't need to take gsb.mu because this field never gets read
@@ -138,7 +147,7 @@ func (gsb *Balancer) SwitchTo(builder balancer.Builder) error {
 	// bw.Balancer field will never be forwarded to until this SwitchTo()
 	// function returns.
 	bw.Balancer = newBalancer
-	return nil
+	return bw, nil
 }
 
 // Returns nil if the graceful switch balancer is closed.
@@ -152,12 +161,32 @@ func (gsb *Balancer) latestBalancer() *balancerWrapper {
 }
 
 // UpdateClientConnState forwards the update to the latest balancer created.
+//
+// If the state's BalancerConfig is the config returned by a call to
+// gracefulswitch.ParseConfig, then this function will automatically SwitchTo
+// the balancer indicated by the config before forwarding its config to it, if
+// necessary.
 func (gsb *Balancer) UpdateClientConnState(state balancer.ClientConnState) error {
 	// The resolver data is only relevant to the most recent LB Policy.
 	balToUpdate := gsb.latestBalancer()
+	gsbCfg, ok := state.BalancerConfig.(*lbConfig)
+	if ok {
+		// Switch to the child in the config unless it is already active.
+		if balToUpdate == nil || gsbCfg.childBuilder.Name() != balToUpdate.builder.Name() {
+			var err error
+			balToUpdate, err = gsb.switchTo(gsbCfg.childBuilder)
+			if err != nil {
+				return fmt.Errorf("could not switch to new child balancer: %w", err)
+			}
+		}
+		// Unwrap the child balancer's config.
+		state.BalancerConfig = gsbCfg.childConfig
+	}
+
 	if balToUpdate == nil {
 		return errBalancerClosed
 	}
+
 	// Perform this call without gsb.mu to prevent deadlocks if the child calls
 	// back into the channel. The latest balancer can never be closed during a
 	// call from the channel, even without gsb.mu held.
@@ -169,6 +198,10 @@ func (gsb *Balancer) ResolverError(err error) {
 	// The resolver data is only relevant to the most recent LB Policy.
 	balToUpdate := gsb.latestBalancer()
 	if balToUpdate == nil {
+		gsb.cc.UpdateState(balancer.State{
+			ConnectivityState: connectivity.TransientFailure,
+			Picker:            base.NewErrPicker(err),
+		})
 		return
 	}
 	// Perform this call without gsb.mu to prevent deadlocks if the child calls
@@ -200,8 +233,8 @@ func (gsb *Balancer) ExitIdle() {
 	}
 }
 
-// UpdateSubConnState forwards the update to the appropriate child.
-func (gsb *Balancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+// updateSubConnState forwards the update to the appropriate child.
+func (gsb *Balancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState, cb func(balancer.SubConnState)) {
 	gsb.currentMu.Lock()
 	defer gsb.currentMu.Unlock()
 	gsb.mu.Lock()
@@ -214,13 +247,26 @@ func (gsb *Balancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubC
 	} else if gsb.balancerPending != nil && gsb.balancerPending.subconns[sc] {
 		balToUpdate = gsb.balancerPending
 	}
-	gsb.mu.Unlock()
 	if balToUpdate == nil {
 		// SubConn belonged to a stale lb policy that has not yet fully closed,
 		// or the balancer was already closed.
+		gsb.mu.Unlock()
 		return
 	}
-	balToUpdate.UpdateSubConnState(sc, state)
+	if state.ConnectivityState == connectivity.Shutdown {
+		delete(balToUpdate.subconns, sc)
+	}
+	gsb.mu.Unlock()
+	if cb != nil {
+		cb(state)
+	} else {
+		balToUpdate.UpdateSubConnState(sc, state)
+	}
+}
+
+// UpdateSubConnState forwards the update to the appropriate child.
+func (gsb *Balancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
+	gsb.updateSubConnState(sc, state, nil)
 }
 
 // Close closes any active child balancers.
@@ -242,33 +288,23 @@ func (gsb *Balancer) Close() {
 //
 // It implements the balancer.ClientConn interface and is passed down in that
 // capacity to the wrapped balancer. It maintains a set of subConns created by
-// the wrapped balancer and calls from the latter to create/update/remove
+// the wrapped balancer and calls from the latter to create/update/shutdown
 // SubConns update this set before being forwarded to the parent ClientConn.
 // State updates from the wrapped balancer can result in invocation of the
 // graceful switch logic.
 type balancerWrapper struct {
 	balancer.Balancer
-	gsb *Balancer
+	gsb     *Balancer
+	builder balancer.Builder
 
 	lastState balancer.State
 	subconns  map[balancer.SubConn]bool // subconns created by this balancer
 }
 
-func (bw *balancerWrapper) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	if state.ConnectivityState == connectivity.Shutdown {
-		bw.gsb.mu.Lock()
-		delete(bw.subconns, sc)
-		bw.gsb.mu.Unlock()
-	}
-	// There is no need to protect this read with a mutex, as the write to the
-	// Balancer field happens in SwitchTo, which completes before this can be
-	// called.
-	bw.Balancer.UpdateSubConnState(sc, state)
-}
-
-// Close closes the underlying LB policy and removes the subconns it created. bw
-// must not be referenced via balancerCurrent or balancerPending in gsb when
-// called. gsb.mu must not be held.  Does not panic with a nil receiver.
+// Close closes the underlying LB policy and shuts down the subconns it
+// created. bw must not be referenced via balancerCurrent or balancerPending in
+// gsb when called. gsb.mu must not be held.  Does not panic with a nil
+// receiver.
 func (bw *balancerWrapper) Close() {
 	// before Close is called.
 	if bw == nil {
@@ -281,7 +317,7 @@ func (bw *balancerWrapper) Close() {
 	bw.Balancer.Close()
 	bw.gsb.mu.Lock()
 	for sc := range bw.subconns {
-		bw.gsb.cc.RemoveSubConn(sc)
+		sc.Shutdown()
 	}
 	bw.gsb.mu.Unlock()
 }
@@ -335,13 +371,16 @@ func (bw *balancerWrapper) NewSubConn(addrs []resolver.Address, opts balancer.Ne
 	}
 	bw.gsb.mu.Unlock()
 
+	var sc balancer.SubConn
+	oldListener := opts.StateListener
+	opts.StateListener = func(state balancer.SubConnState) { bw.gsb.updateSubConnState(sc, state, oldListener) }
 	sc, err := bw.gsb.cc.NewSubConn(addrs, opts)
 	if err != nil {
 		return nil, err
 	}
 	bw.gsb.mu.Lock()
 	if !bw.gsb.balancerCurrentOrPending(bw) { // balancer was closed during this call
-		bw.gsb.cc.RemoveSubConn(sc)
+		sc.Shutdown()
 		bw.gsb.mu.Unlock()
 		return nil, fmt.Errorf("%T at address %p that called NewSubConn is deleted", bw, bw)
 	}
@@ -360,13 +399,9 @@ func (bw *balancerWrapper) ResolveNow(opts resolver.ResolveNowOptions) {
 }
 
 func (bw *balancerWrapper) RemoveSubConn(sc balancer.SubConn) {
-	bw.gsb.mu.Lock()
-	if !bw.gsb.balancerCurrentOrPending(bw) {
-		bw.gsb.mu.Unlock()
-		return
-	}
-	bw.gsb.mu.Unlock()
-	bw.gsb.cc.RemoveSubConn(sc)
+	// Note: existing third party balancers may call this, so it must remain
+	// until RemoveSubConn is fully removed.
+	sc.Shutdown()
 }
 
 func (bw *balancerWrapper) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {

@@ -35,8 +35,8 @@ import (
 //
 
 var (
-	// maxCharsPerLine is used to qualify whether some LogQL expressions are worth `splitting` into new lines.
-	maxCharsPerLine = 100
+	// MaxCharsPerLine is used to qualify whether some LogQL expressions are worth `splitting` into new lines.
+	MaxCharsPerLine = 100
 )
 
 func Prettify(e Expr) string {
@@ -51,8 +51,8 @@ func (e *MatchersExpr) Pretty(level int) string {
 // e.g: `{foo="bar"} | logfmt | level="error"`
 // Here, left = `{foo="bar"}` and multistages would collection of each stage in pipeline, here `logfmt` and `level="error"`
 func (e *PipelineExpr) Pretty(level int) string {
-	if !needSplit(e) {
-		return indent(level) + e.String()
+	if !NeedSplit(e) {
+		return Indent(level) + e.String()
 	}
 
 	s := fmt.Sprintf("%s\n", e.Left.Pretty(level))
@@ -73,8 +73,8 @@ func (e *PipelineExpr) Pretty(level int) string {
 // e.g: `|= "error" != "memcache" |= ip("192.168.0.1")`
 // NOTE: here `ip` is Op in this expression.
 func (e *LineFilterExpr) Pretty(level int) string {
-	if !needSplit(e) {
-		return indent(level) + e.String()
+	if !NeedSplit(e) {
+		return Indent(level) + e.String()
 	}
 
 	var s string
@@ -90,7 +90,7 @@ func (e *LineFilterExpr) Pretty(level int) string {
 		s += "\n"
 	}
 
-	s += indent(level)
+	s += Indent(level)
 
 	// We re-use LineFilterExpr's String() implementation to avoid duplication.
 	// We create new LineFilterExpr without `Left`.
@@ -100,8 +100,11 @@ func (e *LineFilterExpr) Pretty(level int) string {
 	return s
 }
 
+func (e *LogfmtParserExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
 // e.g:
-// `| logfmt`
 // `| json`
 // `| regexp`
 // `| pattern`
@@ -111,6 +114,10 @@ func (e *LabelParserExpr) Pretty(level int) string {
 }
 
 func (e *DropLabelsExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
+func (e *KeepLabelsExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
@@ -125,7 +132,7 @@ func (e *LineFmtExpr) Pretty(level int) string {
 }
 
 // e.g: | decolorize
-func (e *DecolorizeExpr) Pretty(level int) string {
+func (e *DecolorizeExpr) Pretty(_ int) string {
 	return e.String()
 }
 
@@ -146,7 +153,7 @@ func (e *LogfmtExpressionParser) Pretty(level int) string {
 
 // e.g: sum_over_time({foo="bar"} | logfmt | unwrap bytes_processed [5m])
 func (e *UnwrapExpr) Pretty(level int) string {
-	s := indent(level)
+	s := Indent(level)
 
 	if e.Operation != "" {
 		s += fmt.Sprintf("%s %s %s(%s)", OpPipe, OpUnwrap, e.Operation, e.Identifier)
@@ -154,7 +161,7 @@ func (e *UnwrapExpr) Pretty(level int) string {
 		s += fmt.Sprintf("%s %s %s", OpPipe, OpUnwrap, e.Identifier)
 	}
 	for _, f := range e.PostFilters {
-		s += fmt.Sprintf("\n%s%s %s", indent(level), OpPipe, f)
+		s += fmt.Sprintf("\n%s%s %s", Indent(level), OpPipe, f)
 	}
 	return s
 }
@@ -184,7 +191,7 @@ func (e *LogRange) Pretty(level int) string {
 // e.g: count_over_time({foo="bar"}[5m] offset 3h)
 // TODO(kavi): why does offset not work in log queries? e.g: `{foo="bar"} offset 1h`? is it bug? or anything else?
 // NOTE: Also offset expression never to be indented. It always goes with its parent expression (usually RangeExpr).
-func (e *OffsetExpr) Pretty(level int) string {
+func (e *OffsetExpr) Pretty(_ int) string {
 	// using `model.Duration` as it can format ignoring zero units.
 	// e.g: time.Duration(2 * Hour) -> "2h0m0s"
 	// but model.Duration(2 * Hour) -> "2h"
@@ -193,8 +200,8 @@ func (e *OffsetExpr) Pretty(level int) string {
 
 // e.g: count_over_time({foo="bar"}[5m])
 func (e *RangeAggregationExpr) Pretty(level int) string {
-	s := indent(level)
-	if !needSplit(e) {
+	s := Indent(level)
+	if !NeedSplit(e) {
 		return s + e.String()
 	}
 
@@ -204,13 +211,13 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 
 	// print args to the function.
 	if e.Params != nil {
-		s = fmt.Sprintf("%s%s%s,", s, indent(level+1), fmt.Sprint(*e.Params))
+		s = fmt.Sprintf("%s%s%s,", s, Indent(level+1), fmt.Sprint(*e.Params))
 		s += "\n"
 	}
 
 	s += e.Left.Pretty(level + 1)
 
-	s += "\n" + indent(level) + ")"
+	s += "\n" + Indent(level) + ")"
 
 	if e.Grouping != nil {
 		s += e.Grouping.Pretty(level)
@@ -229,9 +236,9 @@ func (e *RangeAggregationExpr) Pretty(level int) string {
 // <vector expression> - vector on which aggregation is done.
 // [without|by (<label list)] - optional labels to aggregate either with `by` or `without` clause.
 func (e *VectorAggregationExpr) Pretty(level int) string {
-	s := indent(level)
+	s := Indent(level)
 
-	if !needSplit(e) {
+	if !NeedSplit(e) {
 		return s + e.String()
 	}
 
@@ -242,11 +249,11 @@ func (e *VectorAggregationExpr) Pretty(level int) string {
 	switch e.Operation {
 	// e.Params default value (0) can mean a legit param for topk and bottomk
 	case OpTypeBottomK, OpTypeTopK:
-		params = []string{fmt.Sprintf("%s%d", indent(level+1), e.Params), left}
+		params = []string{fmt.Sprintf("%s%d", Indent(level+1), e.Params), left}
 
 	default:
 		if e.Params != 0 {
-			params = []string{fmt.Sprintf("%s%d", indent(level+1), e.Params), left}
+			params = []string{fmt.Sprintf("%s%d", Indent(level+1), e.Params), left}
 		} else {
 			params = []string{left}
 		}
@@ -267,7 +274,7 @@ func (e *VectorAggregationExpr) Pretty(level int) string {
 		}
 		s += "\n"
 	}
-	s += indent(level) + ")"
+	s += Indent(level) + ")"
 
 	return s
 }
@@ -278,15 +285,15 @@ func (e *VectorAggregationExpr) Pretty(level int) string {
 // "==", "!=", ">", ">=", "<", "<=" (comparison)
 func (e *BinOpExpr) Pretty(level int) string {
 
-	s := indent(level)
-	if !needSplit(e) {
+	s := Indent(level)
+	if !NeedSplit(e) {
 		return s + e.String()
 	}
 
 	s = e.SampleExpr.Pretty(level+1) + "\n"
 
 	op := formatBinaryOp(e.Op, e.Opts)
-	s += indent(level) + op + "\n"
+	s += Indent(level) + op + "\n"
 	s += e.RHS.Pretty(level + 1)
 
 	return s
@@ -299,9 +306,9 @@ func (e *LiteralExpr) Pretty(level int) string {
 
 // e.g: label_replace(rate({job="api-server",service="a:c"}[5m]), "foo", "$1", "service", "(.*):.*")
 func (e *LabelReplaceExpr) Pretty(level int) string {
-	s := indent(level)
+	s := Indent(level)
 
-	if !needSplit(e) {
+	if !NeedSplit(e) {
 		return s + e.String()
 	}
 
@@ -311,10 +318,10 @@ func (e *LabelReplaceExpr) Pretty(level int) string {
 
 	params := []string{
 		e.Left.Pretty(level + 1),
-		indent(level+1) + strconv.Quote(e.Dst),
-		indent(level+1) + strconv.Quote(e.Replacement),
-		indent(level+1) + strconv.Quote(e.Src),
-		indent(level+1) + strconv.Quote(e.Regex),
+		Indent(level+1) + strconv.Quote(e.Dst),
+		Indent(level+1) + strconv.Quote(e.Replacement),
+		Indent(level+1) + strconv.Quote(e.Src),
+		Indent(level+1) + strconv.Quote(e.Regex),
 	}
 
 	for i, v := range params {
@@ -326,7 +333,7 @@ func (e *LabelReplaceExpr) Pretty(level int) string {
 		s += "\n"
 	}
 
-	s += indent(level) + ")"
+	s += Indent(level) + ")"
 
 	return s
 }
@@ -362,19 +369,19 @@ func (g *Grouping) Pretty(_ int) string {
 // Helpers
 
 func commonPrefixIndent(level int, current Expr) string {
-	return fmt.Sprintf("%s%s", indent(level), current.String())
+	return fmt.Sprintf("%s%s", Indent(level), current.String())
 }
 
-func needSplit(e Expr) bool {
+func NeedSplit(e Expr) bool {
 	if e == nil {
 		return false
 	}
-	return len(e.String()) > maxCharsPerLine
+	return len(e.String()) > MaxCharsPerLine
 }
 
 const indentString = "  "
 
-func indent(level int) string {
+func Indent(level int) string {
 	return strings.Repeat(indentString, level)
 }
 

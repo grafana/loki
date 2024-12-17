@@ -226,12 +226,24 @@ func NewCredentialsCommand(command *exec.Cmd, options ...func(*ProcessProvider))
 	return credentials.NewCredentials(p)
 }
 
-type credentialProcessResponse struct {
-	Version         int
-	AccessKeyID     string `json:"AccessKeyId"`
+// A CredentialProcessResponse is the AWS credentials format that must be
+// returned when executing an external credential_process.
+type CredentialProcessResponse struct {
+	// As of this writing, the Version key must be set to 1. This might
+	// increment over time as the structure evolves.
+	Version int
+
+	// The access key ID that identifies the temporary security credentials.
+	AccessKeyID string `json:"AccessKeyId"`
+
+	// The secret access key that can be used to sign requests.
 	SecretAccessKey string
-	SessionToken    string
-	Expiration      *time.Time
+
+	// The token that users must pass to the service API to use the temporary credentials.
+	SessionToken string
+
+	// The date on which the current credentials expire.
+	Expiration *time.Time
 }
 
 // Retrieve executes the 'credential_process' and returns the credentials.
@@ -242,7 +254,7 @@ func (p *ProcessProvider) Retrieve() (credentials.Value, error) {
 	}
 
 	// Serialize and validate response
-	resp := &credentialProcessResponse{}
+	resp := &CredentialProcessResponse{}
 	if err = json.Unmarshal(out, resp); err != nil {
 		return credentials.Value{ProviderName: ProviderName}, awserr.New(
 			ErrCodeProcessProviderParse,

@@ -17,3 +17,23 @@ moved {
   from = aws_lambda_function_event_invoke_config.lambda_promtail_invoke_config
   to   = aws_lambda_function_event_invoke_config.this
 }
+
+moved {
+  from = aws_s3_bucket_notification.push-to-sqs
+  to   = aws_s3_bucket_notification.sqs
+}
+
+moved {
+  from = aws_sqs_queue.main-queue
+  to   = aws_sqs_queue.main
+}
+
+moved {
+  from = aws_sqs_queue.dead-letter-queue
+  to   = aws_sqs_queue.dead_letter
+}
+
+moved {
+  from = aws_sqs_queue_redrive_allow_policy.from-dql-to-main
+  to   = aws_sqs_queue_redrive_allow_policy.this
+}

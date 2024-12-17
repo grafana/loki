@@ -1,6 +1,6 @@
 # Godo
 
-[![Build Status](https://travis-ci.org/digitalocean/godo.svg)](https://travis-ci.org/digitalocean/godo)
+[![GitHub Actions CI](https://github.com/digitalocean/godo/actions/workflows/ci.yml/badge.svg)](https://github.com/digitalocean/godo/actions/workflows/ci.yml)
 [![GoDoc](https://godoc.org/github.com/digitalocean/godo?status.svg)](https://godoc.org/github.com/digitalocean/godo)
 
 Godo is a Go client library for accessing the DigitalOcean V2 API.
@@ -154,6 +154,31 @@ func ListRepositoriesV2(ctx context.Context, client *godo.Client, registryName s
     return list, nil
 }
 ```
+
+### Automatic Retries and Exponential Backoff
+
+The Godo client can be configured to use automatic retries and exponentional backoff for requests that fail with 429 or 500-level response codes via [go-retryablehttp](https://github.com/hashicorp/go-retryablehttp). To configure Godo to enable usage of go-retryablehttp, the `RetryConfig.RetryMax` must be set.
+
+```go
+tokenSrc := oauth2.StaticTokenSource(&oauth2.Token{
+    AccessToken: "dop_v1_xxxxxx",
+})
+
+oauth_client := oauth2.NewClient(oauth2.NoContext, tokenSrc)
+
+waitMax := godo.PtrTo(6.0)
+waitMin := godo.PtrTo(3.0)
+
+retryConfig := godo.RetryConfig{
+    RetryMax:     3,
+    RetryWaitMin: waitMin,
+    RetryWaitMax: waitMax,
+}
+
+client, err := godo.New(oauth_client, godo.WithRetryAndBackoffs(retryConfig))
+```
+
+Please refer to the [RetryConfig Godo documentation](https://pkg.go.dev/github.com/digitalocean/godo#RetryConfig) for more information.
 
 ## Versioning
 

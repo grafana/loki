@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/openshift/library-go/pkg/crypto"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // SigningCAExpired returns true if the signer certificate expired and the reason of expiry.

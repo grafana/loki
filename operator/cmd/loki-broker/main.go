@@ -7,15 +7,15 @@ import (
 	"path"
 	"strings"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
-
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
 	openshiftv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/yaml"
+
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // Define the manifest options here as structured objects
@@ -49,7 +49,7 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.featureFlags.ServiceMonitorTLSEndpoints, "with-service-monitor-tls-endpoints", false, "Enable TLS endpoint for service monitors.")
 	f.BoolVar(&c.featureFlags.LokiStackAlerts, "with-lokistack-alerts", false, "Enables prometheus alerts")
 	f.BoolVar(&c.featureFlags.LokiStackGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
-	f.BoolVar(&c.featureFlags.RuntimeSeccompProfile, "with-runtime-seccomp-profile", false, "Enables the usage of the runtime/default seccomp profile for pods and containers.")
+	f.BoolVar(&c.featureFlags.RestrictedPodSecurityStandard, "with-restricted-pod-security-standard", false, "Enable restricted security standard settings")
 	// Object storage options
 	c.objectStorage = storage.Options{
 		S3: &storage.S3StorageConfig{},
@@ -57,8 +57,6 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.objectStorage.S3.Endpoint, "object-storage.s3.endpoint", "", "The S3 endpoint location.")
 	f.StringVar(&c.objectStorage.S3.Buckets, "object-storage.s3.buckets", "", "A comma-separated list of S3 buckets.")
 	f.StringVar(&c.objectStorage.S3.Region, "object-storage.s3.region", "", "An S3 region.")
-	f.StringVar(&c.objectStorage.S3.AccessKeyID, "object-storage.s3.access-key-id", "", "The access key id for S3.")
-	f.StringVar(&c.objectStorage.S3.AccessKeySecret, "object-storage.s3.access-key-secret", "", "The access key secret for S3.")
 	// Input and output file/dir options
 	f.StringVar(&c.crFilepath, "custom-resource.path", "", "Path to a custom resource YAML file.")
 	f.StringVar(&c.writeToDir, "output.write-dir", "", "write each file to the specified directory.")
@@ -86,14 +84,6 @@ func (c *config) validateFlags(log logr.Logger) {
 	}
 	if cfg.objectStorage.S3.Buckets == "" {
 		log.Info("-object-storage.s3.buckets flag is required")
-		os.Exit(1)
-	}
-	if cfg.objectStorage.S3.AccessKeyID == "" {
-		log.Info("-object-storage.s3.access.key.id flag is required")
-		os.Exit(1)
-	}
-	if cfg.objectStorage.S3.AccessKeySecret == "" {
-		log.Info("-object-storage.s3.access.key.secret flag is required")
 		os.Exit(1)
 	}
 	// Validate feature flags
@@ -188,7 +178,7 @@ func main() {
 				os.Exit(1)
 			}
 		} else {
-			fmt.Fprintf(os.Stdout, "---\n%s", b)
+			_, _ = fmt.Fprintf(os.Stdout, "---\n%s", b)
 		}
 	}
 }

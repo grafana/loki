@@ -8,35 +8,46 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 	"golang.org/x/net/context"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
-const bufferSizeForTailResponse = 5
+const (
+	bufferSizeForTailResponse = 5
+	bufferSizeForTailStream   = 100
+)
 
 type TailServer interface {
 	Send(*logproto.TailResponse) error
 	Context() context.Context
 }
 
+type tailRequest struct {
+	stream logproto.Stream
+	lbs    labels.Labels
+}
+
 type tailer struct {
 	id          uint32
 	orgID       string
 	matchers    []*labels.Matcher
-	expr        syntax.LogSelectorExpr
+	pipeline    syntax.Pipeline
 	pipelineMtx sync.Mutex
 
+	queue    chan tailRequest
 	sendChan chan *logproto.Stream
 
 	// Signaling channel used to notify once the tailer gets closed
 	// and the loop and senders should stop
 	closeChan chan struct{}
 	closeOnce sync.Once
+	closed    atomic.Bool
 
 	blockedAt         *time.Time
 	blockedMtx        sync.RWMutex
@@ -46,14 +57,10 @@ type tailer struct {
 	conn TailServer
 }
 
-func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*tailer, error) {
-	expr, err := syntax.ParseLogSelector(query, true)
-	if err != nil {
-		return nil, err
-	}
+func newTailer(orgID string, expr syntax.LogSelectorExpr, conn TailServer, maxDroppedStreams int) (*tailer, error) {
 	// Make sure we can build a pipeline. The stream processing code doesn't have a place to handle
 	// this error so make sure we handle it here.
-	_, err = expr.Pipeline()
+	pipeline, err := expr.Pipeline()
 	if err != nil {
 		return nil, err
 	}
@@ -63,12 +70,14 @@ func newTailer(orgID, query string, conn TailServer, maxDroppedStreams int) (*ta
 		orgID:             orgID,
 		matchers:          matchers,
 		sendChan:          make(chan *logproto.Stream, bufferSizeForTailResponse),
+		queue:             make(chan tailRequest, bufferSizeForTailStream),
 		conn:              conn,
 		droppedStreams:    make([]*logproto.DroppedStream, 0, maxDroppedStreams),
 		maxDroppedStreams: maxDroppedStreams,
-		id:                generateUniqueID(orgID, query),
+		id:                generateUniqueID(orgID, expr.String()),
 		closeChan:         make(chan struct{}),
-		expr:              expr,
+		closed:            atomic.Bool{},
+		pipeline:          pipeline,
 	}, nil
 }
 
@@ -76,6 +85,9 @@ func (t *tailer) loop() {
 	var stream *logproto.Stream
 	var err error
 	var ok bool
+
+	// Launch a go routine to receive streams sent with t.send
+	go t.receiveStreamsLoop()
 
 	for {
 		select {
@@ -106,6 +118,37 @@ func (t *tailer) loop() {
 	}
 }
 
+func (t *tailer) receiveStreamsLoop() {
+	defer t.close()
+	for {
+		select {
+		case <-t.conn.Context().Done():
+			return
+		case <-t.closeChan:
+			return
+		case req, ok := <-t.queue:
+			if !ok {
+				return
+			}
+
+			streams := t.processStream(req.stream, req.lbs)
+			if len(streams) == 0 {
+				continue
+			}
+
+			for _, s := range streams {
+				select {
+				case t.sendChan <- s:
+				default:
+					t.dropStream(*s)
+				}
+			}
+		}
+	}
+}
+
+// send sends a stream to the tailer for processing and sending to the client.
+// It will drop the stream if the tailer is blocked or the queue is full.
 func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 	if t.isClosed() {
 		return
@@ -121,38 +164,37 @@ func (t *tailer) send(stream logproto.Stream, lbs labels.Labels) {
 		return
 	}
 
-	streams := t.processStream(stream, lbs)
-	if len(streams) == 0 {
-		return
+	// Send stream to queue for processing asynchronously
+	// If the queue is full, drop the stream
+	req := tailRequest{
+		stream: stream,
+		lbs:    lbs,
 	}
-	for _, s := range streams {
-		select {
-		case t.sendChan <- s:
-		default:
-			t.dropStream(*s)
-		}
+	select {
+	case t.queue <- req:
+	default:
+		t.dropStream(stream)
 	}
 }
 
 func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*logproto.Stream {
-	// Build a new pipeline for each call because the pipeline builds a cache of labels
-	// and if we don't start with a new pipeline that cache will grow unbounded.
-	// The error is ignored because it would be handled in the constructor of the tailer.
-	pipeline, _ := t.expr.Pipeline()
-
 	// Optimization: skip filtering entirely, if no filter is set
-	if log.IsNoopPipeline(pipeline) {
+	if log.IsNoopPipeline(t.pipeline) {
 		return []*logproto.Stream{&stream}
 	}
+
+	// Reset the pipeline caches so they don't grow unbounded
+	t.pipeline.Reset()
+
 	// pipeline are not thread safe and tailer can process multiple stream at once.
 	t.pipelineMtx.Lock()
 	defer t.pipelineMtx.Unlock()
 
 	streams := map[uint64]*logproto.Stream{}
 
-	sp := pipeline.ForStream(lbs)
+	sp := t.pipeline.ForStream(lbs)
 	for _, e := range stream.Entries {
-		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line)
+		newLine, parsedLbs, ok := sp.ProcessString(e.Timestamp.UnixNano(), e.Line, logproto.FromLabelAdaptersToLabels(e.StructuredMetadata)...)
 		if !ok {
 			continue
 		}
@@ -164,8 +206,10 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 			streams[parsedLbs.Hash()] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: e.Timestamp,
-			Line:      newLine,
+			Timestamp:          e.Timestamp,
+			Line:               newLine,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+			Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
 		})
 	}
 	streamsResult := make([]*logproto.Stream, 0, len(streams))
@@ -186,17 +230,13 @@ func isMatching(lbs labels.Labels, matchers []*labels.Matcher) bool {
 }
 
 func (t *tailer) isClosed() bool {
-	select {
-	case <-t.closeChan:
-		return true
-	default:
-		return false
-	}
+	return t.closed.Load()
 }
 
 func (t *tailer) close() {
 	t.closeOnce.Do(func() {
-		// Signal the close channel
+		// Signal the close channel & flip the atomic bool so tailers will exit
+		t.closed.Store(true)
 		close(t.closeChan)
 
 		// We intentionally do not close sendChan in order to avoid a panic on

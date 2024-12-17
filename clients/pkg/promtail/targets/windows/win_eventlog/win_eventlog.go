@@ -22,8 +22,9 @@
 //go:build windows
 // +build windows
 
-//revive:disable-next-line:var-naming
 // Package win_eventlog Input plugin to collect Windows Event Log messages
+//
+//revive:disable-next-line:var-naming
 package win_eventlog
 
 import (
@@ -38,7 +39,7 @@ import (
 	"github.com/influxdata/telegraf/plugins/inputs"
 	"golang.org/x/sys/windows"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var sampleConfig = `

@@ -62,11 +62,11 @@ func newMockKV() *mockKV {
 //
 // Known limitations:
 //
-// * Compact is not implemented and will panic
-// * RequestProgress is not implemented and will panic
-// * Only exact and prefix matching is supported for Get, Put, and Delete
-// * There may be inconsistencies with how various version numbers are adjusted
-//   but none that are exposed by kv.Client unit tests
+//   - Compact is not implemented and will panic
+//   - RequestProgress is not implemented and will panic
+//   - Only exact and prefix matching is supported for Get, Put, and Delete
+//   - There may be inconsistencies with how various version numbers are adjusted
+//     but none that are exposed by kv.Client unit tests
 type mockKV struct {
 	// Key-value pairs created by put calls or transactions
 	values    map[string]mvccpb.KeyValue
@@ -234,15 +234,17 @@ func (m *mockKV) Do(_ context.Context, op clientv3.Op) (clientv3.OpResponse, err
 func (m *mockKV) doInternal(op clientv3.Op) (clientv3.OpResponse, error) {
 	if op.IsGet() {
 		return m.doGet(op)
-	} else if op.IsPut() {
-		return m.doPut(op)
-	} else if op.IsDelete() {
-		return m.doDelete(op)
-	} else if op.IsTxn() {
-		return m.doTxn(op)
-	} else {
-		panic(fmt.Sprintf("unsupported operation: %+v", op))
 	}
+	if op.IsPut() {
+		return m.doPut(op)
+	}
+	if op.IsDelete() {
+		return m.doDelete(op)
+	}
+	if op.IsTxn() {
+		return m.doTxn(op)
+	}
+	panic(fmt.Sprintf("unsupported operation: %+v", op))
 }
 
 func (m *mockKV) doGet(op clientv3.Op) (clientv3.OpResponse, error) {

@@ -157,20 +157,20 @@ func (ah *psAckHandler) OnNack() {
 }
 
 func (ah *psAckHandler) OnAckWithResult() *AckResult {
+	// call done with true to indicate ack.
+	ah.done(true)
 	if !ah.exactlyOnceDelivery {
 		return newSuccessAckResult()
 	}
-	// call done with true to indicate ack.
-	ah.done(true)
 	return ah.ackResult
 }
 
 func (ah *psAckHandler) OnNackWithResult() *AckResult {
+	// call done with false to indicate nack.
+	ah.done(false)
 	if !ah.exactlyOnceDelivery {
 		return newSuccessAckResult()
 	}
-	// call done with false to indicate nack.
-	ah.done(false)
 	return ah.ackResult
 }
 

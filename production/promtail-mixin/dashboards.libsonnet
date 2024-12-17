@@ -4,7 +4,7 @@ local loki_mixin_utils = import 'loki-mixin/dashboards/dashboard-utils.libsonnet
 local utils = import 'mixin-utils/utils.libsonnet';
 
 {
-  grafanaDashboards+: {
+  grafanaDashboards+:: {
     local dashboard = (
       loki_mixin_utils {
         _config+:: configfile._config,
@@ -12,15 +12,14 @@ local utils = import 'mixin-utils/utils.libsonnet';
     ),
     local dashboards = self,
 
-    // local labelsSelector = 'cluster=~"$cluster", namespace=~"$namespace"',
     local labelsSelector = dashboard._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
-    local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail"',
+    local quantileLabelSelector = dashboard._config.per_cluster_label + '=~"$cluster", job=~"$namespace/promtail.*"',
 
     'promtail.json': {
                        local cfg = self,
                      } +
                      dashboard.dashboard('Loki / Promtail', uid='promtail')
-                     .addCluster()
+                     .addTemplate('cluster', 'promtail_build_info', dashboard._config.per_cluster_label)
                      .addTag()
                      .addTemplate('namespace', 'promtail_build_info{' + dashboard._config.per_cluster_label + '=~"$cluster"}', 'namespace')
                      .addRow(
@@ -45,7 +44,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addPanel(
                          g.panel('Bps') +
                          g.queryPanel(
-                           'sum(rate(promtail_read_bytes_total{%s}[1m]))' % labelsSelector,
+                           'sum(rate(promtail_read_bytes_total{%s}[$__rate_interval]))' % labelsSelector,
                            'logs read',
                          ) +
                          { yaxes: g.yaxes('Bps') },
@@ -53,7 +52,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        .addPanel(
                          g.panel('Lines') +
                          g.queryPanel(
-                           'sum(rate(promtail_read_lines_total{%s}[1m]))' % labelsSelector,
+                           'sum(rate(promtail_read_lines_total{%s}[$__rate_interval]))' % labelsSelector,
                            'lines read',
                          ),
                        )

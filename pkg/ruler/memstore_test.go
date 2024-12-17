@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const ruleName = "testrule"
@@ -48,7 +48,7 @@ func TestSelectRestores(t *testing.T) {
 	}
 
 	callCount := 0
-	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+	fn := rules.QueryFunc(func(_ context.Context, _ string, t time.Time) (promql.Vector, error) {
 		callCount++
 		return promql.Vector{
 			promql.Sample{
@@ -57,10 +57,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "buzz", // an extra label
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 			promql.Sample{
 				Metric: labels.FromMap(map[string]string{
@@ -68,10 +66,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "bork", // an extra label (second variant)
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 		}, nil
 	})
@@ -82,7 +78,7 @@ func TestSelectRestores(t *testing.T) {
 	tNow := time.Now()
 	now := util.TimeToMillis(tNow)
 
-	q, err := store.Querier(context.Background(), 0, now)
+	q, err := store.Querier(0, now)
 	require.Nil(t, err)
 
 	ls := ForStateMetric(labels.FromMap(map[string]string{
@@ -91,7 +87,7 @@ func TestSelectRestores(t *testing.T) {
 	}), ruleName)
 
 	// First call evaluates the rule at ts-ForDuration and populates the cache
-	sset := q.Select(false, nil, labelsToMatchers(ls)...)
+	sset := q.Select(context.Background(), false, nil, labelsToMatchers(ls)...)
 
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
@@ -109,7 +105,7 @@ func TestSelectRestores(t *testing.T) {
 		"bazz": "bork",
 	}), ruleName)
 
-	sset = q.Select(false, nil, labelsToMatchers(ls)...)
+	sset = q.Select(context.Background(), false, nil, labelsToMatchers(ls)...)
 	require.Equal(t, true, sset.Next())
 	require.Equal(t, ls, sset.At().Labels())
 	iter = sset.At().Iterator(iter)
@@ -127,12 +123,12 @@ func TestSelectRestores(t *testing.T) {
 		"bazz": "unknown",
 	}), ruleName)
 
-	sset = q.Select(false, nil, labelsToMatchers(ls)...)
+	sset = q.Select(context.Background(), false, nil, labelsToMatchers(ls)...)
 	require.Equal(t, false, sset.Next())
 	require.Equal(t, 1, callCount)
 }
 
-func TestMemstoreStart(t *testing.T) {
+func TestMemstoreStart(_ *testing.T) {
 	ars := []rulefmt.Rule{
 		{
 			Alert:  ruleName,
@@ -142,7 +138,7 @@ func TestMemstoreStart(t *testing.T) {
 		},
 	}
 
-	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+	fn := rules.QueryFunc(func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 		return nil, nil
 	})
 
@@ -175,7 +171,7 @@ func TestMemstoreBlocks(t *testing.T) {
 		},
 	}
 
-	fn := rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+	fn := rules.QueryFunc(func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 		return nil, nil
 	})
 
@@ -183,7 +179,7 @@ func TestMemstoreBlocks(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		_, _ = store.Querier(context.Background(), 0, 1)
+		_, _ = store.Querier(0, 1)
 		done <- struct{}{}
 	}()
 

@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"unicode/utf8"
 
-	"github.com/buger/jsonparser"
+	"github.com/grafana/jsonparser"
 
-	"github.com/grafana/loki/pkg/logql/log/jsonexpr"
-	"github.com/grafana/loki/pkg/logql/log/logfmt"
-	"github.com/grafana/loki/pkg/logql/log/pattern"
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 
 	"github.com/grafana/regexp"
 	jsoniter "github.com/json-iterator/go"
@@ -39,6 +40,14 @@ var (
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
 	errFoundAllLabels       = errors.New("found all required labels")
 	errLabelDoesNotMatch    = errors.New("found a label with a matcher that didn't match")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 type JSONParser struct {
@@ -86,7 +95,7 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	return line, true
 }
 
-func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueType, _ int) error {
 	var err error
 	switch dataType {
 	case jsonparser.String, jsonparser.Number, jsonparser.Boolean:
@@ -136,7 +145,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		if !ok {
 			return nil
 		}
-		j.lbs.Set(key, readValue(value, dataType))
+		j.lbs.Set(ParsedLabel, key, readValue(value, dataType))
 		if !j.parserHints.ShouldContinueParsingLine(key, j.lbs) {
 			return errLabelDoesNotMatch
 		}
@@ -166,7 +175,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		return nil
 	}
 
-	j.lbs.Set(keyString, readValue(value, dataType))
+	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
 	}
@@ -200,12 +209,11 @@ func unescapeJSONString(b []byte) string {
 		return ""
 	}
 	res := string(bU)
-	// rune error is rejected by Prometheus
-	for _, r := range res {
-		if r == utf8.RuneError {
-			return ""
-		}
+
+	if strings.ContainsRune(res, utf8.RuneError) {
+		res = strings.Map(removeInvalidUtf, res)
 	}
+
 	return res
 }
 
@@ -272,7 +280,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				continue
 			}
 
-			lbs.Set(key, string(value))
+			lbs.Set(ParsedLabel, key, string(value))
 			if !parserHints.ShouldContinueParsingLine(key, lbs) {
 				return line, false
 			}
@@ -284,16 +292,20 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 func (r *RegexpParser) RequiredLabelNames() []string { return []string{} }
 
 type LogfmtParser struct {
-	dec  *logfmt.Decoder
-	keys internedStringSet
+	strict    bool
+	keepEmpty bool
+	dec       *logfmt.Decoder
+	keys      internedStringSet
 }
 
 // NewLogfmtParser creates a parser that can extract labels from a logfmt log line.
 // Each keyval is extracted into a respective label.
-func NewLogfmtParser() *LogfmtParser {
+func NewLogfmtParser(strict, keepEmpty bool) *LogfmtParser {
 	return &LogfmtParser{
-		dec:  logfmt.NewDecoder(nil),
-		keys: internedStringSet{},
+		strict:    strict,
+		keepEmpty: keepEmpty,
+		dec:       logfmt.NewDecoder(nil),
+		keys:      internedStringSet{},
 	}
 }
 
@@ -304,7 +316,17 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	}
 
 	l.dec.Reset(line)
-	for l.dec.ScanKeyval() {
+	for !l.dec.EOL() {
+		ok := l.dec.ScanKeyval()
+		if !ok {
+			// for strict parsing, do not continue on errs
+			if l.strict {
+				break
+			}
+
+			continue
+		}
+
 		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
 			sanitized := sanitizeLabelKey(string(l.dec.Key()), true)
 			if len(sanitized) == 0 {
@@ -323,13 +345,18 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		if !ok {
 			continue
 		}
+
 		val := l.dec.Value()
-		// the rune error replacement is rejected by Prometheus, so we skip it.
+
 		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
+			val = bytes.Map(removeInvalidUtf, val)
 		}
 
-		lbs.Set(key, string(val))
+		if !l.keepEmpty && len(val) == 0 {
+			continue
+		}
+
+		lbs.Set(ParsedLabel, key, string(val))
 		if !parserHints.ShouldContinueParsingLine(key, lbs) {
 			return line, false
 		}
@@ -338,7 +365,8 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			break
 		}
 	}
-	if l.dec.Err() != nil {
+
+	if l.strict && l.dec.Err() != nil {
 		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 
 		if !parserHints.ShouldContinueParsingLine(logqlmodel.ErrorLabel, lbs) {
@@ -346,13 +374,14 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 		return line, true
 	}
+
 	return line, true
 }
 
 func (l *LogfmtParser) RequiredLabelNames() []string { return []string{} }
 
 type PatternParser struct {
-	matcher pattern.Matcher
+	matcher *pattern.Matcher
 	names   []string
 }
 
@@ -389,7 +418,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			continue
 		}
 
-		lbs.Set(name, string(m))
+		lbs.Set(ParsedLabel, name, string(m))
 		if !parserHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
 		}
@@ -403,9 +432,10 @@ type LogfmtExpressionParser struct {
 	expressions map[string][]interface{}
 	dec         *logfmt.Decoder
 	keys        internedStringSet
+	strict      bool
 }
 
-func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpressionParser, error) {
+func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (*LogfmtExpressionParser, error) {
 	if len(expressions) == 0 {
 		return nil, fmt.Errorf("no logfmt expression provided")
 	}
@@ -426,6 +456,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr) (*LogfmtExpres
 		expressions: paths,
 		dec:         logfmt.NewDecoder(nil),
 		keys:        internedStringSet{},
+		strict:      strict,
 	}, nil
 }
 
@@ -446,13 +477,23 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
 		if !lbs.BaseHas(id) {
-			lbs.Set(id, "")
+			lbs.Set(ParsedLabel, id, "")
 		}
 	}
 
 	l.dec.Reset(line)
 	var current []byte
-	for l.dec.ScanKeyval() {
+	for !l.dec.EOL() {
+		ok := l.dec.ScanKeyval()
+		if !ok {
+			// for strict parsing, do not continue on errs
+			if l.strict {
+				break
+			}
+
+			continue
+		}
+
 		current = l.dec.Key()
 		key, ok := l.keys.Get(current, func() (string, bool) {
 			sanitized := sanitizeLabelKey(string(current), true)
@@ -460,25 +501,27 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				return "", false
 			}
 
-			if !lbs.ParserLabelHints().ShouldExtract(sanitized) {
+			_, alwaysExtract := keys[sanitized]
+			if !alwaysExtract && !lbs.ParserLabelHints().ShouldExtract(sanitized) {
 				return "", false
 			}
 			return sanitized, true
 		})
+
 		if !ok {
 			continue
 		}
+
 		val := l.dec.Value()
+		if bytes.ContainsRune(val, utf8.RuneError) {
+			val = nil
+		}
 
 		for id, orig := range keys {
 			if key == orig {
 				key = id
 				break
 			}
-		}
-
-		if bytes.ContainsRune(val, utf8.RuneError) {
-			val = nil
 		}
 
 		if _, ok := l.expressions[key]; ok {
@@ -490,19 +533,16 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				}
 			}
 
-			lbs.Set(key, string(val))
+			lbs.Set(ParsedLabel, key, string(val))
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
 			}
 		}
 	}
-	if l.dec.Err() != nil {
-		lbs.SetErr(errLogfmt)
-		lbs.SetErrorDetails(l.dec.Err().Error())
-		if lbs.ParserLabelHints().PreserveError() {
-			lbs.Set(logqlmodel.PreserveErrorLabel, "true")
-		}
+
+	if l.strict && l.dec.Err() != nil {
+		addErrLabel(errLogfmt, l.dec.Err(), lbs)
 		return line, true
 	}
 
@@ -584,9 +624,11 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		switch typ {
 		case jsonparser.Null:
-			lbs.Set(key, "")
+			lbs.Set(ParsedLabel, key, "")
+		case jsonparser.Object:
+			lbs.Set(ParsedLabel, key, string(data))
 		default:
-			lbs.Set(key, unsafeGetString(data))
+			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
 		}
 
 		matches++
@@ -596,7 +638,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	if matches < len(j.ids) {
 		for _, id := range j.ids {
 			if _, ok := lbs.Get(id); !ok {
-				lbs.Set(id, "")
+				lbs.Set(ParsedLabel, id, "")
 			}
 		}
 	}
@@ -666,7 +708,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(logqlmodel.PreserveErrorLabel, "true")
+		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
 	}
 }
 
@@ -688,7 +730,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				return nil
 			}
 			key, ok := u.keys.Get(key, func() (string, bool) {
-				field := unsafeGetString(key)
+				field := string(key)
 				if lbs.BaseHas(field) {
 					field = field + duplicateSuffix
 				}
@@ -702,7 +744,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, key, unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
 		default:
 			return nil
 		}
@@ -717,7 +759,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	// flush the buffer if we found a packed entry.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
-			lbs.Set(u.lbsBuffer[i], u.lbsBuffer[i+1])
+			lbs.Set(ParsedLabel, u.lbsBuffer[i], u.lbsBuffer[i+1])
 			if !lbs.ParserLabelHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
 				return entry, errLabelDoesNotMatch
 			}

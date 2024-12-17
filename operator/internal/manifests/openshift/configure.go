@@ -5,13 +5,13 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
-
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 const (
@@ -60,17 +60,54 @@ func ConfigureGatewayDeployment(
 	mode lokiv1.ModeType,
 	secretVolumeName, tlsDir string,
 	minTLSVersion, ciphers string,
-	withTLS bool,
+	withTLS bool, adminGroups []string,
 ) error {
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
-			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS),
+			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS, adminGroups),
 		},
 	}
 
 	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithAppendSlice); err != nil {
 		return kverrors.Wrap(err, "failed to merge sidecar container spec ")
+	}
+
+	if mode == lokiv1.OpenshiftLogging {
+		// enable extraction of namespace selector
+		for i, c := range d.Spec.Template.Spec.Containers {
+			if c.Name != "gateway" {
+				continue
+			}
+
+			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
+				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatcher),
+			)
+		}
+	}
+
+	return nil
+}
+
+// ConfigureGatewayDeploymentRulesAPI merges CLI argument to the gateway container
+// that allow only Rules API access with a valid namespace input for the tenant application.
+func ConfigureGatewayDeploymentRulesAPI(d *appsv1.Deployment, containerName string) error {
+	var gwIndex int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == containerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	container := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatcher),
+		},
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], container, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
 	}
 
 	return nil
@@ -102,15 +139,15 @@ func ConfigureGatewayServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS boo
 	var opaEndpoint monitoringv1.Endpoint
 
 	if withTLS {
-		bearerTokenSecret := sm.Spec.Endpoints[0].BearerTokenSecret
+		authn := sm.Spec.Endpoints[0].Authorization
 		tlsConfig := sm.Spec.Endpoints[0].TLSConfig
 
 		opaEndpoint = monitoringv1.Endpoint{
-			Port:              opaMetricsPortName,
-			Path:              "/metrics",
-			Scheme:            "https",
-			BearerTokenSecret: bearerTokenSecret,
-			TLSConfig:         tlsConfig,
+			Port:          opaMetricsPortName,
+			Path:          "/metrics",
+			Scheme:        "https",
+			Authorization: authn,
+			TLSConfig:     tlsConfig,
 		}
 	} else {
 		opaEndpoint = monitoringv1.Endpoint{
@@ -235,44 +272,33 @@ func configureDefaultMonitoringAM(configOpt *config.Options) error {
 }
 
 func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorServerName string) error {
-	if len(configOpt.Overrides) == 0 {
+	if configOpt.Overrides == nil {
 		configOpt.Overrides = map[string]config.LokiOverrides{}
 	}
 
-	lokiOverrides, ok := configOpt.Overrides[tenantApplication]
-	if ok {
+	lokiOverrides := configOpt.Overrides[tenantApplication]
+
+	if lokiOverrides.Ruler.AlertManager != nil {
 		return nil
 	}
 
-	lokiOverrides = config.LokiOverrides{
-		Ruler: config.RulerOverrides{
-			AlertManager: &config.AlertManagerConfig{},
-		},
-	}
-
-	configOpt.Overrides[tenantApplication] = lokiOverrides
-	amOverride := &config.AlertManagerConfig{
-		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserwWrkloadNS),
+	lokiOverrides.Ruler.AlertManager = &config.AlertManagerConfig{
+		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserWorkloadNS),
 		EnableV2:        true,
 		EnableDiscovery: true,
 		RefreshInterval: "1m",
 		Notifier: &config.NotifierConfig{
 			TLS: config.TLSConfig{
-				ServerName: pointer.String(monitorServerName),
+				ServerName: ptr.To(monitorServerName),
 				CAPath:     &caPath,
 			},
 			HeaderAuth: config.HeaderAuth{
 				CredentialsFile: &token,
-				Type:            pointer.String("Bearer"),
+				Type:            ptr.To("Bearer"),
 			},
 		},
 	}
 
-	if err := mergo.Merge(lokiOverrides.Ruler.AlertManager, amOverride); err != nil {
-		return kverrors.Wrap(err, "failed merging application tenant AlertManager config")
-	}
-
 	configOpt.Overrides[tenantApplication] = lokiOverrides
-
 	return nil
 }

@@ -1,12 +1,18 @@
 package wal
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"errors"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type WatcherMetrics struct {
-	recordsRead       *prometheus.CounterVec
-	recordDecodeFails *prometheus.CounterVec
-	currentSegment    *prometheus.GaugeVec
-	watchersRunning   *prometheus.GaugeVec
+	recordsRead               *prometheus.CounterVec
+	recordDecodeFails         *prometheus.CounterVec
+	droppedWriteNotifications *prometheus.CounterVec
+	segmentRead               *prometheus.CounterVec
+	currentSegment            *prometheus.GaugeVec
+	watchersRunning           *prometheus.GaugeVec
 }
 
 func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
@@ -29,6 +35,24 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 			},
 			[]string{"id"},
 		),
+		droppedWriteNotifications: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "loki",
+				Subsystem: "wal_watcher",
+				Name:      "dropped_write_notifications_total",
+				Help:      "Number of dropped write notifications due to having one already buffered.",
+			},
+			[]string{"id"},
+		),
+		segmentRead: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: "loki",
+				Subsystem: "wal_watcher",
+				Name:      "segment_read_total",
+				Help:      "Number of segment reads triggered by the backup timer firing.",
+			},
+			[]string{"id", "reason"},
+		),
 		currentSegment: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: "loki",
@@ -49,11 +73,45 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 		),
 	}
 
+	// Collectors will be re-registered to registry if it's got reloaded
+	// Reuse the old collectors instead of panicking out.
 	if reg != nil {
-		reg.MustRegister(m.recordsRead)
-		reg.MustRegister(m.recordDecodeFails)
-		reg.MustRegister(m.currentSegment)
-		reg.MustRegister(m.watchersRunning)
+		if err := reg.Register(m.recordsRead); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.recordsRead = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.recordDecodeFails); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.recordDecodeFails = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.droppedWriteNotifications); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.droppedWriteNotifications = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.segmentRead); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.segmentRead = are.ExistingCollector.(*prometheus.CounterVec)
+			}
+		}
+		if err := reg.Register(m.currentSegment); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.currentSegment = are.ExistingCollector.(*prometheus.GaugeVec)
+			}
+		}
+		if err := reg.Register(m.watchersRunning); err != nil {
+			are := &prometheus.AlreadyRegisteredError{}
+			if errors.As(err, are) {
+				m.watchersRunning = are.ExistingCollector.(*prometheus.GaugeVec)
+			}
+		}
 	}
 
 	return m

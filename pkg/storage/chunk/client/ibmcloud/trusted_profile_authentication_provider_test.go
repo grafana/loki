@@ -100,7 +100,7 @@ func Test_TrustedProfileProvider(t *testing.T) {
 	}
 }
 
-func createTempFile(name, fileContent string) (*os.File, error) {
+func createTempFile(_, _ string) (*os.File, error) {
 	file, err := os.CreateTemp(os.TempDir(), "crtoken")
 	if err != nil {
 		return nil, err

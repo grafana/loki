@@ -164,15 +164,71 @@ func (m *StreamAdapter) GetHash() uint64 {
 	return 0
 }
 
+type LabelPairAdapter struct {
+	Name  string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+}
+
+func (m *LabelPairAdapter) Reset()      { *m = LabelPairAdapter{} }
+func (*LabelPairAdapter) ProtoMessage() {}
+func (*LabelPairAdapter) Descriptor() ([]byte, []int) {
+	return fileDescriptor_35ec442956852c9e, []int{3}
+}
+func (m *LabelPairAdapter) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *LabelPairAdapter) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_LabelPairAdapter.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *LabelPairAdapter) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_LabelPairAdapter.Merge(m, src)
+}
+func (m *LabelPairAdapter) XXX_Size() int {
+	return m.Size()
+}
+func (m *LabelPairAdapter) XXX_DiscardUnknown() {
+	xxx_messageInfo_LabelPairAdapter.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_LabelPairAdapter proto.InternalMessageInfo
+
+func (m *LabelPairAdapter) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *LabelPairAdapter) GetValue() string {
+	if m != nil {
+		return m.Value
+	}
+	return ""
+}
+
 type EntryAdapter struct {
-	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line      string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	Timestamp          time.Time          `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line               string             `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	StructuredMetadata []LabelPairAdapter `protobuf:"bytes,3,rep,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
+	// This field shouldn't be used by clients to push data to Loki.
+	// It is only used by Loki to return parsed log lines in query responses.
+	// TODO: Remove this field from the write path Proto.
+	Parsed []LabelPairAdapter `protobuf:"bytes,4,rep,name=parsed,proto3" json:"parsed,omitempty"`
 }
 
 func (m *EntryAdapter) Reset()      { *m = EntryAdapter{} }
 func (*EntryAdapter) ProtoMessage() {}
 func (*EntryAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{3}
+	return fileDescriptor_35ec442956852c9e, []int{4}
 }
 func (m *EntryAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -215,44 +271,65 @@ func (m *EntryAdapter) GetLine() string {
 	return ""
 }
 
+func (m *EntryAdapter) GetStructuredMetadata() []LabelPairAdapter {
+	if m != nil {
+		return m.StructuredMetadata
+	}
+	return nil
+}
+
+func (m *EntryAdapter) GetParsed() []LabelPairAdapter {
+	if m != nil {
+		return m.Parsed
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*PushRequest)(nil), "logproto.PushRequest")
 	proto.RegisterType((*PushResponse)(nil), "logproto.PushResponse")
 	proto.RegisterType((*StreamAdapter)(nil), "logproto.StreamAdapter")
+	proto.RegisterType((*LabelPairAdapter)(nil), "logproto.LabelPairAdapter")
 	proto.RegisterType((*EntryAdapter)(nil), "logproto.EntryAdapter")
 }
 
 func init() { proto.RegisterFile("pkg/push/push.proto", fileDescriptor_35ec442956852c9e) }
 
 var fileDescriptor_35ec442956852c9e = []byte{
-	// 422 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x5c, 0x52, 0x41, 0x6f, 0xd3, 0x30,
-	0x18, 0xb5, 0xbb, 0xd2, 0x6d, 0xee, 0x18, 0x92, 0x61, 0xa3, 0x44, 0xc8, 0xae, 0x72, 0xea, 0x85,
-	0x44, 0x2a, 0x07, 0xce, 0x8d, 0x84, 0xb4, 0x23, 0x0a, 0x08, 0x24, 0x6e, 0x0e, 0x78, 0x4e, 0xb4,
-	0x24, 0x0e, 0xb1, 0x83, 0xc4, 0x8d, 0x9f, 0x30, 0xfe, 0x05, 0x3f, 0x65, 0xc7, 0x1e, 0x27, 0x0e,
-	0x81, 0xa6, 0x17, 0x94, 0xd3, 0x7e, 0x02, 0x8a, 0x13, 0xd3, 0xc2, 0xc5, 0x79, 0x7e, 0xfe, 0xfc,
-	0xbd, 0xf7, 0xbd, 0x18, 0x3d, 0x2c, 0xae, 0x84, 0x5f, 0x54, 0x2a, 0x36, 0x8b, 0x57, 0x94, 0x52,
-	0x4b, 0x7c, 0x94, 0x4a, 0x61, 0x90, 0xf3, 0x48, 0x48, 0x21, 0x0d, 0xf4, 0x3b, 0xd4, 0x9f, 0x3b,
-	0x54, 0x48, 0x29, 0x52, 0xee, 0x9b, 0x5d, 0x54, 0x5d, 0xfa, 0x3a, 0xc9, 0xb8, 0xd2, 0x2c, 0x2b,
-	0xfa, 0x02, 0xf7, 0x1d, 0x9a, 0xbe, 0xaa, 0x54, 0x1c, 0xf2, 0x4f, 0x15, 0x57, 0x1a, 0x5f, 0xa0,
-	0x43, 0xa5, 0x4b, 0xce, 0x32, 0x35, 0x83, 0xf3, 0x83, 0xc5, 0x74, 0xf9, 0xd8, 0xb3, 0x0a, 0xde,
-	0x6b, 0x73, 0xb0, 0xfa, 0xc8, 0x0a, 0xcd, 0xcb, 0xe0, 0xec, 0x47, 0x4d, 0x27, 0x3d, 0xd5, 0xd6,
-	0xd4, 0xde, 0x0a, 0x2d, 0x70, 0x4f, 0xd1, 0x49, 0xdf, 0x58, 0x15, 0x32, 0x57, 0xdc, 0xfd, 0x06,
-	0xd1, 0xfd, 0x7f, 0x3a, 0x60, 0x17, 0x4d, 0x52, 0x16, 0xf1, 0xb4, 0x93, 0x82, 0x8b, 0xe3, 0x00,
-	0xb5, 0x35, 0x1d, 0x98, 0x70, 0xf8, 0xe2, 0x15, 0x3a, 0xe4, 0xb9, 0x2e, 0x13, 0xae, 0x66, 0x23,
-	0xe3, 0xe7, 0x7c, 0xe7, 0xe7, 0x65, 0xae, 0xcb, 0x2f, 0xd6, 0xce, 0x83, 0x9b, 0x9a, 0x82, 0xce,
-	0xc8, 0x50, 0x1e, 0x5a, 0x80, 0x9f, 0xa0, 0x71, 0xcc, 0x54, 0x3c, 0x3b, 0x98, 0xc3, 0xc5, 0x38,
-	0xb8, 0xd7, 0xd6, 0x14, 0x3e, 0x0b, 0x0d, 0xe5, 0x7e, 0x46, 0x27, 0xfb, 0x4d, 0xf0, 0x05, 0x3a,
-	0xfe, 0x9b, 0x8f, 0x31, 0x35, 0x5d, 0x3a, 0x5e, 0x9f, 0xa0, 0x67, 0x13, 0xf4, 0xde, 0xd8, 0x8a,
-	0xe0, 0x74, 0xd0, 0x1c, 0x69, 0x75, 0xfd, 0x93, 0xc2, 0x70, 0x77, 0x19, 0x3f, 0x45, 0xe3, 0x34,
-	0xc9, 0xf9, 0x6c, 0x64, 0x26, 0x3b, 0x6a, 0x6b, 0x6a, 0xf6, 0xa1, 0x59, 0x97, 0x2b, 0x34, 0xe9,
-	0xb2, 0xe1, 0x25, 0x7e, 0x81, 0xc6, 0x1d, 0xc2, 0x67, 0xbb, 0xb1, 0xf6, 0x7e, 0x87, 0x73, 0xfe,
-	0x3f, 0x3d, 0x84, 0x09, 0x82, 0xb7, 0xeb, 0x0d, 0x01, 0xb7, 0x1b, 0x02, 0xee, 0x36, 0x04, 0x7e,
-	0x6d, 0x08, 0xfc, 0xde, 0x10, 0x78, 0xd3, 0x10, 0xb8, 0x6e, 0x08, 0xfc, 0xd5, 0x10, 0xf8, 0xbb,
-	0x21, 0xe0, 0xae, 0x21, 0xf0, 0x7a, 0x4b, 0xc0, 0x7a, 0x4b, 0xc0, 0xed, 0x96, 0x80, 0xf7, 0x73,
-	0x91, 0xe8, 0xb8, 0x8a, 0xbc, 0x0f, 0x32, 0xf3, 0x45, 0xc9, 0x2e, 0x59, 0xce, 0xfc, 0x54, 0x5e,
-	0x25, 0xbe, 0x7d, 0x5b, 0xd1, 0xc4, 0xa8, 0x3d, 0xff, 0x13, 0x00, 0x00, 0xff, 0xff, 0x5c, 0x30,
-	0xfc, 0xe9, 0x6e, 0x02, 0x00, 0x00,
+	// 527 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x84, 0x53, 0xc1, 0x6e, 0xd3, 0x40,
+	0x10, 0xf5, 0x26, 0x6e, 0xda, 0x6e, 0x4a, 0xa9, 0x96, 0xb6, 0x18, 0xab, 0x5a, 0x47, 0x16, 0x87,
+	0x1c, 0xc0, 0x96, 0xc2, 0x81, 0x0b, 0x97, 0x58, 0x42, 0xea, 0xa1, 0x48, 0x95, 0x41, 0x20, 0x71,
+	0xdb, 0x34, 0x5b, 0xdb, 0xaa, 0xed, 0x35, 0xbb, 0x6b, 0xa4, 0xde, 0xf8, 0x84, 0xf2, 0x17, 0x7c,
+	0x01, 0xdf, 0xd0, 0x63, 0x8e, 0x15, 0x07, 0x43, 0x9c, 0x0b, 0xca, 0xa9, 0x9f, 0x80, 0xbc, 0xb6,
+	0x49, 0x28, 0x48, 0x5c, 0x36, 0x6f, 0x66, 0x67, 0xde, 0x7b, 0x99, 0x1d, 0xc3, 0x07, 0xd9, 0x45,
+	0xe0, 0x66, 0xb9, 0x08, 0xd5, 0xe1, 0x64, 0x9c, 0x49, 0x86, 0xb6, 0x62, 0x16, 0x28, 0x64, 0xee,
+	0x07, 0x2c, 0x60, 0x0a, 0xba, 0x15, 0xaa, 0xef, 0x4d, 0x2b, 0x60, 0x2c, 0x88, 0xa9, 0xab, 0xa2,
+	0x49, 0x7e, 0xee, 0xca, 0x28, 0xa1, 0x42, 0x92, 0x24, 0xab, 0x0b, 0xec, 0x77, 0xb0, 0x7f, 0x9a,
+	0x8b, 0xd0, 0xa7, 0x1f, 0x72, 0x2a, 0x24, 0x3a, 0x86, 0x9b, 0x42, 0x72, 0x4a, 0x12, 0x61, 0x80,
+	0x41, 0x77, 0xd8, 0x1f, 0x3d, 0x74, 0x5a, 0x05, 0xe7, 0xb5, 0xba, 0x18, 0x4f, 0x49, 0x26, 0x29,
+	0xf7, 0x0e, 0xbe, 0x15, 0x56, 0xaf, 0x4e, 0x2d, 0x0b, 0xab, 0xed, 0xf2, 0x5b, 0x60, 0xef, 0xc2,
+	0x9d, 0x9a, 0x58, 0x64, 0x2c, 0x15, 0xd4, 0xfe, 0x0c, 0xe0, 0xbd, 0x3f, 0x18, 0x90, 0x0d, 0x7b,
+	0x31, 0x99, 0xd0, 0xb8, 0x92, 0x02, 0xc3, 0x6d, 0x0f, 0x2e, 0x0b, 0xab, 0xc9, 0xf8, 0xcd, 0x2f,
+	0x1a, 0xc3, 0x4d, 0x9a, 0x4a, 0x1e, 0x51, 0x61, 0x74, 0x94, 0x9f, 0xc3, 0x95, 0x9f, 0x97, 0xa9,
+	0xe4, 0x97, 0xad, 0x9d, 0xfb, 0xd7, 0x85, 0xa5, 0x55, 0x46, 0x9a, 0x72, 0xbf, 0x05, 0xe8, 0x11,
+	0xd4, 0x43, 0x22, 0x42, 0xa3, 0x3b, 0x00, 0x43, 0xdd, 0xdb, 0x58, 0x16, 0x16, 0x78, 0xea, 0xab,
+	0x94, 0xfd, 0x02, 0xee, 0x9d, 0x54, 0x3a, 0xa7, 0x24, 0xe2, 0xad, 0x2b, 0x04, 0xf5, 0x94, 0x24,
+	0xb4, 0xf6, 0xe4, 0x2b, 0x8c, 0xf6, 0xe1, 0xc6, 0x47, 0x12, 0xe7, 0xd4, 0xe8, 0xa8, 0x64, 0x1d,
+	0xd8, 0x5f, 0x3b, 0x70, 0x67, 0xdd, 0x03, 0x3a, 0x86, 0xdb, 0xbf, 0xc7, 0xab, 0xfa, 0xfb, 0x23,
+	0xd3, 0xa9, 0x1f, 0xc0, 0x69, 0x1f, 0xc0, 0x79, 0xd3, 0x56, 0x78, 0xbb, 0x8d, 0xe5, 0x8e, 0x14,
+	0x57, 0xdf, 0x2d, 0xe0, 0xaf, 0x9a, 0xd1, 0x11, 0xd4, 0xe3, 0x28, 0x6d, 0xf4, 0xbc, 0xad, 0x65,
+	0x61, 0xa9, 0xd8, 0x57, 0x27, 0xca, 0x20, 0x12, 0x92, 0xe7, 0x67, 0x32, 0xe7, 0x74, 0xfa, 0x8a,
+	0x4a, 0x32, 0x25, 0x92, 0x18, 0x5d, 0x35, 0x1f, 0x73, 0x35, 0x9f, 0xbb, 0x7f, 0xcd, 0x7b, 0xdc,
+	0x08, 0x1e, 0xfd, 0xdd, 0xfd, 0x84, 0x25, 0x91, 0xa4, 0x49, 0x26, 0x2f, 0xfd, 0x7f, 0x70, 0xa3,
+	0x13, 0xd8, 0xcb, 0x08, 0x17, 0x74, 0x6a, 0xe8, 0xff, 0x55, 0x31, 0x1a, 0x95, 0xbd, 0xba, 0x63,
+	0x8d, 0xb9, 0xe1, 0x18, 0x8d, 0x61, 0xaf, 0x5a, 0x0d, 0xca, 0xd1, 0x73, 0xa8, 0x57, 0x08, 0x1d,
+	0xac, 0xf8, 0xd6, 0xb6, 0xd1, 0x3c, 0xbc, 0x9b, 0x6e, 0x76, 0x49, 0xf3, 0xde, 0xce, 0xe6, 0x58,
+	0xbb, 0x99, 0x63, 0xed, 0x76, 0x8e, 0xc1, 0xa7, 0x12, 0x83, 0x2f, 0x25, 0x06, 0xd7, 0x25, 0x06,
+	0xb3, 0x12, 0x83, 0x1f, 0x25, 0x06, 0x3f, 0x4b, 0xac, 0xdd, 0x96, 0x18, 0x5c, 0x2d, 0xb0, 0x36,
+	0x5b, 0x60, 0xed, 0x66, 0x81, 0xb5, 0xf7, 0x83, 0x20, 0x92, 0x61, 0x3e, 0x71, 0xce, 0x58, 0xe2,
+	0x06, 0x9c, 0x9c, 0x93, 0x94, 0xb8, 0x31, 0xbb, 0x88, 0xdc, 0xf6, 0xd3, 0x9a, 0xf4, 0x94, 0xda,
+	0xb3, 0x5f, 0x01, 0x00, 0x00, 0xff, 0xff, 0x7e, 0xaa, 0x57, 0xd3, 0x6d, 0x03, 0x00, 0x00,
 }
 
 func (this *PushRequest) Equal(that interface{}) bool {
@@ -340,6 +417,33 @@ func (this *StreamAdapter) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *LabelPairAdapter) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*LabelPairAdapter)
+	if !ok {
+		that2, ok := that.(LabelPairAdapter)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Name != that1.Name {
+		return false
+	}
+	if this.Value != that1.Value {
+		return false
+	}
+	return true
+}
 func (this *EntryAdapter) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -364,6 +468,22 @@ func (this *EntryAdapter) Equal(that interface{}) bool {
 	}
 	if this.Line != that1.Line {
 		return false
+	}
+	if len(this.StructuredMetadata) != len(that1.StructuredMetadata) {
+		return false
+	}
+	for i := range this.StructuredMetadata {
+		if !this.StructuredMetadata[i].Equal(&that1.StructuredMetadata[i]) {
+			return false
+		}
+	}
+	if len(this.Parsed) != len(that1.Parsed) {
+		return false
+	}
+	for i := range this.Parsed {
+		if !this.Parsed[i].Equal(&that1.Parsed[i]) {
+			return false
+		}
 	}
 	return true
 }
@@ -404,14 +524,39 @@ func (this *StreamAdapter) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *EntryAdapter) GoString() string {
+func (this *LabelPairAdapter) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
+	s = append(s, "&push.LabelPairAdapter{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *EntryAdapter) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
 	s = append(s, "&push.EntryAdapter{")
 	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
 	s = append(s, "Line: "+fmt.Sprintf("%#v", this.Line)+",\n")
+	if this.StructuredMetadata != nil {
+		vs := make([]*LabelPairAdapter, len(this.StructuredMetadata))
+		for i := range vs {
+			vs[i] = &this.StructuredMetadata[i]
+		}
+		s = append(s, "StructuredMetadata: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	if this.Parsed != nil {
+		vs := make([]*LabelPairAdapter, len(this.Parsed))
+		for i := range vs {
+			vs[i] = &this.Parsed[i]
+		}
+		s = append(s, "Parsed: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -613,6 +758,43 @@ func (m *StreamAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *LabelPairAdapter) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LabelPairAdapter) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LabelPairAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Value) > 0 {
+		i -= len(m.Value)
+		copy(dAtA[i:], m.Value)
+		i = encodeVarintPush(dAtA, i, uint64(len(m.Value)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintPush(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *EntryAdapter) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -633,6 +815,34 @@ func (m *EntryAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Parsed) > 0 {
+		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Parsed[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.StructuredMetadata) > 0 {
+		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.StructuredMetadata[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
 	if len(m.Line) > 0 {
 		i -= len(m.Line)
 		copy(dAtA[i:], m.Line)
@@ -708,6 +918,23 @@ func (m *StreamAdapter) Size() (n int) {
 	return n
 }
 
+func (m *LabelPairAdapter) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovPush(uint64(l))
+	}
+	l = len(m.Value)
+	if l > 0 {
+		n += 1 + l + sovPush(uint64(l))
+	}
+	return n
+}
+
 func (m *EntryAdapter) Size() (n int) {
 	if m == nil {
 		return 0
@@ -719,6 +946,18 @@ func (m *EntryAdapter) Size() (n int) {
 	l = len(m.Line)
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
+	}
+	if len(m.StructuredMetadata) > 0 {
+		for _, e := range m.StructuredMetadata {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	if len(m.Parsed) > 0 {
+		for _, e := range m.Parsed {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
 	}
 	return n
 }
@@ -765,13 +1004,36 @@ func (this *StreamAdapter) String() string {
 	}, "")
 	return s
 }
+func (this *LabelPairAdapter) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&LabelPairAdapter{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *EntryAdapter) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForStructuredMetadata := "[]LabelPairAdapter{"
+	for _, f := range this.StructuredMetadata {
+		repeatedStringForStructuredMetadata += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForStructuredMetadata += "}"
+	repeatedStringForParsed := "[]LabelPairAdapter{"
+	for _, f := range this.Parsed {
+		repeatedStringForParsed += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForParsed += "}"
 	s := strings.Join([]string{`&EntryAdapter{`,
 		`Timestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Line:` + fmt.Sprintf("%v", this.Line) + `,`,
+		`StructuredMetadata:` + repeatedStringForStructuredMetadata + `,`,
+		`Parsed:` + repeatedStringForParsed + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1062,6 +1324,123 @@ func (m *StreamAdapter) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *LabelPairAdapter) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPush
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LabelPairAdapter: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LabelPairAdapter: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Value = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPush(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *EntryAdapter) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1155,6 +1534,74 @@ func (m *EntryAdapter) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.Line = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.StructuredMetadata = append(m.StructuredMetadata, LabelPairAdapter{})
+			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Parsed", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Parsed = append(m.Parsed, LabelPairAdapter{})
+			if err := m.Parsed[len(m.Parsed)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

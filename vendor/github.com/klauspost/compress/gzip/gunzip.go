@@ -106,6 +106,7 @@ func (z *Reader) Reset(r io.Reader) error {
 	*z = Reader{
 		decompressor: z.decompressor,
 		multistream:  true,
+		br:           z.br,
 	}
 	if rr, ok := r.(flate.Reader); ok {
 		z.r = rr
@@ -237,6 +238,11 @@ func (z *Reader) readHeader() (hdr Header, err error) {
 		}
 	}
 
+	// Reserved FLG bits must be zero.
+	if flg>>5 != 0 {
+		return hdr, ErrHeader
+	}
+
 	z.digest = 0
 	if z.decompressor == nil {
 		z.decompressor = flate.NewReader(z.r)
@@ -288,10 +294,35 @@ func (z *Reader) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
-// Support the io.WriteTo interface for io.Copy and friends.
+type crcer interface {
+	io.Writer
+	Sum32() uint32
+	Reset()
+}
+type crcUpdater struct {
+	z *Reader
+}
+
+func (c *crcUpdater) Write(p []byte) (int, error) {
+	c.z.digest = crc32.Update(c.z.digest, crc32.IEEETable, p)
+	return len(p), nil
+}
+
+func (c *crcUpdater) Sum32() uint32 {
+	return c.z.digest
+}
+
+func (c *crcUpdater) Reset() {
+	c.z.digest = 0
+}
+
+// WriteTo support the io.WriteTo interface for io.Copy and friends.
 func (z *Reader) WriteTo(w io.Writer) (int64, error) {
 	total := int64(0)
-	crcWriter := crc32.NewIEEE()
+	crcWriter := crcer(crc32.NewIEEE())
+	if z.digest != 0 {
+		crcWriter = &crcUpdater{z: z}
+	}
 	for {
 		if z.err != nil {
 			if z.err == io.EOF {

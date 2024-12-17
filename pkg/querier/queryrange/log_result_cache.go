@@ -9,21 +9,22 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 // LogResultCacheMetrics is the metrics wrapper used in log result cache.
@@ -36,11 +37,11 @@ type LogResultCacheMetrics struct {
 func NewLogResultCacheMetrics(registerer prometheus.Registerer) *LogResultCacheMetrics {
 	return &LogResultCacheMetrics{
 		CacheHit: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_hit_total",
 		}),
 		CacheMiss: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
+			Namespace: constants.Loki,
 			Name:      "query_frontend_log_result_cache_miss_total",
 		}),
 	}
@@ -85,17 +86,17 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	if l.shouldCache != nil && !l.shouldCache(req) {
+	if l.shouldCache != nil && !l.shouldCache(ctx, req) {
 		return l.next.Do(ctx, req)
 	}
 
 	cacheFreshnessCapture := func(id string) time.Duration { return l.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	if req.GetEnd() > maxCacheTime {
+	if req.GetEnd().UnixMilli() > maxCacheTime {
 		return l.next.Do(ctx, req)
 	}
 
@@ -106,7 +107,8 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
 	// skip caching by if interval is unset
-	if interval == 0 {
+	// skip caching when limit is 0 as it would get registerted as empty result in the cache even if that time range contains log lines.
+	if interval == 0 || lokiReq.Limit == 0 {
 		return l.next.Do(ctx, req)
 	}
 	// The first subquery might not be aligned.
@@ -123,6 +125,9 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	cacheKey := fmt.Sprintf("log:%s:%s:%d:%d", tenant.JoinTenantIDs(transformedTenantIDs), req.GetQuery(), interval.Nanoseconds(), alignedStart.UnixNano()/(interval.Nanoseconds()))
+	if httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) == "true" {
+		cacheKey = "pipeline-disabled:" + cacheKey
+	}
 
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
 	if err != nil {
@@ -181,83 +186,101 @@ func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *L
 func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedRequest *LokiRequest, lokiReq *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheHit.Inc()
 	// we start with an empty response
-	result := emptyResponse(cachedRequest)
+	result := emptyResponse(lokiReq)
 	// if the request is the same and cover the whole time range,
 	// we can just return the cached result.
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
 		return result, nil
 	}
-	// we could be missing data at the start and the end.
-	// so we're going to fetch what is missing.
-	var (
-		startRequest, endRequest *LokiRequest
-		startResp, endResp       *LokiResponse
-		updateCache              bool
-		ok                       bool
-	)
-	g, ctx := errgroup.WithContext(ctx)
 
-	// if we're missing data at the start, start fetching from the start to the cached start.
-	if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
-		g.Go(func() error {
-			startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedRequest.GetStartTs())
-			resp, err := l.next.Do(ctx, startRequest)
-			if err != nil {
-				return err
-			}
-			startResp, ok = resp.(*LokiResponse)
-			if !ok {
-				return fmt.Errorf("unexpected response type %T", resp)
-			}
-			return nil
-		})
-	}
-
-	// if we're missing data at the end, start fetching from the cached end to the end.
-	if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
-		g.Go(func() error {
-			endRequest = lokiReq.WithStartEndTime(cachedRequest.GetEndTs(), lokiReq.GetEndTs())
-			resp, err := l.next.Do(ctx, endRequest)
-			if err != nil {
-				return err
-			}
-			endResp, ok = resp.(*LokiResponse)
-			if !ok {
-				return fmt.Errorf("unexpected response type %T", resp)
-			}
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	// if we have data at the start, we need to merge it with the cached data if it's empty and update the cache.
-	// If it's not empty only merge the response.
-	if startResp != nil {
-		if isEmpty(startResp) {
-			cachedRequest = cachedRequest.WithStartEndTime(startRequest.GetStartTs(), cachedRequest.GetEndTs())
-			updateCache = true
-		} else {
-			if startResp.Status != loghttp.QueryStatusSuccess {
-				return startResp, nil
-			}
-			result = mergeLokiResponse(extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), startResp), result)
+	updateCache := false
+	// if the query does not overlap cached interval, do not try to fill the gap since it requires extending the queries beyond what is requested in the query.
+	// Extending the queries beyond what is requested could result in empty responses due to response limit set in the queries.
+	if !overlap(lokiReq.StartTs, lokiReq.EndTs, cachedRequest.StartTs, cachedRequest.EndTs) {
+		resp, err := l.next.Do(ctx, lokiReq)
+		if err != nil {
+			return nil, err
 		}
-	}
+		result = resp.(*LokiResponse)
 
-	// if we have data at the end, we need to merge it with the cached data if it's empty and update the cache.
-	// If it's not empty only merge the response.
-	if endResp != nil {
-		if isEmpty(endResp) {
-			cachedRequest = cachedRequest.WithStartEndTime(cachedRequest.GetStartTs(), endRequest.GetEndTs())
+		// if the response is empty and the query is larger than what is cached, update the cache
+		if isEmpty(result) && (lokiReq.EndTs.UnixNano()-lokiReq.StartTs.UnixNano() > cachedRequest.EndTs.UnixNano()-cachedRequest.StartTs.UnixNano()) {
+			cachedRequest = cachedRequest.WithStartEnd(lokiReq.GetStartTs(), lokiReq.GetEndTs()).(*LokiRequest)
 			updateCache = true
-		} else {
-			if endResp.Status != loghttp.QueryStatusSuccess {
-				return endResp, nil
+		}
+	} else {
+		// we could be missing data at the start and the end.
+		// so we're going to fetch what is missing.
+		var (
+			startRequest, endRequest *LokiRequest
+			startResp, endResp       *LokiResponse
+		)
+		g, ctx := errgroup.WithContext(ctx)
+
+		// if we're missing data at the start, start fetching from the start to the cached start.
+		if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
+			g.Go(func() error {
+				startRequest = lokiReq.WithStartEnd(lokiReq.GetStartTs(), cachedRequest.GetStartTs()).(*LokiRequest)
+				resp, err := l.next.Do(ctx, startRequest)
+				if err != nil {
+					return err
+				}
+				var ok bool
+				startResp, ok = resp.(*LokiResponse)
+				if !ok {
+					return fmt.Errorf("unexpected response type %T", resp)
+				}
+				return nil
+			})
+		}
+
+		// if we're missing data at the end, start fetching from the cached end to the end.
+		if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
+			g.Go(func() error {
+				endRequest = lokiReq.WithStartEnd(cachedRequest.GetEndTs(), lokiReq.GetEndTs()).(*LokiRequest)
+				resp, err := l.next.Do(ctx, endRequest)
+				if err != nil {
+					return err
+				}
+				var ok bool
+				endResp, ok = resp.(*LokiResponse)
+				if !ok {
+					return fmt.Errorf("unexpected response type %T", resp)
+				}
+				return nil
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			return nil, err
+		}
+
+		// if we have data at the start, we need to merge it with the cached data if it's empty and update the cache.
+		// If it's not empty only merge the response.
+		if startResp != nil {
+			if isEmpty(startResp) {
+				cachedRequest = cachedRequest.WithStartEnd(startRequest.GetStartTs(), cachedRequest.GetEndTs()).(*LokiRequest)
+				updateCache = true
+			} else {
+				if startResp.Status != loghttp.QueryStatusSuccess {
+					return startResp, nil
+				}
+				result = mergeLokiResponse(startResp, result)
 			}
-			result = mergeLokiResponse(extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), endResp), result)
+		}
+
+		// if we have data at the end, we need to merge it with the cached data if it's empty and update the cache.
+		// If it's not empty only merge the response.
+		if endResp != nil {
+			if isEmpty(endResp) {
+				cachedRequest = cachedRequest.WithStartEnd(cachedRequest.GetStartTs(), endRequest.GetEndTs()).(*LokiRequest)
+				updateCache = true
+			} else {
+				if endResp.Status != loghttp.QueryStatusSuccess {
+					return endResp, nil
+				}
+				result = mergeLokiResponse(endResp, result)
+			}
 		}
 	}
 
@@ -332,4 +355,12 @@ func emptyResponse(lokiReq *LokiRequest) *LokiResponse {
 			Result:     []logproto.Stream{},
 		},
 	}
+}
+
+func overlap(aFrom, aThrough, bFrom, bThrough time.Time) bool {
+	if aFrom.After(bThrough) || bFrom.After(aThrough) {
+		return false
+	}
+
+	return true
 }

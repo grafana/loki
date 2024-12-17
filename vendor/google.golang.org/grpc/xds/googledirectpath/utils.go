@@ -21,9 +21,10 @@ package googledirectpath
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -47,7 +48,7 @@ func getFromMetadata(timeout time.Duration, urlStr string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("metadata server returned resp with non-OK: %v", resp)
 	}
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed reading from metadata server: %v", err)
 	}
@@ -85,9 +86,13 @@ var (
 // Defined as var to be overridden in tests.
 var getIPv6Capable = func(timeout time.Duration) bool {
 	ipv6CapableOnce.Do(func() {
-		_, err := getFromMetadata(timeout, ipv6URL)
+		addr, err := getFromMetadata(timeout, ipv6URL)
 		if err != nil {
 			logger.Warningf("could not discover ipv6 capability: %v", err)
+			return
+		}
+		if trimmedAddr := strings.TrimSpace(string(addr)); trimmedAddr == "" {
+			logger.Warningf("metadata server returned empty ipv6 address")
 			return
 		}
 		ipv6Capable = true

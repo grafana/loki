@@ -27,8 +27,8 @@ func TestStreamRateCalculator(t *testing.T) {
 		})
 
 		if len(rates) > 1 {
-			return rates[0].Tenant == "tenant 1" && rates[0].Rate == 10000 &&
-				rates[1].Tenant == "tenant 2" && rates[1].Rate == 10000
+			return rates[0].Tenant == "tenant 1" && rates[0].Rate == 10000 && rates[0].Pushes == 100 &&
+				rates[1].Tenant == "tenant 2" && rates[1].Rate == 10000 && rates[1].Pushes == 100
 		}
 
 		return false

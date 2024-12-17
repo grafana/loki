@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	lokiutil "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testTimestampYaml = `
@@ -174,7 +174,6 @@ func TestTimestampValidation(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			parser, err := validateTimestampConfig(test.config)
@@ -295,7 +294,6 @@ func TestTimestampStage_Process(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			st, err := newTimestampStage(util_log.Logger, test.config)
@@ -431,8 +429,6 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 

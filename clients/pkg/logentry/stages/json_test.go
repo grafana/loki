@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testJSONYamlSingleStageWithoutSource = `
@@ -78,8 +78,6 @@ func TestPipeline_JSON(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -179,7 +177,6 @@ func TestJSONConfig_validate(t *testing.T) {
 		},
 	}
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			c, err := parseJSONConfig(tt.config)
 			assert.NoError(t, err, "failed to create config: %s", err)
@@ -339,7 +336,6 @@ func TestJSONParser_Parse(t *testing.T) {
 		},
 	}
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			p, err := New(util_log.Logger, nil, StageTypeJSON, tt.config, nil)

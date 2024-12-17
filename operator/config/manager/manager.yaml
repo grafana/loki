@@ -25,11 +25,6 @@ spec:
         ports:
         - containerPort: 8080
           name: metrics
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-              - ALL
         livenessProbe:
           httpGet:
             path: /healthz
@@ -44,6 +39,5 @@ spec:
           periodSeconds: 10
       nodeSelector:
         kubernetes.io/os: linux
+      serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10
-      securityContext:
-        runAsNonRoot: true

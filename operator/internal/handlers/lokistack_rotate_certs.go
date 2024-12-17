@@ -6,20 +6,19 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
-
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/certrotation"
-	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/handlers/internal/certificates"
-	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/status"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/certrotation"
+	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/handlers/internal/certificates"
+	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/status"
 )
 
 // CreateOrRotateCertificates handles the LokiStack client and serving certificate creation and rotation

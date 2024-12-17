@@ -13,16 +13,14 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/go-logfmt/logfmt"
+	dslog "github.com/grafana/dskit/log"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/logging"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 
-	"github.com/grafana/loki/pkg/util"
-
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 var (
@@ -268,9 +266,9 @@ func (l *loki) createLine(records map[string]interface{}, f format) (string, err
 	}
 }
 
-func newLogger(logLevel logging.Level) log.Logger {
+func newLogger(logLevel dslog.Level) log.Logger {
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
-	logger = level.NewFilter(logger, util.LogFilter(logLevel.String()))
+	logger = level.NewFilter(logger, logLevel.Option)
 	logger = log.With(logger, "caller", log.Caller(3))
 	return logger
 }

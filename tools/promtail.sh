@@ -5,7 +5,7 @@ APIKEY="${2:-}"
 INSTANCEURL="${3:-}"
 NAMESPACE="${4:-default}"
 CONTAINERROOT="${5:-/var/lib/docker}"
-PARSER="${6:-- docker:}"
+PARSER="${6:-- cri: {}}"
 VERSION="${PROMTAIL_VERSION:-2.7.1}"
 
 if [ -z "${INSTANCEID}" ] || [ -z "${APIKEY}" ] || [ -z "${INSTANCEURL}" ] || [ -z "${NAMESPACE}" ] || [ -z "${CONTAINERROOT}" ] || [ -z "${PARSER}" ]; then

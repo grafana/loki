@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 var defaultBackOff = backoff.Config{
@@ -101,7 +101,7 @@ func (c *consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim saram
 }
 
 // Setup is run at the beginning of a new session, before ConsumeClaim
-func (c *consumer) Setup(session sarama.ConsumerGroupSession) error {
+func (c *consumer) Setup(_ sarama.ConsumerGroupSession) error {
 	c.resetTargets()
 	return nil
 }

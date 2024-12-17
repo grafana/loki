@@ -4,25 +4,27 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	corev1 "k8s.io/api/core/v1"
-
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 const (
-	envRelatedImageOPA      = "RELATED_IMAGE_OPA"
-	defaultOPAImage         = "quay.io/observatorium/opa-openshift:latest"
-	opaContainerName        = "opa"
-	opaDefaultPackage       = "lokistack"
-	opaDefaultAPIGroup      = "loki.grafana.com"
-	opaMetricsPortName      = "opa-metrics"
-	opaDefaultLabelMatcher  = "kubernetes_namespace_name"
-	opaNetworkLabelMatchers = "SrcK8S_Namespace,DstK8S_Namespace"
+	envRelatedImageOPA        = "RELATED_IMAGE_OPA"
+	defaultOPAImage           = "quay.io/observatorium/opa-openshift:latest"
+	opaContainerName          = "opa"
+	opaDefaultPackage         = "lokistack"
+	opaDefaultAPIGroup        = "loki.grafana.com"
+	opaMetricsPortName        = "opa-metrics"
+	opaDefaultLabelMatcher    = "kubernetes_namespace_name"
+	opaNetworkLabelMatchers   = "SrcK8S_Namespace,DstK8S_Namespace"
+	ocpMonitoringGroupByLabel = "namespace"
 )
 
-func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool) corev1.Container {
+func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool, adminGroups []string) corev1.Container {
 	var (
 		image        string
 		args         []string
@@ -38,12 +40,15 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 	uriScheme = corev1.URISchemeHTTP
 	args = []string{
 		"--log.level=warn",
-		"--opa.skip-tenants=audit,infrastructure",
-		"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
 		fmt.Sprintf("--web.internal.listen=:%d", GatewayOPAInternalPort),
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),
+		"--opa.skip-tenants=audit,infrastructure",
 		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
+	}
+
+	if len(adminGroups) > 0 {
+		args = append(args, fmt.Sprintf("--opa.admin-groups=%s", strings.Join(adminGroups, ",")))
 	}
 
 	if mode != lokiv1.OpenshiftNetwork {

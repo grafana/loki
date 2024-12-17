@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/url"
@@ -126,6 +125,9 @@ type TokenRefreshCallback func(Token) error
 
 // TokenRefresh is a type representing a custom callback to refresh a token
 type TokenRefresh func(ctx context.Context, resource string) (*Token, error)
+
+// JWTCallback is the type representing callback that will be called to get the federated OIDC JWT
+type JWTCallback func() (string, error)
 
 // Token encapsulates the access token used to authorize Azure requests.
 // https://docs.microsoft.com/en-us/azure/active-directory/develop/v1-oauth2-client-creds-grant-flow#service-to-service-access-token-response
@@ -367,14 +369,18 @@ func (secret ServicePrincipalAuthorizationCodeSecret) MarshalJSON() ([]byte, err
 
 // ServicePrincipalFederatedSecret implements ServicePrincipalSecret for Federated JWTs.
 type ServicePrincipalFederatedSecret struct {
-	jwt string
+	jwtCallback JWTCallback
 }
 
 // SetAuthenticationValues is a method of the interface ServicePrincipalSecret.
 // It will populate the form submitted during OAuth Token Acquisition using a JWT signed by an OIDC issuer.
-func (secret *ServicePrincipalFederatedSecret) SetAuthenticationValues(spt *ServicePrincipalToken, v *url.Values) error {
+func (secret *ServicePrincipalFederatedSecret) SetAuthenticationValues(_ *ServicePrincipalToken, v *url.Values) error {
+	jwt, err := secret.jwtCallback()
+	if err != nil {
+		return err
+	}
 
-	v.Set("client_assertion", secret.jwt)
+	v.Set("client_assertion", jwt)
 	v.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 	return nil
 }
@@ -687,6 +693,8 @@ func NewServicePrincipalTokenFromAuthorizationCode(oauthConfig OAuthConfig, clie
 }
 
 // NewServicePrincipalTokenFromFederatedToken creates a ServicePrincipalToken from the supplied federated OIDC JWT.
+//
+// Deprecated: Use NewServicePrincipalTokenFromFederatedTokenWithCallback to refresh jwt dynamically.
 func NewServicePrincipalTokenFromFederatedToken(oauthConfig OAuthConfig, clientID string, jwt string, resource string, callbacks ...TokenRefreshCallback) (*ServicePrincipalToken, error) {
 	if err := validateOAuthConfig(oauthConfig); err != nil {
 		return nil, err
@@ -700,12 +708,37 @@ func NewServicePrincipalTokenFromFederatedToken(oauthConfig OAuthConfig, clientI
 	if jwt == "" {
 		return nil, fmt.Errorf("parameter 'jwt' cannot be empty")
 	}
+	return NewServicePrincipalTokenFromFederatedTokenCallback(
+		oauthConfig,
+		clientID,
+		func() (string, error) {
+			return jwt, nil
+		},
+		resource,
+		callbacks...,
+	)
+}
+
+// NewServicePrincipalTokenFromFederatedTokenCallback creates a ServicePrincipalToken from the supplied federated OIDC JWTCallback.
+func NewServicePrincipalTokenFromFederatedTokenCallback(oauthConfig OAuthConfig, clientID string, jwtCallback JWTCallback, resource string, callbacks ...TokenRefreshCallback) (*ServicePrincipalToken, error) {
+	if err := validateOAuthConfig(oauthConfig); err != nil {
+		return nil, err
+	}
+	if err := validateStringParam(clientID, "clientID"); err != nil {
+		return nil, err
+	}
+	if err := validateStringParam(resource, "resource"); err != nil {
+		return nil, err
+	}
+	if jwtCallback == nil {
+		return nil, fmt.Errorf("parameter 'jwtCallback' cannot be empty")
+	}
 	return NewServicePrincipalTokenWithSecret(
 		oauthConfig,
 		clientID,
 		resource,
 		&ServicePrincipalFederatedSecret{
-			jwt: jwt,
+			jwtCallback: jwtCallback,
 		},
 		callbacks...,
 	)
@@ -1027,7 +1060,7 @@ func (spt *ServicePrincipalToken) refreshInternal(ctx context.Context, resource 
 			} else if msiSecret.clientResourceID != "" {
 				data.Set("msi_res_id", msiSecret.clientResourceID)
 			}
-			req.Body = ioutil.NopCloser(strings.NewReader(data.Encode()))
+			req.Body = io.NopCloser(strings.NewReader(data.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			break
 		case msiTypeIMDS:
@@ -1062,7 +1095,7 @@ func (spt *ServicePrincipalToken) refreshInternal(ctx context.Context, resource 
 		}
 
 		s := v.Encode()
-		body := ioutil.NopCloser(strings.NewReader(s))
+		body := io.NopCloser(strings.NewReader(s))
 		req.ContentLength = int64(len(s))
 		req.Header.Set(contentType, mimeTypeFormPost)
 		req.Body = body
@@ -1079,7 +1112,7 @@ func (spt *ServicePrincipalToken) refreshInternal(ctx context.Context, resource 
 
 	logger.Instance.WriteResponse(resp, logger.Filter{Body: authBodyFilter})
 	defer resp.Body.Close()
-	rb, err := ioutil.ReadAll(resp.Body)
+	rb, err := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		if err != nil {
@@ -1201,7 +1234,7 @@ func retryForIMDS(sender Sender, req *http.Request, maxAttempts int) (resp *http
 
 	for attempt < maxAttempts {
 		if resp != nil && resp.Body != nil {
-			io.Copy(ioutil.Discard, resp.Body)
+			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 		}
 		resp, err = sender.Do(req)

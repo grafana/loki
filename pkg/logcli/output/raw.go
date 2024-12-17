@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
 // RawOutput prints logs in their original form, without any metadata
@@ -22,7 +22,7 @@ func NewRaw(writer io.Writer, options *LogOutputOptions) LogOutput {
 }
 
 // Format a log entry as is
-func (o *RawOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) {
+func (o *RawOutput) FormatAndPrintln(_ time.Time, _ loghttp.LabelSet, _ int, line string) {
 	if len(line) > 0 && line[len(line)-1] == '\n' {
 		line = line[:len(line)-1]
 	}

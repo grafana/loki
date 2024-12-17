@@ -41,18 +41,17 @@ func (s State) String() string {
 //
 // State diagram for the service:
 //
-//       ┌────────────────────────────────────────────────────────────────────┐
-//       │                                                                    │
-//       │                                                                    ▼
-//    ┌─────┐      ┌──────────┐      ┌─────────┐     ┌──────────┐      ┌────────────┐
-//    │ New │─────▶│ Starting │─────▶│ Running │────▶│ Stopping │───┬─▶│ Terminated │
-//    └─────┘      └──────────┘      └─────────┘     └──────────┘   │  └────────────┘
-//                       │                                          │
-//                       │                                          │
-//                       │                                          │   ┌────────┐
-//                       └──────────────────────────────────────────┴──▶│ Failed │
-//                                                                      └────────┘
-//
+//	   ┌────────────────────────────────────────────────────────────────────┐
+//	   │                                                                    │
+//	   │                                                                    ▼
+//	┌─────┐      ┌──────────┐      ┌─────────┐     ┌──────────┐      ┌────────────┐
+//	│ New │─────▶│ Starting │─────▶│ Running │────▶│ Stopping │───┬─▶│ Terminated │
+//	└─────┘      └──────────┘      └─────────┘     └──────────┘   │  └────────────┘
+//	                   │                                          │
+//	                   │                                          │
+//	                   │                                          │   ┌────────┐
+//	                   └──────────────────────────────────────────┴──▶│ Failed │
+//	                                                                  └────────┘
 type Service interface {
 	// StartAsync starts Service asynchronously. Service must be in New State, otherwise error is returned.
 	// Context is used as a parent context for service own context.
@@ -92,7 +91,10 @@ type Service interface {
 	// as the service enters those states. Additionally, at most one of the listener's callbacks will execute
 	// at once. However, multiple listeners' callbacks may execute concurrently, and listeners may execute
 	// in an order different from the one in which they were registered.
-	AddListener(listener Listener)
+	//
+	// Returned function can be used to stop the listener from receiving additional events from the service,
+	// and release resources used by the listener (e.g. goroutine, if it was started by adding listener).
+	AddListener(listener Listener) func()
 }
 
 // NamedService extends Service with a name.

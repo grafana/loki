@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -18,7 +18,7 @@ func TestCacheGenNumberHeaderSetterMiddleware(t *testing.T) {
 	loader := &fakeGenNumberLoader{genNumber: "test-header-value"}
 
 	mware := CacheGenNumberHeaderSetterMiddleware(loader).
-		Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {}))
+		Wrap(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	mware.ServeHTTP(w, req)
 
 	assert.Equal(t, w.Header().Get(ResultsCacheGenNumberHeaderName), "test-header-value")
@@ -28,7 +28,7 @@ type fakeGenNumberLoader struct {
 	genNumber string
 }
 
-func (l *fakeGenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
+func (l *fakeGenNumberLoader) GetResultsCacheGenNumber(_ []string) string {
 	return l.genNumber
 }
 

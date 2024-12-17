@@ -8,9 +8,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 )
 
 // TargetManager manages a series of windows event targets.
@@ -18,10 +18,10 @@ type TargetManager struct{}
 
 // NewTargetManager creates a new Windows managers.
 func NewTargetManager(
-	reg prometheus.Registerer,
+	_ prometheus.Registerer,
 	logger log.Logger,
-	client api.EntryHandler,
-	scrapeConfigs []scrapeconfig.Config,
+	_ api.EntryHandler,
+	_ []scrapeconfig.Config,
 ) (*TargetManager, error) {
 	level.Warn(logger).Log("msg", "WARNING!!! Windows target was configured but support for reading the windows event is not compiled into this build of promtail!")
 	return &TargetManager{}, nil

@@ -12,12 +12,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type ResponsesComparator interface {
-	Compare(expected, actual []byte) error
+	Compare(expected, actual []byte) (*ComparisonSummary, error)
+}
+
+type ComparisonSummary struct {
+	missingMetrics int
 }
 
 type ProxyEndpoint struct {
@@ -26,6 +28,8 @@ type ProxyEndpoint struct {
 	logger     log.Logger
 	comparator ResponsesComparator
 
+	instrumentCompares bool
+
 	// Whether for this endpoint there's a preferred backend configured.
 	hasPreferredBackend bool
 
@@ -33,7 +37,7 @@ type ProxyEndpoint struct {
 	routeName string
 }
 
-func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparator) *ProxyEndpoint {
+func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *ProxyMetrics, logger log.Logger, comparator ResponsesComparator, instrumentCompares bool) *ProxyEndpoint {
 	hasPreferredBackend := false
 	for _, backend := range backends {
 		if backend.preferred {
@@ -49,6 +53,7 @@ func NewProxyEndpoint(backends []*ProxyBackend, routeName string, metrics *Proxy
 		logger:              logger,
 		comparator:          comparator,
 		hasPreferredBackend: hasPreferredBackend,
+		instrumentCompares:  instrumentCompares,
 	}
 }
 
@@ -104,17 +109,20 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 	wg.Add(len(p.backends))
 	for i, b := range p.backends {
-		i := i
-		b := b
-
 		go func() {
 			defer wg.Done()
 			var (
 				bodyReader io.ReadCloser
 				start      = time.Now()
+				lvl        = level.Debug
 			)
 			if len(body) > 0 {
 				bodyReader = io.NopCloser(bytes.NewReader(body))
+			}
+
+			if b.filter != nil && !b.filter.Match([]byte(r.URL.String())) {
+				lvl(p.logger).Log("msg", "Skipping non-preferred backend", "path", r.URL.Path, "query", query, "backend", b.name)
+				return
 			}
 
 			status, body, err := b.ForwardRequest(r, bodyReader)
@@ -128,7 +136,6 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			}
 
 			// Log with a level based on the backend response.
-			lvl := level.Debug
 			if !res.succeeded() {
 				lvl = level.Warn
 			}
@@ -168,15 +175,18 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			actualResponse := responses[i]
 
 			result := comparisonSuccess
-			err := p.compareResponses(expectedResponse, actualResponse)
+			summary, err := p.compareResponses(expectedResponse, actualResponse)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "response comparison failed",
+				level.Error(p.logger).Log("msg", "response comparison failed",
 					"backend-name", p.backends[i].name,
 					"route-name", p.routeName,
 					"query", r.URL.RawQuery, "err", err)
 				result = comparisonFailed
 			}
 
+			if p.instrumentCompares && summary != nil {
+				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Observe(float64(summary.missingMetrics))
+			}
 			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Inc()
 		}
 	}
@@ -217,18 +227,18 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *backendResp
 	return responses[0]
 }
 
-func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse) error {
+func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse) (*ComparisonSummary, error) {
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
-		return fmt.Errorf("skipped comparison of response because we got status code %d from preferred backend's response", expectedResponse.status)
+		return nil, fmt.Errorf("skipped comparison of response because we got status code %d from preferred backend's response", expectedResponse.status)
 	}
 
 	if actualResponse.status != 200 {
-		return fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
+		return nil, fmt.Errorf("skipped comparison of response because we got status code %d from secondary backend's response", actualResponse.status)
 	}
 
 	if expectedResponse.status != actualResponse.status {
-		return fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
+		return nil, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
 	}
 
 	return p.comparator.Compare(expectedResponse.body, actualResponse.body)

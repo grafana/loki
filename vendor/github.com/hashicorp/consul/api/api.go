@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -7,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -114,6 +118,13 @@ type QueryOptions struct {
 	// Note: Partitions are available only in Consul Enterprise
 	Partition string
 
+	// SamenessGroup is used find the SamenessGroup in the given
+	// Partition and will find the failover order for the Service
+	// from the SamenessGroup Members, with the given Partition being
+	// the first member.
+	// Note: SamenessGroups are available only in Consul Enterprise
+	SamenessGroup string
+
 	// Providing a datacenter overwrites the DC provided
 	// by the Config
 	Datacenter string
@@ -206,6 +217,10 @@ type QueryOptions struct {
 	// This can be used to ensure a full service definition is returned in the response
 	// especially when the service might not be written into the catalog that way.
 	MergeCentralConfig bool
+
+	// Global is used to request information from all datacenters. Currently only
+	// used for operator usage requests.
+	Global bool
 }
 
 func (o *QueryOptions) Context() context.Context {
@@ -750,20 +765,35 @@ func NewClient(config *Config) (*Client, error) {
 	// If the TokenFile is set, always use that, even if a Token is configured.
 	// This is because when TokenFile is set it is read into the Token field.
 	// We want any derived clients to have to re-read the token file.
-	if config.TokenFile != "" {
+	// The precedence of ACL token should be:
+	// 1. -token-file cli option
+	// 2. -token cli option
+	// 3. CONSUL_HTTP_TOKEN_FILE environment variable
+	// 4. CONSUL_HTTP_TOKEN environment variable
+	if config.TokenFile != "" && config.TokenFile != defConfig.TokenFile {
 		data, err := os.ReadFile(config.TokenFile)
 		if err != nil {
-			return nil, fmt.Errorf("Error loading token file: %s", err)
+			return nil, fmt.Errorf("Error loading token file %s : %s", config.TokenFile, err)
 		}
 
 		if token := strings.TrimSpace(string(data)); token != "" {
 			config.Token = token
 		}
-	}
-	if config.Token == "" {
+	} else if config.Token != "" && defConfig.Token != config.Token {
+		// Fall through
+	} else if defConfig.TokenFile != "" {
+		data, err := os.ReadFile(defConfig.TokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("Error loading token file %s : %s", defConfig.TokenFile, err)
+		}
+
+		if token := strings.TrimSpace(string(data)); token != "" {
+			config.Token = token
+			config.TokenFile = defConfig.TokenFile
+		}
+	} else {
 		config.Token = defConfig.Token
 	}
-
 	return &Client{config: *config, headers: make(http.Header)}, nil
 }
 
@@ -814,12 +844,27 @@ func (r *request) setQueryOptions(q *QueryOptions) {
 		return
 	}
 	if q.Namespace != "" {
+		// For backwards-compatibility with existing tests,
+		// use the short-hand query param name "ns"
+		// rather than the alternative long-hand "namespace"
 		r.params.Set("ns", q.Namespace)
 	}
 	if q.Partition != "" {
+		// For backwards-compatibility with existing tests,
+		// use the long-hand query param name "partition"
+		// rather than the alternative short-hand "ap"
 		r.params.Set("partition", q.Partition)
 	}
+	if q.SamenessGroup != "" {
+		// For backwards-compatibility with existing tests,
+		// use the long-hand query param name "sameness-group"
+		// rather than the alternative short-hand "sg"
+		r.params.Set("sameness-group", q.SamenessGroup)
+	}
 	if q.Datacenter != "" {
+		// For backwards-compatibility with existing tests,
+		// use the short-hand query param name "dc"
+		// rather than the alternative long-hand "datacenter"
 		r.params.Set("dc", q.Datacenter)
 	}
 	if q.Peer != "" {
@@ -880,6 +925,9 @@ func (r *request) setQueryOptions(q *QueryOptions) {
 	if q.MergeCentralConfig {
 		r.params.Set("merge-central-config", "")
 	}
+	if q.Global {
+		r.params.Set("global", "")
+	}
 
 	r.ctx = q.ctx
 }
@@ -924,12 +972,16 @@ func (r *request) setWriteOptions(q *WriteOptions) {
 	if q == nil {
 		return
 	}
+	// For backwards-compatibility, continue to use the shorthand "ns"
+	// rather than "namespace"
 	if q.Namespace != "" {
 		r.params.Set("ns", q.Namespace)
 	}
 	if q.Partition != "" {
 		r.params.Set("partition", q.Partition)
 	}
+	// For backwards-compatibility, continue to use the shorthand "dc"
+	// rather than "datacenter"
 	if q.Datacenter != "" {
 		r.params.Set("dc", q.Datacenter)
 	}
@@ -960,6 +1012,19 @@ func (r *request) toHTTP() (*http.Request, error) {
 	req, err := http.NewRequest(r.method, r.url.RequestURI(), r.body)
 	if err != nil {
 		return nil, err
+	}
+
+	// validate that socket communications that do not use the host, detect
+	// slashes in the host name and replace it with local host.
+	// this is required since go started validating req.host in 1.20.6 and 1.19.11.
+	// prior to that they would strip out the slashes for you.  They removed that
+	// behavior and added more strict validation as part of a CVE.
+	// This issue is being tracked by the Go team:
+	// https://github.com/golang/go/issues/61431
+	// If there is a resolution in this issue, we will remove this code.
+	// In the time being, this is the accepted workaround.
+	if strings.HasPrefix(r.url.Host, "/") {
+		r.url.Host = "localhost"
 	}
 
 	req.URL.Host = r.url.Host
@@ -1078,6 +1143,23 @@ func (c *Client) write(endpoint string, in, out interface{}, q *WriteOptions) (*
 	return wm, nil
 }
 
+// delete is used to do a DELETE request against an endpoint
+func (c *Client) delete(endpoint string, q *QueryOptions) (*WriteMeta, error) {
+	r := c.newRequest("DELETE", endpoint)
+	r.setQueryOptions(q)
+	rtt, resp, err := c.doRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	defer closeResponseBody(resp)
+	if err = requireHttpCodes(resp, 204, 200); err != nil {
+		return nil, err
+	}
+
+	wm := &WriteMeta{RequestTime: rtt}
+	return wm, nil
+}
+
 // parseQueryMeta is used to help parse query meta-data
 //
 // TODO(rb): bug? the error from this function is never handled
@@ -1099,6 +1181,9 @@ func parseQueryMeta(resp *http.Response, q *QueryMeta) error {
 	last, err := strconv.ParseUint(header.Get("X-Consul-LastContact"), 10, 64)
 	if err != nil {
 		return fmt.Errorf("Failed to parse X-Consul-LastContact: %v", err)
+	}
+	if last > math.MaxInt64 {
+		return fmt.Errorf("X-Consul-LastContact Header value is out of range: %d", last)
 	}
 	q.LastContact = time.Duration(last) * time.Millisecond
 
@@ -1140,6 +1225,9 @@ func parseQueryMeta(resp *http.Response, q *QueryMeta) error {
 		age, err := strconv.ParseUint(ageStr, 10, 64)
 		if err != nil {
 			return fmt.Errorf("Failed to parse Age Header: %v", err)
+		}
+		if age > math.MaxInt64 {
+			return fmt.Errorf("Age Header value is out of range: %d", last)
 		}
 		q.CacheAge = time.Duration(age) * time.Second
 	}

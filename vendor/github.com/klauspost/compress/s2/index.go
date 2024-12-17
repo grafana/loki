@@ -17,6 +17,8 @@ const (
 	S2IndexHeader   = "s2idx\x00"
 	S2IndexTrailer  = "\x00xdi2s"
 	maxIndexEntries = 1 << 16
+	// If distance is less than this, we do not add the entry.
+	minIndexDist = 1 << 20
 )
 
 // Index represents an S2/Snappy index.
@@ -72,6 +74,10 @@ func (i *Index) add(compressedOffset, uncompressedOffset int64) error {
 		if latest.compressedOffset > compressedOffset {
 			return fmt.Errorf("internal error: Earlier compressed received (%d > %d)", latest.uncompressedOffset, uncompressedOffset)
 		}
+		if latest.uncompressedOffset+minIndexDist > uncompressedOffset {
+			// Only add entry if distance is large enough.
+			return nil
+		}
 	}
 	i.info = append(i.info, struct {
 		compressedOffset   int64
@@ -122,7 +128,7 @@ func (i *Index) Find(offset int64) (compressedOff, uncompressedOff int64, err er
 
 // reduce to stay below maxIndexEntries
 func (i *Index) reduce() {
-	if len(i.info) < maxIndexEntries && i.estBlockUncomp >= 1<<20 {
+	if len(i.info) < maxIndexEntries && i.estBlockUncomp >= minIndexDist {
 		return
 	}
 
@@ -132,7 +138,7 @@ func (i *Index) reduce() {
 	j := 0
 
 	// Each block should be at least 1MB, but don't reduce below 1000 entries.
-	for i.estBlockUncomp*(int64(removeN)+1) < 1<<20 && len(i.info)/(removeN+1) > 1000 {
+	for i.estBlockUncomp*(int64(removeN)+1) < minIndexDist && len(i.info)/(removeN+1) > 1000 {
 		removeN++
 	}
 	for idx := 0; idx < len(src); idx++ {
@@ -511,24 +517,22 @@ func IndexStream(r io.Reader) ([]byte, error) {
 
 // JSON returns the index as JSON text.
 func (i *Index) JSON() []byte {
+	type offset struct {
+		CompressedOffset   int64 `json:"compressed"`
+		UncompressedOffset int64 `json:"uncompressed"`
+	}
 	x := struct {
-		TotalUncompressed int64 `json:"total_uncompressed"` // Total Uncompressed size if known. Will be -1 if unknown.
-		TotalCompressed   int64 `json:"total_compressed"`   // Total Compressed size if known. Will be -1 if unknown.
-		Offsets           []struct {
-			CompressedOffset   int64 `json:"compressed"`
-			UncompressedOffset int64 `json:"uncompressed"`
-		} `json:"offsets"`
-		EstBlockUncomp int64 `json:"est_block_uncompressed"`
+		TotalUncompressed int64    `json:"total_uncompressed"` // Total Uncompressed size if known. Will be -1 if unknown.
+		TotalCompressed   int64    `json:"total_compressed"`   // Total Compressed size if known. Will be -1 if unknown.
+		Offsets           []offset `json:"offsets"`
+		EstBlockUncomp    int64    `json:"est_block_uncompressed"`
 	}{
 		TotalUncompressed: i.TotalUncompressed,
 		TotalCompressed:   i.TotalCompressed,
 		EstBlockUncomp:    i.estBlockUncomp,
 	}
 	for _, v := range i.info {
-		x.Offsets = append(x.Offsets, struct {
-			CompressedOffset   int64 `json:"compressed"`
-			UncompressedOffset int64 `json:"uncompressed"`
-		}{CompressedOffset: v.compressedOffset, UncompressedOffset: v.uncompressedOffset})
+		x.Offsets = append(x.Offsets, offset{CompressedOffset: v.compressedOffset, UncompressedOffset: v.uncompressedOffset})
 	}
 	b, _ := json.MarshalIndent(x, "", "  ")
 	return b

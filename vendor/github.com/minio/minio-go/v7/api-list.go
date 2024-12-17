@@ -97,7 +97,15 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 
 	// Initiate list objects goroutine here.
 	go func(objectStatCh chan<- ObjectInfo) {
-		defer close(objectStatCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				objectStatCh <- ObjectInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(objectStatCh)
+		}()
+
 		// Save continuationToken for next request.
 		var continuationToken string
 		for {
@@ -168,7 +176,7 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?start-after - Sets a marker to start listing lexically at this key onwards.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata bool, delimiter string, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
+func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata bool, delimiter, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListBucketV2Result{}, err
@@ -304,7 +312,14 @@ func (c *Client) listObjects(ctx context.Context, bucketName string, opts ListOb
 
 	// Initiate list objects goroutine here.
 	go func(objectStatCh chan<- ObjectInfo) {
-		defer close(objectStatCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				objectStatCh <- ObjectInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(objectStatCh)
+		}()
 
 		marker := opts.StartAfter
 		for {
@@ -321,6 +336,7 @@ func (c *Client) listObjects(ctx context.Context, bucketName string, opts ListOb
 			for _, object := range result.Contents {
 				// Save the marker.
 				marker = object.Key
+				object.ETag = trimEtag(object.ETag)
 				select {
 				// Send object content.
 				case objectStatCh <- object:
@@ -393,7 +409,14 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 
 	// Initiate list objects goroutine here.
 	go func(resultCh chan<- ObjectInfo) {
-		defer close(resultCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				resultCh <- ObjectInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(resultCh)
+		}()
 
 		var (
 			keyMarker       = ""
@@ -402,7 +425,7 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 
 		for {
 			// Get list of objects a maximum of 1000 per request.
-			result, err := c.listObjectVersionsQuery(ctx, bucketName, opts.Prefix, keyMarker, versionIDMarker, delimiter, opts.MaxKeys, opts.headers)
+			result, err := c.listObjectVersionsQuery(ctx, bucketName, opts, keyMarker, versionIDMarker, delimiter)
 			if err != nil {
 				sendObjectInfo(ObjectInfo{
 					Err: err,
@@ -422,6 +445,9 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 					IsLatest:       version.IsLatest,
 					VersionID:      version.VersionID,
 					IsDeleteMarker: version.isDeleteMarker,
+					UserTags:       version.UserTags,
+					UserMetadata:   version.UserMetadata,
+					Internal:       version.Internal,
 				}
 				select {
 				// Send object version info.
@@ -474,13 +500,13 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?prefix - Limits the response to keys that begin with the specified prefix.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix, keyMarker, versionIDMarker, delimiter string, maxkeys int, headers http.Header) (ListVersionsResult, error) {
+func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName string, opts ListObjectsOptions, keyMarker, versionIDMarker, delimiter string) (ListVersionsResult, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListVersionsResult{}, err
 	}
 	// Validate object prefix.
-	if err := s3utils.CheckValidObjectNamePrefix(prefix); err != nil {
+	if err := s3utils.CheckValidObjectNamePrefix(opts.Prefix); err != nil {
 		return ListVersionsResult{}, err
 	}
 	// Get resources properly escaped and lined up before
@@ -491,7 +517,7 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix
 	urlValues.Set("versions", "")
 
 	// Set object prefix, prefix value to be set to empty is okay.
-	urlValues.Set("prefix", prefix)
+	urlValues.Set("prefix", opts.Prefix)
 
 	// Set delimiter, delimiter value to be set to empty is okay.
 	urlValues.Set("delimiter", delimiter)
@@ -502,13 +528,17 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix
 	}
 
 	// Set max keys.
-	if maxkeys > 0 {
-		urlValues.Set("max-keys", fmt.Sprintf("%d", maxkeys))
+	if opts.MaxKeys > 0 {
+		urlValues.Set("max-keys", fmt.Sprintf("%d", opts.MaxKeys))
 	}
 
 	// Set version ID marker
 	if versionIDMarker != "" {
 		urlValues.Set("version-id-marker", versionIDMarker)
+	}
+
+	if opts.WithMetadata {
+		urlValues.Set("metadata", "true")
 	}
 
 	// Always set encoding-type
@@ -519,7 +549,7 @@ func (c *Client) listObjectVersionsQuery(ctx context.Context, bucketName, prefix
 		bucketName:       bucketName,
 		queryValues:      urlValues,
 		contentSHA256Hex: emptySHA256Hex,
-		customHeader:     headers,
+		customHeader:     opts.headers,
 	})
 	defer closeResponse(resp)
 	if err != nil {
@@ -692,6 +722,10 @@ func (o *ListObjectsOptions) Set(key, value string) {
 //	for object := range api.ListObjects(ctx, "mytestbucket", minio.ListObjectsOptions{Prefix: "starthere", Recursive:true}) {
 //	    fmt.Println(object)
 //	}
+//
+// If caller cancels the context, then the last entry on the 'chan ObjectInfo' will be the context.Error()
+// caller must drain the channel entirely and wait until channel is closed before proceeding, without
+// waiting on the channel to be closed completely you might leak goroutines.
 func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
 	if opts.WithVersions {
 		return c.listObjectVersions(ctx, bucketName, opts)
@@ -732,6 +766,16 @@ func (c *Client) ListIncompleteUploads(ctx context.Context, bucketName, objectPr
 	return c.listIncompleteUploads(ctx, bucketName, objectPrefix, recursive)
 }
 
+// contextCanceled returns whether a context is canceled.
+func contextCanceled(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 // listIncompleteUploads lists all incomplete uploads.
 func (c *Client) listIncompleteUploads(ctx context.Context, bucketName, objectPrefix string, recursive bool) <-chan ObjectMultipartInfo {
 	// Allocate channel for multipart uploads.
@@ -759,7 +803,15 @@ func (c *Client) listIncompleteUploads(ctx context.Context, bucketName, objectPr
 		return objectMultipartStatCh
 	}
 	go func(objectMultipartStatCh chan<- ObjectMultipartInfo) {
-		defer close(objectMultipartStatCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				objectMultipartStatCh <- ObjectMultipartInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(objectMultipartStatCh)
+		}()
+
 		// object and upload ID marker for future requests.
 		var objectMarker string
 		var uploadIDMarker string
@@ -897,6 +949,8 @@ func (c *Client) listMultipartUploadsQuery(ctx context.Context, bucketName, keyM
 }
 
 // listObjectParts list all object parts recursively.
+//
+//lint:ignore U1000 Keep this around
 func (c *Client) listObjectParts(ctx context.Context, bucketName, objectName, uploadID string) (partsInfo map[int]ObjectPart, err error) {
 	// Part number marker for the next batch of request.
 	var nextPartNumberMarker int

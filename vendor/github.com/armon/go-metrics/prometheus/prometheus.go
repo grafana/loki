@@ -6,7 +6,6 @@ package prometheus
 import (
 	"fmt"
 	"log"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -248,15 +247,15 @@ func initCounters(m *sync.Map, counters []CounterDefinition, help map[string]str
 	return
 }
 
-var forbiddenChars = regexp.MustCompile("[ .=\\-/]")
+var forbiddenCharsReplacer = strings.NewReplacer(" ", "_", ".", "_", "=", "_", "-", "_", "/", "_")
 
 func flattenKey(parts []string, labels []metrics.Label) (string, string) {
 	key := strings.Join(parts, "_")
-	key = forbiddenChars.ReplaceAllString(key, "_")
+	key = forbiddenCharsReplacer.Replace(key)
 
 	hash := key
 	for _, label := range labels {
-		hash += fmt.Sprintf(";%s=%s", label.Name, label.Value)
+		hash += ";" + label.Name + "=" + label.Value
 	}
 
 	return key, hash

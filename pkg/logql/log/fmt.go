@@ -13,7 +13,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/grafana/regexp"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 const (
@@ -67,6 +67,9 @@ var (
 		"unixEpochMillis":  unixEpochMillis,
 		"unixEpochNanos":   unixEpochNanos,
 		"toDateInZone":     toDateInZone,
+		"unixToTime":       unixToTime,
+		"alignLeft":        alignLeft,
+		"alignRight":       alignRight,
 	}
 
 	// sprig template functions
@@ -130,6 +133,35 @@ func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() i
 	return functions
 }
 
+// toEpoch converts a string with Unix time to an time Value
+func unixToTime(epoch string) (time.Time, error) {
+	var ct time.Time
+	l := len(epoch)
+	i, err := strconv.ParseInt(epoch, 10, 64)
+	if err != nil {
+		return ct, fmt.Errorf("unable to parse time '%v': %w", epoch, err)
+	}
+	switch l {
+	case 5:
+		// days 19373
+		return time.Unix(i*86400, 0), nil
+	case 10:
+		// seconds 1673798889
+		return time.Unix(i, 0), nil
+	case 13:
+		// milliseconds 1673798889902
+		return time.Unix(0, i*1000*1000), nil
+	case 16:
+		// microseconds 1673798889902000
+		return time.Unix(0, i*1000), nil
+	case 19:
+		// nanoseconds 1673798889902000000
+		return time.Unix(0, i), nil
+	default:
+		return ct, fmt.Errorf("unable to parse time '%v': %w", epoch, err)
+	}
+}
+
 func unixEpochMillis(date time.Time) string {
 	return strconv.FormatInt(date.UnixMilli(), 10)
 }
@@ -162,6 +194,7 @@ type LineFormatter struct {
 
 	currentLine []byte
 	currentTs   int64
+	simpleKey   string
 }
 
 // NewFormatter creates a new log line formatter from a given text template.
@@ -181,15 +214,42 @@ func NewFormatter(tmpl string) (*LineFormatter, error) {
 		return nil, fmt.Errorf("invalid line template: %w", err)
 	}
 	lf.Template = t
+
+	// determine if the template is a simple key substitution, e.g. line_format `{{.message}}`
+	// if it is, save the key name and we can use it later to directly copy the string
+	// bytes of the value to avoid copying and allocating a new string.
+	if len(t.Root.Nodes) == 1 && t.Root.Nodes[0].Type() == parse.NodeAction {
+		actionNode := t.Root.Nodes[0].(*parse.ActionNode)
+		if len(actionNode.Pipe.Cmds) == 1 && len(actionNode.Pipe.Cmds[0].Args) == 1 {
+			if fieldNode, ok := actionNode.Pipe.Cmds[0].Args[0].(*parse.FieldNode); ok && len(fieldNode.Ident) == 1 {
+				lf.simpleKey = fieldNode.Ident[0]
+			}
+		}
+	}
+
 	return lf, nil
 }
 
 func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	if lf.simpleKey != "" {
+		if val, ok := lbs.Get(lf.simpleKey); ok {
+			return unsafeGetBytes(val), true
+		}
+		return []byte{}, true
+	}
+
 	lf.buf.Reset()
 	lf.currentLine = line
 	lf.currentTs = ts
 
-	if err := lf.Template.Execute(lf.buf, lbs.Map()); err != nil {
+	// map now is taking from a pool
+	m, ret := lbs.Map()
+	defer func() {
+		if ret { // if we return the base map from the labels builder we should not put it back in the pool
+			smp.Put(m)
+		}
+	}()
+	if err := lf.Template.Execute(lf.buf, m); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())
 		return line, true
@@ -348,26 +408,27 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 	lf.currentLine = l
 	lf.currentTs = ts
 
-	var data interface{}
+	m := smp.Get()
+	defer smp.Put(m)
 	for _, f := range lf.formats {
 		if f.Rename {
-			v, ok := lbs.Get(f.Value)
+			v, _, ok := lbs.GetWithCategory(f.Value)
 			if ok {
-				lbs.Set(f.Name, v)
+				lbs.Set(ParsedLabel, f.Name, v)
 				lbs.Del(f.Value)
 			}
 			continue
 		}
 		lf.buf.Reset()
-		if data == nil {
-			data = lbs.Map()
+		if len(m) == 0 {
+			lbs.IntoMap(m)
 		}
-		if err := f.tmpl.Execute(lf.buf, data); err != nil {
+		if err := f.tmpl.Execute(lf.buf, m); err != nil {
 			lbs.SetErr(errTemplateFormat)
 			lbs.SetErrorDetails(err.Error())
 			continue
 		}
-		lbs.Set(f.Name, lf.buf.String())
+		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
 	return l, true
 }
@@ -394,6 +455,32 @@ func trunc(c int, s string) string {
 		return string(runes[:c])
 	}
 	return s
+}
+
+func alignLeft(count int, src string) string {
+	runes := []rune(src)
+	l := len(runes)
+	if count < 0 || count == l {
+		return src
+	}
+	pad := count - l
+	if pad > 0 {
+		return src + strings.Repeat(" ", pad)
+	}
+	return string(runes[:count])
+}
+
+func alignRight(count int, src string) string {
+	runes := []rune(src)
+	l := len(runes)
+	if count < 0 || count == l {
+		return src
+	}
+	pad := count - l
+	if pad > 0 {
+		return strings.Repeat(" ", pad) + src
+	}
+	return string(runes[l-count:])
 }
 
 type Decolorizer struct{}

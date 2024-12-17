@@ -20,29 +20,11 @@ package xdsclient
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/controller"
-	"google.golang.org/grpc/xds/internal/xdsclient/load"
-	"google.golang.org/grpc/xds/internal/xdsclient/pubsub"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
-
-	v2corepb "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 )
-
-type controllerInterface interface {
-	AddWatch(resourceType xdsresource.ResourceType, resourceName string)
-	RemoveWatch(resourceType xdsresource.ResourceType, resourceName string)
-	ReportLoad(server string) (*load.Store, func())
-	Close()
-}
-
-var newController = func(config *bootstrap.ServerConfig, pubsub *pubsub.Pubsub, validator xdsresource.UpdateValidatorFunc, logger *grpclog.PrefixLogger, boff func(int) time.Duration) (controllerInterface, error) {
-	return controller.New(config, pubsub, validator, logger, boff)
-}
 
 // findAuthority returns the authority for this name. If it doesn't already
 // exist, one will be created.
@@ -54,7 +36,7 @@ var newController = func(config *bootstrap.ServerConfig, pubsub *pubsub.Pubsub, 
 // authority, without holding c.authorityMu.
 //
 // Caller must not hold c.authorityMu.
-func (c *clientImpl) findAuthority(n *xdsresource.Name) (_ *authority, unref func(), _ error) {
+func (c *clientImpl) findAuthority(n *xdsresource.Name) (*authority, func(), error) {
 	scheme, authority := n.Scheme, n.Authority
 
 	c.authorityMu.Lock()
@@ -63,14 +45,18 @@ func (c *clientImpl) findAuthority(n *xdsresource.Name) (_ *authority, unref fun
 		return nil, nil, errors.New("the xds-client is closed")
 	}
 
-	config := c.config.XDSServer
+	config := c.config.XDSServers()[0]
 	if scheme == xdsresource.FederationScheme {
-		cfg, ok := c.config.Authorities[authority]
+		authorities := c.config.Authorities()
+		if authorities == nil {
+			return nil, nil, fmt.Errorf("xds: failed to find authority %q", authority)
+		}
+		cfg, ok := authorities[authority]
 		if !ok {
 			return nil, nil, fmt.Errorf("xds: failed to find authority %q", authority)
 		}
-		if cfg.XDSServer != nil {
-			config = cfg.XDSServer
+		if len(cfg.XDSServers) >= 1 {
+			config = cfg.XDSServers[0]
 		}
 	}
 
@@ -88,12 +74,13 @@ func (c *clientImpl) findAuthority(n *xdsresource.Name) (_ *authority, unref fun
 	// authority.
 	//
 	// unref() will be done when the watch is canceled.
-	a.ref()
+	a.refLocked()
 	return a, func() { c.unrefAuthority(a) }, nil
 }
 
-// newAuthorityLocked creates a new authority for the config. But before that, it
-// checks the cache to see if an authority for this config already exists.
+// newAuthorityLocked creates a new authority for the given config.  If an
+// authority for the given config exists in the cache, it is returned instead of
+// creating a new one.
 //
 // The caller must take a reference of the returned authority before using, and
 // unref afterwards.
@@ -121,23 +108,18 @@ func (c *clientImpl) newAuthorityLocked(config *bootstrap.ServerConfig) (_ *auth
 	}
 
 	// Make a new authority since there's no existing authority for this config.
-	nodeID := ""
-	if v3, ok := c.config.XDSServer.NodeProto.(*v3corepb.Node); ok {
-		nodeID = v3.GetId()
-	} else if v2, ok := c.config.XDSServer.NodeProto.(*v2corepb.Node); ok {
-		nodeID = v2.GetId()
-	}
-	ret := &authority{config: config, pubsub: pubsub.New(c.watchExpiryTimeout, nodeID, c.logger)}
-	defer func() {
-		if retErr != nil {
-			ret.close()
-		}
-	}()
-	ctr, err := newController(config, ret.pubsub, c.updateValidator, c.logger, nil)
+	ret, err := newAuthority(authorityArgs{
+		serverCfg:          config,
+		bootstrapCfg:       c.config,
+		serializer:         c.serializer,
+		resourceTypeGetter: c.resourceTypes.get,
+		watchExpiryTimeout: c.watchExpiryTimeout,
+		backoff:            c.backoff,
+		logger:             grpclog.NewPrefixLogger(logger, authorityPrefix(c, config.ServerURI())),
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating new authority for config %q: %v", config.String(), err)
 	}
-	ret.controller = ctr
 	// Add it to the cache, so it will be reused.
 	c.authorities[configStr] = ret
 	return ret, nil
@@ -153,10 +135,10 @@ func (c *clientImpl) newAuthorityLocked(config *bootstrap.ServerConfig) (_ *auth
 func (c *clientImpl) unrefAuthority(a *authority) {
 	c.authorityMu.Lock()
 	defer c.authorityMu.Unlock()
-	if a.unref() > 0 {
+	if a.unrefLocked() > 0 {
 		return
 	}
-	configStr := a.config.String()
+	configStr := a.serverCfg.String()
 	delete(c.authorities, configStr)
 	c.idleAuthorities.Add(configStr, a, func() {
 		a.close()

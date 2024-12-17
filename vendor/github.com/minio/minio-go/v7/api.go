@@ -1,6 +1,6 @@
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2015-2018 MinIO, Inc.
+ * Copyright 2015-2024 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,13 +23,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"os"
@@ -70,6 +69,7 @@ type Client struct {
 
 	// Needs allocation.
 	httpClient     *http.Client
+	httpTrace      *httptrace.ClientTrace
 	bucketLocCache *bucketLocationCache
 
 	// Advanced functionality.
@@ -79,6 +79,8 @@ type Client struct {
 
 	// S3 specific accelerated endpoint.
 	s3AccelerateEndpoint string
+	// S3 dual-stack endpoints are enabled by default.
+	s3DualstackEnabled bool
 
 	// Region endpoint
 	region string
@@ -97,6 +99,7 @@ type Client struct {
 	healthStatus int32
 
 	trailingHeaderSupport bool
+	maxRetries            int
 }
 
 // Options for New method
@@ -104,8 +107,15 @@ type Options struct {
 	Creds        *credentials.Credentials
 	Secure       bool
 	Transport    http.RoundTripper
+	Trace        *httptrace.ClientTrace
 	Region       string
 	BucketLookup BucketLookupType
+
+	// Allows setting a custom region lookup based on URL pattern
+	// not all URL patterns are covered by this library so if you
+	// have a custom endpoints with many regions you can use this
+	// function to perform region lookups appropriately.
+	CustomRegionViaURL func(u url.URL) string
 
 	// TrailingHeaders indicates server support of trailing headers.
 	// Only supported for v4 signatures.
@@ -114,12 +124,16 @@ type Options struct {
 	// Custom hash routines. Leave nil to use standard.
 	CustomMD5    func() md5simd.Hasher
 	CustomSHA256 func() md5simd.Hasher
+
+	// Number of times a request is retried. Defaults to 10 retries if this option is not configured.
+	// Set to 1 to disable retries.
+	MaxRetries int
 }
 
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.45"
+	libraryVersion = "v7.0.82"
 )
 
 // User Agent should always following the below style.
@@ -150,13 +164,12 @@ func New(endpoint string, opts *Options) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Google cloud storage should be set to signature V2, force it if not.
-	if s3utils.IsGoogleEndpoint(*clnt.endpointURL) {
-		clnt.overrideSignerType = credentials.SignatureV2
-	}
-	// If Amazon S3 set to signature v4.
 	if s3utils.IsAmazonEndpoint(*clnt.endpointURL) {
+		// If Amazon S3 set to signature v4.
 		clnt.overrideSignerType = credentials.SignatureV4
+		// Amazon S3 endpoints are resolved into dual-stack endpoints by default
+		// for backwards compatibility.
+		clnt.s3DualstackEnabled = true
 	}
 
 	return clnt, nil
@@ -224,18 +237,24 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 		}
 	}
 
+	clnt.httpTrace = opts.Trace
+
 	// Instantiate http client and bucket location cache.
 	clnt.httpClient = &http.Client{
 		Jar:       jar,
 		Transport: transport,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 
 	// Sets custom region, if region is empty bucket location cache is used automatically.
 	if opts.Region == "" {
-		opts.Region = s3utils.GetRegionFromURL(*clnt.endpointURL)
+		if opts.CustomRegionViaURL != nil {
+			opts.Region = opts.CustomRegionViaURL(*clnt.endpointURL)
+		} else {
+			opts.Region = s3utils.GetRegionFromURL(*clnt.endpointURL)
+		}
 	}
 	clnt.region = opts.Region
 
@@ -264,12 +283,17 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	// healthcheck is not initialized
 	clnt.healthStatus = unknown
 
+	clnt.maxRetries = MaxRetry
+	if opts.MaxRetries > 0 {
+		clnt.maxRetries = opts.MaxRetries
+	}
+
 	// Return.
 	return clnt, nil
 }
 
 // SetAppInfo - add application details to user agent.
-func (c *Client) SetAppInfo(appName string, appVersion string) {
+func (c *Client) SetAppInfo(appName, appVersion string) {
 	// if app name and version not set, we do not set a new user agent.
 	if appName != "" && appVersion != "" {
 		c.appInfo.appName = appName
@@ -320,6 +344,16 @@ func (c *Client) SetS3TransferAccelerate(accelerateEndpoint string) {
 	}
 }
 
+// SetS3EnableDualstack turns s3 dual-stack endpoints on or off for all requests.
+// The feature is only specific to S3 and is on by default. To read more about
+// Amazon S3 dual-stack endpoints visit -
+// https://docs.aws.amazon.com/AmazonS3/latest/userguide/dual-stack-endpoints.html
+func (c *Client) SetS3EnableDualstack(enabled bool) {
+	if s3utils.IsAmazonEndpoint(*c.endpointURL) {
+		c.s3DualstackEnabled = enabled
+	}
+}
+
 // Hash materials provides relevant initialized hash algo writers
 // based on the expected signature type.
 //
@@ -354,7 +388,8 @@ const (
 	online  = 1
 )
 
-// IsOnline returns true if healthcheck enabled and client is online
+// IsOnline returns true if healthcheck enabled and client is online.
+// If HealthCheck function has not been called this will always return true.
 func (c *Client) IsOnline() bool {
 	return !c.IsOffline()
 }
@@ -365,22 +400,37 @@ func (c *Client) markOffline() {
 }
 
 // IsOffline returns true if healthcheck enabled and client is offline
+// If HealthCheck function has not been called this will always return false.
 func (c *Client) IsOffline() bool {
 	return atomic.LoadInt32(&c.healthStatus) == offline
 }
 
-// HealthCheck starts a healthcheck to see if endpoint is up. Returns a context cancellation function
-// and and error if health check is already started
+// HealthCheck starts a healthcheck to see if endpoint is up.
+// Returns a context cancellation function, to stop the health check,
+// and an error if health check is already started.
 func (c *Client) HealthCheck(hcDuration time.Duration) (context.CancelFunc, error) {
-	if atomic.LoadInt32(&c.healthStatus) == online {
+	if atomic.LoadInt32(&c.healthStatus) != unknown {
 		return nil, fmt.Errorf("health check is running")
 	}
 	if hcDuration < 1*time.Second {
-		return nil, fmt.Errorf("health check duration should be atleast 1 second")
+		return nil, fmt.Errorf("health check duration should be at least 1 second")
 	}
-	ctx, cancelFn := context.WithCancel(context.Background())
-	atomic.StoreInt32(&c.healthStatus, online)
 	probeBucketName := randString(60, rand.NewSource(time.Now().UnixNano()), "probe-health-")
+	ctx, cancelFn := context.WithCancel(context.Background())
+	atomic.StoreInt32(&c.healthStatus, offline)
+	{
+		// Change to online, if we can connect.
+		gctx, gcancel := context.WithTimeout(ctx, 3*time.Second)
+		_, err := c.getBucketLocation(gctx, probeBucketName)
+		gcancel()
+		if !IsNetworkOrHostDown(err, false) {
+			switch ToErrorResponse(err).Code {
+			case "NoSuchBucket", "AccessDenied", "":
+				atomic.CompareAndSwapInt32(&c.healthStatus, offline, online)
+			}
+		}
+	}
+
 	go func(duration time.Duration) {
 		timer := time.NewTimer(duration)
 		defer timer.Stop()
@@ -430,7 +480,7 @@ type requestMetadata struct {
 	contentMD5Base64 string // carries base64 encoded md5sum
 	contentSHA256Hex string // carries hex encoded sha256sum
 	streamSha256     bool
-	addCrc           bool
+	addCrc           *ChecksumType
 	trailer          http.Header // (http.Request).Trailer. Requires v4 signature.
 }
 
@@ -550,9 +600,9 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		return nil, errors.New(c.endpointURL.String() + " is offline.")
 	}
 
-	var retryable bool       // Indicates if request can be retried.
-	var bodySeeker io.Seeker // Extracted seeker from io.Reader.
-	reqRetry := MaxRetry     // Indicates how many times we can retry the request
+	var retryable bool          // Indicates if request can be retried.
+	var bodySeeker io.Seeker    // Extracted seeker from io.Reader.
+	var reqRetry = c.maxRetries // Indicates how many times we can retry the request
 
 	if metadata.contentBody != nil {
 		// Check if body is seekable then it is retryable.
@@ -575,6 +625,18 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		}
 	}
 
+	if metadata.addCrc != nil && metadata.contentLength > 0 {
+		if metadata.trailer == nil {
+			metadata.trailer = make(http.Header, 1)
+		}
+		crc := metadata.addCrc.Hasher()
+		metadata.contentBody = newHashReaderWrapper(metadata.contentBody, crc, func(hash []byte) {
+			// Update trailer when done.
+			metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(hash))
+		})
+		metadata.trailer.Set(metadata.addCrc.Key(), base64.StdEncoding.EncodeToString(crc.Sum(nil)))
+	}
+
 	// Create cancel context to control 'newRetryTimer' go routine.
 	retryCtx, cancel := context.WithCancel(ctx)
 
@@ -594,17 +656,6 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 			}
 		}
 
-		if metadata.addCrc {
-			if metadata.trailer == nil {
-				metadata.trailer = make(http.Header, 1)
-			}
-			crc := crc32.New(crc32.MakeTable(crc32.Castagnoli))
-			metadata.contentBody = newHashReaderWrapper(metadata.contentBody, crc, func(hash []byte) {
-				// Update trailer when done.
-				metadata.trailer.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(hash))
-			})
-			metadata.trailer.Set("x-amz-checksum-crc32c", base64.StdEncoding.EncodeToString(crc.Sum(nil)))
-		}
 		// Instantiate a new request.
 		var req *http.Request
 		req, err = c.newRequest(ctx, method, metadata)
@@ -620,7 +671,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		// Initiate the request.
 		res, err = c.do(req)
 		if err != nil {
-			if isRequestErrorRetryable(err) {
+			if isRequestErrorRetryable(ctx, err) {
 				// Retry the request
 				continue
 			}
@@ -635,7 +686,7 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		}
 
 		// Read the body to be saved later.
-		errBodyBytes, err := ioutil.ReadAll(res.Body)
+		errBodyBytes, err := io.ReadAll(res.Body)
 		// res.Body should be closed
 		closeResponse(res)
 		if err != nil {
@@ -644,14 +695,14 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 
 		// Save the body.
 		errBodySeeker := bytes.NewReader(errBodyBytes)
-		res.Body = ioutil.NopCloser(errBodySeeker)
+		res.Body = io.NopCloser(errBodySeeker)
 
 		// For errors verify if its retryable otherwise fail quickly.
 		errResponse := ToErrorResponse(httpRespToErrorResponse(res, metadata.bucketName, metadata.objectName))
 
 		// Save the body back again.
 		errBodySeeker.Seek(0, 0) // Seek back to starting point.
-		res.Body = ioutil.NopCloser(errBodySeeker)
+		res.Body = io.NopCloser(errBodySeeker)
 
 		// Bucket region if set in error response and the error
 		// code dictates invalid region, we can retry the request
@@ -746,6 +797,10 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		return nil, err
 	}
 
+	if c.httpTrace != nil {
+		ctx = httptrace.WithClientTrace(ctx, c.httpTrace)
+	}
+
 	// Initialize a new HTTP request for the method.
 	req, err = http.NewRequestWithContext(ctx, method, targetURL.String(), nil)
 	if err != nil {
@@ -814,7 +869,7 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 	if metadata.contentLength == 0 {
 		req.Body = nil
 	} else {
-		req.Body = ioutil.NopCloser(metadata.contentBody)
+		req.Body = io.NopCloser(metadata.contentBody)
 	}
 
 	// Set incoming content-length.
@@ -846,7 +901,7 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 		// Additionally, we also look if the initialized client is secure,
 		// if yes then we don't need to perform streaming signature.
 		req = signer.StreamingSignV4(req, accessKeyID,
-			secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC())
+			secretAccessKey, sessionToken, location, metadata.contentLength, time.Now().UTC(), c.sha256Hasher())
 	default:
 		// Set sha256 sum for signature calculation only with signature version '4'.
 		shaHeader := unsignedPayload
@@ -896,7 +951,7 @@ func (c *Client) makeTargetURL(bucketName, objectName, bucketLocation string, is
 			// Do not change the host if the endpoint URL is a FIPS S3 endpoint or a S3 PrivateLink interface endpoint
 			if !s3utils.IsAmazonFIPSEndpoint(*c.endpointURL) && !s3utils.IsAmazonPrivateLinkEndpoint(*c.endpointURL) {
 				// Fetch new host based on the bucket location.
-				host = getS3Endpoint(bucketLocation)
+				host = getS3Endpoint(bucketLocation, c.s3DualstackEnabled)
 			}
 		}
 	}
@@ -910,7 +965,7 @@ func (c *Client) makeTargetURL(bucketName, objectName, bucketLocation string, is
 	if h, p, err := net.SplitHostPort(host); err == nil {
 		if scheme == "http" && p == "80" || scheme == "https" && p == "443" {
 			host = h
-			if ip := net.ParseIP(h); ip != nil && ip.To16() != nil {
+			if ip := net.ParseIP(h); ip != nil && ip.To4() == nil {
 				host = "[" + h + "]"
 			}
 		}

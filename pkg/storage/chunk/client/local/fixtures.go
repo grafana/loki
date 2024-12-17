@@ -7,10 +7,10 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 type fixture struct {
@@ -58,10 +58,11 @@ func (f *fixture) Clients() (
 				Prefix: "chunks",
 				Period: 10 * time.Minute,
 			},
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: "index",
-				Period: 10 * time.Minute,
-			},
+			IndexTables: config.IndexPeriodicTableConfig{
+				PeriodicTableConfig: config.PeriodicTableConfig{
+					Prefix: "index",
+					Period: 10 * time.Minute,
+				}},
 		}},
 	}
 

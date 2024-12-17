@@ -1,0 +1,170 @@
+---
+description: Configuration reference for the parameters used to configure Grafana Loki.
+title: Grafana Loki configuration parameters
+---
+
+{{ .GeneratedFileWarning }}
+
+## Printing Loki config at runtime
+
+If you pass Loki the flag `-print-config-stderr` or `-log-config-reverse-order`, (or `-print-config-stderr=true`)
+Loki will dump the entire config object it has created from the built-in defaults combined first with
+overrides from config file, and second by overrides from flags.
+
+The result is the value for every config object in the Loki config struct, which is very large...
+
+Many values will not be relevant to your install such as storage configs which you are not using and which you did not define,
+this is expected as every option has a default value if it is being used or not.
+
+This config is what Loki will use to run, it can be invaluable for debugging issues related to configuration and
+is especially useful in making sure your config files and flags are being read and loaded properly.
+
+`-print-config-stderr` is nice when running Loki directly e.g. `./loki ` as you can get a quick output of the entire Loki config.
+
+`-log-config-reverse-order` is the flag we run Loki with in all our environments, the config entries are reversed so
+that the order of configs reads correctly top to bottom when viewed in Grafana's Explore.
+
+## Configuration file reference
+
+To specify which configuration file to load, pass the `-config.file` flag at the
+command line. The value can be a list of comma separated paths, then the first
+file that exists will be used.
+If no `-config.file` argument is specified, Loki will look up the `config.yaml` in the
+current working directory and the `config/` subdirectory and try to use that.
+
+The file is written in [YAML
+format](https://en.wikipedia.org/wiki/YAML), defined by the scheme below.
+Brackets indicate that a parameter is optional. For non-list parameters the
+value is set to the specified default.
+
+### Use environment variables in the configuration
+
+> **Note:** This feature is only available in Loki 2.1+.
+
+You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
+To do this, pass `-config.expand-env=true` and use:
+
+```bash
+${VAR}
+```
+
+Where VAR is the name of the environment variable.
+
+Each variable reference is replaced at startup by the value of the environment variable.
+The replacement is case-sensitive and occurs before the YAML file is parsed.
+References to undefined variables are replaced by empty strings unless you specify a default value or custom error text.
+
+To specify a default value, use:
+
+```bash
+${VAR:-default_value}
+```
+
+Where default_value is the value to use if the environment variable is undefined.
+
+Pass the `-config.expand-env` flag at the command line to enable this way of setting configs.
+
+### Generic placeholders
+
+- `<boolean>` : a boolean that can take the values `true` or `false`
+- `<int>` : any integer matching the regular expression `[1-9]+[0-9]*`
+- `<duration>` : a duration matching the regular expression `[0-9]+(ns|us|µs|ms|[smh])`
+- `<labelname>` : a string matching the regular expression `[a-zA-Z_][a-zA-Z0-9_]*`
+- `<labelvalue>` : a string of unicode characters
+- `<filename>` : a valid path relative to current working directory or an absolute path.
+- `<host>` : a valid string consisting of a hostname or IP followed by an optional port number
+- `<string>` : a string
+- `<secret>` : a string that represents a secret, such as a password
+
+### Supported contents and default values of `loki.yaml`
+
+<!-- vale Grafana.Spelling = NO -->
+
+{{ .ConfigFile }}
+
+<!-- vale Grafana.Spelling = YES -->
+
+## Runtime Configuration file
+
+Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
+
+At the moment, two components use runtime configuration: limits and multi KV store.
+
+Options for runtime configuration reload can also be configured via YAML:
+
+```yaml
+# Configuration file to periodically check and reload.
+[file: <string>: default = empty]
+
+# How often to check the file.
+[period: <duration>: default 10s]
+```
+
+Example runtime configuration file:
+
+```yaml
+overrides:
+  tenant1:
+    ingestion_rate_mb: 10
+    max_streams_per_user: 100000
+    max_chunks_per_query: 100000
+  tenant2:
+    max_streams_per_user: 1000000
+    max_chunks_per_query: 1000000
+
+multi_kv_config:
+    mirror-enabled: false
+    primary: consul
+```
+
+## Accept out-of-order writes
+
+Since the beginning of Loki, log entries had to be written to Loki in order
+by time.
+This limitation has been lifted.
+Out-of-order writes are enabled globally by default, but can be disabled/enabled
+on a cluster or per-tenant basis.
+
+- To disable out-of-order writes for all tenants,
+place in the `limits_config` section:
+
+    ```yaml
+    limits_config:
+        unordered_writes: false
+    ```
+
+- To disable out-of-order writes for specific tenants,
+configure a runtime configuration file:
+
+    ```yaml
+    runtime_config:
+      file: overrides.yaml
+    ```
+
+    In the `overrides.yaml` file, add `unordered_writes` for each tenant
+    permitted to have out-of-order writes:
+
+    ```yaml
+    overrides:
+      "tenantA":
+        unordered_writes: false
+    ```
+
+How far into the past accepted out-of-order log entries may be
+is configurable with `max_chunk_age`.
+`max_chunk_age` defaults to 2 hour.
+Loki calculates the earliest time that out-of-order entries may have
+and be accepted with
+
+```yaml
+time_of_most_recent_line - (max_chunk_age/2)
+```
+
+Log entries with timestamps that are after this earliest time are accepted.
+Log entries further back in time return an out-of-order error.
+
+For example, if `max_chunk_age` is 2 hours
+and the stream `{foo="bar"}` has one entry at `8:00`,
+Loki will accept data for that stream as far back in time as `7:00`.
+If another log line is written at `10:00`,
+Loki will accept data for that stream as far back in time as `9:00`.

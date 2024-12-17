@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
 func TestDefaultOutput_Format(t *testing.T) {
@@ -79,8 +79,6 @@ func TestDefaultOutput_Format(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			writer := &bytes.Buffer{}
@@ -168,8 +166,6 @@ func TestColorForLabels(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			labelsColor := getColor(testData.labels.String())
@@ -183,9 +179,9 @@ func findMaxLabelsLength(labelsList []loghttp.LabelSet) int {
 	maxLabelsLen := 0
 
 	for _, lbls := range labelsList {
-		len := len(lbls.String())
-		if maxLabelsLen < len {
-			maxLabelsLen = len
+		length := len(lbls.String())
+		if maxLabelsLen < length {
+			maxLabelsLen = length
 		}
 	}
 

@@ -19,11 +19,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/utils"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/utils"
 
-	"github.com/grafana/loki/pkg/logproto"
-	lokiflag "github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/pkg/push"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	lokiflag "github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 var logEntries = []api.Entry{
@@ -34,6 +36,16 @@ var logEntries = []api.Entry{
 	{Labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
 	{Labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
 	{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line0123456789"}},
+	{
+		Labels: model.LabelSet{},
+		Entry: logproto.Entry{
+			Timestamp: time.Unix(7, 0).UTC(),
+			Line:      "line7",
+			StructuredMetadata: push.LabelsAdapter{
+				{Name: "trace_id", Value: "12345"},
+			},
+		},
+	},
 }
 
 func TestClient_Handle(t *testing.T) {
@@ -715,7 +727,7 @@ func Test_Tripperware(t *testing.T) {
 	var called bool
 	c, err := NewWithTripperware(metrics, Config{
 		URL: flagext.URLValue{URL: url},
-	}, 0, 0, false, log.NewNopLogger(), func(rt http.RoundTripper) http.RoundTripper {
+	}, 0, 0, false, log.NewNopLogger(), func(_ http.RoundTripper) http.RoundTripper {
 		return RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			require.Equal(t, r.URL.String(), "http://foo.com")
 			called = true

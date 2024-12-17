@@ -21,25 +21,26 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/user"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/querier/series"
-	"github.com/grafana/loki/pkg/util/build"
-	"github.com/grafana/loki/pkg/util/httpreq"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -85,21 +86,21 @@ func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logge
 
 func newMetrics(registerer prometheus.Registerer) *metrics {
 	reqDurationSecs := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "request_duration_seconds",
 		// 0.005000, 0.015000, 0.045000, 0.135000, 0.405000, 1.215000, 3.645000, 10.935000, 32.805000
 		Buckets: prometheus.ExponentialBuckets(0.005, 3, 9),
 	}, []string{"user"})
 	responseSizeBytes := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_bytes",
 		// 32, 128, 512, 2K, 8K, 32K, 128K, 512K, 2M, 8M
 		Buckets: prometheus.ExponentialBuckets(32, 4, 10),
 	}, []string{"user"})
 	responseSizeSamples := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "response_samples",
 		// 1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144
@@ -107,12 +108,12 @@ func newMetrics(registerer prometheus.Registerer) *metrics {
 	}, []string{"user"})
 
 	successfulEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "success_total",
 	}, []string{"user"})
 	failedEvals := prometheus.NewCounterVec(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "ruler_remote_eval",
 		Name:      "failure_total",
 	}, []string{"reason", "user"})
@@ -180,17 +181,16 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 					PermitWithoutStream: true,
 				},
 			),
-			grpc.WithUnaryInterceptor(
-				grpc_middleware.ChainUnaryClient(
-					otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
-					middleware.ClientUserHeaderInterceptor,
-				),
+			grpc.WithChainUnaryInterceptor(
+				otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+				middleware.ClientUserHeaderInterceptor,
 			),
 			grpc.WithDefaultServiceConfig(serviceConfig),
 		},
 		tlsDialOptions...,
 	)
 
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(cfg.Address, dialOptions...)
 	if err != nil {
 		return nil, err
@@ -218,7 +218,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 		args.Set("time", ts.Format(time.RFC3339Nano))
 	}
 	body := []byte(args.Encode())
-	hash := logql.HashedQuery(query)
+	hash := util.HashedQuery(query)
 
 	req := httpgrpc.HTTPRequest{
 		Method: http.MethodPost,
@@ -228,7 +228,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{userAgent}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeFormPost}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
-			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{"ruler"}},
+			{Key: textproto.CanonicalMIMEHeaderKey(string(httpreq.QueryTagsHTTPHeader)), Values: []string{"source=ruler"}},
 			{Key: textproto.CanonicalMIMEHeaderKey(user.OrgIDHeaderName), Values: []string{orgID}},
 		},
 	}
@@ -253,14 +253,15 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 
 	fullBody := resp.Body
 	// created a limited reader to avoid logging the entire response body should it be very large
-	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 1024)
+	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 128)
 
 	// TODO(dannyk): consider retrying if the rule has a very high interval, or the rule is very sensitive to missing samples
 	//   i.e. critical alerts or recording rules producing crucial RemoteEvaluatorMetrics series
 	if resp.Code/100 != 2 {
 		r.metrics.failedEvals.WithLabelValues("upstream_error", orgID).Inc()
 
-		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", limitedBody)
+		respBod, _ := io.ReadAll(limitedBody)
+		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", respBod)
 		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d", resp.Code)
 	}
 
@@ -298,8 +299,9 @@ func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTT
 
 		for _, s := range vec {
 			res = append(res, promql.Sample{
-				Metric: series.MetricToLabels(s.Metric),
-				Point:  promql.Point{V: float64(s.Value), T: int64(s.Timestamp)},
+				Metric: metricToLabels(s.Metric),
+				F:      float64(s.Value),
+				T:      int64(s.Timestamp),
 			})
 		}
 
@@ -324,6 +326,17 @@ func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTT
 	default:
 		return nil, fmt.Errorf("unsupported result type: %q", decoded.Data.ResultType)
 	}
+}
+
+func metricToLabels(m model.Metric) labels.Labels {
+	b := labels.NewScratchBuilder(len(m))
+	for k, v := range m {
+		b.Add(string(k), string(v))
+	}
+	// PromQL expects all labels to be sorted! In general, anyone constructing
+	// a labels.Labels list is responsible for sorting it during construction time.
+	b.Sort()
+	return b.Labels()
 }
 
 // QueryFrontendConfig defines query-frontend transport configuration.

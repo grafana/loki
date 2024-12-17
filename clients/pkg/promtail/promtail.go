@@ -1,7 +1,6 @@
 package promtail
 
 import (
-	"crypto/md5"
 	"errors"
 	"fmt"
 	"os"
@@ -10,21 +9,23 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/sha3"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/config"
-	"github.com/grafana/loki/clients/pkg/promtail/server"
-	"github.com/grafana/loki/clients/pkg/promtail/targets"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/clients/pkg/promtail/utils"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/config"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/server"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/utils"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/wal"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -130,7 +131,8 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		return errConfigNotChange
 	}
 	newConf := cfg.String()
-	level.Info(p.logger).Log("msg", "Reloading configuration file", "md5sum", fmt.Sprintf("%x", md5.Sum([]byte(newConf))))
+	hash := sha3.Sum256([]byte(newConf))
+	level.Info(p.logger).Log("msg", "Reloading configuration file", "sha3sum", fmt.Sprintf("%x", hash))
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
@@ -147,47 +149,44 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	var entryHandlers = []api.EntryHandler{}
 
 	// TODO: Refactor all client instantiation inside client.Manager
+	cfg.PositionsConfig.ReadOnly = cfg.PositionsConfig.ReadOnly || p.dryRun
 	if p.dryRun {
 		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
 		cfg.PositionsConfig.ReadOnly = true
-	} else if cfg.WAL.Enabled {
-		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
-		if err != nil {
-			return fmt.Errorf("failed to create wal writer: %w", err)
-		}
+	} else {
+		var notifier client.WriterEventsNotifier = client.NilNotifier
+		if cfg.WAL.Enabled {
+			p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
+			if err != nil {
+				return fmt.Errorf("failed to create wal writer: %w", err)
+			}
 
+			// If WAL is enabled, the walWriter should notify the manager of new WAL writes, and it should as well
+			// be an entry handler where the processing pipeline writes to
+			notifier = p.walWriter
+			entryHandlers = append(entryHandlers, p.walWriter)
+		}
 		p.client, err = client.NewManager(
 			p.metrics,
 			p.logger,
-			cfg.LimitsConfig.MaxStreams,
-			cfg.LimitsConfig.MaxLineSize.Val(),
-			cfg.LimitsConfig.MaxLineSizeTruncate,
+			cfg.LimitsConfig,
 			p.reg,
 			cfg.WAL,
-			p.walWriter,
+			notifier,
 			cfg.ClientConfigs...,
 		)
 		if err != nil {
-			return err
-		}
-
-		// If wal is enabled, the walWriter should be a target for scraped entries as well as the remote-write client,
-		// at least until we implement the wal reader side (https://github.com/grafana/loki/pull/8302).
-		entryHandlers = append(entryHandlers, p.walWriter)
-	} else {
-		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.LimitsConfig.MaxLineSizeTruncate, cfg.ClientConfigs...)
-		if err != nil {
-			return err
+			return fmt.Errorf("failed to create client manager: %w", err)
 		}
 	}
 
 	entryHandlers = append(entryHandlers, p.client)
 	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig, cfg.Global.FileWatch, &cfg.LimitsConfig)
 	if err != nil {
 		return err
 	}
@@ -254,30 +253,33 @@ func (p *Promtail) ActiveTargets() map[string][]target.Target {
 
 func (p *Promtail) watchConfig() {
 	// Reload handler.
-	// Make sure that sighup handler is registered with a redirect to the channel before the potentially
 	if p.newConfig == nil {
 		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail newConfig func is Empty")
 		return
 	}
-	promtailServer, ok := p.server.(*server.PromtailServer)
-	if !ok {
-		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "promtailServer cast fail")
+	switch srv := p.server.(type) {
+	case *server.NoopServer:
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail server is disabled")
 		return
-	}
-	level.Warn(p.logger).Log("msg", "enable watchConfig")
-	hup := make(chan os.Signal, 1)
-	signal.Notify(hup, syscall.SIGHUP)
-	for {
-		select {
-		case <-hup:
-			_ = p.reload()
-		case rc := <-promtailServer.Reload():
-			if err := p.reload(); err != nil {
-				rc <- err
-			} else {
-				rc <- nil
+	case *server.PromtailServer:
+		level.Warn(p.logger).Log("msg", "enable watchConfig")
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+		for {
+			select {
+			case <-hup:
+				_ = p.reload()
+			case rc := <-srv.Reload():
+				if err := p.reload(); err != nil {
+					rc <- err
+				} else {
+					rc <- nil
+				}
 			}
 		}
+	default:
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Unknown Promtail server type")
+		return
 	}
 }
 

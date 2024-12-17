@@ -9,17 +9,16 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/serverutils"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/serverutils"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type pushTarget struct {
@@ -80,7 +79,7 @@ func (h *pushTarget) run() error {
 	h.config.Server.RegisterInstrumentation = false
 
 	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
-	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "gcp_push"))
+	h.config.Server.Log = log.With(util_log.Logger, "component", "gcp_push")
 
 	srv, err := server.New(h.config.Server)
 	if err != nil {
@@ -133,7 +132,7 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
+	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.config.UseFullLine, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
 	if err != nil {
 		h.metrics.gcpPushErrors.WithLabelValues("translation").Inc()
 		level.Warn(h.logger).Log("msg", "failed to translate gcp push request", "err", err.Error())

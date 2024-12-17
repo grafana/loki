@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
@@ -16,11 +16,12 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
+
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var TopicPollInterval = 30 * time.Second
@@ -76,11 +77,11 @@ func NewSyncerFromScrapeConfig(
 
 	switch cfg.KafkaConfig.Assignor {
 	case sarama.StickyBalanceStrategyName:
-		config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategySticky
+		config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategySticky()
 	case sarama.RoundRobinBalanceStrategyName:
-		config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
+		config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 	case sarama.RangeBalanceStrategyName, "":
-		config.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
+		config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRange()
 	default:
 		return nil, fmt.Errorf("unrecognized consumer group partition assignor: %s", cfg.KafkaConfig.Assignor)
 	}
@@ -283,18 +284,18 @@ func (ts *TargetSyncer) loop() {
 // fetchTopics fetches and return new topics, if there's a difference with previous found topics
 // it will return true as second return value.
 func (ts *TargetSyncer) fetchTopics() ([]string, bool, error) {
-	new, err := ts.topicManager.Topics()
+	newTopics, err := ts.topicManager.Topics()
 	if err != nil {
 		return nil, false, err
 	}
-	if len(ts.previousTopics) != len(new) {
-		ts.previousTopics = new
-		return new, true, nil
+	if len(ts.previousTopics) != len(newTopics) {
+		ts.previousTopics = newTopics
+		return newTopics, true, nil
 	}
 	for i, v := range ts.previousTopics {
-		if v != new[i] {
-			ts.previousTopics = new
-			return new, true, nil
+		if v != newTopics[i] {
+			ts.previousTopics = newTopics
+			return newTopics, true, nil
 		}
 	}
 	return nil, false, nil
@@ -335,7 +336,7 @@ func (ts *TargetSyncer) NewTarget(session sarama.ConsumerGroupSession, claim sar
 		return &runnableDroppedTarget{
 			Target: target.NewDroppedTarget("dropping target, no labels", discoveredLabels),
 			runFn: func() {
-				for range claim.Messages() {
+				for range claim.Messages() { //nolint:revive
 				}
 			},
 		}, nil

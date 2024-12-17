@@ -69,7 +69,7 @@ const (
 // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Using_Tags.html#tag-restrictions
 // borrowed from this article and also testing various ASCII characters following regex
 // is supported by AWS S3 for both tags and values.
-var validTagKeyValue = regexp.MustCompile(`^[a-zA-Z0-9-+\-._:/@ ]+$`)
+var validTagKeyValue = regexp.MustCompile(`^[a-zA-Z0-9-+\-._:/@ =]+$`)
 
 func checkKey(key string) error {
 	if len(key) == 0 {
@@ -203,6 +203,10 @@ func (tags *tagSet) set(key, value string, failOnExist bool) error {
 	return nil
 }
 
+func (tags tagSet) count() int {
+	return len(tags.tagMap)
+}
+
 func (tags tagSet) toMap() map[string]string {
 	m := make(map[string]string, len(tags.tagMap))
 	for key, value := range tags.tagMap {
@@ -277,6 +281,11 @@ func (tags *Tags) Remove(key string) {
 // Set sets new tag.
 func (tags *Tags) Set(key, value string) error {
 	return tags.TagSet.set(key, value, false)
+}
+
+// Count - return number of tags accounted for
+func (tags Tags) Count() int {
+	return tags.TagSet.count()
 }
 
 // ToMap returns copy of tags.

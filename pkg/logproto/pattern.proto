@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+import "pkg/logproto/logproto.proto";
+import "pkg/push/push.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/logproto";
+
+service Pattern {
+  rpc Push(PushRequest) returns (PushResponse) {}
+  rpc Query(QueryPatternsRequest) returns (stream QueryPatternsResponse) {}
+}
+
+message QueryPatternsRequest {
+  string query = 1;
+  google.protobuf.Timestamp start = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  int64 step = 4;
+}
+
+message QueryPatternsResponse {
+  repeated PatternSeries series = 1;
+}
+
+message PatternSeries {
+  string pattern = 1;
+  repeated PatternSample samples = 2;
+}
+
+message PatternSample {
+  int64 timestamp = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 value = 2;
+}

@@ -38,6 +38,6 @@ func (p CustomPasswordAuthenticator) Challenge(req []byte) ([]byte, gocql.Authen
 }
 
 // Success returns nil by default, identical to the default PasswordAuthenticator
-func (p CustomPasswordAuthenticator) Success(data []byte) error {
+func (p CustomPasswordAuthenticator) Success(_ []byte) error {
 	return nil
 }

@@ -1,13 +1,10 @@
-package handlers_test
+package handlers
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -15,9 +12,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 )
 
 func TestCreateOrRotateCertificates_WhenGetReturnsNotFound_DoesNotError(t *testing.T) {
@@ -36,7 +36,7 @@ func TestCreateOrRotateCertificates_WhenGetReturnsNotFound_DoesNotError(t *testi
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was NOT called because the Get failed
@@ -60,7 +60,7 @@ func TestCreateOrRotateCertificates_WhenGetReturnsAnErrorOtherThanNotFound_Retur
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 
 	require.Equal(t, badRequestErr, errors.Unwrap(err))
 
@@ -146,7 +146,7 @@ func TestCreateOrRotateCertificates_SetsNamespaceOnAllObjects(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -230,8 +230,8 @@ func TestCreateOrRotateCertificates_SetsOwnerRefOnAllObjects(t *testing.T) {
 		Kind:               stack.Kind,
 		Name:               stack.Name,
 		UID:                stack.UID,
-		Controller:         pointer.BoolPtr(true),
-		BlockOwnerDeletion: pointer.BoolPtr(true),
+		Controller:         ptr.To(true),
+		BlockOwnerDeletion: ptr.To(true),
 	}
 
 	k.CreateStub = func(_ context.Context, o client.Object, _ ...client.CreateOption) error {
@@ -253,7 +253,7 @@ func TestCreateOrRotateCertificates_SetsOwnerRefOnAllObjects(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -312,7 +312,7 @@ func TestCreateOrRotateCertificates_WhenSetControllerRefInvalid_ContinueWithOthe
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -376,8 +376,8 @@ func TestCreateOrRotateCertificates_WhenGetReturnsNoError_UpdateObjects(t *testi
 					Kind:               "LokiStack",
 					Name:               "my-stack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
-					Controller:         pointer.BoolPtr(true),
-					BlockOwnerDeletion: pointer.BoolPtr(true),
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
 				},
 			},
 		},
@@ -399,7 +399,7 @@ func TestCreateOrRotateCertificates_WhenGetReturnsNoError_UpdateObjects(t *testi
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create not called
@@ -466,7 +466,7 @@ func TestCreateOrRotateCertificats_WhenCreateReturnsError_ContinueWithOtherObjec
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -530,8 +530,8 @@ func TestCreateOrRotateCertificates_WhenUpdateReturnsError_ContinueWithOtherObje
 					Kind:               "LokiStack",
 					Name:               "someStack",
 					UID:                "b23f9a38-9672-499f-8c29-15ede74d3ece",
-					Controller:         pointer.BoolPtr(true),
-					BlockOwnerDeletion: pointer.BoolPtr(true),
+					Controller:         ptr.To(true),
+					BlockOwnerDeletion: ptr.To(true),
 				},
 			},
 		},
@@ -559,7 +559,7 @@ func TestCreateOrRotateCertificates_WhenUpdateReturnsError_ContinueWithOtherObje
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrRotateCertificates(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)

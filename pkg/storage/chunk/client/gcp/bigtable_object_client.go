@@ -9,10 +9,10 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 type bigtableObjectClient struct {
@@ -184,5 +184,9 @@ func (s *bigtableObjectClient) DeleteChunk(ctx context.Context, userID, chunkID 
 }
 
 func (s *bigtableObjectClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
+func (s *bigtableObjectClient) IsRetryableErr(_ error) bool {
 	return false
 }

@@ -2,6 +2,7 @@ package oss
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
@@ -48,8 +49,15 @@ var signKeyList = []string{"acl", "uploads", "location", "cors",
 	"worm", "wormId", "wormExtend", "withHashContext",
 	"x-oss-enable-md5", "x-oss-enable-sha1", "x-oss-enable-sha256",
 	"x-oss-hash-ctx", "x-oss-md5-ctx", "transferAcceleration",
-	"regionList",
+	"regionList", "cloudboxes", "x-oss-ac-source-ip", "x-oss-ac-subnet-mask", "x-oss-ac-vpc-id", "x-oss-ac-forward-allow",
+	"metaQuery", "resourceGroup", "rtc", "x-oss-async-process", "responseHeader",
 }
+
+const (
+	timeFormatV4       = "20060102T150405Z"
+	shortTimeFormatV4  = "20060102"
+	signingAlgorithmV4 = "OSS4-HMAC-SHA256"
+)
 
 // init initializes Conn
 func (conn *Conn) init(config *Config, urlMaker *urlMaker, client *http.Client) error {
@@ -88,15 +96,34 @@ func (conn *Conn) init(config *Config, urlMaker *urlMaker, client *http.Client) 
 // Do sends request and returns the response
 func (conn Conn) Do(method, bucketName, objectName string, params map[string]interface{}, headers map[string]string,
 	data io.Reader, initCRC uint64, listener ProgressListener) (*Response, error) {
+	return conn.DoWithContext(nil, method, bucketName, objectName, params, headers, data, initCRC, listener)
+}
+
+// DoWithContext sends request and returns the response with context
+func (conn Conn) DoWithContext(ctx context.Context, method, bucketName, objectName string, params map[string]interface{}, headers map[string]string,
+	data io.Reader, initCRC uint64, listener ProgressListener) (*Response, error) {
 	urlParams := conn.getURLParams(params)
 	subResource := conn.getSubResource(params)
 	uri := conn.url.getURL(bucketName, objectName, urlParams)
-	resource := conn.getResource(bucketName, objectName, subResource)
-	return conn.doRequest(method, uri, resource, headers, data, initCRC, listener)
+
+	resource := ""
+	if conn.config.AuthVersion != AuthV4 {
+		resource = conn.getResource(bucketName, objectName, subResource)
+	} else {
+		resource = conn.getResourceV4(bucketName, objectName, subResource)
+	}
+
+	return conn.doRequest(ctx, method, uri, resource, headers, data, initCRC, listener)
 }
 
 // DoURL sends the request with signed URL and returns the response result.
 func (conn Conn) DoURL(method HTTPMethod, signedURL string, headers map[string]string,
+	data io.Reader, initCRC uint64, listener ProgressListener) (*Response, error) {
+	return conn.DoURLWithContext(nil, method, signedURL, headers, data, initCRC, listener)
+}
+
+// DoURLWithContext sends the request with signed URL and context and returns the response result.
+func (conn Conn) DoURLWithContext(ctx context.Context, method HTTPMethod, signedURL string, headers map[string]string,
 	data io.Reader, initCRC uint64, listener ProgressListener) (*Response, error) {
 	// Get URI from signedURL
 	uri, err := url.ParseRequestURI(signedURL)
@@ -115,6 +142,9 @@ func (conn Conn) DoURL(method HTTPMethod, signedURL string, headers map[string]s
 		Host:       uri.Host,
 	}
 
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
 	tracker := &readerTracker{completedBytes: 0}
 	fd, crc := conn.handleBody(req, data, initCRC, listener, tracker)
 	if fd != nil {
@@ -150,9 +180,10 @@ func (conn Conn) DoURL(method HTTPMethod, signedURL string, headers map[string]s
 	resp, err := conn.client.Do(req)
 	if err != nil {
 		// Transfer failed
+		conn.config.WriteLog(Debug, "[Resp:%p]http error:%s\n", req, err.Error())
 		event = newProgressEvent(TransferFailedEvent, tracker.completedBytes, req.ContentLength, 0)
 		publishProgress(listener, event)
-		conn.config.WriteLog(Debug, "[Resp:%p]http error:%s\n", req, err.Error())
+
 		return nil, err
 	}
 
@@ -196,7 +227,7 @@ func (conn Conn) getSubResource(params map[string]interface{}) string {
 	keys := make([]string, 0, len(params))
 	signParams := make(map[string]string)
 	for k := range params {
-		if conn.config.AuthVersion == AuthV2 {
+		if conn.config.AuthVersion == AuthV2 || conn.config.AuthVersion == AuthV4 {
 			encodedKey := url.QueryEscape(k)
 			keys = append(keys, encodedKey)
 			if params[k] != nil && params[k] != "" {
@@ -253,10 +284,31 @@ func (conn Conn) getResource(bucketName, objectName, subResource string) string 
 	return fmt.Sprintf("/%s/%s%s", bucketName, objectName, subResource)
 }
 
-func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource string, headers map[string]string,
+// getResource gets canonicalized resource
+func (conn Conn) getResourceV4(bucketName, objectName, subResource string) string {
+	if subResource != "" {
+		subResource = "?" + subResource
+	}
+
+	if bucketName == "" {
+		return fmt.Sprintf("/%s", subResource)
+	}
+
+	if objectName != "" {
+		objectName = url.QueryEscape(objectName)
+		objectName = strings.Replace(objectName, "+", "%20", -1)
+		objectName = strings.Replace(objectName, "%2F", "/", -1)
+		return fmt.Sprintf("/%s/%s%s", bucketName, objectName, subResource)
+	}
+	return fmt.Sprintf("/%s/%s", bucketName, subResource)
+}
+
+func (conn Conn) doRequest(ctx context.Context, method string, uri *url.URL, canonicalizedResource string, headers map[string]string,
 	data io.Reader, initCRC uint64, listener ProgressListener) (*Response, error) {
 	method = strings.ToUpper(method)
-	req := &http.Request{
+	var req *http.Request
+	var err error
+	req = &http.Request{
 		Method:     method,
 		URL:        uri,
 		Proto:      "HTTP/1.1",
@@ -265,7 +317,9 @@ func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource st
 		Header:     make(http.Header),
 		Host:       uri.Host,
 	}
-
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
 	tracker := &readerTracker{completedBytes: 0}
 	fd, crc := conn.handleBody(req, data, initCRC, listener, tracker)
 	if fd != nil {
@@ -281,12 +335,24 @@ func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource st
 		req.Header.Set("Proxy-Authorization", basic)
 	}
 
-	date := time.Now().UTC().Format(http.TimeFormat)
-	req.Header.Set(HTTPHeaderDate, date)
+	stNow := time.Now().UTC()
+	req.Header.Set(HTTPHeaderDate, stNow.Format(http.TimeFormat))
 	req.Header.Set(HTTPHeaderHost, req.Host)
 	req.Header.Set(HTTPHeaderUserAgent, conn.config.UserAgent)
 
-	akIf := conn.config.GetCredentials()
+	if conn.config.AuthVersion == AuthV4 {
+		req.Header.Set(HttpHeaderOssContentSha256, DefaultContentSha256)
+	}
+
+	var akIf Credentials
+	if providerE, ok := conn.config.CredentialsProvider.(CredentialsProviderE); ok {
+		if akIf, err = providerE.GetCredentialsE(); err != nil {
+			return nil, err
+		}
+	} else {
+		akIf = conn.config.GetCredentials()
+	}
+
 	if akIf.GetSecurityToken() != "" {
 		req.Header.Set(HTTPHeaderOssSecurityToken, akIf.GetSecurityToken())
 	}
@@ -297,7 +363,7 @@ func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource st
 		}
 	}
 
-	conn.signHeader(req, canonicalizedResource)
+	conn.signHeader(req, canonicalizedResource, akIf)
 
 	// Transfer started
 	event := newProgressEvent(TransferStartedEvent, 0, req.ContentLength, 0)
@@ -310,10 +376,10 @@ func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource st
 	resp, err := conn.client.Do(req)
 
 	if err != nil {
+		conn.config.WriteLog(Debug, "[Resp:%p]http error:%s\n", req, err.Error())
 		// Transfer failed
 		event = newProgressEvent(TransferFailedEvent, tracker.completedBytes, req.ContentLength, 0)
 		publishProgress(listener, event)
-		conn.config.WriteLog(Debug, "[Resp:%p]http error:%s\n", req, err.Error())
 		return nil, err
 	}
 
@@ -329,10 +395,15 @@ func (conn Conn) doRequest(method string, uri *url.URL, canonicalizedResource st
 	return conn.handleResponse(resp, crc)
 }
 
-func (conn Conn) signURL(method HTTPMethod, bucketName, objectName string, expiration int64, params map[string]interface{}, headers map[string]string) string {
-	akIf := conn.config.GetCredentials()
-	if akIf.GetSecurityToken() != "" {
-		params[HTTPParamSecurityToken] = akIf.GetSecurityToken()
+func (conn Conn) signURL(method HTTPMethod, bucketName, objectName string, expiration int64, params map[string]interface{}, headers map[string]string) (string, error) {
+	var akIf Credentials
+	var err error
+	if providerE, ok := conn.config.CredentialsProvider.(CredentialsProviderE); ok {
+		if akIf, err = providerE.GetCredentialsE(); err != nil {
+			return "", err
+		}
+	} else {
+		akIf = conn.config.GetCredentials()
 	}
 
 	m := strings.ToUpper(string(method))
@@ -347,38 +418,74 @@ func (conn Conn) signURL(method HTTPMethod, bucketName, objectName string, expir
 		req.Header.Set("Proxy-Authorization", basic)
 	}
 
-	req.Header.Set(HTTPHeaderDate, strconv.FormatInt(expiration, 10))
-	req.Header.Set(HTTPHeaderUserAgent, conn.config.UserAgent)
-
-	if headers != nil {
-		for k, v := range headers {
-			req.Header.Set(k, v)
+	if conn.config.AuthVersion == AuthV4 {
+		if akIf.GetSecurityToken() != "" {
+			params[HTTPParamOssSecurityToken] = akIf.GetSecurityToken()
 		}
-	}
 
-	if conn.config.AuthVersion == AuthV2 {
-		params[HTTPParamSignatureVersion] = "OSS2"
-		params[HTTPParamExpiresV2] = strconv.FormatInt(expiration, 10)
-		params[HTTPParamAccessKeyIDV2] = conn.config.AccessKeyID
+		if headers != nil {
+			for k, v := range headers {
+				req.Header.Set(k, v)
+			}
+		}
+
+		now := time.Now().UTC()
+		expires := expiration - now.Unix()
+		product := conn.config.GetSignProduct()
+		region := conn.config.GetSignRegion()
+		strDay := now.Format(shortTimeFormatV4)
 		additionalList, _ := conn.getAdditionalHeaderKeys(req)
+
+		params[HTTPParamSignatureVersion] = signingAlgorithmV4
+		params[HTTPParamCredential] = fmt.Sprintf("%s/%s/%s/%s/aliyun_v4_request", akIf.GetAccessKeyID(), strDay, region, product)
+		params[HTTPParamDate] = now.Format(timeFormatV4)
+		params[HTTPParamExpiresV2] = strconv.FormatInt(expires, 10)
 		if len(additionalList) > 0 {
 			params[HTTPParamAdditionalHeadersV2] = strings.Join(additionalList, ";")
 		}
+
+		subResource := conn.getSubResource(params)
+		canonicalizedResource := conn.getResourceV4(bucketName, objectName, subResource)
+		authorizationStr := conn.getSignedStrV4(req, canonicalizedResource, akIf.GetAccessKeySecret(), &now)
+		params[HTTPParamSignatureV2] = authorizationStr
+	} else {
+		if akIf.GetSecurityToken() != "" {
+			params[HTTPParamSecurityToken] = akIf.GetSecurityToken()
+		}
+
+		req.Header.Set(HTTPHeaderDate, strconv.FormatInt(expiration, 10))
+
+		if headers != nil {
+			for k, v := range headers {
+				req.Header.Set(k, v)
+			}
+		}
+
+		if conn.config.AuthVersion == AuthV2 {
+			params[HTTPParamSignatureVersion] = "OSS2"
+			params[HTTPParamExpiresV2] = strconv.FormatInt(expiration, 10)
+			params[HTTPParamAccessKeyIDV2] = conn.config.AccessKeyID
+			additionalList, _ := conn.getAdditionalHeaderKeys(req)
+			if len(additionalList) > 0 {
+				params[HTTPParamAdditionalHeadersV2] = strings.Join(additionalList, ";")
+			}
+		}
+
+		subResource := conn.getSubResource(params)
+		canonicalizedResource := conn.getResource(bucketName, objectName, subResource)
+		signedStr := conn.getSignedStr(req, canonicalizedResource, akIf.GetAccessKeySecret())
+
+		if conn.config.AuthVersion == AuthV1 {
+			params[HTTPParamExpires] = strconv.FormatInt(expiration, 10)
+			params[HTTPParamAccessKeyID] = akIf.GetAccessKeyID()
+			params[HTTPParamSignature] = signedStr
+		} else if conn.config.AuthVersion == AuthV2 {
+			params[HTTPParamSignatureV2] = signedStr
+		}
 	}
 
-	subResource := conn.getSubResource(params)
-	canonicalizedResource := conn.getResource(bucketName, objectName, subResource)
-	signedStr := conn.getSignedStr(req, canonicalizedResource, akIf.GetAccessKeySecret())
-
-	if conn.config.AuthVersion == AuthV1 {
-		params[HTTPParamExpires] = strconv.FormatInt(expiration, 10)
-		params[HTTPParamAccessKeyID] = akIf.GetAccessKeyID()
-		params[HTTPParamSignature] = signedStr
-	} else if conn.config.AuthVersion == AuthV2 {
-		params[HTTPParamSignatureV2] = signedStr
-	}
 	urlParams := conn.getURLParams(params)
-	return conn.url.getSignURL(bucketName, objectName, urlParams)
+	return conn.url.getSignURL(bucketName, objectName, urlParams), nil
 }
 
 func (conn Conn) signRtmpURL(bucketName, channelName, playlistName string, expiration int64) string {
@@ -475,27 +582,37 @@ func (conn Conn) handleResponse(resp *http.Response, crc hash.Hash64) (*Response
 		if statusCode >= 400 && statusCode <= 505 {
 			// 4xx and 5xx indicate that the operation has error occurred
 			var respBody []byte
+			var errorXml []byte
 			respBody, err := readResponseBody(resp)
 			if err != nil {
 				return nil, err
 			}
-
-			if len(respBody) == 0 {
+			errorXml = respBody
+			if len(respBody) == 0 && len(resp.Header.Get(HTTPHeaderOssErr)) > 0 {
+				errorXml, err = base64.StdEncoding.DecodeString(resp.Header.Get(HTTPHeaderOssErr))
+				if err != nil {
+					errorXml = respBody
+				}
+			}
+			if len(errorXml) == 0 {
 				err = ServiceError{
 					StatusCode: statusCode,
 					RequestID:  resp.Header.Get(HTTPHeaderOssRequestID),
+					Ec:         resp.Header.Get(HTTPHeaderOssEc),
 				}
 			} else {
-				// Response contains storage service error object, unmarshal
-				srvErr, errIn := serviceErrFromXML(respBody, resp.StatusCode,
+				srvErr, errIn := serviceErrFromXML(errorXml, resp.StatusCode,
 					resp.Header.Get(HTTPHeaderOssRequestID))
-				if errIn != nil { // error unmarshaling the error response
-					err = fmt.Errorf("oss: service returned invalid response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+				if errIn != nil { // error unmarshal the error response
+					if len(resp.Header.Get(HTTPHeaderOssEc)) > 0 {
+						err = fmt.Errorf("oss: service returned invalid response body, status = %s, RequestId = %s, ec = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID), resp.Header.Get(HTTPHeaderOssEc))
+					} else {
+						err = fmt.Errorf("oss: service returned invalid response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+					}
 				} else {
 					err = srvErr
 				}
 			}
-
 			return &Response{
 				StatusCode: resp.StatusCode,
 				Headers:    resp.Header,
@@ -513,27 +630,37 @@ func (conn Conn) handleResponse(resp *http.Response, crc hash.Hash64) (*Response
 			// (0,300) [308,400) [506,)
 			// Other extended http StatusCode
 			var respBody []byte
+			var errorXml []byte
 			respBody, err := readResponseBody(resp)
 			if err != nil {
 				return &Response{StatusCode: resp.StatusCode, Headers: resp.Header, Body: ioutil.NopCloser(bytes.NewReader(respBody))}, err
 			}
-
-			if len(respBody) == 0 {
+			errorXml = respBody
+			if len(respBody) == 0 && len(resp.Header.Get(HTTPHeaderOssErr)) > 0 {
+				errorXml, err = base64.StdEncoding.DecodeString(resp.Header.Get(HTTPHeaderOssErr))
+				if err != nil {
+					errorXml = respBody
+				}
+			}
+			if len(errorXml) == 0 {
 				err = ServiceError{
 					StatusCode: statusCode,
 					RequestID:  resp.Header.Get(HTTPHeaderOssRequestID),
+					Ec:         resp.Header.Get(HTTPHeaderOssEc),
 				}
 			} else {
-				// Response contains storage service error object, unmarshal
-				srvErr, errIn := serviceErrFromXML(respBody, resp.StatusCode,
+				srvErr, errIn := serviceErrFromXML(errorXml, resp.StatusCode,
 					resp.Header.Get(HTTPHeaderOssRequestID))
-				if errIn != nil { // error unmarshaling the error response
-					err = fmt.Errorf("unkown response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+				if errIn != nil { // error unmarshal the error response
+					if len(resp.Header.Get(HTTPHeaderOssEc)) > 0 {
+						err = fmt.Errorf("unknown response body, status = %s, RequestId = %s, ec = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID), resp.Header.Get(HTTPHeaderOssEc))
+					} else {
+						err = fmt.Errorf("unknown response body, status = %s, RequestId = %s", resp.Status, resp.Header.Get(HTTPHeaderOssRequestID))
+					}
 				} else {
 					err = srvErr
 				}
 			}
-
 			return &Response{
 				StatusCode: resp.StatusCode,
 				Headers:    resp.Header,
@@ -736,9 +863,10 @@ func (c *timeoutConn) SetWriteDeadline(t time.Time) error {
 
 // UrlMaker builds URL and resource
 const (
-	urlTypeCname  = 1
-	urlTypeIP     = 2
-	urlTypeAliyun = 3
+	urlTypeCname     = 1
+	urlTypeIP        = 2
+	urlTypeAliyun    = 3
+	urlTypePathStyle = 4
 )
 
 type urlMaker struct {
@@ -750,6 +878,11 @@ type urlMaker struct {
 
 // Init parses endpoint
 func (um *urlMaker) Init(endpoint string, isCname bool, isProxy bool) error {
+	return um.InitExt(endpoint, isCname, isProxy, false)
+}
+
+// InitExt parses endpoint
+func (um *urlMaker) InitExt(endpoint string, isCname bool, isProxy bool, isPathStyle bool) error {
 	if strings.HasPrefix(endpoint, "http://") {
 		um.Scheme = "http"
 		um.NetLoc = endpoint[len("http://"):]
@@ -772,7 +905,7 @@ func (um *urlMaker) Init(endpoint string, isCname bool, isProxy bool) error {
 	host, _, err := net.SplitHostPort(um.NetLoc)
 	if err != nil {
 		host = um.NetLoc
-		if host[0] == '[' && host[len(host)-1] == ']' {
+		if len(host) > 0 && host[0] == '[' && host[len(host)-1] == ']' {
 			host = host[1 : len(host)-1]
 		}
 	}
@@ -782,6 +915,8 @@ func (um *urlMaker) Init(endpoint string, isCname bool, isProxy bool) error {
 		um.Type = urlTypeIP
 	} else if isCname {
 		um.Type = urlTypeCname
+	} else if isPathStyle {
+		um.Type = urlTypePathStyle
 	} else {
 		um.Type = urlTypeAliyun
 	}
@@ -830,7 +965,7 @@ func (um urlMaker) buildURL(bucket, object string) (string, string) {
 	if um.Type == urlTypeCname {
 		host = um.NetLoc
 		path = "/" + object
-	} else if um.Type == urlTypeIP {
+	} else if um.Type == urlTypeIP || um.Type == urlTypePathStyle {
 		if bucket == "" {
 			host = um.NetLoc
 			path = "/"
@@ -848,5 +983,39 @@ func (um urlMaker) buildURL(bucket, object string) (string, string) {
 		}
 	}
 
+	return host, path
+}
+
+// buildURL builds URL
+func (um urlMaker) buildURLV4(bucket, object string) (string, string) {
+	var host = ""
+	var path = ""
+
+	object = url.QueryEscape(object)
+	object = strings.Replace(object, "+", "%20", -1)
+
+	// no escape /
+	object = strings.Replace(object, "%2F", "/", -1)
+
+	if um.Type == urlTypeCname {
+		host = um.NetLoc
+		path = "/" + object
+	} else if um.Type == urlTypeIP || um.Type == urlTypePathStyle {
+		if bucket == "" {
+			host = um.NetLoc
+			path = "/"
+		} else {
+			host = um.NetLoc
+			path = fmt.Sprintf("/%s/%s", bucket, object)
+		}
+	} else {
+		if bucket == "" {
+			host = um.NetLoc
+			path = "/"
+		} else {
+			host = bucket + "." + um.NetLoc
+			path = fmt.Sprintf("/%s/%s", bucket, object)
+		}
+	}
 	return host, path
 }

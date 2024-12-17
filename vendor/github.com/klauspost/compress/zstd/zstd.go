@@ -9,7 +9,6 @@ import (
 	"errors"
 	"log"
 	"math"
-	"math/bits"
 )
 
 // enable debug printing
@@ -89,6 +88,10 @@ var (
 	// Close has been called.
 	ErrDecoderClosed = errors.New("decoder used after Close")
 
+	// ErrEncoderClosed will be returned if the Encoder was used after
+	// Close has been called.
+	ErrEncoderClosed = errors.New("encoder used after Close")
+
 	// ErrDecoderNilInput is returned when a nil Reader was provided
 	// and an operation other than Reset/DecodeAll/Close was attempted.
 	ErrDecoderNilInput = errors.New("nil input provided as reader")
@@ -106,33 +109,12 @@ func printf(format string, a ...interface{}) {
 	}
 }
 
-// matchLen returns the maximum common prefix length of a and b.
-// a must be the shortest of the two.
-func matchLen(a, b []byte) (n int) {
-	for ; len(a) >= 8 && len(b) >= 8; a, b = a[8:], b[8:] {
-		diff := binary.LittleEndian.Uint64(a) ^ binary.LittleEndian.Uint64(b)
-		if diff != 0 {
-			return n + bits.TrailingZeros64(diff)>>3
-		}
-		n += 8
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			break
-		}
-		n++
-	}
-	return n
-
-}
-
 func load3232(b []byte, i int32) uint32 {
-	return binary.LittleEndian.Uint32(b[i:])
+	return binary.LittleEndian.Uint32(b[:len(b):len(b)][i:])
 }
 
 func load6432(b []byte, i int32) uint64 {
-	return binary.LittleEndian.Uint64(b[i:])
+	return binary.LittleEndian.Uint64(b[:len(b):len(b)][i:])
 }
 
 type byter interface {

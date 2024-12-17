@@ -2,9 +2,10 @@ package lua
 
 import (
 	"fmt"
-	"github.com/yuin/gopher-lua/ast"
 	"math"
 	"reflect"
+
+	"github.com/yuin/gopher-lua/ast"
 )
 
 /* internal constants & structs  {{{ */
@@ -94,7 +95,11 @@ func sline(pos ast.PositionHolder) int {
 }
 
 func eline(pos ast.PositionHolder) int {
-	return pos.LastLine()
+	line := pos.LastLine()
+	if line == 0 {
+		return pos.Line()
+	}
+	return line
 }
 
 func savereg(ec *expcontext, reg int) int {
@@ -133,6 +138,28 @@ func lnumberValue(expr ast.Expr) (LNumber, bool) {
 }
 
 /* utilities }}} */
+
+type gotoLabelDesc struct { // {{{
+	Id                 int
+	Name               string
+	Pc                 int
+	Line               int
+	NumActiveLocalVars int
+}
+
+func newLabelDesc(id int, name string, pc, line, n int) *gotoLabelDesc {
+	return &gotoLabelDesc{
+		Id:                 id,
+		Name:               name,
+		Pc:                 pc,
+		Line:               line,
+		NumActiveLocalVars: n,
+	}
+}
+
+func (l *gotoLabelDesc) SetNumActiveLocalVars(n int) {
+	l.NumActiveLocalVars = n
+} // }}}
 
 type CompileError struct { // {{{
 	context *funcContext
@@ -328,16 +355,18 @@ func (vp *varNamePool) Register(name string) int {
 /* FuncContext {{{ */
 
 type codeBlock struct {
-	LocalVars  *varNamePool
-	BreakLabel int
-	Parent     *codeBlock
-	RefUpvalue bool
-	LineStart  int
-	LastLine   int
+	LocalVars      *varNamePool
+	BreakLabel     int
+	Parent         *codeBlock
+	RefUpvalue     bool
+	LineStart      int
+	LastLine       int
+	labels         map[string]*gotoLabelDesc
+	firstGotoIndex int
 }
 
-func newCodeBlock(localvars *varNamePool, blabel int, parent *codeBlock, pos ast.PositionHolder) *codeBlock {
-	bl := &codeBlock{localvars, blabel, parent, false, 0, 0}
+func newCodeBlock(localvars *varNamePool, blabel int, parent *codeBlock, pos ast.PositionHolder, firstGotoIndex int) *codeBlock {
+	bl := &codeBlock{localvars, blabel, parent, false, 0, 0, map[string]*gotoLabelDesc{}, firstGotoIndex}
 	if pos != nil {
 		bl.LineStart = pos.Line()
 		bl.LastLine = pos.LastLine()
@@ -345,31 +374,134 @@ func newCodeBlock(localvars *varNamePool, blabel int, parent *codeBlock, pos ast
 	return bl
 }
 
+func (b *codeBlock) AddLabel(label *gotoLabelDesc) *gotoLabelDesc {
+	if old, ok := b.labels[label.Name]; ok {
+		return old
+	}
+	b.labels[label.Name] = label
+	return nil
+}
+
+func (b *codeBlock) GetLabel(label string) *gotoLabelDesc {
+	if v, ok := b.labels[label]; ok {
+		return v
+	}
+	return nil
+}
+
+func (b *codeBlock) LocalVarsCount() int {
+	count := 0
+	for block := b; block != nil; block = block.Parent {
+		count += len(block.LocalVars.Names())
+	}
+	return count
+}
+
 type funcContext struct {
-	Proto    *FunctionProto
-	Code     *codeStore
-	Parent   *funcContext
-	Upvalues *varNamePool
-	Block    *codeBlock
-	Blocks   []*codeBlock
-	regTop   int
-	labelId  int
-	labelPc  map[int]int
+	Proto           *FunctionProto
+	Code            *codeStore
+	Parent          *funcContext
+	Upvalues        *varNamePool
+	Block           *codeBlock
+	Blocks          []*codeBlock
+	regTop          int
+	labelId         int
+	labelPc         map[int]int
+	gotosCount      int
+	unresolvedGotos map[int]*gotoLabelDesc
 }
 
 func newFuncContext(sourcename string, parent *funcContext) *funcContext {
 	fc := &funcContext{
-		Proto:    newFunctionProto(sourcename),
-		Code:     &codeStore{make([]uint32, 0, 1024), make([]int, 0, 1024), 0},
-		Parent:   parent,
-		Upvalues: newVarNamePool(0),
-		Block:    newCodeBlock(newVarNamePool(0), labelNoJump, nil, nil),
-		regTop:   0,
-		labelId:  1,
-		labelPc:  map[int]int{},
+		Proto:           newFunctionProto(sourcename),
+		Code:            &codeStore{make([]uint32, 0, 1024), make([]int, 0, 1024), 0},
+		Parent:          parent,
+		Upvalues:        newVarNamePool(0),
+		Block:           newCodeBlock(newVarNamePool(0), labelNoJump, nil, nil, 0),
+		regTop:          0,
+		labelId:         1,
+		labelPc:         map[int]int{},
+		gotosCount:      0,
+		unresolvedGotos: map[int]*gotoLabelDesc{},
 	}
 	fc.Blocks = []*codeBlock{fc.Block}
 	return fc
+}
+
+func (fc *funcContext) CheckUnresolvedGoto() {
+	for i := fc.Block.firstGotoIndex; i < fc.gotosCount; i++ {
+		gotoLabel, ok := fc.unresolvedGotos[i]
+		if !ok {
+			continue
+		}
+		raiseCompileError(fc, fc.Proto.LastLineDefined, "no visible label '%s' for <goto> at line %d", gotoLabel.Name, gotoLabel.Line)
+	}
+}
+
+func (fc *funcContext) AddUnresolvedGoto(label *gotoLabelDesc) {
+	fc.unresolvedGotos[fc.gotosCount] = label
+	fc.gotosCount++
+}
+
+func (fc *funcContext) AddNamedLabel(label *gotoLabelDesc) {
+	if old := fc.Block.AddLabel(label); old != nil {
+		raiseCompileError(fc, label.Line+1, "label '%s' already defined on line %d", label.Name, old.Line)
+	}
+	fc.SetLabelPc(label.Id, label.Pc)
+}
+
+func (fc *funcContext) GetNamedLabel(name string) *gotoLabelDesc {
+	return fc.Block.GetLabel(name)
+}
+
+func (fc *funcContext) ResolveGoto(from, to *gotoLabelDesc, index int) {
+	if from.NumActiveLocalVars < to.NumActiveLocalVars {
+		varName := fc.Block.LocalVars.Names()[len(fc.Block.LocalVars.Names())-1]
+		raiseCompileError(fc, to.Line+1, "<goto %s> at line %d jumps into the scope of local '%s'", to.Name, from.Line, varName)
+	}
+	fc.Code.SetSbx(from.Pc, to.Id)
+	delete(fc.unresolvedGotos, index)
+}
+
+func (fc *funcContext) FindLabel(block *codeBlock, gotoLabel *gotoLabelDesc, i int) bool {
+	target := block.GetLabel(gotoLabel.Name)
+	if target != nil {
+		if gotoLabel.NumActiveLocalVars > target.NumActiveLocalVars && block.RefUpvalue {
+			fc.Code.SetA(gotoLabel.Pc-1, target.NumActiveLocalVars)
+		}
+		fc.ResolveGoto(gotoLabel, target, i)
+		return true
+	}
+	return false
+}
+
+func (fc *funcContext) ResolveCurrentBlockGotosWithParentBlock() {
+	blockActiveLocalVars := fc.Block.Parent.LocalVarsCount()
+	for i := fc.Block.firstGotoIndex; i < fc.gotosCount; i++ {
+		gotoLabel, ok := fc.unresolvedGotos[i]
+		if !ok {
+			continue
+		}
+		if gotoLabel.NumActiveLocalVars > blockActiveLocalVars {
+			if fc.Block.RefUpvalue {
+				fc.Code.SetA(gotoLabel.Pc-1, blockActiveLocalVars)
+			}
+			gotoLabel.SetNumActiveLocalVars(blockActiveLocalVars)
+		}
+		fc.FindLabel(fc.Block.Parent, gotoLabel, i)
+	}
+}
+
+func (fc *funcContext) ResolveForwardGoto(target *gotoLabelDesc) {
+	for i := fc.Block.firstGotoIndex; i <= fc.gotosCount; i++ {
+		gotoLabel, ok := fc.unresolvedGotos[i]
+		if !ok {
+			continue
+		}
+		if gotoLabel.Name == target.Name {
+			fc.ResolveGoto(gotoLabel, target, i)
+		}
+	}
 }
 
 func (fc *funcContext) NewLabel() int {
@@ -399,6 +531,13 @@ func (fc *funcContext) ConstIndex(value LValue) int {
 		raiseCompileError(fc, fc.Proto.LineDefined, "too many constants")
 	}
 	return v
+}
+func (fc *funcContext) BlockLocalVarsCount() int {
+	count := 0
+	for block := fc.Block; block != nil; block = block.Parent {
+		count += len(block.LocalVars.Names())
+	}
+	return count
 }
 
 func (fc *funcContext) RegisterLocalVar(name string) int {
@@ -431,7 +570,7 @@ func (fc *funcContext) LocalVars() []varNamePoolValue {
 }
 
 func (fc *funcContext) EnterBlock(blabel int, pos ast.PositionHolder) {
-	fc.Block = newCodeBlock(newVarNamePool(fc.RegTop()), blabel, fc.Block, pos)
+	fc.Block = newCodeBlock(newVarNamePool(fc.RegTop()), blabel, fc.Block, pos, fc.gotosCount)
 	fc.Blocks = append(fc.Blocks, fc.Block)
 }
 
@@ -447,6 +586,10 @@ func (fc *funcContext) CloseUpvalues() int {
 func (fc *funcContext) LeaveBlock() int {
 	closed := fc.CloseUpvalues()
 	fc.EndScope()
+
+	if fc.Block.Parent != nil {
+		fc.ResolveCurrentBlockGotosWithParentBlock()
+	}
 	fc.Block = fc.Block.Parent
 	fc.SetRegTop(fc.Block.LocalVars.LastIndex())
 	return closed
@@ -471,9 +614,17 @@ func (fc *funcContext) RegTop() int {
 
 /* FuncContext }}} */
 
-func compileChunk(context *funcContext, chunk []ast.Stmt) { // {{{
-	for _, stmt := range chunk {
-		compileStmt(context, stmt)
+func compileChunk(context *funcContext, chunk []ast.Stmt, untilFollows bool) { // {{{
+	for i, stmt := range chunk {
+		lastStmt := true
+		for j := i + 1; j < len(chunk); j++ {
+			_, ok := chunk[j].(*ast.LabelStmt)
+			if !ok {
+				lastStmt = false
+				break
+			}
+		}
+		compileStmt(context, stmt, lastStmt && !untilFollows)
 	}
 } // }}}
 
@@ -485,13 +636,21 @@ func compileBlock(context *funcContext, chunk []ast.Stmt) { // {{{
 	ph.SetLine(sline(chunk[0]))
 	ph.SetLastLine(eline(chunk[len(chunk)-1]))
 	context.EnterBlock(labelNoJump, ph)
-	for _, stmt := range chunk {
-		compileStmt(context, stmt)
+	for i, stmt := range chunk {
+		lastStmt := true
+		for j := i + 1; j < len(chunk); j++ {
+			_, ok := chunk[j].(*ast.LabelStmt)
+			if !ok {
+				lastStmt = false
+				break
+			}
+		}
+		compileStmt(context, stmt, lastStmt)
 	}
 	context.LeaveBlock()
 } // }}}
 
-func compileStmt(context *funcContext, stmt ast.Stmt) { // {{{
+func compileStmt(context *funcContext, stmt ast.Stmt, isLastStmt bool) { // {{{
 	switch st := stmt.(type) {
 	case *ast.AssignStmt:
 		compileAssignStmt(context, st)
@@ -501,7 +660,7 @@ func compileStmt(context *funcContext, stmt ast.Stmt) { // {{{
 		compileFuncCallExpr(context, context.RegTop(), st.Expr.(*ast.FuncCallExpr), ecnone(-1))
 	case *ast.DoBlockStmt:
 		context.EnterBlock(labelNoJump, st)
-		compileChunk(context, st.Stmts)
+		compileChunk(context, st.Stmts, false)
 		context.LeaveBlock()
 	case *ast.WhileStmt:
 		compileWhileStmt(context, st)
@@ -519,14 +678,17 @@ func compileStmt(context *funcContext, stmt ast.Stmt) { // {{{
 		compileNumberForStmt(context, st)
 	case *ast.GenericForStmt:
 		compileGenericForStmt(context, st)
+	case *ast.LabelStmt:
+		compileLabelStmt(context, st, isLastStmt)
+	case *ast.GotoStmt:
+		compileGotoStmt(context, st)
 	}
 } // }}}
 
 func compileAssignStmtLeft(context *funcContext, stmt *ast.AssignStmt) (int, []*assigncontext) { // {{{
 	reg := context.RegTop()
 	acs := make([]*assigncontext, 0, len(stmt.Lhs))
-	for i, lhs := range stmt.Lhs {
-		islast := i == len(stmt.Lhs)-1
+	for _, lhs := range stmt.Lhs {
 		switch st := lhs.(type) {
 		case *ast.IdentExpr:
 			identtype := getIdentRefType(context, context, st)
@@ -537,9 +699,7 @@ func compileAssignStmtLeft(context *funcContext, stmt *ast.AssignStmt) (int, []*
 			case ecUpvalue:
 				context.Upvalues.RegisterUnique(st.Value)
 			case ecLocal:
-				if islast {
-					ec.reg = context.FindLocalVar(st.Value)
-				}
+				ec.reg = context.FindLocalVar(st.Value)
 			}
 			acs = append(acs, &assigncontext{ec, 0, 0, false, false})
 		case *ast.AttrGetExpr:
@@ -825,7 +985,7 @@ func compileWhileStmt(context *funcContext, stmt *ast.WhileStmt) { // {{{
 	compileBranchCondition(context, context.RegTop(), stmt.Condition, thenlabel, elselabel, false)
 	context.SetLabelPc(thenlabel, context.Code.LastPC())
 	context.EnterBlock(elselabel, stmt)
-	compileChunk(context, stmt.Stmts)
+	compileChunk(context, stmt.Stmts, false)
 	context.CloseUpvalues()
 	context.Code.AddASbx(OP_JMP, 0, condlabel, eline(stmt))
 	context.LeaveBlock()
@@ -840,7 +1000,7 @@ func compileRepeatStmt(context *funcContext, stmt *ast.RepeatStmt) { // {{{
 	context.SetLabelPc(initlabel, context.Code.LastPC())
 	context.SetLabelPc(elselabel, context.Code.LastPC())
 	context.EnterBlock(thenlabel, stmt)
-	compileChunk(context, stmt.Stmts)
+	compileChunk(context, stmt.Stmts, true)
 	compileBranchCondition(context, context.RegTop(), stmt.Condition, thenlabel, elselabel, false)
 
 	context.SetLabelPc(thenlabel, context.Code.LastPC())
@@ -916,7 +1076,7 @@ func compileNumberForStmt(context *funcContext, stmt *ast.NumberForStmt) { // {{
 	context.RegisterLocalVar(stmt.Name)
 
 	bodypc := code.LastPC()
-	compileChunk(context, stmt.Stmts)
+	compileChunk(context, stmt.Stmts, false)
 
 	context.LeaveBlock()
 
@@ -949,7 +1109,7 @@ func compileGenericForStmt(context *funcContext, stmt *ast.GenericForStmt) { // 
 	}
 
 	context.SetLabelPc(bodylabel, code.LastPC())
-	compileChunk(context, stmt.Stmts)
+	compileChunk(context, stmt.Stmts, false)
 
 	context.LeaveBlock()
 
@@ -958,6 +1118,24 @@ func compileGenericForStmt(context *funcContext, stmt *ast.GenericForStmt) { // 
 	code.AddASbx(OP_JMP, 0, bodylabel, sline(stmt))
 
 	context.SetLabelPc(endlabel, code.LastPC())
+} // }}}
+
+func compileLabelStmt(context *funcContext, stmt *ast.LabelStmt, isLastStmt bool) { // {{{
+	labelId := context.NewLabel()
+	label := newLabelDesc(labelId, stmt.Name, context.Code.LastPC(), sline(stmt), context.BlockLocalVarsCount())
+	context.AddNamedLabel(label)
+	if isLastStmt {
+		label.SetNumActiveLocalVars(context.Block.Parent.LocalVarsCount())
+	}
+	context.ResolveForwardGoto(label)
+} // }}}
+
+func compileGotoStmt(context *funcContext, stmt *ast.GotoStmt) { // {{{
+	context.Code.AddABC(OP_CLOSE, 0, 0, 0, sline(stmt))
+	context.Code.AddASbx(OP_JMP, 0, labelNoJump, sline(stmt))
+	label := newLabelDesc(-1, stmt.Label, context.Code.LastPC(), sline(stmt), context.BlockLocalVarsCount())
+	context.AddUnresolvedGoto(label)
+	context.FindLabel(context.Block, label, context.gotosCount-1)
 } // }}}
 
 func compileExpr(context *funcContext, reg int, expr ast.Expr, ec *expcontext) int { // {{{
@@ -1149,10 +1327,11 @@ func compileFunctionExpr(context *funcContext, funcexpr *ast.FunctionExpr, ec *e
 		context.Proto.IsVarArg |= VarArgIsVarArg
 	}
 
-	compileChunk(context, funcexpr.Stmts)
+	compileChunk(context, funcexpr.Stmts, false)
 
 	context.Code.AddABC(OP_RETURN, 0, 1, 0, eline(funcexpr))
 	context.EndScope()
+	context.CheckUnresolvedGoto()
 	context.Proto.Code = context.Code.List()
 	context.Proto.DbgSourcePositions = context.Code.PosList()
 	context.Proto.DbgUpvalues = context.Upvalues.Names()
@@ -1468,7 +1647,17 @@ func compileLogicalOpExprAux(context *funcContext, reg int, expr ast.Expr, ec *e
 
 	a := reg
 	sreg := savereg(ec, a)
-	if !hasnextcond && thenlabel == elselabel {
+	isLastAnd := elselabel == lb.e && thenlabel != elselabel
+	isLastOr := thenlabel == lb.e && hasnextcond
+
+	if ident, ok := expr.(*ast.IdentExpr); ok && (isLastAnd || isLastOr) && getIdentRefType(context, context, ident) == ecLocal {
+		b := context.FindLocalVar(ident.Value)
+		op := OP_TESTSET
+		if sreg == b {
+			op = OP_TEST
+		}
+		code.AddABC(op, sreg, b, 0^flip, sline(expr))
+	} else if !hasnextcond && thenlabel == elselabel {
 		reg += compileExpr(context, reg, expr, &expcontext{ec.ctype, intMax(a, sreg), ec.varargopt})
 		last := context.Code.Last()
 		if opGetOpCode(last) == OP_MOVE && opGetArgA(last) == a {
@@ -1478,7 +1667,7 @@ func compileLogicalOpExprAux(context *funcContext, reg int, expr ast.Expr, ec *e
 		}
 	} else {
 		reg += compileExpr(context, reg, expr, ecnone(0))
-		if sreg == a {
+		if !hasnextcond {
 			code.AddABC(OP_TEST, a, 0, 0^flip, sline(expr))
 		} else {
 			code.AddABC(OP_TESTSET, sreg, a, 0^flip, sline(expr))
@@ -1669,6 +1858,10 @@ func Compile(chunk []ast.Stmt, name string) (proto *FunctionProto, err error) { 
 	err = nil
 	parlist := &ast.ParList{HasVargs: true, Names: []string{}}
 	funcexpr := &ast.FunctionExpr{ParList: parlist, Stmts: chunk}
+	if len(chunk) > 0 {
+		funcexpr.SetLastLine(sline(chunk[0]))
+		funcexpr.SetLastLine(eline(chunk[len(chunk)-1]) + 1)
+	}
 	context := newFuncContext(name, nil)
 	compileFunctionExpr(context, funcexpr, ecnone(0))
 	proto = context.Proto

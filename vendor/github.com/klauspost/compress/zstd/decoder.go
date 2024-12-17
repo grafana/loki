@@ -82,7 +82,7 @@ var (
 // can run multiple concurrent stateless decodes. It is even possible to
 // use stateless decodes while a stream is being decoded.
 //
-// The Reset function can be used to initiate a new stream, which is will considerably
+// The Reset function can be used to initiate a new stream, which will considerably
 // reduce the allocations normally caused by NewReader.
 func NewReader(r io.Reader, opts ...DOption) (*Decoder, error) {
 	initPredefined()
@@ -455,12 +455,7 @@ func (d *Decoder) nextBlock(blocking bool) (ok bool) {
 	}
 
 	if len(next.b) > 0 {
-		n, err := d.current.crc.Write(next.b)
-		if err == nil {
-			if n != len(next.b) {
-				d.current.err = io.ErrShortWrite
-			}
-		}
+		d.current.crc.Write(next.b)
 	}
 	if next.err == nil && next.d != nil && next.d.hasCRC {
 		got := uint32(d.current.crc.Sum64())

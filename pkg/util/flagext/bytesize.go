@@ -48,7 +48,7 @@ func (bs *ByteSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // MarshalYAML implements yaml.Marshaller.
 // Use a string representation for consistency
-func (bs *ByteSize) MarshalYAML() (interface{}, error) {
+func (bs ByteSize) MarshalYAML() (interface{}, error) {
 	return bs.String(), nil
 }
 
@@ -64,6 +64,6 @@ func (bs *ByteSize) UnmarshalJSON(val []byte) error {
 }
 
 // Use a string representation for consistency
-func (bs *ByteSize) MarshalJSON() ([]byte, error) {
+func (bs ByteSize) MarshalJSON() ([]byte, error) {
 	return json.Marshal(bs.String())
 }

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+DRONE_TAG_NO_V=${DRONE_TAG#v}
+export DRONE_TAG_NO_V
+
 ghr \
   -t "${GITHUB_TOKEN}" \
   -u "${DRONE_REPO_OWNER}" \

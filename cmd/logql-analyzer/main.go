@@ -7,19 +7,19 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/logqlanalyzer"
-	"github.com/grafana/loki/pkg/sizing"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logqlanalyzer"
+	"github.com/grafana/loki/v3/pkg/sizing"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 func main() {
 	cfg := getConfig()
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
-	}, prometheus.DefaultRegisterer, true, false)
+	}, prometheus.DefaultRegisterer, false)
 	s, err := createServer(cfg, util_log.Logger)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error while creating the server", "err", err)

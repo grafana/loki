@@ -25,15 +25,15 @@ app.kubernetes.io/component: canary
 Docker image name for loki-canary
 */}}
 {{- define "loki-canary.image" -}}
-{{- $dict := dict "service" .Values.monitoring.lokiCanary.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "service" .Values.lokiCanary.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.baseImage" $dict -}}
 {{- end -}}
 
 {{/*
-canry priority class name
+canary priority class name
 */}}
 {{- define "loki-canary.priorityClassName" -}}
-{{- $pcn := coalesce .Values.global.priorityClassName .Values.read.priorityClassName -}}
+{{- $pcn := coalesce .Values.global.priorityClassName .Values.lokiCanary.priorityClassName .Values.read.priorityClassName -}}
 {{- if $pcn }}
 priorityClassName: {{ $pcn }}
 {{- end }}

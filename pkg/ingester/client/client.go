@@ -5,17 +5,19 @@ import (
 	"io"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/util/server"
+
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/middleware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/distributor/clientpool"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -25,7 +27,6 @@ var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.Histogra
 }, []string{"operation", "status_code"})
 
 type HealthAndIngesterClient interface {
-	logproto.IngesterClient
 	grpc_health_v1.HealthClient
 	Close() error
 }
@@ -33,7 +34,6 @@ type HealthAndIngesterClient interface {
 type ClosableHealthAndIngesterClient struct {
 	logproto.PusherClient
 	logproto.QuerierClient
-	logproto.IngesterClient
 	logproto.StreamDataClient
 	grpc_health_v1.HealthClient
 	io.Closer
@@ -56,7 +56,7 @@ type Config struct {
 // RegisterFlags registers flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingester.client", f)
-	cfg.PoolConfig.RegisterFlags(f)
+	cfg.PoolConfig.RegisterFlagsWithPrefix("distributor.", f)
 
 	f.DurationVar(&cfg.PoolConfig.RemoteTimeout, "ingester.client.healthcheck-timeout", 1*time.Second, "How quickly a dead client will be removed after it has been detected to disappear. Set this to a value to allow time for a secondary health check to recover the missing client.")
 	f.DurationVar(&cfg.RemoteTimeout, "ingester.client.timeout", 5*time.Second, "The remote request timeout on the client side.")
@@ -74,6 +74,8 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	}
 
 	opts = append(opts, dialOpts...)
+
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.Dial(addr, opts...)
 	if err != nil {
 		return nil, err
@@ -81,7 +83,6 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 	return ClosableHealthAndIngesterClient{
 		PusherClient:     logproto.NewPusherClient(conn),
 		QuerierClient:    logproto.NewQuerierClient(conn),
-		IngesterClient:   logproto.NewIngesterClient(conn),
 		StreamDataClient: logproto.NewStreamDataClient(conn),
 		HealthClient:     grpc_health_v1.NewHealthClient(conn),
 		Closer:           conn,
@@ -91,6 +92,8 @@ func New(cfg Config, addr string) (HealthAndIngesterClient, error) {
 func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var unaryInterceptors []grpc.UnaryClientInterceptor
 	unaryInterceptors = append(unaryInterceptors, cfg.GRPCUnaryClientInterceptors...)
+	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
+	unaryInterceptors = append(unaryInterceptors, server.UnaryClientHTTPHeadersInterceptor)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
@@ -99,6 +102,8 @@ func instrumentation(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamC
 
 	var streamInterceptors []grpc.StreamClientInterceptor
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
+	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
+	streamInterceptors = append(streamInterceptors, server.StreamClientHTTPHeadersInterceptor)
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
 	if !cfg.Internal {
 		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)

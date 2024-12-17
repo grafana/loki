@@ -1,8 +1,8 @@
 ---
 title: Shuffle sharding
 menuTitle: Shuffle sharding
-description: Shuffle sharding can isolate a tenant workload from other tenant workloads, providing a better sharing of resources.
-weight: 100
+description: Describes how to isolate tenant workloads from other tenant workloads using shuffle sharding to provide a better sharing of resources.
+weight: 
 ---
 
 # Shuffle sharding
@@ -78,7 +78,7 @@ The per-tenant configuration parameter
 `max_query_parallelism` describes how many sub queries, after query splitting and query sharding, can be scheduled to run at the same time for each request of any tenant.
 
 Configuration parameter
-`querier.concurrency` controls the quanity of worker threads (goroutines) per single querier.
+`querier.concurrency` controls the quantity of worker threads (goroutines) per single querier.
 
 The maximum number of queriers can be overridden on a per-tenant basis in the limits overrides configuration by `max_queriers_per_tenant`.
 
@@ -86,9 +86,9 @@ The maximum number of queriers can be overridden on a per-tenant basis in the li
 
 These metrics reveal information relevant to shuffle sharding:
 
--  the overall query-scheduler queue duration,  `cortex_query_scheduler_queue_duration_seconds_*`
+-  the overall query-scheduler queue duration,  `loki_query_scheduler_queue_duration_seconds_*`
 
--  the query-scheduler queue length per tenant, `cortex_query_scheduler_queue_length`
+-  the query-scheduler queue length per tenant, `loki_query_scheduler_queue_length`
 
 -  the query-scheduler queue duration per tenant can be found with this query:
     ```

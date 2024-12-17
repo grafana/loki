@@ -10,62 +10,85 @@ var _pattern_actions []byte = []byte{
 }
 
 var _pattern_key_offsets []byte = []byte{
-	0, 8, 9, 
+	0, 0, 8, 10, 12, 14, 16, 18, 
+	20, 22, 37, 
 }
 
 var _pattern_trans_keys []byte = []byte{
 	62, 95, 48, 57, 65, 90, 97, 122, 
-	60, 95, 65, 90, 97, 122, 
+	128, 191, 160, 191, 128, 191, 128, 159, 
+	144, 191, 128, 191, 128, 143, 60, 224, 
+	237, 240, 244, 128, 193, 194, 223, 225, 
+	239, 241, 243, 245, 255, 95, 65, 90, 
+	97, 122, 
 }
 
 var _pattern_single_lengths []byte = []byte{
-	2, 1, 1, 
+	0, 2, 0, 0, 0, 0, 0, 0, 
+	0, 5, 1, 
 }
 
 var _pattern_range_lengths []byte = []byte{
-	3, 0, 2, 
+	0, 3, 1, 1, 1, 1, 1, 1, 
+	1, 5, 2, 
 }
 
 var _pattern_index_offsets []byte = []byte{
-	0, 6, 8, 
+	0, 0, 6, 8, 10, 12, 14, 16, 
+	18, 20, 31, 
+}
+
+var _pattern_indicies []byte = []byte{
+	2, 1, 1, 1, 1, 0, 3, 4, 
+	5, 4, 5, 4, 5, 4, 6, 4, 
+	6, 4, 6, 4, 7, 8, 9, 10, 
+	12, 4, 5, 6, 11, 4, 3, 1, 
+	1, 1, 13, 
 }
 
 var _pattern_trans_targs []byte = []byte{
-	1, 0, 0, 0, 0, 1, 2, 1, 
-	0, 0, 0, 1, 1, 1, 
+	9, 1, 9, 9, 0, 2, 4, 10, 
+	3, 5, 6, 7, 8, 9, 
 }
 
 var _pattern_trans_actions []byte = []byte{
-	7, 0, 0, 0, 0, 13, 5, 9, 
-	0, 0, 0, 11, 13, 11, 
+	13, 0, 7, 9, 0, 0, 0, 5, 
+	0, 0, 0, 0, 0, 11, 
 }
 
 var _pattern_to_state_actions []byte = []byte{
+	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 1, 0, 
 }
 
 var _pattern_from_state_actions []byte = []byte{
+	0, 0, 0, 0, 0, 0, 0, 0, 
 	0, 3, 0, 
 }
 
 var _pattern_eof_trans []byte = []byte{
-	13, 0, 14, 
+	0, 1, 0, 0, 0, 0, 0, 0, 
+	0, 0, 14, 
 }
 
-const pattern_start int = 1
-const pattern_first_final int = 1
-const pattern_error int = -1
+const pattern_start int = 9
+const pattern_first_final int = 9
+const pattern_error int = 0
 
-const pattern_en_main int = 1
+const pattern_en_main int = 9
 
 
 //line pkg/logql/log/pattern/lexer.rl:14
 
 
+
+//line pkg/logql/log/pattern/lexer.rl:28
+
+
 const LEXER_ERROR = 0
 
 
-//line pkg/logql/log/pattern/lexer.rl:21
+//line pkg/logql/log/pattern/lexer.rl:35
 
 
 func (lex *lexer) Lex(out *exprSymType) int {
@@ -73,7 +96,7 @@ func (lex *lexer) Lex(out *exprSymType) int {
     tok := 0
 
     
-//line pkg/logql/log/pattern/lexer.rl.go:77
+//line pkg/logql/log/pattern/lexer.rl.go:100
 	{
 	var _klen int
 	var _trans int
@@ -82,6 +105,9 @@ func (lex *lexer) Lex(out *exprSymType) int {
 	var _keys int
 	if ( lex.p) == ( lex.pe) {
 		goto _test_eof
+	}
+	if  lex.cs == 0 {
+		goto _out
 	}
 _resume:
 	_acts = int(_pattern_from_state_actions[ lex.cs])
@@ -93,7 +119,7 @@ _resume:
 //line NONE:1
  lex.ts = ( lex.p)
 
-//line pkg/logql/log/pattern/lexer.rl.go:97
+//line pkg/logql/log/pattern/lexer.rl.go:123
 		}
 	}
 
@@ -150,6 +176,7 @@ _resume:
 	}
 
 _match:
+	_trans = int(_pattern_indicies[_trans])
 _eof_trans:
 	 lex.cs = int(_pattern_trans_targs[_trans])
 
@@ -167,27 +194,27 @@ _eof_trans:
  lex.te = ( lex.p)+1
 
 		case 3:
-//line pkg/logql/log/pattern/lexer.rl:30
+//line pkg/logql/log/pattern/lexer.rl:44
  lex.te = ( lex.p)+1
 { tok = lex.handle(lex.identifier(out)); ( lex.p)++; goto _out
  }
 		case 4:
-//line pkg/logql/log/pattern/lexer.rl:31
+//line pkg/logql/log/pattern/lexer.rl:45
  lex.te = ( lex.p)+1
 { tok = lex.handle(lex.literal(out)); ( lex.p)++; goto _out
  }
 		case 5:
-//line pkg/logql/log/pattern/lexer.rl:31
+//line pkg/logql/log/pattern/lexer.rl:45
  lex.te = ( lex.p)
 ( lex.p)--
 { tok = lex.handle(lex.literal(out)); ( lex.p)++; goto _out
  }
 		case 6:
-//line pkg/logql/log/pattern/lexer.rl:31
+//line pkg/logql/log/pattern/lexer.rl:45
 ( lex.p) = ( lex.te) - 1
 { tok = lex.handle(lex.literal(out)); ( lex.p)++; goto _out
  }
-//line pkg/logql/log/pattern/lexer.rl.go:191
+//line pkg/logql/log/pattern/lexer.rl.go:218
 		}
 	}
 
@@ -201,10 +228,13 @@ _again:
 //line NONE:1
  lex.ts = 0
 
-//line pkg/logql/log/pattern/lexer.rl.go:205
+//line pkg/logql/log/pattern/lexer.rl.go:232
 		}
 	}
 
+	if  lex.cs == 0 {
+		goto _out
+	}
 	( lex.p)++
 	if ( lex.p) != ( lex.pe) {
 		goto _resume
@@ -220,7 +250,7 @@ _again:
 	_out: {}
 	}
 
-//line pkg/logql/log/pattern/lexer.rl:35
+//line pkg/logql/log/pattern/lexer.rl:49
 
 
     return tok;
@@ -229,7 +259,7 @@ _again:
 
 func (lex *lexer) init() {
     
-//line pkg/logql/log/pattern/lexer.rl.go:233
+//line pkg/logql/log/pattern/lexer.rl.go:263
 	{
 	 lex.cs = pattern_start
 	 lex.ts = 0
@@ -237,5 +267,5 @@ func (lex *lexer) init() {
 	 lex.act = 0
 	}
 
-//line pkg/logql/log/pattern/lexer.rl:43
+//line pkg/logql/log/pattern/lexer.rl:57
 }

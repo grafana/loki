@@ -2,107 +2,59 @@ package series
 
 import (
 	"context"
-	"log"
-	"net"
 	"testing"
-	"time"
 
-	"github.com/grafana/dskit/grpcclient"
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 )
 
-type fakeClient struct {
-	logproto.IndexGatewayClient
+type mockClient struct {
+	GatewayClient
 }
 
-func (fakeClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest, opts ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
-	return &logproto.GetChunkRefResponse{}, nil
-}
-
-func (fakeClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest, opts ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
+func (mockClient) GetSeries(_ context.Context, _ *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
 	return &logproto.GetSeriesResponse{}, nil
 }
 
-func Test_IndexGatewayClient(t *testing.T) {
-	idx := IndexGatewayClientStore{
-		client: fakeClient{},
-		fallbackStore: &indexReaderWriter{
-			chunkBatchSize: 1,
+func (mockClient) GetChunkRef(_ context.Context, _ *logproto.GetChunkRefRequest) (*logproto.GetChunkRefResponse, error) {
+	return &logproto.GetChunkRefResponse{
+		Refs: []*logproto.ChunkRef{},
+		Stats: stats.Index{
+			TotalChunks:      1000,
+			PostFilterChunks: 10,
+			ShardsDuration:   0,
+			UsedBloomFilters: true,
 		},
-	}
-	_, err := idx.GetSeries(context.Background(), "foo", model.Earliest, model.Latest)
+	}, nil
+}
+
+func Test_IndexGatewayClientStore_GetSeries(t *testing.T) {
+	idx := NewIndexGatewayClientStore(&mockClient{}, log.NewNopLogger())
+	_, err := idx.GetSeries(context.Background(), "tenant", model.Earliest, model.Latest)
 	require.NoError(t, err)
 }
 
-func Test_IndexGatewayClient_Fallback(t *testing.T) {
-	lis, err := net.Listen("tcp", "localhost:0")
-	require.NoError(t, err)
-	s := grpc.NewServer()
+func Test_IndexGatewayClientStore_GetChunkRefs(t *testing.T) {
+	idx := NewIndexGatewayClientStore(&mockClient{}, log.NewNopLogger())
 
-	// register fake grpc service with missing methods
-	desc := grpc.ServiceDesc{
-		ServiceName: "logproto.IndexGateway",
-		HandlerType: (*logproto.IndexGatewayServer)(nil),
-		Streams: []grpc.StreamDesc{
-			{
-				StreamName:    "QueryIndex",
-				Handler:       nil,
-				ServerStreams: true,
-			},
-		},
-		Metadata: "pkg/storage/stores/shipper/indexgateway/logproto/gateway.proto",
-	}
-	s.RegisterService(&desc, nil)
+	t.Run("stats context is merged correctly", func(t *testing.T) {
+		ctx := context.Background()
+		_, ctx = stats.NewContext(ctx)
 
-	go func() {
-		if err := s.Serve(lis); err != nil {
-			log.Fatalf("Failed to serve: %v", err)
-		}
-	}()
-	defer func() {
-		s.GracefulStop()
-	}()
+		_, err := idx.GetChunkRefs(ctx, "tenant", model.Earliest, model.Latest, chunk.NewPredicate(nil, nil))
+		require.NoError(t, err)
 
-	cfg := grpcclient.Config{
-		MaxRecvMsgSize: 1024,
-		MaxSendMsgSize: 1024,
-	}
+		_, err = idx.GetChunkRefs(ctx, "tenant", model.Earliest, model.Latest, chunk.NewPredicate(nil, nil))
+		require.NoError(t, err)
 
-	dialOpts, err := cfg.DialOption(nil, nil)
-	require.NoError(t, err)
-
-	conn, err := grpc.Dial(lis.Addr().String(), dialOpts...)
-	require.NoError(t, err)
-	defer conn.Close()
-	schemaCfg := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{From: config.DayTime{Time: model.Now().Add(-24 * time.Hour)}, Schema: "v12", RowShards: 16},
-		},
-	}
-	schema, err := index.CreateSchema(schemaCfg.Configs[0])
-	require.NoError(t, err)
-	testutils.ResetMockStorage()
-	tm, err := index.NewTableManager(index.TableManagerConfig{}, schemaCfg, 2*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
-	require.NoError(t, err)
-	require.NoError(t, tm.SyncTables(context.Background()))
-	idx := NewIndexGatewayClientStore(
-		logproto.NewIndexGatewayClient(conn),
-		&indexReaderWriter{
-			chunkBatchSize: 1,
-			schema:         schema,
-			schemaCfg:      schemaCfg,
-			index:          testutils.NewMockStorage(),
-		},
-	)
-
-	_, err = idx.GetSeries(context.Background(), "foo", model.Now(), model.Now().Add(1*time.Hour), labels.MustNewMatcher(labels.MatchEqual, "__name__", "logs"))
-	require.NoError(t, err)
+		statsCtx := stats.FromContext(ctx)
+		require.True(t, statsCtx.Index().UsedBloomFilters)
+		require.Equal(t, int64(2000), statsCtx.Index().TotalChunks)
+		require.Equal(t, int64(20), statsCtx.Index().PostFilterChunks)
+	})
 }

@@ -13,9 +13,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 const (
@@ -80,7 +80,7 @@ type multilineState struct {
 	currentLines   uint64        // The number of lines of the current multiline block.
 }
 
-// newMulitlineStage creates a MulitlineStage from config
+// newMultilineStage creates a MulitlineStage from config
 func newMultilineStage(logger log.Logger, config interface{}) (Stage, error) {
 	cfg := &MultilineConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
@@ -228,4 +228,9 @@ func (m *multilineStage) flush(out chan Entry, s *multilineState) {
 // Name implements Stage
 func (m *multilineStage) Name() string {
 	return StageTypeMultiline
+}
+
+// Cleanup implements Stage.
+func (*multilineStage) Cleanup() {
+	// no-op
 }

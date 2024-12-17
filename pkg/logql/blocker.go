@@ -8,8 +8,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/regexp"
 
-	logutil "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/util"
+	logutil "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 type queryBlocker struct {
@@ -32,8 +33,8 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 		return false
 	}
 
-	query := qb.q.params.Query()
-	typ, err := QueryType(query)
+	query := qb.q.params.QueryString()
+	typ, err := QueryType(qb.q.params.GetExpression())
 	if err != nil {
 		typ = "unknown"
 	}
@@ -43,7 +44,7 @@ func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
 	for _, b := range blocks {
 
 		if b.Hash > 0 {
-			if b.Hash == HashedQuery(query) {
+			if b.Hash == util.HashedQuery(query) {
 				level.Warn(logger).Log("msg", "query blocker matched with hash policy", "hash", b.Hash, "query", query)
 				return qb.block(b, typ, logger)
 			}

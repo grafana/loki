@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var testOutputYaml = `
@@ -86,7 +86,6 @@ func TestOutputValidation(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			err := validateOutputConfig(test.config)
@@ -120,7 +119,6 @@ func TestOutputStage_Process(t *testing.T) {
 		},
 	}
 	for name, test := range tests {
-		test := test
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			st, err := newOutputStage(util_log.Logger, test.config)

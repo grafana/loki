@@ -6,8 +6,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 func (w *WriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
@@ -31,7 +31,7 @@ func (s *StorageClient) NewWriteBatch() index.WriteBatch {
 	return &WriteBatch{}
 }
 
-func (s *StorageClient) BatchWrite(c context.Context, batch index.WriteBatch) error {
+func (s *StorageClient) BatchWrite(_ context.Context, batch index.WriteBatch) error {
 	writeBatch := batch.(*WriteBatch)
 	batchWrites := &WriteIndexRequest{Writes: writeBatch.Writes}
 	_, err := s.client.WriteIndex(context.Background(), batchWrites)

@@ -7,8 +7,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/willf/bloom"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 var BloomPool PoolBloom
@@ -96,8 +96,8 @@ func (b *Blooms) AddStream(fp model.Fingerprint) {
 	})
 }
 
-func (b *Blooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
-	b.stats.AddChunk(fp, chk)
+func (b *Blooms) AddChunkStats(s index.ChunkStats) {
+	b.stats.AddChunkStats(s)
 }
 
 func (b *Blooms) add(filter *bloom.BloomFilter, key []byte, update func()) {

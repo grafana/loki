@@ -1,0 +1,84 @@
+name: operator-release-please
+
+on:
+  push:
+    paths:
+      - 'operator/**'
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+  # Necessary for grafana/shared-workflows/actions/dockerhub-login@main 
+  id-token: write
+
+jobs:
+  releasePlease:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.operator--release_created }}
+      release_name: ${{ steps.release.outputs.operator--tag_name }}
+      release_major: ${{ steps.release.outputs.operator--major }}
+      release_minor: ${{ steps.release.outputs.operator--minor }}
+      release_patch: ${{ steps.release.outputs.operator--patch }}
+    steps:
+      - id: "get_github_app_token"
+        name: Get GitHub App Token
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          path: operator
+          config-file: operator/release-please-config.json
+          token: ${{ steps.get_github_app_token.outputs.token }}
+  publishRelease:
+    needs:
+    - "releasePlease"
+    runs-on: ubuntu-latest
+    if: ${{ needs.releasePlease.outputs.release_created }}
+    steps:
+      - id: "get_github_app_token"
+        name: Get GitHub App Token
+        uses: "actions/create-github-app-token@v1"
+        with:
+          app-id: "${{ secrets.APP_ID }}"
+          owner: "${{ github.repository_owner }}"
+          private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+      - name: "pull code to release"
+        uses: "actions/checkout@v4"
+        with:
+          path: "release"
+      - name: "publish release"
+        env:
+          GH_TOKEN: ${{ steps.get_github_app_token.outputs.token }}
+        working-directory: "release"
+        run: |
+          gh release edit "${{ needs.releasePlease.outputs.release_name }}" --draft=false --latest=false
+  publishImages:
+    env:
+      BUILD_TIMEOUT: 60
+      IMAGE_PREFIX: "grafana"
+    needs:
+      - "publishRelease"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Set up QEMU"
+        uses: "docker/setup-qemu-action@v3"
+      - name: "Set up docker buildx"
+        uses: "docker/setup-buildx-action@v3"
+      - name: "Login to DockerHub (from vault)"
+        uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+      - name: "Build and push"
+        timeout-minutes: "${{ env.BUILD_TIMEOUT }}"
+        uses: "docker/build-push-action@v6"
+        with:
+          context: "operator"
+          file: "Dockerfile"
+          platforms: "linux/amd64,linux/arm64,linux/arm"
+          push: true
+          tags: "${{ env.IMAGE_PREFIX }}/loki-operator:${{ steps.releasePlease.outputs.release_major }}.${{ steps.releasePlease.outputs.release_minor }}.${{ steps.releasePlease.outputs.release_patch }}"

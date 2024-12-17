@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"sort"
 	"strconv"
 	"time"
@@ -21,7 +22,7 @@ const (
 type LineExtractor func([]byte) float64
 
 var (
-	CountExtractor LineExtractor = func(line []byte) float64 { return 1. }
+	CountExtractor LineExtractor = func(_ []byte) float64 { return 1. }
 	BytesExtractor LineExtractor = func(line []byte) float64 { return float64(len(line)) }
 )
 
@@ -34,8 +35,15 @@ type SampleExtractor interface {
 // A StreamSampleExtractor never mutate the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
-	Process(ts int64, line []byte) (float64, LabelsResult, bool)
-	ProcessString(ts int64, line string) (float64, LabelsResult, bool)
+	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool)
+	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool)
+	ReferencedStructuredMetadata() bool
+}
+
+// SampleExtractorWrapper takes an extractor, wraps it is some desired functionality
+// and returns a new pipeline
+type SampleExtractorWrapper interface {
+	Wrap(ctx context.Context, extractor SampleExtractor, query, tenant string) SampleExtractor
 }
 
 type lineSampleExtractor struct {
@@ -80,12 +88,19 @@ type streamLineSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) ReferencedStructuredMetadata() bool {
+	return l.builder.referencedStructuredMetadata
+}
+
+func (l *streamLineSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
+	l.builder.Reset()
+	l.builder.Add(StructuredMetadataLabel, structuredMetadata...)
+
 	// short circuit.
 	if l.Stage == NoopStage {
 		return l.LineExtractor(line), l.builder.GroupedLabels(), true
 	}
-	l.builder.Reset()
+
 	line, ok := l.Stage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false
@@ -93,9 +108,9 @@ func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, Lab
 	return l.LineExtractor(line), l.builder.GroupedLabels(), true
 }
 
-func (l *streamLineSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line))
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
 }
 
 func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -154,6 +169,10 @@ type streamLabelSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
+func (l *labelSampleExtractor) ReferencedStructuredMetadata() bool {
+	return l.baseBuilder.referencedStructuredMetadata
+}
+
 func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
 	hash := l.baseBuilder.Hash(labels)
 	if res, ok := l.streamExtractors[hash]; ok {
@@ -168,9 +187,10 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
+	l.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	line, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false
@@ -198,9 +218,9 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, La
 	return v, l.builder.GroupedLabels(), true
 }
 
-func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line))
+	return l.Process(ts, unsafeGetBytes(line), structuredMetadata...)
 }
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -243,18 +263,22 @@ type filteringStreamExtractor struct {
 	extractor StreamSampleExtractor
 }
 
+func (sp *filteringStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.Process(ts, line)
-		if matches { //When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.Process(ts, line, structuredMetadata...)
+		if matches { // When the filter matches, don't run the next step
 			return 0, nil, false
 		}
 	}
@@ -262,14 +286,14 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, Lab
 	return sp.extractor.Process(ts, line)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.ProcessString(ts, line)
-		if matches { //When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.ProcessString(ts, line, structuredMetadata...)
+		if matches { // When the filter matches, don't run the next step
 			return 0, nil, false
 		}
 	}

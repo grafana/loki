@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -65,7 +65,6 @@ func TestNewDocker(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			p, err := NewDocker(util_log.Logger, prometheus.DefaultRegisterer)
@@ -96,12 +95,14 @@ type testEntry struct {
 
 func TestCRI_tags(t *testing.T) {
 	cases := []struct {
-		name            string
-		lines           []string
-		expected        []string
-		maxPartialLines int
-		entries         []testEntry
-		err             error
+		name                       string
+		lines                      []string
+		expected                   []string
+		maxPartialLines            int
+		maxPartialLineSize         int
+		maxPartialLineSizeTruncate bool
+		entries                    []testEntry
+		err                        error
 	}{
 		{
 			name: "tag F",
@@ -121,7 +122,7 @@ func TestCRI_tags(t *testing.T) {
 			},
 			expected: []string{
 				"partial line 1 log finished",     // belongs to stream `{foo="bar"}`
-				"partial line 2 another full log", // belongs to stream `{foo="bar2"}
+				"partial line 2 another full log", // belongs to stream `{foo="bar2"}`
 			},
 		},
 		{
@@ -137,7 +138,7 @@ func TestCRI_tags(t *testing.T) {
 				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F another full log", labels: model.LabelSet{"label1": "val3"}},
 				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F yet an another full log", labels: model.LabelSet{"label1": "val4"}},
 			},
-			maxPartialLines: 2,
+			maxPartialLines: 3,
 			expected: []string{
 				"partial line 1 partial line 3 ",
 				"partial line 2 ",
@@ -163,19 +164,34 @@ func TestCRI_tags(t *testing.T) {
 				"another full log",
 			},
 		},
+		{
+			name: "tag P multi-stream with truncation",
+			entries: []testEntry{
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial line 1 ", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:50.904275087+00:00 stdout P partial", labels: model.LabelSet{"foo": "bar2"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F log finished", labels: model.LabelSet{"foo": "bar"}},
+				{line: "2019-05-07T18:57:55.904275087+00:00 stdout F full", labels: model.LabelSet{"foo": "bar2"}},
+			},
+			maxPartialLineSizeTruncate: true,
+			maxPartialLineSize:         11,
+			expected: []string{
+				"partial lin",
+				"partialfull",
+			},
+		},
 	}
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			p, err := NewCRI(util_log.Logger, prometheus.DefaultRegisterer)
+			cfg := map[string]interface{}{
+				"max_partial_lines":              tt.maxPartialLines,
+				"max_partial_line_size":          tt.maxPartialLineSize,
+				"max_partial_line_size_truncate": tt.maxPartialLineSizeTruncate,
+			}
+			p, err := NewCRI(util_log.Logger, cfg, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 
 			got := make([]string, 0)
-
-			// tweak `maxPartialLines`
-			if tt.maxPartialLines != 0 {
-				p.(*cri).maxPartialLines = tt.maxPartialLines
-			}
 
 			for _, entry := range tt.entries {
 				out := processEntries(p, newEntry(nil, entry.labels, entry.line, time.Now()))
@@ -251,10 +267,10 @@ func TestNewCri(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			p, err := NewCRI(util_log.Logger, prometheus.DefaultRegisterer)
+			cfg := map[string]interface{}{}
+			p, err := NewCRI(util_log.Logger, cfg, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatalf("failed to create CRI parser: %s", err)
 			}

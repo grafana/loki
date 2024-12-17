@@ -6,13 +6,12 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"text/scanner"
 
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -32,7 +31,13 @@ var parserPool = sync.Pool{
 	},
 }
 
-const maxInputSize = 5120
+// (E.Welch) We originally added this limit from fuzz testing and realizing there should be some maximum limit to an allowed query size.
+// The original limit was 5120 based on some internet searching and a best estimate of what a reasonable limit would be.
+// We have seen use cases with queries containing a lot of filter expressions or long expanded variable names where this limit was too small.
+// Apparently the spec does not specify a limit, and more internet searching suggests almost all browsers will handle 100k+ length urls without issue
+// Some limit here still seems prudent however, so the new limit is now 128k.
+// Also note this is used to allocate the buffer for reading the query string, so there is some memory cost to making this larger.
+const maxInputSize = 131072
 
 func init() {
 	// Improve the error messages coming out of yacc.
@@ -53,7 +58,7 @@ type parser struct {
 
 func (p *parser) Parse() (Expr, error) {
 	p.lexer.errs = p.lexer.errs[:0]
-	p.lexer.Scanner.Error = func(_ *scanner.Scanner, msg string) {
+	p.lexer.Scanner.Error = func(_ *Scanner, msg string) {
 		p.lexer.Error(msg)
 	}
 	e := p.p.Parse(p)
@@ -100,6 +105,14 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	return p.Parse()
 }
 
+func MustParseExpr(input string) Expr {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		panic(err)
+	}
+	return expr
+}
+
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
@@ -122,14 +135,24 @@ func validateMatchers(matchers []*labels.Matcher) error {
 
 // ParseMatchers parses a string and returns labels matchers, if the expression contains
 // anything else it will return an error.
-func ParseMatchers(input string) ([]*labels.Matcher, error) {
-	expr, err := ParseExpr(input)
+func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
+	var (
+		expr Expr
+		err  error
+	)
+
+	if validate {
+		expr, err = ParseExpr(input)
+	} else {
+		expr, err = ParseExprWithoutValidation(input)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, errors.New("only label matchers is supported")
+		return nil, logqlmodel.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }
@@ -246,5 +269,5 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	// Therefore we must normalize early in the write path.
 	// See https://github.com/grafana/loki/pull/7355
 	// for more information
-	return labels.NewBuilder(ls).Labels(nil), nil
+	return labels.NewBuilder(ls).Labels(), nil
 }

@@ -18,70 +18,70 @@ func TestMatrixStepper(t *testing.T) {
 
 	m := promql.Matrix{
 		promql.Series{
-			Metric: labels.Labels{{Name: "foo", Value: "bar"}},
-			Points: []promql.Point{
-				{T: start.UnixNano(), V: 0},
-				{T: start.Add(step).UnixNano() / int64(time.Millisecond), V: 1},
-				{T: start.Add(2*step).UnixNano() / int64(time.Millisecond), V: 2},
-				{T: start.Add(3*step).UnixNano() / int64(time.Millisecond), V: 3},
-				{T: start.Add(4*step).UnixNano() / int64(time.Millisecond), V: 4},
-				{T: start.Add(5*step).UnixNano() / int64(time.Millisecond), V: 5},
+			Metric: labels.FromStrings("foo", "bar"),
+			Floats: []promql.FPoint{
+				{T: start.UnixNano(), F: 0},
+				{T: start.Add(step).UnixNano() / int64(time.Millisecond), F: 1},
+				{T: start.Add(2*step).UnixNano() / int64(time.Millisecond), F: 2},
+				{T: start.Add(3*step).UnixNano() / int64(time.Millisecond), F: 3},
+				{T: start.Add(4*step).UnixNano() / int64(time.Millisecond), F: 4},
+				{T: start.Add(5*step).UnixNano() / int64(time.Millisecond), F: 5},
 			},
 		},
 		promql.Series{
-			Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
-			Points: []promql.Point{
-				{T: start.Add(2*step).UnixNano() / int64(time.Millisecond), V: 2},
-				{T: start.Add(4*step).UnixNano() / int64(time.Millisecond), V: 4},
+			Metric: labels.FromStrings("bazz", "buzz"),
+			Floats: []promql.FPoint{
+				{T: start.Add(2*step).UnixNano() / int64(time.Millisecond), F: 2},
+				{T: start.Add(4*step).UnixNano() / int64(time.Millisecond), F: 4},
 			},
 		},
 	}
 
-	s := NewMatrixStepper(start, end, step, m)
+	s := NewMatrixStepEvaluator(start, end, step, m)
 
 	expected := []promql.Vector{
 		{
 			promql.Sample{
-				Point:  promql.Point{T: start.UnixNano(), V: 0},
-				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
+				T: start.UnixNano(), F: 0,
+				Metric: labels.FromStrings("foo", "bar"),
 			},
 		},
 		{
 			promql.Sample{
-				Point:  promql.Point{T: start.Add(step).UnixNano() / int64(time.Millisecond), V: 1},
-				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
+				T: start.Add(step).UnixNano() / int64(time.Millisecond), F: 1,
+				Metric: labels.FromStrings("foo", "bar"),
 			},
 		},
 		{
 			promql.Sample{
-				Point:  promql.Point{T: start.Add(2*step).UnixNano() / int64(time.Millisecond), V: 2},
-				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
+				T: start.Add(2*step).UnixNano() / int64(time.Millisecond), F: 2,
+				Metric: labels.FromStrings("foo", "bar"),
 			},
 			promql.Sample{
-				Point:  promql.Point{T: start.Add(2*step).UnixNano() / int64(time.Millisecond), V: 2},
-				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
-			},
-		},
-		{
-			promql.Sample{
-				Point:  promql.Point{T: start.Add(3*step).UnixNano() / int64(time.Millisecond), V: 3},
-				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
+				T: start.Add(2*step).UnixNano() / int64(time.Millisecond), F: 2,
+				Metric: labels.FromStrings("bazz", "buzz"),
 			},
 		},
 		{
 			promql.Sample{
-				Point:  promql.Point{T: start.Add(4*step).UnixNano() / int64(time.Millisecond), V: 4},
-				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
-			},
-			promql.Sample{
-				Point:  promql.Point{T: start.Add(4*step).UnixNano() / int64(time.Millisecond), V: 4},
-				Metric: labels.Labels{{Name: "bazz", Value: "buzz"}},
+				T: start.Add(3*step).UnixNano() / int64(time.Millisecond), F: 3,
+				Metric: labels.FromStrings("foo", "bar"),
 			},
 		},
 		{
 			promql.Sample{
-				Point:  promql.Point{T: start.Add(5*step).UnixNano() / int64(time.Millisecond), V: 5},
-				Metric: labels.Labels{{Name: "foo", Value: "bar"}},
+				T: start.Add(4*step).UnixNano() / int64(time.Millisecond), F: 4,
+				Metric: labels.FromStrings("foo", "bar"),
+			},
+			promql.Sample{
+				T: start.Add(4*step).UnixNano() / int64(time.Millisecond), F: 4,
+				Metric: labels.FromStrings("bazz", "buzz"),
+			},
+		},
+		{
+			promql.Sample{
+				T: start.Add(5*step).UnixNano() / int64(time.Millisecond), F: 5,
+				Metric: labels.FromStrings("foo", "bar"),
 			},
 		},
 		{},
@@ -91,7 +91,7 @@ func TestMatrixStepper(t *testing.T) {
 		ok, ts, vec := s.Next()
 		require.Equal(t, ok, true)
 		require.Equal(t, start.Add(step*time.Duration(i)).UnixNano()/int64(time.Millisecond), ts)
-		require.Equal(t, expected[i], vec)
+		require.Equal(t, expected[i], vec.SampleVector())
 	}
 
 	ok, _, _ := s.Next()
@@ -108,22 +108,22 @@ func Test_SingleStepMatrix(t *testing.T) {
 
 	m := promql.Matrix{
 		promql.Series{
-			Metric: labels.Labels{},
-			Points: []promql.Point{
-				{T: start.UnixNano(), V: 10},
+			Metric: labels.EmptyLabels(),
+			Floats: []promql.FPoint{
+				{T: start.UnixNano(), F: 10},
 			},
 		},
 	}
 
-	s := NewMatrixStepper(start, end, step, m)
+	s := NewMatrixStepEvaluator(start, end, step, m)
 
 	ok, ts, vec := s.Next()
 	require.True(t, ok)
 	require.Equal(t, start.UnixNano(), ts)
 	require.Equal(t, promql.Vector{promql.Sample{
-		Point:  promql.Point{T: start.UnixNano(), V: 10},
-		Metric: labels.Labels{},
-	}}, vec)
+		T: start.UnixNano(), F: 10,
+		Metric: labels.EmptyLabels(),
+	}}, vec.SampleVector())
 
 	ok, _, _ = s.Next()
 	require.False(t, ok)

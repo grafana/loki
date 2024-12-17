@@ -14,11 +14,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
 
-	"github.com/grafana/loki/pkg/logproto"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -194,8 +194,6 @@ func TestPipeline_Process(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
-
 		t.Run(tName, func(t *testing.T) {
 			var config map[string]interface{}
 
@@ -256,6 +254,7 @@ func BenchmarkPipeline(b *testing.B) {
 			b.ResetTimer()
 
 			go func() {
+				//nolint:revive
 				for range out {
 				}
 			}()
@@ -303,7 +302,6 @@ func TestPipeline_Wrap(t *testing.T) {
 	}
 
 	for tName, tt := range tests {
-		tt := tt
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
 			c := fake.New(func() {})

@@ -10,22 +10,19 @@ import (
 	"unicode"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/dskit/tenant"
-
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
 func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -90,6 +87,9 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 				Shards:    nil,
 				Start:     time.Unix(0, 1),
 				End:       time.Unix(0, time.Now().UnixNano()),
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.selector),
+				},
 			}}
 			iter, err := multiTenantQuerier.SelectLogs(ctx, params)
 			require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 			entriesCount := 0
 			for iter.Next() {
 				require.Equal(t, tc.expLabels[entriesCount], iter.Labels())
-				require.Equal(t, tc.expLines[entriesCount], iter.Entry().Line)
+				require.Equal(t, tc.expLines[entriesCount], iter.At().Line)
 				entriesCount++
 			}
 			require.Equalf(t, len(tc.expLabels), entriesCount, "Expected %d entries but got %d", len(tc.expLabels), entriesCount)
@@ -106,8 +106,6 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 }
 
 func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc      string
 		orgID     string
@@ -161,6 +159,9 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.selector),
+				},
 			}}
 			iter, err := multiTenantQuerier.SelectSamples(ctx, params)
 			require.NoError(t, err)
@@ -191,6 +192,9 @@ func TestMultiTenantQuerier_TenantFilter(t *testing.T) {
 		t.Run(tc.selector, func(t *testing.T) {
 			params := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: tc.selector,
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(tc.selector),
+				},
 			}}
 			_, updatedSelector, err := removeTenantSelector(params, []string{})
 			require.NoError(t, err)
@@ -245,14 +249,14 @@ func newMockEntryIterator(numLabels int) mockEntryIterator {
 	for i := 1; i <= numLabels; i++ {
 		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
 	}
-	return mockEntryIterator{labels: builder.Labels(nil).String()}
+	return mockEntryIterator{labels: builder.Labels().String()}
 }
 
 func (it mockEntryIterator) Labels() string {
 	return it.labels
 }
 
-func (it mockEntryIterator) Entry() logproto.Entry {
+func (it mockEntryIterator) At() logproto.Entry {
 	return logproto.Entry{}
 }
 
@@ -264,7 +268,7 @@ func (it mockEntryIterator) StreamHash() uint64 {
 	return 0
 }
 
-func (it mockEntryIterator) Error() error {
+func (it mockEntryIterator) Err() error {
 	return nil
 }
 
@@ -284,8 +288,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 			End:    &end,
 		}
 	}
-
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 
 	for _, tc := range []struct {
 		desc           string
@@ -344,8 +346,6 @@ func TestMultiTenantQuerier_Label(t *testing.T) {
 }
 
 func TestMultiTenantQuerierSeries(t *testing.T) {
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, tc := range []struct {
 		desc           string
 		orgID          string
@@ -355,42 +355,42 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 			desc:  "two tenantIDs",
 			orgID: "1|2",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "2")},
 			},
 		},
 		{
 			desc:  "three tenantIDs",
 			orgID: "1|2|3",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "1", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "2", "a": "1", "b": "5"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "2"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "3"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "4"}},
-				{Labels: map[string]string{"__tenant_id__": "3", "a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "1")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4", "__tenant_id__", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5", "__tenant_id__", "3")},
 			},
 		},
 		{
 			desc:  "single tenantID; behaves like a normal `Series` call",
 			orgID: "2",
 			expectedSeries: []logproto.SeriesIdentifier{
-				{Labels: map[string]string{"a": "1", "b": "2"}},
-				{Labels: map[string]string{"a": "1", "b": "3"}},
-				{Labels: map[string]string{"a": "1", "b": "4"}},
-				{Labels: map[string]string{"a": "1", "b": "5"}},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4")},
+				{Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5")},
 			},
 		},
 	} {
@@ -407,6 +407,41 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 	}
 }
 
+func TestVolume(t *testing.T) {
+	for _, tc := range []struct {
+		desc            string
+		orgID           string
+		expectedVolumes []logproto.Volume
+	}{
+		{
+			desc:  "multiple tenants are aggregated",
+			orgID: "1|2",
+			expectedVolumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 76},
+			},
+		},
+
+		{
+			desc:  "single tenant",
+			orgID: "2",
+			expectedVolumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 38},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("Volume", mock.Anything, mock.Anything).Return(mockLabelValueResponse(), nil)
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			resp, err := multiTenantQuerier.Volume(ctx, mockLabelValueRequest())
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedVolumes, resp.GetVolumes())
+		})
+	}
+}
+
 func mockSeriesRequest() *logproto.SeriesRequest {
 	return &logproto.SeriesRequest{
 		Start: time.Unix(0, 0),
@@ -418,18 +453,35 @@ func mockSeriesResponse() *logproto.SeriesResponse {
 	return &logproto.SeriesResponse{
 		Series: []logproto.SeriesIdentifier{
 			{
-				Labels: map[string]string{"a": "1", "b": "2"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "2"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "3"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "3"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "4"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "4"),
 			},
 			{
-				Labels: map[string]string{"a": "1", "b": "5"},
+				Labels: logproto.MustNewSeriesEntries("a", "1", "b", "5"),
 			},
 		},
+	}
+}
+
+func mockLabelValueRequest() *logproto.VolumeRequest {
+	return &logproto.VolumeRequest{
+		From:     0,
+		Through:  1000,
+		Matchers: `{foo="bar"}`,
+		Limit:    10,
+	}
+}
+
+func mockLabelValueResponse() *logproto.VolumeResponse {
+	return &logproto.VolumeResponse{Volumes: []logproto.Volume{
+		{Name: `{foo="bar"}`, Volume: 38},
+	},
+		Limit: 10,
 	}
 }
 

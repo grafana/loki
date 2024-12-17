@@ -3,7 +3,7 @@ package util
 import (
 	"fmt"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	"gopkg.in/yaml.v2"
 )
 
@@ -29,7 +29,7 @@ func (m *YAMLMerger) Merge() ([]byte, error) {
 			return nil, fmt.Errorf("failed to unmarshal given fragment %q to map: %w", fragment, err)
 		}
 
-		if err = mergo.Merge(&merged, fragmentMap, mergo.WithOverride, mergo.WithTypeCheck); err != nil {
+		if err = mergo.Merge(&merged, fragmentMap, mergo.WithOverride, mergo.WithTypeCheck, mergo.WithAppendSlice); err != nil {
 			return nil, fmt.Errorf("failed to merge fragment %q with base: %w", fragment, err)
 		}
 	}

@@ -1,14 +1,18 @@
 ---
-run:
-  tests: false
-  skip-files:
-    - "example_.+_test.go$"
-
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
 linters-settings:
+  copyloopvar:
+    check-alias: true
+  gci:
+    sections:
+    - standard
+    - default
+    - prefix(github.com/grafana/loki/operator)
+    - blank
+    - dot
   govet:
-    check-shadowing: true
+    shadow: true
   maligned:
     suggest-new: true
   misspell:
@@ -21,8 +25,10 @@ linters-settings:
 linters:
   enable-all: false
   enable:
+  - copyloopvar
   - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases
-  - goerr113 # checks that errors are wrapped according to go 1.13 error wrapping tools
+  - gci # Gci controls Go package import order and makes it always deterministic
+  - err113 # checks that errors are wrapped according to go 1.13 error wrapping tools
   - gofumpt # checks that gofumpt was run on all source code
   - goimports # checks that goimports was run on all source code
   - gosimple # Linter for Go source code that specializes in simplifying a code

@@ -2,12 +2,13 @@ package client
 
 import (
 	"fmt"
-	"go.uber.org/atomic"
 	"math/rand"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -17,9 +18,10 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func TestClientWriter_LogEntriesAreReconstructedAndForwardedCorrectly(t *testing.T) {
@@ -27,11 +29,14 @@ func TestClientWriter_LogEntriesAreReconstructedAndForwardedCorrectly(t *testing
 	ch := make(chan api.Entry)
 	defer close(ch)
 
+	var mu sync.Mutex
 	var receivedEntries []api.Entry
 
 	go func() {
 		for e := range ch {
+			mu.Lock()
 			receivedEntries = append(receivedEntries, e)
+			mu.Unlock()
 		}
 	}()
 
@@ -70,12 +75,16 @@ func TestClientWriter_LogEntriesAreReconstructedAndForwardedCorrectly(t *testing
 	}
 
 	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
 		return len(receivedEntries) == len(lines)
 	}, time.Second*10, time.Second)
+	mu.Lock()
 	for _, receivedEntry := range receivedEntries {
 		require.Contains(t, lines, receivedEntry.Line, "entry line was not expected")
 		require.Equal(t, model.LabelValue("test"), receivedEntry.Labels["app"])
 	}
+	mu.Unlock()
 }
 
 func TestClientWriter_LogEntriesWithoutMatchingSeriesAreIgnored(t *testing.T) {

@@ -5,6 +5,18 @@
   "separate-pull-requests": true,
   "tag-separator": "/",
   "packages": {
+    "ai": {
+      "component": "ai"
+    },
+    "aiplatform": {
+      "component": "aiplatform"
+    },
+    "auth": {
+      "component": "auth"
+    },
+    "auth/oauth2adapt": {
+      "component": "auth/oauth2adapt"
+    },
     "bigquery": {
       "component": "bigquery"
     },
@@ -37,6 +49,9 @@
     },
     "storage": {
       "component": "storage"
+    },
+    "vertexai": {
+      "component": "vertexai"
     }
   },
   "plugins": [

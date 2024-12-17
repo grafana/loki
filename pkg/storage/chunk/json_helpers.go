@@ -80,6 +80,6 @@ func encodeModelTime(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	}
 }
 
-func modelTimeIsEmpty(ptr unsafe.Pointer) bool {
+func modelTimeIsEmpty(_ unsafe.Pointer) bool {
 	return false
 }

@@ -3,9 +3,11 @@ package rules_test
 import (
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 )
 
 func TestMarshalAlertingRule(t *testing.T) {
@@ -109,15 +111,24 @@ groups:
             rate({container="nginx"}[1m])
           )
         record: nginx:requests:rate1m
+        labels:
+          tenantId: a-tenant
+          environment: test
       - expr: |-
           sum(
             rate({container="banana"}[5m])
           )
         record: banana:requests:rate5m
+        labels:
+          tenantId: a-tenant
 `
 
 	r := lokiv1.RecordingRule{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test-ns",
+		},
 		Spec: lokiv1.RecordingRuleSpec{
+			TenantID: "a-tenant",
 			Groups: []*lokiv1.RecordingRuleGroup{
 				{
 					Name:     "a-recording",
@@ -129,6 +140,9 @@ groups:
   rate({container="nginx"}[1m])
 )`,
 							Record: "nginx:requests:rate1m",
+							Labels: map[string]string{
+								"environment": "test",
+							},
 						},
 						{
 							Expr: `sum(

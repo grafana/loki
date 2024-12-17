@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -156,7 +156,7 @@ func (k *LDAPIdentity) Retrieve() (value Value, err error) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		var errResp ErrorResponse
-		buf, err := ioutil.ReadAll(resp.Body)
+		buf, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return value, err
 		}
@@ -184,6 +184,7 @@ func (k *LDAPIdentity) Retrieve() (value Value, err error) {
 		AccessKeyID:     cr.AccessKey,
 		SecretAccessKey: cr.SecretKey,
 		SessionToken:    cr.SessionToken,
+		Expiration:      cr.Expiration,
 		SignerType:      SignatureV4,
 	}, nil
 }

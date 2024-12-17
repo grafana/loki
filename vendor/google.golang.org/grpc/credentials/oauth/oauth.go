@@ -22,8 +22,8 @@ package oauth
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net/url"
+	"os"
 	"sync"
 
 	"golang.org/x/oauth2"
@@ -38,7 +38,7 @@ type TokenSource struct {
 }
 
 // GetRequestMetadata gets the request metadata as a map from a TokenSource.
-func (ts TokenSource) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (ts TokenSource) GetRequestMetadata(ctx context.Context, _ ...string) (map[string]string, error) {
 	token, err := ts.Token()
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ type jwtAccess struct {
 
 // NewJWTAccessFromFile creates PerRPCCredentials from the given keyFile.
 func NewJWTAccessFromFile(keyFile string) (credentials.PerRPCCredentials, error) {
-	jsonKey, err := ioutil.ReadFile(keyFile)
+	jsonKey, err := os.ReadFile(keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("credentials: failed to read the service account key file: %v", err)
 	}
@@ -121,11 +121,13 @@ type oauthAccess struct {
 }
 
 // NewOauthAccess constructs the PerRPCCredentials using a given token.
+//
+// Deprecated: use oauth.TokenSource instead.
 func NewOauthAccess(token *oauth2.Token) credentials.PerRPCCredentials {
 	return oauthAccess{token: *token}
 }
 
-func (oa oauthAccess) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (oa oauthAccess) GetRequestMetadata(ctx context.Context, _ ...string) (map[string]string, error) {
 	ri, _ := credentials.RequestInfoFromContext(ctx)
 	if err := credentials.CheckSecurityLevel(ri.AuthInfo, credentials.PrivacyAndIntegrity); err != nil {
 		return nil, fmt.Errorf("unable to transfer oauthAccess PerRPCCredentials: %v", err)
@@ -154,7 +156,7 @@ type serviceAccount struct {
 	t      *oauth2.Token
 }
 
-func (s *serviceAccount) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (s *serviceAccount) GetRequestMetadata(ctx context.Context, _ ...string) (map[string]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.t.Valid() {
@@ -190,7 +192,7 @@ func NewServiceAccountFromKey(jsonKey []byte, scope ...string) (credentials.PerR
 // NewServiceAccountFromFile constructs the PerRPCCredentials using the JSON key file
 // of a Google Developers service account.
 func NewServiceAccountFromFile(keyFile string, scope ...string) (credentials.PerRPCCredentials, error) {
-	jsonKey, err := ioutil.ReadFile(keyFile)
+	jsonKey, err := os.ReadFile(keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("credentials: failed to read the service account key file: %v", err)
 	}

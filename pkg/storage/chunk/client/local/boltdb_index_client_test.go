@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
 
 var (
@@ -299,6 +299,7 @@ func Benchmark_Query(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		err = indexClient.query(context.Background(), entry, func(_ index.Query, read index.ReadBatchResult) bool {
 			iter := read.Iterator()
+			//nolint:revive
 			for iter.Next() {
 			}
 			return true

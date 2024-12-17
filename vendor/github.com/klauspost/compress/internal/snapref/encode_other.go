@@ -51,7 +51,7 @@ func emitCopy(dst []byte, offset, length int) int {
 	i := 0
 	// The maximum length for a single tagCopy1 or tagCopy2 op is 64 bytes. The
 	// threshold for this loop is a little higher (at 68 = 64 + 4), and the
-	// length emitted down below is is a little lower (at 60 = 64 - 4), because
+	// length emitted down below is a little lower (at 60 = 64 - 4), because
 	// it's shorter to encode a length 67 copy as a length 60 tagCopy2 followed
 	// by a length 7 tagCopy1 (which encodes as 3+2 bytes) than to encode it as
 	// a length 64 tagCopy2 followed by a length 3 tagCopy2 (which encodes as
@@ -87,20 +87,30 @@ func emitCopy(dst []byte, offset, length int) int {
 	return i + 2
 }
 
-// extendMatch returns the largest k such that k <= len(src) and that
-// src[i:i+k-j] and src[j:k] have the same contents.
-//
-// It assumes that:
-//
-//	0 <= i && i < j && j <= len(src)
-func extendMatch(src []byte, i, j int) int {
-	for ; j < len(src) && src[i] == src[j]; i, j = i+1, j+1 {
-	}
-	return j
-}
-
 func hash(u, shift uint32) uint32 {
 	return (u * 0x1e35a7bd) >> shift
+}
+
+// EncodeBlockInto exposes encodeBlock but checks dst size.
+func EncodeBlockInto(dst, src []byte) (d int) {
+	if MaxEncodedLen(len(src)) > len(dst) {
+		return 0
+	}
+
+	// encodeBlock breaks on too big blocks, so split.
+	for len(src) > 0 {
+		p := src
+		src = nil
+		if len(p) > maxBlockSize {
+			p, src = p[:maxBlockSize], p[maxBlockSize:]
+		}
+		if len(p) < minNonLiteralBlockSize {
+			d += emitLiteral(dst[d:], p)
+		} else {
+			d += encodeBlock(dst[d:], p)
+		}
+	}
+	return d
 }
 
 // encodeBlock encodes a non-empty src to a guaranteed-large-enough dst. It

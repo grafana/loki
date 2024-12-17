@@ -52,8 +52,17 @@ module Fluent
       desc 'TLS: CA certificate file for server certificate verification'
       config_param :ca_cert, :string, default: nil
 
+      desc 'TLS: the ciphers to use for the tls connection (e.g TLS1_0, TLS1_1, TLS1_2)'
+      config_param :ciphers, :string, default: nil
+
+      desc 'TLS: The minimum version for the tls connection'
+      config_param :min_version, :string, default: nil
+
       desc 'TLS: disable server certificate verification'
       config_param :insecure_tls, :bool, default: false
+
+      desc 'Custom HTTP headers'
+      config_param :custom_headers, :hash, default: {}
 
       desc 'Loki tenant id'
       config_param :tenant, :string, default: nil
@@ -198,6 +207,19 @@ module Fluent
             ca_file: @ca_cert
           )
         end
+
+        if @ciphers
+          opts = opts.merge(
+            ciphers: @ciphers
+          )
+        end
+
+        if @min_version
+          opts = opts.merge(
+            min_version: @min_version.to_sym
+          )
+        end
+
         opts
       end
 
@@ -213,6 +235,9 @@ module Fluent
         req = Net::HTTP::Post.new(
           @uri.request_uri
         )
+        @custom_headers.each do |key, value|
+          req.add_field(key, value)
+        end
         req.add_field('Content-Type', 'application/json')
         req.add_field('Authorization', "Bearer #{@auth_token_bearer}") unless @auth_token_bearer.nil?
         req.add_field('X-Scope-OrgID', tenant) if tenant

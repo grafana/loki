@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/weaveworks/common/middleware"
+	"github.com/grafana/dskit/middleware"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type queryLimitsMiddleware struct {

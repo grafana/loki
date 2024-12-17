@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,11 +18,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/influxdata/go-syslog/v3"
+	"github.com/leodido/go-syslog/v4"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/syslog/syslogparser"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/syslog/syslogparser"
 )
 
 var (
@@ -85,7 +86,7 @@ func (t *baseTransport) connectionLabels(ip string) labels.Labels {
 	lb.Set("__syslog_connection_ip_address", ip)
 	lb.Set("__syslog_connection_hostname", lookupAddr(ip))
 
-	return lb.Labels(nil)
+	return lb.Labels()
 }
 
 func ipFromConn(c net.Conn) net.IP {
@@ -150,10 +151,7 @@ func NewConnPipe(addr net.Addr) *ConnPipe {
 }
 
 func (pipe *ConnPipe) Close() error {
-	if err := pipe.PipeWriter.Close(); err != nil {
-		return err
-	}
-	return nil
+	return pipe.PipeWriter.Close()
 }
 
 type TCPTransport struct {
@@ -274,7 +272,7 @@ func (t *TCPTransport) handleConnection(cn net.Conn) {
 
 	lbs := t.connectionLabels(ipFromConn(c).String())
 
-	err := syslogparser.ParseStream(c, func(result *syslog.Result) {
+	err := syslogparser.ParseStream(t.config.IsRFC3164Message(), c, func(result *syslog.Result) {
 		if err := result.Error; err != nil {
 			t.handleMessageError(err)
 			return
@@ -382,17 +380,34 @@ func (t *UDPTransport) acceptPackets() {
 func (t *UDPTransport) handleRcv(c *ConnPipe) {
 	defer t.openConnections.Done()
 
-	lbs := t.connectionLabels(c.addr.String())
-	err := syslogparser.ParseStream(c, func(result *syslog.Result) {
-		if err := result.Error; err != nil {
-			t.handleMessageError(err)
-		} else {
-			t.handleMessage(lbs.Copy(), result.Message)
-		}
-	}, t.maxMessageLength())
+	udpAddr, _ := net.ResolveUDPAddr("udp", c.addr.String())
+	lbs := t.connectionLabels(udpAddr.IP.String())
 
-	if err != nil {
-		level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
+	for {
+		datagram := make([]byte, t.maxMessageLength())
+		n, err := c.Read(datagram)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			level.Warn(t.logger).Log("msg", "error reading from pipe", "err", err)
+			continue
+		}
+
+		r := bytes.NewReader(datagram[:n])
+
+		err = syslogparser.ParseStream(t.config.IsRFC3164Message(), r, func(result *syslog.Result) {
+			if err := result.Error; err != nil {
+				t.handleMessageError(err)
+			} else {
+				t.handleMessage(lbs.Copy(), result.Message)
+			}
+		}, t.maxMessageLength())
+
+		if err != nil {
+			level.Warn(t.logger).Log("msg", "error parsing syslog stream", "err", err)
+		}
 	}
 }
 

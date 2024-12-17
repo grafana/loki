@@ -20,7 +20,7 @@ type Resolver struct {
 	ResolvConf string
 }
 
-func (r *Resolver) LookupSRV(ctx context.Context, service, proto, name string) (cname string, addrs []*net.SRV, err error) {
+func (r *Resolver) LookupSRV(_ context.Context, service, proto, name string) (cname string, addrs []*net.SRV, err error) {
 	var target string
 	if service == "" && proto == "" {
 		target = name

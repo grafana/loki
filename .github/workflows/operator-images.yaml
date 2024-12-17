@@ -6,6 +6,7 @@ on:
       - 'operator/**'
     branches:
       - main
+  workflow_dispatch:
 
 env:
   IMAGE_REGISTRY: quay.io
@@ -18,16 +19,16 @@ jobs:
  publish-manager:
    runs-on: ubuntu-latest
    steps:
-     - uses: actions/checkout@v3.3.0
+     - uses: actions/checkout@v4
 
      - name: Set up QEMU
-       uses: docker/setup-qemu-action@v1
+       uses: docker/setup-qemu-action@v3
 
      - name: Set up Docker Buildx
-       uses: docker/setup-buildx-action@v1
+       uses: docker/setup-buildx-action@v3
 
      - name: Login to Quay.io
-       uses: docker/login-action@v1
+       uses: docker/login-action@v3
        with:
          registry: quay.io
          logout: true
@@ -37,17 +38,17 @@ jobs:
      - name: Get image tags
        id: image_tags
        run: |
-         echo -n ::set-output name=IMAGE_TAGS::
          PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_OPERATOR_NAME"
          TAGS=("$PULLSPEC:latest", "$PULLSPEC:v0.0.1")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
          TAGS+=("$PULLSPEC:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
-         ( IFS=$','; echo "${TAGS[*]}" )
+         IMAGE_TAGS=$(IFS=$','; echo "${TAGS[*]}")
+         echo "IMAGE_TAGS=$IMAGE_TAGS" >> $GITHUB_OUTPUT
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v4
+       uses: docker/build-push-action@v6
        with:
          context: ./operator
          push: true
@@ -56,16 +57,16 @@ jobs:
  publish-bundle:
    runs-on: ubuntu-latest
    steps:
-     - uses: actions/checkout@v3.3.0
+     - uses: actions/checkout@v4
 
      - name: Set up QEMU
-       uses: docker/setup-qemu-action@v1
+       uses: docker/setup-qemu-action@v3
 
      - name: Set up Docker Buildx
-       uses: docker/setup-buildx-action@v1
+       uses: docker/setup-buildx-action@v3
 
      - name: Login to Quay.io
-       uses: docker/login-action@v1
+       uses: docker/login-action@v3
        with:
          registry: quay.io
          logout: true
@@ -75,17 +76,17 @@ jobs:
      - name: Get image tags
        id: image_tags
        run: |
-         echo -n ::set-output name=IMAGE_TAGS::
          PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_BUNDLE_NAME"
          TAGS=("$PULLSPEC:latest", "$PULLSPEC:v0.0.1")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
          TAGS+=("$PULLSPEC:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
-         ( IFS=$','; echo "${TAGS[*]}" )
+         IMAGE_TAGS=$(IFS=$','; echo "${TAGS[*]}")
+         echo "IMAGE_TAGS=$IMAGE_TAGS" >> $GITHUB_OUTPUT
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v4
+       uses: docker/build-push-action@v6
        with:
          context: ./operator/bundle/openshift
          file: ./operator/bundle/openshift/bundle.Dockerfile
@@ -95,16 +96,16 @@ jobs:
  publish-size-calculator:
    runs-on: ubuntu-latest
    steps:
-     - uses: actions/checkout@v3.3.0
+     - uses: actions/checkout@v4
 
      - name: Set up QEMU
-       uses: docker/setup-qemu-action@v1
+       uses: docker/setup-qemu-action@v3
 
      - name: Set up Docker Buildx
-       uses: docker/setup-buildx-action@v1
+       uses: docker/setup-buildx-action@v3
 
      - name: Login to Quay.io
-       uses: docker/login-action@v1
+       uses: docker/login-action@v3
        with:
          registry: quay.io
          logout: true
@@ -114,17 +115,17 @@ jobs:
      - name: Get image tags
        id: image_tags
        run: |
-         echo -n ::set-output name=IMAGE_TAGS::
          PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_CALCULATOR_NAME"
          TAGS=("$PULLSPEC:latest", "$PULLSPEC:v0.0.1")
          BUILD_DATE="$(date -u +'%Y-%m-%d')"
          VCS_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
          VCS_REF="$(git rev-parse --short HEAD)"
          TAGS+=("$PULLSPEC:$VCS_BRANCH-$BUILD_DATE-$VCS_REF")
-         ( IFS=$','; echo "${TAGS[*]}" )
+         IMAGE_TAGS=$(IFS=$','; echo "${TAGS[*]}")
+         echo "IMAGE_TAGS=$IMAGE_TAGS" >> $GITHUB_OUTPUT
 
      - name: Build and publish image on quay.io
-       uses: docker/build-push-action@v4
+       uses: docker/build-push-action@v6
        with:
          context: ./operator
          file: ./operator/calculator.Dockerfile

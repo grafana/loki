@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/mtime"
 )
 
 func TestCachingSchema(t *testing.T) {

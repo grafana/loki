@@ -41,6 +41,9 @@ type RecordingRule struct {
 	lastError *atomic.Error
 	// Duration of how long it took to evaluate the recording rule.
 	evaluationDuration *atomic.Duration
+
+	noDependentRules  *atomic.Bool
+	noDependencyRules *atomic.Bool
 }
 
 // NewRecordingRule returns a new recording rule.
@@ -53,6 +56,8 @@ func NewRecordingRule(name string, vector parser.Expr, lset labels.Labels) *Reco
 		evaluationTimestamp: atomic.NewTime(time.Time{}),
 		evaluationDuration:  atomic.NewDuration(0),
 		lastError:           atomic.NewError(nil),
+		noDependentRules:    atomic.NewBool(false),
+		noDependencyRules:   atomic.NewBool(false),
 	}
 }
 
@@ -72,24 +77,27 @@ func (rule *RecordingRule) Labels() labels.Labels {
 }
 
 // Eval evaluates the rule and then overrides the metric names and labels accordingly.
-func (rule *RecordingRule) Eval(ctx context.Context, ts time.Time, query QueryFunc, _ *url.URL, limit int) (promql.Vector, error) {
-	vector, err := query(ctx, rule.vector.String(), ts)
+func (rule *RecordingRule) Eval(ctx context.Context, queryOffset time.Duration, ts time.Time, query QueryFunc, _ *url.URL, limit int) (promql.Vector, error) {
+	ctx = NewOriginContext(ctx, NewRuleDetail(rule))
+	vector, err := query(ctx, rule.vector.String(), ts.Add(-queryOffset))
 	if err != nil {
 		return nil, err
 	}
+
 	// Override the metric name and labels.
+	lb := labels.NewBuilder(labels.EmptyLabels())
+
 	for i := range vector {
 		sample := &vector[i]
 
-		lb := labels.NewBuilder(sample.Metric)
-
+		lb.Reset(sample.Metric)
 		lb.Set(labels.MetricName, rule.name)
 
 		rule.labels.Range(func(l labels.Label) {
 			lb.Set(l.Name, l.Value)
 		})
 
-		sample.Metric = lb.Labels(labels.EmptyLabels())
+		sample.Metric = lb.Labels()
 	}
 
 	// Check that the rule does not produce identical metrics after applying
@@ -161,4 +169,20 @@ func (rule *RecordingRule) SetEvaluationTimestamp(ts time.Time) {
 // GetEvaluationTimestamp returns the time the evaluation took place.
 func (rule *RecordingRule) GetEvaluationTimestamp() time.Time {
 	return rule.evaluationTimestamp.Load()
+}
+
+func (rule *RecordingRule) SetNoDependentRules(noDependentRules bool) {
+	rule.noDependentRules.Store(noDependentRules)
+}
+
+func (rule *RecordingRule) NoDependentRules() bool {
+	return rule.noDependentRules.Load()
+}
+
+func (rule *RecordingRule) SetNoDependencyRules(noDependencyRules bool) {
+	rule.noDependencyRules.Store(noDependencyRules)
+}
+
+func (rule *RecordingRule) NoDependencyRules() bool {
+	return rule.noDependencyRules.Load()
 }

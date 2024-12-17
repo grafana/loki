@@ -6,9 +6,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/user"
 	"google.golang.org/grpc"
 )
 
@@ -55,7 +55,7 @@ var fakeHTTPAuthMiddleware = middleware.Func(func(next http.Handler) http.Handle
 	})
 })
 
-var fakeGRPCAuthUniaryMiddleware = func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+var fakeGRPCAuthUniaryMiddleware = func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	ctx = user.InjectOrgID(ctx, "fake")
 	return handler(ctx, req)
 }

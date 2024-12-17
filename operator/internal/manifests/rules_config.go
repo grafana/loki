@@ -3,9 +3,12 @@ package manifests
 import (
 	"fmt"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 type RuleName struct {
@@ -14,7 +17,7 @@ type RuleName struct {
 	filename string
 }
 
-// RulesConfigMap returns a ConfigMap resource that contains
+// RulesConfigMapShards returns a ConfigMap resource that contains
 // all loki alerting and recording rules as YAML data.
 // If the size of the data is more than 1MB, the ConfigMap will
 // be split into multiple shards, and this function will return
@@ -26,6 +29,10 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	shardedCM := NewShardedConfigMap(template, RulesConfigMapName(opts.Name))
 
 	for _, r := range opts.AlertingRules {
+		if opts.Stack.Tenants != nil {
+			configureAlertingRuleForMode(&r, opts.Stack.Tenants.Mode)
+		}
+
 		c, err := rules.MarshalAlertingRule(r)
 		if err != nil {
 			return nil, err
@@ -38,6 +45,10 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	}
 
 	for _, r := range opts.RecordingRules {
+		if opts.Stack.Tenants != nil {
+			configureRecordingRuleForMode(&r, opts.Stack.Tenants.Mode)
+		}
+
 		c, err := rules.MarshalRecordingRule(r)
 		if err != nil {
 			return nil, err
@@ -72,4 +83,26 @@ func newConfigMapTemplate(opts *Options, l map[string]string) *corev1.ConfigMap 
 
 func (rn RuleName) toString() string {
 	return fmt.Sprintf("%s%s%s.yaml", rn.tenantID, rulePartsSeparator, rn.filename)
+}
+
+func configureAlertingRuleForMode(ar *lokiv1.AlertingRule, mode lokiv1.ModeType) {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// Do nothing
+	case lokiv1.OpenshiftLogging:
+		openshift.AlertingRuleTenantLabels(ar)
+	case lokiv1.OpenshiftNetwork:
+		// Do nothing
+	}
+}
+
+func configureRecordingRuleForMode(r *lokiv1.RecordingRule, mode lokiv1.ModeType) {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// Do nothing
+	case lokiv1.OpenshiftLogging:
+		openshift.RecordingRuleTenantLabels(r)
+	case lokiv1.OpenshiftNetwork:
+		// Do nothing
+	}
 }

@@ -1,8 +1,8 @@
 ---
 title: Caching 
 menuTitle: Caching 
-description: Enable and configure memcached for caching. 
-weight: 100
+description: Describes how to enable and configure memcached to speed query performance. 
+weight: 
 keywords:
   - memcached
   - caching
@@ -39,14 +39,14 @@ To enable and configure Memcached:
 1. Configure Loki to use the cache.
     1. If the Helm chart is used
 
-       Set `memcached.chunk_cache.host` to the Memecache address for the chunk cache, `memcached.results_cache.host` to the Memecache address for the query result cache, `memcached.chunk_cache.enabled=true` and `memcached.results_cache.enabled=true`. 
+       Set `memcached.chunk_cache.host` to the Memcached address for the chunk cache, `memcached.results_cache.host` to the Memcached address for the query result cache, `memcached.chunk_cache.enabled=true` and `memcached.results_cache.enabled=true`. 
        
        Ensure that the connection limit of Memcached is at least `number_of_clients * max_idle_conns`.
        
        The options `host` and `service` depend on the type of installation. For example, using the `bitnami/memcached` Helm Charts with the following commands, the `service` values are always `memcached`.
        ```
-       helm upgrade --install chunk-cache -n loki bitnami/memcached -f memcached-overrides.yaml
-       helm upgrade --install results-cache -n loki bitnami/memcached -f memcached-overrides.yaml
+       helm upgrade --install chunk-cache -n loki bitnami/memcached -f memcached-overrides-chunk.yaml
+       helm upgrade --install results-cache -n loki bitnami/memcached -f memcached-overrides-results.yaml
        ```
        The current Helm Chart only supports the chunk and results cache.
 
@@ -57,13 +57,13 @@ To enable and configure Memcached:
            chunk_cache:
              enabled: true
              host: chunk-cache-memcached.loki.svc
-             service: memcache
+             service: memcached-client
              batch_size: 256
              parallelism: 10
            results_cache:
              enabled: true
              host: results-cache-memcached.loki.svc
-             service: memcache
+             service: memcached-client
              default_validity: 12h
        ```
     1. If the Loki configuration is used, modify the following three sections in
@@ -101,7 +101,7 @@ To enable and configure Memcached:
                  batch_size: 100
                  parallelism: 100
                memcached_client:
-                 host: <memcached host>,
+                 host: <memcached host>
                  service: <port name of memcached service>
                  consistent_hash: true
            ```

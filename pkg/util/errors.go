@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // LogError logs any error returned by f; useful when deferring Close etc.
@@ -98,6 +98,37 @@ func (es MultiError) IsDeadlineExceeded() bool {
 		return false
 	}
 	return true
+}
+
+// GroupedErrors implements the error interface, and it contains the errors used to construct it
+// grouped by the error message.
+type GroupedErrors struct {
+	MultiError
+}
+
+// Error Returns a concatenated string of the errors grouped by the error message along with the number of occurrences
+// of each error message.
+func (es GroupedErrors) Error() string {
+	mapErrs := make(map[string]int, len(es.MultiError))
+	for _, err := range es.MultiError {
+		mapErrs[err.Error()]++
+	}
+
+	var idx int
+	var buf bytes.Buffer
+	uniqueErrs := len(mapErrs)
+	for err, n := range mapErrs {
+		if idx != 0 {
+			buf.WriteString("; ")
+		}
+		if uniqueErrs > 1 || n > 1 {
+			_, _ = fmt.Fprintf(&buf, "%d errors like: ", n)
+		}
+		buf.WriteString(err)
+		idx++
+	}
+
+	return buf.String()
 }
 
 // IsConnCanceled returns true, if error is from a closed gRPC connection.

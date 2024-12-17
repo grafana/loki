@@ -1,5 +1,324 @@
 # Changes
 
+## [1.45.3](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.2...pubsub/v1.45.3) (2024-12-04)
+
+
+### Bug Fixes
+
+* **pubsub:** Convert stream ack deadline seconds from duration ([#11214](https://github.com/googleapis/google-cloud-go/issues/11214)) ([b2b05e4](https://github.com/googleapis/google-cloud-go/commit/b2b05e4515d8e59d7b3bf39432c6356b4450a17b))
+
+## [1.45.2](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.1...pubsub/v1.45.2) (2024-12-03)
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Make invalid filter return error instead of panic ([#11087](https://github.com/googleapis/google-cloud-go/issues/11087)) ([45e1ce7](https://github.com/googleapis/google-cloud-go/commit/45e1ce70e2757b78b868768b93e05da8858bab85))
+* **pubsub:** Only init batch span if trace enabled ([#11193](https://github.com/googleapis/google-cloud-go/issues/11193)) ([f843d50](https://github.com/googleapis/google-cloud-go/commit/f843d50f849c5014eba33d923085f0add41365a6))
+* **pubsub:** Use official semconv variable whenever possible ([#10904](https://github.com/googleapis/google-cloud-go/issues/10904)) ([1ce4b6d](https://github.com/googleapis/google-cloud-go/commit/1ce4b6dc31653ca6f28c50d5149d74b827caaeaa))
+
+
+### Documentation
+
+* **pubsub:** MinExtensionPeriod defaults to 60 seconds ([#10791](https://github.com/googleapis/google-cloud-go/issues/10791)) ([cc88fe1](https://github.com/googleapis/google-cloud-go/commit/cc88fe1c8d834903e2b5f8d3a7cc9bbd65c70b29))
+
+## [1.45.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.0...pubsub/v1.45.1) (2024-10-24)
+
+
+### Bug Fixes
+
+* **pubsub:** Update google.golang.org/api to v0.203.0 ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+* **pubsub:** WARNING: On approximately Dec 1, 2024, an update to Protobuf will change service registration function signatures to use an interface instead of a concrete type in generated .pb.go files. This change is expected to affect very few if any users of this client library. For more information, see https://togithub.com/googleapis/google-cloud-go/issues/11020. ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+
+
+### Documentation
+
+* **pubsub:** Add doc links to top level package doc ([#11029](https://github.com/googleapis/google-cloud-go/issues/11029)) ([fe2ec56](https://github.com/googleapis/google-cloud-go/commit/fe2ec569029d2052885063b6fca90e1a27424b4e))
+
+## [1.45.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.44.0...pubsub/v1.45.0) (2024-10-22)
+
+
+### Features
+
+* **pubsub:** Add IngestionFailureEvent to the external proto ([f0b05e2](https://github.com/googleapis/google-cloud-go/commit/f0b05e260435d5e8889b9a0ca0ab215fcde169ab))
+* **pubsub:** Add support for ingestion platform logging settings ([#10969](https://github.com/googleapis/google-cloud-go/issues/10969)) ([c60241f](https://github.com/googleapis/google-cloud-go/commit/c60241f46db2b021d799f621851a352f2baec96e))
+
+## [1.44.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.43.0...pubsub/v1.44.0) (2024-10-08)
+
+
+### Features
+
+* **pubsub:** Add ingestion Cloud Storage fields and Platform Logging fields to Topic ([7250d71](https://github.com/googleapis/google-cloud-go/commit/7250d714a638dcd5df3fbe0e91c5f1250c3f80f9))
+* **pubsub:** Add support for cloud storage ingestion topics ([#10959](https://github.com/googleapis/google-cloud-go/issues/10959)) ([1a11675](https://github.com/googleapis/google-cloud-go/commit/1a116759ce0d25fdcb5776bf73c52408ae1ec985))
+* **pubsub:** Return listing information for subscriptions created via Analytics Hub ([fdb4ea9](https://github.com/googleapis/google-cloud-go/commit/fdb4ea99189657880e5f0e0dce16bef1c3aa0d2f))
+
+
+### Documentation
+
+* **pubsub:** Update documentation for 31 day subscription message retention ([#10845](https://github.com/googleapis/google-cloud-go/issues/10845)) ([9b4b2fa](https://github.com/googleapis/google-cloud-go/commit/9b4b2fa87864906aeae3a8fda460466f951bc6c9))
+
+## [1.43.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.42.0...pubsub/v1.43.0) (2024-09-09)
+
+
+### Features
+
+* **pubsub:** Add support for Go 1.23 iterators ([84461c0](https://github.com/googleapis/google-cloud-go/commit/84461c0ba464ec2f951987ba60030e37c8a8fc18))
+* **pubsub:** Allow trace extraction from protobuf message ([#10827](https://github.com/googleapis/google-cloud-go/issues/10827)) ([caa826c](https://github.com/googleapis/google-cloud-go/commit/caa826cea826473ebf4c806b57b0c3b0a2f0f365))
+
+
+### Bug Fixes
+
+* **pubsub:** Add attributes before startSpan ([#10800](https://github.com/googleapis/google-cloud-go/issues/10800)) ([48addbf](https://github.com/googleapis/google-cloud-go/commit/48addbff725ee2bb226ce0ab926415c27fd4ffad))
+* **pubsub:** Bump dependencies ([2ddeb15](https://github.com/googleapis/google-cloud-go/commit/2ddeb1544a53188a7592046b98913982f1b0cf04))
+* **pubsub:** Close grpc streams on retry ([#10624](https://github.com/googleapis/google-cloud-go/issues/10624)) ([79a0e11](https://github.com/googleapis/google-cloud-go/commit/79a0e118c88190cbe1b56250a75b67bd98b0d7f2))
+
+## [1.42.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.41.0...pubsub/v1.42.0) (2024-08-19)
+
+
+### Features
+
+* **pubsub:** Add opentelemetry tracing support ([#10709](https://github.com/googleapis/google-cloud-go/issues/10709)) ([bbd3366](https://github.com/googleapis/google-cloud-go/commit/bbd3366b01afc28c6137668c29d2895738ed849d))
+
+
+### Bug Fixes
+
+* **pubsub:** Update google.golang.org/api to v0.191.0 ([5b32644](https://github.com/googleapis/google-cloud-go/commit/5b32644eb82eb6bd6021f80b4fad471c60fb9d73))
+
+## [1.41.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.40.0...pubsub/v1.41.0) (2024-08-01)
+
+
+### Features
+
+* **pubsub/pstest:** Add Message.Topic field and populate on publish ([#10510](https://github.com/googleapis/google-cloud-go/issues/10510)) ([01bf051](https://github.com/googleapis/google-cloud-go/commit/01bf0519093f2e9d6a579bcb312004eba0fbd895))
+* **pubsub:** Add max messages batching for Cloud Storage subscriptions ([1bb4c84](https://github.com/googleapis/google-cloud-go/commit/1bb4c846ec1ff37f394afb1684823ea76c18d16e))
+
+
+### Bug Fixes
+
+* **pubsub:** Bump google.golang.org/api@v0.187.0 ([8fa9e39](https://github.com/googleapis/google-cloud-go/commit/8fa9e398e512fd8533fd49060371e61b5725a85b))
+* **pubsub:** Bump google.golang.org/grpc@v1.64.1 ([8ecc4e9](https://github.com/googleapis/google-cloud-go/commit/8ecc4e9622e5bbe9b90384d5848ab816027226c5))
+* **pubsub:** Update dependencies ([257c40b](https://github.com/googleapis/google-cloud-go/commit/257c40bd6d7e59730017cf32bda8823d7a232758))
+
+## [1.40.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.39.0...pubsub/v1.40.0) (2024-06-26)
+
+
+### Features
+
+* **pubsub:** Add client ID to initial streaming pull request ([#10436](https://github.com/googleapis/google-cloud-go/issues/10436)) ([a3d70ed](https://github.com/googleapis/google-cloud-go/commit/a3d70ed0bf3b4bfe2544d86db05b11b4b51cf754))
+* **pubsub:** Add use_topic_schema for Cloud Storage Subscriptions ([d6c543c](https://github.com/googleapis/google-cloud-go/commit/d6c543c3969016c63e158a862fc173dff60fb8d9))
+
+## [1.39.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.38.0...pubsub/v1.39.0) (2024-06-18)
+
+
+### Features
+
+* **pubsub/pstest:** Add support to register other servers into grpc.Server ([#9722](https://github.com/googleapis/google-cloud-go/issues/9722)) ([db8216e](https://github.com/googleapis/google-cloud-go/commit/db8216e54c8d9d23dd90bc47a081eb2754f7c92a))
+* **pubsub:** Add service_account_email for export subscriptions ([92dc381](https://github.com/googleapis/google-cloud-go/commit/92dc381da281197567a2c9eb8dc941292000a3da))
+* **pubsub:** Batch receipt modacks ([#10234](https://github.com/googleapis/google-cloud-go/issues/10234)) ([4c2cd10](https://github.com/googleapis/google-cloud-go/commit/4c2cd10fb73b7167c15d6dc24162ad0dac01ce8e))
+* **pubsub:** Make lease management RPCs concurrent ([#10238](https://github.com/googleapis/google-cloud-go/issues/10238)) ([426a8c2](https://github.com/googleapis/google-cloud-go/commit/426a8c27a9d11f24e8c331b6375f87d29829e021))
+
+
+### Bug Fixes
+
+* **pubsub:** Closes [#10094](https://github.com/googleapis/google-cloud-go/issues/10094) - memory leak in pubsub receive ([#10153](https://github.com/googleapis/google-cloud-go/issues/10153)) ([66581c4](https://github.com/googleapis/google-cloud-go/commit/66581c44f2309984475fe5053fa11707f6f93b8d))
+
+## [1.38.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.37.0...pubsub/v1.38.0) (2024-05-06)
+
+
+### Features
+
+* **pubsub:** Add custom datetime format for Cloud Storage subscriptions ([4834425](https://github.com/googleapis/google-cloud-go/commit/48344254a5d21ec51ffee275c78a15c9345dc09c))
+* **pubsub:** Support publisher compression ([#9711](https://github.com/googleapis/google-cloud-go/issues/9711)) ([4940c3c](https://github.com/googleapis/google-cloud-go/commit/4940c3c5ab31b6e66ec8f29f9cf60298f8de630a))
+* **pubsub:** Use Streaming Pull response for ordering check ([#9682](https://github.com/googleapis/google-cloud-go/issues/9682)) ([7bf4904](https://github.com/googleapis/google-cloud-go/commit/7bf49049cdc44ca260d1c1354bc7661de9ed8585))
+
+
+### Bug Fixes
+
+* **pubsub:** Bump x/net to v0.24.0 ([ba31ed5](https://github.com/googleapis/google-cloud-go/commit/ba31ed5fda2c9664f2e1cf972469295e63deb5b4))
+* **pubsub:** Respect gRPC dial option when PUBSUB_EMULATOR_HOST is set ([#10040](https://github.com/googleapis/google-cloud-go/issues/10040)) ([95bf6b2](https://github.com/googleapis/google-cloud-go/commit/95bf6b255d8ff7bb385567da498b90252efb338f))
+* **pubsub:** Update protobuf dep to v1.33.0 ([30b038d](https://github.com/googleapis/google-cloud-go/commit/30b038d8cac0b8cd5dd4761c87f3f298760dd33a))
+
+## [1.37.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.36.2...pubsub/v1.37.0) (2024-03-07)
+
+
+### Features
+
+* **pubsub:** Support kinesis ingestion admin ([#9458](https://github.com/googleapis/google-cloud-go/issues/9458)) ([9bba269](https://github.com/googleapis/google-cloud-go/commit/9bba269d1c3165c312871903fbd649c08b3809fb))
+
+
+### Documentation
+
+* **pubsub:** Check for nil responses for receive examples ([#9516](https://github.com/googleapis/google-cloud-go/issues/9516)) ([6deb969](https://github.com/googleapis/google-cloud-go/commit/6deb96914ecbdaaea521c175db4c2ee1f223590c))
+
+## [1.36.2](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.36.1...pubsub/v1.36.2) (2024-02-28)
+
+
+### Bug Fixes
+
+* **pubsub:** Fix out of order issue when exactly once is enabled ([#9472](https://github.com/googleapis/google-cloud-go/issues/9472)) ([e89fd6c](https://github.com/googleapis/google-cloud-go/commit/e89fd6cc3b4489537c71cca1e40547313c24924b))
+
+
+### Documentation
+
+* **pubsub:** Small fix in Pub/Sub ingestion comments ([a86aa8e](https://github.com/googleapis/google-cloud-go/commit/a86aa8e962b77d152ee6cdd433ad94967150ef21))
+
+## [1.36.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.36.0...pubsub/v1.36.1) (2024-01-30)
+
+
+### Bug Fixes
+
+* **pubsub:** Enable universe domain resolution options ([fd1d569](https://github.com/googleapis/google-cloud-go/commit/fd1d56930fa8a747be35a224611f4797b8aeb698))
+
+## [1.36.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.35.0...pubsub/v1.36.0) (2024-01-26)
+
+
+### Features
+
+* **pubsub:** Add `ingestion_data_source_settings` field to `Topic` ([97d62c7](https://github.com/googleapis/google-cloud-go/commit/97d62c7a6a305c47670ea9c147edc444f4bf8620))
+* **pubsub:** Add enforce_in_transit fields and optional annotations ([97d62c7](https://github.com/googleapis/google-cloud-go/commit/97d62c7a6a305c47670ea9c147edc444f4bf8620))
+
+
+### Bug Fixes
+
+* **pubsub:** Move flow control release to callback completion ([#9311](https://github.com/googleapis/google-cloud-go/issues/9311)) ([2b6b0da](https://github.com/googleapis/google-cloud-go/commit/2b6b0da48517fd0b682077b0fdf6f6a8f162910b))
+
+## [1.35.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.34.0...pubsub/v1.35.0) (2024-01-25)
+
+
+### Features
+
+* **pubsub:** Support message filtering in pstest ([#9015](https://github.com/googleapis/google-cloud-go/issues/9015)) ([49231bf](https://github.com/googleapis/google-cloud-go/commit/49231bf3d1e96cfa91d72085391ee19fca16ef0a))
+
+## [1.34.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.33.0...pubsub/v1.34.0) (2024-01-19)
+
+
+### Features
+
+* **pubsub/pstest:** Update max topic retention duration to 31 days ([#8605](https://github.com/googleapis/google-cloud-go/issues/8605)) ([d4f90ec](https://github.com/googleapis/google-cloud-go/commit/d4f90ecfec017071ef4eb42beb4135c825494524))
+* **pubsub:** Add `use_table_schema` field to BigQueryConfig ([5132d0f](https://github.com/googleapis/google-cloud-go/commit/5132d0fea3a5ac902a2c9eee865241ed4509a5f4))
+
+
+### Bug Fixes
+
+* **pubsub:** Add veneer header to sub client ([#8608](https://github.com/googleapis/google-cloud-go/issues/8608)) ([04c380d](https://github.com/googleapis/google-cloud-go/commit/04c380d84d096d0f5d33ec6caac133b73b49a9df))
+* **pubsub:** Bump google.golang.org/api to v0.149.0 ([8d2ab9f](https://github.com/googleapis/google-cloud-go/commit/8d2ab9f320a86c1c0fab90513fc05861561d0880))
+* **pubsub:** Make retry policy back off more aggressively for RPCs that retry RESOURCE_EXHAUSTD ([#8438](https://github.com/googleapis/google-cloud-go/issues/8438)) ([81a33c0](https://github.com/googleapis/google-cloud-go/commit/81a33c0e11f2f3f94cc13de2ff899f44bc041fd6))
+* **pubsub:** Set x-goog-request-params for streaming pull request ([#8753](https://github.com/googleapis/google-cloud-go/issues/8753)) ([21ec815](https://github.com/googleapis/google-cloud-go/commit/21ec8158d9e3c14082f76a75f182c98253b4273b))
+* **pubsub:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+* **pubsub:** Update grpc-go to v1.56.3 ([343cea8](https://github.com/googleapis/google-cloud-go/commit/343cea8c43b1e31ae21ad50ad31d3b0b60143f8c))
+* **pubsub:** Update grpc-go to v1.59.0 ([81a97b0](https://github.com/googleapis/google-cloud-go/commit/81a97b06cb28b25432e4ece595c55a9857e960b7))
+
+
+### Documentation
+
+* **pubsub:** Clarified where ordering_key will be written if write_metadata is set ([327e101](https://github.com/googleapis/google-cloud-go/commit/327e10188a2e22dd7b7e6c12a8cf66729f65974c))
+* **pubsub:** Modified some descriptions ([e864fbc](https://github.com/googleapis/google-cloud-go/commit/e864fbcbc4f0a49dfdb04850b07451074c57edc8))
+* **pubsub:** Update allowed message retention duration by server ([#8559](https://github.com/googleapis/google-cloud-go/issues/8559)) ([78c178b](https://github.com/googleapis/google-cloud-go/commit/78c178b44cd014db38cd65aa6d804705f47c0fba))
+
+## [1.33.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.32.0...pubsub/v1.33.0) (2023-07-24)
+
+
+### Features
+
+* **pubsub:** Support payload wrapping for push subs ([#8292](https://github.com/googleapis/google-cloud-go/issues/8292)) ([fd49db5](https://github.com/googleapis/google-cloud-go/commit/fd49db50cd333a2c918f6a1c94f779b8936876fc))
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Update maxMessageRetentionDuration to be 31 days ([#8199](https://github.com/googleapis/google-cloud-go/issues/8199)) ([1fa4bb8](https://github.com/googleapis/google-cloud-go/commit/1fa4bb8b3f22aad0b97ccae610408720522a8b31))
+
+## [1.32.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.31.0...pubsub/v1.32.0) (2023-06-27)
+
+
+### Features
+
+* **pubsub:** Add push config wrapper fields ([ca94e27](https://github.com/googleapis/google-cloud-go/commit/ca94e2724f9e2610b46aefd0a3b5ddc06102e91b))
+* **pubsub:** Add support for cloud storage subscriptions ([#7977](https://github.com/googleapis/google-cloud-go/issues/7977)) ([54218e9](https://github.com/googleapis/google-cloud-go/commit/54218e963bb5a6d47411a490985b54053825064f))
+* **pubsub:** Enable project autodetection and detect empty project ([#8168](https://github.com/googleapis/google-cloud-go/issues/8168)) ([c7e05d8](https://github.com/googleapis/google-cloud-go/commit/c7e05d81502b4ff8d92aad4a3d45a3940e0ead9d))
+* **pubsub:** Update all direct dependencies ([b340d03](https://github.com/googleapis/google-cloud-go/commit/b340d030f2b52a4ce48846ce63984b28583abde6))
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Align fake handling of bqconfig subscription to server behavior ([#8066](https://github.com/googleapis/google-cloud-go/issues/8066)) ([57914ec](https://github.com/googleapis/google-cloud-go/commit/57914ec4d5d2c894edb564c918606feb89bad5bc))
+* **pubsub/pstest:** Fix failing bq config test ([#8060](https://github.com/googleapis/google-cloud-go/issues/8060)) ([fb9db66](https://github.com/googleapis/google-cloud-go/commit/fb9db661d49237d25b20544625edc541670f41ad))
+* **pubsub:** Fix issue preventing clearing BQ subscription ([#8040](https://github.com/googleapis/google-cloud-go/issues/8040)) ([0366bf3](https://github.com/googleapis/google-cloud-go/commit/0366bf39b90c38d3139d4aa65c0cdaed1a4d80f1))
+* **pubsub:** REST query UpdateMask bug ([df52820](https://github.com/googleapis/google-cloud-go/commit/df52820b0e7721954809a8aa8700b93c5662dc9b))
+* **pubsub:** Use fieldmask directly instead of field_mask genproto alias ([#8030](https://github.com/googleapis/google-cloud-go/issues/8030)) ([087a5fc](https://github.com/googleapis/google-cloud-go/commit/087a5fca29d2c21f73e336a0ff714294af7af958))
+
+
+### Documentation
+
+* **pubsub:** Tightened requirements on cloud storage subscription filename suffixes ([1da334c](https://github.com/googleapis/google-cloud-go/commit/1da334c0cbeed9cfb8df0551714721284d164d60))
+
+## [1.31.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.30.1...pubsub/v1.31.0) (2023-05-24)
+
+
+### Features
+
+* **pubsub:** Expose common errors for easier handling ([#7940](https://github.com/googleapis/google-cloud-go/issues/7940)) ([983105d](https://github.com/googleapis/google-cloud-go/commit/983105dd86d2ee34a09a5fd665d112f31062cf56))
+
+
+### Bug Fixes
+
+* **pubsub:** Allow clearing of topic schema ([#7980](https://github.com/googleapis/google-cloud-go/issues/7980)) ([46fc060](https://github.com/googleapis/google-cloud-go/commit/46fc06099852412071be8c8a02d0d9416fd08817))
+* **pubsub:** Update grpc to v1.55.0 ([1147ce0](https://github.com/googleapis/google-cloud-go/commit/1147ce02a990276ca4f8ab7a1ab65c14da4450ef))
+
+## [1.30.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.30.0...pubsub/v1.30.1) (2023-05-03)
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Clear Subscription when calling `ClearMessages`. ([6de8eda](https://github.com/googleapis/google-cloud-go/commit/6de8edada13c751ded733e924174e5b46277fcc6))
+* **pubsub/pstest:** Start `DeliveryAttempt` at 1 ([2bf6e14](https://github.com/googleapis/google-cloud-go/commit/2bf6e14ef5d04f9ac2be786086538d395a8e7393))
+
+
+### Documentation
+
+* **pubsub:** Clarify NumGoroutines configures number of streams ([#7874](https://github.com/googleapis/google-cloud-go/issues/7874)) ([8ac4432](https://github.com/googleapis/google-cloud-go/commit/8ac4432e5d3e77a61119943537915230c0e5b7e9))
+
+## [1.30.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.29.0...pubsub/v1.30.0) (2023-03-22)
+
+
+### Features
+
+* **pubsub:** Update iam and longrunning deps ([91a1f78](https://github.com/googleapis/google-cloud-go/commit/91a1f784a109da70f63b96414bba8a9b4254cddd))
+
+
+### Bug Fixes
+
+* **pubsub:** Check response of receipt modacks for exactly once delivery ([#7568](https://github.com/googleapis/google-cloud-go/issues/7568)) ([94d0408](https://github.com/googleapis/google-cloud-go/commit/94d040898cc9e85fdac76560765b01cfd019d0b4))
+
+## [1.29.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.28.0...pubsub/v1.29.0) (2023-03-13)
+
+
+### Features
+
+* **pubsub:** Add google.api.method.signature to update methods ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+* **pubsub:** Add REST client ([06a54a1](https://github.com/googleapis/google-cloud-go/commit/06a54a16a5866cce966547c51e203b9e09a25bc0))
+* **pubsub:** Add schema evolution methods and fields ([ee41485](https://github.com/googleapis/google-cloud-go/commit/ee41485860bcbbd09ce4e28ee6ddca81a5f17211))
+* **pubsub:** Add support for schema revisions ([#7295](https://github.com/googleapis/google-cloud-go/issues/7295)) ([369b16f](https://github.com/googleapis/google-cloud-go/commit/369b16f9525f9ac9a0811c66ce61eda9f6c566e4))
+* **pubsub:** Add temporary_failed_ack_ids to ModifyAckDeadlineConfirmation ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+* **pubsub:** Make INTERNAL a retryable error for Pull ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+
+
+### Bug Fixes
+
+* **pubsub/pstest:** Fix panic on undelivered message ([#7377](https://github.com/googleapis/google-cloud-go/issues/7377)) ([98dd29d](https://github.com/googleapis/google-cloud-go/commit/98dd29d372073605145f78f08205a9786c698881))
+* **pubsub:** Allow updating topic schema fields individually ([#7362](https://github.com/googleapis/google-cloud-go/issues/7362)) ([f09e059](https://github.com/googleapis/google-cloud-go/commit/f09e059e3203de5294648d7434d5e65626a6dff5))
+* **pubsub:** Dont compare revision fields in schema config test ([#7317](https://github.com/googleapis/google-cloud-go/issues/7317)) ([e364f7a](https://github.com/googleapis/google-cloud-go/commit/e364f7abfe3ec8fc20db78abcdaeaaf27d19269c))
+* **pubsub:** Fix bug with AckWithResult with exactly once disabled ([#7319](https://github.com/googleapis/google-cloud-go/issues/7319)) ([c88fbdf](https://github.com/googleapis/google-cloud-go/commit/c88fbdf299205e8118b347430cf66540ffa68b27))
+* **pubsub:** Pipe revision ID in name in DeleteSchemaRevision ([#7519](https://github.com/googleapis/google-cloud-go/issues/7519)) ([e211635](https://github.com/googleapis/google-cloud-go/commit/e211635216e553a9a6b00f9e8f2c5d2082ff68a8))
+
+
+### Documentation
+
+* **pubsub:** Add x-ref for ordering messages docs: Clarify subscription expiration policy ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+* **pubsub:** Clarify BigQueryConfig PERMISSION_DENIED state ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+* **pubsub:** Clarify subscription description ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+* **pubsub:** Mark revision_id in CommitSchemaRevisionRequest deprecated ([2fef56f](https://github.com/googleapis/google-cloud-go/commit/2fef56f75a63dc4ff6e0eea56c7b26d4831c8e27))
+* **pubsub:** Replacing HTML code with Markdown docs: Fix PullResponse description docs: Fix Pull description ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+* **pubsub:** Update Pub/Sub topic retention limit from 7 days to 31 days ([aeb6fec](https://github.com/googleapis/google-cloud-go/commit/aeb6fecc7fd3f088ff461a0c068ceb9a7ae7b2a3))
+
 ## [1.28.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.27.1...pubsub/v1.28.0) (2022-12-05)
 
 

@@ -9,8 +9,11 @@
         "accesscontextmanager": {
             "component": "accesscontextmanager"
         },
-        "aiplatform": {
-            "component": "aiplatform"
+        "advisorynotifications": {
+            "component": "advisorynotifications"
+        },
+        "alloydb": {
+            "component": "alloydb"
         },
         "analytics": {
             "component": "analytics"
@@ -24,11 +27,20 @@
         "apigeeregistry": {
             "component": "apigeeregistry"
         },
+        "apihub": {
+            "component": "apihub"
+        },
         "apikeys": {
             "component": "apikeys"
         },
         "appengine": {
             "component": "appengine"
+        },
+        "apphub": {
+            "component": "apphub"
+        },
+        "apps": {
+            "component": "apps"
         },
         "area120": {
             "component": "area120"
@@ -44,6 +56,9 @@
         },
         "automl": {
             "component": "automl"
+        },
+        "backupdr": {
+            "component": "backupdr"
         },
         "baremetalsolution": {
             "component": "baremetalsolution"
@@ -66,20 +81,41 @@
         "channel": {
             "component": "channel"
         },
+        "chat": {
+            "component": "chat"
+        },
         "cloudbuild": {
             "component": "cloudbuild"
+        },
+        "cloudcontrolspartner": {
+            "component": "cloudcontrolspartner"
         },
         "clouddms": {
             "component": "clouddms"
         },
+        "cloudprofiler": {
+            "component": "cloudprofiler"
+        },
+        "cloudquotas": {
+            "component": "cloudquotas"
+        },
         "cloudtasks": {
             "component": "cloudtasks"
+        },
+        "commerce": {
+            "component": "commerce"
         },
         "compute": {
             "component": "compute"
         },
         "compute/metadata": {
             "component": "compute/metadata"
+        },
+        "confidentialcomputing": {
+            "component": "confidentialcomputing"
+        },
+        "config": {
+            "component": "config"
         },
         "contactcenterinsights": {
             "component": "contactcenterinsights"
@@ -120,8 +156,14 @@
         "deploy": {
             "component": "deploy"
         },
+        "developerconnect": {
+            "component": "developerconnect"
+        },
         "dialogflow": {
             "component": "dialogflow"
+        },
+        "discoveryengine": {
+            "component": "discoveryengine"
         },
         "dlp": {
             "component": "dlp"
@@ -135,6 +177,9 @@
         "edgecontainer": {
             "component": "edgecontainer"
         },
+        "edgenetwork": {
+            "component": "edgenetwork"
+        },
         "essentialcontacts": {
             "component": "essentialcontacts"
         },
@@ -146,9 +191,6 @@
         },
         "functions": {
             "component": "functions"
-        },
-        "gaming": {
-            "component": "gaming"
         },
         "gkebackup": {
             "component": "gkebackup"
@@ -174,6 +216,9 @@
         "iap": {
             "component": "iap"
         },
+        "identitytoolkit": {
+            "component": "identitytoolkit"
+        },
         "ids": {
             "component": "ids"
         },
@@ -195,6 +240,9 @@
         "managedidentities": {
             "component": "managedidentities"
         },
+        "managedkafka": {
+            "component": "managedkafka"
+        },
         "maps": {
             "component": "maps"
         },
@@ -207,8 +255,14 @@
         "metastore": {
             "component": "metastore"
         },
+        "migrationcenter": {
+            "component": "migrationcenter"
+        },
         "monitoring": {
             "component": "monitoring"
+        },
+        "netapp": {
+            "component": "netapp"
         },
         "networkconnectivity": {
             "component": "networkconnectivity"
@@ -218,6 +272,9 @@
         },
         "networksecurity": {
             "component": "networksecurity"
+        },
+        "networkservices": {
+            "component": "networkservices"
         },
         "notebooks": {
             "component": "notebooks"
@@ -237,8 +294,14 @@
         "oslogin": {
             "component": "oslogin"
         },
+        "parallelstore": {
+            "component": "parallelstore"
+        },
         "phishingprotection": {
             "component": "phishingprotection"
+        },
+        "policysimulator": {
+            "component": "policysimulator"
         },
         "policytroubleshooter": {
             "component": "policytroubleshooter"
@@ -246,7 +309,13 @@
         "privatecatalog": {
             "component": "privatecatalog"
         },
-        "recaptchaenterprise/v2": {
+        "privilegedaccessmanager": {
+            "component": "privilegedaccessmanager"
+        },
+        "rapidmigrationassessment": {
+            "component": "rapidmigrationassessment"
+        },
+        "recaptchaenterprise": {
             "component": "recaptchaenterprise"
         },
         "recommendationengine": {
@@ -276,17 +345,29 @@
         "secretmanager": {
             "component": "secretmanager"
         },
+        "securesourcemanager": {
+            "component": "securesourcemanager"
+        },
         "security": {
             "component": "security"
         },
         "securitycenter": {
             "component": "securitycenter"
         },
+        "securitycentermanagement": {
+            "component": "securitycentermanagement"
+        },
+        "securityposture": {
+            "component": "securityposture"
+        },
         "servicecontrol": {
             "component": "servicecontrol"
         },
         "servicedirectory": {
             "component": "servicedirectory"
+        },
+        "servicehealth": {
+            "component": "servicehealth"
         },
         "servicemanagement": {
             "component": "servicemanagement"
@@ -297,14 +378,29 @@
         "shell": {
             "component": "shell"
         },
+        "shopping": {
+            "component": "shopping"
+        },
         "speech": {
             "component": "speech"
+        },
+        "storageinsights": {
+            "component": "storageinsights"
         },
         "storagetransfer": {
             "component": "storagetransfer"
         },
+        "streetview": {
+            "component": "streetview"
+        },
+        "support": {
+            "component": "support"
+        },
         "talent": {
             "component": "talent"
+        },
+        "telcoautomation": {
+            "component": "telcoautomation"
         },
         "texttospeech": {
             "component": "texttospeech"
@@ -324,11 +420,17 @@
         "videointelligence": {
             "component": "videointelligence"
         },
-        "vision/v2": {
+        "vision": {
             "component": "vision"
+        },
+        "visionai": {
+            "component": "visionai"
         },
         "vmmigration": {
             "component": "vmmigration"
+        },
+        "vmwareengine": {
+            "component": "vmwareengine"
         },
         "vpcaccess": {
             "component": "vpcaccess"
@@ -341,7 +443,12 @@
         },
         "workflows": {
             "component": "workflows"
+        },
+        "workstations": {
+            "component": "workstations"
         }
     },
-    "plugins": ["sentence-case"]
+    "plugins": [
+        "sentence-case"
+    ]
 }

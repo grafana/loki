@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -144,7 +143,7 @@ func CheckResponse(res *http.Response) error {
 	if res.StatusCode >= 200 && res.StatusCode <= 299 {
 		return nil
 	}
-	slurp, err := ioutil.ReadAll(res.Body)
+	slurp, err := io.ReadAll(res.Body)
 	if err == nil {
 		jerr := new(errorReply)
 		err = json.Unmarshal(slurp, jerr)
@@ -184,7 +183,7 @@ func CheckMediaResponse(res *http.Response) error {
 	if res.StatusCode >= 200 && res.StatusCode <= 299 {
 		return nil
 	}
-	slurp, _ := ioutil.ReadAll(io.LimitReader(res.Body, 1<<20))
+	slurp, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	return &Error{
 		Code:   res.StatusCode,
 		Body:   string(slurp),
@@ -260,6 +259,20 @@ func ChunkSize(size int) MediaOption {
 	return chunkSizeOption(size)
 }
 
+type chunkTransferTimeoutOption time.Duration
+
+func (cd chunkTransferTimeoutOption) setOptions(o *MediaOptions) {
+	o.ChunkTransferTimeout = time.Duration(cd)
+}
+
+// ChunkTransferTimeout returns a MediaOption which sets a per-chunk
+// transfer timeout for resumable uploads. If a single chunk has been
+// attempting to upload for longer than this time then the old req got canceled and retried.
+// The default is no timeout for the request.
+func ChunkTransferTimeout(timeout time.Duration) MediaOption {
+	return chunkTransferTimeoutOption(timeout)
+}
+
 type chunkRetryDeadlineOption time.Duration
 
 func (cd chunkRetryDeadlineOption) setOptions(o *MediaOptions) {
@@ -284,6 +297,7 @@ type MediaOptions struct {
 	ForceEmptyContentType bool
 	ChunkSize             int
 	ChunkRetryDeadline    time.Duration
+	ChunkTransferTimeout  time.Duration
 }
 
 // ProcessMediaOptions stores options from opts in a MediaOptions.

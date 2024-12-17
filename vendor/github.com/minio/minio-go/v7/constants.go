@@ -60,11 +60,31 @@ const (
 )
 
 const (
+	// GetObjectAttributesTags are tags used to defined
+	// return values for the GetObjectAttributes API
+	GetObjectAttributesTags = "ETag,Checksum,StorageClass,ObjectSize,ObjectParts"
+	// GetObjectAttributesMaxParts defined the default maximum
+	// number of parts returned by GetObjectAttributes
+	GetObjectAttributesMaxParts = 1000
+)
+
+const (
+	// Response Headers
+
+	// ETag is a common response header
+	ETag = "ETag"
+
 	// Storage class header.
 	amzStorageClass = "X-Amz-Storage-Class"
 
 	// Website redirect location header
 	amzWebsiteRedirectLocation = "X-Amz-Website-Redirect-Location"
+
+	// GetObjectAttributes headers
+	amzPartNumberMarker    = "X-Amz-Part-Number-Marker"
+	amzExpectedBucketOnwer = "X-Amz-Expected-Bucket-Owner"
+	amzMaxParts            = "X-Amz-Max-Parts"
+	amzObjectAttributes    = "X-Amz-Object-Attributes"
 
 	// Object Tagging headers
 	amzTaggingHeader          = "X-Amz-Tagging"
@@ -94,6 +114,8 @@ const (
 	minIOBucketReplicationDeleteMarker = "X-Minio-Source-DeleteMarker"
 	minIOBucketReplicationProxyRequest = "X-Minio-Source-Proxy-Request"
 	minIOBucketReplicationRequest      = "X-Minio-Source-Replication-Request"
+	minIOBucketReplicationCheck        = "X-Minio-Source-Replication-Check"
+
 	// Header indicates last tag update time on source
 	minIOBucketReplicationTaggingTimestamp = "X-Minio-Source-Replication-Tagging-Timestamp"
 	// Header indicates last retention update time on source

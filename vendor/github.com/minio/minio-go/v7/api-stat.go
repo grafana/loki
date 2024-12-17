@@ -20,7 +20,6 @@ package minio
 import (
 	"context"
 	"net/http"
-	"net/url"
 
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
@@ -57,14 +56,23 @@ func (c *Client) BucketExists(ctx context.Context, bucketName string) (bool, err
 	return true, nil
 }
 
-// StatObject verifies if object exists and you have permission to access.
+// StatObject verifies if object exists, you have permission to access it
+// and returns information about the object.
 func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, opts StatObjectOptions) (ObjectInfo, error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
-		return ObjectInfo{}, err
+		return ObjectInfo{}, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "InvalidBucketName",
+			Message:    err.Error(),
+		}
 	}
 	if err := s3utils.CheckValidObjectName(objectName); err != nil {
-		return ObjectInfo{}, err
+		return ObjectInfo{}, ErrorResponse{
+			StatusCode: http.StatusBadRequest,
+			Code:       "XMinioInvalidObjectName",
+			Message:    err.Error(),
+		}
 	}
 	headers := opts.Header()
 	if opts.Internal.ReplicationDeleteMarker {
@@ -74,15 +82,11 @@ func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, 
 		headers.Set(isMinioTgtReplicationReady, "true")
 	}
 
-	urlValues := make(url.Values)
-	if opts.VersionID != "" {
-		urlValues.Set("versionId", opts.VersionID)
-	}
 	// Execute HEAD on objectName.
 	resp, err := c.executeMethod(ctx, http.MethodHead, requestMetadata{
 		bucketName:       bucketName,
 		objectName:       objectName,
-		queryValues:      urlValues,
+		queryValues:      opts.toQueryValues(),
 		contentSHA256Hex: emptySHA256Hex,
 		customHeader:     headers,
 	})

@@ -9,21 +9,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -43,7 +44,7 @@ func main() {
 	}
 }
 
-func getStore(cm storage.ClientMetrics) (storage.Store, error) {
+func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, error) {
 	storeConfig := storage.Config{
 		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
 		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
@@ -55,24 +56,36 @@ func getStore(cm storage.ClientMetrics) (storage.Store, error) {
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
-				Schema:     "v9",
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 168,
-				},
+				Schema:     "v13",
+				IndexTables: config.IndexPeriodicTableConfig{
+					PeriodicTableConfig: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 168,
+					}},
 			},
 		},
 	}
 
-	return storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger)
+	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger, "cortex")
+	return store, &schemaCfg, err
 }
 
 func fillStore(cm storage.ClientMetrics) error {
-	store, err := getStore(cm)
+	store, schemacfg, err := getStore(cm)
 	if err != nil {
 		return err
 	}
 	defer store.Stop()
+
+	periodcfg, err := schemacfg.SchemaForTime(start)
+	if err != nil {
+		return err
+	}
+
+	chunkfmt, headfmt, err := periodcfg.ChunkFormat()
+	if err != nil {
+		return err
+	}
 
 	var wgPush sync.WaitGroup
 	var flushCount int
@@ -89,16 +102,16 @@ func fillStore(cm storage.ClientMetrics) error {
 			}
 			labelsBuilder := labels.NewBuilder(lbs)
 			labelsBuilder.Set(labels.MetricName, "logs")
-			metric := labelsBuilder.Labels(nil)
+			metric := labelsBuilder.Labels()
 			fp := client.Fingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunk(chunkenc.EncLZ4_4M, chunkenc.UnorderedHeadBlockFmt, 262144, 1572864)
+			chunkEnc := chunkenc.NewMemChunk(chunkfmt, compression.LZ4_4M, headfmt, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),
 					Line:      randString(250),
 				}
 				if chunkEnc.SpaceFor(entry) {
-					_ = chunkEnc.Append(entry)
+					_, _ = chunkEnc.Append(entry)
 				} else {
 					from, to := chunkEnc.Bounds()
 					c := chunk.NewChunk("fake", fp, metric, chunkenc.NewFacade(chunkEnc, 0, 0), model.TimeFromUnixNano(from.UnixNano()), model.TimeFromUnixNano(to.UnixNano()))
@@ -114,7 +127,7 @@ func fillStore(cm storage.ClientMetrics) error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunk(chunkenc.EncLZ4_64k, chunkenc.UnorderedHeadBlockFmt, 262144, 1572864)
+					chunkEnc = chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, compression.LZ4_64k, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 262144, 1572864)
 				}
 			}
 		}(i)
@@ -130,7 +143,7 @@ const charset = "abcdefghijklmnopqrstuvwxyz" +
 func randStringWithCharset(length int, charset string) string {
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset)-1)]
+		b[i] = charset[rand.Intn(len(charset)-1)] //#nosec G404 -- Generation of test data does not require CSPRNG, this is not meant to be secret.
 	}
 	return string(b)
 }

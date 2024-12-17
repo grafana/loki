@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package protos;
+
+import "gogoproto/gogo.proto";
+import "pkg/logproto/bloomgateway.proto";
+
+option go_package = "protos";
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// FPBounds is identical to the definition in `pkg/storage/bloom/v1/bounds.FingerprintBounds`
+// which ensures we can cast between them without allocations.
+// TODO(salvacorts): Reuse from `pkg/logproto/indexgateway.proto`
+message ProtoFingerprintBounds {
+  uint64 min = 1 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "min"
+  ];
+  uint64 max = 2 [
+    (gogoproto.casttype) = "github.com/prometheus/common/model.Fingerprint",
+    (gogoproto.jsontag) = "max"
+  ];
+}
+
+message DayTable {
+  int64 dayTimestampMS = 1;
+  string prefix = 2;
+}
+
+message ProtoSeries {
+  uint64 fingerprint = 1;
+  repeated logproto.ShortRef chunks = 2;
+}
+
+message ProtoGapWithBlocks {
+  ProtoFingerprintBounds bounds = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
+  ];
+  repeated ProtoSeries series = 2;
+  repeated string blockRef = 3;
+}
+
+// TODO: Define BlockRef and SingleTenantTSDBIdentifier as messages so we can use them right away
+//       instead of unmarshaling them from strings or doing unsafe casts.
+message ProtoTask {
+  string id = 1;
+  DayTable table = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "table"
+  ];
+  string tenant = 3;
+  ProtoFingerprintBounds bounds = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "bounds"
+  ];
+  string tsdb = 5;
+  repeated ProtoGapWithBlocks gaps = 6;
+}
+
+message ProtoMeta {
+  string metaRef = 1;
+  repeated string sourcesTSDBs = 2;
+  repeated string blockRefs = 3;
+}
+
+message ProtoTaskResult {
+  string taskID = 1;
+  string error = 2;
+  repeated ProtoMeta createdMetas = 3;
+}

@@ -23,6 +23,13 @@ import (
 
 const messageSizeLargerErrFmt = "received message larger than max (%d vs %d)"
 
+const (
+	HTTPRateLimited  = "rate_limited"
+	HTTPServerError  = "server_error"
+	HTTPErrorUnknown = "unknown"
+	HTTPClientError  = "client_error"
+)
+
 // IsRequestBodyTooLarge returns true if the error is "http: request body too large".
 func IsRequestBodyTooLarge(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "http: request body too large")
@@ -228,25 +235,26 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 }
 
 func decompressFromBuffer(buffer *bytes.Buffer, maxSize int, compression CompressionType, sp opentracing.Span) ([]byte, error) {
-	if len(buffer.Bytes()) > maxSize {
-		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(buffer.Bytes()), maxSize)
+	bufBytes := buffer.Bytes()
+	if len(bufBytes) > maxSize {
+		return nil, fmt.Errorf(messageSizeLargerErrFmt, len(bufBytes), maxSize)
 	}
 	switch compression {
 	case NoCompression:
-		return buffer.Bytes(), nil
+		return bufBytes, nil
 	case RawSnappy:
 		if sp != nil {
 			sp.LogFields(otlog.String("event", "util.ParseProtoRequest[decompress]"),
-				otlog.Int("size", len(buffer.Bytes())))
+				otlog.Int("size", len(bufBytes)))
 		}
-		size, err := snappy.DecodedLen(buffer.Bytes())
+		size, err := snappy.DecodedLen(bufBytes)
 		if err != nil {
 			return nil, err
 		}
 		if size > maxSize {
 			return nil, fmt.Errorf(messageSizeLargerErrFmt, size, maxSize)
 		}
-		body, err := snappy.Decode(nil, buffer.Bytes())
+		body, err := snappy.Decode(nil, bufBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -296,4 +304,38 @@ func FlagFromValues(values url.Values, key string, d bool) bool {
 	default:
 		return d
 	}
+}
+
+func IsValidURL(endpoint string) bool {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
+
+	return u.Scheme != "" && u.Host != ""
+}
+
+func ErrorTypeFromHTTPStatus(status int) string {
+	errorType := HTTPErrorUnknown
+	if status == 429 {
+		errorType = HTTPRateLimited
+	} else if status/100 == 5 {
+		errorType = HTTPServerError
+	} else if status/100 != 2 {
+		errorType = HTTPClientError
+	}
+
+	return errorType
+}
+
+func IsError(status int) bool {
+	return status < 200 || status >= 300
+}
+
+func IsServerError(status int) bool {
+	return status/100 == 5
+}
+
+func IsRateLimited(status int) bool {
+	return status == 429
 }

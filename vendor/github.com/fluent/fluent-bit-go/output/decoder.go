@@ -18,12 +18,13 @@
 package output
 
 import (
-	"unsafe"
-	"reflect"
-	"encoding/binary"
-	"github.com/ugorji/go/codec"
-	"time"
 	"C"
+	"encoding/binary"
+	"reflect"
+	"time"
+	"unsafe"
+
+	"github.com/ugorji/go/codec"
 )
 
 type FLBDecoder struct {
@@ -54,12 +55,12 @@ func (f FLBTime) UpdateExt(dest interface{}, v interface{}) {
 	panic("unsupported")
 }
 
-func NewDecoder(data unsafe.Pointer, length int) (*FLBDecoder) {
+func NewDecoder(data unsafe.Pointer, length int) *FLBDecoder {
 	var b []byte
 
 	dec := new(FLBDecoder)
 	dec.handle = new(codec.MsgpackHandle)
-	dec.handle.SetExt(reflect.TypeOf(FLBTime{}), 0, &FLBTime{})
+	dec.handle.SetBytesExt(reflect.TypeOf(FLBTime{}), 0, &FLBTime{})
 
 	b = C.GoBytes(data, C.int(length))
 	dec.mpdec = codec.NewDecoderBytes(b, dec.handle)
@@ -77,10 +78,32 @@ func GetRecord(dec *FLBDecoder) (ret int, ts interface{}, rec map[interface{}]in
 	}
 
 	slice := reflect.ValueOf(m)
-	t := slice.Index(0).Interface()
+	if slice.Kind() != reflect.Slice || slice.Len() != 2 {
+		return -2, 0, nil
+	}
+
+	var t interface{}
+	ts = slice.Index(0).Interface()
+	switch ty := ts.(type) {
+	case FLBTime:
+		t = ty
+	case uint64:
+		t = ty
+	case []interface{}: // for Fluent Bit V2 metadata type of format
+		s := reflect.ValueOf(ty)
+		if s.Kind() != reflect.Slice || s.Len() < 2 {
+			return -4, 0, nil
+		}
+		t = s.Index(0).Interface()
+	default:
+		return -5, 0, nil
+	}
 	data := slice.Index(1)
 
-	map_data := data.Interface().(map[interface{}] interface{})
+	map_data, ok := data.Interface().(map[interface{}]interface{})
+	if !ok {
+		return -3, 0, nil
+	}
 
 	return 0, t, map_data
 }

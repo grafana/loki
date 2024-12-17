@@ -4,6 +4,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ template "enterprise-logs.tokengenFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "enterprise-logs.tokengenLabels" . | nindent 4 }}
     {{- with .Values.enterprise.tokengen.labels }}
@@ -109,19 +110,21 @@ spec:
       restartPolicy: OnFailure
       serviceAccount: {{ template "enterprise-logs.tokengenFullname" . }}
       serviceAccountName: {{ template "enterprise-logs.tokengenFullname" . }}
+      {{- with .Values.enterprise.tokengen.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterprise.tokengen.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.enterprise.tokengen.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
         - name: config
-          {{- if .Values.enterprise.useExternalConfig }}
-          secret:
-            secretName: {{ .Values.enterprise.externalConfigName }}
-          {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
-          {{- end }}
+          {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime

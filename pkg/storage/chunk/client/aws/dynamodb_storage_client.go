@@ -18,25 +18,25 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/log/level"
+	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/instrument"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	awscommon "github.com/weaveworks/common/aws"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	chunkclient "github.com/grafana/loki/pkg/storage/chunk/client"
-	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/math"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	chunkclient "github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	client_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/math"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -84,7 +84,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
-	DynamoDBConfig `yaml:"dynamodb"`
+	DynamoDBConfig `yaml:"dynamodb" doc:"description=Deprecated: Configures storing indexes in DynamoDB."`
 	S3Config       `yaml:",inline"`
 }
 
@@ -194,7 +194,7 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input index.Write
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
 
-		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			return request.Send()
 		})
 		resp := request.Data().(*dynamodb.BatchWriteItemOutput)
@@ -450,7 +450,7 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
 		})
 
-		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchGetItemPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchGetItemPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
 			return request.Send()
 		})
 		response := request.Data().(*dynamodb.BatchGetItemOutput)
@@ -538,7 +538,7 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 	return result, nil
 }
 
-// PutChunkAndIndex implements chunk.ObjectAndIndexClient
+// PutChunksAndIndex implements chunk.ObjectAndIndexClient
 // Combine both sets of writes before sending to DynamoDB, for performance
 func (a dynamoDBStorageClient) PutChunksAndIndex(ctx context.Context, chunks []chunk.Chunk, index index.WriteBatch) error {
 	dynamoDBWrites, err := a.writesForChunks(chunks)
@@ -575,6 +575,10 @@ func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID 
 }
 
 func (a dynamoDBStorageClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
+func (a dynamoDBStorageClient) IsRetryableErr(_ error) bool {
 	return false
 }
 

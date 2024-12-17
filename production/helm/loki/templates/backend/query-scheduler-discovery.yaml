@@ -1,0 +1,34 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.querySchedulerFullname" . }}-discovery
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+    prometheus.io/service-monitor: "false"
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.backend.service.annotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: http-metrics
+      port: {{ .Values.loki.server.http_listen_port }}
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: {{ .Values.loki.server.grpc_listen_port }}
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+{{- end }}

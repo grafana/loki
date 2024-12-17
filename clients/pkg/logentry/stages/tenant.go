@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 )
 
 const (
@@ -62,7 +62,7 @@ func newTenantStage(logger log.Logger, configs interface{}) (Stage, error) {
 }
 
 // Process implements Stage
-func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (s *tenantStage) Process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
 	var tenantID string
 
 	// Get tenant ID from source or configured value

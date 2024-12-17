@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
 
 type noopClient struct {
@@ -35,7 +35,7 @@ func newNoopClient() *noopClient {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		for range c.noopChan {
+		for range c.noopChan { //nolint:revive
 			// noop
 		}
 	}()

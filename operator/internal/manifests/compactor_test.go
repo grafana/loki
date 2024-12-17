@@ -1,11 +1,12 @@
-package manifests_test
+package manifests
 
 import (
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestNewCompactorStatefulSet_SelectorMatchesLabels(t *testing.T) {
@@ -15,7 +16,7 @@ func TestNewCompactorStatefulSet_SelectorMatchesLabels(t *testing.T) {
 	// failing to specify a matching Pod Selector will result in a validation error
 	// during StatefulSet creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	sts := manifests.NewCompactorStatefulSet(manifests.Options{
+	sts := NewCompactorStatefulSet(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -36,7 +37,7 @@ func TestNewCompactorStatefulSet_SelectorMatchesLabels(t *testing.T) {
 }
 
 func TestNewCompactorStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewCompactorStatefulSet(manifests.Options{
+	ss := NewCompactorStatefulSet(Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
@@ -49,14 +50,36 @@ func TestNewCompactorStatefulSet_HasTemplateConfigHashAnnotation(t *testing.T) {
 			},
 		},
 	})
-	expected := "loki.grafana.com/config-hash"
+
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationLokiConfigHash)
+	require.Equal(t, annotations[AnnotationLokiConfigHash], "deadbeef")
+}
+
+func TestNewCompactorStatefulSet_HasTemplateObjectStorageHashAnnotation(t *testing.T) {
+	ss := NewCompactorStatefulSet(Options{
+		Name:      "abcd",
+		Namespace: "efgh",
+		ObjectStorage: storage.Options{
+			SecretSHA1: "deadbeef",
+		},
+		Stack: lokiv1.LokiStackSpec{
+			StorageClassName: "standard",
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	})
+
+	annotations := ss.Spec.Template.Annotations
+	require.Contains(t, annotations, AnnotationLokiObjectStoreHash)
+	require.Equal(t, annotations[AnnotationLokiObjectStoreHash], "deadbeef")
 }
 
 func TestNewCompactorStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
-	ss := manifests.NewCompactorStatefulSet(manifests.Options{
+	ss := NewCompactorStatefulSet(Options{
 		Name:                   "abcd",
 		Namespace:              "efgh",
 		CertRotationRequiredAt: "deadbeef",
@@ -69,8 +92,8 @@ func TestNewCompactorStatefulSet_HasTemplateCertRotationRequiredAtAnnotation(t *
 			},
 		},
 	})
-	expected := "loki.grafana.com/certRotationRequiredAt"
+
 	annotations := ss.Spec.Template.Annotations
-	require.Contains(t, annotations, expected)
-	require.Equal(t, annotations[expected], "deadbeef")
+	require.Contains(t, annotations, AnnotationCertRotationRequiredAt)
+	require.Equal(t, annotations[AnnotationCertRotationRequiredAt], "deadbeef")
 }

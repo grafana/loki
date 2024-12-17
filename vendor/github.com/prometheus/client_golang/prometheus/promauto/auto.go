@@ -17,7 +17,7 @@
 // constructors register the Collectors with a registry before returning them.
 // There are two sets of constructors. The constructors in the first set are
 // top-level functions, while the constructors in the other set are methods of
-// the Factory type. The top-level function return Collectors registered with
+// the Factory type. The top-level functions return Collectors registered with
 // the global registry (prometheus.DefaultRegisterer), while the methods return
 // Collectors registered with the registry the Factory was constructed with. All
 // constructors panic if the registration fails.
@@ -28,30 +28,30 @@
 //	package main
 //
 //	import (
-//	        "math/rand"
-//	        "net/http"
+//		"math/rand"
+//		"net/http"
 //
-//	        "github.com/prometheus/client_golang/prometheus"
-//	        "github.com/prometheus/client_golang/prometheus/promauto"
-//	        "github.com/prometheus/client_golang/prometheus/promhttp"
+//		"github.com/prometheus/client_golang/prometheus"
+//		"github.com/prometheus/client_golang/prometheus/promauto"
+//		"github.com/prometheus/client_golang/prometheus/promhttp"
 //	)
 //
 //	var histogram = promauto.NewHistogram(prometheus.HistogramOpts{
-//	        Name:    "random_numbers",
-//	        Help:    "A histogram of normally distributed random numbers.",
-//	        Buckets: prometheus.LinearBuckets(-3, .1, 61),
+//		Name:    "random_numbers",
+//		Help:    "A histogram of normally distributed random numbers.",
+//		Buckets: prometheus.LinearBuckets(-3, .1, 61),
 //	})
 //
 //	func Random() {
-//	        for {
-//	                histogram.Observe(rand.NormFloat64())
-//	        }
+//		for {
+//			histogram.Observe(rand.NormFloat64())
+//		}
 //	}
 //
 //	func main() {
-//	        go Random()
-//	        http.Handle("/metrics", promhttp.Handler())
-//	        http.ListenAndServe(":1971", nil)
+//		go Random()
+//		http.Handle("/metrics", promhttp.Handler())
+//		http.ListenAndServe(":1971", nil)
 //	}
 //
 // Prometheus's version of a minimal hello-world program:
@@ -85,7 +85,7 @@
 //	}
 //
 // A Factory is created with the With(prometheus.Registerer) function, which
-// enables two usage pattern. With(prometheus.Registerer) can be called once per
+// enables two usage patterns. With(prometheus.Registerer) can be called once per
 // line:
 //
 //	var (
@@ -153,7 +153,7 @@
 // importing a package.
 //
 // A separate package allows conservative users to entirely ignore it. And
-// whoever wants to use it, will do so explicitly, with an opportunity to read
+// whoever wants to use it will do so explicitly, with an opportunity to read
 // this warning.
 //
 // Enjoy promauto responsibly!

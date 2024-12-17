@@ -7,13 +7,13 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // LazyChunk loads the chunk when it is accessed.
@@ -46,7 +46,7 @@ func (c *LazyChunk) Iterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 	its := make([]iter.EntryIterator, 0, len(blocks))
 
@@ -126,7 +126,7 @@ func (c *LazyChunk) SampleIterator(
 	lokiChunk := c.Chunk.Data.(*chunkenc.Facade).LokiChunk()
 	blocks := lokiChunk.Blocks(from, through)
 	if len(blocks) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopSampleIterator, nil
 	}
 	its := make([]iter.SampleIterator, 0, len(blocks))
 
@@ -235,8 +235,8 @@ func (l *lazyChunks) pop(count int) []*LazyChunk {
 	// split slices into two new ones and copy parts to each so we don't keep old reference
 	res := make([]*LazyChunk, count)
 	copy(res, l.chunks[0:count])
-	new := make([]*LazyChunk, len(l.chunks)-count)
-	copy(new, l.chunks[count:len(l.chunks)])
-	l.chunks = new
+	newChks := make([]*LazyChunk, len(l.chunks)-count)
+	copy(newChks, l.chunks[count:len(l.chunks)])
+	l.chunks = newChks
 	return res
 }

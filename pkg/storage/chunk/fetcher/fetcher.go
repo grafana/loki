@@ -2,45 +2,32 @@ package fetcher
 
 import (
 	"context"
-	"errors"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 var (
-	errAsyncBufferFull = errors.New("the async buffer is full")
-	skipped            = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_chunk_fetcher_cache_skipped_buffer_full_total",
-		Help: "Total number of operations against cache that have been skipped.",
-	})
-	chunkFetcherCacheQueueEnqueue = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_chunk_fetcher_cache_enqueued_total",
-		Help: "Total number of chunks enqueued to a buffer to be asynchronously written back to the chunk cache.",
-	})
-	chunkFetcherCacheQueueDequeue = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "loki_chunk_fetcher_cache_dequeued_total",
-		Help: "Total number of chunks asynchronously dequeued from a buffer and written back to the chunk cache.",
-	})
 	cacheCorrupt = promauto.NewCounter(prometheus.CounterOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Name:      "cache_corrupt_chunks_total",
 		Help:      "Total count of corrupt chunks found in cache.",
 	})
 	chunkFetchedSize = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
+		Namespace: constants.Loki,
 		Subsystem: "chunk_fetcher",
 		Name:      "fetched_size_bytes",
 		Help:      "Compressed chunk size distribution fetched from storage.",
@@ -59,17 +46,15 @@ type Fetcher struct {
 	schema     config.SchemaConfig
 	storage    client.Client
 	cache      cache.Cache
+	cachel2    cache.Cache
 	cacheStubs bool
+
+	l2CacheHandoff time.Duration
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
 
-	maxAsyncConcurrency int
-	maxAsyncBufferSize  int
-
-	asyncQueue chan []chunk.Chunk
-	stopOnce   sync.Once
-	stop       chan struct{}
+	stopOnce sync.Once
 }
 
 type decodeRequest struct {
@@ -84,16 +69,15 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, maxAsyncConcurrency int, maxAsyncBufferSize int) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration) (*Fetcher, error) {
 	c := &Fetcher{
-		schema:              schema,
-		storage:             storage,
-		cache:               cacher,
-		cacheStubs:          cacheStubs,
-		decodeRequests:      make(chan decodeRequest),
-		maxAsyncConcurrency: maxAsyncConcurrency,
-		maxAsyncBufferSize:  maxAsyncBufferSize,
-		stop:                make(chan struct{}),
+		schema:         schema,
+		storage:        storage,
+		cache:          cache,
+		cachel2:        cachel2,
+		l2CacheHandoff: l2CacheHandoff,
+		cacheStubs:     cacheStubs,
+		decodeRequests: make(chan decodeRequest),
 	}
 
 	c.wait.Add(chunkDecodeParallelism)
@@ -101,39 +85,7 @@ func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storag
 		go c.worker()
 	}
 
-	// Start a number of goroutines - processing async operations - equal
-	// to the max concurrency we have.
-	c.asyncQueue = make(chan []chunk.Chunk, c.maxAsyncBufferSize)
-	for i := 0; i < c.maxAsyncConcurrency; i++ {
-		go c.asyncWriteBackCacheQueueProcessLoop()
-	}
-
 	return c, nil
-}
-
-func (c *Fetcher) writeBackCacheAsync(fromStorage []chunk.Chunk) error {
-	select {
-	case c.asyncQueue <- fromStorage:
-		chunkFetcherCacheQueueEnqueue.Add(float64(len(fromStorage)))
-		return nil
-	default:
-		return errAsyncBufferFull
-	}
-}
-
-func (c *Fetcher) asyncWriteBackCacheQueueProcessLoop() {
-	for {
-		select {
-		case fromStorage := <-c.asyncQueue:
-			chunkFetcherCacheQueueDequeue.Add(float64(len(fromStorage)))
-			cacheErr := c.WriteBackCache(context.Background(), fromStorage)
-			if cacheErr != nil {
-				level.Warn(util_log.Logger).Log("msg", "could not write fetched chunks from storage into chunk cache", "err", cacheErr)
-			}
-		case <-c.stop:
-			return
-		}
-	}
 }
 
 // Stop the ChunkFetcher.
@@ -142,7 +94,6 @@ func (c *Fetcher) Stop() {
 		close(c.decodeRequests)
 		c.wait.Wait()
 		c.cache.Stop()
-		close(c.stop)
 	})
 }
 
@@ -169,9 +120,8 @@ func (c *Fetcher) Client() client.Client {
 	return c.storage
 }
 
-// FetchChunks fetches a set of chunks from cache and store. Note that the keys passed in must be
-// lexicographically sorted, while the returned chunks are not in the same order as the passed in chunks.
-func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []string) ([]chunk.Chunk, error) {
+// FetchChunks fetches a set of chunks from cache and store. Note, returned chunks are not in the same order they are passed in
+func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -180,7 +130,25 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
-	// Now fetch the actual chunk data from Memcache / S3
+	// Extend the extendedHandoff to be 10% larger to allow for some overlap because this is a sliding window
+	// and the l1 cache may be oversized enough to allow for some extra chunks
+	extendedHandoff := c.l2CacheHandoff + (c.l2CacheHandoff / 10)
+
+	keys := make([]string, 0, len(chunks))
+	l2OnlyChunks := make([]chunk.Chunk, 0, len(chunks))
+
+	for _, m := range chunks {
+		// Similar to below, this is an optimization to not bother looking in the l1 cache if there isn't a reasonable
+		// expectation to find it there.
+		if c.l2CacheHandoff > 0 && m.From.Time().Before(time.Now().UTC().Add(-extendedHandoff)) {
+			l2OnlyChunks = append(l2OnlyChunks, m)
+			continue
+		}
+		chunkKey := c.schema.ExternalKey(m.ChunkRef)
+		keys = append(keys, chunkKey)
+	}
+
+	// Fetch from L1 chunk cache
 	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
@@ -190,11 +158,39 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 		chunkFetchedSize.WithLabelValues("cache").Observe(float64(len(buf)))
 	}
 
+	if c.l2CacheHandoff > 0 {
+		// Fetch missing from L2 chunks cache
+		missingL1Keys := make([]string, 0, len(l2OnlyChunks))
+		for _, m := range l2OnlyChunks {
+			// A small optimization to prevent looking up a chunk in l2 cache that can't possibly be there
+			if m.From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
+				continue
+			}
+			chunkKey := c.schema.ExternalKey(m.ChunkRef)
+			missingL1Keys = append(missingL1Keys, chunkKey)
+		}
+
+		cacheHitsL2, cacheBufsL2, _, err := c.cachel2.Fetch(ctx, missingL1Keys)
+		if err != nil {
+			level.Warn(log).Log("msg", "error fetching from cache", "err", err)
+		}
+
+		for _, buf := range cacheBufsL2 {
+			chunkFetchedSize.WithLabelValues("cache_l2").Observe(float64(len(buf)))
+		}
+
+		cacheHits = append(cacheHits, cacheHitsL2...)
+		cacheBufs = append(cacheBufs, cacheBufsL2...)
+	}
+
+	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
+	// missing chunks that we need to fetch from the storage layer
 	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
 	if err != nil {
 		level.Warn(log).Log("msg", "error process response from cache", "err", err)
 	}
 
+	// Fetch missing from storage
 	var fromStorage []chunk.Chunk
 	if len(missing) > 0 {
 		fromStorage, err = c.storage.GetChunks(ctx, missing)
@@ -215,16 +211,13 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	st.AddCacheBytesSent(stats.ChunkCache, bytes)
 
 	// Always cache any chunks we did get
-	if cacheErr := c.writeBackCacheAsync(fromStorage); cacheErr != nil {
-		if cacheErr == errAsyncBufferFull {
-			skipped.Inc()
-		}
+
+	if cacheErr := c.WriteBackCache(ctx, fromStorage); cacheErr != nil {
 		level.Warn(log).Log("msg", "could not store chunks in chunk cache", "err", cacheErr)
 	}
 
 	if err != nil {
-		// Don't rely on Cortex error translation here.
-		return nil, promql.ErrStorage{Err: err}
+		level.Error(log).Log("msg", "failed downloading chunks", "err", err)
 	}
 
 	allChunks := append(fromCache, fromStorage...)
@@ -234,6 +227,8 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) error {
 	keys := make([]string, 0, len(chunks))
 	bufs := make([][]byte, 0, len(chunks))
+	keysL2 := make([]string, 0, len(chunks))
+	bufsL2 := make([][]byte, 0, len(chunks))
 	for i := range chunks {
 		var encoded []byte
 		var err error
@@ -244,15 +239,29 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 				return err
 			}
 		}
-
-		keys = append(keys, c.schema.ExternalKey(chunks[i].ChunkRef))
-		bufs = append(bufs, encoded)
+		// Determine which cache we should write to
+		if c.l2CacheHandoff == 0 || chunks[i].From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
+			// Write to L1 cache
+			keys = append(keys, c.schema.ExternalKey(chunks[i].ChunkRef))
+			bufs = append(bufs, encoded)
+		} else {
+			// Write to L2 cache
+			keysL2 = append(keysL2, c.schema.ExternalKey(chunks[i].ChunkRef))
+			bufsL2 = append(bufsL2, encoded)
+		}
 	}
 
 	err := c.cache.Store(ctx, keys, bufs)
 	if err != nil {
 		level.Warn(util_log.Logger).Log("msg", "writeBackCache cache store fail", "err", err)
 	}
+	if len(keysL2) > 0 {
+		err = c.cachel2.Store(ctx, keysL2, bufsL2)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "writeBackCacheL2 cache store fail", "err", err)
+		}
+	}
+
 	return nil
 }
 
@@ -266,29 +275,23 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		logger    = util_log.WithContext(ctx, util_log.Logger)
 	)
 
-	i, j := 0, 0
-	for i < len(chunks) && j < len(keys) {
-		chunkKey := c.schema.ExternalKey(chunks[i].ChunkRef)
+	cm := make(map[string][]byte, len(chunks))
+	for i, k := range keys {
+		cm[k] = bufs[i]
+	}
 
-		if chunkKey < keys[j] {
-			missing = append(missing, chunks[i])
-			i++
-		} else if chunkKey > keys[j] {
-			level.Warn(logger).Log("msg", "got chunk from cache we didn't ask for")
-			j++
-		} else {
+	for i, ck := range chunks {
+		if b, ok := cm[c.schema.ExternalKey(ck.ChunkRef)]; ok {
 			requests = append(requests, decodeRequest{
 				chunk:     chunks[i],
-				buf:       bufs[j],
+				buf:       b,
 				responses: responses,
 			})
-			i++
-			j++
+		} else {
+			missing = append(missing, chunks[i])
 		}
 	}
-	for ; i < len(chunks); i++ {
-		missing = append(missing, chunks[i])
-	}
+
 	level.Debug(logger).Log("chunks", len(chunks), "decodeRequests", len(requests), "missing", len(missing))
 
 	go func() {
@@ -297,10 +300,8 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		}
 	}()
 
-	var (
-		err   error
-		found []chunk.Chunk
-	)
+	var err error
+	found := make([]chunk.Chunk, 0, len(requests))
 	for i := 0; i < len(requests); i++ {
 		response := <-responses
 

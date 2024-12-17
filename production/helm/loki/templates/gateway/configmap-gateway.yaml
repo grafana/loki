@@ -1,8 +1,9 @@
-{{- if and .Values.gateway.enabled  }}
+{{- if and .Values.gateway.enabled (not (and .Values.enterprise.enabled .Values.enterprise.gelGateway)) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
 data:

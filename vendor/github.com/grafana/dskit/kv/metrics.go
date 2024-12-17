@@ -3,11 +3,13 @@ package kv
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/instrument"
+
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/instrument"
 )
 
 // RegistererWithKVName wraps the provided Registerer with the KV name label. If a nil reg
@@ -52,6 +54,10 @@ func newMetricsClient(backend string, c Client, reg prometheus.Registerer) Clien
 				Name:    "kv_request_duration_seconds",
 				Help:    "Time spent on kv store requests.",
 				Buckets: prometheus.DefBuckets,
+				// Use defaults recommended by Prometheus for native histograms.
+				NativeHistogramBucketFactor:     1.1,
+				NativeHistogramMaxBucketNumber:  100,
+				NativeHistogramMinResetDuration: time.Hour,
 				ConstLabels: prometheus.Labels{
 					"type": backend,
 				},

@@ -1,6 +1,74 @@
 ## Changelog
 
 
+### v2.33.0
+
+- minimum Go version is now 1.17
+- fix integer overflow (thanks @wszaranski)
+- test against the last BSD redis (7.2.4)
+- ignore 'redis.set_repl()' call (thanks @TingluoHuang)
+- various build fixes (thanks @wszaranski)
+- add StartAddrTLS function (thanks @agriffaut)
+- support for the NOMKSTREAM option for XADD (thanks @Jahaja)
+- return empty array for SRANDMEMBER on nonexistent key (thanks @WKBae)
+
+
+### v2.32.1
+
+- support for SINTERCARD (thanks @s-barr-fetch)
+- support for EXPIRETIME and PEXPIRETIME (thanks @wszaranski)
+- fix GEO* units to be case insensitive
+
+
+### v2.31.1
+
+- support COUNT in SCAN and ZSCAN (thanks @BarakSilverfort)
+- support for OBJECT IDLETIME (thanks @nerd2)
+- support for HRANDFIELD (thanks @sejin-P)
+
+
+### v2.31.0
+
+- support for MEMORY USAGE (thanks @davidroman0O)
+- test against Redis 7.2.0
+- support for CLIENT SETNAME/GETNAME (thanks @mr-karan)
+- fix very small numbers (thanks @zsh1995)
+- use the same float-to-string logic real Redis uses
+
+
+### v2.30.5
+
+- support SMISMEMBER (thanks @sandyharvie)
+
+
+### v2.30.4
+
+- fix ZADD LT/LG (thanks @sejin-P)
+- fix COPY (thanks @jerargus)
+- quicker SPOP
+
+
+### v2.30.3
+
+- fix lua error_reply (thanks @pkierski)
+- fix use of blocking functions in lua
+- support for ZMSCORE (thanks @lsgndln)
+- lua cache (thanks @tonyhb)
+
+
+### v2.30.2
+
+- support MINID in XADD  (thanks @nathan-cormier)
+- support BLMOVE (thanks @sevein)
+- fix COMMAND (thanks @pje)
+- fix 'XREAD ... $' on a non-existing stream
+
+
+### v2.30.1
+
+- support SET NX GET special case
+
+
 ### v2.30.0
 
 - implement redis 7.0.x (from 6.X). Main changes:
@@ -69,7 +137,7 @@
 
 ### v2.16.1
 
-- fix ZINTERSTORE with wets (thanks @lingjl2010 and @okhowang)
+- fix ZINTERSTORE with sets (thanks @lingjl2010 and @okhowang)
 - fix exclusive ranges in XRANGE (thanks @joseotoro)
 
 

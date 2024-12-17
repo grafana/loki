@@ -172,7 +172,7 @@ func Test_IPLabelFilterTy(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			lf := NewIPLabelFilter(c.pat, c.label, c.ty)
 
-			lbs := labels.Labels{labels.Label{Name: c.label, Value: string(c.val)}}
+			lbs := labels.FromStrings(c.label, string(c.val))
 			lbb := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 			_, ok := lf.Process(0, []byte("x"), lbb)
 			if c.fail {
@@ -189,7 +189,7 @@ func Test_IPLineFilterTy(t *testing.T) {
 	cases := []struct {
 		name          string
 		pat           string
-		ty            labels.MatchType
+		ty            LineMatchType
 		line          []byte
 		expectedMatch bool
 
@@ -199,21 +199,21 @@ func Test_IPLineFilterTy(t *testing.T) {
 		{
 			name:          "equal operator",
 			pat:           "192.168.0.1",
-			ty:            labels.MatchEqual,
+			ty:            LineMatchEqual,
 			line:          []byte("192.168.0.1"),
 			expectedMatch: true,
 		},
 		{
 			name:          "not equal operator",
 			pat:           "192.168.0.2",
-			ty:            labels.MatchNotEqual,
+			ty:            LineMatchNotEqual,
 			line:          []byte("192.168.0.1"), // match because !=ip("192.168.0.2")
 			expectedMatch: true,
 		},
 		{
 			name: "regex not equal",
 			pat:  "192.168.0.2",
-			ty:   labels.MatchNotRegexp, // not supported
+			ty:   LineMatchNotRegexp, // not supported
 			line: []byte("192.168.0.1"),
 			fail: true,
 			err:  ErrIPFilterInvalidOperation,
@@ -221,7 +221,7 @@ func Test_IPLineFilterTy(t *testing.T) {
 		{
 			name: "regex equal",
 			pat:  "192.168.0.2",
-			ty:   labels.MatchRegexp, // not supported
+			ty:   LineMatchRegexp, // not supported
 			line: []byte("192.168.0.1"),
 			fail: true,
 			err:  ErrIPFilterInvalidOperation,

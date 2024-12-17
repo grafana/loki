@@ -47,12 +47,17 @@ func (l LocalityID) ToString() (string, error) {
 }
 
 // Equal allows the values to be compared by Attributes.Equal.
-func (l LocalityID) Equal(o interface{}) bool {
+func (l LocalityID) Equal(o any) bool {
 	ol, ok := o.(LocalityID)
 	if !ok {
 		return false
 	}
 	return l.Region == ol.Region && l.Zone == ol.Zone && l.SubZone == ol.SubZone
+}
+
+// Empty returns whether or not the locality ID is empty.
+func (l LocalityID) Empty() bool {
+	return l.Region == "" && l.Zone == "" && l.SubZone == ""
 }
 
 // LocalityIDFromString converts a json representation of locality, into a
@@ -79,4 +84,14 @@ func GetLocalityID(addr resolver.Address) LocalityID {
 func SetLocalityID(addr resolver.Address, l LocalityID) resolver.Address {
 	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(localityKey, l)
 	return addr
+}
+
+// ResourceTypeMapForTesting maps TypeUrl to corresponding ResourceType.
+var ResourceTypeMapForTesting map[string]any
+
+// UnknownCSMLabels are TelemetryLabels emitted from CDS if CSM Telemetry Label
+// data is not present in the CDS Resource.
+var UnknownCSMLabels = map[string]string{
+	"csm.service_name":           "unknown",
+	"csm.service_namespace_name": "unknown",
 }

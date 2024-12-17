@@ -19,11 +19,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/semaphore"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // Config for a StorageClient
@@ -543,6 +543,7 @@ func NewObjectClient(cfg Config, schemaCfg config.SchemaConfig, registerer prome
 	}
 	return client, nil
 }
+
 func (s *ObjectClient) reconnectWriteSession() error {
 	s.writeMtx.Lock()
 	defer s.writeMtx.Unlock()
@@ -670,6 +671,10 @@ func (s *ObjectClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
+func (s *ObjectClient) IsRetryableErr(_ error) bool {
+	return false
+}
+
 // Stop implement chunk.ObjectClient.
 func (s *ObjectClient) Stop() {
 	s.readSession.Close()
@@ -687,4 +692,4 @@ func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
 }
 
 // Implementats gocql.ConvictionPolicy.
-func (noopConvictionPolicy) Reset(host *gocql.HostInfo) {}
+func (noopConvictionPolicy) Reset(_ *gocql.HostInfo) {}

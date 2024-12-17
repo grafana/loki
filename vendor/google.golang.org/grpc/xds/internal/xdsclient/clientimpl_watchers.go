@@ -25,89 +25,6 @@ import (
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
-// WatchListener uses LDS to discover information about the provided listener.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
-func (c *clientImpl) WatchListener(serviceName string, cb func(xdsresource.ListenerUpdate, error)) (cancel func()) {
-	n := xdsresource.ParseName(serviceName)
-	a, unref, err := c.findAuthority(n)
-	if err != nil {
-		cb(xdsresource.ListenerUpdate{}, err)
-		return func() {}
-	}
-	cancelF := a.watchListener(n.String(), cb)
-	return func() {
-		cancelF()
-		unref()
-	}
-}
-
-// WatchRouteConfig starts a listener watcher for the service.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
-func (c *clientImpl) WatchRouteConfig(routeName string, cb func(xdsresource.RouteConfigUpdate, error)) (cancel func()) {
-	n := xdsresource.ParseName(routeName)
-	a, unref, err := c.findAuthority(n)
-	if err != nil {
-		cb(xdsresource.RouteConfigUpdate{}, err)
-		return func() {}
-	}
-	cancelF := a.watchRouteConfig(n.String(), cb)
-	return func() {
-		cancelF()
-		unref()
-	}
-}
-
-// WatchCluster uses CDS to discover information about the provided
-// clusterName.
-//
-// WatchCluster can be called multiple times, with same or different
-// clusterNames. Each call will start an independent watcher for the resource.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
-func (c *clientImpl) WatchCluster(clusterName string, cb func(xdsresource.ClusterUpdate, error)) (cancel func()) {
-	n := xdsresource.ParseName(clusterName)
-	a, unref, err := c.findAuthority(n)
-	if err != nil {
-		cb(xdsresource.ClusterUpdate{}, err)
-		return func() {}
-	}
-	cancelF := a.watchCluster(n.String(), cb)
-	return func() {
-		cancelF()
-		unref()
-	}
-}
-
-// WatchEndpoints uses EDS to discover endpoints in the provided clusterName.
-//
-// WatchEndpoints can be called multiple times, with same or different
-// clusterNames. Each call will start an independent watcher for the resource.
-//
-// Note that during race (e.g. an xDS response is received while the user is
-// calling cancel()), there's a small window where the callback can be called
-// after the watcher is canceled. The caller needs to handle this case.
-func (c *clientImpl) WatchEndpoints(clusterName string, cb func(xdsresource.EndpointsUpdate, error)) (cancel func()) {
-	n := xdsresource.ParseName(clusterName)
-	a, unref, err := c.findAuthority(n)
-	if err != nil {
-		cb(xdsresource.EndpointsUpdate{}, err)
-		return func() {}
-	}
-	cancelF := a.watchEndpoints(n.String(), cb)
-	return func() {
-		cancelF()
-		unref()
-	}
-}
-
 // WatchResource uses xDS to discover the resource associated with the provided
 // resource name. The resource type implementation determines how xDS requests
 // are sent out and how responses are deserialized and validated. Upon receipt
@@ -121,24 +38,30 @@ func (c *clientImpl) WatchResource(rType xdsresource.Type, resourceName string, 
 	// ref-counted client sets its pointer to `nil`. And if any watch APIs are
 	// made on such a closed client, we will get here with a `nil` receiver.
 	if c == nil || c.done.HasFired() {
-		logger.Warningf("Watch registered for name %q of type %q, but client is closed", rType.TypeEnum().String(), resourceName)
+		logger.Warningf("Watch registered for name %q of type %q, but client is closed", rType.TypeName(), resourceName)
 		return func() {}
 	}
 
 	if err := c.resourceTypes.maybeRegister(rType); err != nil {
-		c.serializer.Schedule(func(context.Context) { watcher.OnError(err) })
+		logger.Warningf("Watch registered for name %q of type %q which is already registered", rType.TypeName(), resourceName)
+		c.serializer.TrySchedule(func(context.Context) { watcher.OnError(err, func() {}) })
 		return func() {}
 	}
 
-	// TODO: replace this with the code does the following when we have
-	// implemented generic watch API on the authority:
-	//  - Parse the resource name and extract the authority.
-	//  - Locate the corresponding authority object and acquire a reference to
-	//    it. If the authority is not found, error out.
-	//  - Call the watchResource() method on the authority.
-	//  - Return a cancel function to cancel the watch on the authority and to
-	//    release the reference.
-	return func() {}
+	// TODO: Make ParseName return an error if parsing fails, and
+	// schedule the OnError callback in that case.
+	n := xdsresource.ParseName(resourceName)
+	a, unref, err := c.findAuthority(n)
+	if err != nil {
+		logger.Warningf("Watch registered for name %q of type %q, authority %q is not found", rType.TypeName(), resourceName, n.Authority)
+		c.serializer.TrySchedule(func(context.Context) { watcher.OnError(err, func() {}) })
+		return func() {}
+	}
+	cancelF := a.watchResource(rType, n.String(), watcher)
+	return func() {
+		cancelF()
+		unref()
+	}
 }
 
 // A registry of xdsresource.Type implementations indexed by their corresponding
@@ -153,21 +76,36 @@ func newResourceTypeRegistry() *resourceTypeRegistry {
 	return &resourceTypeRegistry{types: make(map[string]xdsresource.Type)}
 }
 
+func (r *resourceTypeRegistry) get(url string) xdsresource.Type {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.types[url]
+}
+
 func (r *resourceTypeRegistry) maybeRegister(rType xdsresource.Type) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	urls := []string{rType.V2TypeURL(), rType.V3TypeURL()}
-	for _, u := range urls {
-		if u == "" {
-			// Silently ignore unsupported versions of the resource.
-			continue
-		}
-		typ, ok := r.types[u]
-		if ok && typ != rType {
-			return fmt.Errorf("attempt to re-register a resource type implementation for %v", rType.TypeEnum())
-		}
-		r.types[u] = rType
+	url := rType.TypeURL()
+	typ, ok := r.types[url]
+	if ok && typ != rType {
+		return fmt.Errorf("attempt to re-register a resource type implementation for %v", rType.TypeName())
 	}
+	r.types[url] = rType
+	return nil
+}
+
+func (c *clientImpl) triggerResourceNotFoundForTesting(rType xdsresource.Type, resourceName string) error {
+	if c == nil || c.done.HasFired() {
+		return fmt.Errorf("attempt to trigger resource-not-found-error for resource %q of type %q, but client is closed", rType.TypeName(), resourceName)
+	}
+
+	n := xdsresource.ParseName(resourceName)
+	a, unref, err := c.findAuthority(n)
+	if err != nil {
+		return fmt.Errorf("attempt to trigger resource-not-found-error for resource %q of type %q, but authority %q is not found", rType.TypeName(), resourceName, n.Authority)
+	}
+	defer unref()
+	a.triggerResourceNotFoundForTesting(rType, n.String())
 	return nil
 }

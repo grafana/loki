@@ -7,16 +7,22 @@ import (
 // QueryPagesCallback from an IndexQuery.
 type QueryPagesCallback func(Query, ReadBatchResult) bool
 
-// Client is a client for the storage of the index (e.g. DynamoDB or Bigtable).
-type Client interface {
-	Stop()
+// Client for the read path.
+type ReadClient interface {
+	QueryPages(ctx context.Context, queries []Query, callback QueryPagesCallback) error
+}
 
-	// For the write path.
+// Client for the write path.
+type WriteClient interface {
 	NewWriteBatch() WriteBatch
 	BatchWrite(context.Context, WriteBatch) error
+}
 
-	// For the read path.
-	QueryPages(ctx context.Context, queries []Query, callback QueryPagesCallback) error
+// Client is a client for the storage of the index (e.g. DynamoDB or Bigtable).
+type Client interface {
+	ReadClient
+	WriteClient
+	Stop()
 }
 
 // ReadBatchResult represents the results of a QueryPages.
@@ -68,4 +74,22 @@ type Entry struct {
 
 	// New for v6 schema, label value is not written as part of the range key.
 	Value []byte
+}
+
+func QueryKey(q Query) string {
+	ret := q.TableName + sep + q.HashValue
+
+	if len(q.RangeValuePrefix) != 0 {
+		ret += sep + string(q.RangeValuePrefix)
+	}
+
+	if len(q.RangeValueStart) != 0 {
+		ret += sep + string(q.RangeValueStart)
+	}
+
+	if len(q.ValueEqual) != 0 {
+		ret += sep + string(q.ValueEqual)
+	}
+
+	return ret
 }

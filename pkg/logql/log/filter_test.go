@@ -13,26 +13,31 @@ func Test_SimplifiedRegex(t *testing.T) {
 		"foo, 世界", allunicode(), "fooÏbar",
 	}
 	for _, test := range []struct {
-		re         string
+		re string
+
+		// Simplified is true when the regex is converted to non-regex filters
+		// or when the regex is rewritten to be non-greedy
 		simplified bool
-		expected   Filterer
-		match      bool
+
+		// Expected != nil when the regex is converted to non-regex filters
+		expected Filterer
+		match    bool
 	}{
 		// regex we intend to support.
 		{"foo", true, newContainsFilter([]byte("foo"), false), true},
-		{"not", true, newNotFilter(newContainsFilter([]byte("not"), false)), false},
+		{"not", true, NewNotFilter(newContainsFilter([]byte("not"), false)), false},
 		{"(foo)", true, newContainsFilter([]byte("foo"), false), true},
 		{"(foo|ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
 		{"(foo|ba|ar)", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), newContainsFilter([]byte("ar"), false)), true},
 		{"(foo|(ba|ar))", true, newOrFilter(newContainsFilter([]byte("foo"), false), newOrFilter(newContainsFilter([]byte("ba"), false), newContainsFilter([]byte("ar"), false))), true},
 		{"foo.*", true, newContainsFilter([]byte("foo"), false), true},
-		{".*foo", true, newNotFilter(newContainsFilter([]byte("foo"), false)), false},
+		{".*foo", true, NewNotFilter(newContainsFilter([]byte("foo"), false)), false},
 		{".*foo.*", true, newContainsFilter([]byte("foo"), false), true},
 		{"(.*)(foo).*", true, newContainsFilter([]byte("foo"), false), true},
 		{"(foo.*|.*ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
-		{"(foo.*|.*bar.*)", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
-		{".*foo.*|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
-		{".*foo|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{"(foo.*|.*bar.*)", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo.*|bar", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo|bar", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
 		// This construct is similar to (...), but won't create a capture group.
 		{"(?:.*foo.*|bar)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false)), true},
 		// named capture group
@@ -63,25 +68,26 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"(?i).*foo.*", true, newContainsFilter([]byte("FOO"), true), true},
 		{".+", true, ExistsFilter, true},
 
-		// regex we are not supporting.
-		{"[a-z]+foo", true, nil, false},
-		{".+foo", true, nil, false},
-		{".*fo.*o", true, nil, false},
-		{`\d`, true, nil, false},
-		{`\sfoo`, true, nil, false},
-		{`foo?`, false, nil, false},
-		{`foo{1,2}bar{2,3}`, true, nil, false},
-		{`foo|\d*bar`, true, nil, false},
-		{`foo|fo{1,2}`, true, nil, false},
-		{`foo|fo\d*`, true, nil, false},
-		{`foo|fo\d+`, true, nil, false},
-		{`(\w\d+)`, true, nil, false},
-		{`.*f.*oo|fo{1,2}`, true, nil, false},
-		{"f|f(?i)oo", true, nil, false},
-		{".foo+", true, nil, false},
+		// These regexes are rewritten to be non-greedy but no new
+		// filter is generated.
+		{"[a-z]+foo", true, nil, true},
+		{".+foo", true, nil, true},
+		{".*fo.*o", true, nil, true},
+		{`\d`, true, nil, true},
+		{`\sfoo`, true, nil, true},
+		{`foo?`, false, nil, true},
+		{`foo{1,2}bar{2,3}`, true, nil, true},
+		{`foo|\d*bar`, true, nil, true},
+		{`foo|fo{1,2}`, true, nil, true},
+		{`foo|fo\d*`, true, nil, true},
+		{`foo|fo\d+`, true, nil, true},
+		{`(\w\d+)`, true, nil, true},
+		{`.*f.*oo|fo{1,2}`, true, nil, true},
+		{"f|f(?i)oo", true, nil, true},
+		{".foo+", true, nil, true},
 	} {
 		t.Run(test.re, func(t *testing.T) {
-			d, err := newRegexpFilter(test.re, test.match)
+			d, err := newRegexpFilter(test.re, test.re, test.match)
 			require.NoError(t, err, "invalid regex")
 
 			f, err := parseRegexpFilter(test.re, test.match, false)
@@ -92,15 +98,21 @@ func Test_SimplifiedRegex(t *testing.T) {
 				require.Equal(t, d, f)
 				return
 			}
+
 			// otherwise ensure we have different filter
 			require.NotEqual(t, f, d)
 			if test.expected != nil {
 				require.Equal(t, test.expected, f)
+			} else {
+				reFilter, ok := f.(regexpFilter)
+				require.True(t, ok)
+				require.Equal(t, test.re, reFilter.String())
 			}
+
 			// tests all lines with both filter, they should have the same result.
 			for _, line := range fixtures {
 				l := []byte(line)
-				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s", test.re, line)
+				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s re:%v simplified:%v", test.re, line, d.Filter(l), f.Filter(l))
 			}
 		})
 	}
@@ -122,7 +134,7 @@ func Test_TrueFilter(t *testing.T) {
 		expectTrue bool
 	}{
 		{"empty match", newContainsFilter(empty, false), true},
-		{"not empty match", newNotFilter(newContainsFilter(empty, true)), false},
+		{"not empty match", NewNotFilter(newContainsFilter(empty, true)), false},
 		{"match", newContainsFilter([]byte("foo"), false), false},
 		{"empty match and", NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
 		{"empty match or", newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
@@ -134,8 +146,8 @@ func Test_TrueFilter(t *testing.T) {
 		{"nil both or", newOrFilter(nil, nil), false},   // returns nil
 		{"empty match and chained", NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
 		{"empty match or chained", newOrFilter(newContainsFilter(empty, false), newOrFilter(newContainsFilter(empty, true), newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
-		{"empty match and", newNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
-		{"empty match or", newNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match and", NewNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match or", NewNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if test.expectTrue {
@@ -182,7 +194,7 @@ var res bool
 func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	var m bool
 	l := []byte(line)
-	d, err := newRegexpFilter(re, match)
+	d, err := newRegexpFilter(re, re, match)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -206,4 +218,101 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 
 func Test_rune(t *testing.T) {
 	require.True(t, newContainsFilter([]byte("foo"), true).Filter([]byte("foo")))
+}
+
+func BenchmarkContainsLower(b *testing.B) {
+	cases := []struct {
+		name     string
+		line     string
+		substr   string
+		expected bool
+	}{
+		{
+			name:     "short_line_no_match",
+			line:     "this is a short log line",
+			substr:   "missing",
+			expected: false,
+		},
+		{
+			name:     "short_line_with_match",
+			line:     "this is a short log line",
+			substr:   "SHORT",
+			expected: true,
+		},
+		{
+			name:     "long_line_no_match",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "nonexistent",
+			expected: false,
+		},
+		{
+			name:     "long_line_match_start",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "2023",
+			expected: true,
+		},
+		{
+			name:     "long_line_match_middle",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "LEVELS",
+			expected: true,
+		},
+		{
+			name:     "long_line_match_end",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "status",
+			expected: true,
+		},
+		{
+			name:     "short_unicode_line_no_match",
+			line:     "🌟 Unicode line with emojis 🎉 and special chars ñ é ß",
+			substr:   "missing",
+			expected: false,
+		},
+		{
+			name:     "short_unicode_line_with_match",
+			line:     "🌟 Unicode line with emojis 🎉 and special chars ñ é ß",
+			substr:   "EMOJIS",
+			expected: true,
+		},
+		{
+			name:     "long_unicode_line_no_match",
+			line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "nonexistent",
+			expected: false,
+		},
+		{
+			name:     "long_unicode_line_match_start",
+			line:     "2023-06-14T12:34:56.789Z 🚀[МИКРОСервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "микросервис",
+			expected: true,
+		},
+		{
+			name:     "long_unicode_line_match_middle",
+			line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "UNICODE",
+			expected: true,
+		},
+		{
+			name:     "long_unicode_line_match_end",
+			line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "τέλος",
+			expected: true,
+		},
+	}
+
+	var m bool
+	for _, c := range cases {
+		b.Run(c.name, func(b *testing.B) {
+			line := []byte(c.line)
+			substr := []byte(c.substr)
+			for i := 0; i < b.N; i++ {
+				m = containsLower(line, substr)
+			}
+			if m != c.expected {
+				b.Fatalf("expected %v but got %v", c.expected, m)
+			}
+		})
+	}
+	res = m // Avoid compiler optimization
 }

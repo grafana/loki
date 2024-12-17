@@ -1,155 +1,201 @@
 //go:build freebsd || openbsd || netbsd || dragonfly || darwin
-// +build freebsd openbsd netbsd dragonfly darwin
 
 package fsnotify
 
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"time"
 
+	"github.com/fsnotify/fsnotify/internal"
 	"golang.org/x/sys/unix"
 )
 
-// Watcher watches a set of paths, delivering events on a channel.
-//
-// A watcher should not be copied (e.g. pass it by pointer, rather than by
-// value).
-//
-// # Linux notes
-//
-// When a file is removed a Remove event won't be emitted until all file
-// descriptors are closed, and deletes will always emit a Chmod. For example:
-//
-//     fp := os.Open("file")
-//     os.Remove("file")        // Triggers Chmod
-//     fp.Close()               // Triggers Remove
-//
-// This is the event that inotify sends, so not much can be changed about this.
-//
-// The fs.inotify.max_user_watches sysctl variable specifies the upper limit
-// for the number of watches per user, and fs.inotify.max_user_instances
-// specifies the maximum number of inotify instances per user. Every Watcher you
-// create is an "instance", and every path you add is a "watch".
-//
-// These are also exposed in /proc as /proc/sys/fs/inotify/max_user_watches and
-// /proc/sys/fs/inotify/max_user_instances
-//
-// To increase them you can use sysctl or write the value to the /proc file:
-//
-//     # Default values on Linux 5.18
-//     sysctl fs.inotify.max_user_watches=124983
-//     sysctl fs.inotify.max_user_instances=128
-//
-// To make the changes persist on reboot edit /etc/sysctl.conf or
-// /usr/lib/sysctl.d/50-default.conf (details differ per Linux distro; check
-// your distro's documentation):
-//
-//     fs.inotify.max_user_watches=124983
-//     fs.inotify.max_user_instances=128
-//
-// Reaching the limit will result in a "no space left on device" or "too many open
-// files" error.
-//
-// # kqueue notes (macOS, BSD)
-//
-// kqueue requires opening a file descriptor for every file that's being watched;
-// so if you're watching a directory with five files then that's six file
-// descriptors. You will run in to your system's "max open files" limit faster on
-// these platforms.
-//
-// The sysctl variables kern.maxfiles and kern.maxfilesperproc can be used to
-// control the maximum number of open files, as well as /etc/login.conf on BSD
-// systems.
-//
-// # macOS notes
-//
-// Spotlight indexing on macOS can result in multiple events (see [#15]). A
-// temporary workaround is to add your folder(s) to the "Spotlight Privacy
-// Settings" until we have a native FSEvents implementation (see [#11]).
-//
-// [#11]: https://github.com/fsnotify/fsnotify/issues/11
-// [#15]: https://github.com/fsnotify/fsnotify/issues/15
-type Watcher struct {
-	// Events sends the filesystem change events.
-	//
-	// fsnotify can send the following events; a "path" here can refer to a
-	// file, directory, symbolic link, or special file like a FIFO.
-	//
-	//   fsnotify.Create    A new path was created; this may be followed by one
-	//                      or more Write events if data also gets written to a
-	//                      file.
-	//
-	//   fsnotify.Remove    A path was removed.
-	//
-	//   fsnotify.Rename    A path was renamed. A rename is always sent with the
-	//                      old path as Event.Name, and a Create event will be
-	//                      sent with the new name. Renames are only sent for
-	//                      paths that are currently watched; e.g. moving an
-	//                      unmonitored file into a monitored directory will
-	//                      show up as just a Create. Similarly, renaming a file
-	//                      to outside a monitored directory will show up as
-	//                      only a Rename.
-	//
-	//   fsnotify.Write     A file or named pipe was written to. A Truncate will
-	//                      also trigger a Write. A single "write action"
-	//                      initiated by the user may show up as one or multiple
-	//                      writes, depending on when the system syncs things to
-	//                      disk. For example when compiling a large Go program
-	//                      you may get hundreds of Write events, so you
-	//                      probably want to wait until you've stopped receiving
-	//                      them (see the dedup example in cmd/fsnotify).
-	//
-	//   fsnotify.Chmod     Attributes were changed. On Linux this is also sent
-	//                      when a file is removed (or more accurately, when a
-	//                      link to an inode is removed). On kqueue it's sent
-	//                      and on kqueue when a file is truncated. On Windows
-	//                      it's never sent.
+type kqueue struct {
 	Events chan Event
-
-	// Errors sends any errors.
 	Errors chan error
 
-	done         chan struct{}
-	kq           int                         // File descriptor (as returned by the kqueue() syscall).
-	closepipe    [2]int                      // Pipe used for closing.
-	mu           sync.Mutex                  // Protects access to watcher data
-	watches      map[string]int              // Watched file descriptors (key: path).
-	watchesByDir map[string]map[int]struct{} // Watched file descriptors indexed by the parent directory (key: dirname(path)).
-	userWatches  map[string]struct{}         // Watches added with Watcher.Add()
-	dirFlags     map[string]uint32           // Watched directories to fflags used in kqueue.
-	paths        map[int]pathInfo            // File descriptors to path names for processing kqueue events.
-	fileExists   map[string]struct{}         // Keep track of if we know this file exists (to stop duplicate create events).
-	isClosed     bool                        // Set to true when Close() is first called
+	kq        int    // File descriptor (as returned by the kqueue() syscall).
+	closepipe [2]int // Pipe used for closing kq.
+	watches   *watches
+	done      chan struct{}
+	doneMu    sync.Mutex
 }
 
-type pathInfo struct {
-	name  string
-	isDir bool
+type (
+	watches struct {
+		mu     sync.RWMutex
+		wd     map[int]watch               // wd → watch
+		path   map[string]int              // pathname → wd
+		byDir  map[string]map[int]struct{} // dirname(path) → wd
+		seen   map[string]struct{}         // Keep track of if we know this file exists.
+		byUser map[string]struct{}         // Watches added with Watcher.Add()
+	}
+	watch struct {
+		wd       int
+		name     string
+		linkName string // In case of links; name is the target, and this is the link.
+		isDir    bool
+		dirFlags uint32
+	}
+)
+
+func newWatches() *watches {
+	return &watches{
+		wd:     make(map[int]watch),
+		path:   make(map[string]int),
+		byDir:  make(map[string]map[int]struct{}),
+		seen:   make(map[string]struct{}),
+		byUser: make(map[string]struct{}),
+	}
 }
 
-// NewWatcher creates a new Watcher.
-func NewWatcher() (*Watcher, error) {
+func (w *watches) listPaths(userOnly bool) []string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	if userOnly {
+		l := make([]string, 0, len(w.byUser))
+		for p := range w.byUser {
+			l = append(l, p)
+		}
+		return l
+	}
+
+	l := make([]string, 0, len(w.path))
+	for p := range w.path {
+		l = append(l, p)
+	}
+	return l
+}
+
+func (w *watches) watchesInDir(path string) []string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	l := make([]string, 0, 4)
+	for fd := range w.byDir[path] {
+		info := w.wd[fd]
+		if _, ok := w.byUser[info.name]; !ok {
+			l = append(l, info.name)
+		}
+	}
+	return l
+}
+
+// Mark path as added by the user.
+func (w *watches) addUserWatch(path string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.byUser[path] = struct{}{}
+}
+
+func (w *watches) addLink(path string, fd int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.path[path] = fd
+	w.seen[path] = struct{}{}
+}
+
+func (w *watches) add(path, linkPath string, fd int, isDir bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.path[path] = fd
+	w.wd[fd] = watch{wd: fd, name: path, linkName: linkPath, isDir: isDir}
+
+	parent := filepath.Dir(path)
+	byDir, ok := w.byDir[parent]
+	if !ok {
+		byDir = make(map[int]struct{}, 1)
+		w.byDir[parent] = byDir
+	}
+	byDir[fd] = struct{}{}
+}
+
+func (w *watches) byWd(fd int) (watch, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	info, ok := w.wd[fd]
+	return info, ok
+}
+
+func (w *watches) byPath(path string) (watch, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	info, ok := w.wd[w.path[path]]
+	return info, ok
+}
+
+func (w *watches) updateDirFlags(path string, flags uint32) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	fd := w.path[path]
+	info := w.wd[fd]
+	info.dirFlags = flags
+	w.wd[fd] = info
+}
+
+func (w *watches) remove(fd int, path string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	isDir := w.wd[fd].isDir
+	delete(w.path, path)
+	delete(w.byUser, path)
+
+	parent := filepath.Dir(path)
+	delete(w.byDir[parent], fd)
+
+	if len(w.byDir[parent]) == 0 {
+		delete(w.byDir, parent)
+	}
+
+	delete(w.wd, fd)
+	delete(w.seen, path)
+	return isDir
+}
+
+func (w *watches) markSeen(path string, exists bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if exists {
+		w.seen[path] = struct{}{}
+	} else {
+		delete(w.seen, path)
+	}
+}
+
+func (w *watches) seenBefore(path string) bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	_, ok := w.seen[path]
+	return ok
+}
+
+func newBackend(ev chan Event, errs chan error) (backend, error) {
+	return newBufferedBackend(0, ev, errs)
+}
+
+func newBufferedBackend(sz uint, ev chan Event, errs chan error) (backend, error) {
 	kq, closepipe, err := newKqueue()
 	if err != nil {
 		return nil, err
 	}
 
-	w := &Watcher{
-		kq:           kq,
-		closepipe:    closepipe,
-		watches:      make(map[string]int),
-		watchesByDir: make(map[string]map[int]struct{}),
-		dirFlags:     make(map[string]uint32),
-		paths:        make(map[int]pathInfo),
-		fileExists:   make(map[string]struct{}),
-		userWatches:  make(map[string]struct{}),
-		Events:       make(chan Event),
-		Errors:       make(chan error),
-		done:         make(chan struct{}),
+	w := &kqueue{
+		Events:    ev,
+		Errors:    errs,
+		kq:        kq,
+		closepipe: closepipe,
+		done:      make(chan struct{}),
+		watches:   newWatches(),
 	}
 
 	go w.readEvents()
@@ -174,6 +220,8 @@ func newKqueue() (kq int, closepipe [2]int, err error) {
 		unix.Close(kq)
 		return kq, closepipe, err
 	}
+	unix.CloseOnExec(closepipe[0])
+	unix.CloseOnExec(closepipe[1])
 
 	// Register changes to listen on the closepipe.
 	changes := make([]unix.Kevent_t, 1)
@@ -192,218 +240,172 @@ func newKqueue() (kq int, closepipe [2]int, err error) {
 }
 
 // Returns true if the event was sent, or false if watcher is closed.
-func (w *Watcher) sendEvent(e Event) bool {
+func (w *kqueue) sendEvent(e Event) bool {
 	select {
+	case <-w.done:
+		return false
 	case w.Events <- e:
 		return true
-	case <-w.done:
 	}
-	return false
 }
 
 // Returns true if the error was sent, or false if watcher is closed.
-func (w *Watcher) sendError(err error) bool {
+func (w *kqueue) sendError(err error) bool {
+	if err == nil {
+		return true
+	}
 	select {
+	case <-w.done:
+		return false
 	case w.Errors <- err:
 		return true
-	case <-w.done:
 	}
-	return false
 }
 
-// Close removes all watches and closes the events channel.
-func (w *Watcher) Close() error {
-	w.mu.Lock()
-	if w.isClosed {
-		w.mu.Unlock()
+func (w *kqueue) isClosed() bool {
+	select {
+	case <-w.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *kqueue) Close() error {
+	w.doneMu.Lock()
+	if w.isClosed() {
+		w.doneMu.Unlock()
 		return nil
 	}
-	w.isClosed = true
+	close(w.done)
+	w.doneMu.Unlock()
 
-	// copy paths to remove while locked
-	pathsToRemove := make([]string, 0, len(w.watches))
-	for name := range w.watches {
-		pathsToRemove = append(pathsToRemove, name)
-	}
-	w.mu.Unlock() // Unlock before calling Remove, which also locks
+	pathsToRemove := w.watches.listPaths(false)
 	for _, name := range pathsToRemove {
 		w.Remove(name)
 	}
 
 	// Send "quit" message to the reader goroutine.
 	unix.Close(w.closepipe[1])
-	close(w.done)
-
 	return nil
 }
 
-// Add starts monitoring the path for changes.
-//
-// A path can only be watched once; attempting to watch it more than once will
-// return an error. Paths that do not yet exist on the filesystem cannot be
-// added. A watch will be automatically removed if the path is deleted.
-//
-// A path will remain watched if it gets renamed to somewhere else on the same
-// filesystem, but the monitor will get removed if the path gets deleted and
-// re-created, or if it's moved to a different filesystem.
-//
-// Notifications on network filesystems (NFS, SMB, FUSE, etc.) or special
-// filesystems (/proc, /sys, etc.) generally don't work.
-//
-// # Watching directories
-//
-// All files in a directory are monitored, including new files that are created
-// after the watcher is started. Subdirectories are not watched (i.e. it's
-// non-recursive).
-//
-// # Watching files
-//
-// Watching individual files (rather than directories) is generally not
-// recommended as many tools update files atomically. Instead of "just" writing
-// to the file a temporary file will be written to first, and if successful the
-// temporary file is moved to to destination removing the original, or some
-// variant thereof. The watcher on the original file is now lost, as it no
-// longer exists.
-//
-// Instead, watch the parent directory and use Event.Name to filter out files
-// you're not interested in. There is an example of this in [cmd/fsnotify/file.go].
-func (w *Watcher) Add(name string) error {
-	w.mu.Lock()
-	w.userWatches[name] = struct{}{}
-	w.mu.Unlock()
+func (w *kqueue) Add(name string) error { return w.AddWith(name) }
+
+func (w *kqueue) AddWith(name string, opts ...addOpt) error {
+	if debug {
+		fmt.Fprintf(os.Stderr, "FSNOTIFY_DEBUG: %s  AddWith(%q)\n",
+			time.Now().Format("15:04:05.000000000"), name)
+	}
+
+	with := getOptions(opts...)
+	if !w.xSupports(with.op) {
+		return fmt.Errorf("%w: %s", xErrUnsupported, with.op)
+	}
+
 	_, err := w.addWatch(name, noteAllEvents)
-	return err
+	if err != nil {
+		return err
+	}
+	w.watches.addUserWatch(name)
+	return nil
 }
 
-// Remove stops monitoring the path for changes.
-//
-// Directories are always removed non-recursively. For example, if you added
-// /tmp/dir and /tmp/dir/subdir then you will need to remove both.
-//
-// Removing a path that has not yet been added returns [ErrNonExistentWatch].
-func (w *Watcher) Remove(name string) error {
+func (w *kqueue) Remove(name string) error {
+	if debug {
+		fmt.Fprintf(os.Stderr, "FSNOTIFY_DEBUG: %s  Remove(%q)\n",
+			time.Now().Format("15:04:05.000000000"), name)
+	}
+	return w.remove(name, true)
+}
+
+func (w *kqueue) remove(name string, unwatchFiles bool) error {
+	if w.isClosed() {
+		return nil
+	}
+
 	name = filepath.Clean(name)
-	w.mu.Lock()
-	watchfd, ok := w.watches[name]
-	w.mu.Unlock()
+	info, ok := w.watches.byPath(name)
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNonExistentWatch, name)
 	}
 
-	err := w.register([]int{watchfd}, unix.EV_DELETE, 0)
+	err := w.register([]int{info.wd}, unix.EV_DELETE, 0)
 	if err != nil {
 		return err
 	}
 
-	unix.Close(watchfd)
+	unix.Close(info.wd)
 
-	w.mu.Lock()
-	isDir := w.paths[watchfd].isDir
-	delete(w.watches, name)
-	delete(w.userWatches, name)
-
-	parentName := filepath.Dir(name)
-	delete(w.watchesByDir[parentName], watchfd)
-
-	if len(w.watchesByDir[parentName]) == 0 {
-		delete(w.watchesByDir, parentName)
-	}
-
-	delete(w.paths, watchfd)
-	delete(w.dirFlags, name)
-	delete(w.fileExists, name)
-	w.mu.Unlock()
+	isDir := w.watches.remove(info.wd, name)
 
 	// Find all watched paths that are in this directory that are not external.
-	if isDir {
-		var pathsToRemove []string
-		w.mu.Lock()
-		for fd := range w.watchesByDir[name] {
-			path := w.paths[fd]
-			if _, ok := w.userWatches[path.name]; !ok {
-				pathsToRemove = append(pathsToRemove, path.name)
-			}
-		}
-		w.mu.Unlock()
+	if unwatchFiles && isDir {
+		pathsToRemove := w.watches.watchesInDir(name)
 		for _, name := range pathsToRemove {
-			// Since these are internal, not much sense in propagating error
-			// to the user, as that will just confuse them with an error about
-			// a path they did not explicitly watch themselves.
+			// Since these are internal, not much sense in propagating error to
+			// the user, as that will just confuse them with an error about a
+			// path they did not explicitly watch themselves.
 			w.Remove(name)
 		}
 	}
-
 	return nil
 }
 
-// WatchList returns all paths added with [Add] (and are not yet removed).
-func (w *Watcher) WatchList() []string {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	entries := make([]string, 0, len(w.userWatches))
-	for pathname := range w.userWatches {
-		entries = append(entries, pathname)
+func (w *kqueue) WatchList() []string {
+	if w.isClosed() {
+		return nil
 	}
-
-	return entries
+	return w.watches.listPaths(true)
 }
 
 // Watch all events (except NOTE_EXTEND, NOTE_LINK, NOTE_REVOKE)
 const noteAllEvents = unix.NOTE_DELETE | unix.NOTE_WRITE | unix.NOTE_ATTRIB | unix.NOTE_RENAME
 
-// addWatch adds name to the watched file set.
-// The flags are interpreted as described in kevent(2).
-// Returns the real path to the file which was added, if any, which may be different from the one passed in the case of symlinks.
-func (w *Watcher) addWatch(name string, flags uint32) (string, error) {
-	var isDir bool
-	// Make ./name and name equivalent
+// addWatch adds name to the watched file set; the flags are interpreted as
+// described in kevent(2).
+//
+// Returns the real path to the file which was added, with symlinks resolved.
+func (w *kqueue) addWatch(name string, flags uint32) (string, error) {
+	if w.isClosed() {
+		return "", ErrClosed
+	}
+
 	name = filepath.Clean(name)
 
-	w.mu.Lock()
-	if w.isClosed {
-		w.mu.Unlock()
-		return "", errors.New("kevent instance already closed")
-	}
-	watchfd, alreadyWatching := w.watches[name]
-	// We already have a watch, but we can still override flags.
-	if alreadyWatching {
-		isDir = w.paths[watchfd].isDir
-	}
-	w.mu.Unlock()
-
+	info, alreadyWatching := w.watches.byPath(name)
 	if !alreadyWatching {
 		fi, err := os.Lstat(name)
 		if err != nil {
 			return "", err
 		}
 
-		// Don't watch sockets or named pipes
+		// Don't watch sockets or named pipes.
 		if (fi.Mode()&os.ModeSocket == os.ModeSocket) || (fi.Mode()&os.ModeNamedPipe == os.ModeNamedPipe) {
 			return "", nil
 		}
 
-		// Follow Symlinks
-		//
-		// Linux can add unresolvable symlinks to the watch list without issue,
-		// and Windows can't do symlinks period. To maintain consistency, we
-		// will act like everything is fine if the link can't be resolved.
-		// There will simply be no file events for broken symlinks. Hence the
-		// returns of nil on errors.
+		// Follow symlinks.
 		if fi.Mode()&os.ModeSymlink == os.ModeSymlink {
-			name, err = filepath.EvalSymlinks(name)
+			link, err := os.Readlink(name)
 			if err != nil {
+				// Return nil because Linux can add unresolvable symlinks to the
+				// watch list without problems, so maintain consistency with
+				// that. There will be no file events for broken symlinks.
+				// TODO: more specific check; returns os.PathError; ENOENT?
 				return "", nil
 			}
 
-			w.mu.Lock()
-			_, alreadyWatching = w.watches[name]
-			w.mu.Unlock()
-
+			_, alreadyWatching = w.watches.byPath(link)
 			if alreadyWatching {
-				return name, nil
+				// Add to watches so we don't get spurious Create events later
+				// on when we diff the directories.
+				w.watches.addLink(name, 0)
+				return link, nil
 			}
 
+			info.linkName = name
+			name = link
 			fi, err = os.Lstat(name)
 			if err != nil {
 				return "", nil
@@ -411,9 +413,9 @@ func (w *Watcher) addWatch(name string, flags uint32) (string, error) {
 		}
 
 		// Retry on EINTR; open() can return EINTR in practice on macOS.
-		// See #354, and go issues 11180 and 39237.
+		// See #354, and Go issues 11180 and 39237.
 		for {
-			watchfd, err = unix.Open(name, openMode, 0)
+			info.wd, err = unix.Open(name, openMode, 0)
 			if err == nil {
 				break
 			}
@@ -424,41 +426,25 @@ func (w *Watcher) addWatch(name string, flags uint32) (string, error) {
 			return "", err
 		}
 
-		isDir = fi.IsDir()
+		info.isDir = fi.IsDir()
 	}
 
-	err := w.register([]int{watchfd}, unix.EV_ADD|unix.EV_CLEAR|unix.EV_ENABLE, flags)
+	err := w.register([]int{info.wd}, unix.EV_ADD|unix.EV_CLEAR|unix.EV_ENABLE, flags)
 	if err != nil {
-		unix.Close(watchfd)
+		unix.Close(info.wd)
 		return "", err
 	}
 
 	if !alreadyWatching {
-		w.mu.Lock()
-		parentName := filepath.Dir(name)
-		w.watches[name] = watchfd
-
-		watchesByDir, ok := w.watchesByDir[parentName]
-		if !ok {
-			watchesByDir = make(map[int]struct{}, 1)
-			w.watchesByDir[parentName] = watchesByDir
-		}
-		watchesByDir[watchfd] = struct{}{}
-
-		w.paths[watchfd] = pathInfo{name: name, isDir: isDir}
-		w.mu.Unlock()
+		w.watches.add(name, info.linkName, info.wd, info.isDir)
 	}
 
-	if isDir {
-		// Watch the directory if it has not been watched before,
-		// or if it was watched before, but perhaps only a NOTE_DELETE (watchDirectoryFiles)
-		w.mu.Lock()
-
+	// Watch the directory if it has not been watched before, or if it was
+	// watched before, but perhaps only a NOTE_DELETE (watchDirectoryFiles)
+	if info.isDir {
 		watchDir := (flags&unix.NOTE_WRITE) == unix.NOTE_WRITE &&
-			(!alreadyWatching || (w.dirFlags[name]&unix.NOTE_WRITE) != unix.NOTE_WRITE)
-		// Store flags so this watch can be updated later
-		w.dirFlags[name] = flags
-		w.mu.Unlock()
+			(!alreadyWatching || (info.dirFlags&unix.NOTE_WRITE) != unix.NOTE_WRITE)
+		w.watches.updateDirFlags(name, flags)
 
 		if watchDir {
 			if err := w.watchDirectoryFiles(name); err != nil {
@@ -471,95 +457,110 @@ func (w *Watcher) addWatch(name string, flags uint32) (string, error) {
 
 // readEvents reads from kqueue and converts the received kevents into
 // Event values that it sends down the Events channel.
-func (w *Watcher) readEvents() {
+func (w *kqueue) readEvents() {
 	defer func() {
-		err := unix.Close(w.kq)
-		if err != nil {
-			w.Errors <- err
-		}
-		unix.Close(w.closepipe[0])
 		close(w.Events)
 		close(w.Errors)
+		_ = unix.Close(w.kq)
+		unix.Close(w.closepipe[0])
 	}()
 
 	eventBuffer := make([]unix.Kevent_t, 10)
-	for closed := false; !closed; {
+	for {
 		kevents, err := w.read(eventBuffer)
 		// EINTR is okay, the syscall was interrupted before timeout expired.
 		if err != nil && err != unix.EINTR {
 			if !w.sendError(fmt.Errorf("fsnotify.readEvents: %w", err)) {
-				closed = true
+				return
 			}
-			continue
 		}
 
-		// Flush the events we received to the Events channel
 		for _, kevent := range kevents {
 			var (
-				watchfd = int(kevent.Ident)
-				mask    = uint32(kevent.Fflags)
+				wd   = int(kevent.Ident)
+				mask = uint32(kevent.Fflags)
 			)
 
 			// Shut down the loop when the pipe is closed, but only after all
 			// other events have been processed.
-			if watchfd == w.closepipe[0] {
-				closed = true
+			if wd == w.closepipe[0] {
+				return
+			}
+
+			path, ok := w.watches.byWd(wd)
+			if debug {
+				internal.Debug(path.name, &kevent)
+			}
+
+			// On macOS it seems that sometimes an event with Ident=0 is
+			// delivered, and no other flags/information beyond that, even
+			// though we never saw such a file descriptor. For example in
+			// TestWatchSymlink/277 (usually at the end, but sometimes sooner):
+			//
+			// fmt.Printf("READ: %2d  %#v\n", kevent.Ident, kevent)
+			// unix.Kevent_t{Ident:0x2a, Filter:-4, Flags:0x25, Fflags:0x2, Data:0, Udata:(*uint8)(nil)}
+			// unix.Kevent_t{Ident:0x0,  Filter:-4, Flags:0x25, Fflags:0x2, Data:0, Udata:(*uint8)(nil)}
+			//
+			// The first is a normal event, the second with Ident 0. No error
+			// flag, no data, no ... nothing.
+			//
+			// I read a bit through bsd/kern_event.c from the xnu source, but I
+			// don't really see an obvious location where this is triggered –
+			// this doesn't seem intentional, but idk...
+			//
+			// Technically fd 0 is a valid descriptor, so only skip it if
+			// there's no path, and if we're on macOS.
+			if !ok && kevent.Ident == 0 && runtime.GOOS == "darwin" {
 				continue
 			}
 
-			w.mu.Lock()
-			path := w.paths[watchfd]
-			w.mu.Unlock()
-
-			event := w.newEvent(path.name, mask)
-
-			if path.isDir && !event.Has(Remove) {
-				// Double check to make sure the directory exists. This can
-				// happen when we do a rm -fr on a recursively watched folders
-				// and we receive a modification event first but the folder has
-				// been deleted and later receive the delete event.
-				if _, err := os.Lstat(event.Name); os.IsNotExist(err) {
-					event.Op |= Remove
-				}
-			}
+			event := w.newEvent(path.name, path.linkName, mask)
 
 			if event.Has(Rename) || event.Has(Remove) {
-				w.Remove(event.Name)
-				w.mu.Lock()
-				delete(w.fileExists, event.Name)
-				w.mu.Unlock()
+				w.remove(event.Name, false)
+				w.watches.markSeen(event.Name, false)
 			}
 
 			if path.isDir && event.Has(Write) && !event.Has(Remove) {
-				w.sendDirectoryChangeEvents(event.Name)
-			} else {
-				if !w.sendEvent(event) {
-					closed = true
-					continue
-				}
+				w.dirChange(event.Name)
+			} else if !w.sendEvent(event) {
+				return
 			}
 
 			if event.Has(Remove) {
-				// Look for a file that may have overwritten this.
-				// For example, mv f1 f2 will delete f2, then create f2.
+				// Look for a file that may have overwritten this; for example,
+				// mv f1 f2 will delete f2, then create f2.
 				if path.isDir {
 					fileDir := filepath.Clean(event.Name)
-					w.mu.Lock()
-					_, found := w.watches[fileDir]
-					w.mu.Unlock()
+					_, found := w.watches.byPath(fileDir)
 					if found {
-						// make sure the directory exists before we watch for changes. When we
-						// do a recursive watch and perform rm -fr, the parent directory might
-						// have gone missing, ignore the missing directory and let the
-						// upcoming delete event remove the watch from the parent directory.
-						if _, err := os.Lstat(fileDir); err == nil {
-							w.sendDirectoryChangeEvents(fileDir)
+						// TODO: this branch is never triggered in any test.
+						// Added in d6220df (2012).
+						// isDir check added in 8611c35 (2016): https://github.com/fsnotify/fsnotify/pull/111
+						//
+						// I don't really get how this can be triggered either.
+						// And it wasn't triggered in the patch that added it,
+						// either.
+						//
+						// Original also had a comment:
+						//   make sure the directory exists before we watch for
+						//   changes. When we do a recursive watch and perform
+						//   rm -rf, the parent directory might have gone
+						//   missing, ignore the missing directory and let the
+						//   upcoming delete event remove the watch from the
+						//   parent directory.
+						err := w.dirChange(fileDir)
+						if !w.sendError(err) {
+							return
 						}
 					}
 				} else {
-					filePath := filepath.Clean(event.Name)
-					if fileInfo, err := os.Lstat(filePath); err == nil {
-						w.sendFileCreatedEventIfNew(filePath, fileInfo)
+					path := filepath.Clean(event.Name)
+					if fi, err := os.Lstat(path); err == nil {
+						err := w.sendCreateIfNew(path, fi)
+						if !w.sendError(err) {
+							return
+						}
 					}
 				}
 			}
@@ -568,8 +569,14 @@ func (w *Watcher) readEvents() {
 }
 
 // newEvent returns an platform-independent Event based on kqueue Fflags.
-func (w *Watcher) newEvent(name string, mask uint32) Event {
+func (w *kqueue) newEvent(name, linkName string, mask uint32) Event {
 	e := Event{Name: name}
+	if linkName != "" {
+		// If the user watched "/path/link" then emit events as "/path/link"
+		// rather than "/path/target".
+		e.Name = linkName
+	}
+
 	if mask&unix.NOTE_DELETE == unix.NOTE_DELETE {
 		e.Op |= Remove
 	}
@@ -582,21 +589,30 @@ func (w *Watcher) newEvent(name string, mask uint32) Event {
 	if mask&unix.NOTE_ATTRIB == unix.NOTE_ATTRIB {
 		e.Op |= Chmod
 	}
+	// No point sending a write and delete event at the same time: if it's gone,
+	// then it's gone.
+	if e.Op.Has(Write) && e.Op.Has(Remove) {
+		e.Op &^= Write
+	}
 	return e
 }
 
 // watchDirectoryFiles to mimic inotify when adding a watch on a directory
-func (w *Watcher) watchDirectoryFiles(dirPath string) error {
-	// Get all files
-	files, err := ioutil.ReadDir(dirPath)
+func (w *kqueue) watchDirectoryFiles(dirPath string) error {
+	files, err := os.ReadDir(dirPath)
 	if err != nil {
 		return err
 	}
 
-	for _, fileInfo := range files {
-		path := filepath.Join(dirPath, fileInfo.Name())
+	for _, f := range files {
+		path := filepath.Join(dirPath, f.Name())
 
-		cleanPath, err := w.internalWatch(path, fileInfo)
+		fi, err := f.Info()
+		if err != nil {
+			return fmt.Errorf("%q: %w", path, err)
+		}
+
+		cleanPath, err := w.internalWatch(path, fi)
 		if err != nil {
 			// No permission to read the file; that's not a problem: just skip.
 			// But do add it to w.fileExists to prevent it from being picked up
@@ -606,13 +622,11 @@ func (w *Watcher) watchDirectoryFiles(dirPath string) error {
 			case errors.Is(err, unix.EACCES) || errors.Is(err, unix.EPERM):
 				cleanPath = filepath.Clean(path)
 			default:
-				return fmt.Errorf("%q: %w", filepath.Join(dirPath, fileInfo.Name()), err)
+				return fmt.Errorf("%q: %w", path, err)
 			}
 		}
 
-		w.mu.Lock()
-		w.fileExists[cleanPath] = struct{}{}
-		w.mu.Unlock()
+		w.watches.markSeen(cleanPath, true)
 	}
 
 	return nil
@@ -622,58 +636,59 @@ func (w *Watcher) watchDirectoryFiles(dirPath string) error {
 //
 // This functionality is to have the BSD watcher match the inotify, which sends
 // a create event for files created in a watched directory.
-func (w *Watcher) sendDirectoryChangeEvents(dir string) {
-	// Get all files
-	files, err := ioutil.ReadDir(dir)
+func (w *kqueue) dirChange(dir string) error {
+	files, err := os.ReadDir(dir)
 	if err != nil {
-		if !w.sendError(fmt.Errorf("fsnotify.sendDirectoryChangeEvents: %w", err)) {
-			return
+		// Directory no longer exists: we can ignore this safely. kqueue will
+		// still give us the correct events.
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
 		}
+		return fmt.Errorf("fsnotify.dirChange: %w", err)
 	}
 
-	// Search for new files
-	for _, fi := range files {
-		err := w.sendFileCreatedEventIfNew(filepath.Join(dir, fi.Name()), fi)
+	for _, f := range files {
+		fi, err := f.Info()
 		if err != nil {
-			return
+			return fmt.Errorf("fsnotify.dirChange: %w", err)
+		}
+
+		err = w.sendCreateIfNew(filepath.Join(dir, fi.Name()), fi)
+		if err != nil {
+			// Don't need to send an error if this file isn't readable.
+			if errors.Is(err, unix.EACCES) || errors.Is(err, unix.EPERM) {
+				return nil
+			}
+			return fmt.Errorf("fsnotify.dirChange: %w", err)
 		}
 	}
-}
-
-// sendFileCreatedEvent sends a create event if the file isn't already being tracked.
-func (w *Watcher) sendFileCreatedEventIfNew(filePath string, fileInfo os.FileInfo) (err error) {
-	w.mu.Lock()
-	_, doesExist := w.fileExists[filePath]
-	w.mu.Unlock()
-	if !doesExist {
-		if !w.sendEvent(Event{Name: filePath, Op: Create}) {
-			return
-		}
-	}
-
-	// like watchDirectoryFiles (but without doing another ReadDir)
-	filePath, err = w.internalWatch(filePath, fileInfo)
-	if err != nil {
-		return err
-	}
-
-	w.mu.Lock()
-	w.fileExists[filePath] = struct{}{}
-	w.mu.Unlock()
-
 	return nil
 }
 
-func (w *Watcher) internalWatch(name string, fileInfo os.FileInfo) (string, error) {
-	if fileInfo.IsDir() {
-		// mimic Linux providing delete events for subdirectories
-		// but preserve the flags used if currently watching subdirectory
-		w.mu.Lock()
-		flags := w.dirFlags[name]
-		w.mu.Unlock()
+// Send a create event if the file isn't already being tracked, and start
+// watching this file.
+func (w *kqueue) sendCreateIfNew(path string, fi os.FileInfo) error {
+	if !w.watches.seenBefore(path) {
+		if !w.sendEvent(Event{Name: path, Op: Create}) {
+			return nil
+		}
+	}
 
-		flags |= unix.NOTE_DELETE | unix.NOTE_RENAME
-		return w.addWatch(name, flags)
+	// Like watchDirectoryFiles, but without doing another ReadDir.
+	path, err := w.internalWatch(path, fi)
+	if err != nil {
+		return err
+	}
+	w.watches.markSeen(path, true)
+	return nil
+}
+
+func (w *kqueue) internalWatch(name string, fi os.FileInfo) (string, error) {
+	if fi.IsDir() {
+		// mimic Linux providing delete events for subdirectories, but preserve
+		// the flags used if currently watching subdirectory
+		info, _ := w.watches.byPath(name)
+		return w.addWatch(name, info.dirFlags|unix.NOTE_DELETE|unix.NOTE_RENAME)
 	}
 
 	// watch file to mimic Linux inotify
@@ -681,7 +696,7 @@ func (w *Watcher) internalWatch(name string, fileInfo os.FileInfo) (string, erro
 }
 
 // Register events with the queue.
-func (w *Watcher) register(fds []int, flags int, fflags uint32) error {
+func (w *kqueue) register(fds []int, flags int, fflags uint32) error {
 	changes := make([]unix.Kevent_t, len(fds))
 	for i, fd := range fds {
 		// SetKevent converts int to the platform-specific types.
@@ -698,10 +713,21 @@ func (w *Watcher) register(fds []int, flags int, fflags uint32) error {
 }
 
 // read retrieves pending events, or waits until an event occurs.
-func (w *Watcher) read(events []unix.Kevent_t) ([]unix.Kevent_t, error) {
+func (w *kqueue) read(events []unix.Kevent_t) ([]unix.Kevent_t, error) {
 	n, err := unix.Kevent(w.kq, nil, events, nil)
 	if err != nil {
 		return nil, err
 	}
 	return events[0:n], nil
+}
+
+func (w *kqueue) xSupports(op Op) bool {
+	if runtime.GOOS == "freebsd" {
+		//return true // Supports everything.
+	}
+	if op.Has(xUnportableOpen) || op.Has(xUnportableRead) ||
+		op.Has(xUnportableCloseWrite) || op.Has(xUnportableCloseRead) {
+		return false
+	}
+	return true
 }

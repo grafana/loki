@@ -247,10 +247,10 @@ func (a *AnalyzedSchema) isArrayType() bool {
 // isAnalyzedAsComplex determines if an analyzed schema is eligible to flattening (i.e. it is "complex").
 //
 // Complex means the schema is any of:
-//  - a simple type (primitive)
-//  - an array of something (items are possibly complex ; if this is the case, items will generate a definition)
-//  - a map of something (additionalProperties are possibly complex ; if this is the case, additionalProperties will
-//    generate a definition)
+//   - a simple type (primitive)
+//   - an array of something (items are possibly complex ; if this is the case, items will generate a definition)
+//   - a map of something (additionalProperties are possibly complex ; if this is the case, additionalProperties will
+//     generate a definition)
 func (a *AnalyzedSchema) isAnalyzedAsComplex() bool {
 	return !a.IsSimpleSchema && !a.IsArray && !a.IsMap
 }

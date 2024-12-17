@@ -9,16 +9,15 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
-	"github.com/grafana/loki/pkg/util"
-	lokiutil "github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
+	"github.com/grafana/loki/v3/pkg/util"
+	lokiutil "github.com/grafana/loki/v3/pkg/util"
 )
 
 type frontendSchedulerWorkers struct {
@@ -68,7 +67,7 @@ func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.R
 	return f, nil
 }
 
-func (f *frontendSchedulerWorkers) starting(ctx context.Context) error {
+func (f *frontendSchedulerWorkers) starting(_ context.Context) error {
 	// Instead of re-using `ctx` from the frontendSchedulerWorkers service,
 	// `watcher` needs to use their own service context, because we want to
 	// control the stopping process in the `stopping` function of the
@@ -159,6 +158,7 @@ func (f *frontendSchedulerWorkers) connectToScheduler(ctx context.Context, addre
 		return nil, err
 	}
 
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	conn, err := grpc.DialContext(ctx, address, opts...)
 	if err != nil {
 		return nil, err
@@ -283,15 +283,25 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 			return nil
 
 		case req := <-w.requestCh:
-			err := loop.Send(&schedulerpb.FrontendToScheduler{
-				Type:            schedulerpb.ENQUEUE,
-				QueryID:         req.queryID,
-				UserID:          req.tenantID,
-				QueuePath:       req.actor,
-				HttpRequest:     req.request,
+			msg := &schedulerpb.FrontendToScheduler{
+				Type:      schedulerpb.ENQUEUE,
+				QueryID:   req.queryID,
+				UserID:    req.tenantID,
+				QueuePath: req.actor,
+				Request: &schedulerpb.FrontendToScheduler_HttpRequest{
+					HttpRequest: req.request,
+				},
 				FrontendAddress: w.frontendAddr,
 				StatsEnabled:    req.statsEnabled,
-			})
+			}
+
+			if req.queryRequest != nil {
+				msg.Request = &schedulerpb.FrontendToScheduler_QueryRequest{
+					QueryRequest: req.queryRequest,
+				}
+			}
+
+			err := loop.Send(msg)
 			if err != nil {
 				req.enqueue <- enqueueResult{status: failed}
 				return err
@@ -315,21 +325,10 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 
 			case schedulerpb.ERROR:
 				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- &frontendv2pb.QueryResultRequest{
-					HttpResponse: &httpgrpc.HTTPResponse{
-						Code: http.StatusInternalServerError,
-						Body: []byte(resp.Error),
-					},
-				}
-
+				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusInternalServerError, "%s", resp.Error)}
 			case schedulerpb.TOO_MANY_REQUESTS_PER_TENANT:
 				req.enqueue <- enqueueResult{status: waitForResponse}
-				req.response <- &frontendv2pb.QueryResultRequest{
-					HttpResponse: &httpgrpc.HTTPResponse{
-						Code: http.StatusTooManyRequests,
-						Body: []byte("too many outstanding requests"),
-					},
-				}
+				req.response <- ResponseTuple{nil, httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")}
 			default:
 				level.Error(w.log).Log("msg", "unknown response status from the scheduler", "status", resp.Status, "queryID", req.queryID)
 				req.enqueue <- enqueueResult{status: failed}

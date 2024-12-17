@@ -1,18 +1,18 @@
-package manifests_test
+package manifests
 
 import (
 	"fmt"
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {
-	cm_shards, err := manifests.RulesConfigMapShards(testOptions())
+	cm_shards, err := RulesConfigMapShards(testOptions())
 	require.NoError(t, err)
 	require.NotNil(t, cm_shards)
 
@@ -27,7 +27,7 @@ func TestRulesConfigMap_ReturnsDataEntriesPerRule(t *testing.T) {
 
 func TestRulesConfigMap_ReturnsTenantMapPerRule(t *testing.T) {
 	opts := testOptions()
-	cm_shards, err := manifests.RulesConfigMapShards(opts)
+	cm_shards, err := RulesConfigMapShards(opts)
 	require.NoError(t, err)
 	require.NotNil(t, cm_shards)
 
@@ -40,16 +40,16 @@ func TestRulesConfigMap_ReturnsTenantMapPerRule(t *testing.T) {
 }
 
 func TestRulesConfigMapSharding(t *testing.T) {
-	cm_shards, err := manifests.RulesConfigMapShards(testOptions_withSharding())
+	cm_shards, err := RulesConfigMapShards(testOptions_withSharding())
 	require.NoError(t, err)
 	require.NotNil(t, cm_shards)
 	require.Len(t, cm_shards, 2)
 }
 
-func testOptions() *manifests.Options {
-	return &manifests.Options{
-		Tenants: manifests.Tenants{
-			Configs: map[string]manifests.TenantConfig{
+func testOptions() *Options {
+	return &Options{
+		Tenants: Tenants{
+			Configs: map[string]TenantConfig{
 				"tenant-a": {},
 				"tenant-b": {},
 			},
@@ -133,7 +133,7 @@ func testOptions() *manifests.Options {
 	}
 }
 
-func testOptions_withSharding() *manifests.Options {
+func testOptions_withSharding() *Options {
 	// Generate a list of dummy rules to create a large amount of data
 	// that should result in sharding the rules ConfigMap
 	// In this case, each Alerting rule amounts to 598 bytes of ConfigMap data
@@ -169,7 +169,7 @@ func testOptions_withSharding() *manifests.Options {
 		})
 	}
 
-	return &manifests.Options{
+	return &Options{
 		Name:      "sharding-test",
 		Namespace: "namespace",
 		Stack: lokiv1.LokiStackSpec{
@@ -180,8 +180,8 @@ func testOptions_withSharding() *manifests.Options {
 				},
 			},
 		},
-		Tenants: manifests.Tenants{
-			Configs: map[string]manifests.TenantConfig{
+		Tenants: Tenants{
+			Configs: map[string]TenantConfig{
 				"tenant-a": {},
 				"tenant-b": {},
 			},

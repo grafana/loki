@@ -3,163 +3,32 @@ package query
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/loki"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/logcli/output"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
-
-func Test_commonLabels(t *testing.T) {
-	type args struct {
-		lss []loghttp.LabelSet
-	}
-	tests := []struct {
-		name string
-		args args
-		want loghttp.LabelSet
-	}{
-		{
-			"Extract common labels source > target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`)},
-			},
-			mustParseLabels(t, `{bar="foo"}`),
-		},
-		{
-			"Extract common labels source > target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="bar", baz="baz"}`)},
-			},
-			mustParseLabels(t, `{foo="bar", bar="foo"}`),
-		},
-		{
-			"Extract common labels source < target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo"}`)},
-			},
-			mustParseLabels(t, `{bar="foo"}`),
-		},
-		{
-			"Extract common labels source < target no common",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{fo="bar"}`)},
-			},
-			loghttp.LabelSet{},
-		},
-		{
-			"Extract common labels source = target no common",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar"}`), mustParseLabels(t, `{fooo="bar"}`)},
-			},
-			loghttp.LabelSet{},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var streams []loghttp.Stream
-
-			for _, lss := range tt.args.lss {
-				streams = append(streams, loghttp.Stream{
-					Entries: nil,
-					Labels:  lss,
-				})
-			}
-
-			if got := commonLabels(streams); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("commonLabels() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_subtract(t *testing.T) {
-	type args struct {
-		a loghttp.LabelSet
-		b loghttp.LabelSet
-	}
-	tests := []struct {
-		name string
-		args args
-		want loghttp.LabelSet
-	}{
-		{
-			"Subtract labels source > target",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{bar="foo"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{fo="bar"}`),
-			},
-			mustParseLabels(t, `{bar="foo", foo="bar"}`),
-		},
-		{
-			"Subtract labels source = target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar"}`),
-				mustParseLabels(t, `{fiz="buz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar"}`),
-				mustParseLabels(t, `{fiz="buz", foo="baz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(t, `{a="b", foo="bar", baz="baz", fizz="fizz"}`),
-				mustParseLabels(t, `{foo="bar", baz="baz", buzz="buzz", fizz="fizz"}`),
-			},
-			mustParseLabels(t, `{a="b"}`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := subtract(tt.args.a, tt.args.b); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("subtract() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
 
 func Test_batch(t *testing.T) {
 	tests := []struct {
@@ -536,18 +405,9 @@ func Test_batch(t *testing.T) {
 	}
 }
 
-func mustParseLabels(t *testing.T, s string) loghttp.LabelSet {
-	t.Helper()
-	l, err := marshal.NewLabelSet(s)
-	require.NoErrorf(t, err, "Failed to parse %q", s)
-
-	return l
-}
-
 type testQueryClient struct {
 	engine          *logql.Engine
 	queryRangeCalls int
-	orgID           string
 }
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
@@ -559,14 +419,17 @@ func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 	}
 }
 
-func (t *testQueryClient) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params, err := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil, nil)
+	if err != nil {
+		return nil, err
+	}
 
 	v, err := t.engine.Query(params).Exec(ctx)
 	if err != nil {
@@ -590,25 +453,58 @@ func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through t
 	return q, nil
 }
 
-func (t *testQueryClient) ListLabelNames(quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) ListLabelValues(name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelValues(_ string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) Series(matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (t *testQueryClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+func (t *testQueryClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	panic("implement me")
 }
 
 func (t *testQueryClient) GetOrgID() string {
 	panic("implement me")
 }
+
+func (t *testQueryClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetDetectedFields(
+	_, _ string,
+	_, _ int,
+	_, _ time.Time,
+	_ time.Duration,
+	_ bool,
+) (*loghttp.DetectedFieldsResponse, error) {
+	panic("not implemented")
+}
+
+var legacySchemaConfigContents = `schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v10
+    index:
+      prefix: index_
+      period: 168h
+`
 
 var schemaConfigContents = `schema_config:
   configs:
@@ -627,10 +523,35 @@ var schemaConfigContents = `schema_config:
       prefix: index_
       period: 24h
 `
+var schemaConfigContents2 = `schema_config:
+  configs:
+  - from: 2020-05-15
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v10
+    index:
+      prefix: index_
+      period: 168h
+  - from: 2020-07-31
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+  - from: 2020-09-30
+    store: boltdb-shipper
+    object_store: gcs
+    schema: v12
+    index:
+      prefix: index_
+      period: 24h
+`
+var cm = storage.NewClientMetrics()
 
-func TestLoadFromURL(t *testing.T) {
+func setupTestEnv(t *testing.T) (string, client.ObjectClient) {
+	t.Helper()
 	tmpDir := t.TempDir()
-
 	conf := loki.Config{
 		StorageConfig: storage.Config{
 			FSConfig: local.FSConfig{
@@ -639,22 +560,19 @@ func TestLoadFromURL(t *testing.T) {
 		},
 	}
 
-	// Missing SharedStoreType should error
-	cm := storage.NewClientMetrics()
-	client, err := GetObjectClient(conf, cm)
-	require.Error(t, err)
-	require.Nil(t, client)
-
-	conf.StorageConfig.BoltDBShipperConfig = shipper.Config{
-		Config: indexshipper.Config{
-			SharedStoreType: config.StorageTypeFileSystem,
-		},
-	}
-
-	client, err = GetObjectClient(conf, cm)
+	client, err := GetObjectClient(types.StorageTypeFileSystem, conf, cm)
 	require.NoError(t, err)
 	require.NotNil(t, client)
 
+	_, err = getLatestConfig(client, "456")
+	require.Error(t, err)
+	require.True(t, errors.Is(err, errNotExists))
+
+	return tmpDir, client
+}
+
+func TestLoadFromURL(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
 	filename := "schemaconfig.yaml"
 
 	// Missing schemaconfig.yaml file should error
@@ -674,12 +592,85 @@ func TestLoadFromURL(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, schemaConfig)
+}
 
-	// Load multiple schemaconfig files
-	schemaConfig, err = LoadSchemaUsingObjectClient(client, "foo.yaml", filename, "bar.yaml")
+func TestMultipleConfigs(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
 
+	err := os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig.yaml"),
+		[]byte(schemaConfigContents),
+		0666,
+	)
 	require.NoError(t, err)
-	require.NotNil(t, schemaConfig)
+
+	config, err := getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 2)
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig-1.yaml"),
+		[]byte(schemaConfigContents2),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err = getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 3)
+}
+
+func TestMultipleConfigsIncludingLegacy(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
+
+	err := os.WriteFile(
+		filepath.Join(tmpDir, "schemaconfig.yaml"),
+		[]byte(legacySchemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig.yaml"),
+		[]byte(schemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err := getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 2)
+
+	err = os.WriteFile(
+		filepath.Join(tmpDir, "456-schemaconfig-1.yaml"),
+		[]byte(schemaConfigContents2),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err = getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 3)
+}
+
+func TestLegacyConfigOnly(t *testing.T) {
+	tmpDir, client := setupTestEnv(t)
+
+	err := os.WriteFile(
+		filepath.Join(tmpDir, "schemaconfig.yaml"),
+		[]byte(legacySchemaConfigContents),
+		0666,
+	)
+	require.NoError(t, err)
+
+	config, err := getLatestConfig(client, "456")
+	require.NoError(t, err)
+	require.NotNil(t, config)
+	require.Len(t, config.Configs, 1)
 }
 
 func TestDurationCeilDiv(t *testing.T) {
@@ -896,8 +887,6 @@ func TestParallelJobs(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		t.Run(
 			tt.name,
 			func(t *testing.T) {

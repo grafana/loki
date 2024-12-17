@@ -6,28 +6,27 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	dskit_flagext "github.com/grafana/dskit/flagext"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/limit"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/server"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/file"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/limit"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/server"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/wal"
 
-	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 // Options contains cross-cutting promtail configurations
 type Options struct {
-	StreamLagLabels dskit_flagext.StringSliceCSV `mapstructure:"stream_lag_labels,omitempty" yaml:"stream_lag_labels,omitempty" doc:"deprecated"`
 }
 
 // Config for promtail, describing what files to watch.
 type Config struct {
+	Global       GlobalConfig  `yaml:"global,omitempty"`
 	ServerConfig server.Config `yaml:"server,omitempty"`
 	// deprecated use ClientConfigs instead
 	ClientConfig    client.Config         `yaml:"client,omitempty"`
@@ -41,9 +40,31 @@ type Config struct {
 	WAL             wal.Config            `yaml:"wal"`
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// We want to set c to the defaults and then overwrite it with the input.
+	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
+	// again, we have to hide it using a type indirection.
+	type plain Config
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+
+	// Validate unique names.
+	jobNames := map[string]struct{}{}
+	for _, j := range c.ScrapeConfig {
+		if _, ok := jobNames[j.JobName]; ok {
+			return fmt.Errorf("found multiple scrape configs with job name %q", j.JobName)
+		}
+		jobNames[j.JobName] = struct{}{}
+	}
+	return nil
+}
+
 // RegisterFlags with prefix registers flags where every name is prefixed by
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	c.Global.RegisterFlagsWithPrefix(prefix, f)
 	c.ServerConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.ClientConfig.RegisterFlagsWithPrefix(prefix, f)
 	c.PositionsConfig.RegisterFlagsWithPrefix(prefix, f)
@@ -92,4 +113,21 @@ func (c *Config) Setup(l log.Logger) {
 			c.ClientConfigs[i].ExternalLabels = flagext.LabelSet{LabelSet: c.ClientConfig.ExternalLabels.LabelSet.Merge(c.ClientConfigs[i].ExternalLabels.LabelSet)}
 		}
 	}
+}
+
+// GlobalConfig holds configuration settings which apply to all targets.
+// Individual scrape jobs can override the defaults.
+type GlobalConfig struct {
+	FileWatch file.WatchConfig `mapstructure:"file_watch_config" yaml:"file_watch_config"`
+}
+
+// RegisterFlags with prefix registers flags where every name is prefixed by
+// prefix. If prefix is a non-empty string, prefix should end with a period.
+func (cfg *GlobalConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.FileWatch.RegisterFlagsWithPrefix(prefix+"file-watch.", f)
+}
+
+// RegisterFlags register flags.
+func (cfg *GlobalConfig) RegisterFlags(flags *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", flags)
 }

@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
 // JSONLOutput prints logs and metadata as JSON Lines, suitable for scripts
@@ -17,7 +17,7 @@ type JSONLOutput struct {
 }
 
 // Format a log entry as json line
-func (o *JSONLOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) {
+func (o *JSONLOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, _ int, line string) {
 	entry := map[string]interface{}{
 		"timestamp": ts.In(o.options.Timezone),
 		"line":      line,

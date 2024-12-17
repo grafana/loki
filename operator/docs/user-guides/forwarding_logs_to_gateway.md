@@ -16,7 +16,7 @@ toc: true
 
 This document will describe how to send application, infrastructure, audit and network logs to the LokiStack Gateway as different tenants using Promtail or Fluentd. The built-in gateway provides secure access to the distributor (and query-frontend) via consulting an OAuth/OIDC endpoint for the request subject.
 
-__Please read the [hacking guide](./hack_loki_operator.md) before proceeding with the following instructions.__
+__Please read the [hacking guide](../operator/hack_loki_operator.md) before proceeding with the following instructions.__
 
 _Note: While this document will only give instructions for two methods of log forwarding into the gateway, the examples given in the Promtail and Fluentd sections can be extrapolated to other log forwarders._
 
@@ -51,8 +51,8 @@ _Note: While this document will only give instructions for two methods of log fo
 
     ```console
     kubectl -n openshift-logging create secret generic lokistack-gateway-bearer-token \
-      --from-literal=token="/var/run/secrets/kubernetes.io/serviceaccount/token" \
-      --from-literal=ca-bundle.crt="$(kubectl get cm lokistack-dev-ca-bundle -o json | jq -r '.data."service-ca.crt"')"
+      --from-literal=token="$(kubectl -n openshift-logging get secret logcollector-token --template='{{.data.token | base64decode}}')"  \
+      --from-literal=ca-bundle.crt="$(kubectl -n openshift-logging get configmap openshift-service-ca.crt --template='{{index .data "service-ca.crt"}}')"
     ```
 
 * Create the following `ClusterRole` and `ClusterRoleBinding` which will allow the cluster to authenticate the user(s) submitting the logs:

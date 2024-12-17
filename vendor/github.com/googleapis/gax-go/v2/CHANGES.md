@@ -1,5 +1,114 @@
 # Changelog
 
+## [2.14.0](https://github.com/googleapis/gax-go/compare/v2.13.0...v2.14.0) (2024-11-13)
+
+
+### Features
+
+* **internallog:** add a logging support package ([#380](https://github.com/googleapis/gax-go/issues/380)) ([c877470](https://github.com/googleapis/gax-go/commit/c87747098135631a3de5865ed03aaf2c79fd9319))
+
+## [2.13.0](https://github.com/googleapis/gax-go/compare/v2.12.5...v2.13.0) (2024-07-22)
+
+
+### Features
+
+* **iterator:** add package to help work with new iter.Seq types ([#358](https://github.com/googleapis/gax-go/issues/358)) ([6bccdaa](https://github.com/googleapis/gax-go/commit/6bccdaac011fe6fd147e4eb533a8e6520b7d4acc))
+
+## [2.12.5](https://github.com/googleapis/gax-go/compare/v2.12.4...v2.12.5) (2024-06-18)
+
+
+### Bug Fixes
+
+* **v2/apierror:** fix (*APIError).Error() for unwrapped Status ([#351](https://github.com/googleapis/gax-go/issues/351)) ([22c16e7](https://github.com/googleapis/gax-go/commit/22c16e7bff5402bdc4c25063771cdd01c650b500)), refs [#350](https://github.com/googleapis/gax-go/issues/350)
+
+## [2.12.4](https://github.com/googleapis/gax-go/compare/v2.12.3...v2.12.4) (2024-05-03)
+
+
+### Bug Fixes
+
+* provide unmarshal options for streams ([#343](https://github.com/googleapis/gax-go/issues/343)) ([ddf9a90](https://github.com/googleapis/gax-go/commit/ddf9a90bf180295d49875e15cb80b2136a49dbaf))
+
+## [2.12.3](https://github.com/googleapis/gax-go/compare/v2.12.2...v2.12.3) (2024-03-14)
+
+
+### Bug Fixes
+
+* bump protobuf dep to v1.33 ([#333](https://github.com/googleapis/gax-go/issues/333)) ([2892b22](https://github.com/googleapis/gax-go/commit/2892b22c1ae8a70dec3448d82e634643fe6c1be2))
+
+## [2.12.2](https://github.com/googleapis/gax-go/compare/v2.12.1...v2.12.2) (2024-02-23)
+
+
+### Bug Fixes
+
+* **v2/callctx:** fix SetHeader race by cloning header map ([#326](https://github.com/googleapis/gax-go/issues/326)) ([534311f](https://github.com/googleapis/gax-go/commit/534311f0f163d101f30657736c0e6f860e9c39dc))
+
+## [2.12.1](https://github.com/googleapis/gax-go/compare/v2.12.0...v2.12.1) (2024-02-13)
+
+
+### Bug Fixes
+
+* add XGoogFieldMaskHeader constant ([#321](https://github.com/googleapis/gax-go/issues/321)) ([666ee08](https://github.com/googleapis/gax-go/commit/666ee08931041b7fed56bed7132649785b2d3dfe))
+
+## [2.12.0](https://github.com/googleapis/gax-go/compare/v2.11.0...v2.12.0) (2023-06-26)
+
+
+### Features
+
+* **v2/callctx:** add new callctx package ([#291](https://github.com/googleapis/gax-go/issues/291)) ([11503ed](https://github.com/googleapis/gax-go/commit/11503ed98df4ae1bbdedf91ff64d47e63f187d68))
+* **v2:** add BuildHeaders and InsertMetadataIntoOutgoingContext to header  ([#290](https://github.com/googleapis/gax-go/issues/290)) ([6a4b89f](https://github.com/googleapis/gax-go/commit/6a4b89f5551a40262e7c3caf2e1bdc7321b76ea1))
+
+## [2.11.0](https://github.com/googleapis/gax-go/compare/v2.10.0...v2.11.0) (2023-06-13)
+
+
+### Features
+
+* **v2:** add GoVersion package variable ([#283](https://github.com/googleapis/gax-go/issues/283)) ([26553cc](https://github.com/googleapis/gax-go/commit/26553ccadb4016b189881f52e6c253b68bb3e3d5))
+
+
+### Bug Fixes
+
+* **v2:** handle space in non-devel go version ([#288](https://github.com/googleapis/gax-go/issues/288)) ([fd7bca0](https://github.com/googleapis/gax-go/commit/fd7bca029a1c5e63def8f0a5fd1ec3f725d92f75))
+
+## [2.10.0](https://github.com/googleapis/gax-go/compare/v2.9.1...v2.10.0) (2023-05-30)
+
+
+### Features
+
+* update dependencies ([#280](https://github.com/googleapis/gax-go/issues/280)) ([4514281](https://github.com/googleapis/gax-go/commit/4514281058590f3637c36bfd49baa65c4d3cfb21))
+
+## [2.9.1](https://github.com/googleapis/gax-go/compare/v2.9.0...v2.9.1) (2023-05-23)
+
+
+### Bug Fixes
+
+* **v2:** drop cloud lro test dep ([#276](https://github.com/googleapis/gax-go/issues/276)) ([c67eeba](https://github.com/googleapis/gax-go/commit/c67eeba0f10a3294b1d93c1b8fbe40211a55ae5f)), refs [#270](https://github.com/googleapis/gax-go/issues/270)
+
+## [2.9.0](https://github.com/googleapis/gax-go/compare/v2.8.0...v2.9.0) (2023-05-22)
+
+
+### Features
+
+* **apierror:** add method to return HTTP status code conditionally ([#274](https://github.com/googleapis/gax-go/issues/274)) ([5874431](https://github.com/googleapis/gax-go/commit/587443169acd10f7f86d1989dc8aaf189e645e98)), refs [#229](https://github.com/googleapis/gax-go/issues/229)
+
+
+### Documentation
+
+* add ref to usage with clients ([#272](https://github.com/googleapis/gax-go/issues/272)) ([ea4d72d](https://github.com/googleapis/gax-go/commit/ea4d72d514beba4de450868b5fb028601a29164e)), refs [#228](https://github.com/googleapis/gax-go/issues/228)
+
+## [2.8.0](https://github.com/googleapis/gax-go/compare/v2.7.1...v2.8.0) (2023-03-15)
+
+
+### Features
+
+* **v2:** add WithTimeout option ([#259](https://github.com/googleapis/gax-go/issues/259)) ([9a8da43](https://github.com/googleapis/gax-go/commit/9a8da43693002448b1e8758023699387481866d1))
+
+## [2.7.1](https://github.com/googleapis/gax-go/compare/v2.7.0...v2.7.1) (2023-03-06)
+
+
+### Bug Fixes
+
+* **v2/apierror:** return Unknown GRPCStatus when err source is HTTP ([#260](https://github.com/googleapis/gax-go/issues/260)) ([043b734](https://github.com/googleapis/gax-go/commit/043b73437a240a91229207fb3ee52a9935a36f23)), refs [#254](https://github.com/googleapis/gax-go/issues/254)
+
 ## [2.7.0](https://github.com/googleapis/gax-go/compare/v2.6.0...v2.7.0) (2022-11-02)
 
 

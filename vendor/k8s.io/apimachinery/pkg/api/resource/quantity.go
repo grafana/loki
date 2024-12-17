@@ -20,10 +20,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"math"
+	math "math"
 	"math/big"
 	"strconv"
 	"strings"
+
+	cbor "k8s.io/apimachinery/pkg/runtime/serializer/cbor/direct"
 
 	inf "gopkg.in/inf.v0"
 )
@@ -458,9 +460,10 @@ func (q *Quantity) CanonicalizeBytes(out []byte) (result, suffix []byte) {
 	}
 }
 
-// AsApproximateFloat64 returns a float64 representation of the quantity which may
-// lose precision. If the value of the quantity is outside the range of a float64
-// +Inf/-Inf will be returned.
+// AsApproximateFloat64 returns a float64 representation of the quantity which
+// may lose precision. If precision matter more than performance, see
+// AsFloat64Slow. If the value of the quantity is outside the range of a
+// float64 +Inf/-Inf will be returned.
 func (q *Quantity) AsApproximateFloat64() float64 {
 	var base float64
 	var exponent int
@@ -476,6 +479,36 @@ func (q *Quantity) AsApproximateFloat64() float64 {
 	}
 
 	return base * math.Pow10(exponent)
+}
+
+// AsFloat64Slow returns a float64 representation of the quantity.  This is
+// more precise than AsApproximateFloat64 but significantly slower.  If the
+// value of the quantity is outside the range of a float64 +Inf/-Inf will be
+// returned.
+func (q *Quantity) AsFloat64Slow() float64 {
+	infDec := q.AsDec()
+
+	var absScale int64
+	if infDec.Scale() < 0 {
+		absScale = int64(-infDec.Scale())
+	} else {
+		absScale = int64(infDec.Scale())
+	}
+	pow10AbsScale := big.NewInt(10)
+	pow10AbsScale = pow10AbsScale.Exp(pow10AbsScale, big.NewInt(absScale), nil)
+
+	var resultBigFloat *big.Float
+	if infDec.Scale() < 0 {
+		resultBigInt := new(big.Int).Mul(infDec.UnscaledBig(), pow10AbsScale)
+		resultBigFloat = new(big.Float).SetInt(resultBigInt)
+	} else {
+		pow10AbsScaleFloat := new(big.Float).SetInt(pow10AbsScale)
+		resultBigFloat = new(big.Float).SetInt(infDec.UnscaledBig())
+		resultBigFloat = resultBigFloat.Quo(resultBigFloat, pow10AbsScaleFloat)
+	}
+
+	result, _ := resultBigFloat.Float64()
+	return result
 }
 
 // AsInt64 returns a representation of the current value as an int64 if a fast conversion
@@ -592,6 +625,16 @@ func (q *Quantity) Sub(y Quantity) {
 	q.ToDec().d.Dec.Sub(q.d.Dec, y.AsDec())
 }
 
+// Mul multiplies the provided y to the current value.
+// It will return false if the result is inexact. Otherwise, it will return true.
+func (q *Quantity) Mul(y int64) bool {
+	q.s = ""
+	if q.d.Dec == nil && q.i.Mul(y) {
+		return true
+	}
+	return q.ToDec().d.Dec.Mul(q.d.Dec, inf.NewDec(y, inf.Scale(0))).UnscaledBig().IsInt64()
+}
+
 // Cmp returns 0 if the quantity is equal to y, -1 if the quantity is less than y, or 1 if the
 // quantity is greater than y.
 func (q *Quantity) Cmp(y Quantity) int {
@@ -673,6 +716,12 @@ func (q Quantity) MarshalJSON() ([]byte, error) {
 	return result, nil
 }
 
+func (q Quantity) MarshalCBOR() ([]byte, error) {
+	// The call to String() should never return the string "<nil>" because the receiver's
+	// address will never be nil.
+	return cbor.Marshal(q.String())
+}
+
 // ToUnstructured implements the value.UnstructuredConverter interface.
 func (q Quantity) ToUnstructured() interface{} {
 	return q.String()
@@ -697,6 +746,27 @@ func (q *Quantity) UnmarshalJSON(value []byte) error {
 	}
 
 	// This copy is safe because parsed will not be referred to again.
+	*q = parsed
+	return nil
+}
+
+func (q *Quantity) UnmarshalCBOR(value []byte) error {
+	var s *string
+	if err := cbor.Unmarshal(value, &s); err != nil {
+		return err
+	}
+
+	if s == nil {
+		q.d.Dec = nil
+		q.i = int64Amount{}
+		return nil
+	}
+
+	parsed, err := ParseQuantity(strings.TrimSpace(*s))
+	if err != nil {
+		return err
+	}
+
 	*q = parsed
 	return nil
 }

@@ -18,6 +18,7 @@
 package outlierdetection
 
 import (
+	"fmt"
 	"unsafe"
 
 	"google.golang.org/grpc/balancer"
@@ -30,6 +31,7 @@ import (
 // whether or not this SubConn is ejected.
 type subConnWrapper struct {
 	balancer.SubConn
+	listener func(balancer.SubConnState)
 
 	// addressInfo is a pointer to the subConnWrapper's corresponding address
 	// map entry, if the map entry exists.
@@ -65,4 +67,8 @@ func (scw *subConnWrapper) uneject() {
 		scw:       scw,
 		isEjected: false,
 	})
+}
+
+func (scw *subConnWrapper) String() string {
+	return fmt.Sprintf("%+v", scw.addresses)
 }

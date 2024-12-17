@@ -115,7 +115,7 @@ func (cb *childBalancer) sendUpdate() {
 		BalancerConfig: cb.config,
 	})
 	if err != nil {
-		cb.parent.logger.Warningf("failed to update ClientConn state for child %v: %v", cb.name, err)
+		cb.parent.logger.Warningf("Failed to update state for child policy %q: %v", cb.name, err)
 	}
 }
 

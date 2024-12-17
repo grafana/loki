@@ -37,8 +37,7 @@
 // The paths are specific to some target message type,
 // which is not stored within the FieldMask message itself.
 //
-//
-// Constructing a FieldMask
+// # Constructing a FieldMask
 //
 // The New function is used construct a FieldMask:
 //
@@ -61,8 +60,7 @@
 //		... // handle error
 //	}
 //
-//
-// Type checking a FieldMask
+// # Type checking a FieldMask
 //
 // In order to verify that a FieldMask represents a set of fields that are
 // reachable from some target message type, use the IsValid method:
@@ -89,8 +87,8 @@ import (
 
 // `FieldMask` represents a set of symbolic field paths, for example:
 //
-//     paths: "f.a"
-//     paths: "f.b.d"
+//	paths: "f.a"
+//	paths: "f.b.d"
 //
 // Here `f` represents a field in some root message, `a` and `b`
 // fields in the message found in `f`, and `d` a field found in the
@@ -107,27 +105,26 @@ import (
 // specified in the mask. For example, if the mask in the previous
 // example is applied to a response message as follows:
 //
-//     f {
-//       a : 22
-//       b {
-//         d : 1
-//         x : 2
-//       }
-//       y : 13
-//     }
-//     z: 8
+//	f {
+//	  a : 22
+//	  b {
+//	    d : 1
+//	    x : 2
+//	  }
+//	  y : 13
+//	}
+//	z: 8
 //
 // The result will not contain specific values for fields x,y and z
 // (their value will be set to the default, and omitted in proto text
 // output):
 //
-//
-//     f {
-//       a : 22
-//       b {
-//         d : 1
-//       }
-//     }
+//	f {
+//	  a : 22
+//	  b {
+//	    d : 1
+//	  }
+//	}
 //
 // A repeated field is not allowed except at the last position of a
 // paths string.
@@ -165,36 +162,36 @@ import (
 //
 // For example, given the target message:
 //
-//     f {
-//       b {
-//         d: 1
-//         x: 2
-//       }
-//       c: [1]
-//     }
+//	f {
+//	  b {
+//	    d: 1
+//	    x: 2
+//	  }
+//	  c: [1]
+//	}
 //
 // And an update message:
 //
-//     f {
-//       b {
-//         d: 10
-//       }
-//       c: [2]
-//     }
+//	f {
+//	  b {
+//	    d: 10
+//	  }
+//	  c: [2]
+//	}
 //
 // then if the field mask is:
 //
-//  paths: ["f.b", "f.c"]
+//	paths: ["f.b", "f.c"]
 //
 // then the result will be:
 //
-//     f {
-//       b {
-//         d: 10
-//         x: 2
-//       }
-//       c: [1, 2]
-//     }
+//	f {
+//	  b {
+//	    d: 10
+//	    x: 2
+//	  }
+//	  c: [1, 2]
+//	}
 //
 // An implementation may provide options to override this default behavior for
 // repeated and message fields.
@@ -232,51 +229,51 @@ import (
 //
 // As an example, consider the following message declarations:
 //
-//     message Profile {
-//       User user = 1;
-//       Photo photo = 2;
-//     }
-//     message User {
-//       string display_name = 1;
-//       string address = 2;
-//     }
+//	message Profile {
+//	  User user = 1;
+//	  Photo photo = 2;
+//	}
+//	message User {
+//	  string display_name = 1;
+//	  string address = 2;
+//	}
 //
 // In proto a field mask for `Profile` may look as such:
 //
-//     mask {
-//       paths: "user.display_name"
-//       paths: "photo"
-//     }
+//	mask {
+//	  paths: "user.display_name"
+//	  paths: "photo"
+//	}
 //
 // In JSON, the same mask is represented as below:
 //
-//     {
-//       mask: "user.displayName,photo"
-//     }
+//	{
+//	  mask: "user.displayName,photo"
+//	}
 //
 // # Field Masks and Oneof Fields
 //
 // Field masks treat fields in oneofs just as regular fields. Consider the
 // following message:
 //
-//     message SampleMessage {
-//       oneof test_oneof {
-//         string name = 4;
-//         SubMessage sub_message = 9;
-//       }
-//     }
+//	message SampleMessage {
+//	  oneof test_oneof {
+//	    string name = 4;
+//	    SubMessage sub_message = 9;
+//	  }
+//	}
 //
 // The field mask can be:
 //
-//     mask {
-//       paths: "name"
-//     }
+//	mask {
+//	  paths: "name"
+//	}
 //
 // Or:
 //
-//     mask {
-//       paths: "sub_message"
-//     }
+//	mask {
+//	  paths: "sub_message"
+//	}
 //
 // Note that oneof type names ("test_oneof" in this case) cannot be used in
 // paths.
@@ -470,11 +467,9 @@ func rangeFields(path string, f func(field string) bool) bool {
 
 func (x *FieldMask) Reset() {
 	*x = FieldMask{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_field_mask_proto_msgTypes[0]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_field_mask_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *FieldMask) String() string {
@@ -485,7 +480,7 @@ func (*FieldMask) ProtoMessage() {}
 
 func (x *FieldMask) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_field_mask_proto_msgTypes[0]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -540,7 +535,7 @@ func file_google_protobuf_field_mask_proto_rawDescGZIP() []byte {
 }
 
 var file_google_protobuf_field_mask_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_google_protobuf_field_mask_proto_goTypes = []interface{}{
+var file_google_protobuf_field_mask_proto_goTypes = []any{
 	(*FieldMask)(nil), // 0: google.protobuf.FieldMask
 }
 var file_google_protobuf_field_mask_proto_depIdxs = []int32{
@@ -555,20 +550,6 @@ func init() { file_google_protobuf_field_mask_proto_init() }
 func file_google_protobuf_field_mask_proto_init() {
 	if File_google_protobuf_field_mask_proto != nil {
 		return
-	}
-	if !protoimpl.UnsafeEnabled {
-		file_google_protobuf_field_mask_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*FieldMask); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

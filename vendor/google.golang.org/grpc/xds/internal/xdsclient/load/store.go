@@ -174,6 +174,7 @@ func (ls *perClusterStore) CallStarted(locality string) {
 		p, _ = ls.localityRPCCount.LoadOrStore(locality, tp)
 	}
 	p.(*rpcCountData).incrInProgress()
+	p.(*rpcCountData).incrIssued()
 }
 
 // CallFinished adds one call finished record for the given locality.
@@ -248,6 +249,8 @@ type RequestData struct {
 	Errored uint64
 	// InProgress is the number of requests in flight.
 	InProgress uint64
+	// Issued is the total number requests that were sent.
+	Issued uint64
 }
 
 // ServerLoadData contains server load data.
@@ -277,7 +280,7 @@ func (ls *perClusterStore) stats() *Data {
 	}
 
 	sd := newData(ls.cluster, ls.service)
-	ls.drops.Range(func(key, val interface{}) bool {
+	ls.drops.Range(func(key, val any) bool {
 		d := atomic.SwapUint64(val.(*uint64), 0)
 		if d == 0 {
 			return true
@@ -291,12 +294,13 @@ func (ls *perClusterStore) stats() *Data {
 		}
 		return true
 	})
-	ls.localityRPCCount.Range(func(key, val interface{}) bool {
+	ls.localityRPCCount.Range(func(key, val any) bool {
 		countData := val.(*rpcCountData)
 		succeeded := countData.loadAndClearSucceeded()
 		inProgress := countData.loadInProgress()
 		errored := countData.loadAndClearErrored()
-		if succeeded == 0 && inProgress == 0 && errored == 0 {
+		issued := countData.loadAndClearIssued()
+		if succeeded == 0 && inProgress == 0 && errored == 0 && issued == 0 {
 			return true
 		}
 
@@ -305,10 +309,11 @@ func (ls *perClusterStore) stats() *Data {
 				Succeeded:  succeeded,
 				Errored:    errored,
 				InProgress: inProgress,
+				Issued:     issued,
 			},
 			LoadStats: make(map[string]ServerLoadData),
 		}
-		countData.serverLoads.Range(func(key, val interface{}) bool {
+		countData.serverLoads.Range(func(key, val any) bool {
 			sum, count := val.(*rpcLoadData).loadAndClear()
 			if count == 0 {
 				return true
@@ -339,6 +344,7 @@ type rpcCountData struct {
 	succeeded  *uint64
 	errored    *uint64
 	inProgress *uint64
+	issued     *uint64
 
 	// Map from load desc to load data (sum+count). Loading data from map is
 	// atomic, but updating data takes a lock, which could cause contention when
@@ -353,6 +359,7 @@ func newRPCCountData() *rpcCountData {
 		succeeded:  new(uint64),
 		errored:    new(uint64),
 		inProgress: new(uint64),
+		issued:     new(uint64),
 	}
 }
 
@@ -382,6 +389,14 @@ func (rcd *rpcCountData) decrInProgress() {
 
 func (rcd *rpcCountData) loadInProgress() uint64 {
 	return atomic.LoadUint64(rcd.inProgress) // InProgress count is not clear when reading.
+}
+
+func (rcd *rpcCountData) incrIssued() {
+	atomic.AddUint64(rcd.issued, 1)
+}
+
+func (rcd *rpcCountData) loadAndClearIssued() uint64 {
+	return atomic.SwapUint64(rcd.issued, 0)
 }
 
 func (rcd *rpcCountData) addServerLoad(name string, d float64) {

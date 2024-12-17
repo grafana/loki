@@ -4,12 +4,12 @@ package log_test
 import (
 	"testing"
 
-	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 var (
@@ -28,7 +28,10 @@ var (
 	"response": {
 		"status": 204,
 		"latency_seconds": "30.001"
-	}
+	},
+  "message": {
+    "message": "foo",
+  }
 }`)
 
 	packedLine = []byte(`{
@@ -43,7 +46,7 @@ var (
 )
 
 func Test_ParserHints(t *testing.T) {
-	lbs := labels.Labels{{Name: "app", Value: "nginx"}, {Name: "cluster", Value: "us-central-west"}}
+	lbs := labels.FromStrings("app", "nginx", "cluster", "us-central-west")
 
 	t.Parallel()
 	for _, tt := range []struct {
@@ -58,14 +61,14 @@ func Test_ParserHints(t *testing.T) {
 			jsonLine,
 			true,
 			1.0,
-			`{app="nginx", cluster="us-central-west", cluster_extracted="us-east-west", protocol="HTTP/2.0", remote_user="foo", request_host="foo.grafana.net", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_latency_seconds="30.001", response_status="204", upstream_addr="10.0.0.1:80"}`,
+			`{app="nginx", cluster="us-central-west", cluster_extracted="us-east-west", message_message="foo", protocol="HTTP/2.0", remote_user="foo", request_host="foo.grafana.net", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_latency_seconds="30.001", response_status="204", upstream_addr="10.0.0.1:80"}`,
 		},
 		{
 			`sum without (request_host,app,cluster) (rate({app="nginx"} | json | __error__="" | response_status = 204 [1m]))`,
 			jsonLine,
 			true,
 			1.0,
-			`{cluster_extracted="us-east-west", protocol="HTTP/2.0", remote_user="foo", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_latency_seconds="30.001", response_status="204", upstream_addr="10.0.0.1:80"}`,
+			`{cluster_extracted="us-east-west", message_message="foo", protocol="HTTP/2.0", remote_user="foo", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_latency_seconds="30.001", response_status="204", upstream_addr="10.0.0.1:80"}`,
 		},
 		{
 			`sum by (request_host,app) (rate({app="nginx"} | json | __error__="" | response_status = 204 [1m]))`,
@@ -114,14 +117,14 @@ func Test_ParserHints(t *testing.T) {
 			jsonLine,
 			true,
 			30.001,
-			`{app="nginx", cluster="us-central-west", cluster_extracted="us-east-west", protocol="HTTP/2.0", remote_user="foo", request_host="foo.grafana.net", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_status="204", upstream_addr="10.0.0.1:80"}`,
+			`{app="nginx", cluster="us-central-west", cluster_extracted="us-east-west", message_message="foo", protocol="HTTP/2.0", remote_user="foo", request_host="foo.grafana.net", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_status="204", upstream_addr="10.0.0.1:80"}`,
 		},
 		{
 			`sum without (request_host,app,cluster)(rate({app="nginx"} | json | response_status = 204 | unwrap response_latency_seconds [1m]))`,
 			jsonLine,
 			true,
 			30.001,
-			`{cluster_extracted="us-east-west", protocol="HTTP/2.0", remote_user="foo", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_status="204", upstream_addr="10.0.0.1:80"}`,
+			`{cluster_extracted="us-east-west", message_message="foo", protocol="HTTP/2.0", remote_user="foo", request_method="POST", request_size="101", request_time="30.001", request_uri="/rpc/v2/stage", response_status="204", upstream_addr="10.0.0.1:80"}`,
 		},
 		{
 			`sum(rate({app="nginx"} | logfmt | org_id=3677 | unwrap Ingester_TotalReached[1m]))`,
@@ -214,8 +217,14 @@ func Test_ParserHints(t *testing.T) {
 			0,
 			``,
 		},
+		{
+			`sum by (message_message,app)(count_over_time({app="nginx"} | json | response_status = 204 and  remote_user = "foo"[1m]))`,
+			jsonLine,
+			true,
+			1,
+			`{app="nginx", message_message="foo"}`,
+		},
 	} {
-		tt := tt
 		t.Run(tt.expr, func(t *testing.T) {
 			t.Parallel()
 			expr, err := syntax.ParseSampleExpr(tt.expr)
@@ -258,7 +267,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
 		h := log.NewParserHint(nil, nil, true, true, "metric", s)
 
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "protocol", Value: "HTTP/2.0"}}, 0)
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
 		require.False(t, h.ShouldContinueParsingLine("protocol", lb))
 	})
 
@@ -266,7 +275,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
 		h := log.NewParserHint(nil, nil, true, true, "metric", s)
 
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "response", Value: "200"}}, 0)
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("response", "200"), 0)
 		require.True(t, h.ShouldContinueParsingLine("response", lb))
 	})
 
@@ -279,7 +288,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		}
 
 		h := log.NewParserHint(nil, nil, true, true, "metric", s)
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "protocol", Value: "HTTP/2.0"}}, 0)
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
 		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
 	})
 }

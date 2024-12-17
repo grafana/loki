@@ -1,0 +1,51 @@
+{{- $isSingleBinary := eq (include "loki.deployment.isSingleBinary" .) "true" -}}
+{{- $usingObjectStorage := eq (include "loki.isUsingObjectStorage" .) "true" }}
+{{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
+{{- if and $isSingleBinary $usingObjectStorage ( .Values.singleBinary.autoscaling.enabled ) }}
+{{- if $autoscalingv2 }}
+apiVersion: autoscaling/v2
+{{- else }}
+apiVersion: autoscaling/v2beta1
+{{- end }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "loki.singleBinaryFullname" . }}
+  labels:
+    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ include "loki.singleBinaryFullname" . }}
+  minReplicas: {{ .Values.singleBinary.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.singleBinary.autoscaling.maxReplicas }}
+  {{- with .Values.singleBinary.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  metrics:
+  {{- with .Values.singleBinary.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        {{- if $autoscalingv2 }}
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+        {{- else }}
+        targetAverageUtilization: {{ . }}
+        {{- end }}
+  {{- end }}
+  {{- with .Values.singleBinary.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        {{- if $autoscalingv2 }}
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+        {{- else }}
+        targetAverageUtilization: {{ . }}
+        {{- end }}
+  {{- end }}
+{{- end }}

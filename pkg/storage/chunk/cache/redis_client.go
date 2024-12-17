@@ -12,7 +12,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 )
 
 // RedisConfig defines how a RedisCache should be constructed.
@@ -57,43 +57,75 @@ type RedisClient struct {
 
 // NewRedisClient creates Redis client
 func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
-	endpoints := strings.Split(cfg.Endpoint, ",")
-	// Handle single configuration endpoint which resolves multiple nodes.
-	if len(endpoints) == 1 {
-		host, port, err := net.SplitHostPort(endpoints[0])
-		if err != nil {
-			return nil, err
-		}
-		addrs, err := net.LookupHost(host)
-		if err != nil {
-			return nil, err
-		}
-		if len(addrs) > 1 {
-			endpoints = nil
-			for _, addr := range addrs {
-				endpoints = append(endpoints, net.JoinHostPort(addr, port))
-			}
-		}
+	endpoints, err := deriveEndpoints(cfg.Endpoint, net.LookupHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive endpoints: %w", err)
 	}
+
 	opt := &redis.UniversalOptions{
-		Addrs:         endpoints,
-		MasterName:    cfg.MasterName,
-		Username:      cfg.Username,
-		Password:      cfg.Password.String(),
-		DB:            cfg.DB,
-		PoolSize:      cfg.PoolSize,
-		IdleTimeout:   cfg.IdleTimeout,
-		MaxConnAge:    cfg.MaxConnAge,
-		RouteRandomly: cfg.RouteRandomly,
+		Addrs:           endpoints,
+		MasterName:      cfg.MasterName,
+		Username:        cfg.Username,
+		Password:        cfg.Password.String(),
+		DB:              cfg.DB,
+		PoolSize:        cfg.PoolSize,
+		ConnMaxIdleTime: cfg.IdleTimeout,
+		ConnMaxLifetime: cfg.MaxConnAge,
+		RouteRandomly:   cfg.RouteRandomly,
 	}
 	if cfg.EnableTLS {
-		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
+		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify} //#nosec G402 -- User has explicitly requested to disable TLS
 	}
 	return &RedisClient{
 		expiration: cfg.Expiration,
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewUniversalClient(opt),
 	}, nil
+}
+
+func deriveEndpoints(endpoint string, lookup func(host string) ([]string, error)) ([]string, error) {
+	if lookup == nil {
+		return nil, fmt.Errorf("lookup function is nil")
+	}
+
+	endpoints := strings.Split(endpoint, ",")
+
+	// no endpoints or multiple endpoints will not need derivation
+	if len(endpoints) != 1 {
+		return endpoints, nil
+	}
+
+	// Handle single configuration endpoint which resolves multiple nodes.
+	host, port, err := net.SplitHostPort(endpoints[0])
+	if err != nil {
+		return nil, fmt.Errorf("splitting host:port failed :%w", err)
+	}
+	addrs, err := lookup(host)
+	if err != nil {
+		return nil, fmt.Errorf("could not lookup host: %w", err)
+	}
+
+	// only use the resolved addresses if they are not all loopback addresses;
+	// multiple addresses invokes cluster mode
+	allLoopback := allAddrsAreLoopback(addrs)
+	if len(addrs) > 1 && !allLoopback {
+		endpoints = nil
+		for _, addr := range addrs {
+			endpoints = append(endpoints, net.JoinHostPort(addr, port))
+		}
+	}
+
+	return endpoints, nil
+}
+
+func allAddrsAreLoopback(addrs []string) bool {
+	for _, addr := range addrs {
+		if !net.ParseIP(addr).IsLoopback() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (c *RedisClient) Ping(ctx context.Context) error {
@@ -176,7 +208,7 @@ func (c *RedisClient) Close() error {
 
 // StringToBytes converts string to byte slice. (copied from vendor/github.com/go-redis/redis/v8/internal/util/unsafe.go)
 func StringToBytes(s string) []byte {
-	return *(*[]byte)(unsafe.Pointer(
+	return *(*[]byte)(unsafe.Pointer( // #nosec G103 -- we know the string is not mutated
 		&struct {
 			string
 			Cap int

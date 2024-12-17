@@ -11,7 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 type mockEval struct{}
@@ -32,7 +32,7 @@ func (f *fakeHasher) Write(p []byte) (n int, err error) {
 	return 0, f.err
 }
 
-func (f *fakeHasher) Sum(b []byte) []byte { return nil }
+func (f *fakeHasher) Sum(_ []byte) []byte { return nil }
 func (f *fakeHasher) Reset()              {}
 func (f *fakeHasher) Size() int           { return 32 }
 func (f *fakeHasher) BlockSize() int      { return 32 }

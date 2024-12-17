@@ -5,7 +5,7 @@ import (
 	"net/http"
 )
 
-func (t *Loki) servicesHandler(w http.ResponseWriter, r *http.Request) {
+func (t *Loki) servicesHandler(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(200)
 	w.Header().Set("Content-Type", "text/plain")
 

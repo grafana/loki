@@ -5,19 +5,18 @@ import (
 	"os"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/tools/querytee"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/tools/querytee"
 )
 
 type Config struct {
 	ServerMetricsPort int
-	LogLevel          logging.Level
+	LogLevel          log.Level
 	ProxyConfig       querytee.ProxyConfig
 }
 
@@ -31,13 +30,13 @@ func main() {
 
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
-	}, prometheus.DefaultRegisterer, true, false)
+	}, prometheus.DefaultRegisterer, false)
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(collectors.NewGoCollector())
 
-	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry)
+	i := querytee.NewInstrumentationServer(cfg.ServerMetricsPort, registry, util_log.Logger)
 	if err := i.Start(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "Unable to start instrumentation server", "err", err.Error())
 		os.Exit(1)
@@ -64,7 +63,6 @@ func lokiReadRoutes(cfg Config) []querytee.Route {
 		UseRelativeError:  cfg.ProxyConfig.UseRelativeError,
 		SkipRecentSamples: cfg.ProxyConfig.SkipRecentSamples,
 	})
-	samplesComparator.RegisterSamplesType(loghttp.ResultTypeStream, compareStreams)
 
 	return []querytee.Route{
 		{Path: "/loki/api/v1/query_range", RouteName: "api_v1_query_range", Methods: []string{"GET"}, ResponseComparator: samplesComparator},

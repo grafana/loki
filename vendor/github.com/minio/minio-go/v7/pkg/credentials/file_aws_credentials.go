@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	ini "gopkg.in/ini.v1"
+	"github.com/go-ini/ini"
 )
 
 // A externalProcessCredentials stores the output of a credential_process
@@ -64,7 +64,7 @@ type FileAWSCredentials struct {
 
 // NewFileAWSCredentials returns a pointer to a new Credentials object
 // wrapping the Profile file provider.
-func NewFileAWSCredentials(filename string, profile string) *Credentials {
+func NewFileAWSCredentials(filename, profile string) *Credentials {
 	return New(&FileAWSCredentials{
 		Filename: filename,
 		Profile:  profile,
@@ -129,6 +129,7 @@ func (p *FileAWSCredentials) Retrieve() (Value, error) {
 			AccessKeyID:     externalProcessCredentials.AccessKeyID,
 			SecretAccessKey: externalProcessCredentials.SecretAccessKey,
 			SessionToken:    externalProcessCredentials.SessionToken,
+			Expiration:      externalProcessCredentials.Expiration,
 			SignerType:      SignatureV4,
 		}, nil
 	}

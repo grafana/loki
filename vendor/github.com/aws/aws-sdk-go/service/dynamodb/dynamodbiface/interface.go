@@ -95,6 +95,10 @@ type DynamoDBAPI interface {
 	DeleteItemWithContext(aws.Context, *dynamodb.DeleteItemInput, ...request.Option) (*dynamodb.DeleteItemOutput, error)
 	DeleteItemRequest(*dynamodb.DeleteItemInput) (*request.Request, *dynamodb.DeleteItemOutput)
 
+	DeleteResourcePolicy(*dynamodb.DeleteResourcePolicyInput) (*dynamodb.DeleteResourcePolicyOutput, error)
+	DeleteResourcePolicyWithContext(aws.Context, *dynamodb.DeleteResourcePolicyInput, ...request.Option) (*dynamodb.DeleteResourcePolicyOutput, error)
+	DeleteResourcePolicyRequest(*dynamodb.DeleteResourcePolicyInput) (*request.Request, *dynamodb.DeleteResourcePolicyOutput)
+
 	DeleteTable(*dynamodb.DeleteTableInput) (*dynamodb.DeleteTableOutput, error)
 	DeleteTableWithContext(aws.Context, *dynamodb.DeleteTableInput, ...request.Option) (*dynamodb.DeleteTableOutput, error)
 	DeleteTableRequest(*dynamodb.DeleteTableInput) (*request.Request, *dynamodb.DeleteTableOutput)
@@ -175,6 +179,10 @@ type DynamoDBAPI interface {
 	GetItemWithContext(aws.Context, *dynamodb.GetItemInput, ...request.Option) (*dynamodb.GetItemOutput, error)
 	GetItemRequest(*dynamodb.GetItemInput) (*request.Request, *dynamodb.GetItemOutput)
 
+	GetResourcePolicy(*dynamodb.GetResourcePolicyInput) (*dynamodb.GetResourcePolicyOutput, error)
+	GetResourcePolicyWithContext(aws.Context, *dynamodb.GetResourcePolicyInput, ...request.Option) (*dynamodb.GetResourcePolicyOutput, error)
+	GetResourcePolicyRequest(*dynamodb.GetResourcePolicyInput) (*request.Request, *dynamodb.GetResourcePolicyOutput)
+
 	ImportTable(*dynamodb.ImportTableInput) (*dynamodb.ImportTableOutput, error)
 	ImportTableWithContext(aws.Context, *dynamodb.ImportTableInput, ...request.Option) (*dynamodb.ImportTableOutput, error)
 	ImportTableRequest(*dynamodb.ImportTableInput) (*request.Request, *dynamodb.ImportTableOutput)
@@ -222,6 +230,10 @@ type DynamoDBAPI interface {
 	PutItem(*dynamodb.PutItemInput) (*dynamodb.PutItemOutput, error)
 	PutItemWithContext(aws.Context, *dynamodb.PutItemInput, ...request.Option) (*dynamodb.PutItemOutput, error)
 	PutItemRequest(*dynamodb.PutItemInput) (*request.Request, *dynamodb.PutItemOutput)
+
+	PutResourcePolicy(*dynamodb.PutResourcePolicyInput) (*dynamodb.PutResourcePolicyOutput, error)
+	PutResourcePolicyWithContext(aws.Context, *dynamodb.PutResourcePolicyInput, ...request.Option) (*dynamodb.PutResourcePolicyOutput, error)
+	PutResourcePolicyRequest(*dynamodb.PutResourcePolicyInput) (*request.Request, *dynamodb.PutResourcePolicyOutput)
 
 	Query(*dynamodb.QueryInput) (*dynamodb.QueryOutput, error)
 	QueryWithContext(aws.Context, *dynamodb.QueryInput, ...request.Option) (*dynamodb.QueryOutput, error)
@@ -280,6 +292,10 @@ type DynamoDBAPI interface {
 	UpdateItem(*dynamodb.UpdateItemInput) (*dynamodb.UpdateItemOutput, error)
 	UpdateItemWithContext(aws.Context, *dynamodb.UpdateItemInput, ...request.Option) (*dynamodb.UpdateItemOutput, error)
 	UpdateItemRequest(*dynamodb.UpdateItemInput) (*request.Request, *dynamodb.UpdateItemOutput)
+
+	UpdateKinesisStreamingDestination(*dynamodb.UpdateKinesisStreamingDestinationInput) (*dynamodb.UpdateKinesisStreamingDestinationOutput, error)
+	UpdateKinesisStreamingDestinationWithContext(aws.Context, *dynamodb.UpdateKinesisStreamingDestinationInput, ...request.Option) (*dynamodb.UpdateKinesisStreamingDestinationOutput, error)
+	UpdateKinesisStreamingDestinationRequest(*dynamodb.UpdateKinesisStreamingDestinationInput) (*request.Request, *dynamodb.UpdateKinesisStreamingDestinationOutput)
 
 	UpdateTable(*dynamodb.UpdateTableInput) (*dynamodb.UpdateTableOutput, error)
 	UpdateTableWithContext(aws.Context, *dynamodb.UpdateTableInput, ...request.Option) (*dynamodb.UpdateTableOutput, error)

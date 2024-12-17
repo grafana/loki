@@ -120,7 +120,7 @@ func UniqueItems(path, in string, data interface{}) *errors.Validation {
 
 // MinLength validates a string for minimum length
 func MinLength(path, in, data string, minLength int64) *errors.Validation {
-	strLen := int64(utf8.RuneCount([]byte(data)))
+	strLen := int64(utf8.RuneCountInString(data))
 	if strLen < minLength {
 		return errors.TooShort(path, in, minLength, data)
 	}
@@ -129,7 +129,7 @@ func MinLength(path, in, data string, minLength int64) *errors.Validation {
 
 // MaxLength validates a string for maximum length
 func MaxLength(path, in, data string, maxLength int64) *errors.Validation {
-	strLen := int64(utf8.RuneCount([]byte(data)))
+	strLen := int64(utf8.RuneCountInString(data))
 	if strLen > maxLength {
 		return errors.TooLong(path, in, maxLength, data)
 	}
@@ -248,7 +248,7 @@ func MinimumUint(path, in string, data, min uint64, exclusive bool) *errors.Vali
 // MultipleOf validates if the provided number is a multiple of the factor
 func MultipleOf(path, in string, data, factor float64) *errors.Validation {
 	// multipleOf factor must be positive
-	if factor < 0 {
+	if factor <= 0 {
 		return errors.MultipleOfMustBePositive(path, in, factor)
 	}
 	var mult float64
@@ -266,7 +266,7 @@ func MultipleOf(path, in string, data, factor float64) *errors.Validation {
 // MultipleOfInt validates if the provided integer is a multiple of the factor
 func MultipleOfInt(path, in string, data int64, factor int64) *errors.Validation {
 	// multipleOf factor must be positive
-	if factor < 0 {
+	if factor <= 0 {
 		return errors.MultipleOfMustBePositive(path, in, factor)
 	}
 	mult := data / factor
@@ -278,6 +278,10 @@ func MultipleOfInt(path, in string, data int64, factor int64) *errors.Validation
 
 // MultipleOfUint validates if the provided unsigned integer is a multiple of the factor
 func MultipleOfUint(path, in string, data, factor uint64) *errors.Validation {
+	// multipleOf factor must be positive
+	if factor == 0 {
+		return errors.MultipleOfMustBePositive(path, in, factor)
+	}
 	mult := data / factor
 	if mult*factor != data {
 		return errors.NotMultipleOf(path, in, factor, data)
@@ -311,7 +315,7 @@ func FormatOf(path, in, format, data string, registry strfmt.Registry) *errors.V
 // TODO: Normally, a JSON MAX_SAFE_INTEGER check would ensure conversion remains loss-free
 func MaximumNativeType(path, in string, val interface{}, max float64, exclusive bool) *errors.Validation {
 	kind := reflect.ValueOf(val).Type().Kind()
-	switch kind {
+	switch kind { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		value := valueHelp.asInt64(val)
 		return MaximumInt(path, in, value, int64(max), exclusive)
@@ -341,7 +345,7 @@ func MaximumNativeType(path, in string, val interface{}, max float64, exclusive 
 // TODO: Normally, a JSON MAX_SAFE_INTEGER check would ensure conversion remains loss-free
 func MinimumNativeType(path, in string, val interface{}, min float64, exclusive bool) *errors.Validation {
 	kind := reflect.ValueOf(val).Type().Kind()
-	switch kind {
+	switch kind { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		value := valueHelp.asInt64(val)
 		return MinimumInt(path, in, value, int64(min), exclusive)
@@ -371,7 +375,7 @@ func MinimumNativeType(path, in string, val interface{}, min float64, exclusive 
 // TODO: Normally, a JSON MAX_SAFE_INTEGER check would ensure conversion remains loss-free
 func MultipleOfNativeType(path, in string, val interface{}, multipleOf float64) *errors.Validation {
 	kind := reflect.ValueOf(val).Type().Kind()
-	switch kind {
+	switch kind { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		value := valueHelp.asInt64(val)
 		return MultipleOfInt(path, in, value, int64(multipleOf))
@@ -395,7 +399,7 @@ func IsValueValidAgainstRange(val interface{}, typeName, format, prefix, path st
 
 	// What is the string representation of val
 	var stringRep string
-	switch kind {
+	switch kind { //nolint:exhaustive
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		stringRep = swag.FormatUint64(valueHelp.asUint64(val))
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:

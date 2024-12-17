@@ -30,7 +30,12 @@ func TestQueryTags(t *testing.T) {
 		{
 			desc: "remove-invalid-chars",
 			in:   `Source=log+volhi\\st,Statate=be$ta`,
-			exp:  `Source=logvolhist,Statate=beta`,
+			exp:  `Source=log_volhi_st,Statate=be_ta`,
+		},
+		{
+			desc: "test invalid char set",
+			in:   `Source=abc.def@geh.com_test-test`,
+			exp:  `Source=abc.def@geh.com_test-test`,
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -39,7 +44,7 @@ func TestQueryTags(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			checked := false
-			mware := ExtractQueryTagsMiddleware().Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			mware := ExtractQueryTagsMiddleware().Wrap(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
 				require.Equal(t, tc.exp, req.Context().Value(QueryTagsHTTPHeader).(string))
 				checked = true
 			}))
@@ -80,7 +85,7 @@ func TestQueryMetrics(t *testing.T) {
 
 			w := httptest.NewRecorder()
 			checked := false
-			mware := ExtractQueryMetricsMiddleware().Wrap(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			mware := ExtractQueryMetricsMiddleware().Wrap(http.HandlerFunc(func(_ http.ResponseWriter, req *http.Request) {
 				require.Equal(t, tc.exp, req.Context().Value(QueryQueueTimeHTTPHeader))
 				checked = true
 			}))

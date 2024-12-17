@@ -1,14 +1,28 @@
+// Copyright 2022 Google LLC.
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package util provides helper functions for the client.
 package util
 
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const configFileName = "certificate_config.json"
@@ -23,14 +37,21 @@ type Libs struct {
 	ECP string `json:"ecp"`
 }
 
+// ErrConfigUnavailable is a sentinel error that indicates ECP config is unavailable,
+// possibly due to entire config missing or missing binary path.
+var ErrConfigUnavailable = errors.New("Config is unavailable")
+
 // LoadSignerBinaryPath retrieves the path of the signer binary from the config file.
 func LoadSignerBinaryPath(configFilePath string) (path string, err error) {
 	jsonFile, err := os.Open(configFilePath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", ErrConfigUnavailable
+		}
 		return "", err
 	}
 
-	byteValue, err := ioutil.ReadAll(jsonFile)
+	byteValue, err := io.ReadAll(jsonFile)
 	if err != nil {
 		return "", err
 	}
@@ -41,8 +62,11 @@ func LoadSignerBinaryPath(configFilePath string) (path string, err error) {
 	}
 	signerBinaryPath := config.Libs.ECP
 	if signerBinaryPath == "" {
-		return "", errors.New("signer binary path is missing")
+		return "", ErrConfigUnavailable
 	}
+
+	signerBinaryPath = strings.ReplaceAll(signerBinaryPath, "~", guessHomeDir())
+	signerBinaryPath = strings.ReplaceAll(signerBinaryPath, "$HOME", guessHomeDir())
 	return signerBinaryPath, nil
 }
 
@@ -68,4 +92,9 @@ func getDefaultConfigFileDirectory() (directory string) {
 // GetDefaultConfigFilePath returns the default path of the enterprise certificate config file created by gCloud.
 func GetDefaultConfigFilePath() (path string) {
 	return filepath.Join(getDefaultConfigFileDirectory(), configFileName)
+}
+
+// GetConfigFilePathFromEnv returns the path associated with environment variable GOOGLE_API_CERTIFICATE_CONFIG
+func GetConfigFilePathFromEnv() (path string) {
+	return os.Getenv("GOOGLE_API_CERTIFICATE_CONFIG")
 }

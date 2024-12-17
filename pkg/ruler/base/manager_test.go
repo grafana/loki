@@ -13,14 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/util/test"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/test"
 )
 
 func TestSyncRuleGroups(t *testing.T) {
 	dir := t.TempDir()
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger(), ruleLimits{})
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger(), ruleLimits{}, constants.Loki)
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -32,6 +33,7 @@ func TestSyncRuleGroups(t *testing.T) {
 				Namespace: "ns",
 				Interval:  1 * time.Minute,
 				User:      user,
+				Limit:     10,
 			},
 		},
 	}
@@ -118,7 +120,7 @@ func (m *mockRulesManager) Stop() {
 	close(m.done)
 }
 
-func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, ruleGroupPostProcessFunc promRules.RuleGroupPostProcessFunc) error {
+func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, _ promRules.GroupEvalIterationFunc) error {
 	return nil
 }
 

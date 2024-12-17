@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -16,9 +17,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type fakePusher struct {
@@ -27,79 +27,48 @@ type fakePusher struct {
 	err      error
 }
 
-func (p *fakePusher) Push(ctx context.Context, r *logproto.WriteRequest) (*logproto.WriteResponse, error) {
+func (p *fakePusher) Push(_ context.Context, r *logproto.WriteRequest) (*logproto.WriteResponse, error) {
 	p.request = r
 	return p.response, p.err
 }
 
 func TestPusherAppendable(t *testing.T) {
 	pusher := &fakePusher{}
-	pa := NewPusherAppendable(pusher, "user-1", nil, prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounter(prometheus.CounterOpts{}))
+	pa := NewPusherAppendable(pusher, "user-1", prometheus.NewCounter(prometheus.CounterOpts{}), prometheus.NewCounter(prometheus.CounterOpts{}))
 
 	for _, tc := range []struct {
 		name       string
 		series     string
-		evalDelay  time.Duration
 		value      float64
 		expectedTS int64
 	}{
 		{
-			name:       "tenant without delay, normal value",
+			name:       "tenant, normal value",
 			series:     "foo_bar",
 			value:      1.234,
 			expectedTS: 120_000,
 		},
 		{
-			name:       "tenant without delay, stale nan value",
+			name:       "tenant, stale nan value",
 			series:     "foo_bar",
 			value:      math.Float64frombits(value.StaleNaN),
 			expectedTS: 120_000,
 		},
 		{
-			name:       "tenant with delay, normal value",
-			series:     "foo_bar",
-			value:      1.234,
-			expectedTS: 120_000,
-			evalDelay:  time.Minute,
-		},
-		{
-			name:       "tenant with delay, stale nan value",
-			value:      math.Float64frombits(value.StaleNaN),
-			expectedTS: 60_000,
-			evalDelay:  time.Minute,
-		},
-		{
-			name:       "ALERTS without delay, normal value",
+			name:       "ALERTS, normal value",
 			series:     `ALERTS{alertname="boop"}`,
 			value:      1.234,
 			expectedTS: 120_000,
 		},
 		{
-			name:       "ALERTS without delay, stale nan value",
+			name:       "ALERTS, stale nan value",
 			series:     `ALERTS{alertname="boop"}`,
 			value:      math.Float64frombits(value.StaleNaN),
 			expectedTS: 120_000,
-		},
-		{
-			name:       "ALERTS with delay, normal value",
-			series:     `ALERTS{alertname="boop"}`,
-			value:      1.234,
-			expectedTS: 60_000,
-			evalDelay:  time.Minute,
-		},
-		{
-			name:       "ALERTS with delay, stale nan value",
-			series:     `ALERTS_FOR_STATE{alertname="boop"}`,
-			value:      math.Float64frombits(value.StaleNaN),
-			expectedTS: 60_000,
-			evalDelay:  time.Minute,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
-			pa.rulesLimits = &ruleLimits{
-				evalDelay: tc.evalDelay,
-			}
 
 			lbls, err := parser.ParseMetric(tc.series)
 			require.NoError(t, err)
@@ -154,7 +123,7 @@ func TestPusherErrors(t *testing.T) {
 			writes := prometheus.NewCounter(prometheus.CounterOpts{})
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})
 
-			pa := NewPusherAppendable(pusher, "user-1", ruleLimits{evalDelay: 10 * time.Second}, writes, failures)
+			pa := NewPusherAppendable(pusher, "user-1", writes, failures)
 
 			lbls, err := parser.ParseMetric("foo_bar")
 			require.NoError(t, err)
@@ -228,7 +197,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 			queries := prometheus.NewCounter(prometheus.CounterOpts{})
 			failures := prometheus.NewCounter(prometheus.CounterOpts{})
 
-			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+			mockFunc := func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 				return promql.Vector{}, WrapQueryableErrors(tc.returnedError)
 			}
 			qf := MetricsQueryFunc(mockFunc, queries, failures)
@@ -245,7 +214,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 	queryTime := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"user"})
 
-	mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+	mockFunc := func(_ context.Context, _ string, _ time.Time) (promql.Vector, error) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}

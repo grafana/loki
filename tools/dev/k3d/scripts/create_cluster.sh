@@ -37,7 +37,7 @@ fi
 # The following two sections pre-emptively apply the CRDs we need to the cluster.
 
 # Apply CRDs needed for prometheus operator
-prometheus_crd_base_url="https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.52.0/example/prometheus-operator-crd"
+prometheus_crd_base_url="https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.67.1/example/prometheus-operator-crd"
 for file in monitoring.coreos.com_alertmanagerconfigs.yaml \
 	monitoring.coreos.com_alertmanagers.yaml \
 	monitoring.coreos.com_podmonitors.yaml \
@@ -53,11 +53,8 @@ for file in monitoring.coreos.com_alertmanagerconfigs.yaml \
 done
 
 # Apply CRDs needed for grafana agent
-agent_crd_base_url="https://raw.githubusercontent.com/grafana/agent/main/production/operator/crds"
-for file in monitoring.coreos.com_podmonitors.yaml \
-	monitoring.coreos.com_probes.yaml \
-	monitoring.coreos.com_servicemonitors.yaml \
-	monitoring.grafana.com_grafanaagents.yaml \
+agent_crd_base_url="https://raw.githubusercontent.com/grafana/agent/7dbb39c70bbb67be40e528cb71a3541b59dbe93d/production/operator/crds"
+for file in monitoring.grafana.com_grafanaagents.yaml \
 	monitoring.grafana.com_integrations.yaml \
 	monitoring.grafana.com_logsinstances.yaml \
 	monitoring.grafana.com_metricsinstances.yaml \

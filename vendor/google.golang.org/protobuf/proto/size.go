@@ -34,6 +34,7 @@ func (o MarshalOptions) size(m protoreflect.Message) (size int) {
 	if methods != nil && methods.Size != nil {
 		out := methods.Size(protoiface.SizeInput{
 			Message: m,
+			Flags:   o.flags(),
 		})
 		return out.Size
 	}
@@ -42,6 +43,7 @@ func (o MarshalOptions) size(m protoreflect.Message) (size int) {
 		// This case is mainly used for legacy types with a Marshal method.
 		out, _ := methods.Marshal(protoiface.MarshalInput{
 			Message: m,
+			Flags:   o.flags(),
 		})
 		return len(out.Buf)
 	}
@@ -73,23 +75,27 @@ func (o MarshalOptions) sizeField(fd protoreflect.FieldDescriptor, value protore
 }
 
 func (o MarshalOptions) sizeList(num protowire.Number, fd protoreflect.FieldDescriptor, list protoreflect.List) (size int) {
+	sizeTag := protowire.SizeTag(num)
+
 	if fd.IsPacked() && list.Len() > 0 {
 		content := 0
 		for i, llen := 0, list.Len(); i < llen; i++ {
 			content += o.sizeSingular(num, fd.Kind(), list.Get(i))
 		}
-		return protowire.SizeTag(num) + protowire.SizeBytes(content)
+		return sizeTag + protowire.SizeBytes(content)
 	}
 
 	for i, llen := 0, list.Len(); i < llen; i++ {
-		size += protowire.SizeTag(num) + o.sizeSingular(num, fd.Kind(), list.Get(i))
+		size += sizeTag + o.sizeSingular(num, fd.Kind(), list.Get(i))
 	}
 	return size
 }
 
 func (o MarshalOptions) sizeMap(num protowire.Number, fd protoreflect.FieldDescriptor, mapv protoreflect.Map) (size int) {
+	sizeTag := protowire.SizeTag(num)
+
 	mapv.Range(func(key protoreflect.MapKey, value protoreflect.Value) bool {
-		size += protowire.SizeTag(num)
+		size += sizeTag
 		size += protowire.SizeBytes(o.sizeField(fd.MapKey(), key.Value()) + o.sizeField(fd.MapValue(), value))
 		return true
 	})

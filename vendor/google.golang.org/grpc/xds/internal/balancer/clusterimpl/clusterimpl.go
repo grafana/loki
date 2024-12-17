@@ -24,6 +24,7 @@
 package clusterimpl
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -32,16 +33,17 @@ import (
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal"
-	"google.golang.org/grpc/internal/buffer"
+	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/internal/xds"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 	xdsinternal "google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/balancer/loadstore"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 	"google.golang.org/grpc/xds/internal/xdsclient/load"
 )
 
@@ -51,6 +53,11 @@ const (
 	defaultRequestCountMax = 1024
 )
 
+var (
+	connectedAddress  = internal.ConnectedAddress.(func(balancer.SubConnState) resolver.Address)
+	errBalancerClosed = fmt.Errorf("%s LB policy is closed", Name)
+)
+
 func init() {
 	balancer.Register(bb{})
 }
@@ -58,18 +65,17 @@ func init() {
 type bb struct{}
 
 func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Balancer {
+	ctx, cancel := context.WithCancel(context.Background())
 	b := &clusterImplBalancer{
-		ClientConn:      cc,
-		bOpts:           bOpts,
-		closed:          grpcsync.NewEvent(),
-		done:            grpcsync.NewEvent(),
-		loadWrapper:     loadstore.NewWrapper(),
-		scWrappers:      make(map[balancer.SubConn]*scWrapper),
-		pickerUpdateCh:  buffer.NewUnbounded(),
-		requestCountMax: defaultRequestCountMax,
+		ClientConn:       cc,
+		bOpts:            bOpts,
+		loadWrapper:      loadstore.NewWrapper(),
+		requestCountMax:  defaultRequestCountMax,
+		serializer:       grpcsync.NewCallbackSerializer(ctx),
+		serializerCancel: cancel,
 	}
 	b.logger = prefixLogger(b)
-	go b.run()
+	b.child = gracefulswitch.NewBalancer(b, bOpts)
 	b.logger.Infof("Created")
 	return b
 }
@@ -85,24 +91,12 @@ func (bb) ParseConfig(c json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 type clusterImplBalancer struct {
 	balancer.ClientConn
 
-	// mu guarantees mutual exclusion between Close() and handling of picker
-	// update to the parent ClientConn in run(). It's to make sure that the
-	// run() goroutine doesn't send picker update to parent after the balancer
-	// is closed.
-	//
-	// It's only used by the run() goroutine, but not the other exported
-	// functions. Because the exported functions are guaranteed to be
-	// synchronized with Close().
-	mu     sync.Mutex
-	closed *grpcsync.Event
-	done   *grpcsync.Event
-
 	bOpts     balancer.BuildOptions
 	logger    *grpclog.PrefixLogger
 	xdsClient xdsclient.XDSClient
 
 	config           *LBConfig
-	childLB          balancer.Balancer
+	child            *gracefulswitch.Balancer
 	cancelLoadReport func()
 	edsServiceName   string
 	lrsServer        *bootstrap.ServerConfig
@@ -111,22 +105,11 @@ type clusterImplBalancer struct {
 	clusterNameMu sync.Mutex
 	clusterName   string
 
-	scWrappersMu sync.Mutex
-	// The SubConns passed to the child policy are wrapped in a wrapper, to keep
-	// locality ID. But when the parent ClientConn sends updates, it's going to
-	// give the original SubConn, not the wrapper. But the child policies only
-	// know about the wrapper, so when forwarding SubConn updates, they must be
-	// sent for the wrappers.
-	//
-	// This keeps a map from original SubConn to wrapper, so that when
-	// forwarding the SubConn state update, the child policy will get the
-	// wrappers.
-	scWrappers map[balancer.SubConn]*scWrapper
+	serializer       *grpcsync.CallbackSerializer
+	serializerCancel context.CancelFunc
 
 	// childState/drops/requestCounter keeps the state used by the most recently
-	// generated picker. All fields can only be accessed in run(). And run() is
-	// the only goroutine that sends picker to the parent ClientConn. All
-	// requests to update picker need to be sent to pickerUpdateCh.
+	// generated picker.
 	childState            balancer.State
 	dropCategories        []DropConfig // The categories for drops.
 	drops                 []*dropper
@@ -134,7 +117,7 @@ type clusterImplBalancer struct {
 	requestCounterService string // The service name for the request counter.
 	requestCounter        *xdsclient.ClusterRequestsCounter
 	requestCountMax       uint32
-	pickerUpdateCh        *buffer.Unbounded
+	telemetryLabels       map[string]string
 }
 
 // updateLoadStore checks the config for load store, and decides whether it
@@ -186,7 +169,7 @@ func (b *clusterImplBalancer) updateLoadStore(newConfig *LBConfig) error {
 	} else {
 		// Old is not nil, new is not nil, compare string values, if
 		// different, stop old and start new.
-		if *b.lrsServer != *newConfig.LoadReportingServer {
+		if !b.lrsServer.Equal(newConfig.LoadReportingServer) {
 			b.lrsServer = newConfig.LoadReportingServer
 			stopOldLoadReport = true
 			startNewLoadReport = true
@@ -215,13 +198,10 @@ func (b *clusterImplBalancer) updateLoadStore(newConfig *LBConfig) error {
 	return nil
 }
 
-func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
-	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received ClientConnState {%+v} after clusterImplBalancer was closed", s)
-		return nil
+func (b *clusterImplBalancer) updateClientConnState(s balancer.ClientConnState) error {
+	if b.logger.V(2) {
+		b.logger.Infof("Received configuration: %s", pretty.ToJSON(s.BalancerConfig))
 	}
-
-	b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
@@ -232,7 +212,7 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 	// it.
 	bb := balancer.Get(newConfig.ChildPolicy.Name)
 	if bb == nil {
-		return fmt.Errorf("balancer %q not registered", newConfig.ChildPolicy.Name)
+		return fmt.Errorf("child policy %q not registered", newConfig.ChildPolicy.Name)
 	}
 
 	if b.xdsClient == nil {
@@ -251,53 +231,56 @@ func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) 
 		return err
 	}
 
-	// If child policy is a different type, recreate the sub-balancer.
-	if b.config == nil || b.config.ChildPolicy.Name != newConfig.ChildPolicy.Name {
-		if b.childLB != nil {
-			b.childLB.Close()
-		}
-		b.childLB = bb.Build(b, b.bOpts)
+	// Build config for the gracefulswitch balancer. It is safe to ignore JSON
+	// marshaling errors here, since the config was already validated as part of
+	// ParseConfig().
+	cfg := []map[string]any{{newConfig.ChildPolicy.Name: newConfig.ChildPolicy.Config}}
+	cfgJSON, _ := json.Marshal(cfg)
+	parsedCfg, err := gracefulswitch.ParseConfig(cfgJSON)
+	if err != nil {
+		return err
 	}
+
 	b.config = newConfig
 
-	if b.childLB == nil {
-		// This is not an expected situation, and should be super rare in
-		// practice.
-		//
-		// When this happens, we already applied all the other configurations
-		// (drop/circuit breaking), but there's no child policy. This balancer
-		// will be stuck, and we report the error to the parent.
-		return fmt.Errorf("child policy is nil, this means balancer %q's Build() returned nil", newConfig.ChildPolicy.Name)
+	b.telemetryLabels = newConfig.TelemetryLabels
+	dc := b.handleDropAndRequestCount(newConfig)
+	if dc != nil && b.childState.Picker != nil {
+		b.ClientConn.UpdateState(balancer.State{
+			ConnectivityState: b.childState.ConnectivityState,
+			Picker:            b.newPicker(dc),
+		})
 	}
 
-	// Notify run() of this new config, in case drop and request counter need
-	// update (which means a new picker needs to be generated).
-	b.pickerUpdateCh.Put(newConfig)
-
 	// Addresses and sub-balancer config are sent to sub-balancer.
-	return b.childLB.UpdateClientConnState(balancer.ClientConnState{
+	return b.child.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState:  s.ResolverState,
-		BalancerConfig: b.config.ChildPolicy.Config,
+		BalancerConfig: parsedCfg,
 	})
 }
 
-func (b *clusterImplBalancer) ResolverError(err error) {
-	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received resolver error {%+v} after clusterImplBalancer was closed", err)
-		return
+func (b *clusterImplBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
+	// Handle the update in a blocking fashion.
+	errCh := make(chan error, 1)
+	callback := func(context.Context) {
+		errCh <- b.updateClientConnState(s)
 	}
-
-	if b.childLB != nil {
-		b.childLB.ResolverError(err)
+	onFailure := func() {
+		// An attempt to schedule callback fails only when an update is received
+		// after Close().
+		errCh <- errBalancerClosed
 	}
+	b.serializer.ScheduleOr(callback, onFailure)
+	return <-errCh
 }
 
-func (b *clusterImplBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer.SubConnState) {
-	if b.closed.HasFired() {
-		b.logger.Warningf("xds: received subconn state change {%+v, %+v} after clusterImplBalancer was closed", sc, s)
-		return
-	}
+func (b *clusterImplBalancer) ResolverError(err error) {
+	b.serializer.TrySchedule(func(context.Context) {
+		b.child.ResolverError(err)
+	})
+}
 
+func (b *clusterImplBalancer) updateSubConnState(_ balancer.SubConn, s balancer.SubConnState, cb func(balancer.SubConnState)) {
 	// Trigger re-resolution when a SubConn turns transient failure. This is
 	// necessary for the LogicalDNS in cluster_resolver policy to re-resolve.
 	//
@@ -309,54 +292,50 @@ func (b *clusterImplBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer
 		b.ClientConn.ResolveNow(resolver.ResolveNowOptions{})
 	}
 
-	b.scWrappersMu.Lock()
-	if scw, ok := b.scWrappers[sc]; ok {
-		sc = scw
-		if s.ConnectivityState == connectivity.Shutdown {
-			// Remove this SubConn from the map on Shutdown.
-			delete(b.scWrappers, scw.SubConn)
-		}
+	if cb != nil {
+		cb(s)
 	}
-	b.scWrappersMu.Unlock()
-	if b.childLB != nil {
-		b.childLB.UpdateSubConnState(sc, s)
-	}
+}
+
+func (b *clusterImplBalancer) UpdateSubConnState(sc balancer.SubConn, s balancer.SubConnState) {
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, s)
 }
 
 func (b *clusterImplBalancer) Close() {
-	b.mu.Lock()
-	b.closed.Fire()
-	b.mu.Unlock()
-
-	if b.childLB != nil {
-		b.childLB.Close()
-		b.childLB = nil
+	b.serializer.TrySchedule(func(_ context.Context) {
+		b.child.Close()
 		b.childState = balancer.State{}
-	}
-	<-b.done.Done()
-	b.logger.Infof("Shutdown")
+
+		if b.cancelLoadReport != nil {
+			b.cancelLoadReport()
+			b.cancelLoadReport = nil
+		}
+		b.logger.Infof("Shutdown")
+	})
+	b.serializerCancel()
+	<-b.serializer.Done()
 }
 
 func (b *clusterImplBalancer) ExitIdle() {
-	if b.childLB == nil {
-		return
-	}
-	if ei, ok := b.childLB.(balancer.ExitIdler); ok {
-		ei.ExitIdle()
-		return
-	}
-	// Fallback for children that don't support ExitIdle -- connect to all
-	// SubConns.
-	for _, sc := range b.scWrappers {
-		sc.Connect()
-	}
+	b.serializer.TrySchedule(func(context.Context) {
+		b.child.ExitIdle()
+	})
 }
 
 // Override methods to accept updates from the child LB.
 
 func (b *clusterImplBalancer) UpdateState(state balancer.State) {
-	// Instead of updating parent ClientConn inline, send state to run().
-	b.pickerUpdateCh.Put(state)
+	b.serializer.TrySchedule(func(context.Context) {
+		b.childState = state
+		b.ClientConn.UpdateState(balancer.State{
+			ConnectivityState: b.childState.ConnectivityState,
+			Picker: b.newPicker(&dropConfigs{
+				drops:           b.drops,
+				requestCounter:  b.requestCounter,
+				requestCountMax: b.requestCountMax,
+			}),
+		})
+	})
 }
 
 func (b *clusterImplBalancer) setClusterName(n string) {
@@ -401,38 +380,41 @@ func (scw *scWrapper) localityID() xdsinternal.LocalityID {
 func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
 	clusterName := b.getClusterName()
 	newAddrs := make([]resolver.Address, len(addrs))
-	var lID xdsinternal.LocalityID
 	for i, addr := range addrs {
-		newAddrs[i] = internal.SetXDSHandshakeClusterName(addr, clusterName)
-		lID = xdsinternal.GetLocalityID(newAddrs[i])
+		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
+	}
+	var sc balancer.SubConn
+	scw := &scWrapper{}
+	oldListener := opts.StateListener
+	opts.StateListener = func(state balancer.SubConnState) {
+		b.serializer.TrySchedule(func(context.Context) {
+			b.updateSubConnState(sc, state, oldListener)
+			if state.ConnectivityState != connectivity.Ready {
+				return
+			}
+			// Read connected address and call updateLocalityID() based on the connected
+			// address's locality. https://github.com/grpc/grpc-go/issues/7339
+			addr := connectedAddress(state)
+			lID := xdsinternal.GetLocalityID(addr)
+			if lID.Empty() {
+				if b.logger.V(2) {
+					b.logger.Infof("Locality ID for %s unexpectedly empty", addr)
+				}
+				return
+			}
+			scw.updateLocalityID(lID)
+		})
 	}
 	sc, err := b.ClientConn.NewSubConn(newAddrs, opts)
 	if err != nil {
 		return nil, err
 	}
-	// Wrap this SubConn in a wrapper, and add it to the map.
-	b.scWrappersMu.Lock()
-	ret := &scWrapper{SubConn: sc}
-	ret.updateLocalityID(lID)
-	b.scWrappers[sc] = ret
-	b.scWrappersMu.Unlock()
-	return ret, nil
+	scw.SubConn = sc
+	return scw, nil
 }
 
 func (b *clusterImplBalancer) RemoveSubConn(sc balancer.SubConn) {
-	scw, ok := sc.(*scWrapper)
-	if !ok {
-		b.ClientConn.RemoveSubConn(sc)
-		return
-	}
-	// Remove the original SubConn from the parent ClientConn.
-	//
-	// Note that we don't remove this SubConn from the scWrappers map. We will
-	// need it to forward the final SubConn state Shutdown to the child policy.
-	//
-	// This entry is kept in the map until it's state is changes to Shutdown,
-	// and will be deleted in UpdateSubConnState().
-	b.ClientConn.RemoveSubConn(scw.SubConn)
+	b.logger.Errorf("RemoveSubConn(%v) called unexpectedly", sc)
 }
 
 func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
@@ -440,7 +422,7 @@ func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resol
 	newAddrs := make([]resolver.Address, len(addrs))
 	var lID xdsinternal.LocalityID
 	for i, addr := range addrs {
-		newAddrs[i] = internal.SetXDSHandshakeClusterName(addr, clusterName)
+		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
 		lID = xdsinternal.GetLocalityID(newAddrs[i])
 	}
 	if scw, ok := sc.(*scWrapper); ok {
@@ -499,47 +481,5 @@ func (b *clusterImplBalancer) handleDropAndRequestCount(newConfig *LBConfig) *dr
 		drops:           b.drops,
 		requestCounter:  b.requestCounter,
 		requestCountMax: b.requestCountMax,
-	}
-}
-
-func (b *clusterImplBalancer) run() {
-	defer b.done.Fire()
-	for {
-		select {
-		case update := <-b.pickerUpdateCh.Get():
-			b.pickerUpdateCh.Load()
-			b.mu.Lock()
-			if b.closed.HasFired() {
-				b.mu.Unlock()
-				return
-			}
-			switch u := update.(type) {
-			case balancer.State:
-				b.childState = u
-				b.ClientConn.UpdateState(balancer.State{
-					ConnectivityState: b.childState.ConnectivityState,
-					Picker: newPicker(b.childState, &dropConfigs{
-						drops:           b.drops,
-						requestCounter:  b.requestCounter,
-						requestCountMax: b.requestCountMax,
-					}, b.loadWrapper),
-				})
-			case *LBConfig:
-				dc := b.handleDropAndRequestCount(u)
-				if dc != nil && b.childState.Picker != nil {
-					b.ClientConn.UpdateState(balancer.State{
-						ConnectivityState: b.childState.ConnectivityState,
-						Picker:            newPicker(b.childState, dc, b.loadWrapper),
-					})
-				}
-			}
-			b.mu.Unlock()
-		case <-b.closed.Done():
-			if b.cancelLoadReport != nil {
-				b.cancelLoadReport()
-				b.cancelLoadReport = nil
-			}
-			return
-		}
 	}
 }

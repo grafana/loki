@@ -8,9 +8,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 func newEntry(ex map[string]interface{}, lbs model.LabelSet, line string, ts time.Time) Entry {
@@ -145,8 +145,6 @@ func TestConvertDateLayout(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -224,8 +222,6 @@ func TestParseTimestampWithoutYear(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
