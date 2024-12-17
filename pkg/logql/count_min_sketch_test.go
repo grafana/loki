@@ -2,6 +2,7 @@ package logql
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -89,7 +90,8 @@ func TestCountMinSketchSerialization(t *testing.T) {
 }
 
 func Benchmark_HeapCountMinSketchVectorAdd(b *testing.B) {
-	v := NewHeapCountMinSketchVector(0, 10_000, 10_000)
+	maxLabels := 10_000
+	v := NewHeapCountMinSketchVector(0, maxLabels, maxLabels)
 	eventsCount := 100_000
 	uniqueEventsCount := 20_000
 	events := make([]labels.Labels, eventsCount)
@@ -102,7 +104,10 @@ func Benchmark_HeapCountMinSketchVectorAdd(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		for _, event := range events {
-			v.Add(event, 42.0)
+			v.Add(event, rand.Float64())
+			if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels {
+				b.Fail()
+			}
 		}
 	}
 }
