@@ -14,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 var encoderPool = sync.Pool{
@@ -42,14 +43,18 @@ var encoderPool = sync.Pool{
 // - maxSize: The maximum size of each Kafka record
 func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize int) ([]*kgo.Record, error) {
 	reqSize := stream.Size()
-
+	recUsage, err := EncodeUsage(partitionID, tenantID, stream)
+	if err != nil {
+		return nil, err
+	}
 	// Fast path for small requests
 	if reqSize <= maxSize {
 		rec, err := marshalWriteRequestToRecord(partitionID, tenantID, stream)
 		if err != nil {
 			return nil, err
 		}
-		return []*kgo.Record{rec}, nil
+
+		return append([]*kgo.Record{rec}, recUsage...), nil
 	}
 
 	var records []*kgo.Record
@@ -105,8 +110,34 @@ func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize 
 	if len(records) == 0 {
 		return nil, errors.New("no valid records created")
 	}
-
+	records = append(records, recUsage...)
 	return records, nil
+}
+
+func EncodeUsage(partitionID int32, tenantID string, stream logproto.Stream) ([]*kgo.Record, error) {
+	var logSize, structuredMetadataSize uint64
+	for _, entry := range stream.Entries {
+		logSize += uint64(len(entry.Line))
+		structuredMetadataSize += uint64(util.StructuredMetadataSize(entry.StructuredMetadata))
+	}
+
+	usage := logproto.StreamUsage{
+		Labels:                 stream.Labels,
+		Hash:                   stream.Hash,
+		LineSize:               logSize,
+		StructuredMetadataSize: structuredMetadataSize,
+	}
+	usageBytes, err := usage.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal usage: %w", err)
+	}
+
+	return []*kgo.Record{{
+		Key:       []byte(tenantID),
+		Value:     usageBytes,
+		Partition: partitionID,
+		Topic:     "ingest.usage",
+	}}, nil
 }
 
 func marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logproto.Stream) (*kgo.Record, error) {

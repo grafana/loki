@@ -35,6 +35,7 @@ dist
 .idea
 pkg/loki/wal
 tools/lambda-promtail/main
+tools/dev/kafka/data/
 
 # Workspaces
 *.work
