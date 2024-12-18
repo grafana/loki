@@ -21,7 +21,7 @@ type Config struct {
 	TailProxyURL string           `yaml:"tail_proxy_url"`
 	TLS          tls.ClientConfig `yaml:"tail_tls_config"`
 
-	SupportParquetEncoding bool `yaml:"support_parquet_encoding" doc:"description="Support 'application/vnd.apache.parquet' content type in HTTP responses."`
+	SupportParquetEncoding bool `yaml:"support_parquet_encoding" doc:"description=Support 'application/vnd.apache.parquet' content type in HTTP responses."`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

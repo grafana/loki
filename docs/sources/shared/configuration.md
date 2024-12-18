@@ -2568,6 +2568,7 @@ The `frontend` block configures the Loki query-frontend.
 # The CLI flags prefix for this block configuration is: frontend.tail-tls-config
 [tail_tls_config: <tls_config>]
 
+# Support 'application/vnd.apache.parquet' content type in HTTP responses.
 [support_parquet_encoding: <boolean>]
 ```
 
