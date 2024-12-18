@@ -232,9 +232,6 @@ type Config struct {
 	// raft's configuration and index values.
 	NoSnapshotRestoreOnStart bool
 
-	// PreVoteDisabled deactivate the pre-vote feature when set to true
-	PreVoteDisabled bool
-
 	// skipStartup allows NewRaft() to bypass all background work goroutines
 	skipStartup bool
 }

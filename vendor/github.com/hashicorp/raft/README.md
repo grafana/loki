@@ -34,8 +34,7 @@ and `StableStore`.
 
 
 ## Community Contributed Examples 
-- [Raft gRPC Example](https://github.com/Jille/raft-grpc-example) - Utilizing the Raft repository with gRPC
-- [Raft-based KV-store Example](https://github.com/otoolep/hraftd) - Uses Hashicorp Raft to build a distributed key-value store
+[Raft gRPC Example](https://github.com/Jille/raft-grpc-example) - Utilizing the Raft repository with gRPC
 
 
 ## Tagged Releases

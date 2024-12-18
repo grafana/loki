@@ -134,7 +134,7 @@ type Raft struct {
 	// candidate because the leader tries to transfer leadership. This flag is
 	// used in RequestVoteRequest to express that a leadership transfer is going
 	// on.
-	candidateFromLeadershipTransfer atomic.Bool
+	candidateFromLeadershipTransfer bool
 
 	// Stores our local server ID, used to avoid sending RPCs to ourself
 	localID ServerID
@@ -213,10 +213,6 @@ type Raft struct {
 
 	// mainThreadSaturation measures the saturation of the main raft goroutine.
 	mainThreadSaturation *saturationMetric
-
-	// preVoteDisabled control if the pre-vote feature is activated,
-	// prevote feature is disabled if set to true.
-	preVoteDisabled bool
 }
 
 // BootstrapCluster initializes a server's storage with the given cluster
@@ -535,7 +531,6 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		applyCh = make(chan *logFuture, conf.MaxAppendEntries)
 	}
 
-	_, transportSupportPreVote := trans.(WithPreVote)
 	// Create Raft struct.
 	r := &Raft{
 		protocolVersion:       protocolVersion,
@@ -565,10 +560,6 @@ func NewRaft(conf *Config, fsm FSM, logs LogStore, stable StableStore, snaps Sna
 		leaderNotifyCh:        make(chan struct{}, 1),
 		followerNotifyCh:      make(chan struct{}, 1),
 		mainThreadSaturation:  newSaturationMetric([]string{"raft", "thread", "main", "saturation"}, 1*time.Second),
-		preVoteDisabled:       conf.PreVoteDisabled || !transportSupportPreVote,
-	}
-	if !transportSupportPreVote && !conf.PreVoteDisabled {
-		r.logger.Warn("pre-vote is disabled because it is not supported by the Transport")
 	}
 
 	r.conf.Store(*conf)
@@ -797,23 +788,12 @@ func (r *Raft) LeaderWithID() (ServerAddress, ServerID) {
 // An optional timeout can be provided to limit the amount of time we wait
 // for the command to be started. This must be run on the leader or it
 // will fail.
-//
-// If the node discovers it is no longer the leader while applying the command,
-// it will return ErrLeadershipLost. There is no way to guarantee whether the
-// write succeeded or failed in this case. For example, if the leader is
-// partitioned it can't know if a quorum of followers wrote the log to disk. If
-// at least one did, it may survive into the next leader's term.
-//
-// If a user snapshot is restored while the command is in-flight, an
-// ErrAbortedByRestore is returned. In this case the write effectively failed
-// since its effects will not be present in the FSM after the restore.
 func (r *Raft) Apply(cmd []byte, timeout time.Duration) ApplyFuture {
 	return r.ApplyLog(Log{Data: cmd}, timeout)
 }
 
 // ApplyLog performs Apply but takes in a Log directly. The only values
-// currently taken from the submitted Log are Data and Extensions. See
-// Apply for details on error cases.
+// currently taken from the submitted Log are Data and Extensions.
 func (r *Raft) ApplyLog(log Log, timeout time.Duration) ApplyFuture {
 	metrics.IncrCounter([]string{"raft", "apply"}, 1)
 
@@ -1212,13 +1192,6 @@ func (r *Raft) Stats() map[string]string {
 // either from the last log or from the last snapshot.
 func (r *Raft) LastIndex() uint64 {
 	return r.getLastIndex()
-}
-
-// CommitIndex returns the committed index.
-// This API maybe helpful for server to implement the read index optimization
-// as described in the Raft paper.
-func (r *Raft) CommitIndex() uint64 {
-	return r.getCommitIndex()
 }
 
 // AppliedIndex returns the last index applied to the FSM. This is generally

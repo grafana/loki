@@ -5,11 +5,10 @@ package raft
 
 import (
 	"errors"
+	"github.com/hashicorp/go-hclog"
 	"io"
 	"net"
 	"time"
-
-	"github.com/hashicorp/go-hclog"
 )
 
 var (

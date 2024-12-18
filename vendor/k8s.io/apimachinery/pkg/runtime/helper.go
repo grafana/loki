@@ -236,10 +236,14 @@ func (e WithVersionEncoder) Encode(obj Object, stream io.Writer) error {
 			gvk = preferredGVK
 		}
 	}
-	kind.SetGroupVersionKind(gvk)
-	err = e.Encoder.Encode(obj, stream)
-	kind.SetGroupVersionKind(oldGVK)
-	return err
+
+	// The gvk only needs to be set if not already as desired.
+	if gvk != oldGVK {
+		kind.SetGroupVersionKind(gvk)
+		defer kind.SetGroupVersionKind(oldGVK)
+	}
+
+	return e.Encoder.Encode(obj, stream)
 }
 
 // WithoutVersionDecoder clears the group version kind of a deserialized object.
@@ -279,4 +283,22 @@ func (e *encoderWithAllocator) Encode(obj Object, w io.Writer) error {
 // Identifier returns identifier of this encoder.
 func (e *encoderWithAllocator) Identifier() Identifier {
 	return e.encoder.Identifier()
+}
+
+type nondeterministicEncoderToEncoderAdapter struct {
+	NondeterministicEncoder
+}
+
+func (e nondeterministicEncoderToEncoderAdapter) Encode(obj Object, w io.Writer) error {
+	return e.EncodeNondeterministic(obj, w)
+}
+
+// UseNondeterministicEncoding returns an Encoder that encodes objects using the provided Encoder's
+// EncodeNondeterministic method if it implements NondeterministicEncoder, otherwise it returns the
+// provided Encoder as-is.
+func UseNondeterministicEncoding(encoder Encoder) Encoder {
+	if nondeterministic, ok := encoder.(NondeterministicEncoder); ok {
+		return nondeterministicEncoderToEncoderAdapter{nondeterministic}
+	}
+	return encoder
 }

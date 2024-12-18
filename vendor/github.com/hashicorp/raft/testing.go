@@ -15,13 +15,15 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-msgpack/v2/codec"
+	"github.com/hashicorp/go-msgpack/codec"
 )
 
-var userSnapshotErrorsOnNoData = true
+var (
+	userSnapshotErrorsOnNoData = true
+)
 
 // Return configurations optimized for in-memory
-func inmemConfig(t testing.TB) *Config {
+func inmemConfig(t *testing.T) *Config {
 	conf := DefaultConfig()
 	conf.HeartbeatTimeout = 50 * time.Millisecond
 	conf.ElectionTimeout = 50 * time.Millisecond
@@ -175,7 +177,7 @@ func (m *MockMonotonicLogStore) DeleteRange(min uint64, max uint64) error {
 // map them into calls to testing.T.Log, so that you only see
 // the logging for failed tests.
 type testLoggerAdapter struct {
-	tb     testing.TB
+	t      *testing.T
 	prefix string
 }
 
@@ -185,16 +187,16 @@ func (a *testLoggerAdapter) Write(d []byte) (int, error) {
 	}
 	if a.prefix != "" {
 		l := a.prefix + ": " + string(d)
-		a.tb.Log(l)
+		a.t.Log(l)
 		return len(l), nil
 	}
 
-	a.tb.Log(string(d))
+	a.t.Log(string(d))
 	return len(d), nil
 }
 
-func newTestLogger(tb testing.TB) hclog.Logger {
-	return newTestLoggerWithPrefix(tb, "")
+func newTestLogger(t *testing.T) hclog.Logger {
+	return newTestLoggerWithPrefix(t, "")
 }
 
 // newTestLoggerWithPrefix returns a Logger that can be used in tests. prefix
@@ -209,14 +211,14 @@ func newTestLogger(tb testing.TB) hclog.Logger {
 // causes a panic. This is common if you use it for a NetworkTransport for
 // example and then close the transport at the end of the test because an error
 // is logged after the test is complete.
-func newTestLoggerWithPrefix(tb testing.TB, prefix string) hclog.Logger {
+func newTestLoggerWithPrefix(t *testing.T, prefix string) hclog.Logger {
 	if testing.Verbose() {
-		return hclog.New(&hclog.LoggerOptions{Name: prefix, Level: hclog.Trace})
+		return hclog.New(&hclog.LoggerOptions{Name: prefix})
 	}
 
 	return hclog.New(&hclog.LoggerOptions{
 		Name:   prefix,
-		Output: &testLoggerAdapter{tb: tb, prefix: prefix},
+		Output: &testLoggerAdapter{t: t, prefix: prefix},
 	})
 }
 
@@ -431,9 +433,9 @@ func (c *cluster) GetInState(s RaftState) []*Raft {
 	// Wait until we have a stable instate slice. Each time we see an
 	// observation a state has changed, recheck it and if it has changed,
 	// restart the timer.
-	pollStartTime := time.Now()
+	var pollStartTime = time.Now()
 	for {
-		_, highestTerm := c.pollState(s)
+		inState, highestTerm := c.pollState(s)
 		inStateTime := time.Now()
 
 		// Sometimes this routine is called very early on before the
@@ -479,9 +481,8 @@ func (c *cluster) GetInState(s RaftState) []*Raft {
 				c.t.Fatalf("timer channel errored")
 			}
 
-			inState, highestTerm := c.pollState(s)
-			c.logger.Info(fmt.Sprintf("stable state for %s reached at %s (%d nodes), highestTerm is %d, %s from start of poll, %s from cluster start. Timeout at %s, %s after stability",
-				s, inStateTime, len(inState), highestTerm, inStateTime.Sub(pollStartTime), inStateTime.Sub(c.startTime), t, t.Sub(inStateTime)))
+			c.logger.Info(fmt.Sprintf("stable state for %s reached at %s (%d nodes), %s from start of poll, %s from cluster start. Timeout at %s, %s after stability",
+				s, inStateTime, len(inState), inStateTime.Sub(pollStartTime), inStateTime.Sub(c.startTime), t, t.Sub(inStateTime)))
 			return inState
 		}
 	}
@@ -501,12 +502,6 @@ func (c *cluster) Leader() *Raft {
 // state.
 func (c *cluster) Followers() []*Raft {
 	expFollowers := len(c.rafts) - 1
-	return c.WaitForFollowers(expFollowers)
-}
-
-// WaitForFollowers waits for the cluster to have a given number of followers and stay in a stable
-// state.
-func (c *cluster) WaitForFollowers(expFollowers int) []*Raft {
 	followers := c.GetInState(Follower)
 	if len(followers) != expFollowers {
 		c.t.Fatalf("timeout waiting for %d followers (followers are %v)", expFollowers, followers)

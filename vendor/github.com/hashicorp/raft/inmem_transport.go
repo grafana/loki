@@ -125,18 +125,6 @@ func (i *InmemTransport) RequestVote(id ServerID, target ServerAddress, args *Re
 	return nil
 }
 
-func (i *InmemTransport) RequestPreVote(id ServerID, target ServerAddress, args *RequestPreVoteRequest, resp *RequestPreVoteResponse) error {
-	rpcResp, err := i.makeRPC(target, args, nil, i.timeout)
-	if err != nil {
-		return err
-	}
-
-	// Copy the result back
-	out := rpcResp.Response.(*RequestPreVoteResponse)
-	*resp = *out
-	return nil
-}
-
 // InstallSnapshot implements the Transport interface.
 func (i *InmemTransport) InstallSnapshot(id ServerID, target ServerAddress, args *InstallSnapshotRequest, resp *InstallSnapshotResponse, data io.Reader) error {
 	rpcResp, err := i.makeRPC(target, args, data, 10*i.timeout)

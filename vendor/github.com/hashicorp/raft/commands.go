@@ -120,40 +120,6 @@ func (r *RequestVoteResponse) GetRPCHeader() RPCHeader {
 	return r.RPCHeader
 }
 
-// RequestPreVoteRequest is the command used by a candidate to ask a Raft peer
-// for a vote in an election.
-type RequestPreVoteRequest struct {
-	RPCHeader
-
-	// Provide the term and our id
-	Term uint64
-
-	// Used to ensure safety
-	LastLogIndex uint64
-	LastLogTerm  uint64
-}
-
-// GetRPCHeader - See WithRPCHeader.
-func (r *RequestPreVoteRequest) GetRPCHeader() RPCHeader {
-	return r.RPCHeader
-}
-
-// RequestPreVoteResponse is the response returned from a RequestPreVoteRequest.
-type RequestPreVoteResponse struct {
-	RPCHeader
-
-	// Newer term if leader is out of date.
-	Term uint64
-
-	// Is the vote granted.
-	Granted bool
-}
-
-// GetRPCHeader - See WithRPCHeader.
-func (r *RequestPreVoteResponse) GetRPCHeader() RPCHeader {
-	return r.RPCHeader
-}
-
 // InstallSnapshotRequest is the command sent to a Raft peer to bootstrap its
 // log (and state machine) from a snapshot on another peer.
 type InstallSnapshotRequest struct {

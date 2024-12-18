@@ -21,6 +21,7 @@ import (
 	"github.com/ncw/swift"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
 	"gopkg.in/yaml.v2"
@@ -217,14 +218,20 @@ func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool,
 	}, nil
 }
 
+func (c *Container) Provider() objstore.ObjProvider { return objstore.SWIFT }
+
 // Name returns the container name for swift.
 func (c *Container) Name() string {
 	return c.name
 }
 
+func (c *Container) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive}
+}
+
 // Iter calls f for each entry in the given directory. The argument to f is the full
 // object name including the prefix of the inspected directory.
-func (c *Container) Iter(_ context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (c *Container) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, string(DirDelim)) + string(DirDelim)
 	}
@@ -242,6 +249,7 @@ func (c *Container) Iter(_ context.Context, dir string, f func(string) error, op
 		if err != nil {
 			return objects, errors.Wrap(err, "list object names")
 		}
+
 		for _, object := range objects {
 			if object == SegmentsDir {
 				continue
@@ -252,6 +260,16 @@ func (c *Container) Iter(_ context.Context, dir string, f func(string) error, op
 		}
 		return objects, nil
 	})
+}
+
+func (c *Container) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(c.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
+	return c.Iter(ctx, dir, func(name string) error {
+		return f(objstore.IterObjectAttributes{Name: name})
+	}, options...)
 }
 
 func (c *Container) get(name string, headers swift.Headers, checkHash bool) (io.ReadCloser, error) {
