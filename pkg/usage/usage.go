@@ -28,6 +28,14 @@ type service struct {
 	logger log.Logger
 }
 
+type partitionTenants struct {
+	tenants map[string]struct{}
+}
+
+type partitionStreams struct {
+	streams map[string]struct{}
+}
+
 func newService(kafkaCfg kafka.Config, consumerGroup string, logger log.Logger, registrar prometheus.Registerer) (*service, error) {
 	kprom := client.NewReaderClientMetrics("usage-consumer", registrar)
 	client, err := client.NewReaderClient(kafkaCfg, kprom, logger,
