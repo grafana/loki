@@ -194,7 +194,6 @@ func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 		heap.Push(v, metric)
 		v.observed[id] = struct{}{}
 	} else if labels.Equal(v.Metrics[0], metric) {
-		// TODO: This check seems wrong.
 		// The smalles element has been updated to fix the heap.
 		heap.Fix(v, 0)
 	}
