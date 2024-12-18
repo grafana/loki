@@ -472,23 +472,21 @@ func (h *writeHandler) appendV2(app storage.Appender, req *writev2.Request, rs *
 
 // NewOTLPWriteHandler creates a http.Handler that accepts OTLP write requests and
 // writes them to the provided appendable.
-func NewOTLPWriteHandler(logger log.Logger, appendable storage.Appendable, configFunc func() config.Config) http.Handler {
+func NewOTLPWriteHandler(logger log.Logger, appendable storage.Appendable) http.Handler {
 	rwHandler := &writeHandler{
 		logger:     logger,
 		appendable: appendable,
 	}
 
 	return &otlpWriteHandler{
-		logger:     logger,
-		rwHandler:  rwHandler,
-		configFunc: configFunc,
+		logger:    logger,
+		rwHandler: rwHandler,
 	}
 }
 
 type otlpWriteHandler struct {
-	logger     log.Logger
-	rwHandler  *writeHandler
-	configFunc func() config.Config
+	logger    log.Logger
+	rwHandler *writeHandler
 }
 
 func (h *otlpWriteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -499,12 +497,9 @@ func (h *otlpWriteHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	otlpCfg := h.configFunc().OTLPConfig
-
 	converter := otlptranslator.NewPrometheusConverter()
 	if err := converter.FromMetrics(req.Metrics(), otlptranslator.Settings{
-		AddMetricSuffixes:         true,
-		PromoteResourceAttributes: otlpCfg.PromoteResourceAttributes,
+		AddMetricSuffixes: true,
 	}); err != nil {
 		level.Warn(h.logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
 	}

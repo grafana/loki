@@ -621,12 +621,14 @@ func (g *Group) Eval(ctx context.Context, ts time.Time) {
 			}
 		}
 
-		if ctrl := g.concurrencyController; ctrl.Allow(ctx, g, rule) {
+		// If the rule has no dependencies, it can run concurrently because no other rules in this group depend on its output.
+		// Try run concurrently if there are slots available.
+		if ctrl := g.concurrencyController; isRuleEligibleForConcurrentExecution(rule) && ctrl.Allow() {
 			wg.Add(1)
 
 			go eval(i, rule, func() {
 				wg.Done()
-				ctrl.Done(ctx)
+				ctrl.Done()
 			})
 		} else {
 			eval(i, rule, nil)
@@ -1091,4 +1093,8 @@ func buildDependencyMap(rules []Rule) dependencyMap {
 	}
 
 	return dependencies
+}
+
+func isRuleEligibleForConcurrentExecution(rule Rule) bool {
+	return rule.NoDependentRules() && rule.NoDependencyRules()
 }
