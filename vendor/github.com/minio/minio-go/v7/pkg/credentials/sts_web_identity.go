@@ -162,6 +162,10 @@ func getWebIdentityCredentials(clnt *http.Client, endpoint, roleARN, roleSession
 		// Usually set when server is using extended userInfo endpoint.
 		v.Set("WebIdentityAccessToken", idToken.AccessToken)
 	}
+	if idToken.RefreshToken != "" {
+		// Usually set when server is using extended userInfo endpoint.
+		v.Set("WebIdentityRefreshToken", idToken.RefreshToken)
+	}
 	if idToken.Expiry > 0 {
 		v.Set("DurationSeconds", fmt.Sprintf("%d", idToken.Expiry))
 	}

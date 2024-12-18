@@ -465,7 +465,7 @@ github.com/aws/smithy-go/transport/http/internal/io
 # github.com/axiomhq/hyperloglog v0.2.0
 ## explicit; go 1.21
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.206
+# github.com/baidubce/bce-sdk-go v0.9.208
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1232,7 +1232,7 @@ github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.81
+# github.com/minio/minio-go/v7 v7.0.82
 ## explicit; go 1.22
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/cors
