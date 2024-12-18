@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1498,7 +1499,7 @@ func jsonLine(ts int64, i int) string {
 
 type readRingMock struct {
 	replicationSet          ring.ReplicationSet
-	getAllHealthyCallsCount int
+	getAllHealthyCallsCount atomic.Int32
 	tokenRangesByIngester   map[string]ring.TokenRanges
 }
 
@@ -1538,7 +1539,7 @@ func (r *readRingMock) BatchGet(_ []uint32, _ ring.Operation) ([]ring.Replicatio
 }
 
 func (r *readRingMock) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
-	r.getAllHealthyCallsCount++
+	r.getAllHealthyCallsCount.Add(1)
 	return r.replicationSet, nil
 }
 
