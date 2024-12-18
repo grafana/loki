@@ -2,14 +2,18 @@ package usage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 const (
@@ -19,6 +23,9 @@ const (
 
 type service struct {
 	client *kgo.Client
+	services.Service
+
+	logger log.Logger
 }
 
 func newService(kafkaCfg kafka.Config, consumerGroup string, logger log.Logger, registrar prometheus.Registerer) (*service, error) {
@@ -29,30 +36,47 @@ func newService(kafkaCfg kafka.Config, consumerGroup string, logger log.Logger, 
 		kgo.ConsumeTopics(topic),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-windowSize).UnixMilli())),
 		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, m map[string][]int32) {
-		}),
+		// kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, m map[string][]int32) {
+		// }),
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	return &service{client: client}, nil
+	s := &service{
+		client: client,
+		logger: logger,
+	}
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
+	return s, nil
 }
 
-func (s *service) fetch(ctx context.Context) error {
-	fetches := s.client.PollRecords(ctx, -1)
-	for _, fetch := range fetches {
-		for _, topicFetch := range fetch.Topics {
-			for _, partitionFetch := range topicFetch.Partitions {
-				for _, record := range partitionFetch.Records {
-					fmt.Println(record.Key, record.Value, partitionFetch.Partition, partitionFetch)
+func (s *service) starting(_ context.Context) error {
+	return nil
+}
+
+func (s *service) running(ctx context.Context) error {
+	for {
+		fetches := s.client.PollRecords(ctx, -1)
+		for _, fetch := range fetches {
+			for _, topicFetch := range fetch.Topics {
+				for _, partitionFetch := range topicFetch.Partitions {
+					if partitionFetch.Err != nil {
+						level.Error(s.logger).Log("msg", "error polling records", "err", partitionFetch.Err)
+						return partitionFetch.Err
+					}
+					for _, record := range partitionFetch.Records {
+						fmt.Println(record.Key, record.Value, partitionFetch.Partition, partitionFetch)
+					}
 				}
 			}
 		}
 	}
-	return nil
 }
 
-func (s *service) Consume(ctx context.Context, records []*kgo.Record) error {
-	return nil
+func (s *service) stopping(failureCase error) error {
+	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
+		return nil
+	}
+	s.client.Close()
+	return failureCase
 }
