@@ -2,6 +2,7 @@ package bloomgateway
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -61,36 +62,48 @@ func (r *defaultBlockResolver) Resolve(ctx context.Context, tenant string, inter
 }
 
 func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Interval, series []*logproto.GroupedChunkRefs) []blockWithSeries {
+	slices.SortFunc(series, func(a, b *logproto.GroupedChunkRefs) int { return int(a.Fingerprint - b.Fingerprint) })
+
 	result := make([]blockWithSeries, 0, len(metas))
+	cache := make(map[bloomshipper.BlockRef]int)
 
-	for _, meta := range metas {
-		for _, block := range meta.Blocks {
+	// find the newest block for each series
+	for _, s := range series {
+		var b *bloomshipper.BlockRef
+		var ts time.Time
 
-			// skip blocks that are not within time interval
-			if !interval.Overlaps(block.Interval()) {
-				continue
+		for i := range metas {
+			for j := range metas[i].Blocks {
+				block := metas[i].Blocks[j]
+				version := metas[i].Sources[j].TS
+				// skip blocks that are not within time interval
+				if !interval.Overlaps(block.Interval()) {
+					continue
+				}
+				// skip blocks that do not contain the series
+				if block.Cmp(s.Fingerprint) != v1.Overlap {
+					continue
+				}
+				// only use the block if it is newer than the previous
+				if version.After(ts) {
+					b = &block
+					ts = version
+				}
 			}
+		}
 
-			min := sort.Search(len(series), func(i int) bool {
-				return block.Cmp(series[i].Fingerprint) > v1.Before
-			})
+		if b == nil {
+			continue
+		}
 
-			max := sort.Search(len(series), func(i int) bool {
-				return block.Cmp(series[i].Fingerprint) == v1.After
-			})
-
-			// All fingerprints fall outside of the consumer's range
-			if min == len(series) || max == 0 || min == max {
-				continue
-			}
-
-			// At least one fingerprint is within bounds of the blocks
-			// so append to results
-			dst := make([]*logproto.GroupedChunkRefs, max-min)
-			_ = copy(dst, series[min:max])
+		idx, ok := cache[*b]
+		if ok {
+			result[idx].series = append(result[idx].series, s)
+		} else {
+			cache[*b] = len(result)
 			result = append(result, blockWithSeries{
-				block:  block,
-				series: dst,
+				block:  *b,
+				series: []*logproto.GroupedChunkRefs{s},
 			})
 		}
 	}
