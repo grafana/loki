@@ -32,6 +32,7 @@ import (
 
 const (
 	JSONType     = `application/json; charset=utf-8`
+	ParquetType  = `application/vnd.apache.parquet`
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
