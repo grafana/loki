@@ -90,7 +90,7 @@ func TestCountMinSketchSerialization(t *testing.T) {
 	require.Equal(t, round, vec.CountMinSketchVector)
 }
 
-func Benchmark_HeapCountMinSketchVectorAdd(b *testing.B) {
+func BenchmarkHeapCountMinSketchVectorAdd(b *testing.B) {
 	maxLabels := 10_000
 	v := NewHeapCountMinSketchVector(0, maxLabels, maxLabels)
 	if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels+1 {

@@ -161,6 +161,9 @@ type HeapCountMinSketchVector struct {
 	observed  map[uint64]struct{}
 	maxLabels int
 
+	// The buffers are used by `labels.Bytes` similar to `series.Hash` in `codec.MergeResponse`. They are alloccated
+	// outside of the method in order to reuse them for the next `Add` call. This saves a lot of allocations.
+	// 1KB is used for `b` after some experimentation. Reusing the buffer is not thread safe.
 	buffer []byte
 }
 
@@ -189,6 +192,10 @@ func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
 	v.F.Add(v.buffer, value)
 
 	// Add our metric if we haven't seen it
+
+	// TODO(karsten): There is a chance that the ids match but not the labels due to hash collision. Ideally there's
+	// an else block the compares the series labels. However, that's not trivial. Besides, instance.Series has the
+	// same issue in its deduping logic.
 	id := xxhash.Sum64(v.buffer)
 	if _, ok := v.observed[id]; !ok {
 		heap.Push(v, metric)
@@ -305,7 +312,11 @@ func (e *countMinSketchVectorAggEvaluator) Error() error {
 type CountMinSketchVectorStepEvaluator struct {
 	exhausted bool
 	vec       *CountMinSketchVector
-	buffer    []byte
+
+	// The buffers are used by `labels.Bytes` similar to `series.Hash` in `codec.MergeResponse`. They are alloccated
+	// outside of the method in order to reuse them for the next `Next` call. This saves a lot of allocations.
+	// 1KB is used for `b` after some experimentation. Reusing the buffer is not thread safe.
+	buffer []byte
 }
 
 var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
