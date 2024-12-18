@@ -12,14 +12,16 @@ import (
 )
 
 type serializeRoundTripper struct {
-	codec queryrangebase.Codec
-	next  queryrangebase.Handler
+	codec          queryrangebase.Codec
+	next           queryrangebase.Handler
+	parquetSupport bool
 }
 
-func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec) http.RoundTripper {
+func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec, parquetSupport bool) http.RoundTripper {
 	return &serializeRoundTripper{
-		next:  next,
-		codec: codec,
+		next:           next,
+		codec:          codec,
+		parquetSupport: parquetSupport,
 	}
 }
 
@@ -36,6 +38,10 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 	response, err := rt.next.Do(ctx, request)
 	if err != nil {
 		return nil, err
+	}
+
+	if r.Header.Get("Accept") == ParquetType && !rt.parquetSupport {
+		return nil, serverutil.UserError("support for Parquet encoded responses is disabled. Enable with -frontend.support-parquet-encoding=true")
 	}
 
 	return rt.codec.EncodeResponse(ctx, r, response)
