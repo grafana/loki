@@ -93,7 +93,7 @@
       "location": "us-west4"
     }
   ],
-  "etag": "\"3134393437363236373436353839383934323639\"",
+  "etag": "\"3133343838373034343130353038353234313337\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -3224,6 +3224,98 @@
           ],
           "supportsSubscription": true
         },
+        "move": {
+          "description": "Moves the source object to the destination object in the same bucket.",
+          "httpMethod": "POST",
+          "id": "storage.objects.move",
+          "parameterOrder": [
+            "bucket",
+            "sourceObject",
+            "destinationObject"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the object resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "destinationObject": {
+              "description": "Name of the destination object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifGenerationMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object. `ifGenerationMatch` and `ifGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifGenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.`ifGenerationMatch` and `ifGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current metageneration matches the given value. `ifMetagenerationMatch` and `ifMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current metageneration does not match the given value. `ifMetagenerationMatch` and `ifMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceGenerationMatch": {
+              "description": "Makes the operation conditional on whether the source object's current generation matches the given value. `ifSourceGenerationMatch` and `ifSourceGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceGenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the source object's current generation does not match the given value. `ifSourceGenerationMatch` and `ifSourceGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceMetagenerationMatch": {
+              "description": "Makes the operation conditional on whether the source object's current metageneration matches the given value. `ifSourceMetagenerationMatch` and `ifSourceMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceMetagenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the source object's current metageneration does not match the given value. `ifSourceMetagenerationMatch` and `ifSourceMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "sourceObject": {
+              "description": "Name of the source object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/o/{sourceObject}/moveTo/o/{destinationObject}",
+          "response": {
+            "$ref": "Object"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
         "patch": {
           "description": "Patches an object's metadata.",
           "httpMethod": "PATCH",
@@ -4272,7 +4364,7 @@
       }
     }
   },
-  "revision": "20241113",
+  "revision": "20241206",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
