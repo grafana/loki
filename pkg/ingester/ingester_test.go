@@ -8,9 +8,10 @@ import (
 	"net/http/httptest"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
