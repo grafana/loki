@@ -218,6 +218,8 @@ func NewContainerFromConfig(logger log.Logger, sc *Config, createContainer bool,
 	}, nil
 }
 
+func (c *Container) Provider() objstore.ObjProvider { return objstore.SWIFT }
+
 // Name returns the container name for swift.
 func (c *Container) Name() string {
 	return c.name
