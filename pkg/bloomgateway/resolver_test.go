@@ -104,8 +104,9 @@ func TestBlockResolver_BlocksMatchingSeries(t *testing.T) {
 
 	t.Run("multiple overlapping blocks within time range covering full keyspace", func(t *testing.T) {
 		metas := []bloomshipper.Meta{
-			makeMeta(0x00, 0xdf, 1000, 1499),
-			makeMeta(0xc0, 0xff, 1500, 1999),
+			// 2 series overlap
+			makeMeta(0x00, 0xdf, 1000, 1499), // "old" meta covers first 4 series
+			makeMeta(0xc0, 0xff, 1500, 1999), // "new" meta covers last 4 series
 		}
 		res := blocksMatchingSeries(metas, interval, series)
 		for i := range res {
