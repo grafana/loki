@@ -118,7 +118,7 @@ type BlockBuilder struct {
 
 	metrics    *builderMetrics
 	logger     log.Logger
-	registered prometheus.Registerer
+	registerer prometheus.Registerer
 
 	decoder  *kafka.Decoder
 	store    stores.ChunkWriter
@@ -136,7 +136,7 @@ func NewBlockBuilder(
 	store stores.ChunkWriter,
 	objStore *MultiStore,
 	logger log.Logger,
-	reg prometheus.Registerer,
+	registerer prometheus.Registerer,
 ) (*BlockBuilder,
 	error) {
 	decoder, err := kafka.NewDecoder()
@@ -144,7 +144,7 @@ func NewBlockBuilder(
 		return nil, err
 	}
 
-	t, err := types.NewGRPCTransportFromAddress(cfg.SchedulerAddress, cfg.SchedulerGRPCClientConfig, reg)
+	t, err := types.NewGRPCTransportFromAddress(cfg.SchedulerAddress, cfg.SchedulerGRPCClientConfig, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("create grpc transport: %w", err)
 	}
@@ -154,9 +154,9 @@ func NewBlockBuilder(
 		cfg:              cfg,
 		kafkaCfg:         kafkaCfg,
 		periodicConfigs:  periodicConfigs,
-		metrics:          newBuilderMetrics(reg),
+		metrics:          newBuilderMetrics(registerer),
 		logger:           logger,
-		registered:       reg,
+		registerer:       registerer,
 		decoder:          decoder,
 		store:            store,
 		objStore:         objStore,
@@ -175,7 +175,7 @@ func (i *BlockBuilder) running(ctx context.Context) error {
 		errgrp.Go(func() error {
 			c, err := client.NewReaderClient(
 				i.kafkaCfg,
-				client.NewReaderClientMetrics(workerID, i.registered),
+				client.NewReaderClientMetrics(workerID, i.registerer),
 				log.With(i.logger, "component", workerID),
 			)
 			if err != nil {
