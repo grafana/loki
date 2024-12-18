@@ -124,15 +124,12 @@ func Test_PromQL(t *testing.T) {
 			  )`,
 			true,
 		},
-		// avg generally cant be parallelized
+		// sum all values and divide by the number of series
 		{
 			`avg(bar1{baz="blip"})`,
-			`avg(
-				avg by(__cortex_shard__) (bar1{__cortex_shard__="0_of_3",baz="blip"}) or
-				avg by(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
-				avg by(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
-			  )`,
-			false,
+			`(sum(bar1{__cortex_shard__="0_of_3",baz="blip"}) + sum(bar1{__cortex_shard__="1_of_3",baz="blip"}) + sum(bar1{__cortex_shard__="2_of_3",baz="blip"})) /
+             (count(bar1{__cortex_shard__="0_of_3",baz="blip"}) + count(bar1{__cortex_shard__="1_of_3",baz="blip"}) + count(bar1{__cortex_shard__="2_of_3",baz="blip"}))`,
+			true,
 		},
 		// stddev can't be parallelized.
 		{
