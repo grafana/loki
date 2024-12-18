@@ -25,12 +25,12 @@ func Test_recalculateOwnedStreams_newRecalculateOwnedStreamsIngester(t *testing.
 	}, 0)
 	strategy := newOwnedStreamsIngesterStrategy("test", mockRing, log.NewNopLogger())
 	service := newRecalculateOwnedStreamsSvc(mockInstancesSupplier.get, strategy, 50*time.Millisecond, log.NewNopLogger())
-	require.Equal(t, 0, mockRing.getAllHealthyCallsCount, "ring must be called only after service's start up")
+	require.Equal(t, int32(0), mockRing.getAllHealthyCallsCount.Load(), "ring must be called only after service's start up")
 	ctx := context.Background()
 	require.NoError(t, service.StartAsync(ctx))
 	require.NoError(t, service.AwaitRunning(ctx))
 	require.Eventually(t, func() bool {
-		return mockRing.getAllHealthyCallsCount >= 2
+		return mockRing.getAllHealthyCallsCount.Load() >= 2
 	}, 1*time.Second, 50*time.Millisecond, "expected at least two runs of the iteration")
 }
 
