@@ -16,7 +16,7 @@ jobs:
   check:
     uses: "grafana/loki-release/.github/workflows/check.yml@main"
     with:
-      build_image: "grafana/loki-build-image:0.34.1"
+      build_image: "grafana/loki-build-image:0.34.3"
       golang_ci_lint_version: "v1.60.3"
       release_lib_ref: "main"
       skip_validation: false
@@ -144,7 +144,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.34.1"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.34.3"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
@@ -631,6 +631,7 @@ jobs:
       name: "parse image platform"
       run: |
         mkdir -p images
+        mkdir -p plugins
         
         platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
@@ -641,37 +642,33 @@ jobs:
           echo "plugin_arch=" >> $GITHUB_OUTPUT
         fi
       working-directory: "release"
-    - env:
-        IMAGE_TAG: "${{ needs.version.outputs.version }}"
-      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       uses: "docker/build-push-action@v6"
       with:
-        build-args: "IMAGE_TAG=${{ needs.version.outputs.version }},GOARCH=${{ steps.platform.outputs.platform_short }}"
+        build-args: |
+          IMAGE_TAG=${{ needs.version.outputs.version }}
+          GOARCH=${{ steps.platform.outputs.platform_short }}
+          BUILD_IMAGE=grafana/loki-build-image:0.34.3
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
-        outputs: "type=docker,dest=release/images/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
         platforms: "${{ matrix.platform }}"
         push: false
         tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
-    - env:
-        BUILD_DIR: "release/clients/cmd/docker-driver"
-        IMAGE_TAG: "${{ needs.version.outputs.version }}"
-      if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "Package as Docker plugin"
+    - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
+      name: "compress rootfs"
       run: |
-        rm -rf "${{ env.BUILD_DIR }}/rootfs" || true
-        mkdir "${{ env.BUILD_DIR }}/rootfs"
-        tar -x -C "${{ env.BUILD_DIR }}/rootfs" -f "release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        docker plugin create "${{ env.IMAGE_TAG }}${{ steps.platform.outputs.plugin_arch }}" "${{ env.BUILD_DIR }}"
-      working-directory: "release"
+        tar -cf release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar \
+        -C release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }} \
+        .
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
       name: "upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
-        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
-        path: "release/images/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
+        destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/plugins"
+        path: "release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
         process_gcloudignore: false
     strategy:
       fail-fast: true
@@ -679,7 +676,6 @@ jobs:
         platform:
         - "linux/amd64"
         - "linux/arm64"
-        - "linux/arm"
   promtail:
     needs:
     - "version"
