@@ -165,6 +165,8 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        labels:
+          excluded_from_alerts: "true"
       spec:
         accessModes: [ "ReadWriteOnce" ]
         {{- with .persistence.storageClass }}
