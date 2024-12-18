@@ -17,6 +17,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
 - [BUGFIX] Disables the Helm test pod when `test.enabled=false`.
+- [BUGFIX] Fix `enterprise.image.tag` to `3.3.0`
+- [ENHANCEMENT] Bump Loki version to 3.3.2
 
 ## 6.23.0
 
