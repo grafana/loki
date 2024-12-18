@@ -86,7 +86,7 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 
 	// Metadata field extraction
-	DiscoverGenericFields map[string][]string `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
+	DiscoverGenericFields FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
 	DiscoverServiceName   []string            `yaml:"discover_service_name" json:"discover_service_name"`
 	DiscoverLogLevels     bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
 	LogLevelFields        []string            `yaml:"log_level_fields" json:"log_level_fields"`
@@ -245,6 +245,10 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
+}
+
+type FieldDetectorConfig struct {
+	Fields map[string][]string `yaml:"fields" json:"fields"`
 }
 
 type StreamRetention struct {
@@ -999,7 +1003,7 @@ func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 }
 
 func (o *Overrides) DiscoverGenericFields(userID string) map[string][]string {
-	return o.getOverridesForUser(userID).DiscoverGenericFields
+	return o.getOverridesForUser(userID).DiscoverGenericFields.Fields
 }
 
 func (o *Overrides) DiscoverServiceName(userID string) []string {
