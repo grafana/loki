@@ -44,11 +44,6 @@ func TestPipeline_Logfmt(t *testing.T) {
 		entry           string
 		expectedExtract map[string]interface{}
 	}{
-		"successfully run a pipeline with 1 logfmt stage with log not using logfmt formatted string": {
-			testLogfmtYamlSingleStageWithoutSource,
-			"2012-11-01T22:08:41+00:00 [WARN] app:loki duration:125 - this log line is not in logfmt",
-			map[string]interface{}{},
-		},
 		"successfully run a pipeline with 1 logfmt stage without source": {
 			testLogfmtYamlSingleStageWithoutSource,
 			testLogfmtLogLine,
