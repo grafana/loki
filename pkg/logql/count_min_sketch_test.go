@@ -71,7 +71,7 @@ func TestCountMinSketchSerialization(t *testing.T) {
 		Sketch: &logproto.CountMinSketch{
 			Depth:       2,
 			Width:       4,
-			Counters:    []float64{0, 0, 0, 42, 0, 42, 0, 0},
+			Counters:    []float64{0, 42, 0, 0, 0, 42, 0, 0},
 			Hyperloglog: hllBytes,
 		},
 		Metrics: []*logproto.Labels{
