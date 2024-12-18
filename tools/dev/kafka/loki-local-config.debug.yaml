@@ -44,8 +44,10 @@ querier:
 
 kafka_config:
   topic: "loki.push"
-  address: "localhost:9092"
 
+distributor:
+  kafka_writes_enabled: true
+  ingester_writes_enabled: false
 
 frontend:
   encoding: protobuf
