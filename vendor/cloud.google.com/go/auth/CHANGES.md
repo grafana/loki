@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.12.1...auth/v0.13.0) (2024-12-13)
+
+
+### Features
+
+* **auth:** Add logging support ([#11079](https://github.com/googleapis/google-cloud-go/issues/11079)) ([c80e31d](https://github.com/googleapis/google-cloud-go/commit/c80e31df5ecb33a810be3dfb9d9e27ac531aa91d))
+* **auth:** Pass logger from auth layer to metadata package ([#11288](https://github.com/googleapis/google-cloud-go/issues/11288)) ([b552efd](https://github.com/googleapis/google-cloud-go/commit/b552efd6ab34e5dfded18438e0fbfd925805614f))
+
+
+### Bug Fixes
+
+* **auth:** Check compute cred type before non-default flag for DP ([#11255](https://github.com/googleapis/google-cloud-go/issues/11255)) ([4347ca1](https://github.com/googleapis/google-cloud-go/commit/4347ca141892be8ae813399b4b437662a103bc90))
+
 ## [0.12.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.12.0...auth/v0.12.1) (2024-12-10)
 
 
