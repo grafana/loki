@@ -26,6 +26,22 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type ObjProvider string
+
+const (
+	MEMORY     ObjProvider = "MEMORY"
+	FILESYSTEM ObjProvider = "FILESYSTEM"
+	GCS        ObjProvider = "GCS"
+	S3         ObjProvider = "S3"
+	AZURE      ObjProvider = "AZURE"
+	SWIFT      ObjProvider = "SWIFT"
+	COS        ObjProvider = "COS"
+	ALIYUNOSS  ObjProvider = "ALIYUNOSS"
+	BOS        ObjProvider = "BOS"
+	OCI        ObjProvider = "OCI"
+	OBS        ObjProvider = "OBS"
+)
+
 const (
 	OpIter       = "iter"
 	OpGet        = "get"
@@ -41,6 +57,8 @@ const (
 type Bucket interface {
 	io.Closer
 	BucketReader
+
+	Provider() ObjProvider
 
 	// Upload the contents of the reader as an object into the bucket.
 	// Upload should be idempotent.
@@ -581,6 +599,10 @@ type Metrics struct {
 type metricBucket struct {
 	bkt     Bucket
 	metrics *Metrics
+}
+
+func (b *metricBucket) Provider() ObjProvider {
+	return b.bkt.Provider()
 }
 
 func (b *metricBucket) WithExpectedErrs(fn IsOpFailureExpectedFunc) Bucket {

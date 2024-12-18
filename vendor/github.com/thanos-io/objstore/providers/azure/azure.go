@@ -193,6 +193,8 @@ func NewBucketWithConfig(logger log.Logger, conf Config, component string, wrapR
 	return bkt, nil
 }
 
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.AZURE }
+
 func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
 	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
 }
