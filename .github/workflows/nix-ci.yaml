@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - "flake.nix"
+      - "flake.lock"
       - "go.mod"
       - "nix/**"
       - .github/workflows/nix-ci.yaml
@@ -33,6 +34,7 @@ jobs:
             nix:
               - 'nix/**'
               - 'flake.nix'
+              - 'flake.lock'
       - run: nix run --print-build-logs .#test
         if: steps.nix-changes.outputs.nix == 'true'
   packages:
