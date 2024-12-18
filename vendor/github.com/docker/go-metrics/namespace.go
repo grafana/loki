@@ -37,8 +37,8 @@ type Namespace struct {
 // WithConstLabels returns a namespace with the provided set of labels merged
 // with the existing constant labels on the namespace.
 //
-//  Only metrics created with the returned namespace will get the new constant
-//  labels.  The returned namespace must be registered separately.
+//	Only metrics created with the returned namespace will get the new constant
+//	labels.  The returned namespace must be registered separately.
 func (n *Namespace) WithConstLabels(labels Labels) *Namespace {
 	n.mu.Lock()
 	ns := &Namespace{

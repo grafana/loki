@@ -59,8 +59,9 @@ func TestCountMinSketchSerialization(t *testing.T) {
 			T: 42,
 			F: cms,
 		},
-		observed:  make(map[string]struct{}, 0),
+		observed:  make(map[uint64]struct{}, 0),
 		maxLabels: 10_000,
+		buffer:    make([]byte, 0, 1024),
 	}
 	vec.Add(metric, 42.0)
 
