@@ -2006,9 +2006,13 @@ func testPutObjectWithChecksums() {
 		{cs: minio.ChecksumCRC32},
 		{cs: minio.ChecksumSHA1},
 		{cs: minio.ChecksumSHA256},
+		{cs: minio.ChecksumCRC64NVME},
 	}
 
 	for _, test := range tests {
+		if os.Getenv("MINT_NO_FULL_OBJECT") != "" && test.cs.FullObjectRequested() {
+			continue
+		}
 		bufSize := dataFileMap["datafile-10-kB"]
 
 		// Save the data
@@ -2065,6 +2069,7 @@ func testPutObjectWithChecksums() {
 		cmpChecksum(resp.ChecksumSHA1, meta["x-amz-checksum-sha1"])
 		cmpChecksum(resp.ChecksumCRC32, meta["x-amz-checksum-crc32"])
 		cmpChecksum(resp.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
+		cmpChecksum(resp.ChecksumCRC64NVME, meta["x-amz-checksum-crc64nvme"])
 
 		// Read the data back
 		gopts := minio.GetObjectOptions{Checksum: true}
@@ -2084,6 +2089,7 @@ func testPutObjectWithChecksums() {
 		cmpChecksum(st.ChecksumSHA1, meta["x-amz-checksum-sha1"])
 		cmpChecksum(st.ChecksumCRC32, meta["x-amz-checksum-crc32"])
 		cmpChecksum(st.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
+		cmpChecksum(st.ChecksumCRC64NVME, meta["x-amz-checksum-crc64nvme"])
 
 		if st.Size != int64(bufSize) {
 			logError(testName, function, args, startTime, "", "Number of bytes returned by PutObject does not match GetObject, expected "+string(bufSize)+" got "+string(st.Size), err)
@@ -2127,12 +2133,12 @@ func testPutObjectWithChecksums() {
 		cmpChecksum(st.ChecksumSHA1, "")
 		cmpChecksum(st.ChecksumCRC32, "")
 		cmpChecksum(st.ChecksumCRC32C, "")
+		cmpChecksum(st.ChecksumCRC64NVME, "")
 
 		delete(args, "range")
 		delete(args, "metadata")
+		logSuccess(testName, function, args, startTime)
 	}
-
-	logSuccess(testName, function, args, startTime)
 }
 
 // Test PutObject with custom checksums.
@@ -2173,13 +2179,16 @@ func testPutObjectWithTrailingChecksums() {
 	tests := []struct {
 		cs minio.ChecksumType
 	}{
+		{cs: minio.ChecksumCRC64NVME},
 		{cs: minio.ChecksumCRC32C},
 		{cs: minio.ChecksumCRC32},
 		{cs: minio.ChecksumSHA1},
 		{cs: minio.ChecksumSHA256},
 	}
-
 	for _, test := range tests {
+		if os.Getenv("MINT_NO_FULL_OBJECT") != "" && test.cs.FullObjectRequested() {
+			continue
+		}
 		function := "PutObject(bucketName, objectName, reader,size, opts)"
 		bufSize := dataFileMap["datafile-10-kB"]
 
@@ -2227,6 +2236,7 @@ func testPutObjectWithTrailingChecksums() {
 		cmpChecksum(resp.ChecksumSHA1, meta["x-amz-checksum-sha1"])
 		cmpChecksum(resp.ChecksumCRC32, meta["x-amz-checksum-crc32"])
 		cmpChecksum(resp.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
+		cmpChecksum(resp.ChecksumCRC64NVME, meta["x-amz-checksum-crc64nvme"])
 
 		// Read the data back
 		gopts := minio.GetObjectOptions{Checksum: true}
@@ -2247,6 +2257,7 @@ func testPutObjectWithTrailingChecksums() {
 		cmpChecksum(st.ChecksumSHA1, meta["x-amz-checksum-sha1"])
 		cmpChecksum(st.ChecksumCRC32, meta["x-amz-checksum-crc32"])
 		cmpChecksum(st.ChecksumCRC32C, meta["x-amz-checksum-crc32c"])
+		cmpChecksum(resp.ChecksumCRC64NVME, meta["x-amz-checksum-crc64nvme"])
 
 		if st.Size != int64(bufSize) {
 			logError(testName, function, args, startTime, "", "Number of bytes returned by PutObject does not match GetObject, expected "+string(bufSize)+" got "+string(st.Size), err)
@@ -2291,6 +2302,7 @@ func testPutObjectWithTrailingChecksums() {
 		cmpChecksum(st.ChecksumSHA1, "")
 		cmpChecksum(st.ChecksumCRC32, "")
 		cmpChecksum(st.ChecksumCRC32C, "")
+		cmpChecksum(st.ChecksumCRC64NVME, "")
 
 		function = "GetObjectAttributes(...)"
 		s, err := c.GetObjectAttributes(context.Background(), bucketName, objectName, minio.ObjectAttributesOptions{})
@@ -2305,9 +2317,8 @@ func testPutObjectWithTrailingChecksums() {
 
 		delete(args, "range")
 		delete(args, "metadata")
+		logSuccess(testName, function, args, startTime)
 	}
-
-	logSuccess(testName, function, args, startTime)
 }
 
 // Test PutObject with custom checksums.
@@ -2319,7 +2330,7 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 	args := map[string]interface{}{
 		"bucketName": "",
 		"objectName": "",
-		"opts":       fmt.Sprintf("minio.PutObjectOptions{UserMetadata: metadata, Progress: progress Checksum: %v}", trailing),
+		"opts":       fmt.Sprintf("minio.PutObjectOptions{UserMetadata: metadata, Trailing: %v}", trailing),
 	}
 
 	if !isFullMode() {
@@ -2344,14 +2355,18 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		return
 	}
 
-	hashMultiPart := func(b []byte, partSize int, hasher hash.Hash) string {
+	hashMultiPart := func(b []byte, partSize int, cs minio.ChecksumType) string {
 		r := bytes.NewReader(b)
+		hasher := cs.Hasher()
+		if cs.FullObjectRequested() {
+			partSize = len(b)
+		}
 		tmp := make([]byte, partSize)
 		parts := 0
 		var all []byte
 		for {
 			n, err := io.ReadFull(r, tmp)
-			if err != nil && err != io.ErrUnexpectedEOF {
+			if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
 				logError(testName, function, args, startTime, "", "Calc crc failed", err)
 			}
 			if n == 0 {
@@ -2365,6 +2380,9 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 				break
 			}
 		}
+		if parts == 1 {
+			return base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+		}
 		hasher.Reset()
 		hasher.Write(all)
 		return fmt.Sprintf("%s-%d", base64.StdEncoding.EncodeToString(hasher.Sum(nil)), parts)
@@ -2373,6 +2391,9 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 	tests := []struct {
 		cs minio.ChecksumType
 	}{
+		{cs: minio.ChecksumFullObjectCRC32},
+		{cs: minio.ChecksumFullObjectCRC32C},
+		{cs: minio.ChecksumCRC64NVME},
 		{cs: minio.ChecksumCRC32C},
 		{cs: minio.ChecksumCRC32},
 		{cs: minio.ChecksumSHA1},
@@ -2380,8 +2401,12 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 	}
 
 	for _, test := range tests {
-		bufSize := dataFileMap["datafile-129-MB"]
+		if os.Getenv("MINT_NO_FULL_OBJECT") != "" && test.cs.FullObjectRequested() {
+			continue
+		}
 
+		args["section"] = "prep"
+		bufSize := dataFileMap["datafile-129-MB"]
 		// Save the data
 		objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 		args["objectName"] = objectName
@@ -2405,7 +2430,7 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		reader.Close()
 		h := test.cs.Hasher()
 		h.Reset()
-		want := hashMultiPart(b, partSize, test.cs.Hasher())
+		want := hashMultiPart(b, partSize, test.cs)
 
 		var cs minio.ChecksumType
 		rd := io.Reader(io.NopCloser(bytes.NewReader(b)))
@@ -2413,7 +2438,9 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 			cs = test.cs
 			rd = bytes.NewReader(b)
 		}
+
 		// Set correct CRC.
+		args["section"] = "PutObject"
 		resp, err := c.PutObject(context.Background(), bucketName, objectName, rd, int64(bufSize), minio.PutObjectOptions{
 			DisableContentSha256: true,
 			DisableMultipart:     false,
@@ -2427,7 +2454,7 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 			return
 		}
 
-		switch test.cs {
+		switch test.cs.Base() {
 		case minio.ChecksumCRC32C:
 			cmpChecksum(resp.ChecksumCRC32C, want)
 		case minio.ChecksumCRC32:
@@ -2436,15 +2463,41 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 			cmpChecksum(resp.ChecksumSHA1, want)
 		case minio.ChecksumSHA256:
 			cmpChecksum(resp.ChecksumSHA256, want)
+		case minio.ChecksumCRC64NVME:
+			cmpChecksum(resp.ChecksumCRC64NVME, want)
 		}
 
+		args["section"] = "HeadObject"
+		st, err := c.StatObject(context.Background(), bucketName, objectName, minio.StatObjectOptions{Checksum: true})
+		if err != nil {
+			logError(testName, function, args, startTime, "", "StatObject failed", err)
+			return
+		}
+		switch test.cs.Base() {
+		case minio.ChecksumCRC32C:
+			cmpChecksum(st.ChecksumCRC32C, want)
+		case minio.ChecksumCRC32:
+			cmpChecksum(st.ChecksumCRC32, want)
+		case minio.ChecksumSHA1:
+			cmpChecksum(st.ChecksumSHA1, want)
+		case minio.ChecksumSHA256:
+			cmpChecksum(st.ChecksumSHA256, want)
+		case minio.ChecksumCRC64NVME:
+			cmpChecksum(st.ChecksumCRC64NVME, want)
+		}
+
+		args["section"] = "GetObjectAttributes"
 		s, err := c.GetObjectAttributes(context.Background(), bucketName, objectName, minio.ObjectAttributesOptions{})
 		if err != nil {
 			logError(testName, function, args, startTime, "", "GetObjectAttributes failed", err)
 			return
 		}
-		want = want[:strings.IndexByte(want, '-')]
+
+		if strings.ContainsRune(want, '-') {
+			want = want[:strings.IndexByte(want, '-')]
+		}
 		switch test.cs {
+		// Full Object CRC does not return anything with GetObjectAttributes
 		case minio.ChecksumCRC32C:
 			cmpChecksum(s.Checksum.ChecksumCRC32C, want)
 		case minio.ChecksumCRC32:
@@ -2460,13 +2513,14 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		gopts.PartNumber = 2
 
 		// We cannot use StatObject, since it ignores partnumber.
+		args["section"] = "GetObject-Part"
 		r, err := c.GetObject(context.Background(), bucketName, objectName, gopts)
 		if err != nil {
 			logError(testName, function, args, startTime, "", "GetObject failed", err)
 			return
 		}
 		io.Copy(io.Discard, r)
-		st, err := r.Stat()
+		st, err = r.Stat()
 		if err != nil {
 			logError(testName, function, args, startTime, "", "Stat failed", err)
 			return
@@ -2478,6 +2532,7 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 		want = base64.StdEncoding.EncodeToString(h.Sum(nil))
 
 		switch test.cs {
+		// Full Object CRC does not return any part CRC for whatever reason.
 		case minio.ChecksumCRC32C:
 			cmpChecksum(st.ChecksumCRC32C, want)
 		case minio.ChecksumCRC32:
@@ -2486,12 +2541,17 @@ func testPutMultipartObjectWithChecksums(trailing bool) {
 			cmpChecksum(st.ChecksumSHA1, want)
 		case minio.ChecksumSHA256:
 			cmpChecksum(st.ChecksumSHA256, want)
+		case minio.ChecksumCRC64NVME:
+			// AWS doesn't return part checksum, but may in the future.
+			if st.ChecksumCRC64NVME != "" {
+				cmpChecksum(st.ChecksumCRC64NVME, want)
+			}
 		}
 
 		delete(args, "metadata")
+		delete(args, "section")
+		logSuccess(testName, function, args, startTime)
 	}
-
-	logSuccess(testName, function, args, startTime)
 }
 
 // Test PutObject with trailing checksums.
@@ -2688,9 +2748,8 @@ func testTrailingChecksums() {
 		}
 
 		delete(args, "metadata")
+		logSuccess(testName, function, args, startTime)
 	}
-
-	logSuccess(testName, function, args, startTime)
 }
 
 // Test PutObject with custom checksums.
@@ -5324,20 +5383,10 @@ func testPresignedPostPolicyWrongFile() {
 
 	defer cleanupBucket(bucketName, c)
 
-	// Generate 33K of data.
-	reader := getDataReader("datafile-33-kB")
-	defer reader.Close()
-
 	objectName := randString(60, rand.NewSource(time.Now().UnixNano()), "")
 	// Azure requires the key to not start with a number
 	metadataKey := randString(60, rand.NewSource(time.Now().UnixNano()), "user")
 	metadataValue := randString(60, rand.NewSource(time.Now().UnixNano()), "")
-
-	buf, err := io.ReadAll(reader)
-	if err != nil {
-		logError(testName, function, args, startTime, "", "ReadAll failed", err)
-		return
-	}
 
 	policy := minio.NewPostPolicy()
 	policy.SetBucket(bucketName)
@@ -5347,8 +5396,8 @@ func testPresignedPostPolicyWrongFile() {
 	policy.SetContentLengthRange(10, 1024*1024)
 	policy.SetUserMetadata(metadataKey, metadataValue)
 
-	// Add CRC32C of the 33kB file that the policy will explicitly allow.
-	checksum := minio.ChecksumCRC32C.ChecksumBytes(buf)
+	// Add CRC32C of some data that the policy will explicitly allow.
+	checksum := minio.ChecksumCRC32C.ChecksumBytes([]byte{0x01, 0x02, 0x03})
 	err = policy.SetChecksum(checksum)
 	if err != nil {
 		logError(testName, function, args, startTime, "", "SetChecksum failed", err)
@@ -5363,7 +5412,7 @@ func testPresignedPostPolicyWrongFile() {
 		return
 	}
 
-	// At this stage, we have a policy that allows us to upload datafile-33-kB.
+	// At this stage, we have a policy that allows us to upload for a specific checksum.
 	// Test that uploading datafile-10-kB, with a different checksum, fails as expected
 	filePath := getMintDataDirFilePath("datafile-10-kB")
 	if filePath == "" {
@@ -5456,7 +5505,7 @@ func testPresignedPostPolicyWrongFile() {
 	// Normalize the response body, because S3 uses quotes around the policy condition components
 	// in the error message, MinIO does not.
 	resBodyStr := strings.ReplaceAll(string(resBody), `"`, "")
-	if !strings.Contains(resBodyStr, "Policy Condition failed: [eq, $x-amz-checksum-crc32c, aHnJMw==]") {
+	if !strings.Contains(resBodyStr, "Policy Condition failed: [eq, $x-amz-checksum-crc32c, 8TDyHg=") {
 		logError(testName, function, args, startTime, "", "Unexpected response body", errors.New(resBodyStr))
 		return
 	}
