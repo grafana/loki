@@ -30,6 +30,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.20.0
 
 - [CHANGE] Changed version of Grafana Loki to 3.3.0
+## 6.20.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.3.2
 
 ## 6.19.0-weekly.227
 
