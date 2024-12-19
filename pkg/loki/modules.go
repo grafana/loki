@@ -81,6 +81,7 @@ import (
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/usage"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
@@ -142,7 +143,7 @@ const (
 	PartitionRing            string = "partition-ring"
 	BlockBuilder             string = "block-builder"
 	BlockScheduler           string = "block-scheduler"
-	Usage                    string = "usage"
+	IngestUsage              string = "ingest-usage"
 )
 
 const (
@@ -1895,6 +1896,33 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	)
 
 	return s, nil
+}
+
+func (t *Loki) initUsage() (services.Service, error) {
+	if !t.Cfg.Distributor.KafkaEnabled {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "usage")
+	service, err := usage.NewService(
+		t.Cfg.KafkaConfig,
+		"usage-consumer",
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	t.usageService = service
+
+	// Register HTTP endpoint
+	t.Server.HTTP.Path("/usage").Methods("GET").Handler(service)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/usage").Methods("GET").Handler(service)
+	}
+
+	return service, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
