@@ -36,6 +36,9 @@ dist
 pkg/loki/wal
 tools/lambda-promtail/main
 
+# Submodule added by `act` CLI
+_shared-workflows-dockerhub-login
+
 # Workspaces
 *.work
 *.work.sum
