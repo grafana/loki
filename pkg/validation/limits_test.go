@@ -214,7 +214,7 @@ ruler_remote_write_headers:
   foo: "bar"
 `,
 			exp: Limits{
-				DiscoverGenericFields:   map[string][]string{},
+				DiscoverGenericFields:   FieldDetectorConfig{},
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"foo": "bar"}},
 				DiscoverServiceName:     []string{},
 				LogLevelFields:          []string{},
@@ -235,7 +235,7 @@ ruler_remote_write_headers:
 ruler_remote_write_headers:
 `,
 			exp: Limits{
-				DiscoverGenericFields: map[string][]string{},
+				DiscoverGenericFields: FieldDetectorConfig{},
 				DiscoverServiceName:   []string{},
 				LogLevelFields:        []string{},
 				// Rest from new defaults
@@ -256,7 +256,7 @@ retention_stream:
     selector: '{foo="bar"}'
 `,
 			exp: Limits{
-				DiscoverGenericFields: map[string][]string{},
+				DiscoverGenericFields: FieldDetectorConfig{},
 				DiscoverServiceName:   []string{},
 				LogLevelFields:        []string{},
 				StreamRetention: []StreamRetention{
@@ -278,7 +278,7 @@ reject_old_samples: true
 `,
 			exp: Limits{
 				RejectOldSamples:      true,
-				DiscoverGenericFields: map[string][]string{},
+				DiscoverGenericFields: FieldDetectorConfig{},
 				DiscoverServiceName:   []string{},
 				LogLevelFields:        []string{},
 
@@ -299,7 +299,7 @@ reject_old_samples: true
 query_timeout: 5m
 `,
 			exp: Limits{
-				DiscoverGenericFields: map[string][]string{},
+				DiscoverGenericFields: FieldDetectorConfig{},
 				DiscoverServiceName:   []string{},
 				LogLevelFields:        []string{},
 

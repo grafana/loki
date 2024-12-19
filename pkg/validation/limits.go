@@ -248,7 +248,7 @@ type Limits struct {
 }
 
 type FieldDetectorConfig struct {
-	Fields map[string][]string `yaml:"fields" json:"fields"`
+	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
 type StreamRetention struct {
