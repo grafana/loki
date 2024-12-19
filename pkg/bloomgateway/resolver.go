@@ -75,7 +75,14 @@ func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Inter
 		for i := range metas {
 			for j := range metas[i].Blocks {
 				block := metas[i].Blocks[j]
-				sourceTs := metas[i].Sources[j].TS
+				// To keep backwards compatibility, we can only look at the source at index 0
+				// because in the past the slice had always length 1, see
+				// https://github.com/grafana/loki/blob/b4060154d198e17bef8ba0fbb1c99bb5c93a412d/pkg/bloombuild/builder/builder.go#L418
+				sourceTs := metas[i].Sources[0].TS
+				// Newer metas have len(Sources) == len(Blocks)
+				if len(metas[i].Sources) > j {
+					sourceTs = metas[i].Sources[j].TS
+				}
 				// skip blocks that are not within time interval
 				if !interval.Overlaps(block.Interval()) {
 					continue
