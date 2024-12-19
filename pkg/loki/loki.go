@@ -15,6 +15,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
@@ -63,6 +64,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/usage"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/fakeauth"
@@ -398,6 +400,7 @@ type Loki struct {
 	Metrics *server.Metrics
 
 	UsageTracker push.UsageTracker
+	usageService *usage.Service
 }
 
 // New makes a new Loki.
@@ -701,6 +704,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
 	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
+	mm.RegisterModule(Usage, t.initUsage)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -740,12 +744,13 @@ func (t *Loki) setupModuleManager() error {
 		MemberlistKV:             {Server},
 		BlockBuilder:             {PartitionRing, Store, Server},
 		BlockScheduler:           {Server},
+		Usage:                    {Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
-		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway},
+		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway, Usage},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, Usage},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
@@ -860,4 +865,31 @@ func (t *Loki) recursiveIsModuleActive(target, m string) bool {
 		}
 	}
 	return false
+}
+
+func (t *Loki) initUsage() (services.Service, error) {
+	if !t.Cfg.Distributor.KafkaEnabled {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "usage")
+	service, err := usage.NewService(
+		t.Cfg.KafkaConfig,
+		"usage-consumer",
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	t.usageService = service
+
+	// Register HTTP endpoint
+	t.Server.HTTP.Path("/usage").Methods("GET").Handler(service)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/usage").Methods("GET").Handler(service)
+	}
+
+	return service, nil
 }

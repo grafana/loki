@@ -207,6 +207,38 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 	return *d.stream, nil
 }
 
+// DecodeUsage converts a Kafka record's byte data into a logproto.StreamUsage and labels.Labels.
+// Similar to Decode, it parses and caches labels for efficiency.
+func (d *Decoder) DecodeUsage(data []byte) (logproto.StreamUsage, labels.Labels, error) {
+	var usage logproto.StreamUsage
+	if err := usage.Unmarshal(data); err != nil {
+		return logproto.StreamUsage{}, nil, fmt.Errorf("failed to unmarshal stream usage: %w", err)
+	}
+
+	var ls labels.Labels
+	if cachedLabels, ok := d.cache.Get(usage.Labels); ok {
+		ls = cachedLabels
+	} else {
+		var err error
+		ls, err = syntax.ParseLabels(usage.Labels)
+		if err != nil {
+			return logproto.StreamUsage{}, nil, fmt.Errorf("failed to parse labels: %w", err)
+		}
+		d.cache.Add(usage.Labels, ls)
+	}
+
+	return usage, ls, nil
+}
+
+// DecodeUsageWithoutLabels converts a Kafka record's byte data into a logproto.StreamUsage without parsing labels.
+func (d *Decoder) DecodeUsageWithoutLabels(data []byte) (logproto.StreamUsage, error) {
+	var usage logproto.StreamUsage
+	if err := usage.Unmarshal(data); err != nil {
+		return logproto.StreamUsage{}, fmt.Errorf("failed to unmarshal stream usage: %w", err)
+	}
+	return usage, nil
+}
+
 // sovPush calculates the size of varint-encoded uint64.
 // It is used to determine the number of bytes needed to encode a uint64 value
 // in Protocol Buffers' variable-length integer format.

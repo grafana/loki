@@ -142,6 +142,7 @@ const (
 	PartitionRing            string = "partition-ring"
 	BlockBuilder             string = "block-builder"
 	BlockScheduler           string = "block-scheduler"
+	Usage                    string = "usage"
 )
 
 const (
@@ -1855,7 +1856,6 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		logger,
 		prometheus.DefaultRegisterer,
 	)
-
 	if err != nil {
 		return nil, err
 	}
