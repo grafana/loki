@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 )
 
 func makeBlockRef(minFp, maxFp model.Fingerprint, from, through model.Time) bloomshipper.BlockRef {
@@ -27,6 +28,9 @@ func makeMeta(minFp, maxFp model.Fingerprint, from, through model.Time) bloomshi
 	return bloomshipper.Meta{
 		Blocks: []bloomshipper.BlockRef{
 			makeBlockRef(minFp, maxFp, from, through),
+		},
+		Sources: []tsdb.SingleTenantTSDBIdentifier{
+			{TS: through.Time()},
 		},
 	}
 }
@@ -100,14 +104,21 @@ func TestBlockResolver_BlocksMatchingSeries(t *testing.T) {
 
 	t.Run("multiple overlapping blocks within time range covering full keyspace", func(t *testing.T) {
 		metas := []bloomshipper.Meta{
-			makeMeta(0x00, 0xdf, 1000, 1999),
-			makeMeta(0xc0, 0xff, 1000, 1999),
+			// 2 series overlap
+			makeMeta(0x00, 0xdf, 1000, 1499), // "old" meta covers first 4 series
+			makeMeta(0xc0, 0xff, 1500, 1999), // "new" meta covers last 4 series
 		}
 		res := blocksMatchingSeries(metas, interval, series)
+		for i := range res {
+			t.Logf("%s", res[i].block)
+			for j := range res[i].series {
+				t.Logf("  %016x", res[i].series[j].Fingerprint)
+			}
+		}
 		expected := []blockWithSeries{
 			{
 				block:  metas[0].Blocks[0],
-				series: series[0:4],
+				series: series[0:2], // series 0x00c0 and 0x00d0 are covered in the newer block
 			},
 			{
 				block:  metas[1].Blocks[0],
