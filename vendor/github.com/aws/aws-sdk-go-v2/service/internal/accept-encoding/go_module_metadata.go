@@ -3,4 +3,4 @@
 package acceptencoding
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.11.4"
+const goModuleVersion = "1.12.0"

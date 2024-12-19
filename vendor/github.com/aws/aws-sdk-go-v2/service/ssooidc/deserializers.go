@@ -14,6 +14,7 @@ import (
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
 	smithytime "github.com/aws/smithy-go/time"
+	"github.com/aws/smithy-go/tracing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"io"
 	"strings"
@@ -43,6 +44,10 @@ func (m *awsRestjson1_deserializeOpCreateToken) HandleDeserialize(ctx context.Co
 		return out, metadata, err
 	}
 
+	_, span := tracing.StartSpan(ctx, "OperationDeserializer")
+	endTimer := startMetricTimer(ctx, "client.call.deserialization_duration")
+	defer endTimer()
+	defer span.End()
 	response, ok := out.RawResponse.(*smithyhttp.Response)
 	if !ok {
 		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("unknown transport type %T", out.RawResponse)}
@@ -82,6 +87,7 @@ func (m *awsRestjson1_deserializeOpCreateToken) HandleDeserialize(ctx context.Co
 		}
 	}
 
+	span.End()
 	return out, metadata, err
 }
 
@@ -264,6 +270,10 @@ func (m *awsRestjson1_deserializeOpCreateTokenWithIAM) HandleDeserialize(ctx con
 		return out, metadata, err
 	}
 
+	_, span := tracing.StartSpan(ctx, "OperationDeserializer")
+	endTimer := startMetricTimer(ctx, "client.call.deserialization_duration")
+	defer endTimer()
+	defer span.End()
 	response, ok := out.RawResponse.(*smithyhttp.Response)
 	if !ok {
 		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("unknown transport type %T", out.RawResponse)}
@@ -303,6 +313,7 @@ func (m *awsRestjson1_deserializeOpCreateTokenWithIAM) HandleDeserialize(ctx con
 		}
 	}
 
+	span.End()
 	return out, metadata, err
 }
 
@@ -502,6 +513,10 @@ func (m *awsRestjson1_deserializeOpRegisterClient) HandleDeserialize(ctx context
 		return out, metadata, err
 	}
 
+	_, span := tracing.StartSpan(ctx, "OperationDeserializer")
+	endTimer := startMetricTimer(ctx, "client.call.deserialization_duration")
+	defer endTimer()
+	defer span.End()
 	response, ok := out.RawResponse.(*smithyhttp.Response)
 	if !ok {
 		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("unknown transport type %T", out.RawResponse)}
@@ -541,6 +556,7 @@ func (m *awsRestjson1_deserializeOpRegisterClient) HandleDeserialize(ctx context
 		}
 	}
 
+	span.End()
 	return out, metadata, err
 }
 
@@ -721,6 +737,10 @@ func (m *awsRestjson1_deserializeOpStartDeviceAuthorization) HandleDeserialize(c
 		return out, metadata, err
 	}
 
+	_, span := tracing.StartSpan(ctx, "OperationDeserializer")
+	endTimer := startMetricTimer(ctx, "client.call.deserialization_duration")
+	defer endTimer()
+	defer span.End()
 	response, ok := out.RawResponse.(*smithyhttp.Response)
 	if !ok {
 		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("unknown transport type %T", out.RawResponse)}
@@ -760,6 +780,7 @@ func (m *awsRestjson1_deserializeOpStartDeviceAuthorization) HandleDeserialize(c
 		}
 	}
 
+	span.End()
 	return out, metadata, err
 }
 

@@ -162,11 +162,11 @@ func resolveCredsFromProfile(ctx context.Context, cfg *aws.Config, envConfig *En
 		// Get credentials from CredentialProcess
 		err = processCredentials(ctx, cfg, sharedConfig, configs)
 
-	case len(envConfig.ContainerCredentialsEndpoint) != 0:
-		err = resolveLocalHTTPCredProvider(ctx, cfg, envConfig.ContainerCredentialsEndpoint, envConfig.ContainerAuthorizationToken, configs)
-
 	case len(envConfig.ContainerCredentialsRelativePath) != 0:
 		err = resolveHTTPCredProvider(ctx, cfg, ecsContainerURI(envConfig.ContainerCredentialsRelativePath), envConfig.ContainerAuthorizationToken, configs)
+
+	case len(envConfig.ContainerCredentialsEndpoint) != 0:
+		err = resolveLocalHTTPCredProvider(ctx, cfg, envConfig.ContainerCredentialsEndpoint, envConfig.ContainerAuthorizationToken, configs)
 
 	default:
 		err = resolveEC2RoleCredentials(ctx, cfg, configs)
@@ -355,10 +355,13 @@ func resolveCredsFromSource(ctx context.Context, cfg *aws.Config, envConfig *Env
 		cfg.Credentials = credentials.StaticCredentialsProvider{Value: envConfig.Credentials}
 
 	case credSourceECSContainer:
-		if len(envConfig.ContainerCredentialsRelativePath) == 0 {
-			return fmt.Errorf("EcsContainer was specified as the credential_source, but 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI' was not set")
+		if len(envConfig.ContainerCredentialsRelativePath) != 0 {
+			return resolveHTTPCredProvider(ctx, cfg, ecsContainerURI(envConfig.ContainerCredentialsRelativePath), envConfig.ContainerAuthorizationToken, configs)
 		}
-		return resolveHTTPCredProvider(ctx, cfg, ecsContainerURI(envConfig.ContainerCredentialsRelativePath), envConfig.ContainerAuthorizationToken, configs)
+		if len(envConfig.ContainerCredentialsEndpoint) != 0 {
+			return resolveLocalHTTPCredProvider(ctx, cfg, envConfig.ContainerCredentialsEndpoint, envConfig.ContainerAuthorizationToken, configs)
+		}
+		return fmt.Errorf("EcsContainer was specified as the credential_source, but neither 'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI' or AWS_CONTAINER_CREDENTIALS_FULL_URI' was set")
 
 	default:
 		return fmt.Errorf("credential_source values must be EcsContainer, Ec2InstanceMetadata, or Environment")
