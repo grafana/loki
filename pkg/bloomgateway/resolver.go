@@ -70,12 +70,12 @@ func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Inter
 	// find the newest block for each series
 	for _, s := range series {
 		var b *bloomshipper.BlockRef
-		var ts time.Time
+		var newestTs time.Time
 
 		for i := range metas {
 			for j := range metas[i].Blocks {
 				block := metas[i].Blocks[j]
-				version := metas[i].Sources[j].TS
+				sourceTs := metas[i].Sources[j].TS
 				// skip blocks that are not within time interval
 				if !interval.Overlaps(block.Interval()) {
 					continue
@@ -85,9 +85,9 @@ func blocksMatchingSeries(metas []bloomshipper.Meta, interval bloomshipper.Inter
 					continue
 				}
 				// only use the block if it is newer than the previous
-				if version.After(ts) {
+				if sourceTs.After(newestTs) {
 					b = &block
-					ts = version
+					newestTs = sourceTs
 				}
 			}
 		}
