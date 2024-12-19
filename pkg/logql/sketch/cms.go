@@ -10,7 +10,7 @@ import (
 type CountMinSketch struct {
 	Depth, Width uint32
 	Counters     [][]float64
-	HyperLogLog  *hyperloglog.Sketch //hyperloglog.New16(),
+	HyperLogLog  *hyperloglog.Sketch // hyperloglog.New16(),
 }
 
 // NewCountMinSketch creates a new CMS for a given width and depth.
@@ -46,8 +46,8 @@ func (s *CountMinSketch) getPos(h1, h2, row uint32) uint32 {
 }
 
 // Add 'count' occurrences of the given input.
-func (s *CountMinSketch) Add(event string, count float64) {
-	s.HyperLogLog.Insert(unsafeGetBytes(event))
+func (s *CountMinSketch) Add(event []byte, count float64) {
+	s.HyperLogLog.Insert(event)
 	// see the comments in the hashn function for how using only 2
 	// hash functions rather than a function per row still fullfils
 	// the pairwise indendent hash functions requirement for CMS
@@ -58,7 +58,7 @@ func (s *CountMinSketch) Add(event string, count float64) {
 	}
 }
 
-func (s *CountMinSketch) Increment(event string) {
+func (s *CountMinSketch) Increment(event []byte) {
 	s.Add(event, 1)
 }
 
@@ -69,8 +69,8 @@ func (s *CountMinSketch) Increment(event string) {
 // value that's less than Count(h) + count rather than all counters that h hashed to.
 // Returns the new estimate for the event as well as the both hashes which can be used
 // to identify the event for other things that need a hash.
-func (s *CountMinSketch) ConservativeAdd(event string, count float64) (float64, uint32, uint32) {
-	s.HyperLogLog.Insert(unsafeGetBytes(event))
+func (s *CountMinSketch) ConservativeAdd(event []byte, count float64) (float64, uint32, uint32) {
+	s.HyperLogLog.Insert(event)
 
 	min := float64(math.MaxUint64)
 
@@ -94,12 +94,12 @@ func (s *CountMinSketch) ConservativeAdd(event string, count float64) (float64, 
 	return min, h1, h2
 }
 
-func (s *CountMinSketch) ConservativeIncrement(event string) (float64, uint32, uint32) {
+func (s *CountMinSketch) ConservativeIncrement(event []byte) (float64, uint32, uint32) {
 	return s.ConservativeAdd(event, float64(1))
 }
 
 // Count returns the approximate min count for the given input.
-func (s *CountMinSketch) Count(event string) float64 {
+func (s *CountMinSketch) Count(event []byte) float64 {
 	min := float64(math.MaxUint64)
 	h1, h2 := hashn(event)
 

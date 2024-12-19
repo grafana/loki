@@ -24,7 +24,7 @@ import "hash/fnv"
 // SOFTWARE.
 //
 // <http://www.opensource.org/licenses/mit-license.php>
-func hashn(s string) (h1, h2 uint32) {
+func hashn(s []byte) (h1, h2 uint32) {
 	// This construction comes from
 	// http://www.eecs.harvard.edu/~michaelm/postscripts/tr-02-05.pdf
 	// "Building a Better Bloom Filter", by Kirsch and Mitzenmacher. Their
@@ -34,7 +34,7 @@ func hashn(s string) (h1, h2 uint32) {
 	// Empirically, though, this seems to work "just fine".
 
 	fnv1a := fnv.New32a()
-	fnv1a.Write([]byte(s))
+	fnv1a.Write(s)
 	h1 = fnv1a.Sum32()
 
 	// inlined jenkins one-at-a-time hash
