@@ -273,7 +273,7 @@ func (s *streamKey) trimBefore(id string) int {
 	s.mu.Lock()
 	var delete []string
 	for _, entry := range s.entries {
-		if entry.ID < id {
+		if streamCmp(entry.ID, id) < 0 {
 			delete = append(delete, entry.ID)
 		} else {
 			break
