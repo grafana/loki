@@ -43,7 +43,7 @@ func TestCMS(_ *testing.T) {
 
 	for _, e := range events {
 		for i := 0; i < e.count; i++ {
-			cms.ConservativeIncrement(e.name)
+			cms.ConservativeIncrement(unsafeGetBytes(e.name))
 		}
 	}
 }
