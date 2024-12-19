@@ -3,4 +3,4 @@
 package presignedurl
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.11.18"
+const goModuleVersion = "1.12.4"

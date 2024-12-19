@@ -85,6 +85,7 @@ const (
 	UserAgentFeatureS3ExpressBucket                         = "J"
 	UserAgentFeatureS3AccessGrants                          = "K" // not yet implemented
 	UserAgentFeatureGZIPRequestCompression                  = "L"
+	UserAgentFeatureProtocolRPCV2CBOR                       = "M"
 )
 
 // RequestUserAgent is a build middleware that set the User-Agent for the request.

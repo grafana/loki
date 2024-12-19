@@ -1,3 +1,11 @@
+# v1.12.0 (2024-10-04)
+
+* **Feature**: Add support for HTTP client metrics.
+
+# v1.11.5 (2024-09-20)
+
+* No change notes available for this release.
+
 # v1.11.4 (2024-08-15)
 
 * **Dependency Update**: Bump minimum Go version to 1.21.

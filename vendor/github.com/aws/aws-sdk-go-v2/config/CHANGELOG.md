@@ -1,3 +1,39 @@
+# v1.27.39 (2024-09-27)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.38 (2024-09-25)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.37 (2024-09-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.36 (2024-09-20)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.35 (2024-09-17)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.34 (2024-09-16)
+
+* **Bug Fix**: Read `AWS_CONTAINER_CREDENTIALS_FULL_URI` env variable if set when reading a profile with `credential_source`. Also ensure `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` is always read before it
+
+# v1.27.33 (2024-09-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.32 (2024-09-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.31 (2024-08-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.27.30 (2024-08-23)
 
 * **Bug Fix**: Don't fail credentials unit tests if credentials are found on a file
