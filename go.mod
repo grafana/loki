@@ -116,7 +116,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.18.3
 	github.com/IBM/ibm-cos-sdk-go v1.12.0
-	github.com/axiomhq/hyperloglog v0.2.0
+	github.com/axiomhq/hyperloglog v0.2.1
 	github.com/buger/jsonparser v1.1.1
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
@@ -174,6 +174,7 @@ require (
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
+	github.com/kamstrup/intmap v0.5.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20240226150601-1dcf7310316a // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
