@@ -5820,8 +5820,6 @@ definitions:
           type: "string"
         example:
           - "WARNING: No memory limit support"
-          - "WARNING: bridge-nf-call-iptables is disabled"
-          - "WARNING: bridge-nf-call-ip6tables is disabled"
       CDISpecDirs:
         description: |
           List of directories where (Container Device Interface) CDI
@@ -7876,10 +7874,12 @@ paths:
           type: "string"
         - name: "h"
           in: "query"
+          required: true
           description: "Height of the TTY session in characters"
           type: "integer"
         - name: "w"
           in: "query"
+          required: true
           description: "Width of the TTY session in characters"
           type: "integer"
       tags: ["Container"]
@@ -9244,6 +9244,19 @@ paths:
             all tags of the given image that are present in the local image store
             are pushed.
           type: "string"
+        - name: "platform"
+          type: "string"
+          in: "query"
+          description: |
+            JSON-encoded OCI platform to select the platform-variant to push.
+            If not provided, all available variants will attempt to be pushed.
+
+            If the daemon provides a multi-platform image store, this selects
+            the platform-variant to push to the registry. If the image is
+            a single-platform image, or if the multi-platform image does not
+            provide a variant matching the given platform, an error is returned.
+
+            Example: `{"os": "linux", "architecture": "arm", "variant": "v5"}`
         - name: "X-Registry-Auth"
           in: "header"
           description: |
@@ -9253,11 +9266,6 @@ paths:
             details.
           type: "string"
           required: true
-        - name: "platform"
-          in: "query"
-          description: "Select a platform-specific manifest to be pushed. OCI platform (JSON encoded)"
-          type: "string"
-          x-nullable: true
       tags: ["Image"]
   /images/{name}/tag:
     post:
@@ -9553,7 +9561,7 @@ paths:
             type: "string"
             example: "OK"
           headers:
-            API-Version:
+            Api-Version:
               type: "string"
               description: "Max API Version the server supports"
             Builder-Version:
@@ -9609,7 +9617,7 @@ paths:
             type: "string"
             example: "(empty)"
           headers:
-            API-Version:
+            Api-Version:
               type: "string"
               description: "Max API Version the server supports"
             Builder-Version:
@@ -10203,10 +10211,12 @@ paths:
           type: "string"
         - name: "h"
           in: "query"
+          required: true
           description: "Height of the TTY session in characters"
           type: "integer"
         - name: "w"
           in: "query"
+          required: true
           description: "Width of the TTY session in characters"
           type: "integer"
       tags: ["Exec"]
