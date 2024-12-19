@@ -37,6 +37,9 @@ pkg/loki/wal
 tools/lambda-promtail/main
 tools/dev/kafka/data/
 
+# Submodule added by `act` CLI
+_shared-workflows-dockerhub-login
+
 # Workspaces
 *.work
 *.work.sum

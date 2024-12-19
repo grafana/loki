@@ -25,6 +25,7 @@ import (
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.6
 
 // StorageClass describes the parameters for a class of storage for
 // which PersistentVolumes can be dynamically provisioned.
@@ -56,6 +57,7 @@ type StorageClass struct {
 	// e.g. ["ro", "soft"]. Not validated -
 	// mount of the PVs will simply fail if one is invalid.
 	// +optional
+	// +listType=atomic
 	MountOptions []string `json:"mountOptions,omitempty" protobuf:"bytes,5,opt,name=mountOptions"`
 
 	// allowVolumeExpansion shows whether the storage class allow volume expand.
@@ -78,6 +80,7 @@ type StorageClass struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.6
 
 // StorageClassList is a collection of storage classes.
 type StorageClassList struct {
@@ -111,6 +114,7 @@ const (
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.13
 
 // VolumeAttachment captures the intent to attach or detach the specified volume
 // to/from the specified node.
@@ -136,6 +140,7 @@ type VolumeAttachment struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.13
 
 // VolumeAttachmentList is a collection of VolumeAttachment objects.
 type VolumeAttachmentList struct {
@@ -226,6 +231,7 @@ type VolumeError struct {
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.18
 
 // CSIDriver captures information about a Container Storage Interface (CSI)
 // volume driver deployed on the cluster.
@@ -250,6 +256,7 @@ type CSIDriver struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.18
 
 // CSIDriverList is a collection of CSIDriver objects.
 type CSIDriverList struct {
@@ -306,7 +313,7 @@ type CSIDriverSpec struct {
 	// deployed on such a cluster and the deployment determines which mode that is, for example
 	// via a command line parameter of the driver.
 	//
-	// This field is immutable.
+	// This field was immutable in Kubernetes < 1.29 and now is mutable.
 	//
 	// +optional
 	PodInfoOnMount *bool `json:"podInfoOnMount,omitempty" protobuf:"bytes,2,opt,name=podInfoOnMount"`
@@ -353,7 +360,7 @@ type CSIDriverSpec struct {
 	// permission of the volume before being mounted.
 	// Refer to the specific FSGroupPolicy values for additional details.
 	//
-	// This field is immutable.
+	// This field was immutable in Kubernetes < 1.29 and now is mutable.
 	//
 	// Defaults to ReadWriteOnceWithFSType, which will examine each volume
 	// to determine if Kubernetes should modify ownership and permissions of the volume.
@@ -490,6 +497,7 @@ const (
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.17
 
 // CSINode holds information about all CSI drivers installed on a node.
 // CSI drivers do not need to create the CSINode object directly. As long as
@@ -517,6 +525,8 @@ type CSINodeSpec struct {
 	// If all drivers in the list are uninstalled, this can become empty.
 	// +patchMergeKey=name
 	// +patchStrategy=merge
+	// +listType=map
+	// +listMapKey=name
 	Drivers []CSINodeDriver `json:"drivers" patchStrategy:"merge" patchMergeKey:"name" protobuf:"bytes,1,rep,name=drivers"`
 }
 
@@ -549,6 +559,7 @@ type CSINodeDriver struct {
 	// It is possible for different nodes to use different topology keys.
 	// This can be empty if driver does not support topology.
 	// +optional
+	// +listType=atomic
 	TopologyKeys []string `json:"topologyKeys" protobuf:"bytes,3,rep,name=topologyKeys"`
 
 	// allocatable represents the volume resources of a node that are available for scheduling.
@@ -568,6 +579,7 @@ type VolumeNodeResources struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.17
 
 // CSINodeList is a collection of CSINode objects.
 type CSINodeList struct {
@@ -584,6 +596,7 @@ type CSINodeList struct {
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.24
 
 // CSIStorageCapacity stores the result of one CSI GetCapacity call.
 // For a given StorageClass, this describes the available capacity in a
@@ -669,6 +682,7 @@ type CSIStorageCapacity struct {
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +k8s:prerelease-lifecycle-gen:introduced=1.24
 
 // CSIStorageCapacityList is a collection of CSIStorageCapacity objects.
 type CSIStorageCapacityList struct {
@@ -680,7 +694,5 @@ type CSIStorageCapacityList struct {
 	metav1.ListMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
 
 	// items is the list of CSIStorageCapacity objects.
-	// +listType=map
-	// +listMapKey=name
 	Items []CSIStorageCapacity `json:"items" protobuf:"bytes,2,rep,name=items"`
 }
