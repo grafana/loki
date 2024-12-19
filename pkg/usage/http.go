@@ -44,6 +44,17 @@ var statsTemplate = template.Must(template.New("stats").Parse(`
         th { background-color: #f5f5f5; }
         tr:hover { background-color: #f9f9f9; }
         .tenant-totals { margin-bottom: 30px; }
+        .search-box {
+            padding: 8px;
+            margin-bottom: 10px;
+            width: 200px;
+            font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .tenant-row { display: none; }
+        .tenant-row.visible { display: table-row; }
+        .tenant-row.top-5 { display: table-row; }
     </style>
 </head>
 <body>
@@ -51,6 +62,7 @@ var statsTemplate = template.Must(template.New("stats").Parse(`
 
     <div class="tenant-totals">
         <h2>Tenant Total Rates</h2>
+        <input type="text" class="search-box" placeholder="Search tenants..." onkeyup="filterTenants(this.value)">
         <table>
             <thead>
                 <tr>
@@ -59,8 +71,8 @@ var statsTemplate = template.Must(template.New("stats").Parse(`
                 </tr>
             </thead>
             <tbody>
-                {{range .TenantTotals}}
-                <tr>
+                {{range $index, $tenant := .TenantTotals}}
+                <tr class="tenant-row {{if lt $index 5}}top-5{{end}}" data-tenant-id="{{.TenantID}}">
                     <td>{{.TenantID}}</td>
                     <td>{{.BytesPS}}/s</td>
                 </tr>
@@ -95,6 +107,29 @@ var statsTemplate = template.Must(template.New("stats").Parse(`
         </table>
     </div>
     {{end}}
+
+    <script>
+    function filterTenants(searchText) {
+        const rows = document.querySelectorAll('.tenant-row');
+        const searchLower = searchText.toLowerCase();
+
+        rows.forEach(row => {
+            const tenantId = row.getAttribute('data-tenant-id').toLowerCase();
+            row.classList.remove('visible', 'top-5');
+
+            if (searchText === '') {
+                // If search is empty, show only top 5
+                const index = Array.from(row.parentNode.children).indexOf(row);
+                if (index < 5) {
+                    row.classList.add('top-5');
+                }
+            } else if (tenantId.includes(searchLower)) {
+                // Show matching rows
+                row.classList.add('visible');
+            }
+        });
+    }
+    </script>
 </body>
 </html>
 `))
