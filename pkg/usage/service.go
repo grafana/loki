@@ -129,9 +129,9 @@ func (s *Service) running(ctx context.Context) error {
 }
 
 func (s *Service) stopping(failureCase error) error {
+	s.client.Close()
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
 	}
-	s.client.Close()
 	return failureCase
 }
