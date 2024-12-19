@@ -62,11 +62,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/googleapis/gax-go/v2/internallog"
 	googleapi "google.golang.org/api/googleapi"
 	internal "google.golang.org/api/internal"
 	gensupport "google.golang.org/api/internal/gensupport"
@@ -90,6 +92,7 @@ var _ = strings.Replace
 var _ = context.Canceled
 var _ = internaloption.WithDefaultEndpoint
 var _ = internal.Version
+var _ = internallog.New
 
 const apiId = "compute:v1"
 const apiName = "compute"
@@ -142,26 +145,7 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	if err != nil {
 		return nil, err
 	}
-	s, err := New(client)
-	if err != nil {
-		return nil, err
-	}
-	if endpoint != "" {
-		s.BasePath = endpoint
-	}
-	return s, nil
-}
-
-// New creates a new Service. It uses the provided http.Client for requests.
-//
-// Deprecated: please use NewService instead.
-// To provide a custom HTTP client, use option.WithHTTPClient.
-// If you are using google.golang.org/api/googleapis/transport.APIKey, use option.WithAPIKey with NewService instead.
-func New(client *http.Client) (*Service, error) {
-	if client == nil {
-		return nil, errors.New("client is nil")
-	}
-	s := &Service{client: client, BasePath: basePath}
+	s := &Service{client: client, BasePath: basePath, logger: internaloption.GetLogger(opts)}
 	s.AcceleratorTypes = NewAcceleratorTypesService(s)
 	s.Addresses = NewAddressesService(s)
 	s.Autoscalers = NewAutoscalersService(s)
@@ -263,11 +247,30 @@ func New(client *http.Client) (*Service, error) {
 	s.VpnTunnels = NewVpnTunnelsService(s)
 	s.ZoneOperations = NewZoneOperationsService(s)
 	s.Zones = NewZonesService(s)
+	if err != nil {
+		return nil, err
+	}
+	if endpoint != "" {
+		s.BasePath = endpoint
+	}
 	return s, nil
+}
+
+// New creates a new Service. It uses the provided http.Client for requests.
+//
+// Deprecated: please use NewService instead.
+// To provide a custom HTTP client, use option.WithHTTPClient.
+// If you are using google.golang.org/api/googleapis/transport.APIKey, use option.WithAPIKey with NewService instead.
+func New(client *http.Client) (*Service, error) {
+	if client == nil {
+		return nil, errors.New("client is nil")
+	}
+	return NewService(context.Background(), option.WithHTTPClient(client))
 }
 
 type Service struct {
 	client    *http.Client
+	logger    *slog.Logger
 	BasePath  string // API endpoint base URL
 	UserAgent string // optional additional User-Agent fragment
 

@@ -24,10 +24,10 @@ the [Loki repository](https://github.com/grafana/loki/issues).
 
 The Docker plugin must be installed on each Docker host that will be running containers you want to collect logs from.
 
-Run the following command to install the plugin, updating the release version if needed:
+Run the following command to install the plugin, updating the release version, or changing the architecture (`arm64` and `amd64` are currently supported), if needed:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:2.9.2 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:3.3.2-arm64 --alias loki --grant-all-permissions
 ```
 
 {{< admonition type="note" >}}
@@ -52,12 +52,12 @@ Once you have successfully installed the plugin you can [configure](https://graf
 
 ## Upgrade the Docker driver client
 
-The upgrade process involves disabling the existing plugin, upgrading, then
+The upgrade process involves disabling the existing plugin, upgrading (chaning version and architecture as needed), then
 re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki --force
-docker plugin upgrade loki grafana/loki-docker-driver:2.9.2 --grant-all-permissions
+docker plugin upgrade loki grafana/loki-docker-driver:3.3.2-arm64 --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```

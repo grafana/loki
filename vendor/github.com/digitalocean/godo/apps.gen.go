@@ -193,7 +193,7 @@ type AppBuildConfigCNBVersioning struct {
 
 // AppDatabaseSpec struct for AppDatabaseSpec
 type AppDatabaseSpec struct {
-	// The name. Must be unique across all components within the same app.
+	// The database's name. The name must be unique across all components within the same app and cannot use capital letters.
 	Name    string                `json:"name"`
 	Engine  AppDatabaseSpecEngine `json:"engine,omitempty"`
 	Version string                `json:"version,omitempty"`
@@ -216,12 +216,13 @@ type AppDatabaseSpecEngine string
 
 // List of AppDatabaseSpecEngine
 const (
-	AppDatabaseSpecEngine_Unset   AppDatabaseSpecEngine = "UNSET"
-	AppDatabaseSpecEngine_MySQL   AppDatabaseSpecEngine = "MYSQL"
-	AppDatabaseSpecEngine_PG      AppDatabaseSpecEngine = "PG"
-	AppDatabaseSpecEngine_Redis   AppDatabaseSpecEngine = "REDIS"
-	AppDatabaseSpecEngine_MongoDB AppDatabaseSpecEngine = "MONGODB"
-	AppDatabaseSpecEngine_Kafka   AppDatabaseSpecEngine = "KAFKA"
+	AppDatabaseSpecEngine_Unset      AppDatabaseSpecEngine = "UNSET"
+	AppDatabaseSpecEngine_MySQL      AppDatabaseSpecEngine = "MYSQL"
+	AppDatabaseSpecEngine_PG         AppDatabaseSpecEngine = "PG"
+	AppDatabaseSpecEngine_Redis      AppDatabaseSpecEngine = "REDIS"
+	AppDatabaseSpecEngine_MongoDB    AppDatabaseSpecEngine = "MONGODB"
+	AppDatabaseSpecEngine_Kafka      AppDatabaseSpecEngine = "KAFKA"
+	AppDatabaseSpecEngine_Opensearch AppDatabaseSpecEngine = "OPENSEARCH"
 )
 
 // AppDedicatedIp Represents a dedicated egress ip.
@@ -446,11 +447,13 @@ type AppLogDestinationSpecLogtail struct {
 
 // AppLogDestinationSpecOpenSearch OpenSearch configuration.
 type AppLogDestinationSpecOpenSearch struct {
-	// OpenSearch API Endpoint. Only HTTPS is supported. Format: https://<host>:<port>.
-	Endpoint  string               `json:"endpoint"`
+	// OpenSearch API Endpoint. Only HTTPS is supported. Format: https://<host>:<port>. Cannot be specified if `cluster_name` is also specified.
+	Endpoint  string               `json:"endpoint,omitempty"`
 	BasicAuth *OpenSearchBasicAuth `json:"basic_auth,omitempty"`
 	// The index name to use for the logs. If not set, the default index name is \"logs\".
 	IndexName string `json:"index_name,omitempty"`
+	// The name of a DigitalOcean DBaaS OpenSearch cluster to use as a log forwarding destination. Cannot be specified if `endpoint` is also specified.
+	ClusterName string `json:"cluster_name,omitempty"`
 }
 
 // AppLogDestinationSpecPapertrail Papertrail configuration.
@@ -1156,7 +1159,8 @@ type AppInstanceSize struct {
 	// (Deprecated) The slug of the corresponding downgradable instance size on the lower tier.
 	TierDowngradeTo string `json:"tier_downgrade_to,omitempty"`
 	// Indicates if the tier instance size can enable autoscaling.
-	Scalable       bool `json:"scalable,omitempty"`
+	Scalable bool `json:"scalable,omitempty"`
+	// (Deprecated) Indicates if the tier instance size is in feature preview state.
 	FeaturePreview bool `json:"feature_preview,omitempty"`
 	// Indicates if the tier instance size allows more than one instance.
 	SingleInstanceOnly bool `json:"single_instance_only,omitempty"`
@@ -1184,10 +1188,10 @@ type ListBuildpacksResponse struct {
 
 // OpenSearchBasicAuth Configure Username and/or Password for Basic authentication.
 type OpenSearchBasicAuth struct {
-	// Username to authenticate with.
-	User string `json:"user"`
-	// Password for user defined in User.
-	Password string `json:"password"`
+	// Username to authenticate with. Only required when `endpoint` is set. Defaults to `doadmin` when `cluster_name` is set.
+	User string `json:"user,omitempty"`
+	// Password for user defined in User. Is required when `endpoint` is set. Cannot be set if using a DigitalOcean DBaaS OpenSearch cluster.
+	Password string `json:"password,omitempty"`
 }
 
 // AppProposeRequest struct for AppProposeRequest

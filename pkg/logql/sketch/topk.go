@@ -196,8 +196,8 @@ func (t *Topk) heapMinReplace(event string, estimate float64, removed string) {
 // updates the BF to ensure that the removed event won't be mistakenly thought
 // to be in the heap, and updates the BF to ensure that we would get a truthy result for the added event
 func (t *Topk) updateBF(removed, added string) {
-	r1, r2 := hashn(removed)
-	a1, a2 := hashn(added)
+	r1, r2 := hashn(unsafeGetBytes(removed))
+	a1, a2 := hashn(unsafeGetBytes(added))
 	var pos uint32
 	for i := range t.bf {
 		// removed event
@@ -230,7 +230,7 @@ func unsafeGetBytes(s string) []byte {
 // for each node in the heap and rebalance the heap, and then if the event we're observing has an estimate that is still
 // greater than the minimum heap element count, we should put this event into the heap and remove the other one.
 func (t *Topk) Observe(event string) {
-	estimate, h1, h2 := t.sketch.ConservativeIncrement(event)
+	estimate, h1, h2 := t.sketch.ConservativeIncrement(unsafeGetBytes(event))
 	t.hll.Insert(unsafeGetBytes(event))
 
 	if t.InTopk(h1, h2) {
@@ -246,12 +246,12 @@ func (t *Topk) Observe(event string) {
 		var h1, h2 uint32
 		var pos uint32
 		for i := range *t.heap {
-			(*t.heap)[i].count = t.sketch.Count((*t.heap)[i].event)
+			(*t.heap)[i].count = t.sketch.Count(unsafeGetBytes((*t.heap)[i].event))
 			if i <= len(*t.heap)/2 {
 				heap.Fix(t.heap, i)
 			}
 			// ensure all the bf buckets are truthy for the event
-			h1, h2 = hashn((*t.heap)[i].event)
+			h1, h2 = hashn(unsafeGetBytes((*t.heap)[i].event))
 			for j := range t.bf {
 				pos = t.sketch.getPos(h1, h2, uint32(j))
 				t.bf[j][pos] = true
@@ -304,11 +304,11 @@ func (t *Topk) Merge(from *Topk) error {
 
 	var all TopKResult
 	for _, e := range *t.heap {
-		all = append(all, element{Event: e.event, Count: t.sketch.Count(e.event)})
+		all = append(all, element{Event: e.event, Count: t.sketch.Count(unsafeGetBytes(e.event))})
 	}
 
 	for _, e := range *from.heap {
-		all = append(all, element{Event: e.event, Count: t.sketch.Count(e.event)})
+		all = append(all, element{Event: e.event, Count: t.sketch.Count(unsafeGetBytes(e.event))})
 	}
 
 	all = removeDuplicates(all)
@@ -317,7 +317,7 @@ func (t *Topk) Merge(from *Topk) error {
 	var h1, h2 uint32
 	// TODO: merging should also potentially replace it's bloomfilter? or 0 everything in the bloomfilter
 	for _, e := range all[:t.max] {
-		h1, h2 = hashn(e.Event)
+		h1, h2 = hashn(unsafeGetBytes(e.Event))
 		t.heapPush(temp, e.Event, float64(e.Count), h1, h2)
 	}
 	t.heap = temp
@@ -347,7 +347,7 @@ func (t *Topk) Topk() TopKResult {
 	for _, e := range *t.heap {
 		res = append(res, element{
 			Event: e.event,
-			Count: t.sketch.Count(e.event),
+			Count: t.sketch.Count(unsafeGetBytes(e.event)),
 		})
 	}
 	sort.Sort(res)

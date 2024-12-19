@@ -235,6 +235,7 @@ func dialPoolNewAuth(ctx context.Context, secure bool, poolSize int, ds *interna
 			Audience:        aud,
 			CredentialsFile: ds.CredentialsFile,
 			CredentialsJSON: ds.CredentialsJSON,
+			Logger:          ds.Logger,
 		},
 		InternalOptions: &grpctransport.InternalOptions{
 			EnableNonDefaultSAForDirectPath: ds.AllowNonDefaultServiceAccount,
@@ -248,6 +249,7 @@ func dialPoolNewAuth(ctx context.Context, secure bool, poolSize int, ds *interna
 			SkipValidation:                  skipValidation,
 		},
 		UniverseDomain: ds.UniverseDomain,
+		Logger:         ds.Logger,
 	})
 	return pool, err
 }
