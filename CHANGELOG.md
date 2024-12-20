@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.2.2](https://github.com/grafana/loki/compare/v3.2.1...v3.2.2) (2024-12-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove `wget` from Promtail docker image (backport release-3.2.x) ([#15145](https://github.com/grafana/loki/issues/15145))
+
+### Miscellaneous Chores
+
+* Remove `wget` from Promtail docker image (backport release-3.2.x) ([#15145](https://github.com/grafana/loki/issues/15145)) ([ab59208](https://github.com/grafana/loki/commit/ab59208ea161f1638e6c4fc49f85632faa28cfd6))
+
 ## [3.2.1](https://github.com/grafana/loki/compare/v3.2.0...v3.2.1) (2024-10-17)
 
 
