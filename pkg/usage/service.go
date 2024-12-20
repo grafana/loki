@@ -37,8 +37,18 @@ func NewService(kafkaCfg kafka.Config, consumerGroup string, logger log.Logger, 
 	client, err := client.NewReaderClient(kafkaCfg, kprom, logger,
 		kgo.ConsumerGroup(consumerGroup),
 		kgo.ConsumeTopics(topic),
+		kgo.Balancers(kgo.RoundRobinBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-windowSize).UnixMilli())),
 		kgo.DisableAutoCommit(),
+		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+			level.Info(logger).Log("msg", "assigned partitions", "partitions", partitions)
+		}),
+		kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+			level.Info(logger).Log("msg", "revoked partitions", "partitions", partitions)
+		}),
+		kgo.OnPartitionsLost(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+			level.Info(logger).Log("msg", "lost partitions", "partitions", partitions)
+		}),
 	)
 	if err != nil {
 		return nil, err

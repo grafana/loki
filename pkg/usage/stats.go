@@ -55,6 +55,11 @@ func (u *usageStats) addEntry(partition int32, tenantID string, streamHash uint6
 		u.stats[partition] = pStats
 	}
 
+	// If the partition has already processed this offset, skip it
+	if pStats.offset != 0 && pStats.offset >= offset {
+		return
+	}
+
 	pStats.offset = offset
 	pStats.timestamp = timestamp
 
