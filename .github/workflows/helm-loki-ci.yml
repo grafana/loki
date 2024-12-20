@@ -1,14 +1,14 @@
 ---
 name: helm-loki-ci
 on:
-  # It runs with the configuration from base branch, so the changes of this file from the PR won't be taken into account until they are merged into main. see: https://docs.github.com/en/actions/writing-workflows/choosing-when-your-workflow-runs/events-that-trigger-workflows#pull_request_target .
-  # This change is required to allow this CI to be run on Pull Requests opened from a fork repository
-  pull_request_target:
+  pull_request:
     paths:
       - "production/helm/loki/**"
 
 jobs:
   publish-diff:
+    # temporarily disable the workflow for the PRs where PRs branch is from fork.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     name: Publish Rendered Helm Chart Diff
     runs-on: ubuntu-latest
     steps:
