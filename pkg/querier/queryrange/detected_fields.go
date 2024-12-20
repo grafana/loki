@@ -91,6 +91,45 @@ func NewDetectedFieldsHandler(
 		})
 }
 
+type bytesUnit []string
+
+func (b bytesUnit) Contains(s string) bool {
+	for _, u := range b {
+		if strings.HasSuffix(s, u) {
+			return true
+		}
+	}
+	return false
+}
+
+var allowedBytesUnits = bytesUnit{
+	"b",
+	"kib",
+	"kb",
+	"mib",
+	"mb",
+	"gib",
+	"gb",
+	"tib",
+	"tb",
+	"pib",
+	"pb",
+	"eib",
+	"eb",
+	"ki",
+	"k",
+	"mi",
+	"m",
+	"gi",
+	"g",
+	"ti",
+	"t",
+	"pi",
+	"p",
+	"ei",
+	"e",
+}
+
 func parseDetectedFieldValues(limit uint32, streams []push.Stream, name string) []string {
 	values := map[string]struct{}{}
 	for _, stream := range streams {
@@ -116,7 +155,7 @@ func parseDetectedFieldValues(limit uint32, streams []push.Stream, name string) 
 			if vals, ok := parsedLabels[name]; ok {
 				for _, v := range vals {
 					// special case bytes values, so they can be directly inserted into a query
-					if bs, err := humanize.ParseBytes(v); err == nil {
+					if bs, err := humanize.ParseBytes(v); err == nil && allowedBytesUnits.Contains(strings.ToLower(v)) {
 						bsString := strings.Replace(humanize.Bytes(bs), " ", "", 1)
 						values[bsString] = struct{}{}
 					} else {
