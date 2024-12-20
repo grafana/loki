@@ -2,11 +2,13 @@ package types
 
 import (
 	"context"
-	"flag"
 	"io"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/dskit/middleware"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -17,18 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
-var _ Transport = &GRPCTransport{}
-
-type GRPCTransportConfig struct {
-	Address string `yaml:"address,omitempty"`
-
-	// GRPCClientConfig configures the gRPC connection between the block-builder and its scheduler.
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
-}
-
-func (cfg *GRPCTransportConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, prefix+"address", "", "address in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
-}
+var _ BuilderTransport = &GRPCTransport{}
 
 type grpcTransportMetrics struct {
 	requestLatency *prometheus.HistogramVec
@@ -50,30 +41,38 @@ func newGRPCTransportMetrics(registerer prometheus.Registerer) *grpcTransportMet
 type GRPCTransport struct {
 	grpc_health_v1.HealthClient
 	io.Closer
-	proto.BlockBuilderServiceClient
+	proto.SchedulerServiceClient
 }
 
 // NewGRPCTransportFromAddress creates a new gRPC transport instance from an address and dial options
 func NewGRPCTransportFromAddress(
-	metrics *grpcTransportMetrics,
-	cfg GRPCTransportConfig,
+	address string,
+	cfg grpcclient.Config,
+	reg prometheus.Registerer,
 ) (*GRPCTransport, error) {
-
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(metrics.requestLatency))
+	metrics := newGRPCTransportMetrics(reg)
+	dialOpts, err := cfg.DialOption(
+		[]grpc.UnaryClientInterceptor{
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+			middleware.UnaryClientInstrumentInterceptor(metrics.requestLatency),
+		}, []grpc.StreamClientInterceptor{
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+			middleware.StreamClientInstrumentInterceptor(metrics.requestLatency),
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
-	conn, err := grpc.Dial(cfg.Address, dialOpts...)
+	conn, err := grpc.NewClient(address, dialOpts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "new grpc pool dial")
 	}
 
 	return &GRPCTransport{
-		Closer:                    conn,
-		HealthClient:              grpc_health_v1.NewHealthClient(conn),
-		BlockBuilderServiceClient: proto.NewBlockBuilderServiceClient(conn),
+		Closer:                 conn,
+		HealthClient:           grpc_health_v1.NewHealthClient(conn),
+		SchedulerServiceClient: proto.NewSchedulerServiceClient(conn),
 	}, nil
 }
 
@@ -99,6 +98,7 @@ func (t *GRPCTransport) SendCompleteJob(ctx context.Context, req *CompleteJobReq
 	protoReq := &proto.CompleteJobRequest{
 		BuilderId: req.BuilderID,
 		Job:       jobToProto(req.Job),
+		Success:   req.Success,
 	}
 
 	_, err := t.CompleteJob(ctx, protoReq)
@@ -122,9 +122,9 @@ func protoToJob(p *proto.Job) *Job {
 		return nil
 	}
 	return &Job{
-		ID:        p.GetId(),
-		Partition: int(p.GetPartition()),
-		Offsets: Offsets{
+		id:        p.GetId(),
+		partition: p.GetPartition(),
+		offsets: Offsets{
 			Min: p.GetOffsets().GetMin(),
 			Max: p.GetOffsets().GetMax(),
 		},
@@ -137,11 +137,11 @@ func jobToProto(j *Job) *proto.Job {
 		return nil
 	}
 	return &proto.Job{
-		Id:        j.ID,
-		Partition: int32(j.Partition),
+		Id:        j.ID(),
+		Partition: j.Partition(),
 		Offsets: &proto.Offsets{
-			Min: j.Offsets.Min,
-			Max: j.Offsets.Max,
+			Min: j.offsets.Min,
+			Max: j.offsets.Max,
 		},
 	}
 }

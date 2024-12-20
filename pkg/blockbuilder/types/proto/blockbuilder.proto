@@ -4,8 +4,8 @@ package blockbuilder.types;
 
 option go_package = "github.com/grafana/loki/pkg/blockbuilder/types/proto";
 
-// BlockBuilderService defines the gRPC service for block builder communication
-service BlockBuilderService {
+// SchedulerService defines the gRPC service for calls originating from the blockbuilder (to the scheduler)
+service SchedulerService {
   // GetJob requests a new job from the scheduler
   rpc GetJob(GetJobRequest) returns (GetJobResponse) {}
   // CompleteJob notifies the scheduler that a job has been completed
@@ -29,6 +29,7 @@ message GetJobResponse {
 message CompleteJobRequest {
   string builder_id = 1;
   Job job = 2;
+  bool success = 3;
 }
 
 // CompleteJobResponse is an empty response for job completion

@@ -19,7 +19,7 @@ CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
 GO_VERSION         := 1.23.1
-BUILD_IMAGE_TAG    := 0.34.1
+BUILD_IMAGE_TAG    := 0.34.3
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -384,7 +384,7 @@ test: all ## run the unit tests
 	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | tee lambda_promtail_test_results.txt
 
 test-integration:
-	$(GOTEST) -count=1 -v -tags=integration -timeout 10m ./integration
+	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -672,12 +672,12 @@ logql-analyzer-push: logql-analyzer-image
 # Build image
 build-image: ## build the build docker image
 	$(OCI_BUILD) -t $(BUILD_IMAGE) ./loki-build-image
-build-image-push:  build-image
+build-image-push:
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(OCI_PUSH) -t $(BUILD_IMAGE)
+	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -t $(BUILD_IMAGE) ./loki-build-image
 
 # Loki Operator
 loki-operator-image: ## build the operator docker image
@@ -873,8 +873,12 @@ scan-vulnerabilities: trivy snyk
 
 .PHONY: release-workflows
 release-workflows:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
 	pushd $(CURDIR)/.github && jb update && popd
 	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) .github/release-workflows.jsonnet
+endif
 
 .PHONY: release-workflows-check
 release-workflows-check:

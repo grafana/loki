@@ -167,10 +167,11 @@ type Distributor struct {
 	RequestParserWrapper push.RequestParserWrapper
 
 	// metrics
-	ingesterAppends        *prometheus.CounterVec
-	ingesterAppendTimeouts *prometheus.CounterVec
-	replicationFactor      prometheus.Gauge
-	streamShardCount       prometheus.Counter
+	ingesterAppends                       *prometheus.CounterVec
+	ingesterAppendTimeouts                *prometheus.CounterVec
+	replicationFactor                     prometheus.Gauge
+	streamShardCount                      prometheus.Counter
+	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
@@ -284,6 +285,11 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
+		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_structured_metadata_sanitized_total",
+			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
+		}, []string{"tenant"}),
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_appends_total",
@@ -440,7 +446,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
-		return &logproto.PushResponse{}, nil
+		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
 	// First we flatten out the request into a list of samples.
@@ -527,11 +533,17 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					continue
 				}
 
+				var normalized string
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
 				for i := range entry.StructuredMetadata {
-					structuredMetadata[i].Name = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
+					normalized = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
+					if normalized != structuredMetadata[i].Name {
+						structuredMetadata[i].Name = normalized
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
+					}
 					if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
 						structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
 					}
 				}
 				if shouldDiscoverLevels {

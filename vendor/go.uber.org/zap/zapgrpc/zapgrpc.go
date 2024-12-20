@@ -30,22 +30,20 @@ import (
 
 // See https://github.com/grpc/grpc-go/blob/v1.35.0/grpclog/loggerv2.go#L77-L86
 const (
-	grpcLvlInfo  = 0
-	grpcLvlWarn  = 1
-	grpcLvlError = 2
-	grpcLvlFatal = 3
+	grpcLvlInfo int = iota
+	grpcLvlWarn
+	grpcLvlError
+	grpcLvlFatal
 )
 
-var (
-	// _grpcToZapLevel maps gRPC log levels to zap log levels.
-	// See https://pkg.go.dev/go.uber.org/zap@v1.16.0/zapcore#Level
-	_grpcToZapLevel = map[int]zapcore.Level{
-		grpcLvlInfo:  zapcore.InfoLevel,
-		grpcLvlWarn:  zapcore.WarnLevel,
-		grpcLvlError: zapcore.ErrorLevel,
-		grpcLvlFatal: zapcore.FatalLevel,
-	}
-)
+// _grpcToZapLevel maps gRPC log levels to zap log levels.
+// See https://pkg.go.dev/go.uber.org/zap@v1.16.0/zapcore#Level
+var _grpcToZapLevel = map[int]zapcore.Level{
+	grpcLvlInfo:  zapcore.InfoLevel,
+	grpcLvlWarn:  zapcore.WarnLevel,
+	grpcLvlError: zapcore.ErrorLevel,
+	grpcLvlFatal: zapcore.FatalLevel,
+}
 
 // An Option overrides a Logger's default configuration.
 type Option interface {
@@ -61,6 +59,7 @@ func (f optionFunc) apply(log *Logger) {
 // WithDebug configures a Logger to print at zap's DebugLevel instead of
 // InfoLevel.
 // It only affects the Printf, Println and Print methods, which are only used in the gRPC v1 grpclog.Logger API.
+//
 // Deprecated: use grpclog.SetLoggerV2() for v2 API.
 func WithDebug() Option {
 	return optionFunc(func(logger *Logger) {
@@ -146,19 +145,22 @@ type Logger struct {
 }
 
 // Print implements grpclog.Logger.
-// Deprecated: use Info().
+//
+// Deprecated: use [Logger.Info].
 func (l *Logger) Print(args ...interface{}) {
 	l.print.Print(args...)
 }
 
 // Printf implements grpclog.Logger.
-// Deprecated: use Infof().
+//
+// Deprecated: use [Logger.Infof].
 func (l *Logger) Printf(format string, args ...interface{}) {
 	l.print.Printf(format, args...)
 }
 
 // Println implements grpclog.Logger.
-// Deprecated: use Info().
+//
+// Deprecated: use [Logger.Info].
 func (l *Logger) Println(args ...interface{}) {
 	l.print.Println(args...)
 }

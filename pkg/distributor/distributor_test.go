@@ -13,6 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/grafana/loki/pkg/push"
@@ -581,6 +583,8 @@ func TestDistributorPushToKafka(t *testing.T) {
 		require.Equal(t, 1, len(ingesters[0].pushed))
 		require.Equal(t, 1, len(ingesters[1].pushed))
 		require.Eventually(t, func() bool {
+			ingesters[2].mu.Lock()
+			defer ingesters[2].mu.Unlock()
 			return len(ingesters[2].pushed) == 1
 		}, time.Second, 10*time.Millisecond)
 	})
@@ -638,6 +642,16 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, "%s", fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\"}", 10)))
+		topVal := ingester.Peek()
+		require.Nil(t, topVal)
+	})
+
+	t.Run("it returns unprocessable entity error if the streams is empty", func(t *testing.T) {
+		limits, ingester := setup()
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 1, []string{}, false, false, false))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg))
 		topVal := ingester.Peek()
 		require.Nil(t, topVal)
 	})
@@ -1961,22 +1975,27 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 	for _, tc := range []struct {
 		req              *logproto.PushRequest
 		expectedResponse *logproto.PushResponse
+		numSanitizations float64
 	}{
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, false),
 			success,
+			0,
 		},
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, false),
 			success,
+			10,
 		},
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, true),
 			success,
+			10,
 		},
 		{
 			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, true),
 			success,
+			20,
 		},
 	} {
 		distributors, _ := prepare(t, 1, 5, limits, nil)
@@ -1988,5 +2007,6 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
 	}
 }

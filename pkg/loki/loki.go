@@ -430,6 +430,9 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
+			"/blockbuilder.types.SchedulerService/GetJob",
+			"/blockbuilder.types.SchedulerService/CompleteJob",
+			"/blockbuilder.types.SchedulerService/SyncJob",
 		})
 }
 
