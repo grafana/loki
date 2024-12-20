@@ -26,6 +26,8 @@ type noopClient struct {
 	callCount int
 }
 
+var _ Client = &noopClient{}
+
 // FilterChunks implements Client.
 func (c *noopClient) FilterChunks(_ context.Context, _ string, _ bloomshipper.Interval, blocks []blockWithSeries, _ plan.QueryPlan) (result []*logproto.GroupedChunkRefs, err error) {
 	for _, block := range blocks {
@@ -37,6 +39,10 @@ func (c *noopClient) FilterChunks(_ context.Context, _ string, _ bloomshipper.In
 
 	c.callCount++
 	return result, c.err
+}
+
+func (c *noopClient) PrefetchBloomBlocks(_ context.Context, _ []bloomshipper.BlockRef) error {
+	return nil
 }
 
 type mockBlockResolver struct{}

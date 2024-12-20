@@ -4,6 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.indexGatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.indexGatewayLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -172,7 +173,9 @@ spec:
         {{- end }}
   {{- else }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
         {{- with .Values.indexGateway.persistence.annotations }}
         annotations:

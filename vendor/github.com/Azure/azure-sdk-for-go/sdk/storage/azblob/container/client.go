@@ -11,8 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"net/http"
 	"net/url"
 	"time"
@@ -20,8 +18,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/appendblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/base"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/exported"
@@ -43,8 +43,8 @@ type Client base.Client[generated.ContainerClient]
 //   - options - client options; pass nil to accept the default values
 func NewClient(containerURL string, cred azcore.TokenCredential, options *ClientOptions) (*Client, error) {
 	audience := base.GetAudience((*base.ClientOptions)(options))
-	authPolicy := shared.NewStorageChallengePolicy(cred, audience)
 	conOptions := shared.GetClientOptions(options)
+	authPolicy := shared.NewStorageChallengePolicy(cred, audience, conOptions.InsecureAllowCredentialWithHTTP)
 	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
 	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
@@ -348,7 +348,6 @@ func (c *Client) GetSASURL(permissions sas.ContainerPermissions, expiry time.Tim
 	// Containers do not have snapshots, nor versions.
 	qps, err := sas.BlobSignatureValues{
 		Version:       sas.Version,
-		Protocol:      sas.ProtocolHTTPS,
 		ContainerName: urlParts.ContainerName,
 		Permissions:   permissions.String(),
 		StartTime:     st,
@@ -371,7 +370,8 @@ func (c *Client) NewBatchBuilder() (*BatchBuilder, error) {
 
 	switch cred := c.credential().(type) {
 	case *azcore.TokenCredential:
-		authPolicy = shared.NewStorageChallengePolicy(*cred, base.GetAudience(c.getClientOptions()))
+		conOptions := c.getClientOptions()
+		authPolicy = shared.NewStorageChallengePolicy(*cred, base.GetAudience(conOptions), conOptions.InsecureAllowCredentialWithHTTP)
 	case *SharedKeyCredential:
 		authPolicy = exported.NewSharedKeyCredPolicy(cred)
 	case nil:

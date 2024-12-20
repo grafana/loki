@@ -16,17 +16,19 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
-
-	loki_util "github.com/grafana/loki/v3/pkg/util"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
+	loki_util "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
@@ -86,6 +88,7 @@ func (EmptyLimits) DiscoverServiceName(string) []string {
 type (
 	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
+	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
 )
 
 type Stats struct {
@@ -307,3 +310,62 @@ func RetentionPeriodToString(retentionPeriod time.Duration) string {
 	}
 	return retentionHours
 }
+
+// OTLPError writes an OTLP-compliant error response to the given http.ResponseWriter.
+//
+// According to the OTLP spec: https://opentelemetry.io/docs/specs/otlp/#failures-1
+// Re. the error response format
+// > If the processing of the request fails, the server MUST respond with appropriate HTTP 4xx or HTTP 5xx status code.
+// > The response body for all HTTP 4xx and HTTP 5xx responses MUST be a Protobuf-encoded Status message that describes the problem.
+// > This specification does not use Status.code field and the server MAY omit Status.code field.
+// > The clients are not expected to alter their behavior based on Status.code field but MAY record it for troubleshooting purposes.
+// > The Status.message field SHOULD contain a developer-facing error message as defined in Status message schema.
+//
+// Re. retryable errors
+// > The requests that receive a response status code listed in following table SHOULD be retried.
+// > All other 4xx or 5xx response status codes MUST NOT be retried
+// > 429 Too Many Requests
+// > 502 Bad Gateway
+// > 503 Service Unavailable
+// > 504 Gateway Timeout
+// In loki, we expect clients to retry on 500 errors, so we map 500 errors to 503.
+func OTLPError(w http.ResponseWriter, error string, code int, logger log.Logger) {
+	// Map 500 errors to 503. 500 errors are never retried on the client side, but 503 are.
+	if code == http.StatusInternalServerError {
+		code = http.StatusServiceUnavailable
+	}
+
+	// As per the OTLP spec, we send the status code on the http header.
+	w.WriteHeader(code)
+
+	// Status 0 because we omit the Status.code field.
+	status := grpcstatus.New(0, error).Proto()
+	respBytes, err := proto.Marshal(status)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to marshal error response", "error", err)
+		writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
+			codes.Internal,
+			fmt.Sprintf("failed to marshal error response: %s", err.Error()),
+		).Proto())
+		_, _ = w.Write(writeResponseFailedBody)
+		return
+	}
+
+	w.Header().Set(contentType, "application/octet-stream")
+	if _, err = w.Write(respBytes); err != nil {
+		level.Error(logger).Log("msg", "failed to write error response", "error", err)
+		writeResponseFailedBody, _ := proto.Marshal(grpcstatus.New(
+			codes.Internal,
+			fmt.Sprintf("failed write error: %s", err.Error()),
+		).Proto())
+		_, _ = w.Write(writeResponseFailedBody)
+	}
+}
+
+var _ ErrorWriter = OTLPError
+
+func HTTPError(w http.ResponseWriter, error string, code int, _ log.Logger) {
+	http.Error(w, error, code)
+}
+
+var _ ErrorWriter = HTTPError

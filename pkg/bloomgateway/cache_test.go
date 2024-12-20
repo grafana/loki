@@ -468,6 +468,8 @@ type mockServer struct {
 	res   *logproto.FilterChunkRefResponse
 }
 
+var _ logproto.BloomGatewayClient = &mockServer{}
+
 func newMockServer(res *logproto.FilterChunkRefResponse) (*mockServer, *int) {
 	var calls int
 	return &mockServer{
@@ -480,9 +482,15 @@ func (s *mockServer) SetResponse(res *logproto.FilterChunkRefResponse) {
 	s.res = res
 }
 
+// FilterChunkRefs implements logproto.BloomGatewayClient.
 func (s *mockServer) FilterChunkRefs(_ context.Context, _ *logproto.FilterChunkRefRequest, _ ...grpc.CallOption) (*logproto.FilterChunkRefResponse, error) {
 	*s.calls++
 	return s.res, nil
+}
+
+// PrefetchBloomBlocks implements logproto.BloomGatewayClient.
+func (s *mockServer) PrefetchBloomBlocks(_ context.Context, _ *logproto.PrefetchBloomBlocksRequest, _ ...grpc.CallOption) (*logproto.PrefetchBloomBlocksResponse, error) {
+	panic("unimplemented")
 }
 
 type mockLimits struct {
