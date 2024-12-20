@@ -96,6 +96,7 @@ const (
 	TypeLP         uint16 = 107
 	TypeEUI48      uint16 = 108
 	TypeEUI64      uint16 = 109
+	TypeNXNAME     uint16 = 128
 	TypeURI        uint16 = 256
 	TypeCAA        uint16 = 257
 	TypeAVC        uint16 = 258
@@ -292,6 +293,19 @@ func (rr *NULL) String() string {
 
 func (*NULL) parse(c *zlexer, origin string) *ParseError {
 	return &ParseError{err: "NULL records do not have a presentation format"}
+}
+
+// NXNAME is a meta record. See https://www.iana.org/go/draft-ietf-dnsop-compact-denial-of-existence-04
+// Reference: https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
+type NXNAME struct {
+	Hdr RR_Header
+	// Does not have any rdata
+}
+
+func (rr *NXNAME) String() string { return rr.Hdr.String() }
+
+func (*NXNAME) parse(c *zlexer, origin string) *ParseError {
+	return &ParseError{err: "NXNAME records do not have a presentation format"}
 }
 
 // CNAME RR. See RFC 1034.

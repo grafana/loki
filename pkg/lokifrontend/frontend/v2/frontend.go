@@ -154,7 +154,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
 	// between different queries. Note that frontend verifies the user, so it cannot leak results between tenants.
 	// This isn't perfect, but better than nothing.
-	f.lastQueryID.Store(rand.Uint64())
+	f.lastQueryID.Store(rand.Uint64()) //#nosec G404 -- See above comment, this can't leak data or otherwise result in a vuln, simply very rarely cause confusing behavior. A CSPRNG would not help.
 
 	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: metricsNamespace,

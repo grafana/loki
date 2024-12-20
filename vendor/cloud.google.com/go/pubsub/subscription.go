@@ -546,7 +546,7 @@ type SubscriptionConfig struct {
 	// When calling Subscription.Receive(), the client will check this
 	// value with a call to Subscription.Config(), which requires the
 	// roles/viewer or roles/pubsub.viewer role on your service account.
-	// If that call fails, mesages with ordering keys will be delivered in order.
+	// If that call fails, messages with ordering keys will be delivered in order.
 	EnableMessageOrdering bool
 
 	// DeadLetterPolicy specifies the conditions for dead lettering messages in
@@ -899,8 +899,7 @@ type ReceiveSettings struct {
 	//
 	// MinExtensionPeriod must be between 10s and 600s (inclusive). This configuration
 	// can be disabled by specifying a duration less than (or equal to) 0.
-	// Defaults to off but set to 60 seconds if the subscription has exactly-once delivery enabled,
-	// which will be added in a future release.
+	// Disabled by default but set to 60 seconds if the subscription has exactly-once delivery enabled.
 	MinExtensionPeriod time.Duration
 
 	// MaxOutstandingMessages is the maximum number of unprocessed messages
@@ -1379,7 +1378,7 @@ func (s *Subscription) Receive(ctx context.Context, f func(context.Context, *Mes
 				}
 
 				msgs, err := iter.receive(maxToPull)
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					return nil
 				}
 				if err != nil {

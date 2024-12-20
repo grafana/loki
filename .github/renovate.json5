@@ -24,7 +24,7 @@
     {
       // Disable Go version updates
       "matchManagers": ["gomod"],
-      "matchPackageNames": ["go"],
+      "matchPackageNames": ["go", "toolchain"],
       "enabled": false
     },
     {
@@ -48,17 +48,7 @@
       "matchManagers": ["helm-requirements", "helm-values", "helmv3"],
       "groupName": "helm-{{packageName}}",
       "matchUpdateTypes": ["major", "minor", "patch"],
-      "autoApprove": false,
-      "automerge": false
-    },
-    {
-      // Separate out lambda-promtail updates from other dependencies
-      // Don't automatically merge lambda-promtail updates
-      // Updates to this require the nix SHA to be updated
-      "matchFileNames": ["tools/lambda-promtail/go.mod"],
-      "groupName": "lambdapromtail-{{packageName}}",
-      "enabled": true,
-      "matchUpdateTypes": ["major", "minor", "patch"],
+      "matchPackageNames": ["!grafana/loki"], // This is updated via a different job
       "autoApprove": false,
       "automerge": false
     },
@@ -71,7 +61,7 @@
     },
     {
       // Enable all other updates
-      "matchFileNames": ["!tools/lambda-promtail/go.mod", "!operator/go.mod", "!operator/api/loki/go.mod"],
+      "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
       "groupName": "{{packageName}}",
       "enabled": true,
       "matchUpdateTypes": ["major", "minor", "patch"],
