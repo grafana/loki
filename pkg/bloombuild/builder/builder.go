@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
@@ -415,7 +414,6 @@ func (b *Builder) processTask(
 					Bounds:    gap.Bounds,
 				},
 			},
-			Sources: []tsdb.SingleTenantTSDBIdentifier{task.TSDB},
 		}
 
 		// Fetch blocks that aren't up to date but are in the desired fingerprint range
@@ -492,6 +490,7 @@ func (b *Builder) processTask(
 			level.Debug(logger).Log("msg", "uploaded block", "progress_pct", fmt.Sprintf("%.2f", pct))
 
 			meta.Blocks = append(meta.Blocks, built.BlockRef)
+			meta.Sources = append(meta.Sources, task.TSDB)
 		}
 
 		if err := newBlocks.Err(); err != nil {

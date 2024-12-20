@@ -64,12 +64,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxPerSecond, prefix+"hedge-max-per-second", 5, "The maximum of hedge requests allowed per seconds.")
 }
 
-// Client returns a hedged http client.
-// The client transport will be mutated to use the hedged roundtripper.
-func (cfg *Config) Client(client *http.Client) (*http.Client, error) {
-	return cfg.ClientWithRegisterer(client, prometheus.DefaultRegisterer)
-}
-
 // ClientWithRegisterer returns a hedged http client with instrumentation registered to the provided registerer.
 // The client transport will be mutated to use the hedged roundtripper.
 func (cfg *Config) ClientWithRegisterer(client *http.Client, reg prometheus.Registerer) (*http.Client, error) {

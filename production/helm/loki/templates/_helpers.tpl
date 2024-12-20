@@ -134,7 +134,6 @@ helm.sh/chart: {{ include "loki.chart" . }}
 {{- if or (.Chart.AppVersion) (.Values.loki.image.tag) }}
 app.kubernetes.io/version: {{ include "loki.validLabelValue" (.Values.loki.image.tag | default .Chart.AppVersion) | quote }}
 {{- end }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
 {{/*
@@ -1084,7 +1083,7 @@ enableServiceLinks: false
 {{- end }}
 
 {{- define "loki.config.checksum" -}}
-checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
+checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
 {{- end -}}
 
 {{/*
@@ -1121,3 +1120,13 @@ Return the appropriate apiVersion for HorizontalPodAutoscaler.
     {{- print "autoscaling/v2beta1" -}}
   {{- end -}}
 {{- end -}}
+
+{{/*
+compute a ConfigMap or Secret checksum only based on its .data content.
+This function needs to be called with a context object containing the following keys:
+- ctx: the current Helm context (what '.' is at the call site)
+- name: the file name of the ConfigMap or Secret
+*/}}
+{{- define "loki.configMapOrSecretContentHash" -}}
+{{ get (include (print .ctx.Template.BasePath .name) .ctx | fromYaml) "data" | toYaml | sha256sum }}
+{{- end }}

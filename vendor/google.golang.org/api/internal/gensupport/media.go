@@ -200,6 +200,9 @@ func (mi *MediaInfo) UploadType() string {
 // UploadRequest sets up an HTTP request for media upload. It adds headers
 // as necessary, and returns a replacement for the body and a function for http.Request.GetBody.
 func (mi *MediaInfo) UploadRequest(reqHeaders http.Header, body io.Reader) (newBody io.Reader, getBody func() (io.ReadCloser, error), cleanup func()) {
+	if body == nil {
+		body = new(bytes.Buffer)
+	}
 	cleanup = func() {}
 	if mi == nil {
 		return body, nil, cleanup

@@ -34,6 +34,8 @@ func NewInMemBucket() *InMemBucket {
 	}
 }
 
+func (b *InMemBucket) Provider() ObjProvider { return MEMORY }
+
 // Objects returns a copy of the internally stored objects.
 // NOTE: For assert purposes.
 func (b *InMemBucket) Objects() map[string][]byte {

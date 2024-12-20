@@ -23,6 +23,7 @@ func TestPartitionCommitter(t *testing.T) {
 	numPartitions := int32(3)
 	topicName := "test-topic"
 	_, kafkaCfg := testkafka.CreateCluster(t, numPartitions, topicName)
+	kafkaCfg.ConsumerGroup = "test-group"
 
 	client, err := client.NewReaderClient(kafkaCfg, kprom.NewMetrics("foo"), log.NewNopLogger())
 	require.NoError(t, err)
@@ -35,16 +36,13 @@ func TestPartitionCommitter(t *testing.T) {
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 	partitionID := int32(1)
-	consumerGroup := "test-consumer-group"
-	reader := newStdReader(
+	reader := newKafkaOffsetManager(
 		client,
-		kafkaCfg.Topic,
-		partitionID,
-		consumerGroup,
+		kafkaCfg,
+		"fake-instance-id",
 		logger,
-		reg,
 	)
-	committer := newCommitter(reader, kafkaCfg.ConsumerGroupOffsetCommitInterval, logger, reg)
+	committer := newCommitter(reader, partitionID, kafkaCfg.ConsumerGroupOffsetCommitInterval, logger, reg)
 
 	// Test committing an offset
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -60,7 +58,7 @@ func TestPartitionCommitter(t *testing.T) {
 	assert.Equal(t, float64(testOffset), testutil.ToFloat64(committer.lastCommittedOffset))
 
 	// Verify committed offset
-	offsets, err := admClient.FetchOffsets(context.Background(), consumerGroup)
+	offsets, err := admClient.FetchOffsets(context.Background(), reader.ConsumerGroup())
 	require.NoError(t, err)
 	committedOffset, ok := offsets.Lookup(topicName, partitionID)
 	require.True(t, ok)
@@ -77,7 +75,7 @@ func TestPartitionCommitter(t *testing.T) {
 	assert.Equal(t, float64(newTestOffset), testutil.ToFloat64(committer.lastCommittedOffset))
 
 	// Verify updated committed offset
-	offsets, err = admClient.FetchOffsets(context.Background(), consumerGroup)
+	offsets, err = admClient.FetchOffsets(context.Background(), reader.ConsumerGroup())
 	require.NoError(t, err)
 	committedOffset, ok = offsets.Lookup(topicName, partitionID)
 	require.True(t, ok)
