@@ -33,6 +33,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "elb_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/AWSLogs/123456789012/elasticloadbalancing/us-east-1/2022/01/24/123456789012_elasticloadbalancing_us-east-1_app.my-loadbalancer.b13ea9d19f16d015_20220124T0000Z_0.0.0.0_2et2e1mx.log.gz",
@@ -43,6 +46,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "elb_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
 				"key":           "my-bucket/AWSLogs/123456789012/elasticloadbalancing/us-east-1/2022/01/24/123456789012_elasticloadbalancing_us-east-1_app.my-loadbalancer.b13ea9d19f16d015_20220124T0000Z_0.0.0.0_2et2e1mx.log.gz",
@@ -63,6 +67,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "elb_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/prefix/AWSLogs/123456789012/elasticloadbalancing/us-east-2/2016/05/01/123456789012_elasticloadbalancing_us-east-2_net.my-loadbalancer.1234567890abcdef_201605010000Z_2soosksi.log.gz",
@@ -73,6 +80,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "elb_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-2",
 				"day":           "01",
 				"key":           "my-bucket/prefix/AWSLogs/123456789012/elasticloadbalancing/us-east-2/2016/05/01/123456789012_elasticloadbalancing_us-east-2_net.my-loadbalancer.1234567890abcdef_201605010000Z_2soosksi.log.gz",
@@ -93,6 +101,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "s3_guardduty_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "AWSLogs/123456789012/GuardDuty/us-east-1/2024/05/30/07a3f2ce-1485-3031-b842-e1f324c4a48d.jsonl.gz",
@@ -103,6 +114,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "s3_guardduty_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "30",
 				"key":           "AWSLogs/123456789012/GuardDuty/us-east-1/2024/05/30/07a3f2ce-1485-3031-b842-e1f324c4a48d.jsonl.gz",
@@ -121,6 +133,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "vpc_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-east-1/2022/01/24/123456789012_vpcflowlogs_us-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
@@ -131,6 +146,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "vpc_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
 				"key":           "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-east-1/2022/01/24/123456789012_vpcflowlogs_us-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
@@ -150,6 +166,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "vpc_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-gov-east-1/2022/01/24/123456789012_vpcflowlogs_us-gov-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
@@ -160,6 +179,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "vpc_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-gov-east-1",
 				"day":           "24",
 				"key":           "my-bucket/AWSLogs/123456789012/vpcflowlogs/us-gov-east-1/2022/01/24/123456789012_vpcflowlogs_us-gov-east-1_fl-1234abcd_20180620T1620Z_fe123456.log.gz",
@@ -179,6 +199,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "cloudtrail_digest_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/AWSLogs/123456789012/CloudTrail-Digest/us-east-1/2022/01/24/123456789012_CloudTrail-Digest_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -189,6 +212,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "cloudtrail_digest_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
 				"key":           "my-bucket/AWSLogs/123456789012/CloudTrail-Digest/us-east-1/2022/01/24/123456789012_CloudTrail-Digest_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -208,6 +232,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "cloudtrail_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -218,6 +245,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "cloudtrail_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "24",
 				"key":           "my-bucket/AWSLogs/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -237,6 +265,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "cloudtrail_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/AWSLogs/123456789012/CloudTrail/us-gov-east-1/2022/01/24/123456789012_CloudTrail_us-gov-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -247,6 +278,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":    "123456789012",
 				"bucket":        "cloudtrail_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-gov-east-1",
 				"day":           "24",
 				"key":           "my-bucket/AWSLogs/123456789012/CloudTrail/us-gov-east-1/2022/01/24/123456789012_CloudTrail_us-gov-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -266,6 +298,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "cloudtrail_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my-bucket/AWSLogs/o-test123456/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -276,6 +311,7 @@ func Test_getLabels(t *testing.T) {
 			want: map[string]string{
 				"account_id":      "123456789012",
 				"bucket":          "cloudtrail_logs_test",
+				"bucket_owner":    "test",
 				"bucket_region":   "us-east-1",
 				"day":             "24",
 				"key":             "my-bucket/AWSLogs/o-test123456/123456789012/CloudTrail/us-east-1/2022/01/24/123456789012_CloudTrail_us-east-1_20220124T0000Z_4jhzXFO2Jlvu2b3y.json.gz",
@@ -296,6 +332,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "cloudfront_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "my/bucket/prefix/E2K2LNL5N3WR51.2022-07-18-12.a10a8496.gz",
@@ -305,6 +344,7 @@ func Test_getLabels(t *testing.T) {
 			},
 			want: map[string]string{
 				"bucket":        "cloudfront_logs_test",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"day":           "18",
 				"key":           "my/bucket/prefix/E2K2LNL5N3WR51.2022-07-18-12.a10a8496.gz",
@@ -324,6 +364,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "waf_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "prefix/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz",
@@ -333,6 +376,7 @@ func Test_getLabels(t *testing.T) {
 			},
 			want: map[string]string{
 				"account_id":    "11111111111",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"bucket":        "waf_logs_test",
 				"day":           "28",
@@ -355,6 +399,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "waf_logs_test",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "prefix/AWSLogs/11111111111/WAFLogs/us-gov-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-gov-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz",
@@ -364,6 +411,7 @@ func Test_getLabels(t *testing.T) {
 			},
 			want: map[string]string{
 				"account_id":    "11111111111",
+				"bucket_owner":  "test",
 				"bucket_region": "us-gov-east-1",
 				"bucket":        "waf_logs_test",
 				"day":           "28",
@@ -386,6 +434,9 @@ func Test_getLabels(t *testing.T) {
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
 							Name: "missing_type",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
 						},
 						Object: events.S3Object{
 							Key: "some-object.json",
@@ -395,6 +446,7 @@ func Test_getLabels(t *testing.T) {
 			},
 			want: map[string]string{
 				"bucket":        "missing_type",
+				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"key":           "some-object.json",
 			},
@@ -592,6 +644,7 @@ func Test_parseS3Log(t *testing.T) {
 				},
 				labels: map[string]string{
 					"bucket":        "missing_parser",
+					"bucket_owner":  "test",
 					"bucket_region": "us-east-1",
 					"key":           "some-object.json",
 					"type":          "",
