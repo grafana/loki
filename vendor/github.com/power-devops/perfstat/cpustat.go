@@ -1,3 +1,4 @@
+//go:build aix
 // +build aix
 
 package perfstat
@@ -135,4 +136,3 @@ func CpuUtilTotalStat() (*CPUUtil, error) {
 	u := perfstatcpuutil2cpuutil(cpuutil)
 	return &u, nil
 }
-

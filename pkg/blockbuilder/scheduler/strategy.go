@@ -19,7 +19,7 @@ type OffsetReader interface {
 
 type Planner interface {
 	Name() string
-	Plan(ctx context.Context) ([]*JobWithMetadata, error)
+	Plan(ctx context.Context, maxJobsPerPartition int) ([]*JobWithMetadata, error)
 }
 
 const (
@@ -51,7 +51,7 @@ func (p *RecordCountPlanner) Name() string {
 	return RecordCountStrategy
 }
 
-func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithMetadata, error) {
+func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int) ([]*JobWithMetadata, error) {
 	offsets, err := p.offsetReader.GroupLag(ctx, p.lookbackPeriod)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
@@ -60,9 +60,10 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithMetadata, erro
 
 	jobs := make([]*JobWithMetadata, 0, len(offsets))
 	for _, partitionOffset := range offsets {
-		// kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
-		// no additional validation is needed here
-		startOffset := partitionOffset.Commit.At + 1
+		// 1. kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
+		//    no additional validation is needed here
+		// 2. committed offset could be behind start offset if we are falling behind retention period.
+		startOffset := max(partitionOffset.Commit.At+1, partitionOffset.Start.Offset)
 		endOffset := partitionOffset.End.Offset
 
 		// Skip if there's no lag
@@ -70,10 +71,15 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithMetadata, erro
 			continue
 		}
 
+		var jobCount int
+		currentStart := startOffset
 		// Create jobs of size targetRecordCount until we reach endOffset
-		for currentStart := startOffset; currentStart < endOffset; {
-			currentEnd := min(currentStart+p.targetRecordCount, endOffset)
+		for currentStart < endOffset {
+			if maxJobsPerPartition > 0 && jobCount >= maxJobsPerPartition {
+				break
+			}
 
+			currentEnd := min(currentStart+p.targetRecordCount, endOffset)
 			job := NewJobWithMetadata(
 				types.NewJob(partitionOffset.Partition, types.Offsets{
 					Min: currentStart,
@@ -84,6 +90,7 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithMetadata, erro
 			jobs = append(jobs, job)
 
 			currentStart = currentEnd
+			jobCount++
 		}
 	}
 
