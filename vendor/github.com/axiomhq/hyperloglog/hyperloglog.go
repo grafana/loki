@@ -18,7 +18,7 @@ type Sketch struct {
 	p          uint8
 	m          uint32
 	alpha      float64
-	tmpSet     set
+	tmpSet     *set
 	sparseList *compressedList
 	regs       []uint8
 }
@@ -45,7 +45,7 @@ func NewSketch(precision uint8, sparse bool) (*Sketch, error) {
 		alpha: alpha(float64(m)),
 	}
 	if sparse {
-		s.tmpSet = set{}
+		s.tmpSet = newSet(0)
 		s.sparseList = newCompressedList(0)
 	} else {
 		s.regs = make([]uint8, m)
@@ -65,7 +65,7 @@ func (sk *Sketch) Clone() *Sketch {
 }
 
 func (sk *Sketch) maybeToNormal() {
-	if uint32(len(sk.tmpSet))*100 > sk.m {
+	if uint32(sk.tmpSet.Len())*100 > sk.m {
 		sk.mergeSparse()
 		if uint32(sk.sparseList.Len()) > sk.m {
 			sk.toNormal()
@@ -90,9 +90,7 @@ func (sk *Sketch) Merge(other *Sketch) error {
 }
 
 func (sk *Sketch) mergeSparseSketch(other *Sketch) {
-	for k := range other.tmpSet {
-		sk.tmpSet.add(k)
-	}
+	sk.tmpSet.Merge(other.tmpSet)
 	for iter := other.sparseList.Iter(); iter.HasNext(); {
 		sk.tmpSet.add(iter.Next())
 	}
@@ -105,10 +103,10 @@ func (sk *Sketch) mergeDenseSketch(other *Sketch) {
 	}
 
 	if other.sparse() {
-		for k := range other.tmpSet {
+		other.tmpSet.ForEach(func(k uint32) {
 			i, r := decodeHash(k, other.p, pp)
 			sk.insert(i, r)
-		}
+		})
 		for iter := other.sparseList.Iter(); iter.HasNext(); {
 			i, r := decodeHash(iter.Next(), other.p, pp)
 			sk.insert(i, r)
@@ -123,7 +121,7 @@ func (sk *Sketch) mergeDenseSketch(other *Sketch) {
 }
 
 func (sk *Sketch) toNormal() {
-	if len(sk.tmpSet) > 0 {
+	if sk.tmpSet.Len() > 0 {
 		sk.mergeSparse()
 	}
 
@@ -165,17 +163,17 @@ func (sk *Sketch) Estimate() uint64 {
 }
 
 func (sk *Sketch) mergeSparse() {
-	if len(sk.tmpSet) == 0 {
+	if sk.tmpSet.Len() == 0 {
 		return
 	}
 
-	keys := make(uint64Slice, 0, len(sk.tmpSet))
-	for k := range sk.tmpSet {
+	keys := make(uint64Slice, 0, sk.tmpSet.Len())
+	sk.tmpSet.ForEach(func(k uint32) {
 		keys = append(keys, k)
-	}
+	})
 	sort.Sort(keys)
 
-	newList := newCompressedList(4*len(sk.tmpSet) + len(sk.sparseList.b))
+	newList := newCompressedList(4*sk.tmpSet.Len() + sk.sparseList.Len())
 	for iter, i := sk.sparseList.Iter(), 0; iter.HasNext() || i < len(keys); {
 		if !iter.HasNext() {
 			newList.Append(keys[i])
@@ -201,7 +199,7 @@ func (sk *Sketch) mergeSparse() {
 	}
 
 	sk.sparseList = newList
-	sk.tmpSet = set{}
+	sk.tmpSet = newSet(0)
 }
 
 // MarshalBinary implements the encoding.BinaryMarshaler interface.
@@ -277,7 +275,7 @@ func (sk *Sketch) UnmarshalBinary(data []byte) error {
 	sparse := data[3] == byte(1)
 
 	// Make a newSketch Sketch if the precision doesn't match or if the Sketch was used
-	if sk.p != p || sk.regs != nil || len(sk.tmpSet) > 0 || (sk.sparseList != nil && sk.sparseList.Len() > 0) {
+	if sk.p != p || sk.regs != nil || sk.tmpSet.Len() > 0 || (sk.sparseList != nil && sk.sparseList.Len() > 0) {
 		newh, err := NewSketch(p, sparse)
 		if err != nil {
 			return err
@@ -292,14 +290,14 @@ func (sk *Sketch) UnmarshalBinary(data []byte) error {
 
 		// Unmarshal the tmp_set.
 		tssz := binary.BigEndian.Uint32(data[4:8])
-		sk.tmpSet = make(map[uint32]struct{}, tssz)
+		sk.tmpSet = newSet(int(tssz))
 
 		// We need to unmarshal tssz values in total, and each value requires us
 		// to read 4 bytes.
 		tsLastByte := int((tssz * 4) + 8)
 		for i := 8; i < tsLastByte; i += 4 {
 			k := binary.BigEndian.Uint32(data[i : i+4])
-			sk.tmpSet[k] = struct{}{}
+			sk.tmpSet.add(k)
 		}
 
 		// Unmarshal the sparse Sketch.
