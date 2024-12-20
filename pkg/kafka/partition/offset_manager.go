@@ -27,7 +27,7 @@ type OffsetManager interface {
 	GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error)
 	FetchLastCommittedOffset(ctx context.Context, partition int32) (int64, error)
 	FetchPartitionOffset(ctx context.Context, partition int32, position SpecialOffset) (int64, error)
-	Commit(ctx context.Context, partition int32, offset int64) error
+	Commit(ctx context.Context, partition int32, offset int64, metadata string) error
 }
 
 var _ OffsetManager = &KafkaOffsetManager{}
@@ -207,12 +207,18 @@ func (r *KafkaOffsetManager) GroupLag(ctx context.Context, lookbackPeriod time.D
 }
 
 // Commit commits an offset to the consumer group
-func (r *KafkaOffsetManager) Commit(ctx context.Context, partitionID int32, offset int64) error {
+func (r *KafkaOffsetManager) Commit(ctx context.Context, partitionID int32, offset int64, metadata string) error {
 	admin := kadm.NewClient(r.client)
 
 	// Commit the last consumed offset.
 	toCommit := kadm.Offsets{}
-	toCommit.AddOffset(r.cfg.Topic, partitionID, offset, -1)
+	toCommit.Add(kadm.Offset{
+		Topic:       r.cfg.Topic,
+		Partition:   partitionID,
+		At:          offset,
+		LeaderEpoch: -1,
+		Metadata:    metadata,
+	})
 
 	committed, err := admin.CommitOffsets(ctx, r.ConsumerGroup(), toCommit)
 	if err != nil {

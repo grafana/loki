@@ -55,4 +55,5 @@ message Job {
   string id = 1;
   int32 partition = 2;
   Offsets offsets = 3;
+  int64 LastConsumedRecordTS = 4;
 }

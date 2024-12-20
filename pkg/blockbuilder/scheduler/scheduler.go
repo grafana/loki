@@ -35,7 +35,7 @@ type Config struct {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.Interval, prefix+"interval", 5*time.Minute, "How often the scheduler should plan jobs.")
 	f.StringVar(&cfg.ConsumerGroup, prefix+"consumer-group", "block-scheduler", "Consumer group used by block scheduler to track the last consumed offset.")
-	f.DurationVar(&cfg.LookbackPeriod, prefix+"lookback-period", 0, "Lookback period used by the scheduler to plan jobs when the consumer group has no commits. 0 consumes from the start of the partition.")
+	f.DurationVar(&cfg.LookbackPeriod, prefix+"lookback-period", 48*time.Hour, "Lookback period used by the scheduler to plan jobs when the consumer group has no commits. 0 consumes from the start of the partition.")
 	f.StringVar(
 		&cfg.Strategy,
 		prefix+"strategy",
@@ -80,6 +80,7 @@ func (cfg *Config) Validate() error {
 		if cfg.TargetRecordCount <= 0 {
 			return errors.New("target record count must be a non-zero value")
 		}
+	case TimeSpanStrategy:
 	default:
 		return fmt.Errorf("invalid strategy: %s", cfg.Strategy)
 	}
@@ -106,6 +107,8 @@ func NewScheduler(cfg Config, queue *JobQueue, offsetManager partition.OffsetMan
 	switch cfg.Strategy {
 	case RecordCountStrategy:
 		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, cfg.LookbackPeriod, logger)
+	case TimeSpanStrategy:
+		planner = NewTimeSpanPlanner(time.Hour, cfg.LookbackPeriod, offsetManager, func() time.Time { return time.Now().UTC() }, logger)
 	default:
 		return nil, fmt.Errorf("invalid strategy: %s", cfg.Strategy)
 	}
@@ -231,13 +234,19 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 	logger := log.With(s.logger, "job", job.ID())
 
 	if success {
+		if job.LastConsumedRecordTS() == 0 {
+			level.Error(logger).Log("msg", "job has no last consumed record timestamp")
+			return nil
+		}
+
 		if err = s.offsetManager.Commit(
 			ctx,
 			job.Partition(),
 			job.Offsets().Max-1, // max is exclusive, so commit max-1
+			partition.MarshallCommitMeta(job.LastConsumedRecordTS()),
 		); err == nil {
 			s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
-			level.Info(logger).Log("msg", "job completed successfully")
+			level.Info(logger).Log("msg", "job completed successfully", "offset", job.Offsets().Max-1, "last_consumed_record_ts", time.UnixMilli(job.LastConsumedRecordTS()))
 			return nil
 		}
 

@@ -19,7 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
-type SpecialOffset int
+type SpecialOffset int64
 
 const (
 	KafkaStartOffset SpecialOffset = -2

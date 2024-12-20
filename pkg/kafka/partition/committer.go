@@ -118,7 +118,7 @@ func (c *partitionCommitter) Commit(ctx context.Context, offset int64) error {
 	startTime := time.Now()
 	c.commitRequestsTotal.Inc()
 
-	if err := c.offsetManager.Commit(ctx, c.partition, offset); err != nil {
+	if err := c.offsetManager.Commit(ctx, c.partition, offset, ""); err != nil {
 		level.Error(c.logger).Log("msg", "failed to commit offset", "err", err, "offset", offset)
 		c.commitFailuresTotal.Inc()
 		c.commitRequestsLatency.Observe(time.Since(startTime).Seconds())

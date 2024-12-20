@@ -6,8 +6,9 @@ import "fmt"
 type Job struct {
 	id string
 	// Partition and offset information
-	partition int32
-	offsets   Offsets
+	partition            int32
+	offsets              Offsets
+	lastConsumedRecordTS int64
 }
 
 func (j *Job) ID() string {
@@ -20,6 +21,14 @@ func (j *Job) Partition() int32 {
 
 func (j *Job) Offsets() Offsets {
 	return j.offsets
+}
+
+func (j *Job) LastConsumedRecordTS() int64 {
+	return j.lastConsumedRecordTS
+}
+
+func (j *Job) UpdateLastConsumedRecordTS(ts int64) {
+	j.lastConsumedRecordTS = ts
 }
 
 // JobStatus represents the current state of a job
@@ -68,5 +77,5 @@ func NewJob(partition int32, offsets Offsets) *Job {
 
 // GenerateJobID creates a deterministic job ID from partition and offsets
 func GenerateJobID(partition int32, offsets Offsets) string {
-	return fmt.Sprintf("job-%d-%d-%d", partition, offsets.Min, offsets.Max)
+	return fmt.Sprintf("job-%d-%d", partition, offsets.Min)
 }

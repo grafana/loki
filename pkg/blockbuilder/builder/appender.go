@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -410,6 +411,8 @@ func (s *stream) closeChunk() (*chunkenc.MemChunk, error) {
 	if err := s.chunk.Close(); err != nil {
 		return nil, fmt.Errorf("closing chunk: %w", err)
 	}
+
+	level.Debug(util_log.Logger).Log("msg", "chunk closed", "entries", s.chunk.Size(), "blocks", s.chunk.BlockCount(), "stream", s.ls.String())
 
 	s.metrics.samplesPerChunk.Observe(float64(s.chunk.Size()))
 	s.metrics.blocksPerChunk.Observe(float64(s.chunk.BlockCount()))

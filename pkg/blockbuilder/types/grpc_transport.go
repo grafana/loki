@@ -128,6 +128,7 @@ func protoToJob(p *proto.Job) *Job {
 			Min: p.GetOffsets().GetMin(),
 			Max: p.GetOffsets().GetMax(),
 		},
+		lastConsumedRecordTS: p.GetLastConsumedRecordTS(),
 	}
 }
 
@@ -143,5 +144,6 @@ func jobToProto(j *Job) *proto.Job {
 			Min: j.offsets.Min,
 			Max: j.offsets.Max,
 		},
+		LastConsumedRecordTS: j.LastConsumedRecordTS(),
 	}
 }
