@@ -237,7 +237,7 @@ func (c *Client) Get(path string) (*http.Response, error) {
 // Get all the metrics
 func (c *Client) Metrics() (string, error) {
 	url := fmt.Sprintf("%s/metrics", c.baseURL)
-	res, err := http.Get(url)
+	res, err := http.Get(url) //#nosec G107 -- Intentionally taking user input from config
 	if err != nil {
 		return "", err
 	}

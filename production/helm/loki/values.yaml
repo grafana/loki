@@ -56,7 +56,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.3.0
+    tag: 3.3.2
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -205,7 +205,9 @@ loki:
     {{- toYaml .Values.loki.testSchemaConfig | nindent 2}}
     {{- end }}
 
+    {{- if .Values.ruler.enabled }}
     {{ include "loki.rulerConfig" . }}
+    {{- end }}
 
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
@@ -412,7 +414,9 @@ loki:
           prefix: index_
           period: 24h
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
-  rulerConfig: {}
+  rulerConfig:
+    wal:
+      dir: /var/loki/ruler-wal
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
@@ -1891,6 +1895,12 @@ ingester:
       excludeDefaultZone: false
       readPath: false
       writePath: false
+
+  # optionally allow adding arbitrary prefix to the ingester rollout-group label
+  rolloutGroupPrefix: null
+  # optionally allow adding 'loki-' prefix to ingester name label
+  addIngesterNamePrefix: false
+
 # --  Configuration for the distributor
 distributor:
   # -- Number of replicas for the distributor
@@ -3011,7 +3021,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.32-alpine
+    tag: 1.6.33-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods

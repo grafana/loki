@@ -165,7 +165,9 @@ spec:
           emptyDir: {}
   {{- else }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
         {{- with .Values.ruler.persistence.annotations }}
         annotations:

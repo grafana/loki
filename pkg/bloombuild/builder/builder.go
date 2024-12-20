@@ -23,6 +23,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
+	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compression"
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/storage"
@@ -30,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
@@ -48,8 +48,9 @@ type Builder struct {
 	metrics *Metrics
 	logger  log.Logger
 
-	bloomStore  bloomshipper.Store
-	chunkLoader ChunkLoader
+	bloomStore   bloomshipper.Store
+	chunkLoader  ChunkLoader
+	bloomGateway bloomgateway.Client
 
 	client protos.PlannerForBuilderClient
 
@@ -66,6 +67,7 @@ func New(
 	_ storage.ClientMetrics,
 	fetcherProvider stores.ChunkFetcherProvider,
 	bloomStore bloomshipper.Store,
+	bloomGateway bloomgateway.Client,
 	logger log.Logger,
 	r prometheus.Registerer,
 	rm *ring.RingManager,
@@ -77,13 +79,14 @@ func New(
 
 	metrics := NewMetrics(r)
 	b := &Builder{
-		ID:          builderID,
-		cfg:         cfg,
-		limits:      limits,
-		metrics:     metrics,
-		bloomStore:  bloomStore,
-		chunkLoader: NewStoreChunkLoader(fetcherProvider, metrics),
-		logger:      logger,
+		ID:           builderID,
+		cfg:          cfg,
+		limits:       limits,
+		metrics:      metrics,
+		bloomStore:   bloomStore,
+		chunkLoader:  NewStoreChunkLoader(fetcherProvider, metrics),
+		bloomGateway: bloomGateway,
+		logger:       logger,
 	}
 
 	if rm != nil {
@@ -411,7 +414,6 @@ func (b *Builder) processTask(
 					Bounds:    gap.Bounds,
 				},
 			},
-			Sources: []tsdb.SingleTenantTSDBIdentifier{task.TSDB},
 		}
 
 		// Fetch blocks that aren't up to date but are in the desired fingerprint range
@@ -488,6 +490,7 @@ func (b *Builder) processTask(
 			level.Debug(logger).Log("msg", "uploaded block", "progress_pct", fmt.Sprintf("%.2f", pct))
 
 			meta.Blocks = append(meta.Blocks, built.BlockRef)
+			meta.Sources = append(meta.Sources, task.TSDB)
 		}
 
 		if err := newBlocks.Err(); err != nil {
@@ -519,6 +522,13 @@ func (b *Builder) processTask(
 		b.metrics.metasCreated.Inc()
 		level.Debug(logger).Log("msg", "uploaded meta")
 		created = append(created, meta)
+
+		// Now that the meta is written thus blocks can be queried, we prefetch them to the gateway
+		if b.bloomGateway != nil && b.limits.PrefetchBloomBlocks(tenant) {
+			if err := b.bloomGateway.PrefetchBloomBlocks(ctx, meta.Blocks); err != nil {
+				level.Error(logger).Log("msg", "failed to prefetch block on gateway", "err", err)
+			}
+		}
 	}
 
 	b.metrics.seriesPerTask.Observe(float64(totalSeries))
