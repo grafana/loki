@@ -3,6 +3,8 @@ package validation
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // nolint:goconst
@@ -217,6 +219,101 @@ func TestMaxDurationOrZeroPerTenant(t *testing.T) {
 			if got := MaxDurationOrZeroPerTenant(tt.args.tenantIDs, tt.args.f); got != tt.want {
 				t.Errorf("MaxDurationOrZeroPerTenant() = %v, want %v", got, tt.want)
 			}
+		})
+	}
+}
+
+func TestIntersectionPerTenant(t *testing.T) {
+	tests := []struct {
+		name      string
+		tenantIDs []string
+		f         func(string) []string
+		expected  []string
+	}{
+		{
+			name:      "no tenants",
+			tenantIDs: []string{},
+			f: func(_ string) []string {
+				return nil
+			},
+			expected: []string{},
+		},
+		{
+			name:      "single tenant with features",
+			tenantIDs: []string{"tenant1"},
+			f: func(tenantID string) []string {
+				if tenantID == "tenant1" {
+					return []string{"featureA", "featureB", "featureC"}
+				}
+				return nil
+			},
+			expected: []string{"featureA", "featureB", "featureC"},
+		},
+		{
+			name:      "multiple tenants with common features",
+			tenantIDs: []string{"tenant1", "tenant2"},
+			f: func(tenantID string) []string {
+				if tenantID == "tenant1" {
+					return []string{"featureA", "featureB", "featureC"}
+				}
+				if tenantID == "tenant2" {
+					return []string{"featureB", "featureC", "featureD"}
+				}
+				return nil
+			},
+			expected: []string{"featureB", "featureC"},
+		},
+		{
+			name:      "multiple tenants with no common features",
+			tenantIDs: []string{"tenant1", "tenant2"},
+			f: func(tenantID string) []string {
+				if tenantID == "tenant1" {
+					return []string{"featureA"}
+				}
+				if tenantID == "tenant2" {
+					return []string{"featureB"}
+				}
+				return nil
+			},
+			expected: []string{},
+		},
+		{
+			name:      "multiple tenants with overlapping features",
+			tenantIDs: []string{"tenant1", "tenant2", "tenant3"},
+			f: func(tenantID string) []string {
+				if tenantID == "tenant1" {
+					return []string{"featureA", "featureB"}
+				}
+				if tenantID == "tenant2" {
+					return []string{"featureB", "featureC"}
+				}
+				if tenantID == "tenant3" {
+					return []string{"featureB", "featureD"}
+				}
+				return nil
+			},
+			expected: []string{"featureB"},
+		},
+		{
+			name:      "tenant with empty feature set",
+			tenantIDs: []string{"tenant1", "tenant2"},
+			f: func(tenantID string) []string {
+				if tenantID == "tenant1" {
+					return []string{"featureA", "featureB"}
+				}
+				if tenantID == "tenant2" {
+					return []string{}
+				}
+				return nil
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := IntersectionPerTenant(tt.tenantIDs, tt.f)
+			require.ElementsMatch(t, actual, tt.expected)
 		})
 	}
 }

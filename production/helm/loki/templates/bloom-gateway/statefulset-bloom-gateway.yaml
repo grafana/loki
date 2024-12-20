@@ -19,7 +19,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.bloomGatewayFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.bloomGateway.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.bloomGateway.persistence.enableStatefulSetAutoDeletePVC)  }}
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: {{ .Values.bloomGateway.persistence.whenDeleted }}
     whenScaled: {{ .Values.bloomGateway.persistence.whenScaled }}
@@ -161,7 +161,9 @@ spec:
   {{- if .Values.bloomGateway.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.bloomGateway.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

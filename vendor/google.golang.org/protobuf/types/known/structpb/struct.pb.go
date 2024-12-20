@@ -120,6 +120,7 @@ package structpb
 
 import (
 	base64 "encoding/base64"
+	json "encoding/json"
 	protojson "google.golang.org/protobuf/encoding/protojson"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -186,12 +187,11 @@ func (NullValue) EnumDescriptor() ([]byte, []int) {
 //
 // The JSON representation for `Struct` is JSON object.
 type Struct struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// Unordered map of dynamically typed values.
-	Fields map[string]*Value `protobuf:"bytes,1,rep,name=fields,proto3" json:"fields,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
+	Fields        map[string]*Value `protobuf:"bytes,1,rep,name=fields,proto3" json:"fields,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 // NewStruct constructs a Struct from a general-purpose Go map.
@@ -233,11 +233,9 @@ func (x *Struct) UnmarshalJSON(b []byte) error {
 
 func (x *Struct) Reset() {
 	*x = Struct{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_struct_proto_msgTypes[0]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_struct_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Struct) String() string {
@@ -248,7 +246,7 @@ func (*Struct) ProtoMessage() {}
 
 func (x *Struct) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_struct_proto_msgTypes[0]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -277,13 +275,10 @@ func (x *Struct) GetFields() map[string]*Value {
 //
 // The JSON representation for `Value` is JSON value.
 type Value struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// The kind of value.
 	//
-	// Types that are assignable to Kind:
+	// Types that are valid to be assigned to Kind:
 	//
 	//	*Value_NullValue
 	//	*Value_NumberValue
@@ -291,24 +286,27 @@ type Value struct {
 	//	*Value_BoolValue
 	//	*Value_StructValue
 	//	*Value_ListValue
-	Kind isValue_Kind `protobuf_oneof:"kind"`
+	Kind          isValue_Kind `protobuf_oneof:"kind"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 // NewValue constructs a Value from a general-purpose Go interface.
 //
-//	╔════════════════════════╤════════════════════════════════════════════╗
-//	║ Go type                │ Conversion                                 ║
-//	╠════════════════════════╪════════════════════════════════════════════╣
-//	║ nil                    │ stored as NullValue                        ║
-//	║ bool                   │ stored as BoolValue                        ║
-//	║ int, int32, int64      │ stored as NumberValue                      ║
-//	║ uint, uint32, uint64   │ stored as NumberValue                      ║
-//	║ float32, float64       │ stored as NumberValue                      ║
-//	║ string                 │ stored as StringValue; must be valid UTF-8 ║
-//	║ []byte                 │ stored as StringValue; base64-encoded      ║
-//	║ map[string]any         │ stored as StructValue                      ║
-//	║ []any                  │ stored as ListValue                        ║
-//	╚════════════════════════╧════════════════════════════════════════════╝
+//	╔═══════════════════════════════════════╤════════════════════════════════════════════╗
+//	║ Go type                               │ Conversion                                 ║
+//	╠═══════════════════════════════════════╪════════════════════════════════════════════╣
+//	║ nil                                   │ stored as NullValue                        ║
+//	║ bool                                  │ stored as BoolValue                        ║
+//	║ int, int8, int16, int32, int64        │ stored as NumberValue                      ║
+//	║ uint, uint8, uint16, uint32, uint64   │ stored as NumberValue                      ║
+//	║ float32, float64                      │ stored as NumberValue                      ║
+//	║ json.Number                           │ stored as NumberValue                      ║
+//	║ string                                │ stored as StringValue; must be valid UTF-8 ║
+//	║ []byte                                │ stored as StringValue; base64-encoded      ║
+//	║ map[string]any                        │ stored as StructValue                      ║
+//	║ []any                                 │ stored as ListValue                        ║
+//	╚═══════════════════════════════════════╧════════════════════════════════════════════╝
 //
 // When converting an int64 or uint64 to a NumberValue, numeric precision loss
 // is possible since they are stored as a float64.
@@ -320,11 +318,19 @@ func NewValue(v any) (*Value, error) {
 		return NewBoolValue(v), nil
 	case int:
 		return NewNumberValue(float64(v)), nil
+	case int8:
+		return NewNumberValue(float64(v)), nil
+	case int16:
+		return NewNumberValue(float64(v)), nil
 	case int32:
 		return NewNumberValue(float64(v)), nil
 	case int64:
 		return NewNumberValue(float64(v)), nil
 	case uint:
+		return NewNumberValue(float64(v)), nil
+	case uint8:
+		return NewNumberValue(float64(v)), nil
+	case uint16:
 		return NewNumberValue(float64(v)), nil
 	case uint32:
 		return NewNumberValue(float64(v)), nil
@@ -334,6 +340,12 @@ func NewValue(v any) (*Value, error) {
 		return NewNumberValue(float64(v)), nil
 	case float64:
 		return NewNumberValue(float64(v)), nil
+	case json.Number:
+		n, err := v.Float64()
+		if err != nil {
+			return nil, protoimpl.X.NewError("invalid number format %q, expected a float64: %v", v, err)
+		}
+		return NewNumberValue(n), nil
 	case string:
 		if !utf8.ValidString(v) {
 			return nil, protoimpl.X.NewError("invalid UTF-8 in string: %q", v)
@@ -441,11 +453,9 @@ func (x *Value) UnmarshalJSON(b []byte) error {
 
 func (x *Value) Reset() {
 	*x = Value{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_struct_proto_msgTypes[1]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_struct_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Value) String() string {
@@ -456,7 +466,7 @@ func (*Value) ProtoMessage() {}
 
 func (x *Value) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_struct_proto_msgTypes[1]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -471,51 +481,63 @@ func (*Value) Descriptor() ([]byte, []int) {
 	return file_google_protobuf_struct_proto_rawDescGZIP(), []int{1}
 }
 
-func (m *Value) GetKind() isValue_Kind {
-	if m != nil {
-		return m.Kind
+func (x *Value) GetKind() isValue_Kind {
+	if x != nil {
+		return x.Kind
 	}
 	return nil
 }
 
 func (x *Value) GetNullValue() NullValue {
-	if x, ok := x.GetKind().(*Value_NullValue); ok {
-		return x.NullValue
+	if x != nil {
+		if x, ok := x.Kind.(*Value_NullValue); ok {
+			return x.NullValue
+		}
 	}
 	return NullValue_NULL_VALUE
 }
 
 func (x *Value) GetNumberValue() float64 {
-	if x, ok := x.GetKind().(*Value_NumberValue); ok {
-		return x.NumberValue
+	if x != nil {
+		if x, ok := x.Kind.(*Value_NumberValue); ok {
+			return x.NumberValue
+		}
 	}
 	return 0
 }
 
 func (x *Value) GetStringValue() string {
-	if x, ok := x.GetKind().(*Value_StringValue); ok {
-		return x.StringValue
+	if x != nil {
+		if x, ok := x.Kind.(*Value_StringValue); ok {
+			return x.StringValue
+		}
 	}
 	return ""
 }
 
 func (x *Value) GetBoolValue() bool {
-	if x, ok := x.GetKind().(*Value_BoolValue); ok {
-		return x.BoolValue
+	if x != nil {
+		if x, ok := x.Kind.(*Value_BoolValue); ok {
+			return x.BoolValue
+		}
 	}
 	return false
 }
 
 func (x *Value) GetStructValue() *Struct {
-	if x, ok := x.GetKind().(*Value_StructValue); ok {
-		return x.StructValue
+	if x != nil {
+		if x, ok := x.Kind.(*Value_StructValue); ok {
+			return x.StructValue
+		}
 	}
 	return nil
 }
 
 func (x *Value) GetListValue() *ListValue {
-	if x, ok := x.GetKind().(*Value_ListValue); ok {
-		return x.ListValue
+	if x != nil {
+		if x, ok := x.Kind.(*Value_ListValue); ok {
+			return x.ListValue
+		}
 	}
 	return nil
 }
@@ -570,12 +592,11 @@ func (*Value_ListValue) isValue_Kind() {}
 //
 // The JSON representation for `ListValue` is JSON array.
 type ListValue struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// Repeated field of dynamically typed values.
-	Values []*Value `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	Values        []*Value `protobuf:"bytes,1,rep,name=values,proto3" json:"values,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 // NewList constructs a ListValue from a general-purpose Go slice.
@@ -613,11 +634,9 @@ func (x *ListValue) UnmarshalJSON(b []byte) error {
 
 func (x *ListValue) Reset() {
 	*x = ListValue{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_struct_proto_msgTypes[2]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_struct_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *ListValue) String() string {
@@ -628,7 +647,7 @@ func (*ListValue) ProtoMessage() {}
 
 func (x *ListValue) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_struct_proto_msgTypes[2]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -741,44 +760,6 @@ func init() { file_google_protobuf_struct_proto_init() }
 func file_google_protobuf_struct_proto_init() {
 	if File_google_protobuf_struct_proto != nil {
 		return
-	}
-	if !protoimpl.UnsafeEnabled {
-		file_google_protobuf_struct_proto_msgTypes[0].Exporter = func(v any, i int) any {
-			switch v := v.(*Struct); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_google_protobuf_struct_proto_msgTypes[1].Exporter = func(v any, i int) any {
-			switch v := v.(*Value); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
-		file_google_protobuf_struct_proto_msgTypes[2].Exporter = func(v any, i int) any {
-			switch v := v.(*ListValue); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
 	}
 	file_google_protobuf_struct_proto_msgTypes[1].OneofWrappers = []any{
 		(*Value_NullValue)(nil),

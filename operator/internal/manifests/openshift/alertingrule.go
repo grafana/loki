@@ -1,6 +1,6 @@
 package openshift
 
-import lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+import lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 
 func AlertingRuleTenantLabels(ar *lokiv1.AlertingRule) {
 	switch ar.Spec.TenantID {

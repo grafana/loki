@@ -1,6 +1,21 @@
 # Changes
 
 
+## [1.2.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.1...iam/v1.2.2) (2024-10-23)
+
+
+### Bug Fixes
+
+* **iam:** Update google.golang.org/api to v0.203.0 ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+* **iam:** WARNING: On approximately Dec 1, 2024, an update to Protobuf will change service registration function signatures to use an interface instead of a concrete type in generated .pb.go files. This change is expected to affect very few if any users of this client library. For more information, see https://togithub.com/googleapis/google-cloud-go/issues/11020. ([8bb87d5](https://github.com/googleapis/google-cloud-go/commit/8bb87d56af1cba736e0fe243979723e747e5e11e))
+
+## [1.2.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.0...iam/v1.2.1) (2024-09-12)
+
+
+### Bug Fixes
+
+* **iam:** Bump dependencies ([2ddeb15](https://github.com/googleapis/google-cloud-go/commit/2ddeb1544a53188a7592046b98913982f1b0cf04))
+
 ## [1.2.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.13...iam/v1.2.0) (2024-08-20)
 
 

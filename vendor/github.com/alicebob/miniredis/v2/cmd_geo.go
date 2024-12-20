@@ -594,7 +594,7 @@ func withinRadius(members []ssElem, longitude, latitude, radius float64) []geoDi
 }
 
 func parseUnit(u string) float64 {
-	switch u {
+	switch strings.ToLower(u) {
 	case "m":
 		return 1
 	case "km":

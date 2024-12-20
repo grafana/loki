@@ -148,6 +148,11 @@ func (cfg *Config) Validate() error {
 	return cfg.LifecyclerConfig.Validate()
 }
 
+type Limits interface {
+	drain.Limits
+	aggregation.Limits
+}
+
 type Ingester struct {
 	services.Service
 	lifecycler *ring.Lifecycler
@@ -156,6 +161,7 @@ type Ingester struct {
 	lifecyclerWatcher *services.FailureWatcher
 
 	cfg        Config
+	limits     Limits
 	registerer prometheus.Registerer
 	logger     log.Logger
 
@@ -175,6 +181,7 @@ type Ingester struct {
 
 func New(
 	cfg Config,
+	limits Limits,
 	ringClient RingClient,
 	metricsNamespace string,
 	registerer prometheus.Registerer,
@@ -189,6 +196,7 @@ func New(
 
 	i := &Ingester{
 		cfg:         cfg,
+		limits:      limits,
 		ringClient:  ringClient,
 		logger:      log.With(logger, "component", "pattern-ingester"),
 		registerer:  registerer,
@@ -267,7 +275,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
@@ -287,29 +295,18 @@ func (i *Ingester) loop() {
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
-	if i.cfg.MetricAggregation.Enabled {
-		downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
-		defer downsampleTicker.Stop()
-		for {
-			select {
-			case <-flushTicker.C:
-				i.sweepUsers(false, true)
-			case t := <-downsampleTicker.C:
-				downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
-				now := model.TimeFromUnixNano(t.UnixNano())
-				i.downsampleMetrics(now)
-			case <-i.loopQuit:
-				return
-			}
-		}
-	} else {
-		for {
-			select {
-			case <-flushTicker.C:
-				i.sweepUsers(false, true)
-			case <-i.loopQuit:
-				return
-			}
+	downsampleTicker := time.NewTimer(i.cfg.MetricAggregation.DownsamplePeriod)
+	defer downsampleTicker.Stop()
+	for {
+		select {
+		case <-flushTicker.C:
+			i.sweepUsers(false, true)
+		case t := <-downsampleTicker.C:
+			downsampleTicker.Reset(i.cfg.MetricAggregation.DownsamplePeriod)
+			now := model.TimeFromUnixNano(t.UnixNano())
+			i.downsampleMetrics(now)
+		case <-i.loopQuit:
+			return
 		}
 	}
 }
@@ -394,7 +391,8 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 		var writer aggregation.EntryWriter
 
 		aggCfg := i.cfg.MetricAggregation
-		if aggCfg.Enabled {
+		if i.limits.MetricAggregationEnabled(instanceID) {
+			metricAggregationMetrics := aggregation.NewMetrics(i.registerer)
 			writer, err = aggregation.NewPush(
 				aggCfg.LokiAddr,
 				instanceID,
@@ -406,6 +404,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 				aggCfg.UseTLS,
 				&aggCfg.BackoffConfig,
 				i.logger,
+				metricAggregationMetrics,
 			)
 			if err != nil {
 				return nil, err
@@ -416,6 +415,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 			i.logger,
 			i.metrics,
 			i.drainCfg,
+			i.limits,
 			i.ringClient,
 			i.lifecycler.ID,
 			writer,
@@ -461,6 +461,8 @@ func (i *Ingester) downsampleMetrics(ts model.Time) {
 	instances := i.getInstances()
 
 	for _, instance := range instances {
-		instance.Downsample(ts)
+		if i.limits.MetricAggregationEnabled(instance.instanceID) {
+			instance.Downsample(ts)
+		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -20,7 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/exp/slices"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -72,6 +72,7 @@ type Config struct {
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
 	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
+	QueryPartitionIngesters       bool             `yaml:"query_partition_ingesters" category:"experimental"`
 }
 
 // RegisterFlags register flags.
@@ -85,6 +86,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
+	f.BoolVar(&cfg.QueryPartitionIngesters, "querier.query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
 }
 
 // Validate validates the config.
@@ -150,6 +152,9 @@ func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limit
 
 // Select Implements logql.Querier which select logs via matchers and regex filters.
 func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
+	// Create a new partition context for the query
+	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
+	ctx = NewPartitionContext(ctx)
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {
@@ -209,6 +214,9 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 }
 
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+	// Create a new partition context for the query
+	// This is used to track which ingesters were used in the query and reuse the same ingesters for consecutive queries
+	ctx = NewPartitionContext(ctx)
 	var err error
 	params.Start, params.End, err = q.validateQueryRequest(ctx, params)
 	if err != nil {

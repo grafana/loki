@@ -1,0 +1,155 @@
+<lexer>
+  <config>
+    <name>Materialize SQL dialect</name>
+    <alias>materialize</alias>
+    <alias>mzsql</alias>
+    <mime_type>text/x-materializesql</mime_type>
+    <case_insensitive>true</case_insensitive>
+    <not_multiline>true</not_multiline>
+  </config>
+  <rules>
+    <state name="root">
+      <rule pattern="\s+">
+        <token type="Text"/>
+      </rule>
+      <rule pattern="--.*\n?">
+        <token type="CommentSingle"/>
+      </rule>
+      <rule pattern="/\*">
+        <token type="CommentMultiline"/>
+        <push state="multiline-comments"/>
+      </rule>
+      <rule pattern="(bigint|bigserial|bit|bit\s+varying|bool|boolean|box|bytea|char|character|character\s+varying|cidr|circle|date|decimal|double\s+precision|float4|float8|inet|int|int2|int4|int8|integer|interval|json|jsonb|line|lseg|macaddr|money|numeric|path|pg_lsn|point|polygon|real|serial|serial2|serial4|serial8|smallint|smallserial|text|time|timestamp|timestamptz|timetz|tsquery|tsvector|txid_snapshot|uuid|varbit|varchar|with\s+time\s+zone|without\s+time\s+zone|xml|anyarray|anyelement|anyenum|anynonarray|anyrange|cstring|fdw_handler|internal|language_handler|opaque|record|void)\b">
+        <token type="NameBuiltin"/>
+      </rule>
+      <rule pattern="(?s)(DO)(\s+)(?:(LANGUAGE)?(\s+)(&#39;?)(\w+)?(&#39;?)(\s+))?(\$)([^$]*)(\$)(.*?)(\$)(\10)(\$)">
+        <usingbygroup>
+          <sublexer_name_group>6</sublexer_name_group>
+          <code_group>12</code_group>
+          <emitters>
+            <token type="Keyword"/>
+            <token type="Text"/>
+            <token type="Keyword"/>
+            <token type="Text"/>
+            <token type="LiteralStringSingle"/>
+            <token type="LiteralStringSingle"/>
+            <token type="LiteralStringSingle"/>
+            <token type="Text"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+          </emitters>
+        </usingbygroup>
+      </rule>
+      <rule pattern="(ACCESS|ACKS|ADD|ADDRESSES|AGGREGATE|ALL|ALTER|AND|ANY|ARN|ARRANGEMENT|ARRAY|AS|ASC|ASSERT|AT|AUCTION|AUTHORITY|AVAILABILITY|AVRO|AWS|BEGIN|BETWEEN|BIGINT|BILLED|BODY|BOOLEAN|BOTH|BPCHAR|BROKEN|BROKER|BROKERS|BY|BYTES|CARDINALITY|CASCADE|CASE|CAST|CERTIFICATE|CHAIN|CHAR|CHARACTER|CHARACTERISTICS|CHECK|CLIENT|CLOSE|CLUSTER|CLUSTERS|COALESCE|COLLATE|COLUMN|COLUMNS|COMMENT|COMMIT|COMMITTED|COMPACTION|COMPRESSION|COMPUTE|COMPUTECTL|CONFLUENT|CONNECTION|CONNECTIONS|CONSTRAINT|COPY|COUNT|COUNTER|CREATE|CREATECLUSTER|CREATEDB|CREATEROLE|CROSS|CSV|CURRENT|CURSOR|DATABASE|DATABASES|DATUMS|DAY|DAYS|DEALLOCATE|DEBEZIUM|DEBUG|DEBUGGING|DEC|DECIMAL|DECLARE|DECORRELATED|DEFAULT|DEFAULTS|DELETE|DELIMITED|DELIMITER|DESC|DETAILS|DISCARD|DISK|DISTINCT|DOC|DOT|DOUBLE|DROP|EFFORT|ELEMENT|ELSE|ENABLE|END|ENDPOINT|ENFORCED|ENVELOPE|ERROR|ESCAPE|EXCEPT|EXECUTE|EXISTS|EXPECTED|EXPLAIN|EXPOSE|EXTRACT|FACTOR|FALSE|FETCH|FIELDS|FILTER|FIRST|FLOAT|FOLLOWING|FOR|FOREIGN|FORMAT|FORWARD|FROM|FULL|FULLNAME|FUNCTION|GENERATOR|GRANT|GREATEST|GROUP|GROUPS|HAVING|HEADER|HEADERS|HOLD|HOST|HOUR|HOURS|ID|IDEMPOTENCE|IDLE|IF|IGNORE|ILIKE|IN|INCLUDE|INDEX|INDEXES|INFO|INHERIT|INLINE|INNER|INPUT|INSERT|INSPECT|INT|INTEGER|INTERNAL|INTERSECT|INTERVAL|INTO|INTROSPECTION|IS|ISNULL|ISOLATION|JOIN|JSON|KAFKA|KEY|KEYS|LAST|LATERAL|LATEST|LEADING|LEAST|LEFT|LEVEL|LIKE|LIMIT|LIST|LOAD|LOCAL|LOG|LOGICAL|LOGIN|MANAGED|MAP|MARKETING|MATERIALIZE|MATERIALIZED|MAX|MECHANISMS|MEMBERSHIP|MERGE|MESSAGE|METADATA|MINUTE|MINUTES|MODE|MONTH|MONTHS|MS|MUTUALLY|NAME|NAMES|NATURAL|NEXT|NO|NOCREATECLUSTER|NOCREATEDB|NOCREATEROLE|NOINHERIT|NOLOGIN|NONE|NOSUPERUSER|NOT|NOTICE|NULL|NULLIF|NULLS|OBJECTS|OF|OFFSET|ON|ONLY|OPERATOR|OPTIMIZED|OPTIMIZER|OPTIONS|OR|ORDER|ORDINALITY|OUTER|OVER|OWNED|OWNER|PARTITION|PASSWORD|PHYSICAL|PLAN|PLANS|PORT|POSITION|POSTGRES|PRECEDING|PRECISION|PREFIX|PREPARE|PRIMARY|PRIVATELINK|PRIVILEGES|PROGRESS|PROTOBUF|PROTOCOL|PUBLICATION|QUERY|QUOTE|RAISE|RANGE|RAW|READ|REAL|REASSIGN|RECURSION|RECURSIVE|REFERENCES|REFRESH|REGEX|REGION|REGISTRY|RENAME|REPEATABLE|REPLACE|REPLICA|REPLICAS|REPLICATION|RESET|RESPECT|RESTRICT|RETENTION|RETURN|RETURNING|REVOKE|RIGHT|ROLE|ROLES|ROLLBACK|ROTATE|ROW|ROWS|SASL|SCALE|SCHEMA|SCHEMAS|SCRIPT|SECOND|SECONDS|SECRET|SECRETS|SECURITY|SEED|SELECT|SEQUENCES|SERIALIZABLE|SERVICE|SESSION|SET|SHARD|SHOW|SINK|SINKS|SIZE|SMALLINT|SNAPSHOT|SOME|SOURCE|SOURCES|SSH|SSL|START|STDIN|STDOUT|STORAGE|STORAGECTL|STRATEGY|STRICT|STRING|SUBSCRIBE|SUBSOURCE|SUBSOURCES|SUBSTRING|SUPERUSER|SWAP|SYSTEM|TABLE|TABLES|TAIL|TEMP|TEMPORARY|TEST|TEXT|THEN|TICK|TIES|TIME|TIMELINE|TIMEOUT|TIMESTAMP|TIMESTAMPTZ|TO|TOKEN|TOPIC|TPCH|TRACE|TRAILING|TRANSACTION|TRIM|TRUE|TUNNEL|TYPE|TYPES|UNBOUNDED|UNCOMMITTED|UNION|UNIQUE|UNKNOWN|UP|UPDATE|UPSERT|URL|USAGE|USER|USERNAME|USERS|USING|VALIDATE|VALUE|VALUES|VARCHAR|VARYING|VIEW|VIEWS|WARNING|WEBHOOK|WHEN|WHERE|WINDOW|WIRE|WITH|WITHIN|WITHOUT|WORK|WORKERS|WRITE|YEAR|YEARS|ZONE|ZONES)\b">
+        <token type="Keyword"/>
+      </rule>
+      <rule pattern="[+*/&lt;&gt;=~!@#%^&amp;|`?-]+">
+        <token type="Operator"/>
+      </rule>
+      <rule pattern="::">
+        <token type="Operator"/>
+      </rule>
+      <rule pattern="\$\d+">
+        <token type="NameVariable"/>
+      </rule>
+      <rule pattern="([0-9]*\.[0-9]*|[0-9]+)(e[+-]?[0-9]+)?">
+        <token type="LiteralNumberFloat"/>
+      </rule>
+      <rule pattern="[0-9]+">
+        <token type="LiteralNumberInteger"/>
+      </rule>
+      <rule pattern="((?:E|U&amp;)?)(&#39;)">
+        <bygroups>
+          <token type="LiteralStringAffix"/>
+          <token type="LiteralStringSingle"/>
+        </bygroups>
+        <push state="string"/>
+      </rule>
+      <rule pattern="((?:U&amp;)?)(&#34;)">
+        <bygroups>
+          <token type="LiteralStringAffix"/>
+          <token type="LiteralStringName"/>
+        </bygroups>
+        <push state="quoted-ident"/>
+      </rule>
+      <rule pattern="(?s)(\$)([^$]*)(\$)(.*?)(\$)(\2)(\$)(\s+)(LANGUAGE)?(\s+)(&#39;?)(\w+)?(&#39;?)">
+        <usingbygroup>
+          <sublexer_name_group>12</sublexer_name_group>
+          <code_group>4</code_group>
+          <emitters>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="LiteralStringHeredoc"/>
+            <token type="Text"/>
+            <token type="Keyword"/>
+            <token type="Text"/>
+            <token type="LiteralStringSingle"/>
+            <token type="LiteralStringSingle"/>
+            <token type="LiteralStringSingle"/>
+          </emitters>
+        </usingbygroup>
+      </rule>
+      <rule pattern="(?s)(\$)([^$]*)(\$)(.*?)(\$)(\2)(\$)">
+        <token type="LiteralStringHeredoc"/>
+      </rule>
+      <rule pattern="[a-z_]\w*">
+        <token type="Name"/>
+      </rule>
+      <rule pattern=":([&#39;&#34;]?)[a-z]\w*\b\1">
+        <token type="NameVariable"/>
+      </rule>
+      <rule pattern="[;:()\[\]{},.]">
+        <token type="Punctuation"/>
+      </rule>
+    </state>
+    <state name="multiline-comments">
+      <rule pattern="/\*">
+        <token type="CommentMultiline"/>
+        <push state="multiline-comments"/>
+      </rule>
+      <rule pattern="\*/">
+        <token type="CommentMultiline"/>
+        <pop depth="1"/>
+      </rule>
+      <rule pattern="[^/*]+">
+        <token type="CommentMultiline"/>
+      </rule>
+      <rule pattern="[/*]">
+        <token type="CommentMultiline"/>
+      </rule>
+    </state>
+    <state name="string">
+      <rule pattern="[^&#39;]+">
+        <token type="LiteralStringSingle"/>
+      </rule>
+      <rule pattern="&#39;&#39;">
+        <token type="LiteralStringSingle"/>
+      </rule>
+      <rule pattern="&#39;">
+        <token type="LiteralStringSingle"/>
+        <pop depth="1"/>
+      </rule>
+    </state>
+    <state name="quoted-ident">
+      <rule pattern="[^&#34;]+">
+        <token type="LiteralStringName"/>
+      </rule>
+      <rule pattern="&#34;&#34;">
+        <token type="LiteralStringName"/>
+      </rule>
+      <rule pattern="&#34;">
+        <token type="LiteralStringName"/>
+        <pop depth="1"/>
+      </rule>
+    </state>
+  </rules>
+</lexer>

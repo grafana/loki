@@ -7,8 +7,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	configv1 "github.com/grafana/loki/operator/api/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -47,8 +47,6 @@ func TestHashSecretData(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
-
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -254,7 +252,6 @@ func TestAzureExtract(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -280,6 +277,8 @@ func TestGCSExtract(t *testing.T) {
 	type test struct {
 		name               string
 		secret             *corev1.Secret
+		tokenAuth          *corev1.Secret
+		featureGates       configv1.FeatureGates
 		wantError          string
 		wantCredentialMode lokiv1.CredentialMode
 	}
@@ -346,9 +345,47 @@ func TestGCSExtract(t *testing.T) {
 			},
 			wantCredentialMode: lokiv1.CredentialModeToken,
 		},
+		{
+			name: "invalid for token CCO",
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:         true,
+					TokenCCOAuthEnv: true,
+				},
+			},
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+					"key.json":   []byte("{\"type\": \"external_account\", \"audience\": \"\", \"service_account_id\": \"\"}"),
+				},
+			},
+			wantError: "gcp credentials file contains invalid fields: key.json must not be set for CredentialModeTokenCCO",
+		},
+		{
+			name: "valid for token CCO",
+			featureGates: configv1.FeatureGates{
+				OpenShift: configv1.OpenShiftFeatureGates{
+					Enabled:         true,
+					TokenCCOAuthEnv: true,
+				},
+			},
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"bucketname": []byte("here"),
+				},
+			},
+			tokenAuth: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "token-auth-config"},
+				Data: map[string][]byte{
+					"service_account.json": []byte("{\"type\": \"external_account\", \"audience\": \"test\", \"service_account_id\": \"\"}"),
+				},
+			},
+			wantCredentialMode: lokiv1.CredentialModeTokenCCO,
+		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -356,7 +393,7 @@ func TestGCSExtract(t *testing.T) {
 				Type: lokiv1.ObjectStorageSecretGCS,
 			}
 
-			opts, err := extractSecrets(spec, tst.secret, nil, configv1.FeatureGates{})
+			opts, err := extractSecrets(spec, tst.secret, tst.tokenAuth, tst.featureGates)
 			if tst.wantError == "" {
 				require.NoError(t, err)
 				require.Equal(t, tst.wantCredentialMode, opts.CredentialMode)
@@ -596,7 +633,6 @@ func TestS3Extract(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -664,7 +700,6 @@ func TestS3Extract_S3ForcePathStyle(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			options, err := extractS3ConfigSecret(tc.secret, lokiv1.CredentialModeStatic)
@@ -731,7 +766,6 @@ func TestS3Extract_WithOpenShiftTokenCCOAuth(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -887,7 +921,6 @@ func TestSwiftExtract(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -965,7 +998,6 @@ func TestAlibabaCloudExtract(t *testing.T) {
 		},
 	}
 	for _, tst := range table {
-		tst := tst
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -2118,6 +2118,8 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		ContentDisposition: objectMeta.ContentDisposition,
 		Expires:            objectMeta.Expires,
 		StorageClass:       objectMeta.StorageClass,
+		ObjectTagging: args.ObjectTagging,
+		TaggingDirective: args.TaggingDirective,
 	}
 	if args != nil {
 		if len(args.StorageClass) != 0 {
@@ -2307,4 +2309,8 @@ func (c *Client) GetObjectTag(bucket string, object string) (map[string]interfac
 
 func (c *Client) DeleteObjectTag(bucket string, object string) error {
 	return api.DeleteObjectTag(c, bucket, object, c.BosContext)
+}
+
+func (c *Client) BosShareLinkGet(bucket string, prefix string, shareCode string, duration int) (string, error) {
+	return api.GetBosShareLink(c, bucket, prefix, shareCode, duration)
 }

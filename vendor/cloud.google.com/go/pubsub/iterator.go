@@ -279,7 +279,7 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 		// If the cancellation comes from the underlying grpc client getting closed,
 		// do propagate the cancellation error.
 		// See https://github.com/googleapis/google-cloud-go/pull/10153#discussion_r1600814775
-		if err != nil && it.ps.ctx.Err() == context.Canceled {
+		if err != nil && errors.Is(it.ps.ctx.Err(), context.Canceled) {
 			err = io.EOF
 		}
 	}
@@ -335,14 +335,17 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 			if m.Attributes != nil {
 				ctx = propagation.TraceContext{}.Extract(ctx, newMessageCarrier(m))
 			}
-			attr := getSubscriberOpts(it.projectID, it.subID, m)
-			_, span := startSpan(ctx, subscribeSpanName, it.subID, attr...)
-			span.SetAttributes(
-				attribute.Bool(eosAttribute, it.enableExactlyOnceDelivery),
-				attribute.String(ackIDAttribute, ackID),
-				semconv.MessagingBatchMessageCount(len(msgs)),
-				semconv.CodeFunction("receive"),
+			opts := getSubscriberOpts(it.projectID, it.subID, m)
+			opts = append(
+				opts,
+				trace.WithAttributes(
+					attribute.Bool(eosAttribute, it.enableExactlyOnceDelivery),
+					semconv.MessagingGCPPubsubMessageAckID(ackID),
+					semconv.MessagingBatchMessageCount(len(msgs)),
+					semconv.CodeFunction("receive"),
+				),
 			)
+			_, span := startSpan(ctx, subscribeSpanName, it.subID, opts...)
 			// Always store the subscribe span, even if sampling isn't enabled.
 			// This is useful since we need to propagate the sampling flag
 			// to the callback in Receive, so traces have an unbroken sampling decision.
@@ -403,7 +406,7 @@ func (it *messageIterator) pullMessages(maxToPull int32) ([]*pb.ReceivedMessage,
 		MaxMessages:  maxToPull,
 	}, gax.WithGRPCOptions(grpc.MaxCallRecvMsgSize(maxSendRecvBytes)))
 	switch {
-	case err == context.Canceled:
+	case errors.Is(err, context.Canceled):
 		return nil, nil
 	case status.Code(err) == codes.Canceled:
 		return nil, nil
@@ -658,11 +661,16 @@ func (it *messageIterator) sendAck(m map[string]*AckResult) {
 			// Create the single ack span for this request, and for each
 			// message, add Subscribe<->Ack links.
 			opts := getCommonOptions(it.projectID, it.subID)
-			opts = append(opts, trace.WithLinks(links...))
+			opts = append(
+				opts,
+				trace.WithLinks(links...),
+				trace.WithAttributes(
+					semconv.MessagingBatchMessageCount(len(ackIDs)),
+					semconv.CodeFunction("sendAck"),
+				),
+			)
 			_, ackSpan := startSpan(context.Background(), ackSpanName, it.subID, opts...)
 			defer ackSpan.End()
-			ackSpan.SetAttributes(semconv.MessagingBatchMessageCount(len(ackIDs)),
-				semconv.CodeFunction("sendAck"))
 			if ackSpan.SpanContext().IsSampled() {
 				for _, s := range subscribeSpans {
 					s.AddLink(trace.Link{
@@ -740,16 +748,25 @@ func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Dur
 			// Create the single modack/nack span for this request, and for each
 			// message, add Subscribe<->Modack links.
 			opts := getCommonOptions(it.projectID, it.subID)
-			opts = append(opts, trace.WithLinks(links...))
+			opts = append(
+				opts,
+				trace.WithLinks(links...),
+				trace.WithAttributes(
+					semconv.MessagingBatchMessageCount(len(ackIDs)),
+					semconv.CodeFunction("sendModAck"),
+				),
+			)
+			if !isNack {
+				opts = append(
+					opts,
+					trace.WithAttributes(
+						semconv.MessagingGCPPubsubMessageAckDeadline(int(deadlineSec)),
+						attribute.Bool(receiptModackAttribute, isReceipt),
+					),
+				)
+			}
 			_, mSpan := startSpan(context.Background(), spanName, it.subID, opts...)
 			defer mSpan.End()
-			if !isNack {
-				mSpan.SetAttributes(
-					semconv.MessagingGCPPubsubMessageAckDeadline(int(deadlineSec)),
-					attribute.Bool(receiptModackAttribute, isReceipt))
-			}
-			mSpan.SetAttributes(semconv.MessagingBatchMessageCount(len(ackIDs)),
-				semconv.CodeFunction("sendModAck"))
 			if mSpan.SpanContext().IsSampled() {
 				for _, s := range subscribeSpans {
 					s.AddLink(trace.Link{
@@ -876,7 +893,7 @@ func (it *messageIterator) pingStream() {
 	spr := &pb.StreamingPullRequest{}
 	it.eoMu.RLock()
 	if it.sendNewAckDeadline {
-		spr.StreamAckDeadlineSeconds = int32(it.ackDeadline())
+		spr.StreamAckDeadlineSeconds = int32(it.ackDeadline().Seconds())
 		it.sendNewAckDeadline = false
 	}
 	it.eoMu.RUnlock()

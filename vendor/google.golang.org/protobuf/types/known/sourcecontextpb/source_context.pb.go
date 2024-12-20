@@ -43,22 +43,19 @@ import (
 // `SourceContext` represents information about the source of a
 // protobuf element, like the file in which it is defined.
 type SourceContext struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// The path-qualified name of the .proto file that contained the associated
 	// protobuf element.  For example: `"google/protobuf/source_context.proto"`.
-	FileName string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+	FileName      string `protobuf:"bytes,1,opt,name=file_name,json=fileName,proto3" json:"file_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SourceContext) Reset() {
 	*x = SourceContext{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_source_context_proto_msgTypes[0]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_source_context_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *SourceContext) String() string {
@@ -69,7 +66,7 @@ func (*SourceContext) ProtoMessage() {}
 
 func (x *SourceContext) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_source_context_proto_msgTypes[0]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -140,20 +137,6 @@ func init() { file_google_protobuf_source_context_proto_init() }
 func file_google_protobuf_source_context_proto_init() {
 	if File_google_protobuf_source_context_proto != nil {
 		return
-	}
-	if !protoimpl.UnsafeEnabled {
-		file_google_protobuf_source_context_proto_msgTypes[0].Exporter = func(v any, i int) any {
-			switch v := v.(*SourceContext); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

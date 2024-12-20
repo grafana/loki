@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -23,7 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
-var testTime = parseDayTime("2024-12-31").ModelTime()
+var testTime = plannertest.ParseDayTime("2024-12-31").ModelTime()
 
 func TestRetention(t *testing.T) {
 	for _, tc := range []struct {

@@ -32,7 +32,7 @@ func (c *clientImpl) ReportLoad(server *bootstrap.ServerConfig) (*load.Store, fu
 	a, err := c.newAuthorityLocked(server)
 	if err != nil {
 		c.authorityMu.Unlock()
-		c.logger.Infof("xds: failed to connect to the control plane to do load reporting for authority %q: %v", server, err)
+		c.logger.Warningf("Failed to connect to the management server to report load for authority %q: %v", server, err)
 		return nil, func() {}
 	}
 	// Hold the ref before starting load reporting.

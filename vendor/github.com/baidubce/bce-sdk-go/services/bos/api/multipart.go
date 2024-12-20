@@ -66,6 +66,14 @@ func InitiateMultipartUpload(cli bce.Client, bucket, object, contentType string,
 					args.StorageClass)
 			}
 		}
+		if len(args.ObjectTagging) != 0 {
+			if ok, encodeTagging := validObjectTagging(args.ObjectTagging); ok {
+				req.SetHeader(http.BCE_OBJECT_TAGGING, encodeTagging)
+			}
+		}
+		if validMetadataDirective(args.TaggingDirective) {
+			req.SetHeader(http.BCE_COPY_TAGGING_DIRECTIVE, args.TaggingDirective)
+		}
 	}
 
 	// Send request and get the result

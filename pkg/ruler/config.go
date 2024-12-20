@@ -53,7 +53,7 @@ func (c *Config) Validate() error {
 
 type RemoteWriteConfig struct {
 	Client              *config.RemoteWriteConfig           `yaml:"client,omitempty" doc:"deprecated|description=Use 'clients' instead. Configure remote write client."`
-	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key."`
+	Clients             map[string]config.RemoteWriteConfig `yaml:"clients,omitempty" doc:"description=Configure remote write clients. A map with remote client id as key. For details, see https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write"`
 	Enabled             bool                                `yaml:"enabled"`
 	ConfigRefreshPeriod time.Duration                       `yaml:"config_refresh_period"`
 	AddOrgIDHeader      bool                                `yaml:"add_org_id_header" doc:"description=Add X-Scope-OrgID header in remote write requests."`

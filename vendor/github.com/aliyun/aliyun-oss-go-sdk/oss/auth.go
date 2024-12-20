@@ -72,8 +72,8 @@ func (conn Conn) getAdditionalHeaderKeysV4(req *http.Request) ([]string, map[str
 }
 
 // signHeader signs the header and sets it as the authorization header.
-func (conn Conn) signHeader(req *http.Request, canonicalizedResource string) {
-	akIf := conn.config.GetCredentials()
+func (conn Conn) signHeader(req *http.Request, canonicalizedResource string, credentials Credentials) {
+	akIf := credentials
 	authorizationStr := ""
 	if conn.config.AuthVersion == AuthV4 {
 		strDay := ""
@@ -83,10 +83,9 @@ func (conn Conn) signHeader(req *http.Request, canonicalizedResource string) {
 			t, _ := time.Parse(http.TimeFormat, strDate)
 			strDay = t.Format("20060102")
 		} else {
-			t, _ := time.Parse(iso8601DateFormatSecond, strDate)
+			t, _ := time.Parse(timeFormatV4, strDate)
 			strDay = t.Format("20060102")
 		}
-
 		signHeaderProduct := conn.config.GetSignProduct()
 		signHeaderRegion := conn.config.GetSignRegion()
 
@@ -94,10 +93,10 @@ func (conn Conn) signHeader(req *http.Request, canonicalizedResource string) {
 		if len(additionalList) > 0 {
 			authorizationFmt := "OSS4-HMAC-SHA256 Credential=%v/%v/%v/" + signHeaderProduct + "/aliyun_v4_request,AdditionalHeaders=%v,Signature=%v"
 			additionnalHeadersStr := strings.Join(additionalList, ";")
-			authorizationStr = fmt.Sprintf(authorizationFmt, akIf.GetAccessKeyID(), strDay, signHeaderRegion, additionnalHeadersStr, conn.getSignedStrV4(req, canonicalizedResource, akIf.GetAccessKeySecret()))
+			authorizationStr = fmt.Sprintf(authorizationFmt, akIf.GetAccessKeyID(), strDay, signHeaderRegion, additionnalHeadersStr, conn.getSignedStrV4(req, canonicalizedResource, akIf.GetAccessKeySecret(), nil))
 		} else {
 			authorizationFmt := "OSS4-HMAC-SHA256 Credential=%v/%v/%v/" + signHeaderProduct + "/aliyun_v4_request,Signature=%v"
-			authorizationStr = fmt.Sprintf(authorizationFmt, akIf.GetAccessKeyID(), strDay, signHeaderRegion, conn.getSignedStrV4(req, canonicalizedResource, akIf.GetAccessKeySecret()))
+			authorizationStr = fmt.Sprintf(authorizationFmt, akIf.GetAccessKeyID(), strDay, signHeaderRegion, conn.getSignedStrV4(req, canonicalizedResource, akIf.GetAccessKeySecret(), nil))
 		}
 	} else if conn.config.AuthVersion == AuthV2 {
 		additionalList, _ := conn.getAdditionalHeaderKeys(req)
@@ -168,49 +167,44 @@ func (conn Conn) getSignedStr(req *http.Request, canonicalizedResource string, k
 	return signedStr
 }
 
-func (conn Conn) getSignedStrV4(req *http.Request, canonicalizedResource string, keySecret string) string {
+func (conn Conn) getSignedStrV4(req *http.Request, canonicalizedResource string, keySecret string, signingTime *time.Time) string {
 	// Find out the "x-oss-"'s address in header of the request
 	ossHeadersMap := make(map[string]string)
 	additionalList, additionalMap := conn.getAdditionalHeaderKeysV4(req)
 	for k, v := range req.Header {
-		if strings.HasPrefix(strings.ToLower(k), "x-oss-") {
-			ossHeadersMap[strings.ToLower(k)] = strings.Trim(v[0], " ")
+		lowKey := strings.ToLower(k)
+		if strings.EqualFold(lowKey, HTTPHeaderContentMD5) ||
+			strings.EqualFold(lowKey, HTTPHeaderContentType) ||
+			strings.HasPrefix(lowKey, "x-oss-") {
+			ossHeadersMap[lowKey] = strings.Trim(v[0], " ")
 		} else {
-			if _, ok := additionalMap[strings.ToLower(k)]; ok {
-				ossHeadersMap[strings.ToLower(k)] = strings.Trim(v[0], " ")
+			if _, ok := additionalMap[lowKey]; ok {
+				ossHeadersMap[lowKey] = strings.Trim(v[0], " ")
 			}
 		}
 	}
 
-	// Required parameters
+	// get day,eg 20210914
+	//signingTime
 	signDate := ""
-	dateFormat := ""
-	date := req.Header.Get(HTTPHeaderDate)
-	if date != "" {
-		signDate = date
-		dateFormat = http.TimeFormat
-	}
-
-	ossDate := req.Header.Get(HttpHeaderOssDate)
-	_, ok := ossHeadersMap[strings.ToLower(HttpHeaderOssDate)]
-	if ossDate != "" {
-		signDate = ossDate
-		dateFormat = iso8601DateFormatSecond
-		if !ok {
-			ossHeadersMap[strings.ToLower(HttpHeaderOssDate)] = strings.Trim(ossDate, " ")
+	strDay := ""
+	if signingTime != nil {
+		signDate = signingTime.Format(timeFormatV4)
+		strDay = signingTime.Format(shortTimeFormatV4)
+	} else {
+		var t time.Time
+		// Required parameters
+		if date := req.Header.Get(HTTPHeaderDate); date != "" {
+			signDate = date
+			t, _ = time.Parse(http.TimeFormat, date)
 		}
-	}
 
-	contentType := req.Header.Get(HTTPHeaderContentType)
-	_, ok = ossHeadersMap[strings.ToLower(HTTPHeaderContentType)]
-	if contentType != "" && !ok {
-		ossHeadersMap[strings.ToLower(HTTPHeaderContentType)] = strings.Trim(contentType, " ")
-	}
+		if ossDate := req.Header.Get(HttpHeaderOssDate); ossDate != "" {
+			signDate = ossDate
+			t, _ = time.Parse(timeFormatV4, ossDate)
+		}
 
-	contentMd5 := req.Header.Get(HTTPHeaderContentMD5)
-	_, ok = ossHeadersMap[strings.ToLower(HTTPHeaderContentMD5)]
-	if contentMd5 != "" && !ok {
-		ossHeadersMap[strings.ToLower(HTTPHeaderContentMD5)] = strings.Trim(contentMd5, " ")
+		strDay = t.Format("20060102")
 	}
 
 	hs := newHeaderSorter(ossHeadersMap)
@@ -227,7 +221,10 @@ func (conn Conn) getSignedStrV4(req *http.Request, canonicalizedResource string,
 	signStr := ""
 
 	// v4 signature
-	hashedPayload := req.Header.Get(HttpHeaderOssContentSha256)
+	hashedPayload := DefaultContentSha256
+	if val := req.Header.Get(HttpHeaderOssContentSha256); val != "" {
+		hashedPayload = val
+	}
 
 	// subResource
 	resource := canonicalizedResource
@@ -245,13 +242,10 @@ func (conn Conn) getSignedStrV4(req *http.Request, canonicalizedResource string,
 	hashedRequest := hex.EncodeToString(rh.Sum(nil))
 
 	if conn.config.LogLevel >= Debug {
-		conn.config.WriteLog(Debug, "[Req:%p]signStr:%s\n", req, EscapeLFString(canonicalReuqest))
+		conn.config.WriteLog(Debug, "[Req:%p]CanonicalRequest:%s\n", req, EscapeLFString(canonicalReuqest))
 	}
 
-	// get day,eg 20210914
-	t, _ := time.Parse(dateFormat, signDate)
-	strDay := t.Format("20060102")
-
+	// Product & Region
 	signedStrV4Product := conn.config.GetSignProduct()
 	signedStrV4Region := conn.config.GetSignRegion()
 

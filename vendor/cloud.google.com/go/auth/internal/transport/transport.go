@@ -49,6 +49,7 @@ func CloneDetectOptions(oldDo *credentials.DetectOptions) *credentials.DetectOpt
 		// These fields are are pointer types that we just want to use exactly
 		// as the user set, copy the ref
 		Client:             oldDo.Client,
+		Logger:             oldDo.Logger,
 		AuthHandlerOptions: oldDo.AuthHandlerOptions,
 	}
 
@@ -81,12 +82,14 @@ func ValidateUniverseDomain(clientUniverseDomain, credentialsUniverseDomain stri
 
 // DefaultHTTPClientWithTLS constructs an HTTPClient using the provided tlsConfig, to support mTLS.
 func DefaultHTTPClientWithTLS(tlsConfig *tls.Config) *http.Client {
-	trans := baseTransport()
+	trans := BaseTransport()
 	trans.TLSClientConfig = tlsConfig
 	return &http.Client{Transport: trans}
 }
 
-func baseTransport() *http.Transport {
+// BaseTransport returns a default [http.Transport] which can be used if
+// [http.DefaultTransport] has been overwritten.
+func BaseTransport() *http.Transport {
 	return &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{

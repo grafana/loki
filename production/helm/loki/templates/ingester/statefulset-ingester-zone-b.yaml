@@ -9,8 +9,8 @@ metadata:
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
-    rollout-group: ingester
-    name: ingester-zone-b
+    name: {{ include "loki.prefixIngesterName" . }}ingester-zone-b
+    rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
   annotations:
     rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
     {{- with .Values.loki.annotations }}
@@ -26,7 +26,7 @@ spec:
   podManagementPolicy: Parallel
   serviceName: {{ include "loki.ingesterFullname" . }}-zone-b
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
     Data on the read nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -38,10 +38,12 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.ingesterSelectorLabels" . | nindent 6 }}
-      name: ingester-zone-b
-      rollout-group: ingester
+      name: {{ include "loki.prefixIngesterName" . }}ingester-zone-b
+      rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
+{{- with .Values.ingester.updateStrategy }}
   updateStrategy:
-    type: OnDelete
+     {{- tpl (. | toYaml) $ | nindent 4 }}
+{{- end }}
   template:
     metadata:
       annotations:
@@ -58,8 +60,8 @@ spec:
       labels:
         {{- include "loki.ingesterSelectorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        name: ingester-zone-b
-        rollout-group: ingester
+        name: {{ include "loki.prefixIngesterName" . }}ingester-zone-b
+        rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
         {{- with .Values.loki.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -67,7 +69,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.ingester.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -162,11 +164,11 @@ spec:
                   - key: rollout-group
                     operator: In
                     values:
-                      - ingester
+                      - {{ include "loki.prefixRolloutGroup" . }}ingester
                   - key: name
                     operator: NotIn
                     values:
-                      - ingester-zone-b
+                      - {{ include "loki.prefixIngesterName" . }}ingester-zone-b
               topologyKey: kubernetes.io/hostname
         {{- with .Values.ingester.zoneAwareReplication.zoneB.extraAffinity }}
         {{- toYaml . | nindent 8 }}
@@ -212,7 +214,9 @@ spec:
   {{- else }}
   volumeClaimTemplates:
   {{- range .Values.ingester.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

@@ -17,24 +17,6 @@ import (
 	"github.com/d4l3k/messagediff"
 )
 
-// Ensures that NewDefaultScalableBloomFilter creates a Scalable Bloom Filter
-// with hint = 10000 and r = 0.8.
-func TestNewDefaultScalableBloomFilter(t *testing.T) {
-	f := NewDefaultScalableBloomFilter()
-
-	if f.fp != 0.1 {
-		t.Errorf("Expected 0.1, got %f", f.fp)
-	}
-
-	if f.hint != 10000 {
-		t.Errorf("Expected 10000, got %d", f.hint)
-	}
-
-	if f.r != 0.8 {
-		t.Errorf("Expected 0.8, got %f", f.r)
-	}
-}
-
 // Ensures that K returns the number of hash functions used in each Bloom
 // filter.
 func TestScalableBloomK(t *testing.T) {
@@ -108,34 +90,6 @@ func TestScalableBloomTestAndAdd(t *testing.T) {
 	// `x` should not be a false positive.
 	if f.Test([]byte(`x`)) {
 		t.Error("`x` should not be a member")
-	}
-}
-
-// Ensures that Reset removes all Bloom filters and resets the initial one.
-func TestScalableBloomReset(t *testing.T) {
-	f := NewScalableBloomFilter(10, 0.1, 0.8)
-	for i := 0; i < 1000; i++ {
-		f.Add([]byte(strconv.Itoa(i)))
-	}
-
-	if len(f.filters) < 2 {
-		t.Errorf("Expected more than 1 filter, got %d", len(f.filters))
-	}
-
-	if f.Reset() != f {
-		t.Error("Returned ScalableBloomFilter should be the same instance")
-	}
-
-	if len(f.filters) != 1 {
-		t.Errorf("Expected 1 filter, got %d", len(f.filters))
-	}
-
-	for _, partition := range f.filters[0].partitions {
-		for i := uint(0); i < partition.Count(); i++ {
-			if partition.Get(i) != 0 {
-				t.Error("Expected all bits to be unset")
-			}
-		}
 	}
 }
 

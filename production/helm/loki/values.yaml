@@ -1,3 +1,9 @@
+# -- Overrides the version used to determine compatibility of resources with the target Kubernetes cluster.
+# This is useful when using `helm template`, because then helm will use the client version of kubectl as the Kubernetes version,
+# which may or may not match your cluster's server version. Example: 'v1.24.4'. Set to null to use the version that helm
+# devises.
+kubeVersionOverride: null
+
 global:
   image:
     # -- Overrides the Docker registry globally for all images
@@ -50,7 +56,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: null
+    tag: 3.3.2
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -199,7 +205,9 @@ loki:
     {{- toYaml .Values.loki.testSchemaConfig | nindent 2}}
     {{- end }}
 
+    {{- if .Values.ruler.enabled }}
     {{ include "loki.rulerConfig" . }}
+    {{- end }}
 
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
@@ -406,7 +414,9 @@ loki:
           prefix: index_
           period: 24h
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
-  rulerConfig: {}
+  rulerConfig:
+    wal:
+      dir: /var/loki/ruler-wal
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
@@ -512,7 +522,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: null
+    tag: 3.3.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -821,6 +831,8 @@ adminApi:
   #      - domain.tld
   # -- Additional CLI arguments for the `admin-api` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the admin-api pods
+  extraEnvFrom: []
   # -- Additional labels for the `admin-api` Deployment
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
@@ -868,6 +880,8 @@ adminApi:
   affinity: {}
   # -- Node selector for admin-api Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for admin-api pods
+  topologySpreadConstraints: []
   # -- Tolerations for admin-api Pods
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
@@ -1074,6 +1088,8 @@ gateway:
     # -- Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating
     httpSnippet: >-
       {{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}
+    # -- Allows customizing the `client_max_body_size` directive
+    clientMaxBodySize: 4M
     # -- Whether ssl should be appended to the listen directive of the server block or not.
     ssl: false
     # -- Override Read URL
@@ -1099,6 +1115,8 @@ enterpriseGateway:
   #      - domain.tld
   # -- Additional CLI arguments for the `gateway` target
   extraArgs: {}
+  # -- Environment variables from secrets or configmaps to add to the enterprise gateway pods
+  extraEnvFrom: []
   # -- Additional labels for the `gateway` Pod
   labels: {}
   # -- Additional annotations for the `gateway` Pod
@@ -1149,6 +1167,8 @@ enterpriseGateway:
   affinity: {}
   # -- Node selector for gateway Pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for enterprise-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for gateway Pods
   tolerations: []
   # -- Grace period to allow the gateway to shutdown before it is killed
@@ -1796,6 +1816,13 @@ ingester:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- UpdateStrategy for the ingester StatefulSets.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
@@ -1868,6 +1895,12 @@ ingester:
       excludeDefaultZone: false
       readPath: false
       writePath: false
+
+  # optionally allow adding arbitrary prefix to the ingester rollout-group label
+  rolloutGroupPrefix: null
+  # optionally allow adding 'loki-' prefix to ingester name label
+  addIngesterNamePrefix: false
+
 # --  Configuration for the distributor
 distributor:
   # -- Number of replicas for the distributor
@@ -1954,6 +1987,8 @@ distributor:
   maxSurge: 0
   # -- Node selector for distributor pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for distributor pods
+  topologySpreadConstraints: []
   # -- Tolerations for distributor pods
   tolerations: []
   # -- Adds the appProtocol field to the distributor service. This allows distributor to work with istio protocol selection.
@@ -2162,6 +2197,8 @@ queryFrontend:
   maxUnavailable: null
   # -- Node selector for query-frontend pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-frontend pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-frontend pods
   tolerations: []
   # -- Adds the appProtocol field to the queryFrontend service. This allows queryFrontend to work with istio protocol selection.
@@ -2225,6 +2262,8 @@ queryScheduler:
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for query-scheduler pods
+  topologySpreadConstraints: []
   # -- Tolerations for query-scheduler pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2289,6 +2328,8 @@ indexGateway:
   maxUnavailable: null
   # -- Node selector for index-gateway pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for index-gateway pods
+  topologySpreadConstraints: []
   # -- Tolerations for index-gateway pods
   tolerations: []
   persistence:
@@ -2313,6 +2354,13 @@ indexGateway:
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
   appProtocol:
     grpc: ""
+  # -- UpdateStrategy for the indexGateway StatefulSet.
+  updateStrategy:
+    # -- One of  'OnDelete' or 'RollingUpdate'
+    type: RollingUpdate
+    # -- Optional for updateStrategy.type=RollingUpdate. See [Partitioned rolling updates](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#partitions) in the StatefulSet docs for details.
+    # rollingUpdate:
+    #   partition: 0
 # -- Configuration for the compactor
 compactor:
   # -- Number of replicas for the compactor
@@ -2770,6 +2818,8 @@ patternIngester:
   terminationGracePeriodSeconds: 30
   # -- Node selector for pattern ingester pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for pattern ingester pods
+  topologySpreadConstraints: []
   # -- Tolerations for pattern ingester pods
   tolerations: []
   # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
@@ -2878,6 +2928,8 @@ ruler:
   maxUnavailable: null
   # -- Node selector for ruler pods
   nodeSelector: {}
+  # -- Topology Spread Constraints for ruler pods
+  topologySpreadConstraints: []
   # -- Tolerations for ruler pods
   tolerations: []
   # -- DNSConfig for ruler pods
@@ -2969,7 +3021,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.23-alpine
+    tag: 1.6.33-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -2991,7 +3043,7 @@ memcachedExporter:
   enabled: true
   image:
     repository: prom/memcached-exporter
-    tag: v0.14.2
+    tag: v0.15.0
     pullPolicy: IfNotPresent
   resources:
     requests: {}
@@ -3307,7 +3359,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.27.5
+    tag: 1.28.0
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

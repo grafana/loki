@@ -1,11 +1,17 @@
 name: helm-release
 
 on:
-  workflow_dispatch: # must be invoked manually
+  workflow_dispatch: # for manual testing
+  push:
+    branches:
+      - main
+      - k[0-9]+
+    paths:
+      - 'production/helm/loki/Chart.yaml'
 
 jobs:
   call-update-helm-repo:
-    uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@main
+    uses: grafana/helm-charts/.github/workflows/update-helm-repo.yaml@70dbbb722dee3f2ee126e12684cc0e92a20972ed
     with:
       charts_dir: production/helm
       cr_configfile: production/helm/cr.yaml

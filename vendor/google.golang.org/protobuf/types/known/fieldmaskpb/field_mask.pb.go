@@ -284,12 +284,11 @@ import (
 // request should verify the included field paths, and return an
 // `INVALID_ARGUMENT` error if any path is unmappable.
 type FieldMask struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// The set of field mask paths.
-	Paths []string `protobuf:"bytes,1,rep,name=paths,proto3" json:"paths,omitempty"`
+	Paths         []string `protobuf:"bytes,1,rep,name=paths,proto3" json:"paths,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 // New constructs a field mask from a list of paths and verifies that
@@ -467,11 +466,9 @@ func rangeFields(path string, f func(field string) bool) bool {
 
 func (x *FieldMask) Reset() {
 	*x = FieldMask{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_field_mask_proto_msgTypes[0]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_field_mask_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *FieldMask) String() string {
@@ -482,7 +479,7 @@ func (*FieldMask) ProtoMessage() {}
 
 func (x *FieldMask) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_field_mask_proto_msgTypes[0]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -552,20 +549,6 @@ func init() { file_google_protobuf_field_mask_proto_init() }
 func file_google_protobuf_field_mask_proto_init() {
 	if File_google_protobuf_field_mask_proto != nil {
 		return
-	}
-	if !protoimpl.UnsafeEnabled {
-		file_google_protobuf_field_mask_proto_msgTypes[0].Exporter = func(v any, i int) any {
-			switch v := v.(*FieldMask); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

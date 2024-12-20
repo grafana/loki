@@ -43,6 +43,9 @@ import (
 	"cloud.google.com/go/storage/internal"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"github.com/googleapis/gax-go/v2"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -50,6 +53,8 @@ import (
 	raw "google.golang.org/api/storage/v1"
 	"google.golang.org/api/transport"
 	htransport "google.golang.org/api/transport/http"
+	"google.golang.org/grpc/experimental/stats"
+	"google.golang.org/grpc/stats/opentelemetry"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -214,13 +219,10 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 
 // NewGRPCClient creates a new Storage client using the gRPC transport and API.
 // Client methods which have not been implemented in gRPC will return an error.
-// In particular, methods for Cloud Pub/Sub notifications are not supported.
+// In particular, methods for Cloud Pub/Sub notifications, Service Account HMAC
+// keys, and ServiceAccount are not supported.
 // Using a non-default universe domain is also not supported with the Storage
 // gRPC client.
-//
-// The storage gRPC API is still in preview and not yet publicly available.
-// If you would like to use the API, please first contact your GCP account rep to
-// request access. The API may be subject to breaking changes.
 //
 // Clients should be reused instead of created as needed. The methods of Client
 // are safe for concurrent use by multiple goroutines.
@@ -234,6 +236,62 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 	}
 
 	return &Client{tc: tc}, nil
+}
+
+// CheckDirectConnectivitySupported checks if gRPC direct connectivity
+// is available for a specific bucket from the environment where the client
+// is running. A `nil` error represents Direct Connectivity was detected.
+// Direct connectivity is expected to be available when running from inside
+// GCP and connecting to a bucket in the same region.
+//
+// Experimental helper that's subject to change.
+//
+// You can pass in [option.ClientOption] you plan on passing to [NewGRPCClient]
+func CheckDirectConnectivitySupported(ctx context.Context, bucket string, opts ...option.ClientOption) error {
+	view := metric.NewView(
+		metric.Instrument{
+			Name: "grpc.client.attempt.duration",
+			Kind: metric.InstrumentKindHistogram,
+		},
+		metric.Stream{AttributeFilter: attribute.NewAllowKeysFilter("grpc.lb.locality")},
+	)
+	mr := metric.NewManualReader()
+	provider := metric.NewMeterProvider(metric.WithReader(mr), metric.WithView(view))
+	// Provider handles shutting down ManualReader
+	defer provider.Shutdown(ctx)
+	mo := opentelemetry.MetricsOptions{
+		MeterProvider:  provider,
+		Metrics:        stats.NewMetrics("grpc.client.attempt.duration"),
+		OptionalLabels: []string{"grpc.lb.locality"},
+	}
+	combinedOpts := append(opts, WithDisabledClientMetrics(), option.WithGRPCDialOption(opentelemetry.DialOption(opentelemetry.Options{MetricsOptions: mo})))
+	client, err := NewGRPCClient(ctx, combinedOpts...)
+	if err != nil {
+		return fmt.Errorf("storage.NewGRPCClient: %w", err)
+	}
+	defer client.Close()
+	if _, err = client.Bucket(bucket).Attrs(ctx); err != nil {
+		return fmt.Errorf("Bucket.Attrs: %w", err)
+	}
+	// Call manual reader to collect metric
+	rm := metricdata.ResourceMetrics{}
+	if err = mr.Collect(context.Background(), &rm); err != nil {
+		return fmt.Errorf("ManualReader.Collect: %w", err)
+	}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name == "grpc.client.attempt.duration" {
+				hist := m.Data.(metricdata.Histogram[float64])
+				for _, d := range hist.DataPoints {
+					v, present := d.Attributes.Value("grpc.lb.locality")
+					if present && v.AsString() != "" && v.AsString() != "{}" {
+						return nil
+					}
+				}
+			}
+		}
+	}
+	return errors.New("storage: direct connectivity not detected")
 }
 
 // Close closes the Client.
@@ -1695,7 +1753,6 @@ type Query struct {
 
 	// IncludeFoldersAsPrefixes includes Folders and Managed Folders in the set of
 	// prefixes returned by the query. Only applicable if Delimiter is set to /.
-	// IncludeFoldersAsPrefixes is not yet implemented in the gRPC API.
 	IncludeFoldersAsPrefixes bool
 
 	// SoftDeleted indicates whether to list soft-deleted objects.
@@ -2159,7 +2216,7 @@ type withBackoff struct {
 }
 
 func (wb *withBackoff) apply(config *retryConfig) {
-	config.backoff = &wb.backoff
+	config.backoff = gaxBackoffFromStruct(&wb.backoff)
 }
 
 // WithMaxAttempts configures the maximum number of times an API call can be made
@@ -2250,8 +2307,58 @@ func (wef *withErrorFunc) apply(config *retryConfig) {
 	config.shouldRetry = wef.shouldRetry
 }
 
+type backoff interface {
+	Pause() time.Duration
+
+	SetInitial(time.Duration)
+	SetMax(time.Duration)
+	SetMultiplier(float64)
+
+	GetInitial() time.Duration
+	GetMax() time.Duration
+	GetMultiplier() float64
+}
+
+func gaxBackoffFromStruct(bo *gax.Backoff) *gaxBackoff {
+	if bo == nil {
+		return nil
+	}
+	b := &gaxBackoff{}
+	b.Backoff = *bo
+	return b
+}
+
+// gaxBackoff is a gax.Backoff that implements the backoff interface
+type gaxBackoff struct {
+	gax.Backoff
+}
+
+func (b *gaxBackoff) SetInitial(i time.Duration) {
+	b.Initial = i
+}
+
+func (b *gaxBackoff) SetMax(m time.Duration) {
+	b.Max = m
+}
+
+func (b *gaxBackoff) SetMultiplier(m float64) {
+	b.Multiplier = m
+}
+
+func (b *gaxBackoff) GetInitial() time.Duration {
+	return b.Initial
+}
+
+func (b *gaxBackoff) GetMax() time.Duration {
+	return b.Max
+}
+
+func (b *gaxBackoff) GetMultiplier() float64 {
+	return b.Multiplier
+}
+
 type retryConfig struct {
-	backoff     *gax.Backoff
+	backoff     backoff
 	policy      RetryPolicy
 	shouldRetry func(err error) bool
 	maxAttempts *int
@@ -2261,22 +2368,22 @@ func (r *retryConfig) clone() *retryConfig {
 	if r == nil {
 		return nil
 	}
-
-	var bo *gax.Backoff
-	if r.backoff != nil {
-		bo = &gax.Backoff{
-			Initial:    r.backoff.Initial,
-			Max:        r.backoff.Max,
-			Multiplier: r.backoff.Multiplier,
-		}
-	}
-
-	return &retryConfig{
-		backoff:     bo,
+	newConfig := &retryConfig{
+		backoff:     nil,
 		policy:      r.policy,
 		shouldRetry: r.shouldRetry,
 		maxAttempts: r.maxAttempts,
 	}
+
+	if r.backoff != nil {
+		bo := &gaxBackoff{}
+		bo.Initial = r.backoff.GetInitial()
+		bo.Max = r.backoff.GetMax()
+		bo.Multiplier = r.backoff.GetMultiplier()
+		newConfig.backoff = bo
+	}
+
+	return newConfig
 }
 
 // composeSourceObj wraps a *raw.ComposeRequestSourceObjects, but adds the methods
@@ -2350,6 +2457,7 @@ func toProtoChecksums(sendCRC32C bool, attrs *ObjectAttrs) *storagepb.ObjectChec
 }
 
 // ServiceAccount fetches the email address of the given project's Google Cloud Storage service account.
+// Note: gRPC is not supported.
 func (c *Client) ServiceAccount(ctx context.Context, projectID string) (string, error) {
 	o := makeStorageOpts(true, c.retry, "")
 	return c.tc.GetServiceAccount(ctx, projectID, o...)

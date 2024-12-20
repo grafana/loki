@@ -1038,7 +1038,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	})
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit_per_query (10000 > 5000)"), err)
 	require.False(t, called)
 }
 
@@ -1213,7 +1213,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "range_query_prom",
-			path:       "/prom/query",
+			path:       "/api/prom/query",
 			expectedOp: QueryRangeOp,
 		},
 		{
@@ -1228,7 +1228,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "series_query_prom",
-			path:       "/prom/series",
+			path:       "/api/prom/series",
 			expectedOp: SeriesOp,
 		},
 		{
@@ -1238,7 +1238,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/prom/labels",
+			path:       "/api/prom/labels",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1248,7 +1248,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "labels_query_prom",
-			path:       "/prom/label",
+			path:       "/api/prom/label",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1258,7 +1258,7 @@ func Test_getOperation(t *testing.T) {
 		},
 		{
 			name:       "label_values_query_prom",
-			path:       "/prom/label/__name__/values",
+			path:       "/api/prom/label/__name__/values",
 			expectedOp: LabelNamesOp,
 		},
 		{
@@ -1534,6 +1534,10 @@ func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
 
 func (f fakeLimits) TSDBShardingStrategy(string) string {
 	return logql.PowerOfTwoVersion.String()
+}
+
+func (f fakeLimits) ShardAggregations(string) []string {
+	return nil
 }
 
 type ingesterQueryOpts struct {

@@ -3,6 +3,7 @@ package builder
 import (
 	"flag"
 	"fmt"
+	"time"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
@@ -40,4 +41,6 @@ type Limits interface {
 	BloomBlockEncoding(tenantID string) string
 	BloomMaxBlockSize(tenantID string) int
 	BloomMaxBloomSize(tenantID string) int
+	BuilderResponseTimeout(tenantID string) time.Duration
+	PrefetchBloomBlocks(tenantID string) bool
 }

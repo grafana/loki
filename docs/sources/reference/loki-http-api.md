@@ -12,10 +12,10 @@ weight: 500
 Loki exposes an HTTP API for pushing, querying, and tailing log data, as well
 as for viewing and managing cluster information.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Note that authorization is not part of the Loki API.
 Authorization needs to be done separately, for example, using an open-source load-balancer such as NGINX.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Endpoints
 
@@ -30,9 +30,9 @@ A [list of clients]({{< relref "../send-data" >}}) can be found in the clients d
 
 ### Query endpoints
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Requests sent to the query endpoints must use valid LogQL syntax. For more information, see the [LogQL]({{< relref "../query" >}}) section of the documentation.
-{{% /admonition %}}
+{{< /admonition >}}
 
 These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and `all` components:
 
@@ -112,10 +112,10 @@ These HTTP endpoints are exposed by all individual components:
 
 ### Deprecated endpoints
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The following endpoints are deprecated.While they still exist and work, they should not be used for new deployments.
 Existing deployments should upgrade to use the supported endpoints.
-{{% /admonition %}}
+{{< /admonition >}}
 
 | Deprecated | Replacement |
 | ---------- | ----------- |
@@ -154,9 +154,9 @@ The API accepts several formats for timestamps:
 - A floating point number is a Unix timestamp with fractions of a second.
 - A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 When using `/api/v1/push`, you must send the timestamp as a string and not a number, otherwise the endpoint will return a 400 error.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Statistics
 
@@ -346,6 +346,24 @@ The items in the `values` array are sorted by timestamp.
 The most recent item is first when using `direction=backward`.
 The oldest item is first when using `direction=forward`.
 
+Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
+
+The schema is the following for streams:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| line        |VARCHAR                   |
+
+and for metrics:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| value       | DOUBLE                   |
+
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
@@ -517,6 +535,24 @@ And `<stream value>` is:
 The items in the `values` array are sorted by timestamp.
 The most recent item is first when using `direction=backward`.
 The oldest item is first when using `direction=forward`.
+
+Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
+
+The schema is the following for streams:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| line        |VARCHAR                   |
+
+and for metrics:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| value       | DOUBLE                   |
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
@@ -1440,9 +1476,9 @@ Query parameters:
 
 - `request_id=<request_id>`: Identifies the delete request to cancel; IDs are found using the `delete` endpoint.
 - `force=<boolean>`: When the `force` query parameter is true, partially completed delete requests will be canceled.
-  {{% admonition type="note" %}}
+  {{< admonition type="note" >}}
   some data from the request may still be deleted and the deleted request will be listed as 'processed'.
-  {{% /admonition %}}
+  {{< /admonition >}}
 
 A 204 response indicates success.
 

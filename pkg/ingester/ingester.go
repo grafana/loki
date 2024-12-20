@@ -296,7 +296,7 @@ type Ingester struct {
 
 	ingestPartitionID       int32
 	partitionRingLifecycler *ring.PartitionInstanceLifecycler
-	partitionReader         *partition.Reader
+	partitionReader         *partition.ReaderService
 }
 
 // New makes a new Ingester.
@@ -335,7 +335,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
 	if cfg.WAL.Enabled {
-		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(cfg.WAL.Dir, 0o750); err != nil {
 			// Best effort try to make path absolute for easier debugging.
 			path, _ := filepath.Abs(cfg.WAL.Dir)
 			if path == "" {
@@ -380,7 +380,14 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			logger,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
-		i.partitionReader, err = partition.NewReader(cfg.KafkaIngestion.KafkaConfig, i.ingestPartitionID, cfg.LifecyclerConfig.ID, NewKafkaConsumerFactory(i, logger, registerer), logger, registerer)
+		i.partitionReader, err = partition.NewReaderService(
+			cfg.KafkaIngestion.KafkaConfig,
+			i.ingestPartitionID,
+			cfg.LifecyclerConfig.ID,
+			NewKafkaConsumerFactory(i, registerer),
+			logger,
+			registerer,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -404,18 +411,21 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		i.SetExtractorWrapper(i.cfg.SampleExtractorWrapper)
 	}
 
-	var limiterStrategy limiterRingStrategy
+	var streamCountLimiter limiterRingStrategy
 	var ownedStreamsStrategy ownershipStrategy
+	var streamRateLimiter RateLimiterStrategy
 	if i.cfg.KafkaIngestion.Enabled {
-		limiterStrategy = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
+		streamCountLimiter = newPartitionRingLimiterStrategy(partitionRingWatcher, limits.IngestionPartitionsTenantShardSize)
 		ownedStreamsStrategy = newOwnedStreamsPartitionStrategy(i.ingestPartitionID, partitionRingWatcher, limits.IngestionPartitionsTenantShardSize, util_log.Logger)
+		streamRateLimiter = &NoLimitsStrategy{} // Kafka ingestion does not have per-stream rate limits, because we control the consumption speed.
 	} else {
-		limiterStrategy = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
+		streamCountLimiter = newIngesterRingLimiterStrategy(i.lifecycler, cfg.LifecyclerConfig.RingConfig.ReplicationFactor)
 		ownedStreamsStrategy = newOwnedStreamsIngesterStrategy(i.lifecycler.ID, i.readRing, util_log.Logger)
+		streamRateLimiter = &TenantBasedStrategy{limits: limits}
 	}
 	// Now that the lifecycler has been created, we can create the limiter
 	// which depends on it.
-	i.limiter = NewLimiter(limits, metrics, limiterStrategy)
+	i.limiter = NewLimiter(limits, metrics, streamCountLimiter, streamRateLimiter)
 	i.recalculateOwnedStreams = newRecalculateOwnedStreamsSvc(i.getInstances, ownedStreamsStrategy, cfg.OwnedStreamsCheckInterval, util_log.Logger)
 
 	return i, nil
@@ -608,6 +618,10 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		i.setPrepareShutdown()
 	}
 
+	// start our flush loop: this needs to start before the partition-reader in order for chunks to be shipped in the case of Kafka catching up.
+	i.loopDone.Add(1)
+	go i.loop()
+
 	// When kafka ingestion is enabled, we have to make sure that reader catches up replaying the partition
 	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
 	// it will switch the ingester state in the ring to ACTIVE.
@@ -643,9 +657,7 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
 		}
 	}
-	// start our loop
-	i.loopDone.Add(1)
-	go i.loop()
+
 	return nil
 }
 
@@ -747,7 +759,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG.
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
