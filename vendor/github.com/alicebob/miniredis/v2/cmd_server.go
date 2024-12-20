@@ -38,9 +38,9 @@ func (m *Miniredis) cmdMemory(c *server.Peer, cmd string, args []string) {
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 		db := m.db(ctx.selectedDB)
 
-		cmd, args := args[0], args[1:]
+		cmd, args := strings.ToLower(args[0]), args[1:]
 		switch cmd {
-		case "USAGE":
+		case "usage":
 			if len(args) < 1 {
 				setDirty(c)
 				c.WriteError(errWrongNumber("memory|usage"))

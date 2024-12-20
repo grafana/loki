@@ -244,6 +244,8 @@ func NewGRPCClient(ctx context.Context, opts ...option.ClientOption) (*Client, e
 // Direct connectivity is expected to be available when running from inside
 // GCP and connecting to a bucket in the same region.
 //
+// Experimental helper that's subject to change.
+//
 // You can pass in [option.ClientOption] you plan on passing to [NewGRPCClient]
 func CheckDirectConnectivitySupported(ctx context.Context, bucket string, opts ...option.ClientOption) error {
 	view := metric.NewView(
@@ -282,7 +284,7 @@ func CheckDirectConnectivitySupported(ctx context.Context, bucket string, opts .
 				hist := m.Data.(metricdata.Histogram[float64])
 				for _, d := range hist.DataPoints {
 					v, present := d.Attributes.Value("grpc.lb.locality")
-					if present && v.AsString() != "" {
+					if present && v.AsString() != "" && v.AsString() != "{}" {
 						return nil
 					}
 				}
@@ -2214,7 +2216,7 @@ type withBackoff struct {
 }
 
 func (wb *withBackoff) apply(config *retryConfig) {
-	config.backoff = &wb.backoff
+	config.backoff = gaxBackoffFromStruct(&wb.backoff)
 }
 
 // WithMaxAttempts configures the maximum number of times an API call can be made
@@ -2305,8 +2307,58 @@ func (wef *withErrorFunc) apply(config *retryConfig) {
 	config.shouldRetry = wef.shouldRetry
 }
 
+type backoff interface {
+	Pause() time.Duration
+
+	SetInitial(time.Duration)
+	SetMax(time.Duration)
+	SetMultiplier(float64)
+
+	GetInitial() time.Duration
+	GetMax() time.Duration
+	GetMultiplier() float64
+}
+
+func gaxBackoffFromStruct(bo *gax.Backoff) *gaxBackoff {
+	if bo == nil {
+		return nil
+	}
+	b := &gaxBackoff{}
+	b.Backoff = *bo
+	return b
+}
+
+// gaxBackoff is a gax.Backoff that implements the backoff interface
+type gaxBackoff struct {
+	gax.Backoff
+}
+
+func (b *gaxBackoff) SetInitial(i time.Duration) {
+	b.Initial = i
+}
+
+func (b *gaxBackoff) SetMax(m time.Duration) {
+	b.Max = m
+}
+
+func (b *gaxBackoff) SetMultiplier(m float64) {
+	b.Multiplier = m
+}
+
+func (b *gaxBackoff) GetInitial() time.Duration {
+	return b.Initial
+}
+
+func (b *gaxBackoff) GetMax() time.Duration {
+	return b.Max
+}
+
+func (b *gaxBackoff) GetMultiplier() float64 {
+	return b.Multiplier
+}
+
 type retryConfig struct {
-	backoff     *gax.Backoff
+	backoff     backoff
 	policy      RetryPolicy
 	shouldRetry func(err error) bool
 	maxAttempts *int
@@ -2316,22 +2368,22 @@ func (r *retryConfig) clone() *retryConfig {
 	if r == nil {
 		return nil
 	}
-
-	var bo *gax.Backoff
-	if r.backoff != nil {
-		bo = &gax.Backoff{
-			Initial:    r.backoff.Initial,
-			Max:        r.backoff.Max,
-			Multiplier: r.backoff.Multiplier,
-		}
-	}
-
-	return &retryConfig{
-		backoff:     bo,
+	newConfig := &retryConfig{
+		backoff:     nil,
 		policy:      r.policy,
 		shouldRetry: r.shouldRetry,
 		maxAttempts: r.maxAttempts,
 	}
+
+	if r.backoff != nil {
+		bo := &gaxBackoff{}
+		bo.Initial = r.backoff.GetInitial()
+		bo.Max = r.backoff.GetMax()
+		bo.Multiplier = r.backoff.GetMultiplier()
+		newConfig.backoff = bo
+	}
+
+	return newConfig
 }
 
 // composeSourceObj wraps a *raw.ComposeRequestSourceObjects, but adds the methods

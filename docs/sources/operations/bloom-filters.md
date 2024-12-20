@@ -38,7 +38,7 @@ To learn how to write queries to use bloom filters, refer to [Query acceleration
 
 {{< admonition type="warning" >}}
 Building and querying bloom filters are by design not supported in single binary deployment.
-It can be used with Single Scalable deployment (SSD), but it is recommended to run bloom components only in fully distributed microservice mode.
+It can be used with Simple Scalable deployment (SSD), but it is recommended to run bloom components only in fully distributed microservice mode.
 The reason is that bloom filters also come with a relatively high cost for both building and querying the bloom filters that only pays off at large scale deployments.
 {{< /admonition >}}
 
@@ -191,7 +191,7 @@ Unfortunately, the amount of data each stream has is often unbalanced with the r
 
 Query acceleration introduces a new sharding strategy: `bounded`, which uses blooms to reduce the chunks to be processed right away during the planning phase in the query frontend, as well as evenly distributes the amount of chunks each sharded query will need to process.
 
-[Query acceleration]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/query-acceleration
+[Query acceleration]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_acceleration
 [structured metadata]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata
 [tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
 [bloom-gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway

@@ -20,12 +20,16 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/coreos/go-systemd/v22/activation"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/mdlayher/vsock"
 	config_util "github.com/prometheus/common/config"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v2"
@@ -275,9 +279,11 @@ func ServeMultiple(listeners []net.Listener, server *http.Server, flags *FlagCon
 }
 
 // ListenAndServe starts the server on addresses given in WebListenAddresses in
-// the FlagConfig or instead uses systemd socket activated listeners if
-// WebSystemdSocket in the FlagConfig is true. The FlagConfig is also passed on
-// to ServeMultiple.
+// the FlagConfig. When address starts looks like vsock://:{port}, it listens on
+// vsock. More info check https://wiki.qemu.org/Features/VirtioVsock .
+// Or instead uses systemd socket activated listeners if WebSystemdSocket in the
+// FlagConfig is true.
+// The FlagConfig is also passed on to ServeMultiple.
 func ListenAndServe(server *http.Server, flags *FlagConfig, logger log.Logger) error {
 	if flags.WebSystemdSocket == nil && (flags.WebListenAddresses == nil || len(*flags.WebListenAddresses) == 0) {
 		return ErrNoListeners
@@ -297,14 +303,43 @@ func ListenAndServe(server *http.Server, flags *FlagConfig, logger log.Logger) e
 
 	listeners := make([]net.Listener, 0, len(*flags.WebListenAddresses))
 	for _, address := range *flags.WebListenAddresses {
-		listener, err := net.Listen("tcp", address)
-		if err != nil {
-			return err
+		var err error
+		var listener net.Listener
+		if strings.HasPrefix(address, "vsock://") {
+			port, err := parseVsockPort(address)
+			if err != nil {
+				return err
+			}
+			listener, err = vsock.Listen(port, nil)
+			if err != nil {
+				return err
+			}
+		} else {
+			listener, err = net.Listen("tcp", address)
+			if err != nil {
+				return err
+			}
 		}
 		defer listener.Close()
 		listeners = append(listeners, listener)
 	}
 	return ServeMultiple(listeners, server, flags, logger)
+}
+
+func parseVsockPort(address string) (uint32, error) {
+	uri, err := url.Parse(address)
+	if err != nil {
+		return 0, err
+	}
+	_, portStr, err := net.SplitHostPort(uri.Host)
+	if err != nil {
+		return 0, err
+	}
+	port, err := strconv.ParseUint(portStr, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return uint32(port), nil
 }
 
 // Server starts the server on the given listener. Based on the file path

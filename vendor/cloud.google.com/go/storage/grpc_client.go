@@ -29,6 +29,7 @@ import (
 	"cloud.google.com/go/internal/trace"
 	gapic "cloud.google.com/go/storage/internal/apiv2"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
+	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
@@ -101,7 +102,10 @@ func defaultGRPCOptions() []option.ClientOption {
 		)
 	} else {
 		// Only enable DirectPath when the emulator is not being targeted.
-		defaults = append(defaults, internaloption.EnableDirectPath(true), internaloption.EnableDirectPathXds())
+		defaults = append(defaults,
+			internaloption.EnableDirectPath(true),
+			internaloption.EnableDirectPathXds(),
+			internaloption.AllowNonDefaultServiceAccount(true))
 	}
 
 	return defaults
@@ -1220,7 +1224,7 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 				}
 			}
 
-			o, off, err := gw.uploadBuffer(recvd, offset, doneReading)
+			o, off, err := gw.uploadBuffer(recvd, offset, doneReading, newUploadBufferRetryConfig(gw.settings))
 			if err != nil {
 				err = checkCanceled(err)
 				errorf(err)
@@ -2088,12 +2092,7 @@ func (w *gRPCWriter) queryProgress() (int64, error) {
 // completed.
 //
 // Returns object, persisted size, and any error that is not retriable.
-func (w *gRPCWriter) uploadBuffer(recvd int, start int64, doneReading bool) (*storagepb.Object, int64, error) {
-	var shouldRetry = ShouldRetry
-	if w.settings.retry != nil && w.settings.retry.shouldRetry != nil {
-		shouldRetry = w.settings.retry.shouldRetry
-	}
-
+func (w *gRPCWriter) uploadBuffer(recvd int, start int64, doneReading bool, retryConfig *uploadBufferRetryConfig) (*storagepb.Object, int64, error) {
 	var err error
 	var lastWriteOfEntireObject bool
 
@@ -2140,6 +2139,7 @@ sendBytes: // label this loop so that we can use a continue statement from a nes
 		if w.stream == nil {
 			hds := []string{"x-goog-request-params", fmt.Sprintf("bucket=projects/_/buckets/%s", url.QueryEscape(w.bucket))}
 			ctx := gax.InsertMetadataIntoOutgoingContext(w.ctx, hds...)
+			ctx = setInvocationHeaders(ctx, retryConfig.invocationID, retryConfig.attempts)
 
 			w.stream, err = w.c.raw.BidiWriteObject(ctx)
 			if err != nil {
@@ -2185,7 +2185,11 @@ sendBytes: // label this loop so that we can use a continue statement from a nes
 			// Retriable errors mean we should start over and attempt to
 			// resend the entire buffer via a new stream.
 			// If not retriable, falling through will return the error received.
-			if shouldRetry(err) {
+			err = retryConfig.retriable(w.ctx, err)
+
+			if err == nil {
+				retryConfig.doBackOff(w.ctx)
+
 				// TODO: Add test case for failure modes of querying progress.
 				writeOffset, err = w.determineOffset(start)
 				if err != nil {
@@ -2227,11 +2231,17 @@ sendBytes: // label this loop so that we can use a continue statement from a nes
 		if !lastWriteOfEntireObject {
 			resp, err := w.stream.Recv()
 
-			// Retriable errors mean we should start over and attempt to
-			// resend the entire buffer via a new stream.
-			// If not retriable, falling through will return the error received
-			// from closing the stream.
-			if shouldRetry(err) {
+			if err != nil {
+				// Retriable errors mean we should start over and attempt to
+				// resend the entire buffer via a new stream.
+				// If not retriable, falling through will return the error received
+				// from closing the stream.
+				err = retryConfig.retriable(w.ctx, err)
+				if err != nil {
+					return nil, 0, err
+				}
+
+				retryConfig.doBackOff(w.ctx)
 				writeOffset, err = w.determineOffset(start)
 				if err != nil {
 					return nil, 0, err
@@ -2242,9 +2252,6 @@ sendBytes: // label this loop so that we can use a continue statement from a nes
 				w.stream = nil
 
 				continue sendBytes
-			}
-			if err != nil {
-				return nil, 0, err
 			}
 
 			if resp.GetPersistedSize() != writeOffset {
@@ -2271,7 +2278,14 @@ sendBytes: // label this loop so that we can use a continue statement from a nes
 			var obj *storagepb.Object
 			for obj == nil {
 				resp, err := w.stream.Recv()
-				if shouldRetry(err) {
+
+				if err != nil {
+					err = retryConfig.retriable(w.ctx, err)
+					if err != nil {
+						return nil, 0, err
+					}
+					retryConfig.doBackOff(w.ctx)
+
 					writeOffset, err = w.determineOffset(start)
 					if err != nil {
 						return nil, 0, err
@@ -2279,9 +2293,6 @@ sendBytes: // label this loop so that we can use a continue statement from a nes
 					sent = int(writeOffset) - int(start)
 					w.stream = nil
 					continue sendBytes
-				}
-				if err != nil {
-					return nil, 0, err
 				}
 
 				obj = resp.GetResource()
@@ -2366,4 +2377,90 @@ func checkCanceled(err error) error {
 	}
 
 	return err
+}
+
+type uploadBufferRetryConfig struct {
+	attempts     int
+	invocationID string
+	config       *retryConfig
+	lastErr      error
+}
+
+func newUploadBufferRetryConfig(settings *settings) *uploadBufferRetryConfig {
+	config := settings.retry
+
+	if config == nil {
+		config = defaultRetry.clone()
+	}
+
+	if config.shouldRetry == nil {
+		config.shouldRetry = ShouldRetry
+	}
+
+	if config.backoff == nil {
+		config.backoff = &gaxBackoff{}
+	} else {
+		config.backoff.SetMultiplier(settings.retry.backoff.GetMultiplier())
+		config.backoff.SetInitial(settings.retry.backoff.GetInitial())
+		config.backoff.SetMax(settings.retry.backoff.GetMax())
+	}
+
+	return &uploadBufferRetryConfig{
+		attempts:     1,
+		invocationID: uuid.New().String(),
+		config:       config,
+	}
+}
+
+// retriable determines if a retry is necessary and if so returns a nil error;
+// otherwise it returns the error to be surfaced to the user.
+func (retry *uploadBufferRetryConfig) retriable(ctx context.Context, err error) error {
+	if err == nil {
+		// a nil err does not need to be retried
+		return nil
+	}
+	if err != context.Canceled && err != context.DeadlineExceeded {
+		retry.lastErr = err
+	}
+
+	if retry.config.policy == RetryNever {
+		return err
+	}
+
+	if retry.config.maxAttempts != nil && retry.attempts >= *retry.config.maxAttempts {
+		return fmt.Errorf("storage: retry failed after %v attempts; last error: %w", retry.attempts, err)
+	}
+
+	retry.attempts++
+
+	// Explicitly check context cancellation so that we can distinguish between a
+	// DEADLINE_EXCEEDED error from the server and a user-set context deadline.
+	// Unfortunately gRPC will codes.DeadlineExceeded (which may be retryable if it's
+	// sent by the server) in both cases.
+	ctxErr := ctx.Err()
+	if errors.Is(ctxErr, context.Canceled) || errors.Is(ctxErr, context.DeadlineExceeded) {
+		if retry.lastErr != nil {
+			return fmt.Errorf("retry failed with %v; last error: %w", ctxErr, retry.lastErr)
+		}
+		return ctxErr
+	}
+
+	if !retry.config.shouldRetry(err) {
+		return err
+	}
+	return nil
+}
+
+// doBackOff pauses for the appropriate amount of time; it should be called after
+// encountering a retriable error.
+func (retry *uploadBufferRetryConfig) doBackOff(ctx context.Context) error {
+	p := retry.config.backoff.Pause()
+
+	if ctxErr := gax.Sleep(ctx, p); ctxErr != nil {
+		if retry.lastErr != nil {
+			return fmt.Errorf("retry failed with %v; last error: %w", ctxErr, retry.lastErr)
+		}
+		return ctxErr
+	}
+	return nil
 }

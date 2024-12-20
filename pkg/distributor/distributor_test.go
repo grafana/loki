@@ -11,6 +11,13 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
+
+	"github.com/grafana/loki/pkg/push"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
@@ -44,6 +51,13 @@ import (
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
 	"github.com/grafana/loki/v3/pkg/util/test"
 	"github.com/grafana/loki/v3/pkg/validation"
+)
+
+const (
+	smValidName    = "valid_name"
+	smInvalidName  = "invalid-name"
+	smValidValue   = "valid-value私"
+	smInvalidValue = "valid-value�"
 )
 
 var (
@@ -428,7 +442,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 				[]string{
 					fmt.Sprintf(`{app="foo-%d"}`, n),
 					fmt.Sprintf(`{instance="bar-%d"}`, n),
-				},
+				}, false, false, false,
 			)
 			response, err := distributors[n%len(distributors)].Push(ctx, request)
 			assert.NoError(t, err)
@@ -569,6 +583,8 @@ func TestDistributorPushToKafka(t *testing.T) {
 		require.Equal(t, 1, len(ingesters[0].pushed))
 		require.Equal(t, 1, len(ingesters[1].pushed))
 		require.Eventually(t, func() bool {
+			ingesters[2].mu.Lock()
+			defer ingesters[2].mu.Unlock()
 			return len(ingesters[2].pushed) == 1
 		}, time.Second, 10*time.Millisecond)
 	})
@@ -626,6 +642,16 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 
 		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
 		require.Equal(t, err, httpgrpc.Errorf(http.StatusBadRequest, "%s", fmt.Sprintf(validation.LineTooLongErrorMsg, 5, "{foo=\"bar\"}", 10)))
+		topVal := ingester.Peek()
+		require.Nil(t, topVal)
+	})
+
+	t.Run("it returns unprocessable entity error if the streams is empty", func(t *testing.T) {
+		limits, ingester := setup()
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 1, []string{}, false, false, false))
+		require.Equal(t, err, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg))
 		topVal := ingester.Peek()
 		require.Nil(t, topVal)
 	})
@@ -1226,17 +1252,58 @@ func Benchmark_Push(b *testing.B) {
 	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
 	limits.CreationGracePeriod = model.Duration(24 * time.Hour)
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
-	request := makeWriteRequest(100000, 100)
-
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
-		_, err := distributors[0].Push(ctx, request)
-		if err != nil {
-			require.NoError(b, err)
+	b.Run("no structured metadata", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, false, false, false)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
 		}
-	}
+	})
+
+	b.Run("all valid structured metadata", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, false)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
+
+	b.Run("structured metadata with invalid names", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, true, false)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
+
+	b.Run("structured metadata with invalid values", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, true)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
+
+	b.Run("structured metadata with invalid names and values", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, true, true)
+			_, err := distributors[0].Push(ctx, request)
+			if err != nil {
+				require.NoError(b, err)
+			}
+		}
+	})
 }
 
 func TestShardCalculation(t *testing.T) {
@@ -1696,7 +1763,7 @@ func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level
 	}
 }
 
-func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.PushRequest {
+func makeWriteRequestWithLabels(lines, size int, labels []string, addStructuredMetadata, invalidName, invalidValue bool) *logproto.PushRequest {
 	streams := make([]logproto.Stream, len(labels))
 	for i := 0; i < len(labels); i++ {
 		stream := logproto.Stream{Labels: labels[i]}
@@ -1705,11 +1772,24 @@ func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.Push
 			// Construct the log line, honoring the input size
 			line := strconv.Itoa(j) + strings.Repeat("0", size)
 			line = line[:size]
-
-			stream.Entries = append(stream.Entries, logproto.Entry{
+			entry := logproto.Entry{
 				Timestamp: time.Now().Add(time.Duration(j) * time.Millisecond),
 				Line:      line,
-			})
+			}
+			if addStructuredMetadata {
+				name := smValidName
+				value := smValidValue
+				if invalidName {
+					name = smInvalidName
+				}
+				if invalidValue {
+					value = smInvalidValue
+				}
+				entry.StructuredMetadata = push.LabelsAdapter{
+					{Name: name, Value: value},
+				}
+			}
+			stream.Entries = append(stream.Entries, entry)
 		}
 
 		streams[i] = stream
@@ -1721,7 +1801,7 @@ func makeWriteRequestWithLabels(lines, size int, labels []string) *logproto.Push
 }
 
 func makeWriteRequest(lines, size int) *logproto.PushRequest {
-	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`})
+	return makeWriteRequestWithLabels(lines, size, []string{`{foo="bar"}`}, false, false, false)
 }
 
 type mockKafkaWriter struct {
@@ -1777,6 +1857,19 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	for _, s := range in.Streams {
+		for _, e := range s.Entries {
+			for _, sm := range e.StructuredMetadata {
+				if strings.ContainsRune(sm.Value, utf8.RuneError) {
+					return nil, fmt.Errorf("sm value was not sanitized before being pushed to ignester, invalid utf 8 rune %d", utf8.RuneError)
+				}
+				if sm.Name != otlptranslate.NormalizeLabel(sm.Name) {
+					return nil, fmt.Errorf("sm name was not sanitized before being sent to ingester, contained characters %s", sm.Name)
+
+				}
+			}
+		}
+	}
 
 	i.pushed = append(i.pushed, in)
 	return nil, nil
@@ -1873,5 +1966,47 @@ func TestDistributorTee(t *testing.T) {
 		}
 
 		require.Equal(t, "test", tee.tenant)
+	}
+}
+
+func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	for _, tc := range []struct {
+		req              *logproto.PushRequest
+		expectedResponse *logproto.PushResponse
+		numSanitizations float64
+	}{
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, false),
+			success,
+			0,
+		},
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, false),
+			success,
+			10,
+		},
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, false, true),
+			success,
+			10,
+		},
+		{
+			makeWriteRequestWithLabels(10, 10, []string{`{foo="bar"}`}, true, true, true),
+			success,
+			20,
+		},
+	} {
+		distributors, _ := prepare(t, 1, 5, limits, nil)
+
+		var request logproto.PushRequest
+		request.Streams = append(request.Streams, tc.req.Streams[0])
+
+		// the error would happen in the ingester mock, it's set to reject SM that has not been sanitized
+		response, err := distributors[0].Push(ctx, &request)
+		require.NoError(t, err)
+		assert.Equal(t, tc.expectedResponse, response)
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
 	}
 }

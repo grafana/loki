@@ -58,7 +58,7 @@ func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration
 	}
 
 	variance := int64(float64(input) * variancePerc)
-	jitter := rand.Int63n(variance*2) - variance
+	jitter := rand.Int63n(variance*2) - variance //#nosec G404 -- Jitter does not require CSPRNG
 
 	return input + time.Duration(jitter)
 }
@@ -71,7 +71,7 @@ func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.
 	}
 
 	variance := int64(float64(input) * variancePerc)
-	jitter := rand.Int63n(variance)
+	jitter := rand.Int63n(variance) //#nosec G404 -- Jitter does not require CSPRNG
 
 	return input + time.Duration(jitter)
 }
