@@ -85,9 +85,9 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 Cassandra is a popular database and one of the possible chunk stores for Loki and is production safe.
 
-{{< collapse title="Title of hidden content" >}}
+{{< admonition type="note" >}}
 This storage type for chunks is deprecated and may be removed in future major versions of Loki.
-{{< /collapse >}}
+{{< /admonition >}}
 
 ## Index storage
 
@@ -95,25 +95,25 @@ This storage type for chunks is deprecated and may be removed in future major ve
 
 Cassandra can also be utilized for the index store and aside from the [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
 
-{{< collapse title="Title of hidden content" >}}
+{{< admonition type="note" >}}
 This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /collapse >}}
+{{< /admonition >}}
 
 ### BigTable (deprecated)
 
 Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to its heavy fixed costs) or wish to run in GCP.
 
-{{< collapse title="Title of hidden content" >}}
+{{< admonition type="note" >}}
 This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /collapse >}}
+{{< /admonition >}}
 
 ### DynamoDB (deprecated)
 
 DynamoDB is a cloud database offered by AWS. It is a good candidate for a managed index store, especially if you're already running in AWS.
 
-{{< collapse title="Title of hidden content" >}}
+{{< admonition type="note" >}}
 This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /collapse >}}
+{{< /admonition >}}
 
 #### Rate limiting
 
@@ -123,9 +123,9 @@ DynamoDB is susceptible to rate limiting, particularly due to overconsuming what
 
 BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/boltdb-shipper/) aims to support clustered deployments using `boltdb` as an index.
 
-{{< collapse title="Title of hidden content" >}}
+{{< admonition type="note" >}}
 This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-{{< /collapse >}}
+{{< /admonition >}}
 
 ## Schema Config
 
@@ -193,7 +193,7 @@ When a new schema is released and you want to gain the advantages it provides, y
 
 First, you'll want to create a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
-As an example, let's say it's 2023-07-14 and we want to start using the `v13` schema on the 20th:
+As an example, let's say it's 2023-07-14 and you want to start using the `v13` schema on the 20th:
 
 ```yaml
 schema_config:
@@ -214,7 +214,7 @@ schema_config:
         period: 24h
 ```
 
-It's that easy; we just created a new entry starting on the 20th.
+It's that easy; you just created a new entry starting on the 20th.
 
 ## Retention
 
@@ -237,9 +237,14 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+    cache_ttl: 24h # Can be increased for faster performance over longer query periods, uses more disk space
   gcs:
       bucket_name: <bucket>
+      service_account: |    
+        {
+          "type": "service_account",
+          ...
+        }
 
 schema_config:
   configs:
@@ -251,6 +256,14 @@ schema_config:
         prefix: index_
         period: 24h
 ```
+
+`service_account` should contain JSON from either a GCP Console `client_credentials.json` file or a GCP service account key. If this value is blank, most services will fall back to GCP's Application Default Credentials (ADC) strategy. For more information about ADC, refer to [How Application Default Credentials works](https://cloud.google.com/docs/authentication/application-default-credentials).
+
+The [pre-defined `storage.objectUser` role](https://cloud.google.com/storage/docs/access-control/iam-roles) (or a custom role modeled after it) contains sufficient permissions for Loki to operate.
+
+{{< admonition type="note" >}}
+GCP recommends [Workload Identity Federation](https://cloud.google.com/iam/docs/workload-identity-federation) instead of a service account key.
+{{< /admonition >}}
 
 ### AWS deployment (S3 Single Store)
 
@@ -440,9 +453,9 @@ storage_config:
 
 ### On premise deployment (Cassandra+Cassandra)
 
-{{< collapse title="Title of hidden content" >}}
+{{< admonition type="note" >}}
 Cassandra as storage backend for chunks and indexes is deprecated.
-{{< /collapse >}}
+{{< /admonition >}}
 
 **Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
 
@@ -472,7 +485,7 @@ schema_config:
 
 ### On premise deployment (MinIO Single Store)
 
-We configure MinIO by using the AWS config because MinIO implements the S3 API:
+You configure MinIO by using the AWS config because MinIO implements the S3 API:
 
 ```yaml
 storage_config:

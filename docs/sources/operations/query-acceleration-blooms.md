@@ -36,7 +36,7 @@ and served by the new [Bloom Gateway](#bloom-gateway) component.
 ## Enable Query Acceleration with Blooms
 {{< admonition type="warning" >}}
 Building and querying bloom filters are by design not supported in single binary deployment.
-It can be used with Single Scalable deployment (SSD), but it is recommended to
+It can be used with Simple Scalable deployment (SSD), but it is recommended to
 run bloom components only in fully distributed microservice mode.
 The reason is that bloom filters also come with a relatively high cost for both building
 and querying the bloom filters that only pays off at large scale deployments.
@@ -136,7 +136,7 @@ The sharding of the data is performed on the client side using DNS discovery of 
 and the [jumphash](https://arxiv.org/abs/1406.2294) algorithm for consistent hashing 
 and even distribution of the stream fingerprints across Bloom Gateway instances.
 
-You can find all the configuration options for this component in the Configure section for the [Bloom Gateways][gateway-cfg].
+You can find all the configuration options for this component in the Configure section for the [Bloom Gateways][bloom-gateway-cfg].
 Refer to the [Enable Query Acceleration with Blooms](#enable-query-acceleration-with-blooms) section below for a configuration snippet enabling this feature.
 
 ### Sizing and configuration
@@ -152,7 +152,7 @@ Example calculation for storage requirements of blooms for a single tenant.
 
 Since reading blooms depends heavily on disk IOPS, Bloom Gateways should make use of multiple, 
 locally attached SSD disks (NVMe) to increase i/o throughput. 
-Multiple directories on different disk mounts can be specified using the `-bloom.shipper.working-directory` [setting][gateway-cfg] 
+Multiple directories on different disk mounts can be specified using the `-bloom.shipper.working-directory` [setting][storage-config-cfg] 
 when using a comma separated list of mount points, for example:
 ```
 -bloom.shipper.working-directory="/mnt/data0,/mnt/data1,/mnt/data2,/mnt/data3"
@@ -226,7 +226,7 @@ Loki will check blooms for any log filtering expression within a query that sati
 ## Query sharding
 Query acceleration does not just happen while processing chunks, but also happens from the query planning phase where
 the query frontend applies [query sharding](https://lokidex.com/posts/tsdb/#sharding). 
-Loki 3.0 introduces a new {per-tenant configuration][tenant-limits] flag `tsdb_sharding_strategy` which defaults to computing 
+Loki 3.0 introduces a new [per-tenant configuration][tenant-limits] flag `tsdb_sharding_strategy` which defaults to computing 
 shards as in previous versions of Loki by using the index stats to come up with the closest power of two that would 
 optimistically divide the data to process in shards of roughly the same size. Unfortunately, 
 the amount of data each stream has is often unbalanced with the rest, 
@@ -239,5 +239,6 @@ as well as evenly distributes the amount of chunks each sharded query will need 
 [tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
 [bloom-gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway
 [bloom-build-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_build
+[storage-config-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config
 [microservices]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode
 [ssd]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#simple-scalable

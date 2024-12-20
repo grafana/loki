@@ -4,7 +4,7 @@ menuTItle:
 description: Overview of how log queries are constructed and parsed.
 aliases: 
 - ../logql/log_queries/
-weight: 10 
+weight: 300 
 ---
 
 # Log queries
@@ -661,9 +661,9 @@ the result will be
 
 The `| keep` expression will keep only the specified labels in the pipeline and drop all the other labels.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The keep stage will not drop the  __error__ or __error_details__ labels added by Loki at query time. To drop these labels, refer to [drop](#drop-labels-expression) stage.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Query examples:
 

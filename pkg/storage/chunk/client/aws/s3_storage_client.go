@@ -355,7 +355,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	// Map the key into a bucket
 	bucket := a.bucketFromKey(objectKey)
 
-	var lastErr error
+	lastErr := ctx.Err()
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {

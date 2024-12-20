@@ -1,5 +1,26 @@
 # Changelog
 
+## [3.2.2](https://github.com/grafana/loki/compare/v3.2.1...v3.2.2) (2024-12-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Remove `wget` from Promtail docker image (backport release-3.2.x) ([#15145](https://github.com/grafana/loki/issues/15145))
+
+### Miscellaneous Chores
+
+* Remove `wget` from Promtail docker image (backport release-3.2.x) ([#15145](https://github.com/grafana/loki/issues/15145)) ([ab59208](https://github.com/grafana/loki/commit/ab59208ea161f1638e6c4fc49f85632faa28cfd6))
+
+## [3.2.1](https://github.com/grafana/loki/compare/v3.2.0...v3.2.1) (2024-10-17)
+
+
+### Bug Fixes
+
+* **config:** Copy Alibaba and IBM object storage configuration from common ([#14315](https://github.com/grafana/loki/issues/14315)) ([32a9bc0](https://github.com/grafana/loki/commit/32a9bc0ca852bdc692c2ccebbae448856e191953))
+* **logql:** updated JSONExpressionParser not to unescape extracted values if it is JSON object. (backport release-3.2.x) ([#14502](https://github.com/grafana/loki/issues/14502)) ([e9bbaf3](https://github.com/grafana/loki/commit/e9bbaf3f20ec8f303e977b8e6752152b11cd75b9))
+* Revert build image to Debian Bullseye to fix libc version issue in Promtail ([#14386](https://github.com/grafana/loki/issues/14386)) ([1e913df](https://github.com/grafana/loki/commit/1e913dfc36e0c0aba726c850fd2af975b2a2bbdc))
+* **storage/chunk/client/aws:** have GetObject check for canceled context (backport release-3.2.x) ([#14422](https://github.com/grafana/loki/issues/14422)) ([1b7dd95](https://github.com/grafana/loki/commit/1b7dd95a6c041577c9710c53ae7ad3c93bad771e))
+
 ## [3.2.0](https://github.com/grafana/loki/compare/v3.1.1...v3.2.0) (2024-09-18)
 
 
