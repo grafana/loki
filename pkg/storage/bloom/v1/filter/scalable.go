@@ -146,7 +146,7 @@ func (s *ScalableBloomFilter) Add(data []byte) Filter {
 	return s
 }
 
-// addWithMaxSize adds a new element to the filter,
+// AddWithMaxSize adds a new element to the filter,
 // unless adding would require the filter to grow above a given maxSize (0 for unlimited).
 // returns true if the filter is full, in which case the key was not added
 func (s *ScalableBloomFilter) AddWithMaxSize(data []byte, maxSize int) (full bool) {

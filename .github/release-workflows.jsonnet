@@ -1,9 +1,14 @@
 local lokiRelease = import 'workflows/main.jsonnet';
+
 local build = lokiRelease.build;
-
 local releaseLibRef = 'main';
-
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
+local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
+local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
+local golangCiLintVersion = 'v1.60.3';
+local imageBuildTimeoutMin = 60;
+local imagePrefix = 'grafana';
+local dockerPluginDir = 'clients/cmd/docker-driver';
 
 local imageJobs = {
   loki: build.image('loki', 'cmd/loki'),
@@ -15,28 +20,15 @@ local imageJobs = {
   'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.image('promtail', 'clients/cmd/promtail'),
   querytee: build.image('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
-  'loki-docker-driver': build.dockerPlugin('grafana/loki-docker-driver', 'clients/cmd/docker-driver', platform=['linux/amd64', 'linux/arm64']),
+  'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=['linux/amd64', 'linux/arm64']),
 };
 
 local weeklyImageJobs = {
   loki: build.weeklyImage('loki', 'cmd/loki'),
-  fluentd: build.weeklyImage('fluent-plugin-loki', 'clients/cmd/fluentd', platform=['linux/amd64']),
-  'fluent-bit': build.weeklyImage('fluent-bit-plugin-loki', 'clients/cmd/fluent-bit', platform=['linux/amd64']),
-  logstash: build.weeklyImage('logstash-output-loki', 'clients/cmd/logstash', platform=['linux/amd64']),
-  logcli: build.weeklyImage('logcli', 'cmd/logcli'),
   'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary'),
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto'),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail'),
-  querytee: build.weeklyImage('loki-query-tee', 'cmd/querytee', platform=['linux/amd64']),
-  'loki-docker-driver': build.weeklyDockerPlugin('grafana/loki-docker-driver', 'clients/cmd/docker-driver', platform=['linux/amd64', 'linux/arm64']),
 };
-
-local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
-local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
-local golangCiLintVersion = 'v1.60.3';
-
-local imageBuildTimeoutMin = 60;
-local imagePrefix = 'grafana';
 
 {
   'patch-release-pr.yml': std.manifestYamlDoc(
@@ -83,6 +75,7 @@ local imagePrefix = 'grafana';
       getDockerCredsFromVault=true,
       imagePrefix='grafana',
       releaseLibRef=releaseLibRef,
+      pluginBuildDir=dockerPluginDir,
       releaseRepo='grafana/loki',
       useGitHubAppToken=true,
     ), false, false

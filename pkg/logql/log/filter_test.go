@@ -112,7 +112,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 			// tests all lines with both filter, they should have the same result.
 			for _, line := range fixtures {
 				l := []byte(line)
-				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s", test.re, line)
+				require.Equal(t, d.Filter(l), f.Filter(l), "regexp %s failed line: %s re:%v simplified:%v", test.re, line, d.Filter(l), f.Filter(l))
 			}
 		})
 	}
@@ -218,4 +218,101 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 
 func Test_rune(t *testing.T) {
 	require.True(t, newContainsFilter([]byte("foo"), true).Filter([]byte("foo")))
+}
+
+func BenchmarkContainsLower(b *testing.B) {
+	cases := []struct {
+		name     string
+		line     string
+		substr   string
+		expected bool
+	}{
+		{
+			name:     "short_line_no_match",
+			line:     "this is a short log line",
+			substr:   "missing",
+			expected: false,
+		},
+		{
+			name:     "short_line_with_match",
+			line:     "this is a short log line",
+			substr:   "SHORT",
+			expected: true,
+		},
+		{
+			name:     "long_line_no_match",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "nonexistent",
+			expected: false,
+		},
+		{
+			name:     "long_line_match_start",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "2023",
+			expected: true,
+		},
+		{
+			name:     "long_line_match_middle",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "LEVELS",
+			expected: true,
+		},
+		{
+			name:     "long_line_match_end",
+			line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+			substr:   "status",
+			expected: true,
+		},
+		{
+			name:     "short_unicode_line_no_match",
+			line:     "🌟 Unicode line with emojis 🎉 and special chars ñ é ß",
+			substr:   "missing",
+			expected: false,
+		},
+		{
+			name:     "short_unicode_line_with_match",
+			line:     "🌟 Unicode line with emojis 🎉 and special chars ñ é ß",
+			substr:   "EMOJIS",
+			expected: true,
+		},
+		{
+			name:     "long_unicode_line_no_match",
+			line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "nonexistent",
+			expected: false,
+		},
+		{
+			name:     "long_unicode_line_match_start",
+			line:     "2023-06-14T12:34:56.789Z 🚀[МИКРОСервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "микросервис",
+			expected: true,
+		},
+		{
+			name:     "long_unicode_line_match_middle",
+			line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "UNICODE",
+			expected: true,
+		},
+		{
+			name:     "long_unicode_line_match_end",
+			line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
+			substr:   "τέλος",
+			expected: true,
+		},
+	}
+
+	var m bool
+	for _, c := range cases {
+		b.Run(c.name, func(b *testing.B) {
+			line := []byte(c.line)
+			substr := []byte(c.substr)
+			for i := 0; i < b.N; i++ {
+				m = containsLower(line, substr)
+			}
+			if m != c.expected {
+				b.Fatalf("expected %v but got %v", c.expected, m)
+			}
+		})
+	}
+	res = m // Avoid compiler optimization
 }

@@ -165,13 +165,13 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 		// chunks may overlap index period bounds, in which case they're written to multiple
 		pds := make(map[string]chunkInfo)
 		for _, chk := range chks {
-			idxBuckets := indexBuckets(chk.From(), chk.Through(), tableRanges)
+			idxBuckets := IndexBuckets(chk.From(), chk.Through(), tableRanges)
 
 			for _, bucket := range idxBuckets {
-				chkinfo := pds[bucket.prefix]
+				chkinfo := pds[bucket.Prefix]
 				chkinfo.chunkMetas = append(chkinfo.chunkMetas, chk)
-				chkinfo.tsdbFormat = bucket.tsdbFormat
-				pds[bucket.prefix] = chkinfo
+				chkinfo.tsdbFormat = bucket.TsdbFormat
+				pds[bucket.Prefix] = chkinfo
 			}
 		}
 
@@ -208,8 +208,8 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper indexshippe
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
 		dst := NewPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
-				nodeName: m.nodeName,
-				ts:       heads.start,
+				NodeName: m.nodeName,
+				Ts:       heads.start,
 			},
 			dstDir,
 			"",
@@ -300,19 +300,24 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	return nil
 }
 
-type indexInfo struct {
-	prefix     string
-	tsdbFormat int
+type IndexInfo struct {
+	BucketStart model.Time
+	Prefix      string
+	TsdbFormat  int
 }
 
-func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []indexInfo) {
+func IndexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []IndexInfo) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		cfg := tableRanges.ConfigForTableNumber(cur)
 		if cfg != nil {
 			tsdbFormat, _ := cfg.TSDBFormat() // Ignoring error, as any valid period config should return valid format.
-			res = append(res, indexInfo{prefix: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)), tsdbFormat: tsdbFormat})
+			res = append(res, IndexInfo{
+				BucketStart: model.TimeFromUnixNano(cur * int64(config.ObjectStorageIndexRequiredPeriod)),
+				Prefix:      cfg.IndexTables.Prefix + strconv.Itoa(int(cur)),
+				TsdbFormat:  tsdbFormat,
+			})
 		}
 	}
 	if len(res) == 0 {

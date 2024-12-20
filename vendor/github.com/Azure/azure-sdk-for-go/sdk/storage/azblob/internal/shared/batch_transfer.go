@@ -19,7 +19,7 @@ const (
 type BatchTransferOptions struct {
 	TransferSize  int64
 	ChunkSize     int64
-	NumChunks     uint16
+	NumChunks     uint64
 	Concurrency   uint16
 	Operation     func(ctx context.Context, offset int64, chunkSize int64) error
 	OperationName string
@@ -54,7 +54,7 @@ func DoBatchTransfer(ctx context.Context, o *BatchTransferOptions) error {
 	}
 
 	// Add each chunk's operation to the channel.
-	for chunkNum := uint16(0); chunkNum < o.NumChunks; chunkNum++ {
+	for chunkNum := uint64(0); chunkNum < o.NumChunks; chunkNum++ {
 		curChunkSize := o.ChunkSize
 
 		if chunkNum == o.NumChunks-1 { // Last chunk
@@ -69,7 +69,7 @@ func DoBatchTransfer(ctx context.Context, o *BatchTransferOptions) error {
 
 	// Wait for the operations to complete.
 	var firstErr error = nil
-	for chunkNum := uint16(0); chunkNum < o.NumChunks; chunkNum++ {
+	for chunkNum := uint64(0); chunkNum < o.NumChunks; chunkNum++ {
 		responseError := <-operationResponseChannel
 		// record the first error (the original error which should cause the other chunks to fail with canceled context)
 		if responseError != nil && firstErr == nil {

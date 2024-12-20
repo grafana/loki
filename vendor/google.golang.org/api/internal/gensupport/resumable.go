@@ -43,6 +43,10 @@ type ResumableUpload struct {
 	// retries should happen.
 	ChunkRetryDeadline time.Duration
 
+	// ChunkTransferTimeout configures the per-chunk transfer timeout. If a chunk upload stalls for longer than
+	// this duration, the upload will be retried.
+	ChunkTransferTimeout time.Duration
+
 	// Track current request invocation ID and attempt count for retry metrics
 	// and idempotency headers.
 	invocationID string
@@ -241,11 +245,33 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			default:
 			}
 
-			resp, err = rx.transferChunk(ctx)
+			// rCtx is derived from a context with a defined transferTimeout with non-zero value.
+			// If a particular request exceeds this transfer time for getting response, the rCtx deadline will be exceeded,
+			// triggering a retry of the request.
+			var rCtx context.Context
+			var cancel context.CancelFunc
+
+			rCtx = ctx
+			if rx.ChunkTransferTimeout != 0 {
+				rCtx, cancel = context.WithTimeout(ctx, rx.ChunkTransferTimeout)
+			}
+
+			resp, err = rx.transferChunk(rCtx)
 
 			var status int
 			if resp != nil {
 				status = resp.StatusCode
+			}
+
+			// The upload should be retried if the rCtx is canceled due to a timeout.
+			select {
+			case <-rCtx.Done():
+				if rx.ChunkTransferTimeout != 0 && errors.Is(rCtx.Err(), context.DeadlineExceeded) {
+					// Cancel the context for rCtx
+					cancel()
+					continue
+				}
+			default:
 			}
 
 			// Check if we should retry the request.

@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.13.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.12.1...auth/v0.13.0) (2024-12-13)
+
+
+### Features
+
+* **auth:** Add logging support ([#11079](https://github.com/googleapis/google-cloud-go/issues/11079)) ([c80e31d](https://github.com/googleapis/google-cloud-go/commit/c80e31df5ecb33a810be3dfb9d9e27ac531aa91d))
+* **auth:** Pass logger from auth layer to metadata package ([#11288](https://github.com/googleapis/google-cloud-go/issues/11288)) ([b552efd](https://github.com/googleapis/google-cloud-go/commit/b552efd6ab34e5dfded18438e0fbfd925805614f))
+
+
+### Bug Fixes
+
+* **auth:** Check compute cred type before non-default flag for DP ([#11255](https://github.com/googleapis/google-cloud-go/issues/11255)) ([4347ca1](https://github.com/googleapis/google-cloud-go/commit/4347ca141892be8ae813399b4b437662a103bc90))
+
+## [0.12.1](https://github.com/googleapis/google-cloud-go/compare/auth/v0.12.0...auth/v0.12.1) (2024-12-10)
+
+
+### Bug Fixes
+
+* **auth:** Correct typo in link ([#11160](https://github.com/googleapis/google-cloud-go/issues/11160)) ([af6fb46](https://github.com/googleapis/google-cloud-go/commit/af6fb46d7cd694ddbe8c9d63bc4cdcd62b9fb2c1))
+
+## [0.12.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.11.0...auth/v0.12.0) (2024-12-04)
+
+
+### Features
+
+* **auth:** Add support for providing custom certificate URL ([#11006](https://github.com/googleapis/google-cloud-go/issues/11006)) ([ebf3657](https://github.com/googleapis/google-cloud-go/commit/ebf36579724afb375d3974cf1da38f703e3b7dbc)), refs [#11005](https://github.com/googleapis/google-cloud-go/issues/11005)
+
+
+### Bug Fixes
+
+* **auth:** Ensure endpoints are present in Validator ([#11209](https://github.com/googleapis/google-cloud-go/issues/11209)) ([106cd53](https://github.com/googleapis/google-cloud-go/commit/106cd53309facaef1b8ea78376179f523f6912b9)), refs [#11006](https://github.com/googleapis/google-cloud-go/issues/11006) [#11190](https://github.com/googleapis/google-cloud-go/issues/11190) [#11189](https://github.com/googleapis/google-cloud-go/issues/11189) [#11188](https://github.com/googleapis/google-cloud-go/issues/11188)
+
+## [0.11.0](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.2...auth/v0.11.0) (2024-11-21)
+
+
+### Features
+
+* **auth:** Add universe domain support to mTLS ([#11159](https://github.com/googleapis/google-cloud-go/issues/11159)) ([117748b](https://github.com/googleapis/google-cloud-go/commit/117748ba1cfd4ae62a6a4feb7e30951cb2bc9344))
+
 ## [0.10.2](https://github.com/googleapis/google-cloud-go/compare/auth/v0.10.1...auth/v0.10.2) (2024-11-12)
 
 

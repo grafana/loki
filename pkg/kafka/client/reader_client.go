@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -36,7 +35,7 @@ func NewReaderClient(kafkaCfg kafka.Config, metrics *kprom.Metrics, logger log.L
 	)
 	client, err := kgo.NewClient(opts...)
 	if err != nil {
-		return nil, errors.Wrap(err, "creating kafka client")
+		return nil, fmt.Errorf("creating kafka client: %w", err)
 	}
 	if kafkaCfg.AutoCreateTopicEnabled {
 		setDefaultNumberOfPartitionsForAutocreatedTopics(kafkaCfg, client, logger)

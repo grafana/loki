@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/ring"
 )
@@ -49,7 +50,8 @@ type Planner struct {
 	tsdbStore  common.TSDBStore
 	bloomStore bloomshipper.StoreBase
 
-	tasksQueue *queue.Queue
+	tasksQueue  *queue.Queue
+	planFactory *strategies.Factory
 
 	metrics *Metrics
 	logger  log.Logger
@@ -78,7 +80,7 @@ func New(
 	}
 
 	// Queue to manage tasks
-	queueMetrics := queue.NewMetrics(r, metricsNamespace, metricsSubsystem)
+	queueMetrics := queue.NewMetrics(r, constants.Loki, metricsSubsystem)
 	queueLimits := NewQueueLimits(limits)
 	tasksQueue, err := queue.NewQueue(logger, cfg.Queue, queueLimits, queueMetrics, storageMetrics)
 	if err != nil {
@@ -86,14 +88,15 @@ func New(
 	}
 
 	p := &Planner{
-		cfg:        cfg,
-		limits:     limits,
-		schemaCfg:  schemaCfg,
-		tsdbStore:  tsdbStore,
-		bloomStore: bloomStore,
-		tasksQueue: tasksQueue,
-		metrics:    NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
-		logger:     logger,
+		cfg:         cfg,
+		limits:      limits,
+		schemaCfg:   schemaCfg,
+		tsdbStore:   tsdbStore,
+		bloomStore:  bloomStore,
+		tasksQueue:  tasksQueue,
+		planFactory: strategies.NewFactory(limits, strategies.NewMetrics(r), logger),
+		metrics:     NewMetrics(r, tasksQueue.GetConnectedConsumersMetric),
+		logger:      logger,
 	}
 
 	p.retentionManager = NewRetentionManager(
@@ -370,7 +373,7 @@ func (p *Planner) computeTasks(
 	table config.DayTable,
 	tenant string,
 ) ([]*protos.Task, []bloomshipper.Meta, error) {
-	strategy, err := strategies.NewStrategy(tenant, p.limits, p.logger)
+	strategy, err := p.planFactory.GetStrategy(tenant)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating strategy: %w", err)
 	}
@@ -770,8 +773,10 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 			continue
 		}
 
+		startTime := time.Now()
 		result, err := p.forwardTaskToBuilder(builder, builderID, task)
 		if err != nil {
+			p.metrics.tenantTasksTiming.WithLabelValues(task.Tenant, statusFailure).Observe(time.Since(startTime).Seconds())
 			maxRetries := p.limits.BloomTaskMaxRetries(task.Tenant)
 			if maxRetries > 0 && int(task.timesEnqueued.Load()) >= maxRetries {
 				p.tasksQueue.Release(task.ProtoTask)
@@ -811,10 +816,12 @@ func (p *Planner) BuilderLoop(builder protos.PlannerForBuilder_BuilderLoopServer
 
 		level.Debug(logger).Log(
 			"msg", "task completed",
-			"duration", time.Since(task.queueTime).Seconds(),
+			"timeSinceEnqueued", time.Since(task.queueTime).Seconds(),
+			"buildTime", time.Since(startTime).Seconds(),
 			"retries", task.timesEnqueued.Load()-1, // -1 because the first enqueue is not a retry
 		)
 		p.tasksQueue.Release(task.ProtoTask)
+		p.metrics.tenantTasksTiming.WithLabelValues(task.Tenant, statusSuccess).Observe(time.Since(startTime).Seconds())
 
 		// Send the result back to the task. The channel is buffered, so this should not block.
 		task.resultsChannel <- result
@@ -866,7 +873,7 @@ func (p *Planner) forwardTaskToBuilder(
 	case err := <-errCh:
 		return nil, err
 	case <-timeout:
-		return nil, fmt.Errorf("timeout waiting for response from builder (%s)", builderID)
+		return nil, fmt.Errorf("timeout (%s) waiting for response from builder (%s)", taskTimeout, builderID)
 	}
 }
 
