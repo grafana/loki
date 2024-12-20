@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
@@ -11,7 +12,7 @@ import (
 
 func TestJobQueue_SyncJob(t *testing.T) {
 	t.Run("non-existent to in-progress", func(t *testing.T) {
-		q := NewJobQueue()
+		q := NewJobQueue(log.NewNopLogger(), nil)
 		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
 		jobID := job.ID()
 
@@ -28,7 +29,7 @@ func TestJobQueue_SyncJob(t *testing.T) {
 	})
 
 	t.Run("pending to in-progress", func(t *testing.T) {
-		q := NewJobQueue()
+		q := NewJobQueue(log.NewNopLogger(), nil)
 		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
 
 		// Start with pending job
@@ -51,7 +52,7 @@ func TestJobQueue_SyncJob(t *testing.T) {
 	})
 
 	t.Run("already in-progress", func(t *testing.T) {
-		q := NewJobQueue()
+		q := NewJobQueue(log.NewNopLogger(), nil)
 		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
 
 		// First sync to put in in-progress
@@ -72,7 +73,7 @@ func TestJobQueue_SyncJob(t *testing.T) {
 
 func TestJobQueue_MarkComplete(t *testing.T) {
 	t.Run("in-progress to complete", func(t *testing.T) {
-		q := NewJobQueue()
+		q := NewJobQueue(log.NewNopLogger(), nil)
 		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
 
 		// Start with in-progress job
@@ -102,7 +103,7 @@ func TestJobQueue_MarkComplete(t *testing.T) {
 	})
 
 	t.Run("pending to complete", func(t *testing.T) {
-		q := NewJobQueue()
+		q := NewJobQueue(log.NewNopLogger(), nil)
 		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
 
 		// Start with pending job
@@ -129,7 +130,7 @@ func TestJobQueue_MarkComplete(t *testing.T) {
 	})
 
 	t.Run("non-existent job", func(t *testing.T) {
-		q := NewJobQueue()
+		q := NewJobQueue(log.NewNopLogger(), nil)
 		logger := &testLogger{t: t}
 		q.logger = logger
 
@@ -138,7 +139,7 @@ func TestJobQueue_MarkComplete(t *testing.T) {
 	})
 
 	t.Run("already completed job", func(t *testing.T) {
-		q := NewJobQueue()
+		q := NewJobQueue(log.NewNopLogger(), nil)
 		logger := &testLogger{t: t}
 		q.logger = logger
 

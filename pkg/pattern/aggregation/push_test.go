@@ -94,6 +94,7 @@ func Test_Push(t *testing.T) {
 
 	t.Run("batches push requests", func(t *testing.T) {
 		// mock loki server
+		responses := make(chan response, 10)
 		mock := httptest.NewServer(createServerHandler(responses))
 		require.NotNil(t, mock)
 		defer mock.Close()
@@ -169,6 +170,7 @@ func Test_Push(t *testing.T) {
 			lbls2,
 		)
 
+		p.running.Add(1)
 		go p.run(time.Nanosecond)
 
 		select {
