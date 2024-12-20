@@ -6,7 +6,7 @@ env:
   PUBLISH_TO_GCS: false
   RELEASE_LIB_REF: "main"
   RELEASE_REPO: "grafana/loki"
-  USE_GITHUB_APP_TOKEN: false
+  USE_GITHUB_APP_TOKEN: true
 jobs:
   createRelease:
     if: "${{ fromJSON(needs.shouldRelease.outputs.shouldRelease) }}"
@@ -110,6 +110,48 @@ jobs:
         parent: false
         path: "release/dist"
         process_gcloudignore: false
+  publishDockerPlugins:
+    needs:
+    - "createRelease"
+    runs-on: "ubuntu-latest"
+    steps:
+    - name: "pull release library code"
+      uses: "actions/checkout@v4"
+      with:
+        path: "lib"
+        ref: "${{ env.RELEASE_LIB_REF }}"
+        repository: "grafana/loki-release"
+    - name: "pull code to release"
+      uses: "actions/checkout@v4"
+      with:
+        path: "release"
+        repository: "${{ env.RELEASE_REPO }}"
+    - name: "auth gcs"
+      uses: "google-github-actions/auth@v2"
+      with:
+        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+    - name: "Set up Cloud SDK"
+      uses: "google-github-actions/setup-gcloud@v2"
+      with:
+        version: ">= 452.0.0"
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - name: "Login to DockerHub (from vault)"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+    - name: "download and prepare plugins"
+      run: |
+        echo "downloading images to $(pwd)/plugins"
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/plugins .
+        mkdir -p "release/clients/cmd/docker-driver"
+    - name: "publish docker driver"
+      uses: "./lib/actions/push-images"
+      with:
+        buildDir: "release/clients/cmd/docker-driver"
+        imageDir: "plugins"
+        imagePrefix: "${{ env.IMAGE_PREFIX }}"
+        isPlugin: true
   publishImages:
     needs:
     - "createRelease"
@@ -138,7 +180,7 @@ jobs:
     - name: "download images"
       run: |
         echo "downloading images to $(pwd)/images"
-        gsutil cp -r gs://loki-build-artifacts/${{ needs.createRelease.outputs.sha }}/images .
+        gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/images .
     - name: "publish docker images"
       uses: "./lib/actions/push-images"
       with:
@@ -148,6 +190,7 @@ jobs:
     needs:
     - "createRelease"
     - "publishImages"
+    - "publishDockerPlugins"
     runs-on: "ubuntu-latest"
     steps:
     - name: "pull code to release"

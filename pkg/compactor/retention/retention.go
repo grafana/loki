@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -272,9 +273,17 @@ type Sweeper struct {
 	markerProcessor MarkerProcessor
 	chunkClient     ChunkClient
 	sweeperMetrics  *sweeperMetrics
+	backoffConfig   backoff.Config
 }
 
-func NewSweeper(workingDir string, deleteClient ChunkClient, deleteWorkerCount int, minAgeDelete time.Duration, r prometheus.Registerer) (*Sweeper, error) {
+func NewSweeper(
+	workingDir string,
+	deleteClient ChunkClient,
+	deleteWorkerCount int,
+	minAgeDelete time.Duration,
+	backoffConfig backoff.Config,
+	r prometheus.Registerer,
+) (*Sweeper, error) {
 	m := newSweeperMetrics(r)
 
 	p, err := newMarkerStorageReader(workingDir, deleteWorkerCount, minAgeDelete, m)
@@ -285,34 +294,43 @@ func NewSweeper(workingDir string, deleteClient ChunkClient, deleteWorkerCount i
 		markerProcessor: p,
 		chunkClient:     deleteClient,
 		sweeperMetrics:  m,
+		backoffConfig:   backoffConfig,
 	}, nil
 }
 
 func (s *Sweeper) Start() {
-	s.markerProcessor.Start(func(ctx context.Context, chunkId []byte) error {
-		status := statusSuccess
-		start := time.Now()
-		defer func() {
-			s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
-		}()
-		chunkIDString := unsafeGetString(chunkId)
-		userID, err := getUserIDFromChunkID(chunkId)
-		if err != nil {
-			return err
-		}
+	s.markerProcessor.Start(s.deleteChunk)
+}
 
+func (s *Sweeper) deleteChunk(ctx context.Context, chunkID []byte) error {
+	status := statusSuccess
+	start := time.Now()
+	defer func() {
+		s.sweeperMetrics.deleteChunkDurationSeconds.WithLabelValues(status).Observe(time.Since(start).Seconds())
+	}()
+	chunkIDString := unsafeGetString(chunkID)
+	userID, err := getUserIDFromChunkID(chunkID)
+	if err != nil {
+		return err
+	}
+
+	retry := backoff.New(ctx, s.backoffConfig)
+	for retry.Ongoing() {
 		err = s.chunkClient.DeleteChunk(ctx, unsafeGetString(userID), chunkIDString)
+		if err == nil {
+			return nil
+		}
 		if s.chunkClient.IsChunkNotFoundErr(err) {
 			status = statusNotFound
 			level.Debug(util_log.Logger).Log("msg", "delete on not found chunk", "chunkID", chunkIDString)
 			return nil
 		}
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "error deleting chunk", "chunkID", chunkIDString, "err", err)
-			status = statusFailure
-		}
-		return err
-	})
+		retry.Wait()
+	}
+
+	level.Error(util_log.Logger).Log("msg", "error deleting chunk", "chunkID", chunkIDString, "err", err)
+	status = statusFailure
+	return err
 }
 
 func getUserIDFromChunkID(chunkID []byte) ([]byte, error) {
@@ -466,7 +484,7 @@ func CopyMarkers(src string, dst string) error {
 			return fmt.Errorf("read marker file: %w", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0o666); err != nil {
+		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
 			return fmt.Errorf("write marker file: %w", err)
 		}
 	}

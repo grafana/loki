@@ -17,7 +17,7 @@ initContainer:
 
 image:
   repository: grafana/promtail
-  tag: 1.6.0
+  tag: 3.3.1
   pullPolicy: IfNotPresent
   ## Optionally specify an array of imagePullSecrets.
   ## Secrets must be manually created in the namespace.

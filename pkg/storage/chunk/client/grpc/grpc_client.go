@@ -27,6 +27,8 @@ func connectToGrpcServer(serverAddress string) (GrpcStoreClient, *grpc.ClientCon
 		PermitWithoutStream: true,
 	}
 	param := grpc.WithKeepaliveParams(params)
+
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	cc, err := grpc.Dial(serverAddress, param, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, nil, errors.Wrapf(err, "failed to dial grpc-store %s", serverAddress)

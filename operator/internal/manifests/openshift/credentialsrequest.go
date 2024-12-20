@@ -98,6 +98,15 @@ func encodeProviderSpec(env *config.TokenCCOAuthConfig) (*runtime.RawExtension, 
 			AzureSubscriptionID: azure.SubscriptionID,
 			AzureTenantID:       azure.TenantID,
 		}
+	case env.GCP != nil:
+		spec = &cloudcredentialv1.GCPProviderSpec{
+			PredefinedRoles: []string{
+				"roles/iam.workloadIdentityUser",
+				"roles/storage.objectAdmin",
+			},
+			Audience:            env.GCP.Audience,
+			ServiceAccountEmail: env.GCP.ServiceAccountEmail,
+		}
 	}
 
 	encodedSpec, err := cloudcredentialv1.Codec.EncodeProviderSpec(spec.DeepCopyObject())

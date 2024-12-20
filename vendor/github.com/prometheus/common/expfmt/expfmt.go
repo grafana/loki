@@ -15,6 +15,7 @@
 package expfmt
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -31,24 +32,31 @@ type Format string
 // it on the wire, new content-type strings will have to be agreed upon and
 // added here.
 const (
-	TextVersion              = "0.0.4"
-	ProtoType                = `application/vnd.google.protobuf`
-	ProtoProtocol            = `io.prometheus.client.MetricFamily`
-	protoFmt                 = ProtoType + "; proto=" + ProtoProtocol + ";"
+	TextVersion   = "0.0.4"
+	ProtoType     = `application/vnd.google.protobuf`
+	ProtoProtocol = `io.prometheus.client.MetricFamily`
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeProtoCompact) instead.
+	ProtoFmt                 = ProtoType + "; proto=" + ProtoProtocol + ";"
 	OpenMetricsType          = `application/openmetrics-text`
 	OpenMetricsVersion_0_0_1 = "0.0.1"
 	OpenMetricsVersion_1_0_0 = "1.0.0"
 
-	// The Content-Type values for the different wire protocols. Note that these
-	// values are now unexported. If code was relying on comparisons to these
-	// constants, instead use FormatType().
-	fmtUnknown           Format = `<unknown>`
-	fmtText              Format = `text/plain; version=` + TextVersion + `; charset=utf-8`
-	fmtProtoDelim        Format = protoFmt + ` encoding=delimited`
-	fmtProtoText         Format = protoFmt + ` encoding=text`
-	fmtProtoCompact      Format = protoFmt + ` encoding=compact-text`
-	fmtOpenMetrics_1_0_0 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_1_0_0 + `; charset=utf-8`
-	fmtOpenMetrics_0_0_1 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_0_0_1 + `; charset=utf-8`
+	// The Content-Type values for the different wire protocols. Do not do direct
+	// comparisons to these constants, instead use the comparison functions.
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeUnknown) instead.
+	FmtUnknown Format = `<unknown>`
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeTextPlain) instead.
+	FmtText Format = `text/plain; version=` + TextVersion + `; charset=utf-8`
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeProtoDelim) instead.
+	FmtProtoDelim Format = ProtoFmt + ` encoding=delimited`
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeProtoText) instead.
+	FmtProtoText Format = ProtoFmt + ` encoding=text`
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeProtoCompact) instead.
+	FmtProtoCompact Format = ProtoFmt + ` encoding=compact-text`
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeOpenMetrics) instead.
+	FmtOpenMetrics_1_0_0 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_1_0_0 + `; charset=utf-8`
+	// Deprecated: Use expfmt.NewFormat(expfmt.TypeOpenMetrics) instead.
+	FmtOpenMetrics_0_0_1 Format = OpenMetricsType + `; version=` + OpenMetricsVersion_0_0_1 + `; charset=utf-8`
 )
 
 const (
@@ -63,7 +71,7 @@ const (
 type FormatType int
 
 const (
-	TypeUnknown = iota
+	TypeUnknown FormatType = iota
 	TypeProtoCompact
 	TypeProtoDelim
 	TypeProtoText
@@ -73,31 +81,63 @@ const (
 
 // NewFormat generates a new Format from the type provided. Mostly used for
 // tests, most Formats should be generated as part of content negotiation in
-// encode.go.
+// encode.go. If a type has more than one version, the latest version will be
+// returned.
 func NewFormat(t FormatType) Format {
 	switch t {
 	case TypeProtoCompact:
-		return fmtProtoCompact
+		return FmtProtoCompact
 	case TypeProtoDelim:
-		return fmtProtoDelim
+		return FmtProtoDelim
 	case TypeProtoText:
-		return fmtProtoText
+		return FmtProtoText
 	case TypeTextPlain:
-		return fmtText
+		return FmtText
 	case TypeOpenMetrics:
-		return fmtOpenMetrics_1_0_0
+		return FmtOpenMetrics_1_0_0
 	default:
-		return fmtUnknown
+		return FmtUnknown
 	}
+}
+
+// NewOpenMetricsFormat generates a new OpenMetrics format matching the
+// specified version number.
+func NewOpenMetricsFormat(version string) (Format, error) {
+	if version == OpenMetricsVersion_0_0_1 {
+		return FmtOpenMetrics_0_0_1, nil
+	}
+	if version == OpenMetricsVersion_1_0_0 {
+		return FmtOpenMetrics_1_0_0, nil
+	}
+	return FmtUnknown, errors.New("unknown open metrics version string")
+}
+
+// WithEscapingScheme returns a copy of Format with the specified escaping
+// scheme appended to the end. If an escaping scheme already exists it is
+// removed.
+func (f Format) WithEscapingScheme(s model.EscapingScheme) Format {
+	var terms []string
+	for _, p := range strings.Split(string(f), ";") {
+		toks := strings.Split(p, "=")
+		if len(toks) != 2 {
+			trimmed := strings.TrimSpace(p)
+			if len(trimmed) > 0 {
+				terms = append(terms, trimmed)
+			}
+			continue
+		}
+		key := strings.TrimSpace(toks[0])
+		if key != model.EscapingKey {
+			terms = append(terms, strings.TrimSpace(p))
+		}
+	}
+	terms = append(terms, model.EscapingKey+"="+s.String())
+	return Format(strings.Join(terms, "; "))
 }
 
 // FormatType deduces an overall FormatType for the given format.
 func (f Format) FormatType() FormatType {
 	toks := strings.Split(string(f), ";")
-	if len(toks) < 2 {
-		return TypeUnknown
-	}
-
 	params := make(map[string]string)
 	for i, t := range toks {
 		if i == 0 {

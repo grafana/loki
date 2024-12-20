@@ -2,7 +2,7 @@
 title: Migrate to TSDB
 menuTitle: Migrate to TSDB
 description: Migration guide for moving from any of the older indexes to TSDB
-weight: 100
+weight: 300
 keywords:
   - migrate
   - tsdb
@@ -20,9 +20,9 @@ we strongly recommend migrating to TSDB.
 To begin the migration, add a new [period_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) entry in your [schema_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#schema_config).
 You can read more about schema config [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/storage/#schema-config).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 You must roll out the new `period_config` change to all Loki components in order for it to take effect.
-{{% /admonition %}}
+{{< /admonition >}}
 
 This example adds a new `period_config` which configures Loki to start using the TSDB index for the data ingested starting from `2023-10-20`.
 
@@ -51,7 +51,7 @@ schema_config:
 
 1. This sample configuration uses filesystem as the storage in both the periods. If you want to use a different storage for the TSDB index and chunks, you can specify a different `object_store` in the new period.
 
-1.  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) for the current recommend version.
+1.  Update the schema to v13 which is the recommended version at the time of writing. Please refer to the [configure page](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config) for the current recommended version.
 
 ### Configure TSDB shipper
 

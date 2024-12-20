@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"flag"
+	"fmt"
 	"sync"
 	"time"
 
@@ -33,7 +34,7 @@ type WALConfig struct {
 
 func (cfg *WALConfig) Validate() error {
 	if cfg.Enabled && cfg.CheckpointDuration < 1 {
-		return errors.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
+		return fmt.Errorf("invalid checkpoint duration: %v", cfg.CheckpointDuration)
 	}
 	return nil
 }
@@ -108,7 +109,7 @@ func (w *walWrapper) Log(record *wal.Record) error {
 	}
 	select {
 	case <-w.quit:
-		return nil
+		return errors.New("wal is stopped")
 	default:
 		buf := recordPool.GetBytes()
 		defer func() {

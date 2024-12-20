@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package otelhttp // import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
@@ -22,15 +11,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
-
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/request"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconv"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconvutil"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
 
-	semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Transport implements the http.RoundTripper interface and wraps
@@ -38,14 +28,16 @@ import (
 type Transport struct {
 	rt http.RoundTripper
 
-	tracer            trace.Tracer
-	meter             metric.Meter
-	propagators       propagation.TextMapPropagator
-	spanStartOptions  []trace.SpanStartOption
-	filters           []Filter
-	spanNameFormatter func(string, *http.Request) string
-	clientTrace       func(context.Context) *httptrace.ClientTrace
+	tracer             trace.Tracer
+	meter              metric.Meter
+	propagators        propagation.TextMapPropagator
+	spanStartOptions   []trace.SpanStartOption
+	filters            []Filter
+	spanNameFormatter  func(string, *http.Request) string
+	clientTrace        func(context.Context) *httptrace.ClientTrace
+	metricAttributesFn func(*http.Request) []attribute.KeyValue
 
+	semconv              semconv.HTTPClient
 	requestBytesCounter  metric.Int64Counter
 	responseBytesCounter metric.Int64Counter
 	latencyMeasure       metric.Float64Histogram
@@ -65,7 +57,8 @@ func NewTransport(base http.RoundTripper, opts ...Option) *Transport {
 	}
 
 	t := Transport{
-		rt: base,
+		rt:      base,
+		semconv: semconv.NewHTTPClient(),
 	}
 
 	defaultOpts := []Option{
@@ -88,6 +81,7 @@ func (t *Transport) applyConfig(c *config) {
 	t.filters = c.Filters
 	t.spanNameFormatter = c.SpanNameFormatter
 	t.clientTrace = c.ClientTrace
+	t.metricAttributesFn = c.MetricAttributesFn
 }
 
 func (t *Transport) createMeasures() {
@@ -148,49 +142,56 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		ctx = httptrace.WithClientTrace(ctx, t.clientTrace(ctx))
 	}
 
-	labeler := &Labeler{}
-	ctx = injectLabeler(ctx, labeler)
+	labeler, found := LabelerFromContext(ctx)
+	if !found {
+		ctx = ContextWithLabeler(ctx, labeler)
+	}
 
 	r = r.Clone(ctx) // According to RoundTripper spec, we shouldn't modify the origin request.
 
-	// use a body wrapper to determine the request size
-	var bw bodyWrapper
 	// if request body is nil or NoBody, we don't want to mutate the body as it
 	// will affect the identity of it in an unforeseeable way because we assert
 	// ReadCloser fulfills a certain interface and it is indeed nil or NoBody.
+	bw := request.NewBodyWrapper(r.Body, func(int64) {})
 	if r.Body != nil && r.Body != http.NoBody {
-		bw.ReadCloser = r.Body
-		// noop to prevent nil panic. not using this record fun yet.
-		bw.record = func(int64) {}
-		r.Body = &bw
+		r.Body = bw
 	}
 
-	span.SetAttributes(semconvutil.HTTPClientRequest(r)...)
+	span.SetAttributes(t.semconv.RequestTraceAttrs(r)...)
 	t.propagators.Inject(ctx, propagation.HeaderCarrier(r.Header))
 
 	res, err := t.rt.RoundTrip(r)
 	if err != nil {
-		span.RecordError(err)
+		// set error type attribute if the error is part of the predefined
+		// error types.
+		// otherwise, record it as an exception
+		if errType := t.semconv.ErrorType(err); errType.Valid() {
+			span.SetAttributes(errType)
+		} else {
+			span.RecordError(err)
+		}
+
 		span.SetStatus(codes.Error, err.Error())
 		span.End()
 		return res, err
 	}
 
 	// metrics
-	metricAttrs := append(labeler.Get(), semconvutil.HTTPClientRequestMetrics(r)...)
+	metricAttrs := append(append(labeler.Get(), semconvutil.HTTPClientRequestMetrics(r)...), t.metricAttributesFromRequest(r)...)
 	if res.StatusCode > 0 {
 		metricAttrs = append(metricAttrs, semconv.HTTPStatusCode(res.StatusCode))
 	}
-	o := metric.WithAttributes(metricAttrs...)
-	t.requestBytesCounter.Add(ctx, bw.read.Load(), o)
+	o := metric.WithAttributeSet(attribute.NewSet(metricAttrs...))
+
+	t.requestBytesCounter.Add(ctx, bw.BytesRead(), o)
 	// For handling response bytes we leverage a callback when the client reads the http response
 	readRecordFunc := func(n int64) {
 		t.responseBytesCounter.Add(ctx, n, o)
 	}
 
 	// traces
-	span.SetAttributes(semconvutil.HTTPClientResponse(res)...)
-	span.SetStatus(semconvutil.HTTPClientStatus(res.StatusCode))
+	span.SetAttributes(t.semconv.ResponseTraceAttrs(res)...)
+	span.SetStatus(t.semconv.Status(res.StatusCode))
 
 	res.Body = newWrappedBody(span, readRecordFunc, res.Body)
 
@@ -200,6 +201,14 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	t.latencyMeasure.Record(ctx, elapsedTime, o)
 
 	return res, err
+}
+
+func (t *Transport) metricAttributesFromRequest(r *http.Request) []attribute.KeyValue {
+	var attributeForRequest []attribute.KeyValue
+	if t.metricAttributesFn != nil {
+		attributeForRequest = t.metricAttributesFn(r)
+	}
+	return attributeForRequest
 }
 
 // newWrappedBody returns a new and appropriately scoped *wrappedBody as an

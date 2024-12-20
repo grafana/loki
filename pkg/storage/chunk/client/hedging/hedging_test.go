@@ -18,37 +18,39 @@ func (fn RoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) 
 	return fn(req)
 }
 
-func resetMetrics() {
+func resetMetrics() *prometheus.Registry {
+	//TODO: clean up this massive hack...
 	reg := prometheus.NewRegistry()
 	prometheus.DefaultRegisterer = reg
 	prometheus.DefaultGatherer = reg
 	initMetrics()
+	return reg
 }
 
 func TestHedging(t *testing.T) {
-	resetMetrics()
+	reg := resetMetrics()
 	cfg := &Config{
 		At:           time.Duration(1),
 		UpTo:         3,
 		MaxPerSecond: 1000,
 	}
 	count := atomic.NewInt32(0)
-	client, err := cfg.Client(&http.Client{
-		Transport: RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	client, err := cfg.ClientWithRegisterer(&http.Client{
+		Transport: RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
 			count.Inc()
 			time.Sleep(200 * time.Millisecond)
 			return &http.Response{
 				StatusCode: http.StatusOK,
 			}, nil
 		}),
-	})
+	}, reg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _ = client.Get("http://example.com")
 
 	require.Equal(t, int32(3), count.Load())
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer,
+	require.NoError(t, testutil.GatherAndCompare(reg,
 		strings.NewReader(`
 # HELP hedged_requests_rate_limited_total The total number of hedged requests rejected via rate limiting.
 # TYPE hedged_requests_rate_limited_total counter
@@ -61,29 +63,29 @@ hedged_requests_total 2
 }
 
 func TestHedgingRateLimit(t *testing.T) {
-	resetMetrics()
+	reg := resetMetrics()
 	cfg := &Config{
 		At:           time.Duration(1),
 		UpTo:         20,
 		MaxPerSecond: 1,
 	}
 	count := atomic.NewInt32(0)
-	client, err := cfg.Client(&http.Client{
-		Transport: RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+	client, err := cfg.ClientWithRegisterer(&http.Client{
+		Transport: RoundTripperFunc(func(_ *http.Request) (*http.Response, error) {
 			count.Inc()
 			time.Sleep(200 * time.Millisecond)
 			return &http.Response{
 				StatusCode: http.StatusOK,
 			}, nil
 		}),
-	})
+	}, reg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _ = client.Get("http://example.com")
 
 	require.Equal(t, int32(2), count.Load())
-	require.NoError(t, testutil.GatherAndCompare(prometheus.DefaultGatherer,
+	require.NoError(t, testutil.GatherAndCompare(reg,
 		strings.NewReader(`
 # HELP hedged_requests_rate_limited_total The total number of hedged requests rejected via rate limiting.
 # TYPE hedged_requests_rate_limited_total counter

@@ -2,6 +2,8 @@ package grpcclient
 
 import (
 	"flag"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -40,6 +42,9 @@ type Config struct {
 
 	Middleware       []grpc.UnaryClientInterceptor  `yaml:"-"`
 	StreamMiddleware []grpc.StreamClientInterceptor `yaml:"-"`
+
+	// CustomCompressors allows configuring custom compressors.
+	CustomCompressors []string `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -55,9 +60,19 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.InitialStreamWindowSize = defaultInitialWindowSize
 	cfg.InitialConnectionWindowSize = defaultInitialWindowSize
 
+	var supportedCompressors strings.Builder
+	supportedCompressors.WriteString("Use compression when sending messages. Supported values are: 'gzip', 'snappy'")
+	for _, cmp := range cfg.CustomCompressors {
+		supportedCompressors.WriteString(", ")
+		supportedCompressors.WriteString("'")
+		supportedCompressors.WriteString(cmp)
+		supportedCompressors.WriteString("'")
+	}
+	supportedCompressors.WriteString(" and '' (disable compression)")
+
 	f.IntVar(&cfg.MaxRecvMsgSize, prefix+".grpc-max-recv-msg-size", 100<<20, "gRPC client max receive message size (bytes).")
 	f.IntVar(&cfg.MaxSendMsgSize, prefix+".grpc-max-send-msg-size", 100<<20, "gRPC client max send message size (bytes).")
-	f.StringVar(&cfg.GRPCCompression, prefix+".grpc-compression", "", "Use compression when sending messages. Supported values are: 'gzip', 'snappy' and '' (disable compression)")
+	f.StringVar(&cfg.GRPCCompression, prefix+".grpc-compression", "", supportedCompressors.String())
 	f.Float64Var(&cfg.RateLimit, prefix+".grpc-client-rate-limit", 0., "Rate limit for gRPC client; 0 means disabled.")
 	f.IntVar(&cfg.RateLimitBurst, prefix+".grpc-client-rate-limit-burst", 0, "Rate limit burst for gRPC client.")
 	f.BoolVar(&cfg.BackoffOnRatelimits, prefix+".backoff-on-ratelimits", false, "Enable backoff and retry when we hit rate limits.")
@@ -74,11 +89,10 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	switch cfg.GRPCCompression {
-	case gzip.Name, snappy.Name, "":
-		// valid
-	default:
-		return errors.Errorf("unsupported compression type: %s", cfg.GRPCCompression)
+	supportedCompressors := []string{gzip.Name, snappy.Name, ""}
+	supportedCompressors = append(supportedCompressors, cfg.CustomCompressors...)
+	if !slices.Contains(supportedCompressors, cfg.GRPCCompression) {
+		return errors.Errorf("unsupported compression type: %q", cfg.GRPCCompression)
 	}
 	return nil
 }
@@ -108,7 +122,7 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 	streamClientInterceptors = append(streamClientInterceptors, cfg.StreamMiddleware...)
 
 	if cfg.BackoffOnRatelimits {
-		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewBackoffRetry(cfg.BackoffConfig)}, unaryClientInterceptors...)
+		unaryClientInterceptors = append([]grpc.UnaryClientInterceptor{NewRateLimitRetrier(cfg.BackoffConfig)}, unaryClientInterceptors...)
 	}
 
 	if cfg.RateLimit > 0 {

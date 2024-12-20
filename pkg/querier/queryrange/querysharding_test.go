@@ -152,7 +152,7 @@ func Test_astMapper(t *testing.T) {
 	var lock sync.Mutex
 	called := 0
 
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		resp := lokiResps[called]
@@ -167,6 +167,7 @@ func Test_astMapper(t *testing.T) {
 			},
 		},
 		testEngineOpts,
+		handler,
 		handler,
 		nil,
 		log.NewNopLogger(),
@@ -263,7 +264,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			statsCalled := 0
-			handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			handler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 				if casted, ok := req.(*logproto.IndexStatsRequest); ok {
 					statsCalled++
 
@@ -307,6 +308,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				},
 				testEngineOpts,
 				handler,
+				handler,
 				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
@@ -339,7 +341,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 
 func Test_ShardingByPass(t *testing.T) {
 	called := 0
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		called++
 		return nil, nil
 	})
@@ -351,6 +353,7 @@ func Test_ShardingByPass(t *testing.T) {
 			},
 		},
 		testEngineOpts,
+		handler,
 		handler,
 		nil,
 		log.NewNopLogger(),
@@ -410,7 +413,7 @@ func Test_hasShards(t *testing.T) {
 // astmapper successful stream & prom conversion
 
 func mockHandler(resp queryrangebase.Response, err error) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	return queryrangebase.HandlerFunc(func(ctx context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		if expired := ctx.Err(); expired != nil {
 			return nil, expired
 		}
@@ -439,9 +442,10 @@ func Test_InstantSharding(t *testing.T) {
 		},
 		0,
 		nil,
+		nil,
 		[]string{},
 	)
-	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		called++
@@ -504,7 +508,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 	)
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		req, ok := r.(*LokiSeriesRequest)
 		if !ok {
 			return nil, errors.New("not a series call")
@@ -707,7 +711,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			var lock sync.Mutex
 			called := 0
 
-			handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			handler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 				lock.Lock()
 				defer lock.Unlock()
 				called++
@@ -717,6 +721,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			mware := newASTMapperware(
 				confs,
 				testEngineOpts,
+				handler,
 				handler,
 				nil,
 				log.NewNopLogger(),
@@ -809,7 +814,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				DefaultCodec,
 			)
 
-			_, err := mware.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			_, err := mware.Wrap(queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				_, ok := r.(*LokiSeriesRequest)
 				if !ok {
 					return nil, errors.New("not a series call")
@@ -834,7 +839,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	engineOpts := testEngineOpts
 	engineOpts.MaxLookBackPeriod = 1 * time.Hour
 
-	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiResponse{}, nil
 	})
 
@@ -852,6 +857,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	mware := newASTMapperware(
 		testSchemasTSDB,
 		engineOpts,
+		queryHandler,
 		queryHandler,
 		statsHandler,
 		log.NewNopLogger(),

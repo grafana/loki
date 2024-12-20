@@ -42,7 +42,7 @@ local releaseLibStep = common.releaseLibStep;
         echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and export', 'docker/build-push-action@v5')
+      step.new('Build and export', 'docker/build-push-action@v6')
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.withEnv({
@@ -93,7 +93,7 @@ local releaseLibStep = common.releaseLibStep;
         echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
       |||),
 
-      step.new('Build and push', 'docker/build-push-action@v5')
+      step.new('Build and push', 'docker/build-push-action@v6')
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.with({
         context: context,
@@ -105,6 +105,84 @@ local releaseLibStep = common.releaseLibStep;
       }),
     ]),
 
+  dockerPlugin: function(
+    name,
+    path,
+    buildImage,
+    dockerfile='Dockerfile',
+    context='release',
+    platform=[
+      'linux/amd64',
+      'linux/arm64',
+    ]
+               )
+    job.new()
+    + job.withStrategy({
+      'fail-fast': true,
+      matrix: {
+        platform: platform,
+      },
+    })
+    + job.withSteps([
+      common.fetchReleaseLib,
+      common.fetchReleaseRepo,
+      common.setupNode,
+      common.googleAuth,
+
+      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
+      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+
+      releaseStep('parse image platform')
+      + step.withId('platform')
+      + step.withRun(|||
+        mkdir -p images
+        mkdir -p plugins
+
+        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        if [[ "${platform}" == "linux/arm64" ]]; then
+          echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
+        else
+          echo "plugin_arch=" >> $GITHUB_OUTPUT
+        fi
+      |||),
+
+      step.new('Build and export', 'docker/build-push-action@v6')
+      + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.with({
+        context: context,
+        file: 'release/%s/%s' % [path, dockerfile],
+        platforms: '${{ matrix.platform }}',
+        push: false,
+        tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
+        outputs: 'type=local,dest=release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}' % name,
+        'build-args': |||
+          %s
+        ||| % std.rstripChars(std.lines([
+          'IMAGE_TAG=${{ needs.version.outputs.version }}',
+          'GOARCH=${{ steps.platform.outputs.platform_short }}',
+          ('BUILD_IMAGE=%s' % buildImage),
+        ]), '\n'),
+      }),
+
+      step.new('compress rootfs')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.withRun(|||
+        tar -cf release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar \
+        -C release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }} \
+        .
+      ||| % [name, name]),
+
+      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
+      + step.with({
+        path: 'release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
+        destination: '${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/plugins',
+        process_gcloudignore: false,
+      }),
+    ]),
 
   version:
     job.new()
@@ -176,6 +254,7 @@ local releaseLibStep = common.releaseLibStep;
   dist: function(buildImage, skipArm=true, useGCR=false, makeTargets=['dist', 'packages'])
     job.new()
     + job.withSteps([
+      common.cleanUpBuildCache,
       common.fetchReleaseRepo,
       common.googleAuth,
       common.setupGoogleCloudSdk,

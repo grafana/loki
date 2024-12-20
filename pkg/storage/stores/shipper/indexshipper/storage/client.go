@@ -16,7 +16,7 @@ const delimiter = "/"
 type UserIndexClient interface {
 	ListUserFiles(ctx context.Context, tableName, userID string, bypassCache bool) ([]IndexFile, error)
 	GetUserFile(ctx context.Context, tableName, userID, fileName string) (io.ReadCloser, error)
-	PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error
+	PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.Reader) error
 	DeleteUserFile(ctx context.Context, tableName, userID, fileName string) error
 }
 
@@ -24,7 +24,7 @@ type UserIndexClient interface {
 type CommonIndexClient interface {
 	ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]IndexFile, []string, error)
 	GetFile(ctx context.Context, tableName, fileName string) (io.ReadCloser, error)
-	PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error
+	PutFile(ctx context.Context, tableName, fileName string, file io.Reader) error
 	DeleteFile(ctx context.Context, tableName, fileName string) error
 }
 
@@ -139,11 +139,11 @@ func (s *indexStorageClient) GetUserFile(ctx context.Context, tableName, userID,
 	return readCloser, err
 }
 
-func (s *indexStorageClient) PutFile(ctx context.Context, tableName, fileName string, file io.ReadSeeker) error {
+func (s *indexStorageClient) PutFile(ctx context.Context, tableName, fileName string, file io.Reader) error {
 	return s.objectClient.PutObject(ctx, path.Join(tableName, fileName), file)
 }
 
-func (s *indexStorageClient) PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.ReadSeeker) error {
+func (s *indexStorageClient) PutUserFile(ctx context.Context, tableName, userID, fileName string, file io.Reader) error {
 	return s.objectClient.PutObject(ctx, path.Join(tableName, userID, fileName), file)
 }
 

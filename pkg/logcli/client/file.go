@@ -207,7 +207,7 @@ func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, er
 }
 
 func (f *FileClient) GetDetectedFields(
-	_ string,
+	_, _ string,
 	_, _ int,
 	_, _ time.Time,
 	_ time.Duration,
@@ -278,7 +278,7 @@ func newFileIterator(
 	})
 
 	if len(lines) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streams := map[uint64]*logproto.Stream{}
@@ -317,7 +317,7 @@ func newFileIterator(
 	}
 
 	if len(streams) == 0 {
-		return iter.NoopIterator, nil
+		return iter.NoopEntryIterator, nil
 	}
 
 	streamResult := make([]logproto.Stream, 0, len(streams))

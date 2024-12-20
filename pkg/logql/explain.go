@@ -57,3 +57,20 @@ func (e *BinOpStepEvaluator) Explain(parent Node) {
 func (i *VectorIterator) Explain(parent Node) {
 	parent.Childf("%f vectorIterator", i.val)
 }
+
+func (e *QuantileSketchVectorStepEvaluator) Explain(parent Node) {
+	b := parent.Child("QuantileSketchVector")
+	e.inner.Explain(b)
+}
+
+func (e *mergeOverTimeStepEvaluator) Explain(parent Node) {
+	parent.Child("MergeFirstOverTime")
+}
+
+func (e *CountMinSketchVectorStepEvaluator) Explain(parent Node) {
+	parent.Child("CountMinSketchVector")
+}
+
+func (EmptyEvaluator[SampleVector]) Explain(parent Node) {
+	parent.Child("Empty")
+}

@@ -8,6 +8,7 @@ package sas
 
 import (
 	"errors"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 	"net"
 	"net/url"
 	"strings"
@@ -23,7 +24,7 @@ const (
 
 var (
 	// Version is the default version encoded in the SAS token.
-	Version = "2020-02-10"
+	Version = generated.ServiceVersion
 )
 
 // TimeFormats ISO 8601 format.
@@ -34,10 +35,10 @@ var timeFormats = []string{"2006-01-02T15:04:05.0000000Z", TimeFormat, "2006-01-
 type Protocol string
 
 const (
-	// ProtocolHTTPS can be specified for a SAS protocol
+	// ProtocolHTTPS can be specified for a SAS protocol.
 	ProtocolHTTPS Protocol = "https"
 
-	// ProtocolHTTPSandHTTP can be specified for a SAS protocol
+	// ProtocolHTTPSandHTTP can be specified for a SAS protocol.
 	ProtocolHTTPSandHTTP Protocol = "https,http"
 )
 
@@ -116,169 +117,175 @@ func (ipr *IPRange) String() string {
 // This type defines the components used by all Azure Storage resources (Containers, Blobs, Files, & Queues).
 type QueryParameters struct {
 	// All members are immutable or values so copies of this struct are goroutine-safe.
-	version                    string    `param:"sv"`
-	services                   string    `param:"ss"`
-	resourceTypes              string    `param:"srt"`
-	protocol                   Protocol  `param:"spr"`
-	startTime                  time.Time `param:"st"`
-	expiryTime                 time.Time `param:"se"`
-	snapshotTime               time.Time `param:"snapshot"`
-	ipRange                    IPRange   `param:"sip"`
-	identifier                 string    `param:"si"`
-	resource                   string    `param:"sr"`
-	permissions                string    `param:"sp"`
-	signature                  string    `param:"sig"`
-	cacheControl               string    `param:"rscc"`
-	contentDisposition         string    `param:"rscd"`
-	contentEncoding            string    `param:"rsce"`
-	contentLanguage            string    `param:"rscl"`
-	contentType                string    `param:"rsct"`
-	signedOID                  string    `param:"skoid"`
-	signedTID                  string    `param:"sktid"`
-	signedStart                time.Time `param:"skt"`
-	signedService              string    `param:"sks"`
-	signedExpiry               time.Time `param:"ske"`
-	signedVersion              string    `param:"skv"`
-	signedDirectoryDepth       string    `param:"sdd"`
-	preauthorizedAgentObjectID string    `param:"saoid"`
-	agentObjectID              string    `param:"suoid"`
-	correlationID              string    `param:"scid"`
+	version              string    `param:"sv"`
+	services             string    `param:"ss"`
+	resourceTypes        string    `param:"srt"`
+	protocol             Protocol  `param:"spr"`
+	startTime            time.Time `param:"st"`
+	expiryTime           time.Time `param:"se"`
+	snapshotTime         time.Time `param:"snapshot"`
+	ipRange              IPRange   `param:"sip"`
+	identifier           string    `param:"si"`
+	resource             string    `param:"sr"`
+	permissions          string    `param:"sp"`
+	signature            string    `param:"sig"`
+	cacheControl         string    `param:"rscc"`
+	contentDisposition   string    `param:"rscd"`
+	contentEncoding      string    `param:"rsce"`
+	contentLanguage      string    `param:"rscl"`
+	contentType          string    `param:"rsct"`
+	signedOID            string    `param:"skoid"`
+	signedTID            string    `param:"sktid"`
+	signedStart          time.Time `param:"skt"`
+	signedService        string    `param:"sks"`
+	signedExpiry         time.Time `param:"ske"`
+	signedVersion        string    `param:"skv"`
+	signedDirectoryDepth string    `param:"sdd"`
+	authorizedObjectID   string    `param:"saoid"`
+	unauthorizedObjectID string    `param:"suoid"`
+	correlationID        string    `param:"scid"`
+	encryptionScope      string    `param:"ses"`
 	// private member used for startTime and expiryTime formatting.
 	stTimeFormat string
 	seTimeFormat string
 }
 
-// PreauthorizedAgentObjectID returns preauthorizedAgentObjectID
-func (p *QueryParameters) PreauthorizedAgentObjectID() string {
-	return p.preauthorizedAgentObjectID
+// AuthorizedObjectID returns authorizedObjectID.
+func (p *QueryParameters) AuthorizedObjectID() string {
+	return p.authorizedObjectID
 }
 
-// AgentObjectID returns agentObjectID
-func (p *QueryParameters) AgentObjectID() string {
-	return p.agentObjectID
+// UnauthorizedObjectID returns unauthorizedObjectID.
+func (p *QueryParameters) UnauthorizedObjectID() string {
+	return p.unauthorizedObjectID
 }
 
-// SignedCorrelationID returns signedCorrelationID
+// SignedCorrelationID returns signedCorrelationID.
 func (p *QueryParameters) SignedCorrelationID() string {
 	return p.correlationID
 }
 
-// SignedOID returns signedOID
+// EncryptionScope returns encryptionScope
+func (p *QueryParameters) EncryptionScope() string {
+	return p.encryptionScope
+}
+
+// SignedOID returns signedOID.
 func (p *QueryParameters) SignedOID() string {
 	return p.signedOID
 }
 
-// SignedTID returns signedTID
+// SignedTID returns signedTID.
 func (p *QueryParameters) SignedTID() string {
 	return p.signedTID
 }
 
-// SignedStart returns signedStart
+// SignedStart returns signedStart.
 func (p *QueryParameters) SignedStart() time.Time {
 	return p.signedStart
 }
 
-// SignedExpiry returns signedExpiry
+// SignedExpiry returns signedExpiry.
 func (p *QueryParameters) SignedExpiry() time.Time {
 	return p.signedExpiry
 }
 
-// SignedService returns signedService
+// SignedService returns signedService.
 func (p *QueryParameters) SignedService() string {
 	return p.signedService
 }
 
-// SignedVersion returns signedVersion
+// SignedVersion returns signedVersion.
 func (p *QueryParameters) SignedVersion() string {
 	return p.signedVersion
 }
 
-// SnapshotTime returns snapshotTime
+// SnapshotTime returns snapshotTime.
 func (p *QueryParameters) SnapshotTime() time.Time {
 	return p.snapshotTime
 }
 
-// Version returns version
+// Version returns version.
 func (p *QueryParameters) Version() string {
 	return p.version
 }
 
-// Services returns services
+// Services returns services.
 func (p *QueryParameters) Services() string {
 	return p.services
 }
 
-// ResourceTypes returns resourceTypes
+// ResourceTypes returns resourceTypes.
 func (p *QueryParameters) ResourceTypes() string {
 	return p.resourceTypes
 }
 
-// Protocol returns protocol
+// Protocol returns protocol.
 func (p *QueryParameters) Protocol() Protocol {
 	return p.protocol
 }
 
-// StartTime returns startTime
+// StartTime returns startTime.
 func (p *QueryParameters) StartTime() time.Time {
 	return p.startTime
 }
 
-// ExpiryTime returns expiryTime
+// ExpiryTime returns expiryTime.
 func (p *QueryParameters) ExpiryTime() time.Time {
 	return p.expiryTime
 }
 
-// IPRange returns ipRange
+// IPRange returns ipRange.
 func (p *QueryParameters) IPRange() IPRange {
 	return p.ipRange
 }
 
-// Identifier returns identifier
+// Identifier returns identifier.
 func (p *QueryParameters) Identifier() string {
 	return p.identifier
 }
 
-// Resource returns resource
+// Resource returns resource.
 func (p *QueryParameters) Resource() string {
 	return p.resource
 }
 
-// Permissions returns permissions
+// Permissions returns permissions.
 func (p *QueryParameters) Permissions() string {
 	return p.permissions
 }
 
-// Signature returns signature
+// Signature returns signature.
 func (p *QueryParameters) Signature() string {
 	return p.signature
 }
 
-// CacheControl returns cacheControl
+// CacheControl returns cacheControl.
 func (p *QueryParameters) CacheControl() string {
 	return p.cacheControl
 }
 
-// ContentDisposition returns contentDisposition
+// ContentDisposition returns contentDisposition.
 func (p *QueryParameters) ContentDisposition() string {
 	return p.contentDisposition
 }
 
-// ContentEncoding returns contentEncoding
+// ContentEncoding returns contentEncoding.
 func (p *QueryParameters) ContentEncoding() string {
 	return p.contentEncoding
 }
 
-// ContentLanguage returns contentLanguage
+// ContentLanguage returns contentLanguage.
 func (p *QueryParameters) ContentLanguage() string {
 	return p.contentLanguage
 }
 
-// ContentType returns sontentType
+// ContentType returns contentType.
 func (p *QueryParameters) ContentType() string {
 	return p.contentType
 }
 
-// SignedDirectoryDepth returns signedDirectoryDepth
+// SignedDirectoryDepth returns signedDirectoryDepth.
 func (p *QueryParameters) SignedDirectoryDepth() string {
 	return p.signedDirectoryDepth
 }
@@ -346,14 +353,17 @@ func (p *QueryParameters) Encode() string {
 	if p.signedDirectoryDepth != "" {
 		v.Add("sdd", p.signedDirectoryDepth)
 	}
-	if p.preauthorizedAgentObjectID != "" {
-		v.Add("saoid", p.preauthorizedAgentObjectID)
+	if p.authorizedObjectID != "" {
+		v.Add("saoid", p.authorizedObjectID)
 	}
-	if p.agentObjectID != "" {
-		v.Add("suoid", p.agentObjectID)
+	if p.unauthorizedObjectID != "" {
+		v.Add("suoid", p.unauthorizedObjectID)
 	}
 	if p.correlationID != "" {
 		v.Add("scid", p.correlationID)
+	}
+	if p.encryptionScope != "" {
+		v.Add("ses", p.encryptionScope)
 	}
 
 	return v.Encode()
@@ -424,11 +434,13 @@ func NewQueryParameters(values url.Values, deleteSASParametersFromValues bool) Q
 		case "sdd":
 			p.signedDirectoryDepth = val
 		case "saoid":
-			p.preauthorizedAgentObjectID = val
+			p.authorizedObjectID = val
 		case "suoid":
-			p.agentObjectID = val
+			p.unauthorizedObjectID = val
 		case "scid":
 			p.correlationID = val
+		case "ses":
+			p.encryptionScope = val
 		default:
 			isSASKey = false // We didn't recognize the query parameter
 		}

@@ -134,9 +134,9 @@ func (bb) ParseConfig(j json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 		// This will never occur, valid configuration is emitted from the xDS
 		// Client. Validity is already checked in the xDS Client, however, this
 		// double validation is present because Unmarshalling and Validating are
-		// coupled into one json.Unmarshal operation). We will switch this in
+		// coupled into one json.Unmarshal operation. We will switch this in
 		// the future to two separate operations.
-		return nil, fmt.Errorf("error unmarshaling xDS LB Policy: %v", err)
+		return nil, fmt.Errorf("error unmarshalling xDS LB Policy: %v", err)
 	}
 	return cfg, nil
 }
@@ -207,11 +207,6 @@ func (b *clusterResolverBalancer) handleClientConnUpdate(update *ccUpdate) {
 // handleResourceUpdate handles a resource update or error from the resource
 // resolver by propagating the same to the child LB policy.
 func (b *clusterResolverBalancer) handleResourceUpdate(update *resourceUpdate) {
-	if err := update.err; err != nil {
-		b.handleErrorFromUpdate(err, false)
-		return
-	}
-
 	b.watchUpdateReceived = true
 	b.priorities = update.priorities
 
@@ -219,6 +214,10 @@ func (b *clusterResolverBalancer) handleResourceUpdate(update *resourceUpdate) {
 	// for all configured discovery mechanisms ordered by priority. This is used
 	// to generate configuration for the priority LB policy.
 	b.updateChildConfig()
+
+	if update.onDone != nil {
+		update.onDone()
+	}
 }
 
 // updateChildConfig builds child policy configuration using endpoint addresses
@@ -242,7 +241,9 @@ func (b *clusterResolverBalancer) updateChildConfig() {
 		b.logger.Warningf("Failed to parse child policy config. This should never happen because the config was generated: %v", err)
 		return
 	}
-	b.logger.Infof("Built child policy config: %v", pretty.ToJSON(childCfg))
+	if b.logger.V(2) {
+		b.logger.Infof("Built child policy config: %s", pretty.ToJSON(childCfg))
+	}
 
 	endpoints := make([]resolver.Endpoint, len(addrs))
 	for i, a := range addrs {

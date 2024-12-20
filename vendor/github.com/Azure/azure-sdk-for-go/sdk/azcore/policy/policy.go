@@ -39,6 +39,11 @@ type ClientOptions struct {
 	// Cloud specifies a cloud for the client. The default is Azure Public Cloud.
 	Cloud cloud.Configuration
 
+	// InsecureAllowCredentialWithHTTP enables authenticated requests over HTTP.
+	// By default, authenticated requests to an HTTP endpoint are rejected by the client.
+	// WARNING: setting this to true will allow sending the credential in clear text. Use with caution.
+	InsecureAllowCredentialWithHTTP bool
+
 	// Logging configures the built-in logging policy.
 	Logging LogOptions
 
@@ -147,23 +152,29 @@ type BearerTokenOptions struct {
 	// When this field isn't set, the policy follows its default behavior of authorizing every request with a bearer token from
 	// its given credential.
 	AuthorizationHandler AuthorizationHandler
+
+	// InsecureAllowCredentialWithHTTP enables authenticated requests over HTTP.
+	// By default, authenticated requests to an HTTP endpoint are rejected by the client.
+	// WARNING: setting this to true will allow sending the bearer token in clear text. Use with caution.
+	InsecureAllowCredentialWithHTTP bool
 }
 
 // AuthorizationHandler allows SDK developers to insert custom logic that runs when BearerTokenPolicy must authorize a request.
 type AuthorizationHandler struct {
-	// OnRequest is called each time the policy receives a request. Its func parameter authorizes the request with a token
-	// from the policy's given credential. Implementations that need to perform I/O should use the Request's context,
-	// available from Request.Raw().Context(). When OnRequest returns an error, the policy propagates that error and doesn't
-	// send the request. When OnRequest is nil, the policy follows its default behavior, authorizing the request with a
-	// token from its credential according to its configuration.
+	// OnRequest provides TokenRequestOptions the policy can use to acquire a token for a request. The policy calls OnRequest
+	// whenever it needs a token and may call it multiple times for the same request. Its func parameter authorizes the request
+	// with a token from the policy's credential. Implementations that need to perform I/O should use the Request's context,
+	// available from Request.Raw().Context(). When OnRequest returns an error, the policy propagates that error and doesn't send
+	// the request. When OnRequest is nil, the policy follows its default behavior, which is to authorize the request with a token
+	// from its credential according to its configuration.
 	OnRequest func(*Request, func(TokenRequestOptions) error) error
 
-	// OnChallenge is called when the policy receives a 401 response, allowing the AuthorizationHandler to re-authorize the
-	// request according to an authentication challenge (the Response's WWW-Authenticate header). OnChallenge is responsible
-	// for parsing parameters from the challenge. Its func parameter will authorize the request with a token from the policy's
-	// given credential. Implementations that need to perform I/O should use the Request's context, available from
-	// Request.Raw().Context(). When OnChallenge returns nil, the policy will send the request again. When OnChallenge is nil,
-	// the policy will return any 401 response to the client.
+	// OnChallenge allows clients to implement custom HTTP authentication challenge handling. BearerTokenPolicy calls it upon
+	// receiving a 401 response containing multiple Bearer challenges or a challenge BearerTokenPolicy itself can't handle.
+	// OnChallenge is responsible for parsing challenge(s) (the Response's WWW-Authenticate header) and reauthorizing the
+	// Request accordingly. Its func argument authorizes the Request with a token from the policy's credential using the given
+	// TokenRequestOptions. OnChallenge should honor the Request's context, available from Request.Raw().Context(). When
+	// OnChallenge returns nil, the policy will send the Request again.
 	OnChallenge func(*Request, *http.Response, func(TokenRequestOptions) error) error
 }
 

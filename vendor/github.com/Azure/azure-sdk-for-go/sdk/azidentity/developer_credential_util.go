@@ -19,7 +19,7 @@ const cliTimeout = 10 * time.Second
 // the next credential in its chain (another developer credential).
 func unavailableIfInChain(err error, inDefaultChain bool) error {
 	if err != nil && inDefaultChain {
-		var unavailableErr *credentialUnavailableError
+		var unavailableErr credentialUnavailable
 		if !errors.As(err, &unavailableErr) {
 			err = newCredentialUnavailableError(credNameAzureDeveloperCLI, err.Error())
 		}

@@ -3,7 +3,9 @@ package oss
 import (
 	"encoding/xml"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -67,6 +69,42 @@ func CheckRespCode(respCode int, allowed []int) error {
 		}
 	}
 	return UnexpectedStatusCodeError{allowed, respCode}
+}
+
+// CheckCallbackResp return error if the given response code is not 200
+func CheckCallbackResp(resp *Response) error {
+	var err error
+	contentLengthStr := resp.Headers.Get("Content-Length")
+	contentLength, _ := strconv.Atoi(contentLengthStr)
+	var bodyBytes []byte
+	if contentLength > 0 {
+		bodyBytes, _ = ioutil.ReadAll(resp.Body)
+	}
+	if len(bodyBytes) > 0 {
+		srvErr, errIn := serviceErrFromXML(bodyBytes, resp.StatusCode,
+			resp.Headers.Get(HTTPHeaderOssRequestID))
+		if errIn != nil {
+			if len(resp.Headers.Get(HTTPHeaderOssEc)) > 0 {
+				err = fmt.Errorf("unknown response body, status code = %d, RequestId = %s, ec = %s", resp.StatusCode, resp.Headers.Get(HTTPHeaderOssRequestID), resp.Headers.Get(HTTPHeaderOssEc))
+			} else {
+				err = fmt.Errorf("unknown response body, status code= %d, RequestId = %s", resp.StatusCode, resp.Headers.Get(HTTPHeaderOssRequestID))
+			}
+		} else {
+			err = srvErr
+		}
+	}
+	return err
+}
+
+func tryConvertServiceError(data []byte, resp *Response, def error) (err error) {
+	err = def
+	if len(data) > 0 {
+		srvErr, errIn := serviceErrFromXML(data, resp.StatusCode, resp.Headers.Get(HTTPHeaderOssRequestID))
+		if errIn == nil {
+			err = srvErr
+		}
+	}
+	return err
 }
 
 // CRCCheckError is returned when crc check is inconsistent between client and server

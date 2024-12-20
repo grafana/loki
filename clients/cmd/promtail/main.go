@@ -10,7 +10,7 @@ import (
 	// embed time zone data
 	_ "time/tzdata"
 
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"

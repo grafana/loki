@@ -4,7 +4,7 @@ menuTItle:
 description: Provides an overview of how metric queries are constructed and parsed. Metric queries extend log queries by applying a function to log query results.
 aliases: 
 - ../logql/metric_queries/
-weight: 20  
+weight: 400  
 ---
 
 # Metric queries
@@ -153,3 +153,14 @@ Examples:
       or
     vector(0) # will return 0
     ```
+
+## Probabilistic aggregation
+
+The `topk` keyword lets you find the largest 1,000 elements in a data stream by sample size. When  `topk` hits the maximum series limit, LogQL also supports using a probable approximation; `approx_topk`  is a drop-in replacement when `topk` hits the maximum series limit.
+
+```logql
+approx_topk(k, <vector expression>)
+```
+
+It is only supported for instant queries and does not support grouping. It is useful when the cardinality of the inner
+vector is too high, for example, when it uses an aggregation by a structured metadata label.

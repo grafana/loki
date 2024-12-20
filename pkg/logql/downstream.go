@@ -301,6 +301,90 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	}
 }
 
+type MergeFirstOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e MergeFirstOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeFirstOverTime<%s>", sb.String())
+}
+
+func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+type MergeLastOverTimeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e MergeLastOverTimeExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("MergeLastOverTime<%s>", sb.String())
+}
+
+func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
+type CountMinSketchEvalExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
+}
+
+func (e CountMinSketchEvalExpr) String() string {
+	var sb strings.Builder
+	for i, d := range e.downstreams {
+		if i >= defaultMaxDepth {
+			break
+		}
+
+		if i > 0 {
+			sb.WriteString(" ++ ")
+		}
+
+		sb.WriteString(d.String())
+	}
+	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
+}
+
+func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		d.Walk(f)
+	}
+}
+
 type Downstreamable interface {
 	Downstreamer(context.Context) Downstreamer
 }
@@ -379,7 +463,7 @@ func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
 		Downstreamer:     downstreamer,
-		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0),
+		defaultEvaluator: NewDefaultEvaluator(&errorQuerier{}, 0, 0),
 	}
 }
 
@@ -471,7 +555,111 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 		inner := NewQuantileSketchMatrixStepEvaluator(matrix, params)
 		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
+	case *MergeFirstOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
 
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+
+		return NewMergeFirstOverTimeStepEvaluator(params, xs), nil
+	case *MergeLastOverTimeExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
+
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := NewBufferedAccumulator(len(queries))
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]promql.Matrix, 0, len(queries))
+		for _, res := range results {
+			switch data := res.Data.(type) {
+			case promql.Matrix:
+				xs = append(xs, data)
+			default:
+				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+			}
+		}
+		return NewMergeLastOverTimeStepEvaluator(params, xs), nil
+	case *CountMinSketchEvalExpr:
+		queries := make([]DownstreamQuery, len(e.downstreams))
+
+		for i, d := range e.downstreams {
+			qry := DownstreamQuery{
+				Params: ParamsWithExpressionOverride{
+					Params:             params,
+					ExpressionOverride: d.SampleExpr,
+				},
+			}
+			if shard := d.shard; shard != nil {
+				qry.Params = ParamsWithShardsOverride{
+					Params:         qry.Params,
+					ShardsOverride: Shards{shard.Shard}.Encode(),
+				}
+			}
+			queries[i] = qry
+		}
+
+		acc := newCountMinSketchAccumulator()
+		results, err := ev.Downstream(ctx, queries, acc)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(results) != 1 {
+			return nil, fmt.Errorf("unexpected results length for sharded count min sketch: got (%d), want (1)", len(results))
+		}
+
+		vector, ok := results[0].Data.(*CountMinSketchVector)
+		if !ok {
+			return nil, fmt.Errorf("unexpected matrix type: got (%T), want (CountMinSketchVector)", results[0].Data)
+		}
+		return NewCountMinSketchVectorStepEvaluator(vector), nil
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}

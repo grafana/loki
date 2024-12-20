@@ -25,7 +25,7 @@ type Filterable interface {
 type BaseReader interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
+	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error)
 }
 
 type StatsReader interface {
@@ -112,11 +112,11 @@ func (m MonitoredReaderWriter) LabelValuesForMetricName(ctx context.Context, use
 	return values, nil
 }
 
-func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
 	var values []string
 	if err := loki_instrument.TimeRequest(ctx, "label_names", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		values, err = m.rw.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+		values, err = m.rw.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 		return err
 	}); err != nil {
 		return nil, err

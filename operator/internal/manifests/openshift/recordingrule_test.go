@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestRecordingRuleTenantLabels(t *testing.T) {
@@ -46,7 +46,8 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 								{
 									Record: "record",
 									Labels: map[string]string{
-										opaDefaultLabelMatcher: "test-ns",
+										opaDefaultLabelMatcher:    "test-ns",
+										ocpMonitoringGroupByLabel: "test-ns",
 									},
 								},
 							},
@@ -57,6 +58,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: tenantInfrastructure,
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -72,6 +76,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: tenantInfrastructure,
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -80,6 +87,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 							Rules: []*lokiv1.RecordingRuleGroupSpec{
 								{
 									Record: "record",
+									Labels: map[string]string{
+										ocpMonitoringGroupByLabel: "test-ns",
+									},
 								},
 							},
 						},
@@ -89,6 +99,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: tenantAudit,
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -104,6 +117,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: tenantAudit,
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -112,6 +128,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 							Rules: []*lokiv1.RecordingRuleGroupSpec{
 								{
 									Record: "record",
+									Labels: map[string]string{
+										ocpMonitoringGroupByLabel: "test-ns",
+									},
 								},
 							},
 						},
@@ -121,6 +140,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: tenantNetwork,
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -136,6 +158,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: tenantNetwork,
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -144,6 +169,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 							Rules: []*lokiv1.RecordingRuleGroupSpec{
 								{
 									Record: "record",
+									Labels: map[string]string{
+										ocpMonitoringGroupByLabel: "test-ns",
+									},
 								},
 							},
 						},
@@ -153,6 +181,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: "unknown",
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -168,6 +199,9 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.RecordingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.RecordingRuleSpec{
 					TenantID: "unknown",
 					Groups: []*lokiv1.RecordingRuleGroup{
@@ -185,7 +219,6 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.rule.Spec.TenantID, func(t *testing.T) {
 			t.Parallel()
 			RecordingRuleTenantLabels(tc.rule)

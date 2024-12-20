@@ -18,8 +18,8 @@ func Test_Lex(t *testing.T) {
 		{`<_1foo>`, []int{IDENTIFIER}},
 		{`<_1foo> bar <buzz>`, []int{IDENTIFIER, LITERAL, LITERAL, LITERAL, LITERAL, LITERAL, IDENTIFIER}},
 		{`<1foo>`, []int{LITERAL, LITERAL, LITERAL, LITERAL, LITERAL, LITERAL}},
+		{`▶`, []int{LITERAL}},
 	} {
-		tc := tc
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
 			l := newLexer()

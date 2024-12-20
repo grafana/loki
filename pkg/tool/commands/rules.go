@@ -8,11 +8,11 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	log "github.com/sirupsen/logrus"
-	"gopkg.in/alecthomas/kingpin.v2"
 	yamlv3 "gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/tool/client"
@@ -628,7 +628,7 @@ func (r *RuleCommand) prepare(_ *kingpin.ParseContext) error {
 	}
 
 	// Do not apply the aggregation label to excluded rule groups.
-	applyTo := func(group rwrulefmt.RuleGroup, rule rulefmt.RuleNode) bool {
+	applyTo := func(group rwrulefmt.RuleGroup, _ rulefmt.RuleNode) bool {
 		_, excluded := r.aggregationLabelExcludedRuleGroupsList[group.Name]
 		return !excluded
 	}
@@ -772,7 +772,7 @@ func save(nss map[string]rules.RuleNamespace, i bool) error {
 			filepath = filepath + ".result"
 		}
 
-		if err := os.WriteFile(filepath, payload, 0644); err != nil {
+		if err := os.WriteFile(filepath, payload, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
 			return err
 		}
 	}

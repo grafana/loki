@@ -176,7 +176,7 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
         step.new('download images')
         + step.withRun(|||
           echo "downloading images to $(pwd)/images"
-          gsutil cp -r gs://loki-build-artifacts/${{ needs.createRelease.outputs.sha }}/images .
+          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/images .
         |||),
         step.new('publish docker images', './lib/actions/push-images')
         + step.with({
@@ -186,19 +186,57 @@ local pullRequestFooter = 'Merging this PR will release the [artifacts](https://
       ]
     ),
 
-  publishRelease: job.new()
-                  + job.withNeeds(['createRelease', 'publishImages'])
-                  + job.withSteps([
-                    common.fetchReleaseRepo,
-                    common.githubAppToken,
-                    common.setToken,
-                    releaseStep('publish release')
-                    + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
-                    + step.withEnv({
-                      GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
-                    })
-                    + step.withRun(|||
-                      gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
-                    |||),
-                  ]),
+  publishDockerPlugins: function(path, getDockerCredsFromVault=false, dockerUsername='grafanabot')
+    job.new()
+    + job.withNeeds(['createRelease'])
+    + job.withSteps(
+      [
+        common.fetchReleaseLib,
+        common.fetchReleaseRepo,
+        common.googleAuth,
+        common.setupGoogleCloudSdk,
+        step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
+        step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+      ] + (if getDockerCredsFromVault then [
+             step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+           ] else [
+             step.new('Login to DockerHub (from secrets)', 'docker/login-action@v3')
+             + step.with({
+               username: dockerUsername,
+               password: '${{ secrets.DOCKER_PASSWORD }}',
+             }),
+           ]) +
+      [
+        step.new('download and prepare plugins')
+        + step.withRun(|||
+          echo "downloading images to $(pwd)/plugins"
+          gsutil cp -r gs://${BUILD_ARTIFACTS_BUCKET}/${{ needs.createRelease.outputs.sha }}/plugins .
+          mkdir -p "release/%s"
+        ||| % path),
+        step.new('publish docker driver', './lib/actions/push-images')
+        + step.with({
+          imageDir: 'plugins',
+          imagePrefix: '${{ env.IMAGE_PREFIX }}',
+          isPlugin: true,
+          buildDir: 'release/%s' % path,
+        }),
+      ]
+    ),
+
+  publishRelease: function(dependencies=['createRelease'])
+    job.new()
+    + job.withNeeds(dependencies)
+    + job.withSteps([
+      common.fetchReleaseRepo,
+      common.githubAppToken,
+      common.setToken,
+      releaseStep('publish release')
+      + step.withIf('${{ !fromJSON(needs.createRelease.outputs.exists) || (needs.createRelease.outputs.draft && fromJSON(needs.createRelease.outputs.draft)) }}')
+      + step.withEnv({
+        GH_TOKEN: '${{ steps.github_app_token.outputs.token }}',
+      })
+      + step.withRun(|||
+        gh release edit ${{ needs.createRelease.outputs.name }} --draft=false --latest=${{ needs.createRelease.outputs.isLatest }}
+      |||),
+    ]),
 }

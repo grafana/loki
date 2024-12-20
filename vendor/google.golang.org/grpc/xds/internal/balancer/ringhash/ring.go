@@ -67,11 +67,15 @@ type ringEntry struct {
 //
 // Must be called with a non-empty subConns map.
 func newRing(subConns *resolver.AddressMap, minRingSize, maxRingSize uint64, logger *grpclog.PrefixLogger) *ring {
-	logger.Debugf("newRing: number of subConns is %d, minRingSize is %d, maxRingSize is %d", subConns.Len(), minRingSize, maxRingSize)
+	if logger.V(2) {
+		logger.Infof("newRing: number of subConns is %d, minRingSize is %d, maxRingSize is %d", subConns.Len(), minRingSize, maxRingSize)
+	}
 
 	// https://github.com/envoyproxy/envoy/blob/765c970f06a4c962961a0e03a467e165b276d50f/source/common/upstream/ring_hash_lb.cc#L114
 	normalizedWeights, minWeight := normalizeWeights(subConns)
-	logger.Debugf("newRing: normalized subConn weights is %v", normalizedWeights)
+	if logger.V(2) {
+		logger.Infof("newRing: normalized subConn weights is %v", normalizedWeights)
+	}
 
 	// Normalized weights for {3,3,4} is {0.3,0.3,0.4}.
 
@@ -82,7 +86,9 @@ func newRing(subConns *resolver.AddressMap, minRingSize, maxRingSize uint64, log
 	scale := math.Min(math.Ceil(minWeight*float64(minRingSize))/minWeight, float64(maxRingSize))
 	ringSize := math.Ceil(scale)
 	items := make([]*ringEntry, 0, int(ringSize))
-	logger.Debugf("newRing: creating new ring of size %v", ringSize)
+	if logger.V(2) {
+		logger.Infof("newRing: creating new ring of size %v", ringSize)
+	}
 
 	// For each entry, scale*weight nodes are generated in the ring.
 	//
@@ -116,30 +122,37 @@ func newRing(subConns *resolver.AddressMap, minRingSize, maxRingSize uint64, log
 	return &ring{items: items}
 }
 
-// normalizeWeights divides all the weights by the sum, so that the total weight
-// is 1.
+// normalizeWeights calculates the normalized weights for each subConn in the
+// given subConns map. It returns a slice of subConnWithWeight structs, where
+// each struct contains a subConn and its corresponding weight. The function
+// also returns the minimum weight among all subConns.
+//
+// The normalized weight of each subConn is calculated by dividing its weight
+// attribute by the sum of all subConn weights. If the weight attribute is not
+// found on the address, a default weight of 1 is used.
+//
+// The addresses are sorted in ascending order to ensure consistent results.
 //
 // Must be called with a non-empty subConns map.
 func normalizeWeights(subConns *resolver.AddressMap) ([]subConnWithWeight, float64) {
 	var weightSum uint32
-	keys := subConns.Keys()
-	for _, a := range keys {
-		weightSum += getWeightAttribute(a)
+	// Since attributes are explicitly ignored in the AddressMap key, we need to
+	// iterate over the values to get the weights.
+	scVals := subConns.Values()
+	for _, a := range scVals {
+		weightSum += a.(*subConn).weight
 	}
-	ret := make([]subConnWithWeight, 0, len(keys))
-	min := float64(1.0)
-	for _, a := range keys {
-		v, _ := subConns.Get(a)
-		scInfo := v.(*subConn)
-		// getWeightAttribute() returns 1 if the weight attribute is not found
-		// on the address. And since this function is guaranteed to be called
-		// with a non-empty subConns map, weightSum is guaranteed to be
-		// non-zero. So, we need not worry about divide a by zero error here.
-		nw := float64(getWeightAttribute(a)) / float64(weightSum)
+	ret := make([]subConnWithWeight, 0, subConns.Len())
+	min := 1.0
+	for _, a := range scVals {
+		scInfo := a.(*subConn)
+		// (*subConn).weight is set to 1 if the weight attribute is not found on
+		// the address. And since this function is guaranteed to be called with
+		// a non-empty subConns map, weightSum is guaranteed to be non-zero. So,
+		// we need not worry about divide by zero error here.
+		nw := float64(scInfo.weight) / float64(weightSum)
 		ret = append(ret, subConnWithWeight{sc: scInfo, weight: nw})
-		if nw < min {
-			min = nw
-		}
+		min = math.Min(min, nw)
 	}
 	// Sort the addresses to return consistent results.
 	//

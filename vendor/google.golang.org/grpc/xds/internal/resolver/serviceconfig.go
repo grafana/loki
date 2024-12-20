@@ -23,13 +23,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/bits"
+	"math/rand"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	xxhash "github.com/cespare/xxhash/v2"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/internal/grpcutil"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/serviceconfig"
@@ -182,7 +182,7 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 			if v := atomic.AddInt32(ref, -1); v == 0 {
 				// This entry will be removed from activeClusters when
 				// producing the service config for the empty update.
-				cs.r.serializer.Schedule(func(context.Context) {
+				cs.r.serializer.TrySchedule(func(context.Context) {
 					cs.r.onClusterRefDownToZero()
 				})
 			}
@@ -274,7 +274,7 @@ func (cs *configSelector) generateHash(rpcInfo iresolver.RPCInfo, hashPolicies [
 	}
 	// If no generated hash return a random long. In the grand scheme of things
 	// this logically will map to choosing a random backend to route request to.
-	return grpcrand.Uint64()
+	return rand.Uint64()
 }
 
 func (cs *configSelector) newInterceptor(rt *route, cluster *routeCluster) (iresolver.ClientInterceptor, error) {
@@ -326,7 +326,7 @@ func (cs *configSelector) stop() {
 	// selector; we need another update to delete clusters from the config (if
 	// we don't have another update pending already).
 	if needUpdate {
-		cs.r.serializer.Schedule(func(context.Context) {
+		cs.r.serializer.TrySchedule(func(context.Context) {
 			cs.r.onClusterRefDownToZero()
 		})
 	}
@@ -336,7 +336,7 @@ type interceptorList struct {
 	interceptors []iresolver.ClientInterceptor
 }
 
-func (il *interceptorList) NewStream(ctx context.Context, ri iresolver.RPCInfo, done func(), newStream func(ctx context.Context, done func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
+func (il *interceptorList) NewStream(ctx context.Context, ri iresolver.RPCInfo, _ func(), newStream func(ctx context.Context, _ func()) (iresolver.ClientStream, error)) (iresolver.ClientStream, error) {
 	for i := len(il.interceptors) - 1; i >= 0; i-- {
 		ns := newStream
 		interceptor := il.interceptors[i]

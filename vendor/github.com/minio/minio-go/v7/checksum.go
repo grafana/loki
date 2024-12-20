@@ -21,10 +21,15 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
+	"errors"
 	"hash"
 	"hash/crc32"
+	"hash/crc64"
 	"io"
 	"math/bits"
+	"net/http"
+	"sort"
 )
 
 // ChecksumType contains information about the checksum type.
@@ -40,9 +45,15 @@ const (
 	ChecksumCRC32
 	// ChecksumCRC32C indicates a CRC32 checksum with Castagnoli table.
 	ChecksumCRC32C
+	// ChecksumCRC64NVME indicates CRC64 with 0xad93d23594c93659 polynomial.
+	ChecksumCRC64NVME
 
 	// Keep after all valid checksums
 	checksumLast
+
+	// ChecksumFullObject is a modifier that can be used on CRC32 and CRC32C
+	// to indicate full object checksums.
+	ChecksumFullObject
 
 	// checksumMask is a mask for valid checksum types.
 	checksumMask = checksumLast - 1
@@ -50,12 +61,24 @@ const (
 	// ChecksumNone indicates no checksum.
 	ChecksumNone ChecksumType = 0
 
-	amzChecksumAlgo   = "x-amz-checksum-algorithm"
-	amzChecksumCRC32  = "x-amz-checksum-crc32"
-	amzChecksumCRC32C = "x-amz-checksum-crc32c"
-	amzChecksumSHA1   = "x-amz-checksum-sha1"
-	amzChecksumSHA256 = "x-amz-checksum-sha256"
+	// ChecksumFullObjectCRC32 indicates full object CRC32
+	ChecksumFullObjectCRC32 = ChecksumCRC32 | ChecksumFullObject
+
+	// ChecksumFullObjectCRC32C indicates full object CRC32C
+	ChecksumFullObjectCRC32C = ChecksumCRC32C | ChecksumFullObject
+
+	amzChecksumAlgo      = "x-amz-checksum-algorithm"
+	amzChecksumCRC32     = "x-amz-checksum-crc32"
+	amzChecksumCRC32C    = "x-amz-checksum-crc32c"
+	amzChecksumSHA1      = "x-amz-checksum-sha1"
+	amzChecksumSHA256    = "x-amz-checksum-sha256"
+	amzChecksumCRC64NVME = "x-amz-checksum-crc64nvme"
 )
+
+// Base returns the base type, without modifiers.
+func (c ChecksumType) Base() ChecksumType {
+	return c & checksumMask
+}
 
 // Is returns if c is all of t.
 func (c ChecksumType) Is(t ChecksumType) bool {
@@ -74,8 +97,42 @@ func (c ChecksumType) Key() string {
 		return amzChecksumSHA1
 	case ChecksumSHA256:
 		return amzChecksumSHA256
+	case ChecksumCRC64NVME:
+		return amzChecksumCRC64NVME
 	}
 	return ""
+}
+
+// CanComposite will return if the checksum type can be used for composite multipart upload on AWS.
+func (c ChecksumType) CanComposite() bool {
+	switch c & checksumMask {
+	case ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, ChecksumCRC32C:
+		return true
+	}
+	return false
+}
+
+// CanMergeCRC will return if the checksum type can be used for multipart upload on AWS.
+func (c ChecksumType) CanMergeCRC() bool {
+	switch c & checksumMask {
+	case ChecksumCRC32, ChecksumCRC32C, ChecksumCRC64NVME:
+		return true
+	}
+	return false
+}
+
+// FullObjectRequested will return if the checksum type indicates full object checksum was requested.
+func (c ChecksumType) FullObjectRequested() bool {
+	switch c & (ChecksumFullObject | checksumMask) {
+	case ChecksumFullObjectCRC32C, ChecksumFullObjectCRC32, ChecksumCRC64NVME:
+		return true
+	}
+	return false
+}
+
+// KeyCapitalized returns the capitalized key as used in HTTP headers.
+func (c ChecksumType) KeyCapitalized() string {
+	return http.CanonicalHeaderKey(c.Key())
 }
 
 // RawByteLen returns the size of the un-encoded checksum.
@@ -87,9 +144,16 @@ func (c ChecksumType) RawByteLen() int {
 		return sha1.Size
 	case ChecksumSHA256:
 		return sha256.Size
+	case ChecksumCRC64NVME:
+		return crc64.Size
 	}
 	return 0
 }
+
+const crc64NVMEPolynomial = 0xad93d23594c93659
+
+// crc64 uses reversed polynomials.
+var crc64Table = crc64.MakeTable(bits.Reverse64(crc64NVMEPolynomial))
 
 // Hasher returns a hasher corresponding to the checksum type.
 // Returns nil if no checksum.
@@ -103,13 +167,32 @@ func (c ChecksumType) Hasher() hash.Hash {
 		return sha1.New()
 	case ChecksumSHA256:
 		return sha256.New()
+	case ChecksumCRC64NVME:
+		return crc64.New(crc64Table)
 	}
 	return nil
 }
 
 // IsSet returns whether the type is valid and known.
 func (c ChecksumType) IsSet() bool {
-	return bits.OnesCount32(uint32(c)) == 1
+	return bits.OnesCount32(uint32(c&checksumMask)) == 1
+}
+
+// SetDefault will set the checksum if not already set.
+func (c *ChecksumType) SetDefault(t ChecksumType) {
+	if !c.IsSet() {
+		*c = t
+	}
+}
+
+// EncodeToString the encoded hash value of the content provided in b.
+func (c ChecksumType) EncodeToString(b []byte) string {
+	if !c.IsSet() {
+		return ""
+	}
+	h := c.Hasher()
+	h.Write(b)
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }
 
 // String returns the type as a string.
@@ -127,6 +210,8 @@ func (c ChecksumType) String() string {
 		return "SHA256"
 	case ChecksumNone:
 		return ""
+	case ChecksumCRC64NVME:
+		return "CRC64NVME"
 	}
 	return "<invalid>"
 }
@@ -207,4 +292,130 @@ func (c Checksum) Raw() []byte {
 		return nil
 	}
 	return c.r
+}
+
+// CompositeChecksum returns the composite checksum of all provided parts.
+func (c ChecksumType) CompositeChecksum(p []ObjectPart) (*Checksum, error) {
+	if !c.CanComposite() {
+		return nil, errors.New("cannot do composite checksum")
+	}
+	sort.Slice(p, func(i, j int) bool {
+		return p[i].PartNumber < p[j].PartNumber
+	})
+	c = c.Base()
+	crcBytes := make([]byte, 0, len(p)*c.RawByteLen())
+	for _, part := range p {
+		pCrc, err := part.ChecksumRaw(c)
+		if err != nil {
+			return nil, err
+		}
+		crcBytes = append(crcBytes, pCrc...)
+	}
+	h := c.Hasher()
+	h.Write(crcBytes)
+	return &Checksum{Type: c, r: h.Sum(nil)}, nil
+}
+
+// FullObjectChecksum will return the full object checksum from provided parts.
+func (c ChecksumType) FullObjectChecksum(p []ObjectPart) (*Checksum, error) {
+	if !c.CanMergeCRC() {
+		return nil, errors.New("cannot merge this checksum type")
+	}
+	c = c.Base()
+	sort.Slice(p, func(i, j int) bool {
+		return p[i].PartNumber < p[j].PartNumber
+	})
+
+	switch len(p) {
+	case 0:
+		return nil, errors.New("no parts given")
+	case 1:
+		check, err := p[0].ChecksumRaw(c)
+		if err != nil {
+			return nil, err
+		}
+		return &Checksum{
+			Type: c,
+			r:    check,
+		}, nil
+	}
+	var merged uint32
+	var merged64 uint64
+	first, err := p[0].ChecksumRaw(c)
+	if err != nil {
+		return nil, err
+	}
+	sz := p[0].Size
+	switch c {
+	case ChecksumCRC32, ChecksumCRC32C:
+		merged = binary.BigEndian.Uint32(first)
+	case ChecksumCRC64NVME:
+		merged64 = binary.BigEndian.Uint64(first)
+	}
+
+	poly32 := uint32(crc32.IEEE)
+	if c.Is(ChecksumCRC32C) {
+		poly32 = crc32.Castagnoli
+	}
+	for _, part := range p[1:] {
+		if part.Size == 0 {
+			continue
+		}
+		sz += part.Size
+		pCrc, err := part.ChecksumRaw(c)
+		if err != nil {
+			return nil, err
+		}
+		switch c {
+		case ChecksumCRC32, ChecksumCRC32C:
+			merged = crc32Combine(poly32, merged, binary.BigEndian.Uint32(pCrc), part.Size)
+		case ChecksumCRC64NVME:
+			merged64 = crc64Combine(bits.Reverse64(crc64NVMEPolynomial), merged64, binary.BigEndian.Uint64(pCrc), part.Size)
+		}
+	}
+	var tmp [8]byte
+	switch c {
+	case ChecksumCRC32, ChecksumCRC32C:
+		binary.BigEndian.PutUint32(tmp[:], merged)
+		return &Checksum{
+			Type: c,
+			r:    tmp[:4],
+		}, nil
+	case ChecksumCRC64NVME:
+		binary.BigEndian.PutUint64(tmp[:], merged64)
+		return &Checksum{
+			Type: c,
+			r:    tmp[:8],
+		}, nil
+	default:
+		return nil, errors.New("unknown checksum type")
+	}
+}
+
+func addAutoChecksumHeaders(opts *PutObjectOptions) {
+	if opts.UserMetadata == nil {
+		opts.UserMetadata = make(map[string]string, 1)
+	}
+	opts.UserMetadata["X-Amz-Checksum-Algorithm"] = opts.AutoChecksum.String()
+	if opts.AutoChecksum.FullObjectRequested() {
+		opts.UserMetadata["X-Amz-Checksum-Type"] = "FULL_OBJECT"
+	}
+}
+
+func applyAutoChecksum(opts *PutObjectOptions, allParts []ObjectPart) {
+	if !opts.AutoChecksum.IsSet() {
+		return
+	}
+	if opts.AutoChecksum.CanComposite() && !opts.AutoChecksum.Is(ChecksumFullObject) {
+		// Add composite hash of hashes.
+		crc, err := opts.AutoChecksum.CompositeChecksum(allParts)
+		if err == nil {
+			opts.UserMetadata = map[string]string{opts.AutoChecksum.Key(): crc.Encoded()}
+		}
+	} else if opts.AutoChecksum.CanMergeCRC() {
+		crc, err := opts.AutoChecksum.FullObjectChecksum(allParts)
+		if err == nil {
+			opts.UserMetadata = map[string]string{opts.AutoChecksum.KeyCapitalized(): crc.Encoded(), "X-Amz-Checksum-Type": "FULL_OBJECT"}
+		}
+	}
 }

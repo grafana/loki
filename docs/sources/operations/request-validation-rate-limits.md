@@ -16,7 +16,7 @@ It is recommended that Loki operators set up alerts or dashboards with these met
 
 ### Terminology
 
-- **sample**: a log line
+- **sample**: a log line with [structured metadata]({{< relref "../get-started/labels/structured-metadata" >}})
 - **stream**: samples with a unique combination of labels 
 - **active stream**: streams that are present in the ingesters - these have recently received log lines within the `chunk_idle_period` period (default: 30m)
 
@@ -129,7 +129,7 @@ This validation error is returned when a stream is submitted without any labels.
 
 The `too_far_behind` and `out_of_order` reasons are identical. Loki clusters with `unordered_writes=true` (the default value as of Loki v2.4) use `reason=too_far_behind`. Loki clusters with `unordered_writes=false` use `reason=out_of_order`.
 
-This validation error is returned when a stream is submitted out of order. More details can be found [here](/docs/loki/<LOKI_VERSION>/configuration/#accept-out-of-order-writes) about Loki's ordering constraints.
+This validation error is returned when a stream is submitted out of order. More details can be found [here](/docs/loki/<LOKI_VERSION>/configuration/#accept-out-of-order-writes) about the Loki ordering constraints.
 
 The `unordered_writes` config value can be modified globally in the [`limits_config`](/docs/loki/<LOKI_VERSION>/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](/docs/loki/<LOKI_VERSION>/configuration/#runtime-configuration-file) file, whereas `max_chunk_age` is a global configuration.
 

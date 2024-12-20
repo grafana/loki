@@ -1,20 +1,16 @@
 package v1
 
 import (
-	"fmt"
 	"math"
-	"time"
 
-	"github.com/c2h5oh/datasize"
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
-
-	"github.com/grafana/dskit/multierror"
 
 	"github.com/grafana/loki/v3/pkg/iter"
-
+	v2iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/util/encoding"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 /*
@@ -25,10 +21,10 @@ Bloom filters are utilized for faster lookups of log lines.
 */
 type BloomTokenizer struct {
 	metrics *Metrics
+	logger  log.Logger
 
-	maxBloomSize  int
-	lineTokenizer *NGramTokenizer
-	cache         map[string]interface{}
+	maxBloomSize int // size in bytes
+	cache        map[string]interface{}
 }
 
 const cacheSize = 150000
@@ -40,49 +36,13 @@ const eightBits = 8
 // 1) The token slices generated must not be mutated externally
 // 2) The token slice must not be used after the next call to `Tokens()` as it will repopulate the slice.
 // 2) This is not thread safe.
-func NewBloomTokenizer(nGramLen, nGramSkip int, maxBloomSize int, metrics *Metrics) *BloomTokenizer {
-	// TODO(chaudum): Replace logger
-	level.Info(util_log.Logger).Log("msg", "create new bloom tokenizer", "ngram length", nGramLen, "ngram skip", nGramSkip)
+func NewBloomTokenizer(maxBloomSize int, metrics *Metrics, logger log.Logger) *BloomTokenizer {
 	return &BloomTokenizer{
-		metrics:       metrics,
-		cache:         make(map[string]interface{}, cacheSize),
-		lineTokenizer: NewNGramTokenizer(nGramLen, nGramSkip),
-		maxBloomSize:  maxBloomSize,
+		metrics:      metrics,
+		logger:       logger,
+		cache:        make(map[string]interface{}, cacheSize),
+		maxBloomSize: maxBloomSize,
 	}
-}
-
-func (bt *BloomTokenizer) N() uint64 {
-	return uint64(bt.lineTokenizer.N())
-}
-
-func (bt *BloomTokenizer) SkipFactor() uint64 {
-	return uint64(bt.lineTokenizer.SkipFactor())
-}
-
-func clearCache(cache map[string]interface{}) {
-	clear(cache)
-}
-
-// prefixedToken returns a byte slice with sufficient capacity for a chunk-ref prefixed token
-// of specific ngram length, along with the length of the prefix.
-// It ensures enough capacity for the prefix and the token so additional tokens can be created
-// without allocations by appending them to the prefix length
-// If the buffer is nil or too small, a new one is created. The buffer is returned for reuse.
-func prefixedToken(ngram int, chk ChunkRef, buf []byte) ([]byte, int) {
-	enc := encoding.EncWith(buf)
-	enc.Reset()
-	enc.PutBE64(uint64(chk.From))
-	enc.PutBE64(uint64(chk.Through))
-	enc.PutBE32(chk.Checksum)
-	prefixLn := enc.Len() // record the length of the prefix
-
-	// If the buffer is too small, ensure enough capacity for the ngram
-	if cap(enc.Get()) < prefixLn+ngram*MaxRuneLen {
-		enc.PutBytes(make([]byte, ngram*MaxRuneLen))
-	}
-
-	// return the underlying byte slice and the length of the prefix
-	return enc.Get(), prefixLn
 }
 
 // ChunkRefWithIter is a wrapper around a ChunkRef and an EntryIterator.
@@ -91,153 +51,172 @@ type ChunkRefWithIter struct {
 	Itr iter.EntryIterator
 }
 
-// Populate adds the tokens from the given chunks to the given seriesWithBloom.
-// The `skip` return value indicates whether this series should be discarded and is used to short-circuit
-// bloom generation for series that are too large. We will undoubtedly improve this in the future.
-func (bt *BloomTokenizer) Populate(swb *SeriesWithBloom, chks Iterator[ChunkRefWithIter]) (bytesAdded int, skip bool, err error) {
-	startTime := time.Now().UnixMilli()
+// n ≈ −m ln(1 − p).
+func estimatedCount(m uint, p float64) uint {
+	return uint(-float64(m) * math.Log(1-p))
+}
 
-	clearCache(bt.cache)
+// Populates a bloom filter(s) with the tokens from the given chunks.
+// Called once per series
+func (bt *BloomTokenizer) Populate(blooms v2iter.SizedIterator[*Bloom], chks v2iter.Iterator[ChunkRefWithIter], ch chan *BloomCreation) {
+	clear(bt.cache) // MUST always clear the cache before starting a new series
+	var next bool
 
-	var (
-		tokenBuf []byte
-		prefixLn int
-		// TODO(owen-d): slightly more efficient to expose the
-		// UncompressedSize() method on the chunk interface and use that
-		sourceBytes int // source bytes processed
-	)
-	// Iterate over chunks
-	for chks.Next() && chks.Err() == nil {
+	// All but the last bloom are considered full -- send back unaltered
+	for next = blooms.Next(); next && blooms.Remaining() > 0; next = blooms.Next() {
+		ch <- &BloomCreation{
+			Bloom: blooms.At(),
+			Info:  newIndexingInfo(),
+		}
+	}
 
-		var (
-			tokens                 int
-			successfulInserts      int
-			cachedInserts          int
-			collisionInserts       int
-			chunkSuccessfulInserts int
-			chunkCachedInserts     int
-			chunkCollisionInserts  int
-			chunkBytes             int
-			chk                    = chks.At()
-			itr                    = chk.Itr
-		)
-		tokenBuf, prefixLn = prefixedToken(bt.lineTokenizer.N(), chk.Ref, tokenBuf)
+	var bloom *Bloom
+	if next {
+		// The last bloom has been made available via the `Next()` call above
+		bloom = blooms.At()
 
-		// Iterate over lines in the chunk
-	entries:
-		for itr.Next() && itr.Error() == nil {
-			// TODO(owen-d): rather than iterate over the line twice, once for prefixed tokenizer & once for
-			// raw tokenizer, we could iterate once and just return (prefix, token) pairs from the tokenizer.
-			// Double points for them being different-ln references to the same data.
-			line := itr.Entry().Line
-			chunkBytes += len(line)
+		// TODO(salvacorts): Delete this once we solve the correctness bug
+		// We noticed some blooms are empty on the resulting blocks.
+		// We have the feeling that the empty blooms may be reused from old blocks.
+		// Here we log an error if we find an empty bloom.
+		if bloom.IsEmpty() {
+			level.Warn(bt.logger).Log("msg", "found existing empty bloom")
+		}
+	} else {
+		bloom = NewBloom()
+	}
 
-			tokenItrs := []Iterator[[]byte]{
-				// two iterators, one for the raw tokens and one for the chunk prefixed tokens.
-				// Warning: the underlying line tokenizer (used in both iterators) uses the same buffer for tokens.
-				// They are NOT SAFE for concurrent use.
-				NewPrefixedTokenIter(tokenBuf, prefixLn, bt.lineTokenizer.Tokens(line)),
-				bt.lineTokenizer.Tokens(line),
+	info := newIndexingInfo()
+
+	for chks.Next() {
+		chk := chks.At()
+		itr := v2iter.NewPeekIter(chk.Itr)
+
+		for {
+			full, chunkStats := bt.addChunkToBloom(bloom, chk.Ref, itr)
+			info = info.merge(chunkStats)
+
+			// If a bloom is full, the chunk wasn't completely added
+			// so we'll submit this bloom, start a new one, and continue indexing
+			if full {
+				bt.sendBloom(ch, bloom, info)
+
+				// start a new bloom + reset stats
+				info = newIndexingInfo()
+				bloom = NewBloom()
+
+				// cache _MUST_ be cleared when a new bloom is created to ensure that all tokens from
+				// each line are indexed into at least one bloom
+				clear(bt.cache)
+				continue
 			}
 
-			for _, itr := range tokenItrs {
-				for itr.Next() {
-					tok := itr.At()
-					tokens++
-					// TODO(owen-d): [n]byte this
-					str := string(tok)
-					_, found := bt.cache[str] // A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
-					if found {
-						cachedInserts++
-						continue
-					}
-
-					bt.cache[str] = nil
-					collision, sz := swb.Bloom.ScalableBloomFilter.HeavyAdd(tok)
-					if collision {
-						collisionInserts++
-					} else {
-						successfulInserts++
-					}
-
-					if bt.maxBloomSize > 0 && sz > bt.maxBloomSize {
-						skip = true
-						break entries
-					}
-
-					if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
-						clearCache(bt.cache)
-					}
-				}
-
-			}
-		}
-
-		// add the recorded chunkbytes to the sourcebytes counter in case we return early via error
-		sourceBytes += chunkBytes
-
-		var es multierror.MultiError
-		if err := itr.Close(); err != nil {
-			es.Add(errors.Wrapf(err, "error closing chunk: %#v", chk.Ref))
-		}
-		if err := itr.Error(); err != nil {
-			es.Add(errors.Wrapf(err, "error iterating chunk: %#v", chk.Ref))
-		}
-		if combined := es.Err(); combined != nil {
-			return sourceBytes, skip, combined
-		}
-		swb.Series.Chunks = append(swb.Series.Chunks, chk.Ref)
-
-		// update metrics after each chunk added for more consistent reporting
-		bt.metrics.tokensTotal.Add(float64(tokens))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeFalse).Add(float64(successfulInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeCache).Add(float64(cachedInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeRaw, collisionTypeTrue).Add(float64(collisionInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeFalse).Add(float64(chunkSuccessfulInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeCache).Add(float64(chunkCachedInserts))
-		bt.metrics.insertsTotal.WithLabelValues(tokenTypeChunkPrefixed, collisionTypeTrue).Add(float64(chunkCollisionInserts))
-		bt.metrics.sourceBytesAdded.Add(float64(chunkBytes))
-
-		// Exit early if the series is too large
-		if skip {
 			break
 		}
 	}
 
-	if err := chks.Err(); err != nil {
-		level.Error(util_log.Logger).Log("msg", "error downloading chunks batch", "err", err)
-		return sourceBytes, skip, fmt.Errorf("error downloading chunks batch: %w", err)
+	// TODO(salvacorts): Delete this once we solve the correctness bug
+	if bloom.IsEmpty() {
+		level.Warn(bt.logger).Log("msg", "resulting bloom is empty")
 	}
 
-	level.Debug(util_log.Logger).Log(
-		"msg", "bloom filter populated",
-		"chunks", len(swb.Series.Chunks),
-		"fp", swb.Series.Fingerprint,
-		"sourceBytes", datasize.ByteSize(sourceBytes).HumanReadable(),
-		"bloomSize", datasize.ByteSize(swb.Bloom.Capacity()/8).HumanReadable(),
-		"skipped", skip,
-	)
-
-	endTime := time.Now().UnixMilli()
-
-	fillRatio := swb.Bloom.ScalableBloomFilter.FillRatio()
-	bt.metrics.hammingWeightRatio.Observe(fillRatio)
-	bt.metrics.estimatedCount.Observe(
-		float64(estimatedCount(swb.Bloom.ScalableBloomFilter.Capacity(), fillRatio)),
-	)
-	bt.metrics.bloomSize.Observe(float64(swb.Bloom.ScalableBloomFilter.Capacity() / eightBits))
-
-	ty := bloomCreationTypeIndexed
-	if skip {
-		ty = bloomCreationTypeSkipped
-	}
-	bt.metrics.sbfCreationTime.WithLabelValues(ty).Add(float64(endTime - startTime))
-	bt.metrics.bloomsTotal.WithLabelValues(ty).Inc()
-
-	return sourceBytes, skip, nil
+	// Send the last bloom
+	bt.sendBloom(ch, bloom, info)
+	close(ch)
 }
 
-// n ≈ −m ln(1 − p).
-func estimatedCount(m uint, p float64) uint {
-	return uint(-float64(m) * math.Log(1-p))
+func (bt *BloomTokenizer) sendBloom(ch chan<- *BloomCreation, bloom *Bloom, info indexingInfo) {
+	fillRatio := bloom.FillRatio()
+	bt.metrics.hammingWeightRatio.Observe(fillRatio)
+	bt.metrics.estimatedCount.Observe(
+		float64(estimatedCount(bloom.Capacity(), fillRatio)),
+	)
+	bt.metrics.bloomSize.Observe(float64(bloom.Capacity() / eightBits))
+	bt.metrics.bloomsTotal.Inc()
+	ch <- &BloomCreation{
+		Bloom: bloom,
+		Info:  info,
+	}
+}
+
+func prefixForChunkRef(chk ChunkRef) []byte {
+	enc := encoding.EncWith(make([]byte, 0, 20))
+	enc.PutBE64(uint64(chk.From))    // 8 bytes
+	enc.PutBE64(uint64(chk.Through)) // 8 bytes
+	enc.PutBE32(chk.Checksum)        // 4 bytes
+	return enc.Get()
+}
+
+// addChunkToBloom adds the values from structured metadata from the entries of the given chunk to the given bloom.
+// addChunkToBloom returns true if the bloom has been completely filled, and may not have consumed the entire iterator.
+// addChunkToBloom must be called multiple times until returning false with new blooms until the iterator has been fully consumed.
+func (bt *BloomTokenizer) addChunkToBloom(bloom *Bloom, ref ChunkRef, entryIter v2iter.PeekIterator[push.Entry]) (bool, indexingInfo) {
+	var (
+		tokens            int
+		successfulInserts int
+		cachedInserts     int
+		collisionInserts  int
+		linesAdded        int
+
+		collision bool
+	)
+
+	// return values
+	full, info := false, newIndexingInfo()
+
+	tokenizer := NewStructuredMetadataTokenizer(string(prefixForChunkRef(ref)))
+
+	// We use a peeking iterator to avoid advancing the iterator until we're sure the bloom has accepted the line.
+	for entry, ok := entryIter.Peek(); ok; entry, ok = entryIter.Peek() {
+		for _, kv := range entry.StructuredMetadata {
+			info.sourceBytes += len(kv.Name) + len(kv.Value)
+			info.indexedFields.Add(Field(kv.Name))
+
+			tokenItr := tokenizer.Tokens(kv)
+			for tokenItr.Next() {
+				tok := tokenItr.At()
+				tokens++
+
+				// A cache is used ahead of the SBF, as it cuts out the costly operations of scaling bloom filters
+				if _, found := bt.cache[tok]; found {
+					cachedInserts++
+					continue
+				}
+
+				// maxBloomSize is in bytes, but blooms operate at the bit level; adjust
+				collision, full = bloom.TestAndAddWithMaxSize([]byte(tok), bt.maxBloomSize*eightBits)
+
+				if collision {
+					collisionInserts++
+				} else {
+					successfulInserts++
+				}
+
+				// only register the key in the cache if it was successfully added to the bloom
+				// as can prevent us from trying subsequent copies
+				bt.cache[tok] = nil
+				if len(bt.cache) >= cacheSize { // While crude, this has proven efficient in performance testing.  This speaks to the similarity in log lines near each other
+					clear(bt.cache)
+				}
+			}
+		}
+
+		// Only advance the iterator once we're sure the bloom has accepted the line
+		linesAdded++
+		_ = entryIter.Next()
+
+		// Only break out of the loop if the bloom filter is full after indexing all structured metadata of an entry.
+		if full {
+			break
+		}
+	}
+
+	// update metrics after each chunk added for more consistent reporting
+	bt.metrics.tokensTotal.Add(float64(tokens))
+	bt.metrics.insertsTotal.WithLabelValues(collisionTypeFalse).Add(float64(successfulInserts))
+	bt.metrics.insertsTotal.WithLabelValues(collisionTypeCache).Add(float64(cachedInserts))
+	bt.metrics.insertsTotal.WithLabelValues(collisionTypeTrue).Add(float64(collisionInserts))
+	bt.metrics.sourceBytesAdded.Add(float64(info.sourceBytes))
+
+	return full, info
 }

@@ -36,7 +36,7 @@ type Cache interface {
 	Put(ctx context.Context, key string, value BlockDirectory) error
 	PutInc(ctx context.Context, key string, value BlockDirectory) error
 	PutMany(ctx context.Context, keys []string, values []BlockDirectory) error
-	Get(ctx context.Context, key string) (BlockDirectory, bool)
+	Get(ctx context.Context, key string, opts ...CacheGetOption) (BlockDirectory, bool)
 	Release(ctx context.Context, key string) error
 	Stop()
 }
@@ -272,6 +272,10 @@ func (c *BlocksCache) put(key string, value BlockDirectory) (*Entry, error) {
 
 func (c *BlocksCache) evict(key string, element *list.Element, reason string) {
 	entry := element.Value.(*Entry)
+	if key != entry.Key {
+		level.Error(c.logger).Log("msg", "failed to remove entry: entry key and map key do not match", "map_key", key, "entry_key", entry.Key)
+		return
+	}
 	err := c.remove(entry)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to remove entry from disk", "err", err)
@@ -284,27 +288,50 @@ func (c *BlocksCache) evict(key string, element *list.Element, reason string) {
 	c.metrics.entriesEvicted.WithLabelValues(reason).Inc()
 }
 
+type cacheGetOptions struct {
+	ReportHitMiss bool
+}
+
+func (o *cacheGetOptions) apply(options ...CacheGetOption) {
+	for _, opt := range options {
+		opt(o)
+	}
+}
+
+type CacheGetOption func(opts *cacheGetOptions)
+
+func WithSkipHitMissMetrics(v bool) CacheGetOption {
+	return func(opts *cacheGetOptions) {
+		opts.ReportHitMiss = !v
+	}
+}
+
 // Get implements Cache.
 // Get returns the stored value against the given key.
-func (c *BlocksCache) Get(ctx context.Context, key string) (BlockDirectory, bool) {
+func (c *BlocksCache) Get(ctx context.Context, key string, opts ...CacheGetOption) (BlockDirectory, bool) {
 	if ctx.Err() != nil {
 		return BlockDirectory{}, false
 	}
 
+	opt := &cacheGetOptions{ReportHitMiss: true}
+	opt.apply(opts...)
+
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	entry := c.get(key)
+	entry := c.get(key, opt)
 	if entry == nil {
 		return BlockDirectory{}, false
 	}
 	return entry.Value, true
 }
 
-func (c *BlocksCache) get(key string) *Entry {
+func (c *BlocksCache) get(key string, opt *cacheGetOptions) *Entry {
 	element, exists := c.entries[key]
 	if !exists {
-		c.metrics.misses.Inc()
+		if opt.ReportHitMiss {
+			c.metrics.misses.Inc()
+		}
 		return nil
 	}
 
@@ -313,7 +340,10 @@ func (c *BlocksCache) get(key string) *Entry {
 
 	c.lru.MoveToFront(element)
 
-	c.metrics.hits.Inc()
+	if opt.ReportHitMiss {
+		c.metrics.hits.Inc()
+	}
+
 	return entry
 }
 
@@ -400,6 +430,7 @@ func (c *BlocksCache) evictLeastRecentlyUsedItems() {
 	)
 	elem := c.lru.Back()
 	for c.currSizeBytes >= int64(c.cfg.SoftLimit) && elem != nil {
+		nextElem := elem.Prev()
 		entry := elem.Value.(*Entry)
 		if entry.refCount.Load() == 0 {
 			level.Debug(c.logger).Log(
@@ -408,7 +439,7 @@ func (c *BlocksCache) evictLeastRecentlyUsedItems() {
 			)
 			c.evict(entry.Key, elem, reasonFull)
 		}
-		elem = elem.Prev()
+		elem = nextElem
 	}
 }
 

@@ -99,7 +99,7 @@ func (t *tableCompactor) CompactTable() error {
 	downloadPaths := make([]string, len(multiTenantIndexes))
 
 	// concurrently download and open all the multi-tenant indexes
-	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(ctx context.Context, job int) error {
+	err := concurrency.ForEachJob(t.ctx, len(multiTenantIndexes), readDBsConcurrency, func(_ context.Context, job int) error {
 		downloadedAt, err := t.commonIndexSet.GetSourceFile(multiTenantIndexes[job])
 		if err != nil {
 			return err
@@ -409,5 +409,5 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 }
 
 func getUnsafeBytes(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s)))
+	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated
 }

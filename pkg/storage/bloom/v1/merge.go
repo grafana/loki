@@ -1,11 +1,15 @@
 package v1
 
+import (
+	iter "github.com/grafana/loki/v3/pkg/iter/v2"
+)
+
 // HeapIterator is a heap implementation of BlockQuerier backed by multiple blocks
 // It is used to merge multiple blocks into a single ordered querier
 // NB(owen-d): it uses a custom heap implementation because Pop() only returns a single
 // value of the top-most iterator, rather than the iterator itself
 type HeapIterator[T any] struct {
-	itrs []PeekingIterator[T]
+	itrs []iter.PeekIterator[T]
 	less func(T, T) bool
 
 	zero  T // zero value of T
@@ -13,16 +17,16 @@ type HeapIterator[T any] struct {
 	ok    bool
 }
 
-func NewHeapIterForSeriesWithBloom(queriers ...PeekingIterator[*SeriesWithBloom]) *HeapIterator[*SeriesWithBloom] {
+func NewHeapIterForSeriesWithBloom(queriers ...iter.PeekIterator[*SeriesWithBlooms]) *HeapIterator[*SeriesWithBlooms] {
 	return NewHeapIterator(
-		func(a, b *SeriesWithBloom) bool {
+		func(a, b *SeriesWithBlooms) bool {
 			return a.Series.Fingerprint < b.Series.Fingerprint
 		},
 		queriers...,
 	)
 }
 
-func NewHeapIterator[T any](less func(T, T) bool, itrs ...PeekingIterator[T]) *HeapIterator[T] {
+func NewHeapIterator[T any](less func(T, T) bool, itrs ...iter.PeekIterator[T]) *HeapIterator[T] {
 	res := &HeapIterator[T]{
 		itrs: itrs,
 		less: less,
@@ -63,11 +67,6 @@ func (mbq *HeapIterator[T]) Err() error {
 
 func (mbq *HeapIterator[T]) At() T {
 	return mbq.cache
-}
-
-func (mbq *HeapIterator[T]) push(x PeekingIterator[T]) {
-	mbq.itrs = append(mbq.itrs, x)
-	mbq.up(mbq.Len() - 1)
 }
 
 func (mbq *HeapIterator[T]) pop() (T, bool) {

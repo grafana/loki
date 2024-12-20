@@ -17,7 +17,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loki"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -98,7 +98,7 @@ func main() {
 }
 
 func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMetrics storage.ClientMetrics, tableRange config.TableRange) error {
-	objClient, err := storage.NewObjectClient(pCfg.ObjectType, storageCfg, clientMetrics)
+	objClient, err := storage.NewObjectClient(pCfg.ObjectType, "tsdb-migrate", storageCfg, clientMetrics)
 	if err != nil {
 		return err
 	}
@@ -257,8 +257,9 @@ func uploadFile(idx shipperindex.Index, indexStorageClient shipperstorage.Client
 		}
 	}()
 
-	compressedWriter := chunkenc.Gzip.GetWriter(f)
-	defer chunkenc.Gzip.PutWriter(compressedWriter)
+	gzipPool := compression.GetWriterPool(compression.GZIP)
+	compressedWriter := gzipPool.GetWriter(f)
+	defer gzipPool.PutWriter(compressedWriter)
 
 	idxReader, err := idx.Reader()
 	if err != nil {

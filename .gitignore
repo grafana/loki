@@ -34,6 +34,10 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
+tools/lambda-promtail/main
+
+# Submodule added by `act` CLI
+_shared-workflows-dockerhub-login
 
 # Workspaces
 *.work
@@ -56,3 +60,9 @@ nix/result
 
 # snyk
 .dccache
+
+# helm test
+production/helm/loki/src/helm-test/helm-test
+
+# Go telemetry
+.config
