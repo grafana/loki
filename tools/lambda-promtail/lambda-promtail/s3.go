@@ -252,6 +252,7 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 
 	labels["key"] = record.S3.Object.Key
 	labels["bucket"] = record.S3.Bucket.Name
+	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
 	labels["bucket_region"] = record.AWSRegion
 	for key, p := range parsers {
 		if p.filenameRegex.MatchString(labels["key"]) {
