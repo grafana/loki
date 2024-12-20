@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -221,4 +222,20 @@ func DecodeResponse(target interface{}, res *http.Response) error {
 		return nil
 	}
 	return json.NewDecoder(res.Body).Decode(target)
+}
+
+// DecodeResponseBytes decodes the body of res into target and returns bytes read
+// from the body. If there is no body, target is unchanged.
+func DecodeResponseBytes(target interface{}, res *http.Response) ([]byte, error) {
+	if res.StatusCode == http.StatusNoContent {
+		return nil, nil
+	}
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, target); err != nil {
+		return nil, err
+	}
+	return b, nil
 }

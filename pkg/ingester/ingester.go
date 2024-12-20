@@ -335,7 +335,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
 	if cfg.WAL.Enabled {
-		if err := os.MkdirAll(cfg.WAL.Dir, os.ModePerm); err != nil {
+		if err := os.MkdirAll(cfg.WAL.Dir, 0o750); err != nil {
 			// Best effort try to make path absolute for easier debugging.
 			path, _ := filepath.Abs(cfg.WAL.Dir)
 			if path == "" {
@@ -384,7 +384,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			cfg.KafkaIngestion.KafkaConfig,
 			i.ingestPartitionID,
 			cfg.LifecyclerConfig.ID,
-			NewKafkaConsumerFactory(i, logger, registerer),
+			NewKafkaConsumerFactory(i, registerer),
 			logger,
 			registerer,
 		)
@@ -759,7 +759,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG.
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 

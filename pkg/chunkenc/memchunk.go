@@ -1449,7 +1449,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 type bufferedIterator struct {

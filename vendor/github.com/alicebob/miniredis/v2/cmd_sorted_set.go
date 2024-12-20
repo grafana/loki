@@ -433,9 +433,6 @@ func (m *Miniredis) makeCmdZinter(store bool) func(c *server.Peer, cmd string, a
 
 		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 			db := m.db(ctx.selectedDB)
-			if opts.Store {
-				db.del(opts.Destination, true)
-			}
 
 			// We collect everything and remove all keys which turned out not to be
 			// present in every set.
@@ -493,6 +490,7 @@ func (m *Miniredis) makeCmdZinter(store bool) func(c *server.Peer, cmd string, a
 
 			if opts.Store {
 				// ZINTERSTORE mode
+				db.del(opts.Destination, true)
 				db.ssetSet(opts.Destination, sset)
 				c.WriteInt(len(sset))
 				return
@@ -827,6 +825,12 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 		withTx(m, c, func(c *server.Peer, ctx *connCtx) {
 			db := m.db(ctx.selectedDB)
 
+			withScore := false
+			if len(args) > 0 && strings.ToUpper(args[len(args)-1]) == "WITHSCORE" {
+				withScore = true
+				args = args[:len(args)-1]
+			}
+
 			if len(args) > 2 {
 				setDirty(c)
 				c.WriteError(msgSyntaxError)
@@ -834,7 +838,11 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 			}
 
 			if !db.exists(key) {
-				c.WriteNull()
+				if withScore {
+					c.WriteLen(-1)
+				} else {
+					c.WriteNull()
+				}
 				return
 			}
 
@@ -849,10 +857,21 @@ func (m *Miniredis) makeCmdZrank(reverse bool) server.Cmd {
 			}
 			rank, ok := db.ssetRank(key, member, direction)
 			if !ok {
-				c.WriteNull()
+				if withScore {
+					c.WriteLen(-1)
+				} else {
+					c.WriteNull()
+				}
 				return
 			}
-			c.WriteInt(rank)
+
+			if withScore {
+				c.WriteLen(2)
+				c.WriteInt(rank)
+				c.WriteFloat(db.ssetScore(key, member))
+			} else {
+				c.WriteInt(rank)
+			}
 		})
 	}
 }
