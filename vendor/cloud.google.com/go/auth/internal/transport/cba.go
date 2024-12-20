@@ -20,6 +20,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -63,6 +64,7 @@ type Options struct {
 	UniverseDomain          string
 	EnableDirectPath        bool
 	EnableDirectPathXds     bool
+	Logger                  *slog.Logger
 }
 
 // getUniverseDomain returns the default service domain for a given Cloud
@@ -263,8 +265,8 @@ func getTransportConfig(opts *Options) (*transportConfig, error) {
 		return &defaultTransportConfig, nil
 	}
 
-	s2aAddress := GetS2AAddress()
-	mtlsS2AAddress := GetMTLSS2AAddress()
+	s2aAddress := GetS2AAddress(opts.Logger)
+	mtlsS2AAddress := GetMTLSS2AAddress(opts.Logger)
 	if s2aAddress == "" && mtlsS2AAddress == "" {
 		return &defaultTransportConfig, nil
 	}

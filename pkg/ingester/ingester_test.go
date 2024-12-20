@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	index2 "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -26,6 +24,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -49,6 +48,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	index2 "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -1504,7 +1504,7 @@ func jsonLine(ts int64, i int) string {
 
 type readRingMock struct {
 	replicationSet          ring.ReplicationSet
-	getAllHealthyCallsCount int
+	getAllHealthyCallsCount atomic.Int32
 	tokenRangesByIngester   map[string]ring.TokenRanges
 }
 
@@ -1544,7 +1544,7 @@ func (r *readRingMock) BatchGet(_ []uint32, _ ring.Operation) ([]ring.Replicatio
 }
 
 func (r *readRingMock) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
-	r.getAllHealthyCallsCount++
+	r.getAllHealthyCallsCount.Add(1)
 	return r.replicationSet, nil
 }
 

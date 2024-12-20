@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kadm"
 
@@ -15,7 +16,7 @@ type mockOffsetReader struct {
 	groupLag map[int32]kadm.GroupMemberLag
 }
 
-func (m *mockOffsetReader) GroupLag(_ context.Context) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetReader) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
 	return m.groupLag, nil
 }
 
@@ -145,11 +146,8 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 				TargetRecordCount: tc.recordCount,
 			}
 			require.NoError(t, cfg.Validate())
-
-			planner := NewRecordCountPlanner(tc.recordCount)
-			planner.offsetReader = mockReader
-
-			jobs, err := planner.Plan(context.Background())
+			planner := NewRecordCountPlanner(mockReader, tc.recordCount, time.Hour, log.NewNopLogger())
+			jobs, err := planner.Plan(context.Background(), 0)
 			require.NoError(t, err)
 
 			require.Equal(t, len(tc.expectedJobs), len(jobs))

@@ -44,7 +44,7 @@ value is set to the specified default.
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
 To do this, pass `-config.expand-env=true` and use:
 
-```
+```bash
 ${VAR}
 ```
 
@@ -56,7 +56,7 @@ References to undefined variables are replaced by empty strings unless you speci
 
 To specify a default value, use:
 
-```
+```bash
 ${VAR:-default_value}
 ```
 
@@ -77,6 +77,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<secret>` : a string that represents a secret, such as a password
 
 ### Supported contents and default values of `loki.yaml`
+
+<!-- vale Grafana.Spelling = NO -->
 
 ```yaml
 # A comma-separated list of components to run. The default value 'all' runs Loki
@@ -229,6 +231,10 @@ block_scheduler:
   # strategy is record-count
   # CLI flag: -block-scheduler.target-record-count
   [target_record_count: <int> | default = 1000]
+
+  # Maximum number of jobs that the planner can return.
+  # CLI flag: -block-scheduler.max-jobs-planned-per-interval
+  [max_jobs_planned_per_interval: <int> | default = 100]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -2561,6 +2567,9 @@ The `frontend` block configures the Loki query-frontend.
 # The TLS configuration.
 # The CLI flags prefix for this block configuration is: frontend.tail-tls-config
 [tail_tls_config: <tls_config>]
+
+# Support 'application/vnd.apache.parquet' content type in HTTP responses.
+[support_parquet_encoding: <boolean>]
 ```
 
 ### frontend_worker
@@ -6444,6 +6453,8 @@ Configuration for `tracing`.
 [enabled: <boolean> | default = true]
 ```
 
+<!-- vale Grafana.Spelling = YES -->
+
 ## Runtime Configuration file
 
 Loki has a concept of "runtime config" file, which is simply a file that is reloaded while Loki is running. It is used by some Loki components to allow operator to change some aspects of Loki configuration without restarting it. File is specified by using `-runtime-config.file=<filename>` flag and reload period (which defaults to 10 seconds) can be changed by `-runtime-config.reload-period=<duration>` flag. Previously this mechanism was only used by limits overrides, and flags were called `-limits.per-user-override-config=<filename>` and `-limits.per-user-override-period=10s` respectively. These are still used, if `-runtime-config.file=<filename>` is not specified.
@@ -6488,7 +6499,7 @@ on a cluster or per-tenant basis.
 - To disable out-of-order writes for all tenants,
 place in the `limits_config` section:
 
-    ```
+    ```yaml
     limits_config:
         unordered_writes: false
     ```
@@ -6496,7 +6507,7 @@ place in the `limits_config` section:
 - To disable out-of-order writes for specific tenants,
 configure a runtime configuration file:
 
-    ```
+    ```yaml
     runtime_config:
       file: overrides.yaml
     ```
@@ -6504,7 +6515,7 @@ configure a runtime configuration file:
     In the `overrides.yaml` file, add `unordered_writes` for each tenant
     permitted to have out-of-order writes:
 
-    ```
+    ```yaml
     overrides:
       "tenantA":
         unordered_writes: false
@@ -6516,7 +6527,7 @@ is configurable with `max_chunk_age`.
 Loki calculates the earliest time that out-of-order entries may have
 and be accepted with
 
-```
+```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
 
