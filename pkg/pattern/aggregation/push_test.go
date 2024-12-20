@@ -94,6 +94,7 @@ func Test_Push(t *testing.T) {
 
 	t.Run("batches push requests", func(t *testing.T) {
 		// mock loki server
+		responses := make(chan response, 10)
 		mock := httptest.NewServer(createServerHandler(responses))
 		require.NotNil(t, mock)
 		defer mock.Close()
