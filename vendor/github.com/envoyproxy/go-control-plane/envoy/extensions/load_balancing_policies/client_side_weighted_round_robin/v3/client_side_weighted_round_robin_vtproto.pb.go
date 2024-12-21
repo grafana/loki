@@ -50,6 +50,15 @@ func (m *ClientSideWeightedRoundRobin) MarshalToSizedBufferVTStrict(dAtA []byte)
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.MetricNamesForComputingUtilization) > 0 {
+		for iNdEx := len(m.MetricNamesForComputingUtilization) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.MetricNamesForComputingUtilization[iNdEx])
+			copy(dAtA[i:], m.MetricNamesForComputingUtilization[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.MetricNamesForComputingUtilization[iNdEx])))
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
 	if m.ErrorUtilizationPenalty != nil {
 		size, err := (*wrapperspb.FloatValue)(m.ErrorUtilizationPenalty).MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -142,6 +151,12 @@ func (m *ClientSideWeightedRoundRobin) SizeVT() (n int) {
 	if m.ErrorUtilizationPenalty != nil {
 		l = (*wrapperspb.FloatValue)(m.ErrorUtilizationPenalty).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if len(m.MetricNamesForComputingUtilization) > 0 {
+		for _, s := range m.MetricNamesForComputingUtilization {
+			l = len(s)
+			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+		}
 	}
 	n += len(m.unknownFields)
 	return n

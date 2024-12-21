@@ -448,6 +448,35 @@ func (m *QuicProtocolOptions) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetMaxPacketLength()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, QuicProtocolOptionsValidationError{
+					field:  "MaxPacketLength",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, QuicProtocolOptionsValidationError{
+					field:  "MaxPacketLength",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetMaxPacketLength()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return QuicProtocolOptionsValidationError{
+				field:  "MaxPacketLength",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return QuicProtocolOptionsMultiError(errors)
 	}
@@ -930,6 +959,21 @@ func (m *HttpProtocolOptions) validate(all bool) error {
 			err := HttpProtocolOptionsValidationError{
 				field:  "MaxHeadersCount",
 				reason: "value must be greater than or equal to 1",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	if wrapper := m.GetMaxResponseHeadersKb(); wrapper != nil {
+
+		if val := wrapper.GetValue(); val <= 0 || val > 8192 {
+			err := HttpProtocolOptionsValidationError{
+				field:  "MaxResponseHeadersKb",
+				reason: "value must be inside range (0, 8192]",
 			}
 			if !all {
 				return err

@@ -222,7 +222,9 @@ var emptyBody = ioutil.NopCloser(strings.NewReader(""))
 // the stored CRC, returning an error from Read if there is a mismatch. This integrity check
 // is skipped if transcoding occurs. See https://cloud.google.com/storage/docs/transcoding.
 type Reader struct {
-	Attrs              ReaderObjectAttrs
+	Attrs          ReaderObjectAttrs
+	objectMetadata *map[string]string
+
 	seen, remain, size int64
 	checkCRC           bool // Did we check the CRC? This is now only used by tests.
 
@@ -297,4 +299,17 @@ func (r *Reader) CacheControl() string {
 // Deprecated: use Reader.Attrs.LastModified.
 func (r *Reader) LastModified() (time.Time, error) {
 	return r.Attrs.LastModified, nil
+}
+
+// Metadata returns user-provided metadata, in key/value pairs.
+//
+// It can be nil if no metadata is present, or if the client uses the JSON
+// API for downloads. Only the XML and gRPC APIs support getting
+// custom metadata via the Reader; for JSON make a separate call to
+// ObjectHandle.Attrs.
+func (r *Reader) Metadata() map[string]string {
+	if r.objectMetadata != nil {
+		return *r.objectMetadata
+	}
+	return nil
 }

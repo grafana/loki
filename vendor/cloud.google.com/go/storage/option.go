@@ -79,6 +79,7 @@ type storageConfig struct {
 	disableClientMetrics   bool
 	metricExporter         *metric.Exporter
 	metricInterval         time.Duration
+	manualReader           *metric.ManualReader
 	readStallTimeoutConfig *experimental.ReadStallTimeoutConfig
 }
 
@@ -190,6 +191,20 @@ func withMetricExporter(ex *metric.Exporter) option.ClientOption {
 
 func (w *withMetricExporterConfig) ApplyStorageOpt(c *storageConfig) {
 	c.metricExporter = w.metricExporter
+}
+
+type withTestMetricReaderConfig struct {
+	internaloption.EmbeddableAdapter
+	// reader override
+	metricReader *metric.ManualReader
+}
+
+func withTestMetricReader(ex *metric.ManualReader) option.ClientOption {
+	return &withTestMetricReaderConfig{metricReader: ex}
+}
+
+func (w *withTestMetricReaderConfig) ApplyStorageOpt(c *storageConfig) {
+	c.manualReader = w.metricReader
 }
 
 // WithReadStallTimeout is an option that may be passed to [NewClient].
