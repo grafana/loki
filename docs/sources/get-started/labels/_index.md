@@ -1,7 +1,7 @@
 ---
 menuTitle: Labels
 title: Understand labels
-description: Explains how to Loki uses labels to define log streams.
+description: Explains how Loki uses labels to define log streams.
 weight: 600
 aliases:
     - ../getting-started/labels/
@@ -9,7 +9,7 @@ aliases:
 ---
 # Understand labels
 
-Labels are key value pairs and can be defined as anything! We like to refer to them as metadata to describe a log stream. If you are familiar with Prometheus, there are a few labels you are used to seeing like `job` and `instance`, and I will use those in the coming examples.
+Labels are key-value pairs and can be defined as anything! We like to refer to them as metadata to describe a log stream. If you are familiar with Prometheus, there are a few labels you are used to seeing like `job` and `instance`, and I will use those in the coming examples.
 
 The scrape configs we provide with Grafana Loki define these labels, too. If you are using Prometheus, having consistent labels between Loki and Prometheus is one of Loki's superpowers, making it incredibly [easy to correlate your application metrics with your log data](/blog/2019/05/06/how-loki-correlates-metrics-and-logs--and-saves-you-money/).
 
@@ -121,15 +121,15 @@ Now instead of a regex, we could do this:
 {env="dev"} <- will return all logs with env=dev, in this case this includes both log streams
 ```
 
-Hopefully now you are starting to see the power of labels. By using a single label, you can query many streams. By combining several different labels, you can create very flexible log queries.
+Hopefully, now you are starting to see the power of labels. By using a single label, you can query many streams. By combining several different labels, you can create very flexible log queries.
 
-Labels are the index to Loki log data. They are used to find the compressed log content, which is stored separately as chunks. Every unique combination of label and values defines a stream, and logs for a stream are batched up, compressed, and stored as chunks.
+Labels are the index to Loki log data. They are used to find the compressed log content, which is stored separately as chunks. Every unique combination of labels and values defines a stream and logs for a stream are batched up, compressed, and stored as chunks.
 
 For Loki to be efficient and cost-effective, we have to use labels responsibly. The next section will explore this in more detail.
 
 ## Cardinality
 
-The two previous examples use statically defined labels with a single value; however, there are ways to dynamically define labels. Let's take a look using the Apache log and a massive regex you could use to parse such a log line:
+The two previous examples use statically defined labels with a single value; however, there are ways to dynamically define labels. Let's take a look using the Apache log and a massive regex you could use to parse such a logline:
 
 ```nohighlight
 11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
@@ -152,7 +152,7 @@ The two previous examples use statically defined labels with a single value; how
       __path__: /var/log/apache.log
 ```
 
-This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{< relref "../../send-data/promtail/pipelines" >}}) documentation.
+This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows use for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{< relref "../../send-data/promtail/pipelines" >}}) documentation.
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 
@@ -169,7 +169,7 @@ And now let's walk through a few example lines:
 11.11.11.14 - frank [25/Jan/2000:14:00:04 -0500] "POST /1986.js HTTP/1.1" 400 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
 ```
 
-In Loki the following streams would be created:
+In Loki, the following streams would be created:
 
 ```
 {job="apache",env="dev",action="GET",status_code="200"} 11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
@@ -186,7 +186,7 @@ Imagine now if you set a label for `ip`. Not only does every request from a user
 
 Doing some quick math, if there are maybe four common actions (GET, PUT, POST, DELETE) and maybe four common status codes (although there could be more than four!), this would be 16 streams and 16 separate chunks. Now multiply this by every user if we use a label for `ip`.  You can quickly have thousands or tens of thousands of streams.
 
-This is high cardinality, and it can lead to significant performance degredation.
+This is high cardinality, and it can lead to significant performance degradation.
 
 When we talk about _cardinality_ we are referring to the combination of labels and values and the number of streams they create. High cardinality is using labels with a large range of possible values, such as `ip`, **or** combining many labels, even if they have a small and finite set of values, such as using `status_code` and `action`.
 
@@ -216,7 +216,7 @@ To see how this works, let's look back at our example of querying your access lo
 
 Behind the scenes, Loki will break up that query into smaller pieces (shards), and open up each chunk for the streams matched by the labels and start looking for this IP address.
 
-The size of those shards and the amount of parallelization is configurable and based on the resources you provision. If you want to, you can configure the shard interval down to 5m, deploy 20 queriers, and process gigabytes of logs in seconds. Or you can go crazy and provision 200 queriers and process terabytes of logs!
+The size of those shards and the amount of parallelization are configurable and based on the resources you provision. If you want to, you can configure the shard interval down to 5m, deploy 20 queriers, and process gigabytes of logs in seconds. Or you can go crazy and provision 200 queriers and process terabytes of logs!
 
 This trade-off of smaller index and parallel brute force querying vs. a larger/faster full-text index is what allows Loki to save on costs versus other systems. The cost and complexity of operating a large index is high and is typically fixed -- you pay for it 24 hours a day if you are querying it or not.
 
