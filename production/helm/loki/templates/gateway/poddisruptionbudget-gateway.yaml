@@ -1,4 +1,5 @@
 {{- if and .Values.gateway.enabled }}
+{{- if and .Values.gateway.PodDisruptionBudget.create}}
 {{- if or 
   (and (not .Values.gateway.autoscaling.enabled) (gt (int .Values.gateway.replicas) 1)) 
   (and .Values.gateway.autoscaling.enabled (gt (int .Values.gateway.autoscaling.minReplicas) 1))
@@ -14,6 +15,8 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.gatewaySelectorLabels" . | nindent 6 }}
-  maxUnavailable: 1
+  {{- with .Values.gateway.PodDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ . | default 1 }}
+  {{- end}}
 {{- end }}
 {{- end }}

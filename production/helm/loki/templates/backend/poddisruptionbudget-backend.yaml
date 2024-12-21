@@ -1,5 +1,4 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable (gt (int .Values.backend.replicas) 1) (not .Values.read.legacyReadTarget ) }}
+{{- if .Values.backend.PodDisruptionBudget.create}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -11,5 +10,7 @@ spec:
   selector:
     matchLabels:
       {{- include "loki.backendSelectorLabels" . | nindent 6 }}
-  maxUnavailable: 1
+  {{- with .Values.backend.PodDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ . | default 1 }}
+  {{- end }}
 {{- end }}
