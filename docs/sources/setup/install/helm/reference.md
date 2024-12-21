@@ -347,6 +347,10 @@ This is the generated reference for the Loki Helm Chart values.
     "volumeClaimsEnabled": true
   },
   "podAnnotations": {},
+  "podDisruptionBudget": {
+    "create": true,
+    "maxUnavailable": 1
+  },
   "podLabels": {},
   "podManagementPolicy": "Parallel",
   "priorityClassName": null,
@@ -2081,6 +2085,7 @@ null
 			<td>Pod Disruption Budget</td>
 			<td><pre lang="json">
 {
+  "create": true,
   "maxUnavailable": 1
 }
 </pre>
@@ -4389,6 +4394,24 @@ false
 			<td>Annotations for gateway pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.podDisruptionBudget.create</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.podDisruptionBudget.maxUnavailable</td>
+			<td>int</td>
+			<td></td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -9278,6 +9301,10 @@ false
     "storageClass": null
   },
   "podAnnotations": {},
+  "podDisruptionBudget": {
+    "create": true,
+    "maxUnavailable": 1
+  },
   "podLabels": {},
   "podManagementPolicy": "Parallel",
   "priorityClassName": null,
@@ -9838,6 +9865,7 @@ null
 			<td>Pod Disruption Budget</td>
 			<td><pre lang="json">
 {
+  "create": true,
   "maxUnavailable": 1
 }
 </pre>
@@ -11668,6 +11696,24 @@ true
 			<td>Annotations for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podDisruptionBudget.create</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podDisruptionBudget.maxUnavailable</td>
+			<td>int</td>
+			<td></td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
