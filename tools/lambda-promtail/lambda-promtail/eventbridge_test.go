@@ -31,7 +31,8 @@ func Test_processEventBridgeEvent(t *testing.T) {
 				AWSRegion: "us-east-2",
 				S3: events.S3Entity{
 					Bucket: events.S3Bucket{
-						Name: "bucket",
+						Name:          "bucket",
+						OwnerIdentity: events.S3UserIdentity{PrincipalID: ebEvent.AccountID},
 					},
 					Object: events.S3Object{
 						Key: "pizza.txt",
