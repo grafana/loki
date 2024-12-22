@@ -39,7 +39,6 @@ schema_config:
         period: 24h
 
 pattern_ingester:
-  enabled: true
   metric_aggregation:
     loki_address: localhost:3100
 
