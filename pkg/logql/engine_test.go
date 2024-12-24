@@ -2515,7 +2515,7 @@ func BenchmarkRangeQuery1000000(b *testing.B) {
 func BenchmarkHighCardinalityInstantQuery(b *testing.B) {
 	b.ReportAllocs()
 
-	mockQuerier := NewMockQuerier(1, func() goiter.Seq2[int, logproto.Stream] { return generateLogs(10_000, 10) })
+	mockQuerier := NewMockQuerier(1, func() goiter.Seq2[int, logproto.Stream] { return generateLogs(1_000_000, 100_000) })
 
 	eng := NewEngine(EngineOpts{}, mockQuerier, NoLimits, log.NewNopLogger())
 	start := time.Unix(1, 0)
