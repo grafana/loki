@@ -3,6 +3,7 @@ package logql
 import (
 	"container/heap"
 	"fmt"
+	"sort"
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/cespare/xxhash/v2"
@@ -187,16 +188,17 @@ func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCou
 }
 
 func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
+	sort.Sort(metric)
 	v.buffer = metric.Bytes(v.buffer)
 
 	v.F.Add(v.buffer, value)
-
-	// Add our metric if we haven't seen it
 
 	// TODO(karsten): There is a chance that the ids match but not the labels due to hash collision. Ideally there's
 	// an else block the compares the series labels. However, that's not trivial. Besides, instance.Series has the
 	// same issue in its deduping logic.
 	id := xxhash.Sum64(v.buffer)
+
+	// Add our metric if we haven't seen it
 	if _, ok := v.observed[id]; !ok {
 		heap.Push(v, metric)
 		v.observed[id] = struct{}{}

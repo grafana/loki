@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -411,7 +413,7 @@ type testQueryClient struct {
 }
 
 func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
-	q := logql.NewMockQuerier(0, testStreams)
+	q := logql.NewMockQuerier(0, func() iter.Seq2[int, logproto.Stream] { return slices.All(testStreams)})
 	e := logql.NewEngine(logql.EngineOpts{}, q, logql.NoLimits, log.NewNopLogger())
 	return &testQueryClient{
 		engine:          e,

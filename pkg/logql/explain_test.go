@@ -2,6 +2,8 @@ package logql
 
 import (
 	"context"
+	"iter"
+	"slices"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 
 	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -18,7 +21,7 @@ func TestExplain(t *testing.T) {
 
 	// TODO(karsten): Ideally the querier and downstreamer are not required
 	// to create the step evaluators.
-	querier := NewMockQuerier(4, nil)
+	querier := NewMockQuerier(4, func() iter.Seq2[int, logproto.Stream] { return slices.All(make([]logproto.Stream, 0)) })
 	opts := EngineOpts{}
 	regular := NewEngine(opts, querier, NoLimits, log.NewNopLogger())
 
