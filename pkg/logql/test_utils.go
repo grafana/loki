@@ -113,6 +113,7 @@ outer:
 	return iter.NewSortEntryIterator(streamIters, req.Direction), nil
 }
 
+// TODO: check if this is the same as in storage
 func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {
 	resByStream := map[string]*logproto.Stream{}
 
