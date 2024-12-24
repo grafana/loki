@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	goiter "iter"
 	"math"
+	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -2508,6 +2510,54 @@ func BenchmarkRangeQuery500000(b *testing.B) {
 
 func BenchmarkRangeQuery1000000(b *testing.B) {
 	benchmarkRangeQuery(int64(1000000), b)
+}
+
+func BenchmarkHighCardinalityInstantQuery(b *testing.B) {
+	b.ReportAllocs()
+
+	mockQuerier := NewMockQuerier(1, func() goiter.Seq2[int, logproto.Stream] { return generateLogs(10_000, 10) })
+
+	eng := NewEngine(EngineOpts{}, mockQuerier, NoLimits, log.NewNopLogger())
+	start := time.Unix(1, 0)
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		params, err := NewLiteralParams(`sum by(cardinality) (sum_over_time({app="foo"} | logfmt | unwrap value [1s]))`, start, start, 0, 0, logproto.BACKWARD, 1000, nil, nil)
+		require.NoError(b, err)
+		q := eng.Query(params)
+
+		res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+		if err != nil {
+			b.Fatal(err)
+		}
+		result = res.Data
+		if result == nil {
+			b.Fatal("unexpected nil result")
+		}
+	}
+}
+
+func generateLogs(lines int, cardinality int) goiter.Seq2[int, logproto.Stream] {
+	batchSize := 10
+	return func(yield func(int, logproto.Stream) bool) {
+		for batch := range lines / batchSize {
+			entries := make([]logproto.Entry, batchSize)
+			for i := 0; i < batchSize; i++ {
+				line := batch*batchSize + i
+				entries[i] = logproto.Entry{
+					Timestamp: time.Unix(0, int64(batch)),
+					Line:      fmt.Sprintf("cardinality=%d batch=%d line=%d value=%f", i%cardinality, batch, line, rand.Float64()),
+				}
+			}
+			stream := logproto.Stream{
+				Entries: entries,
+				Labels:  `{app="foo"}`,
+			}
+			if !yield(batch, stream) {
+				return
+			}
+		}
+	}
 }
 
 var result promql_parser.Value
