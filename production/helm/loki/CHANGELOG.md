@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.25.0-weekly.234
+
+- [CHANGE] Changed version of Grafana Loki to k234-a3808b6
+- [CHANGE] Changed version of Grafana Enterprise Logs to weekly-k234-202ae65
+
 ## 6.24.0
 
 - [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
