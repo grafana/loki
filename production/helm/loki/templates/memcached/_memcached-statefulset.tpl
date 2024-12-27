@@ -169,6 +169,8 @@ spec:
       kind: PersistentVolumeClaim
       metadata:
         name: data
+        labels:
+          {{- toYaml .persistence.labels | nindent 10 }}
       spec:
         accessModes: [ "ReadWriteOnce" ]
         {{- with .persistence.storageClass }}
