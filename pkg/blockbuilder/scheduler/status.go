@@ -43,7 +43,7 @@ func newStatusPageHandler(jobQueue jobQueue, offsetReader offsetReader, lookback
 	return &statusPageHandler{jobQueue: jobQueue, offsetReader: offsetReader, lookbackPeriod: lookbackPeriod}
 }
 
-func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	offsets, err := h.offsetReader.GroupLag(context.Background(), h.lookbackPeriod)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

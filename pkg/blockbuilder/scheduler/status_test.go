@@ -7,8 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/twmb/franz-go/pkg/kadm"
+
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
 type mockQueueLister struct {
