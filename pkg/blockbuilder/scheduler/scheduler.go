@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -258,4 +259,8 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 func (s *BlockScheduler) HandleSyncJob(_ context.Context, job *types.Job) error {
 	s.queue.SyncJob(job.ID(), job)
 	return nil
+}
+
+func (s *BlockScheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	newStatusPageHandler(s.queue, s.offsetManager, s.cfg.LookbackPeriod).ServeHTTP(w, req)
 }
