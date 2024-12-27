@@ -1,4 +1,5 @@
 run:
+  go: "1.20"
   timeout: 5m
   deadline: 10m
 
@@ -57,7 +58,7 @@ linters:
   enable:
     - bodyclose
     - depguard
-    - exportloopref
+    # - copyloopvar
     - dogsled
     - errcheck
     - errorlint
@@ -79,6 +80,7 @@ linters:
 
 issues:
   exclude:
+    - "G115: integer overflow conversion"
     - "G404: Use of weak random number generator"
   exclude-rules:
     # exclude some linters from running on certains files.
