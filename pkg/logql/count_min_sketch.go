@@ -3,7 +3,8 @@ package logql
 import (
 	"container/heap"
 	"fmt"
-	"sort"
+	"slices"
+	"strings"
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/cespare/xxhash/v2"
@@ -188,7 +189,7 @@ func NewHeapCountMinSketchVector(ts int64, metricsLength, maxLabels int) HeapCou
 }
 
 func (v *HeapCountMinSketchVector) Add(metric labels.Labels, value float64) {
-	sort.Sort(metric)
+	slices.SortFunc(metric, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	v.buffer = metric.Bytes(v.buffer)
 
 	v.F.Add(v.buffer, value)
