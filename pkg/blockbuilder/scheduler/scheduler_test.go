@@ -41,7 +41,7 @@ func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
 }
 
 func newTestEnv(builderID string) (*testEnv, error) {
-	queue := NewJobQueue(log.NewNopLogger(), nil)
+	queue := NewJobQueue(testQueueCfg, log.NewNopLogger(), nil)
 	mockOffsetMgr := &mockOffsetManager{
 		topic:         "test-topic",
 		consumerGroup: "test-group",
