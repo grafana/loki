@@ -241,8 +241,9 @@ func (v *HeapCountMinSketchVector) Push(x any) {
 func (v *HeapCountMinSketchVector) Pop() any {
 	old := v.Metrics
 	n := len(old)
+	x := old[n-1]
 	v.Metrics = old[0 : n-1]
-	return old[n-1]
+	return x
 }
 
 // JoinCountMinSketchVector joins the results from stepEvaluator into a CountMinSketchVector.
