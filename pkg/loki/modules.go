@@ -1878,6 +1878,8 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 		return nil, err
 	}
 
+	t.Server.HTTP.Path("/blockscheduler/status").Methods("GET").Handler(s)
+
 	blockprotos.RegisterSchedulerServiceServer(
 		t.Server.GRPC,
 		blocktypes.NewSchedulerServer(s),

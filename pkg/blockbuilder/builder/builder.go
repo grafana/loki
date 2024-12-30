@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
@@ -566,11 +567,15 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 				continue
 			}
 
+			// decorder reuses entries slice, so we need to copy it
+			entries := make([]logproto.Entry, len(stream.Entries))
+			copy(entries, stream.Entries)
+
 			converted = append(converted, AppendInput{
 				tenant:    string(record.Key),
 				labels:    labels,
 				labelsStr: stream.Labels,
-				entries:   stream.Entries,
+				entries:   entries,
 			})
 		}
 

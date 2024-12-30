@@ -94,6 +94,11 @@ func (pq *PriorityQueue[K, V]) Len() int {
 	return pq.h.Len()
 }
 
+// List returns all elements in the queue.
+func (pq *PriorityQueue[K, V]) List() []V {
+	return pq.h.List()
+}
+
 // priorityHeap is the internal heap implementation that satisfies heap.Interface.
 type priorityHeap[V any] struct {
 	less func(V, V) bool
@@ -106,6 +111,14 @@ func (h *priorityHeap[V]) Len() int {
 
 func (h *priorityHeap[V]) Less(i, j int) bool {
 	return h.less(h.heap[i].value, h.heap[j].value)
+}
+
+func (h *priorityHeap[V]) List() []V {
+	vals := make([]V, 0, len(h.heap))
+	for _, item := range h.heap {
+		vals = append(vals, item.value)
+	}
+	return vals
 }
 
 func (h *priorityHeap[V]) Swap(i, j int) {
