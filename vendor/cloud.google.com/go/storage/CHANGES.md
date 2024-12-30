@@ -1,6 +1,24 @@
 # Changes
 
 
+## [1.49.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.48.0...storage/v1.49.0) (2024-12-21)
+
+
+### Features
+
+* **storage/internal:** Add finalize_time field in Object metadata ([46fc993](https://github.com/googleapis/google-cloud-go/commit/46fc993a3195203a230e2831bee456baaa9f7b1c))
+* **storage/internal:** Add MoveObject RPC ([46fc993](https://github.com/googleapis/google-cloud-go/commit/46fc993a3195203a230e2831bee456baaa9f7b1c))
+* **storage:** Add ObjectHandle.Move method ([#11302](https://github.com/googleapis/google-cloud-go/issues/11302)) ([a3cb8c4](https://github.com/googleapis/google-cloud-go/commit/a3cb8c4fc48883b54d4e830ae5f5ef4f1a3b8ca3))
+* **storage:** Return file metadata on read ([#11212](https://github.com/googleapis/google-cloud-go/issues/11212)) ([d49263b](https://github.com/googleapis/google-cloud-go/commit/d49263b2ab614cad801e26b4a169eafe08d4a2a0))
+
+
+### Bug Fixes
+
+* **storage/dataflux:** Address deadlock when reading from ranges ([#11303](https://github.com/googleapis/google-cloud-go/issues/11303)) ([32cbf56](https://github.com/googleapis/google-cloud-go/commit/32cbf561590541eb0387787bf729be6ddf68e4ee))
+* **storage:** Disable allow non-default credentials flag ([#11337](https://github.com/googleapis/google-cloud-go/issues/11337)) ([145ddf4](https://github.com/googleapis/google-cloud-go/commit/145ddf4f6123d9561856d2b6adeefdfae462b3f7))
+* **storage:** Monitored resource detection ([#11197](https://github.com/googleapis/google-cloud-go/issues/11197)) ([911bcd8](https://github.com/googleapis/google-cloud-go/commit/911bcd8b1816256482bd52e85da7eaf00c315293))
+* **storage:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
 ## [1.48.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.47.0...storage/v1.48.0) (2024-12-05)
 
 
