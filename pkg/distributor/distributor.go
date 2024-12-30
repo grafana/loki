@@ -594,6 +594,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	}
 
+	// we first check if the ingestion is blocked globally for this tenant..
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
 		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
 
@@ -607,6 +608,34 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 
 		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
+	}
+
+	// now we check if the ingestion is blocked for the given scope.
+	for _, stream := range req.Streams {
+		lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+		if err != nil {
+			continue
+		}
+		scope := lbs.Get("scope")
+		if scope == "" { // TODO: change this to use a configurable scope label.
+			continue
+		}
+
+		if block, _, _ := d.validator.ShouldBlockScopeIngestion(validationContext, scope, now); block {
+			d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
+			// TODO: remove the stream from the list
+
+			// err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
+			// d.writeFailuresManager.Log(tenantID, err)
+
+			// // If the status code is 200, return success.
+			// // Note that we still log the error and increment the metrics.
+			// if retStatusCode == http.StatusOK {
+			// 	return &logproto.PushResponse{}, nil
+			// }
+
+			// return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
+		}
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {

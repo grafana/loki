@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -52,32 +53,36 @@ type validationContext struct {
 	maxStructuredMetadataSize  int
 	maxStructuredMetadataCount int
 
-	blockIngestionUntil      time.Time
-	blockIngestionStatusCode int
+	blockIngestionUntil           time.Time
+	blockIngestionStatusCode      int
+	blockScopeIngestionUntil      map[string]flagext.Time
+	blockScopeIngestionStatusCode map[string]int
 
 	userID string
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
 	return validationContext{
-		userID:                       userID,
-		rejectOldSample:              v.RejectOldSamples(userID),
-		rejectOldSampleMaxAge:        now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
-		creationGracePeriod:          now.Add(v.CreationGracePeriod(userID)).UnixNano(),
-		maxLineSize:                  v.MaxLineSize(userID),
-		maxLineSizeTruncate:          v.MaxLineSizeTruncate(userID),
-		maxLabelNamesPerSeries:       v.MaxLabelNamesPerSeries(userID),
-		maxLabelNameLength:           v.MaxLabelNameLength(userID),
-		maxLabelValueLength:          v.MaxLabelValueLength(userID),
-		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
-		discoverServiceName:          v.DiscoverServiceName(userID),
-		discoverLogLevels:            v.DiscoverLogLevels(userID),
-		logLevelFields:               v.LogLevelFields(userID),
-		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
-		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
-		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
-		blockIngestionUntil:          v.BlockIngestionUntil(userID),
-		blockIngestionStatusCode:     v.BlockIngestionStatusCode(userID),
+		userID:                        userID,
+		rejectOldSample:               v.RejectOldSamples(userID),
+		rejectOldSampleMaxAge:         now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
+		creationGracePeriod:           now.Add(v.CreationGracePeriod(userID)).UnixNano(),
+		maxLineSize:                   v.MaxLineSize(userID),
+		maxLineSizeTruncate:           v.MaxLineSizeTruncate(userID),
+		maxLabelNamesPerSeries:        v.MaxLabelNamesPerSeries(userID),
+		maxLabelNameLength:            v.MaxLabelNameLength(userID),
+		maxLabelValueLength:           v.MaxLabelValueLength(userID),
+		incrementDuplicateTimestamps:  v.IncrementDuplicateTimestamps(userID),
+		discoverServiceName:           v.DiscoverServiceName(userID),
+		discoverLogLevels:             v.DiscoverLogLevels(userID),
+		logLevelFields:                v.LogLevelFields(userID),
+		allowStructuredMetadata:       v.AllowStructuredMetadata(userID),
+		maxStructuredMetadataSize:     v.MaxStructuredMetadataSize(userID),
+		maxStructuredMetadataCount:    v.MaxStructuredMetadataCount(userID),
+		blockIngestionUntil:           v.BlockIngestionUntil(userID),
+		blockIngestionStatusCode:      v.BlockIngestionStatusCode(userID),
+		blockScopeIngestionUntil:      v.BlockScopeIngestionUntil(userID),
+		blockScopeIngestionStatusCode: v.BlockScopeIngestionStatusCode(userID),
 	}
 }
 
@@ -204,6 +209,15 @@ func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (b
 	}
 
 	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
+}
+
+func (v Validator) ShouldBlockScopeIngestion(ctx validationContext, scope string, now time.Time) (bool, time.Time, int) {
+	ts := time.Time(ctx.blockScopeIngestionUntil[scope])
+	if ts.IsZero() {
+		return false, time.Time{}, 0
+	}
+
+	return now.Before(ts), ts, ctx.blockScopeIngestionStatusCode[scope]
 }
 
 func updateMetrics(reason, userID string, stream logproto.Stream) {

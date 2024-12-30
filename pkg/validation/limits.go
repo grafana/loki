@@ -225,8 +225,10 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	BlockIngestionUntil           dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionStatusCode      int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	BlockScopeIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_scope_ingestion_until" json:"block_scope_ingestion_until"`
+	BlockScopeIngestionStatusCode map[string]int                `yaml:"block_scope_ingestion_status_code" json:"block_scope_ingestion_status_code"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -440,6 +442,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.BlockIngestionUntil, "limits.block-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 
+	// TODO: how to do flags with maps?
+	// f.Var(&l.BlockScopeIngestionUntil, "limits.block-scope-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
+	// f.IntVar(&l.BlockScopeIngestionStatusCode, "limits.block-scope-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
+
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
 	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
@@ -601,6 +607,14 @@ func (o *Overrides) IngestionRateBytes(userID string) float64 {
 // IngestionBurstSizeBytes returns the burst size for ingestion rate.
 func (o *Overrides) IngestionBurstSizeBytes(userID string) int {
 	return int(o.getOverridesForUser(userID).IngestionBurstSizeMB * bytesInMB)
+}
+
+func (o *Overrides) BlockScopeIngestionUntil(userID string) map[string]dskit_flagext.Time {
+	return o.getOverridesForUser(userID).BlockScopeIngestionUntil
+}
+
+func (o *Overrides) BlockScopeIngestionStatusCode(userID string) map[string]int {
+	return o.getOverridesForUser(userID).BlockScopeIngestionStatusCode
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.
