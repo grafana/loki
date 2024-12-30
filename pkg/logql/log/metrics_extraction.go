@@ -283,7 +283,7 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, structuredMet
 		}
 	}
 
-	return sp.extractor.Process(ts, line)
+	return sp.extractor.Process(ts, line, structuredMetadata...)
 }
 
 func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (float64, LabelsResult, bool) {

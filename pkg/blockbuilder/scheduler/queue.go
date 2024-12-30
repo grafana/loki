@@ -268,3 +268,42 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 	q.inProgress[jobID] = jobMeta
 	q.statusMap[jobID] = types.JobStatusInProgress
 }
+
+func (q *JobQueue) ListPendingJobs() []JobWithMetadata {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	// return copies of the jobs since they can change after the lock is released
+	jobs := make([]JobWithMetadata, 0, q.pending.Len())
+	for _, j := range q.pending.List() {
+		jobs = append(jobs, JobWithMetadata{
+			// Job is immutable, no need to make a copy
+			Job:        j.Job,
+			Priority:   j.Priority,
+			Status:     j.Status,
+			StartTime:  j.StartTime,
+			UpdateTime: j.UpdateTime,
+		})
+	}
+
+	return jobs
+}
+
+func (q *JobQueue) ListInProgressJobs() []JobWithMetadata {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	// return copies of the jobs since they can change after the lock is released
+	jobs := make([]JobWithMetadata, 0, len(q.inProgress))
+	for _, j := range q.inProgress {
+		jobs = append(jobs, JobWithMetadata{
+			// Job is immutable, no need to make a copy
+			Job:        j.Job,
+			Priority:   j.Priority,
+			Status:     j.Status,
+			StartTime:  j.StartTime,
+			UpdateTime: j.UpdateTime,
+		})
+	}
+	return jobs
+}
