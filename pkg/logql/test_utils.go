@@ -3,7 +3,6 @@ package logql
 import (
 	"context"
 	"fmt"
-	goiter "iter"
 	logger "log"
 	"math/rand"
 	"sort"
@@ -26,7 +25,7 @@ import (
 
 const ConCurrency = 100
 
-func NewMockQuerier(shards int, streams func() goiter.Seq2[int, logproto.Stream]) MockQuerier {
+func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
 	return MockQuerier{
 		shards:  shards,
 		streams: streams,
@@ -36,7 +35,7 @@ func NewMockQuerier(shards int, streams func() goiter.Seq2[int, logproto.Stream]
 // Shard aware mock querier
 type MockQuerier struct {
 	shards  int
-	streams func() goiter.Seq2[int, logproto.Stream]
+	streams []logproto.Stream
 }
 
 func (q MockQuerier) extractOldShard(xs []string) (*index.ShardAnnotation, error) {
@@ -75,7 +74,7 @@ func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.En
 	var matched []logproto.Stream
 
 outer:
-	for _, stream := range q.streams() {
+	for _, stream := range q.streams {
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
@@ -113,7 +112,6 @@ outer:
 	return iter.NewSortEntryIterator(streamIters, req.Direction), nil
 }
 
-// TODO: check if this is the same as in storage
 func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Stream {
 	resByStream := map[string]*logproto.Stream{}
 
@@ -203,7 +201,7 @@ func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (i
 	var matched []logproto.Stream
 
 outer:
-	for _, stream := range q.streams() {
+	for _, stream := range q.streams {
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested

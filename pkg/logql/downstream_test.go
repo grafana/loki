@@ -3,9 +3,7 @@ package logql
 import (
 	"context"
 	"fmt"
-	"iter"
 	"math"
-	"slices"
 	"testing"
 	"time"
 
@@ -87,7 +85,7 @@ func TestMappingEquivalence(t *testing.T) {
 	} {
 		q := NewMockQuerier(
 			shards,
-			func() iter.Seq2[int, logproto.Stream] { return slices.All(streams) },
+			streams,
 		)
 
 		opts := EngineOpts{}
@@ -195,7 +193,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 	} {
 		q := NewMockQuerier(
 			shards,
-			func() iter.Seq2[int, logproto.Stream] { return slices.All(streams) },
+			streams,
 		)
 
 		opts := EngineOpts{
@@ -296,7 +294,7 @@ func TestApproxTopkSketches(t *testing.T) {
 		shardedQuery  string
 		regularQuery  string
 		realtiveError float64
-		// cardinalityEstimate int
+		//cardinalityEstimate int
 	}{
 		// Note:our data generation results in less spread between topk things for 10k streams than for 100k streams
 		// if we have 1k streams, we can get much more accurate results for topk 10 than topk 100
@@ -306,7 +304,7 @@ func TestApproxTopkSketches(t *testing.T) {
 			shardedQuery:  `approx_topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			regularQuery:  `topk(3, sum by (a) (sum_over_time ({a=~".+"} | logfmt | unwrap value [1s])))`,
 			realtiveError: 0.0012,
-			// cardinalityEstimate: 3,
+			//cardinalityEstimate: 3,
 		},
 		{
 			labelShards:   10,
@@ -349,7 +347,7 @@ func TestApproxTopkSketches(t *testing.T) {
 
 			q := NewMockQuerier(
 				tc.labelShards,
-				func() iter.Seq2[int, logproto.Stream] { return slices.All(streams) },
+				streams,
 			)
 
 			opts := EngineOpts{
@@ -429,7 +427,7 @@ func TestShardCounter(t *testing.T) {
 	} {
 		q := NewMockQuerier(
 			shards,
-			func() iter.Seq2[int, logproto.Stream] { return slices.All(streams) },
+			streams,
 		)
 
 		opts := EngineOpts{}
@@ -688,7 +686,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 	} {
 		q := NewMockQuerier(
 			shards,
-			func() iter.Seq2[int, logproto.Stream] { return slices.All(streams) },
+			streams,
 		)
 
 		opts := EngineOpts{}
