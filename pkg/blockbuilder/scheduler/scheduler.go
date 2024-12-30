@@ -25,12 +25,13 @@ var (
 )
 
 type Config struct {
-	ConsumerGroup             string        `yaml:"consumer_group"`
-	Interval                  time.Duration `yaml:"interval"`
-	LookbackPeriod            time.Duration `yaml:"lookback_period"`
-	Strategy                  string        `yaml:"strategy"`
-	TargetRecordCount         int64         `yaml:"target_record_count"`
-	MaxJobsPlannedPerInterval int           `yaml:"max_jobs_planned_per_interval"`
+	ConsumerGroup             string         `yaml:"consumer_group"`
+	Interval                  time.Duration  `yaml:"interval"`
+	LookbackPeriod            time.Duration  `yaml:"lookback_period"`
+	Strategy                  string         `yaml:"strategy"`
+	TargetRecordCount         int64          `yaml:"target_record_count"`
+	MaxJobsPlannedPerInterval int            `yaml:"max_jobs_planned_per_interval"`
+	JobQueueConfig            JobQueueConfig `yaml:"job_queue"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -61,6 +62,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 		100,
 		"Maximum number of jobs that the planner can return.",
 	)
+	cfg.JobQueueConfig.RegisterFlags(f)
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -127,6 +129,8 @@ func (s *BlockScheduler) running(ctx context.Context) error {
 	if err := s.runOnce(ctx); err != nil {
 		level.Error(s.logger).Log("msg", "failed to schedule jobs", "err", err)
 	}
+
+	go s.queue.RunLeaseExpiryChecker(ctx)
 
 	ticker := time.NewTicker(s.cfg.Interval)
 	for {

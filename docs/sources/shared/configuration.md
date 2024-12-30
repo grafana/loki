@@ -236,6 +236,17 @@ block_scheduler:
   # CLI flag: -block-scheduler.max-jobs-planned-per-interval
   [max_jobs_planned_per_interval: <int> | default = 100]
 
+  job_queue:
+    # Interval to check for expired job leases
+    # CLI flag: -jobqueue.lease-expiry-check-interval
+    [lease_expiry_check_interval: <duration> | default = 1m]
+
+    # Duration after which a job lease is considered expired if the scheduler
+    # receives no updates from builders about the job. Expired jobs are
+    # re-enqueued
+    # CLI flag: -jobqueue.lease-duration
+    [lease_duration: <duration> | default = 10m]
+
 pattern_ingester:
   # Whether the pattern ingester is enabled.
   # CLI flag: -pattern-ingester.enabled
