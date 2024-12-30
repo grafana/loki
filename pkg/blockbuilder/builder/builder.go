@@ -541,7 +541,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 
 		if fs.Empty() {
 			// No more records available
-			continue
+			break
 		}
 
 		// Reset backoff on successful poll
