@@ -60,6 +60,7 @@ Then the weekly release will create a `CHANGELOG.md` with the following content:
 #### Versioning
 
 Normally contributors need _not_ bump the version nor update the [CHANGELOG.md](https://github.com/grafana/loki/blob/main/production/helm/loki/CHANGELOG.md). A new version of the Chart will follow this cadence:
-- Automatic weekly releases
-- Releases that coincide with Loki/GEL releases
-- Manual releases when necessary (ie. to address a CVE or critical bug)
+
+* Automatic weekly releases
+* Releases that coincide with Loki/GEL releases
+* Manual releases when necessary (ie. to address a CVE or critical bug)
