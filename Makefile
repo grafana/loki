@@ -633,6 +633,14 @@ loki-debug-image: ## build the loki debug docker image
 loki-push: loki-image-cross
 	$(call push-image,loki)
 
+# Loki local images
+# Default architecture for local builds
+LOCAL_ARCH ?= amd64
+
+# Loki local image
+loki-local-image: ## build the loki docker image locally (set LOCAL_ARCH=arm64 for arm64)
+	$(OCI_BUILD) --load --platform=linux/$(LOCAL_ARCH) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile .
+
 # Canary image
 loki-canary-image: ## build the canary docker image
 	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
