@@ -64,7 +64,7 @@ func TestStatusPageHandler_ServeHTTP(t *testing.T) {
 		},
 	}
 
-	handler := newStatusPageHandler(mockLister, mockReader, time.Hour)
+	handler := newStatusPageHandler(mockLister, mockReader, 0)
 	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)

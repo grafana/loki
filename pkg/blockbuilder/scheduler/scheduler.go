@@ -99,30 +99,46 @@ type BlockScheduler struct {
 	queue   *JobQueue
 	metrics *Metrics
 
-	offsetManager partition.OffsetManager
-	planner       Planner
+	fallbackOffsetMillis int64
+	commitTracker        *CommitTracker
+	offsetManager        offsetReader
+	planner              Planner
 }
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(cfg Config, queue *JobQueue, offsetManager partition.OffsetManager, logger log.Logger, r prometheus.Registerer) (*BlockScheduler, error) {
+	// set the fallback offset timestamp at the time of scheduler creation
+	// to ensure planner and commit tracker assume the same fallback offset if the partition or consumer has no commits.
+	fallbackOffsetMillis := int64(partition.KafkaStartOffset)
+	if cfg.LookbackPeriod > 0 {
+		fallbackOffsetMillis = time.Now().UnixMilli() - cfg.LookbackPeriod.Milliseconds()
+	}
+
 	var planner Planner
 	switch cfg.Strategy {
 	case RecordCountStrategy:
-		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, cfg.LookbackPeriod, logger)
+		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, fallbackOffsetMillis, logger)
 	default:
 		return nil, fmt.Errorf("invalid strategy: %s", cfg.Strategy)
 	}
 
 	s := &BlockScheduler{
-		cfg:           cfg,
-		planner:       planner,
-		offsetManager: offsetManager,
-		logger:        logger,
-		metrics:       NewMetrics(r),
-		queue:         queue,
+		cfg:                  cfg,
+		planner:              planner,
+		offsetManager:        offsetManager,
+		logger:               logger,
+		metrics:              NewMetrics(r),
+		queue:                queue,
+		commitTracker:        NewCommitTracker(offsetManager, offsetManager, fallbackOffsetMillis, logger),
+		fallbackOffsetMillis: fallbackOffsetMillis,
 	}
-	s.Service = services.NewBasicService(nil, s.running, nil)
+
+	s.Service = services.NewBasicService(s.starting, s.running, nil)
 	return s, nil
+}
+
+func (s *BlockScheduler) starting(ctx context.Context) error {
+	return s.commitTracker.starting(ctx)
 }
 
 func (s *BlockScheduler) running(ctx context.Context) error {
@@ -147,7 +163,7 @@ func (s *BlockScheduler) running(ctx context.Context) error {
 }
 
 func (s *BlockScheduler) runOnce(ctx context.Context) error {
-	lag, err := s.offsetManager.GroupLag(ctx, s.cfg.LookbackPeriod)
+	lag, err := s.offsetManager.GroupLag(ctx, s.fallbackOffsetMillis)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to get group lag", "err", err)
 		return err
@@ -236,11 +252,9 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 	logger := log.With(s.logger, "job", job.ID())
 
 	if success {
-		if err = s.offsetManager.Commit(
-			ctx,
-			job.Partition(),
-			job.Offsets().Max-1, // max is exclusive, so commit max-1
-		); err == nil {
+		// TODO: also publish completion events to a kafka topic and restore the tracker state during start-up?
+		// In the event of a scheduler restart, this should help avoid reprocessing offsets that were already processed.
+		if err = s.commitTracker.ProcessCompletedJob(ctx, job); err == nil {
 			s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
 			level.Info(logger).Log("msg", "job completed successfully")
 			return nil
@@ -266,5 +280,5 @@ func (s *BlockScheduler) HandleSyncJob(_ context.Context, job *types.Job) error 
 }
 
 func (s *BlockScheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newStatusPageHandler(s.queue, s.offsetManager, s.cfg.LookbackPeriod).ServeHTTP(w, req)
+	newStatusPageHandler(s.queue, s.offsetManager, s.fallbackOffsetMillis).ServeHTTP(w, req)
 }

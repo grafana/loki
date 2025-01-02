@@ -3,7 +3,6 @@ package scheduler
 import (
 	"context"
 	"sort"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -14,7 +13,7 @@ import (
 
 // OffsetReader is an interface to list offsets for all partitions of a topic from Kafka.
 type OffsetReader interface {
-	GroupLag(context.Context, time.Duration) (map[int32]kadm.GroupMemberLag, error)
+	GroupLag(context.Context, int64) (map[int32]kadm.GroupMemberLag, error)
 }
 
 type Planner interface {
@@ -32,18 +31,18 @@ var validStrategies = []string{
 
 // tries to consume upto targetRecordCount records per partition
 type RecordCountPlanner struct {
-	targetRecordCount int64
-	lookbackPeriod    time.Duration
-	offsetReader      OffsetReader
-	logger            log.Logger
+	targetRecordCount    int64
+	fallbackOffsetMillis int64
+	offsetReader         OffsetReader
+	logger               log.Logger
 }
 
-func NewRecordCountPlanner(offsetReader OffsetReader, targetRecordCount int64, lookbackPeriod time.Duration, logger log.Logger) *RecordCountPlanner {
+func NewRecordCountPlanner(offsetReader OffsetReader, targetRecordCount int64, fallbackOffsetMillis int64, logger log.Logger) *RecordCountPlanner {
 	return &RecordCountPlanner{
-		targetRecordCount: targetRecordCount,
-		lookbackPeriod:    lookbackPeriod,
-		offsetReader:      offsetReader,
-		logger:            logger,
+		targetRecordCount:    targetRecordCount,
+		fallbackOffsetMillis: fallbackOffsetMillis,
+		offsetReader:         offsetReader,
+		logger:               logger,
 	}
 }
 
@@ -52,7 +51,7 @@ func (p *RecordCountPlanner) Name() string {
 }
 
 func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int) ([]*JobWithMetadata, error) {
-	offsets, err := p.offsetReader.GroupLag(ctx, p.lookbackPeriod)
+	offsets, err := p.offsetReader.GroupLag(ctx, p.fallbackOffsetMillis)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
 		return nil, err
