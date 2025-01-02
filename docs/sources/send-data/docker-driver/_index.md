@@ -57,7 +57,7 @@ re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki --force
-docker plugin upgrade loki grafana/loki-docker-driver:3.3.2-arm64 --grant-all-permissions
+docker plugin upgrade loki grafana/loki-docker-driver:3.3.2-amm64 --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
