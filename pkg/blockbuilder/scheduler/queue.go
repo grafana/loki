@@ -382,3 +382,15 @@ func (q *JobQueue) ListInProgressJobs() []JobWithMetadata {
 	}
 	return jobs
 }
+
+func (q *JobQueue) ListCompletedJobs() []JobWithMetadata {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	jobs := make([]JobWithMetadata, 0, q.completed.Len())
+	q.completed.Range(func(job *JobWithMetadata) bool {
+		jobs = append(jobs, *job)
+		return true
+	})
+	return jobs
+}
