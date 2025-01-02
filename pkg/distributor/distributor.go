@@ -176,6 +176,8 @@ type Distributor struct {
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
+	kafkaTasks     chan pushKafkaTask
+	kafkaTaskWg    sync.WaitGroup
 
 	// kafka
 	kafkaWriter   KafkaProducer
@@ -265,6 +267,7 @@ func New(
 		tee:                   tee,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
+		kafkaTasks:            make(chan pushKafkaTask),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_ingester_appends_total",
@@ -379,10 +382,15 @@ func (d *Distributor) running(ctx context.Context) error {
 	defer func() {
 		cancel()
 		d.ingesterTaskWg.Wait()
+		d.kafkaTaskWg.Wait()
 	}()
 	d.ingesterTaskWg.Add(d.cfg.PushWorkerCount)
 	for i := 0; i < d.cfg.PushWorkerCount; i++ {
 		go d.pushIngesterWorker(ctx)
+	}
+	d.kafkaTaskWg.Add(d.cfg.PushWorkerCount)
+	for i := 0; i < d.cfg.PushWorkerCount; i++ {
+		go d.pushKafkaWorker(ctx)
 	}
 	select {
 	case <-ctx.Done():
@@ -647,7 +655,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return nil, err
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
+		for _, s := range streams {
+			task := pushKafkaTask{
+				stream:      s,
+				tenant:      tenantID,
+				pushTracker: &tracker,
+				subring:     subring,
+				ctx:         ctx,
+			}
+			d.kafkaTasks <- task
+		}
 	}
 
 	if d.cfg.IngesterEnabled {
@@ -977,6 +994,15 @@ type pushIngesterTask struct {
 	cancel        context.CancelFunc
 }
 
+// stream KeyedStream, tenant string, subring *ring.PartitionRing
+type pushKafkaTask struct {
+	stream      KeyedStream
+	tenant      string
+	pushTracker *pushTracker
+	subring     *ring.PartitionRing
+	ctx         context.Context
+}
+
 func (d *Distributor) pushIngesterWorker(ctx context.Context) {
 	defer d.ingesterTaskWg.Done()
 	for {
@@ -985,6 +1011,22 @@ func (d *Distributor) pushIngesterWorker(ctx context.Context) {
 			return
 		case task := <-d.ingesterTasks:
 			d.sendStreams(task)
+		}
+	}
+}
+
+func (d *Distributor) pushKafkaWorker(ctx context.Context) {
+	defer d.kafkaTaskWg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task := <-d.kafkaTasks:
+			err := d.sendStreamToKafka(task)
+			if err != nil {
+				err = fmt.Errorf("failed to write stream to kafka: %w", err)
+			}
+			task.pushTracker.doneWithResult(err)
 		}
 	}
 }
@@ -1045,23 +1087,11 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
-	for _, s := range streams {
-		go func(s KeyedStream) {
-			err := d.sendStreamToKafka(ctx, s, tenant, subring)
-			if err != nil {
-				err = fmt.Errorf("failed to write stream to kafka: %w", err)
-			}
-			tracker.doneWithResult(err)
-		}(s)
-	}
-}
-
-func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream, tenant string, subring *ring.PartitionRing) error {
-	if len(stream.Stream.Entries) == 0 {
+func (d *Distributor) sendStreamToKafka(task pushKafkaTask) error {
+	if len(task.stream.Stream.Entries) == 0 {
 		return nil
 	}
-	partitionID, err := subring.ActivePartitionForKey(stream.HashKey)
+	partitionID, err := task.subring.ActivePartitionForKey(task.stream.HashKey)
 	if err != nil {
 		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
 		return fmt.Errorf("failed to find active partition for stream: %w", err)
@@ -1069,7 +1099,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 
 	startTime := time.Now()
 
-	records, err := kafka.Encode(partitionID, tenant, stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
+	records, err := kafka.Encode(partitionID, task.tenant, task.stream.Stream, d.cfg.KafkaConfig.ProducerMaxRecordSizeBytes)
 	if err != nil {
 		d.kafkaAppends.WithLabelValues(fmt.Sprintf("partition_%d", partitionID), "fail").Inc()
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
@@ -1077,7 +1107,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
 
-	produceResults := d.kafkaWriter.ProduceSync(ctx, records)
+	produceResults := d.kafkaWriter.ProduceSync(task.ctx, records)
 
 	if count, sizeBytes := successfulProduceRecordsStats(produceResults); count > 0 {
 		d.kafkaWriteLatency.Observe(time.Since(startTime).Seconds())
