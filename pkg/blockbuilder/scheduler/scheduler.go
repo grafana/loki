@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -156,25 +157,10 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 	for _, job := range jobs {
 		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
 
-		logger := log.With(
-			s.logger,
-			"job", job.Job.ID(),
-			"priority", job.Priority,
-		)
+		added, status, err := s.idempotentEnqueue(job)
 
-		status, ok := s.queue.Exists(job.Job)
-
-		// scheduler is unaware of incoming job; enqueue
-		if !ok {
-			level.Debug(logger).Log(
-				"msg", "job does not exist, enqueueing",
-			)
-
-			// enqueue
-			if err := s.queue.Enqueue(job.Job, job.Priority); err != nil {
-				level.Error(logger).Log("msg", "failed to enqueue job", "err", err)
-			}
-
+		// if we've either added or encountered an error, move on; we're done this cycle
+		if added || err != nil {
 			continue
 		}
 
@@ -225,6 +211,34 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context) (*types.Job, bool, er
 	}
 }
 
+// if added is true, the job was added to the queue, otherwise status is the current status of the job
+func (s *BlockScheduler) idempotentEnqueue(job *JobWithMetadata) (added bool, status types.JobStatus, err error) {
+	logger := log.With(
+		s.logger,
+		"job", job.Job.ID(),
+		"priority", job.Priority,
+	)
+
+	status, ok := s.queue.Exists(job.Job)
+
+	// scheduler is unaware of incoming job; enqueue
+	if !ok {
+		level.Debug(logger).Log(
+			"msg", "job does not exist, enqueueing",
+		)
+
+		// enqueue
+		if err := s.queue.Enqueue(job.Job, job.Priority); err != nil {
+			level.Error(logger).Log("msg", "failed to enqueue job", "err", err)
+			return false, types.JobStatusUnknown, err
+		}
+
+		return true, types.JobStatusPending, nil
+	}
+
+	return false, status, nil
+}
+
 func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, success bool) (err error) {
 	logger := log.With(s.logger, "job", job.ID())
 
@@ -236,6 +250,23 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 		); err == nil {
 			s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
 			level.Info(logger).Log("msg", "job completed successfully")
+
+			// TODO(owen-d): cleaner way to enqueue next job for this partition,
+			// don't make it part of the response cycle to job completion, etc.
+			jobs, err := s.planner.Plan(ctx, 1)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to plan subsequent jobs", "err", err)
+			}
+
+			// find first job for this partition
+			nextJob := sort.Search(len(jobs), func(i int) bool {
+				return jobs[i].Job.Partition() >= job.Partition()
+			})
+
+			if nextJob < len(jobs) {
+				_, _, _ = s.idempotentEnqueue(jobs[nextJob])
+			}
+
 			return nil
 		}
 
