@@ -99,6 +99,9 @@ type ClusterAdmin interface {
 	// This operation is supported by brokers with version 0.11.0.0 or higher.
 	DeleteACL(filter AclFilter, validateOnly bool) ([]MatchingAcl, error)
 
+	// ElectLeaders allows to trigger the election of preferred leaders for a set of partitions.
+	ElectLeaders(ElectionType, map[string][]int32) (map[string]map[int32]*PartitionResult, error)
+
 	// List the consumer groups available in the cluster.
 	ListConsumerGroups() (map[string]string, error)
 
@@ -905,6 +908,39 @@ func (ca *clusterAdmin) DeleteACL(filter AclFilter, validateOnly bool) ([]Matchi
 		}
 	}
 	return mAcls, nil
+}
+
+func (ca *clusterAdmin) ElectLeaders(electionType ElectionType, partitions map[string][]int32) (map[string]map[int32]*PartitionResult, error) {
+	request := &ElectLeadersRequest{
+		Type:            electionType,
+		TopicPartitions: partitions,
+		TimeoutMs:       int32(60000),
+	}
+
+	if ca.conf.Version.IsAtLeast(V2_4_0_0) {
+		request.Version = 2
+	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
+		request.Version = 1
+	}
+
+	var res *ElectLeadersResponse
+	err := ca.retryOnError(isErrNotController, func() error {
+		b, err := ca.Controller()
+		if err != nil {
+			return err
+		}
+		_ = b.Open(ca.client.Config())
+
+		res, err = b.ElectLeaders(request)
+		if isErrNotController(err) {
+			_, _ = ca.refreshController()
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.ReplicaElectionResults, nil
 }
 
 func (ca *clusterAdmin) DescribeConsumerGroups(groups []string) (result []*GroupDescription, err error) {

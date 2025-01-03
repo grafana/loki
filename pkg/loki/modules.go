@@ -1836,21 +1836,11 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, err
 	}
 
-	readerMetrics := partition.NewReaderMetrics(prometheus.DefaultRegisterer)
-	readerFactory := func(partitionID int32) (partition.Reader, error) {
-		return partition.NewKafkaReader(
-			t.Cfg.KafkaConfig,
-			partitionID,
-			logger,
-			readerMetrics,
-		)
-	}
-
 	bb, err := blockbuilder.NewBlockBuilder(
 		id,
 		t.Cfg.BlockBuilder,
+		t.Cfg.KafkaConfig,
 		t.Cfg.SchemaConfig.Configs,
-		readerFactory,
 		t.Store,
 		objectStore,
 		logger,
@@ -1879,7 +1869,7 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 
 	s, err := blockscheduler.NewScheduler(
 		t.Cfg.BlockScheduler,
-		blockscheduler.NewJobQueue(logger, prometheus.DefaultRegisterer),
+		blockscheduler.NewJobQueue(t.Cfg.BlockScheduler.JobQueueConfig, logger, prometheus.DefaultRegisterer),
 		offsetManager,
 		logger,
 		prometheus.DefaultRegisterer,
@@ -1887,6 +1877,8 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	t.Server.HTTP.Path("/blockscheduler/status").Methods("GET").Handler(s)
 
 	blockprotos.RegisterSchedulerServiceServer(
 		t.Server.GRPC,
