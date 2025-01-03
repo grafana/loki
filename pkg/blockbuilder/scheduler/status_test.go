@@ -15,6 +15,7 @@ import (
 type mockQueueLister struct {
 	pendingJobs    []JobWithMetadata
 	inProgressJobs []JobWithMetadata
+	completedJobs  []JobWithMetadata
 }
 
 func (m *mockQueueLister) ListPendingJobs() []JobWithMetadata {
@@ -23,6 +24,10 @@ func (m *mockQueueLister) ListPendingJobs() []JobWithMetadata {
 
 func (m *mockQueueLister) ListInProgressJobs() []JobWithMetadata {
 	return m.inProgressJobs
+}
+
+func (m *mockQueueLister) ListCompletedJobs() []JobWithMetadata {
+	return m.completedJobs
 }
 
 func TestStatusPageHandler_ServeHTTP(t *testing.T) {

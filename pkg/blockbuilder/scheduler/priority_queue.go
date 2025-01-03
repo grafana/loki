@@ -210,3 +210,23 @@ func (b *CircularBuffer[V]) Lookup(f func(V) bool) (V, bool) {
 	var zero V
 	return zero, false
 }
+
+// Range iterates over the elements in the buffer from oldest to newest
+// and calls the given function for each element.
+// If the function returns false, iteration stops.
+func (b *CircularBuffer[V]) Range(f func(V) bool) {
+	if b.size == 0 {
+		return
+	}
+
+	// Start from head (oldest) and iterate to tail (newest)
+	idx := b.head
+	remaining := b.size
+	for remaining > 0 {
+		if !f(b.buffer[idx]) {
+			return
+		}
+		idx = (idx + 1) % len(b.buffer)
+		remaining--
+	}
+}

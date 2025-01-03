@@ -20,6 +20,7 @@ var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.F
 type jobQueue interface {
 	ListPendingJobs() []JobWithMetadata
 	ListInProgressJobs() []JobWithMetadata
+	ListCompletedJobs() []JobWithMetadata
 }
 
 type offsetReader interface {
@@ -63,12 +64,14 @@ func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	data := struct {
 		PendingJobs    []JobWithMetadata
 		InProgressJobs []JobWithMetadata
+		CompletedJobs  []JobWithMetadata
 		Now            time.Time
 		PartitionInfo  []partitionInfo
 	}{
 		Now:            time.Now(),
 		PendingJobs:    pendingJobs,
 		InProgressJobs: inProgressJobs,
+		CompletedJobs:  h.jobQueue.ListCompletedJobs(),
 	}
 
 	for _, partitionOffset := range offsets {
