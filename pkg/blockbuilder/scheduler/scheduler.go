@@ -263,7 +263,7 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 				return jobs[i].Job.Partition() >= job.Partition()
 			})
 
-			if nextJob < len(jobs) {
+			if nextJob < len(jobs) && jobs[nextJob].Job.Partition() == job.Partition() {
 				_, _, _ = s.idempotentEnqueue(jobs[nextJob])
 			}
 
