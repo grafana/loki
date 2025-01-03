@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.1
 
 require (
-	cloud.google.com/go/bigtable v1.33.0
+	cloud.google.com/go/bigtable v1.34.0
 	cloud.google.com/go/pubsub v1.45.3
 	cloud.google.com/go/storage v1.49.0
 	dario.cat/mergo v1.0.1
@@ -203,7 +203,7 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.116.0 // indirect
+	cloud.google.com/go v0.117.0 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.2.2 // indirect
 	cloud.google.com/go/longrunning v0.6.2 // indirect
@@ -284,7 +284,6 @@ require (
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
