@@ -57,6 +57,7 @@ type validationContext struct {
 	blockIngestionStatusCode      int
 	blockScopeIngestionUntil      map[string]flagext.Time
 	blockScopeIngestionStatusCode map[string]int
+	scopeIngestionLabel           string
 
 	userID string
 }
@@ -83,6 +84,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		blockIngestionStatusCode:      v.BlockIngestionStatusCode(userID),
 		blockScopeIngestionUntil:      v.BlockScopeIngestionUntil(userID),
 		blockScopeIngestionStatusCode: v.BlockScopeIngestionStatusCode(userID),
+		scopeIngestionLabel:           v.ScopeIngestionLabel(userID),
 	}
 }
 

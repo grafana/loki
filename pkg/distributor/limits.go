@@ -40,6 +40,7 @@ type Limits interface {
 	BlockIngestionStatusCode(userID string) int
 	BlockScopeIngestionUntil(userID string) map[string]flagext.Time
 	BlockScopeIngestionStatusCode(userID string) map[string]int
+	ScopeIngestionLabel(userID string) string
 
 	IngestionPartitionsTenantShardSize(userID string) int
 }

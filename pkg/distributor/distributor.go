@@ -611,30 +611,44 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	// now we check if the ingestion is blocked for the given scope.
-	for _, stream := range req.Streams {
-		lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
-		if err != nil {
-			continue
+	scopeIngestionLb := d.validator.Limits.ScopeIngestionLabel(tenantID)
+	if scopeIngestionLb != "" {
+		allOk := true
+		var lastScopeErr error
+		unblockedStreams := make([]KeyedStream, 0, len(streams))
+		for _, stream := range streams {
+			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Stream.Labels, stream.Stream)
+			if err != nil {
+				continue
+			}
+			scope := lbs.Get(scopeIngestionLb)
+			if scope == "" {
+				// scope is not set, so we skip the scope ingestion check.
+				continue
+			}
+
+			if block, until, retStatusCode := d.validator.ShouldBlockScopeIngestion(validationContext, scope, now); block {
+				d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
+				// TODO: remove the stream from the list
+
+				err = fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, scope, until.Format(time.RFC3339), retStatusCode)
+				d.writeFailuresManager.Log(tenantID, err)
+				lastScopeErr = err
+				if retStatusCode != http.StatusOK {
+					allOk = false
+				}
+			} else {
+				unblockedStreams = append(unblockedStreams, stream)
+			}
 		}
-		scope := lbs.Get("scope")
-		if scope == "" { // TODO: change this to use a configurable scope label.
-			continue
-		}
+		streams = unblockedStreams
+		if len(streams) == 0 && lastScopeErr != nil {
+			if allOk {
+				return &logproto.PushResponse{}, nil
+			}
 
-		if block, _, _ := d.validator.ShouldBlockScopeIngestion(validationContext, scope, now); block {
-			d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
-			// TODO: remove the stream from the list
-
-			// err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
-			// d.writeFailuresManager.Log(tenantID, err)
-
-			// // If the status code is 200, return success.
-			// // Note that we still log the error and increment the metrics.
-			// if retStatusCode == http.StatusOK {
-			// 	return &logproto.PushResponse{}, nil
-			// }
-
-			// return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
+			// all streams are blocked, so we return the last error seen.
+			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", lastScopeErr.Error())
 		}
 	}
 

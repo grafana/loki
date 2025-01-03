@@ -227,8 +227,9 @@ type Limits struct {
 
 	BlockIngestionUntil           dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
 	BlockIngestionStatusCode      int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	BlockScopeIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_scope_ingestion_until" json:"block_scope_ingestion_until"`
-	BlockScopeIngestionStatusCode map[string]int                `yaml:"block_scope_ingestion_status_code" json:"block_scope_ingestion_status_code"`
+	BlockScopeIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_scope_ingestion_until" json:"block_scope_ingestion_until" category:"experimental"`
+	BlockScopeIngestionStatusCode map[string]int                `yaml:"block_scope_ingestion_status_code" json:"block_scope_ingestion_status_code" category:"experimental"`
+	ScopeIngestionLabel           string                        `yaml:"scope_ingestion_label" json:"scope_ingestion_label" category:"experimental"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -445,6 +446,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// TODO: how to do flags with maps?
 	// f.Var(&l.BlockScopeIngestionUntil, "limits.block-scope-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
 	// f.IntVar(&l.BlockScopeIngestionStatusCode, "limits.block-scope-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
+	f.StringVar(&l.ScopeIngestionLabel, "limits.scope-ingestion-label", "", "Label to use for scope ingestion. This label will be used to identify the scope of the ingestion.")
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
@@ -615,6 +617,10 @@ func (o *Overrides) BlockScopeIngestionUntil(userID string) map[string]dskit_fla
 
 func (o *Overrides) BlockScopeIngestionStatusCode(userID string) map[string]int {
 	return o.getOverridesForUser(userID).BlockScopeIngestionStatusCode
+}
+
+func (o *Overrides) ScopeIngestionLabel(userID string) string {
+	return o.getOverridesForUser(userID).ScopeIngestionLabel
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.
