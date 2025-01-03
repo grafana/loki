@@ -1,5 +1,4 @@
 //go:build preview
-// +build preview
 
 package scheduler
 
