@@ -16,18 +16,18 @@ This guide shows how to deploy a minimally viable Loki in **microservice** mode 
 There are three primary methods for deploying Loki on Azure:
 
 - Hard coding a connection string - this is the simplest method but is not recommended for production environments.
-- Manged Identity
-- Federated Token
+- Manged identity
+- Federated token
 
 In this guide, we will use the federated token method to deploy Loki on Azure. This method is more secure than hard coding a connection string and is more suitable for production environments.
 
 ## Considerations
 
 {{< admonition type="caution" >}}
-This guide was accurate at the time it was last updated on **11th of December, 2024**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/?product=popular) before creating your storage account and assigning roles.
+This guide was accurate at the time it was last updated on **11th of December, 2024**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/) before creating your storage account and assigning roles.
 {{< /admonition >}}
 
-- **AD Role:** In this tutorial we will create a role in Azure AD to allow Loki to read and write from Azure Blob Storage. This role will be assigned to the Loki service account. You may want to adjust the permissions based on your requirements.
+- **AD Role:** In this tutorial we will create a role in Azure Active Directory (Azure AD) to allow Loki to read and write from Azure Blob Storage. This role will be assigned to the Loki service account. You may want to adjust the permissions based on your requirements.
 
 - **Authentication:** Grafana Loki comes with a basic authentication layer. The Loki gateway (NGINX) is exposed to the internet using basic authentication in this example. NGINX can also be replaced with other open-source reverse proxies. Refer to [Authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) for more information.
 
@@ -41,7 +41,7 @@ This guide was accurate at the time it was last updated on **11th of December, 2
 - Kubectl installed on your local machine. Refer to [Install and Set Up kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/).
 - Azure CLI installed on your local machine. Refer to [Installing the Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli). This is a requirement for following this guide as all resources will be created using the Azure CLI.
   
-### AKS Minimum Requirements
+### AKS minimum requirements
 
 Before creating an AKS cluster in Azure you need to create a resource group. You can create a resource group using the Azure CLI:
 
@@ -93,7 +93,7 @@ az aks get-credentials --resource-group <MY_RESOURCE_GROUP_NAME> --name <MY_AKS_
 ## Configuring Azure Blob Storage
 
 {{< admonition type="tip" >}}
- Consider using unique bucket names rather than:  `chunk`, `ruler` and `admin`. Although Azure Blog Storage is not directly affected by this [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/) it is a best practice to use unique container names for buckets.
+ Consider using unique bucket names rather than:  `chunk`, `ruler`, and `admin`. Although Azure Blog Storage is not directly affected by this [security update](https://grafana.com/blog/2024/06/27/grafana-security-update-grafana-loki-and-unintended-data-write-attempts-to-amazon-s3-buckets/) it is a best practice to use unique container names for buckets.
 {{< /admonition >}}
 
 Before deploying Loki, you need to create two Azure storage containers; one to store logs (chunks), the second to store alert rules. You can create the containers using the Azure CLI. Containers must exist inside a storage account.
@@ -125,11 +125,11 @@ GEL customers will require a third container to store the admin data. This conta
 
 With the storage account and containers created, you can now proceed to creating the Azure AD role and federated credentials.
 
-## Creating the Azure AD Role and Federated Credentials
+## Creating the Azure AD role and federated credentials
 
 The recommended way to authenticate Loki with Azure Blob Storage is to use federated credentials. This method is more secure than hard coding a connection string directly into the Loki configuration. In this next section, we will create an Azure AD role and federated credentials for Loki to allow it to read and write from Azure Blob Storage:
 
-1. Locate the OIDC issuer URL:
+1. Locate the OpenID Connect (OIDC)  issuer URL:
 
     ```bash
     az aks show \
@@ -163,7 +163,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
     --query appId \
     -o tsv
    ```
-    This will return the app ID. Save this for later use. if you need to find the app ID later you can run the following command:
+    This will return the app ID. Save this for later use. If you need to find the app ID later you can run the following command:
     ```bash
     az ad app list --display-name loki --query "[].appId" -o tsv
     ```
@@ -194,7 +194,7 @@ The recommended way to authenticate Loki with Azure Blob Storage is to use feder
     ```
     Replace the placeholders with your actual values.
 
-With the Azure AD role and federated credentials created, you can now proceed to deploying Loki using the Helm chart.
+Now that you have created the Azure AD role and federated credentials, you can proceed to deploying Loki using the Helm chart.
 
 
 ## Deploying the Helm chart
@@ -222,7 +222,7 @@ Before we can deploy the Loki Helm chart, we need to add the Grafana chart repos
     ```bash
     kubectl create namespace loki
     ```
-### Loki Basic Authentication
+### Loki basic authentication
 
 Loki by default does not come with any authentication. Since we will be deploying Loki to Azure and exposing the gateway to the internet, we recommend adding at least basic authentication. In this guide we will give Loki a username and password:
 
@@ -407,7 +407,7 @@ It is critical to define a valid `values.yaml` file for the Loki deployment. To 
 
 - **Storage:**
   - Defines where the Helm chart stores data.
-  - Set the type to `azure` since we are using Azure Blog Storage.
+  - Set the type to `azure` since we are using Azure Blob Storage.
   - Configure the container names for the chunks and ruler to match the containers created earlier.
   - The `azure` section specifies the storage account name and also sets `useFederatedToken` to `true`. This tells Loki to use federated credentials for authentication.
 
@@ -429,7 +429,7 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     ```bash
     helm install --values values.yaml loki grafana/loki -n loki --create-namespace
     ```
-    It is important to create a namespace called `loki` as our federated credentials where generated with the subject value `system:serviceaccount:loki:loki`. This translates to the `loki` service account in the `loki` namespace. This is configurable but make sure to update the federated credentials file first.
+    It is important to create a namespace called `loki` as our federated credentials were generated with the  value `system:serviceaccount:loki:loki`. This translates to the `loki` service account in the `loki` namespace. This is configurable but make sure to update the federated credentials file first.
 
 1. Verify the deployment:
 
@@ -465,20 +465,20 @@ Now that you have created the `values.yaml` file, you can deploy Loki using the 
     loki-ruler-0                            1/1     Running   0          10m
     ```
   
-### Find the Loki Gateway Service
+### Find the Loki gateway service
 
-The Loki Gateway service is a LoadBalancer service that exposes the Loki gateway to the internet. This is where you will write logs to and query logs from. By default NGINX is used as the gateway.
+The Loki gateway service is a load balancer service that exposes the Loki gateway to the internet. This is where you will write logs to and query logs from. By default NGINX is used as the gateway.
 
 {{< admonition type="caution" >}}
-The Loki Gateway service is exposed to the internet. We provide basic authentication using a username and password in this tutorial. Refer to the [Authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) documentation for more information.
+The Loki gateway service is exposed to the internet. We provide basic authentication using a username and password in this tutorial. Refer to the [Authentication](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/authentication/) documentation for more information.
 {{< /admonition >}}
 
-To find the Loki Gateway service, run the following command:
+To find the Loki gateway service, run the following command:
 
 ```bash
 kubectl get svc -n loki
 ```
-You should see the Loki Gateway service with an external IP address. This is the address you will use to write to and query Loki.
+You should see the Loki gateway service with an external IP address. This is the address you will use to write to and query Loki.
 
 ```console
   NAME                             TYPE           CLUSTER-IP       EXTERNAL-IP    PORT(S)              AGE
