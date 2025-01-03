@@ -180,6 +180,7 @@ type Distributor struct {
 	// kafka
 	kafkaWriter   KafkaProducer
 	partitionRing ring.PartitionRingReader
+	streamCounter *StreamCounter
 
 	// kafka metrics
 	kafkaAppends           *prometheus.CounterVec
@@ -238,7 +239,11 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
-	var kafkaWriter KafkaProducer
+	var (
+		kafkaWriter   KafkaProducer
+		streamCounter *StreamCounter
+	)
+
 	if cfg.KafkaEnabled {
 		kafkaClient, err := kafka_client.NewWriterClient(cfg.KafkaConfig, 20, logger, registerer)
 		if err != nil {
@@ -246,6 +251,12 @@ func New(
 		}
 		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		streamCounter, err = NewStreamCounter(cfg.KafkaConfig, cfg.KafkaConfig.ConsumerGroup, logger, registerer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to start stream counter: %w", err)
+		}
+		servs = append(servs, streamCounter)
 	}
 
 	d := &Distributor{
@@ -318,6 +329,7 @@ func New(
 		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:          kafkaWriter,
 		partitionRing:        partitionRing,
+		streamCounter:        streamCounter,
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -646,6 +658,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		if err != nil {
 			return nil, err
 		}
+
+		if d.streamCounter.GetCount(tenantID) >= int64(d.validator.Limits.MaxGlobalStreamsPerUser(tenantID)) {
+			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "stream count limit exceeded")
+		}
+
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
 		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
 	}

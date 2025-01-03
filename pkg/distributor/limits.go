@@ -16,6 +16,7 @@ type Limits interface {
 	MaxLabelNamesPerSeries(userID string) int
 	MaxLabelNameLength(userID string) int
 	MaxLabelValueLength(userID string) int
+	MaxGlobalStreamsPerUser(userID string) int
 
 	CreationGracePeriod(userID string) time.Duration
 	RejectOldSamples(userID string) bool

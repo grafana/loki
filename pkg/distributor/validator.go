@@ -7,12 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 const (
@@ -210,4 +209,8 @@ func updateMetrics(reason, userID string, stream logproto.Stream) {
 	validation.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(len(stream.Entries)))
 	bytes := util.EntriesTotalSize(stream.Entries)
 	validation.DiscardedBytes.WithLabelValues(reason, userID).Add(float64(bytes))
+}
+
+func (v *Validator) MaxGlobalStreamsPerUser(userID string) int {
+	return v.Limits.MaxGlobalStreamsPerUser(userID)
 }
