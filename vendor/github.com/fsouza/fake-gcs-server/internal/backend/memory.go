@@ -361,12 +361,14 @@ func (s *storageMemory) ComposeObject(bucketName string, objectNames []string, d
 	var dest Object
 	streamingDest, err := s.GetObject(bucketName, destinationName)
 	if err != nil {
+		now := time.Now().Format(timestampFormat)
 		dest = Object{
 			ObjectAttrs: ObjectAttrs{
 				BucketName:  bucketName,
 				Name:        destinationName,
 				ContentType: contentType,
-				Created:     time.Now().String(),
+				Created:     now,
+				Updated:     now,
 			},
 		}
 	} else {

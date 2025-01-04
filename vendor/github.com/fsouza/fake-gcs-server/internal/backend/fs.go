@@ -448,12 +448,14 @@ func (s *storageFS) ComposeObject(bucketName string, objectNames []string, desti
 		sourceObjects = append(sourceObjects, obj)
 	}
 
+	now := time.Now().Format(timestampFormat)
 	dest := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
 			BucketName:  bucketName,
 			Name:        destinationName,
 			ContentType: contentType,
-			Created:     time.Now().String(),
+			Created:     now,
+			Updated:     now,
 		},
 	}
 
