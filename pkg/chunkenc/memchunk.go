@@ -8,6 +8,7 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -1360,41 +1361,60 @@ func (hb *headBlock) MultiExtractorSampleIterator(
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
 	}
+
 	stats := stats.FromContext(ctx)
 	stats.AddHeadChunkLines(int64(len(hb.entries)))
 	series := map[string]*logproto.Series{}
-	baseHash := extractor.BaseLabels().Hash()
 
+	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
-		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
-		if !ok {
-			continue
+		for i, extractor := range extractors {
+			stats.AddHeadChunkBytes(int64(len(e.s)))
+			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
+			if !ok {
+				continue
+			}
+			var (
+				found bool
+				s     *logproto.Series
+			)
+
+			streamLbls := lbls.Stream()
+			streamLbls = append(streamLbls, labels.Label{
+				Name:  "__variant__",
+				Value: strconv.FormatInt(int64(i), 10),
+			})
+
+			builder := log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			builder.Add(log.StructuredMetadataLabel, lbls.StructuredMetadata()...)
+			builder.Add(log.ParsedLabel, lbls.Parsed()...)
+			newLbls := builder.LabelsResult()
+
+			lblStr := newLbls.String()
+			baseHash := extractor.BaseLabels().Hash()
+			if s, found = series[lblStr]; !found {
+				s = &logproto.Series{
+					Labels:     lblStr,
+					Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+					StreamHash: baseHash,
+				}
+				series[lblStr] = s
+			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.t,
+				Value:     value,
+				Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+			})
+
+			if extractor.ReferencedStructuredMetadata() {
+				setQueryReferencedStructuredMetadata = true
+			}
 		}
 		stats.AddPostFilterLines(1)
-		var (
-			found bool
-			s     *logproto.Series
-		)
-
-		lbs := parsedLabels.String()
-		if s, found = series[lbs]; !found {
-			s = &logproto.Series{
-				Labels:     lbs,
-				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-				StreamHash: baseHash,
-			}
-			series[lbs] = s
-		}
-
-		s.Samples = append(s.Samples, logproto.Sample{
-			Timestamp: e.t,
-			Value:     value,
-			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-		})
 	}
 
-	if extractor.ReferencedStructuredMetadata() {
+	if setQueryReferencedStructuredMetadata {
 		stats.SetQueryReferencedStructuredMetadata()
 	}
 	if len(series) == 0 {

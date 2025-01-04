@@ -48,15 +48,14 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 		e.currBaseLabels = e.currBaseLabels[:0]
 	}
 
-	// TDOO(twhitney): this loops never stops
 	for e.bufferedIterator.Next() {
+		e.stats.AddPostFilterLines(1)
+
 		for i, extractor := range e.extractors {
 			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
 			if !ok {
 				continue
 			}
-
-			e.stats.AddPostFilterLines(1)
 
 			streamLbls := lbls.Stream()
 			streamLbls = append(streamLbls, labels.Label{

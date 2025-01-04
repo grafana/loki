@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
@@ -49,12 +50,11 @@ type HeadBlock interface {
 		maxt int64,
 		extractor log.StreamSampleExtractor,
 	) iter.SampleIterator
-  //TODO(twhitney): implement this on headBlock and unorderedHeadBlock
-	// MultiExtractorSampleIterator(
-	// 	ctx context.Context,
-	// 	mint, maxt int64,
-	// 	extractors []log.StreamSampleExtractor,
-	// ) iter.SampleIterator
+	MultiExtractorSampleIterator(
+		ctx context.Context,
+		mint, maxt int64,
+		extractors []log.StreamSampleExtractor,
+	) iter.SampleIterator
 	Format() HeadBlockFmt
 }
 
@@ -357,6 +357,91 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	)
 
 	if extractor.ReferencedStructuredMetadata() {
+		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
+	}
+
+	if len(series) == 0 {
+		return iter.NoopSampleIterator
+	}
+	seriesRes := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		seriesRes = append(seriesRes, *s)
+	}
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
+		for _, s := range series {
+			SamplesPool.Put(s.Samples)
+		}
+		if structuredMetadata != nil {
+			structuredMetadataPool.Put(structuredMetadata) // nolint:staticcheck
+		}
+		return nil
+	})
+}
+
+func (hb *unorderedHeadBlock) MultiExtractorSampleIterator(
+	ctx context.Context,
+	mint,
+	maxt int64,
+	extractor []log.StreamSampleExtractor,
+) iter.SampleIterator {
+	series := map[string]*logproto.Series{}
+	setQueryReferencedStructuredMetadata := false
+	var structuredMetadata labels.Labels
+	_ = hb.forEntries(
+		ctx,
+		logproto.FORWARD,
+		mint,
+		maxt,
+		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
+			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
+
+			for i, extractor := range extractor {
+				value, lbls, ok := extractor.ProcessString(ts, line, structuredMetadata...)
+				if !ok {
+					return nil
+				}
+				var (
+					found bool
+					s     *logproto.Series
+				)
+
+				streamLbls := lbls.Stream()
+				streamLbls = append(streamLbls, labels.Label{
+					Name:  "__variant__",
+					Value: strconv.FormatInt(int64(i), 10),
+				})
+
+				builder := log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+				builder.Add(log.StructuredMetadataLabel, lbls.StructuredMetadata()...)
+				builder.Add(log.ParsedLabel, lbls.Parsed()...)
+        newLbls := builder.LabelsResult()
+
+				lblStr := newLbls.String()
+				s, found = series[lblStr]
+				if !found {
+					baseHash := extractor.BaseLabels().Hash()
+					s = &logproto.Series{
+						Labels:     lblStr,
+						Samples:    SamplesPool.Get(hb.lines).([]logproto.Sample)[:0],
+						StreamHash: baseHash,
+					}
+					series[lblStr] = s
+				}
+				s.Samples = append(s.Samples, logproto.Sample{
+					Timestamp: ts,
+					Value:     value,
+					Hash:      xxhash.Sum64(unsafeGetBytes(line)),
+				})
+				if extractor.ReferencedStructuredMetadata() {
+					setQueryReferencedStructuredMetadata = true
+				}
+			}
+			statsCtx.AddPostFilterLines(1)
+			return nil
+		},
+	)
+
+	if setQueryReferencedStructuredMetadata {
 		stats.FromContext(ctx).SetQueryReferencedStructuredMetadata()
 	}
 

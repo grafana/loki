@@ -311,8 +311,6 @@ func (q *SingleTenantQuerier) calculateIngesterMaxLookbackPeriod() time.Duration
 }
 
 func (q *SingleTenantQuerier) buildQueryIntervals(queryStart, queryEnd time.Time) (*interval, *interval) {
-	queryStart, queryEnd = queryStart.In(time.UTC), queryEnd.In(time.UTC)
-
 	// limitQueryInterval is a flag for whether store queries should be limited to start time of ingester queries.
 	limitQueryInterval := false
 	// ingesterMLB having -1 means query ingester for whole duration.

@@ -619,7 +619,6 @@ type groupedAggregation struct {
 	reverseHeap vectorByReverseValueHeap
 }
 
-// evalSample evaluate a sampleExpr
 func (q *query) evalVariant(
 	ctx context.Context,
 	expr syntax.VariantsExpr,

@@ -1718,5 +1718,5 @@ func (i *Ingester) QueryVariants(req *logproto.VariantsQueryRequest, queryServer
 
 	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
-	return sendSampleBatches(ctx, it, queryServer)
+	return sendVariantsBatches(ctx, it, queryServer)
 }
