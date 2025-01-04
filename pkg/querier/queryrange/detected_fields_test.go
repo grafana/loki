@@ -1334,7 +1334,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		lines := []push.Entry{
 			{
 				Timestamp:          now,
-				Line:               "ts=2024-09-05T15:36:38.757788067Z caller=metrics.go:66 tenant=2419 level=info bytes=1,024",
+				Line:               "ts=2024-09-05T15:36:38.757788067Z caller=metrics.go:66 tenant=2419 level=info bytes=1024",
 				StructuredMetadata: infoDetectdFiledMetadata,
 			},
 			{
@@ -1378,7 +1378,29 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		require.Equal(t, []string{
 			"1.0GB",
 			"1.0MB",
-			"1.0kB",
+			"1024",
+		}, detectedFieldValues)
+
+		// does not affect other numeric values
+		request = DetectedFieldsRequest{
+			logproto.DetectedFieldsRequest{
+				Start:     time.Now().Add(-1 * time.Minute),
+				End:       time.Now(),
+				Query:     `{cluster="us-east-1"} | logfmt`,
+				LineLimit: 1000,
+				Limit:     3,
+				Values:    true,
+				Name:      "tenant",
+			},
+			"/loki/api/v1/detected_field/tenant/values",
+		}
+
+		detectedFieldValues = handleRequest(handler, request).Values
+		slices.Sort(detectedFieldValues)
+		require.Equal(t, []string{
+			"2419",
+			"29",
+			"2919",
 		}, detectedFieldValues)
 	})
 }
