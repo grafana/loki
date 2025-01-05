@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -225,7 +226,9 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                    defaultOTLPConfig,
+				BlockScopeIngestionUntil:      map[string]flagext.Time{},
+				BlockScopeIngestionStatusCode: map[string]int{},
 			},
 		},
 		{
@@ -243,7 +246,9 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                    defaultOTLPConfig,
+				BlockScopeIngestionUntil:      map[string]flagext.Time{},
+				BlockScopeIngestionStatusCode: map[string]int{},
 			},
 		},
 		{
@@ -264,8 +269,10 @@ retention_stream:
 				},
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
-				OTLPConfig:              defaultOTLPConfig,
+				RulerRemoteWriteHeaders:       OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				OTLPConfig:                    defaultOTLPConfig,
+				BlockScopeIngestionUntil:      map[string]flagext.Time{},
+				BlockScopeIngestionStatusCode: map[string]int{},
 			},
 		},
 		{
@@ -286,7 +293,9 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                    defaultOTLPConfig,
+				BlockScopeIngestionUntil:      map[string]flagext.Time{},
+				BlockScopeIngestionStatusCode: map[string]int{},
 			},
 		},
 		{
@@ -308,7 +317,9 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:                    defaultOTLPConfig,
+				BlockScopeIngestionUntil:      map[string]flagext.Time{},
+				BlockScopeIngestionStatusCode: map[string]int{},
 			},
 		},
 	} {
