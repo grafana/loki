@@ -509,9 +509,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			// if the given stream is blocked due to its scope ingestion, we skip it.
-			blocked := d.streamIsBlocked(ctx, stream, tenantID, validationContext, now)
+			blocked, ingestionScope := d.streamIsBlocked(stream, tenantID, validationContext, now)
 			if blocked {
-				err := fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, stream.Labels, now.Format(time.RFC3339), http.StatusOK)
+				err := fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, now.Format(time.RFC3339), http.StatusOK, ingestionScope)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.BlockedScopeIngestion, tenantID).Add(float64(len(stream.Entries)))
@@ -734,28 +734,28 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 }
 
 // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
-func (d *Distributor) streamIsBlocked(ctx context.Context, stream logproto.Stream, tenantID string, validationContext validationContext, now time.Time) bool {
+func (d *Distributor) streamIsBlocked(stream logproto.Stream, tenantID string, validationContext validationContext, now time.Time) (bool, string) {
 	scopeIngestionLb := d.validator.Limits.ScopeIngestionLabel(tenantID)
 	if scopeIngestionLb == "" {
 		// not configured.
-		return false
+		return false, ""
 	}
 
 	lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
 	if err != nil {
-		return false
+		return false, ""
 	}
 	scope := lbs.Get(scopeIngestionLb)
 	if scope == "" {
 		// stream isn't telling its scope, so we default to not blocking it.
-		return false
+		return false, ""
 	}
 
 	if block, _, _ := d.validator.ShouldBlockScopeIngestion(validationContext, scope, now); block {
-		return true
+		return true, scope
 	}
 
-	return false
+	return false, ""
 }
 
 func (d *Distributor) trackDiscardedData(
