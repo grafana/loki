@@ -508,6 +508,18 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
+			// if the given stream is blocked due to its scope ingestion, we skip it.
+			blocked := d.streamIsBlocked(ctx, stream, tenantID, validationContext, now)
+			if blocked {
+				err := fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, stream.Labels, now.Format(time.RFC3339), http.StatusOK)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.BlockedScopeIngestion, tenantID).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.BlockedScopeIngestion, tenantID).Add(float64(discardedBytes))
+				continue
+			}
+
 			// Truncate first so subsequent steps have consistent line lengths
 			d.truncateLines(validationContext, &stream)
 
@@ -608,48 +620,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 
 		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
-	}
-
-	// now we check if the ingestion is blocked for the given scope.
-	scopeIngestionLb := d.validator.Limits.ScopeIngestionLabel(tenantID)
-	if scopeIngestionLb != "" {
-		allOk := true
-		var lastScopeErr error
-		unblockedStreams := make([]KeyedStream, 0, len(streams))
-		for _, stream := range streams {
-			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Stream.Labels, stream.Stream)
-			if err != nil {
-				continue
-			}
-			scope := lbs.Get(scopeIngestionLb)
-			if scope == "" {
-				// scope is not set, so we skip the scope ingestion check.
-				continue
-			}
-
-			if block, until, retStatusCode := d.validator.ShouldBlockScopeIngestion(validationContext, scope, now); block {
-				d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
-				// TODO: remove the stream from the list
-
-				err = fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, scope, until.Format(time.RFC3339), retStatusCode)
-				d.writeFailuresManager.Log(tenantID, err)
-				lastScopeErr = err
-				if retStatusCode != http.StatusOK {
-					allOk = false
-				}
-			} else {
-				unblockedStreams = append(unblockedStreams, stream)
-			}
-		}
-		streams = unblockedStreams
-		if len(streams) == 0 && lastScopeErr != nil {
-			if allOk {
-				return &logproto.PushResponse{}, nil
-			}
-
-			// all streams are blocked, so we return the last error seen.
-			return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", lastScopeErr.Error())
-		}
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
@@ -761,6 +731,31 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
+func (d *Distributor) streamIsBlocked(ctx context.Context, stream logproto.Stream, tenantID string, validationContext validationContext, now time.Time) bool {
+	scopeIngestionLb := d.validator.Limits.ScopeIngestionLabel(tenantID)
+	if scopeIngestionLb == "" {
+		// not configured.
+		return false
+	}
+
+	lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+	if err != nil {
+		return false
+	}
+	scope := lbs.Get(scopeIngestionLb)
+	if scope == "" {
+		// stream isn't telling its scope, so we default to not blocking it.
+		return false
+	}
+
+	if block, _, _ := d.validator.ShouldBlockScopeIngestion(validationContext, scope, now); block {
+		return true
+	}
+
+	return false
 }
 
 func (d *Distributor) trackDiscardedData(
