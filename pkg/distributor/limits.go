@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
