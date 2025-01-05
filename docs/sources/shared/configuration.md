@@ -3918,6 +3918,15 @@ otlp_config:
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
 
+[block_scope_ingestion_until: <map of string to Time>]
+
+[block_scope_ingestion_status_code: <map of string to int>]
+
+# Label to use for scope ingestion. This label will be used to identify the
+# scope of the ingestion.
+# CLI flag: -limits.scope-ingestion-label
+[scope_ingestion_label: <string> | default = ""]
+
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
 # disables shuffle sharding and tenant is sharded across all partitions.
