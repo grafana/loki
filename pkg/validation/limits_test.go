@@ -229,6 +229,7 @@ ruler_remote_write_headers:
 				OTLPConfig:                    defaultOTLPConfig,
 				BlockScopeIngestionUntil:      map[string]flagext.Time{},
 				BlockScopeIngestionStatusCode: map[string]int{},
+				EnforcedLabels:                []string{},
 			},
 		},
 		{
@@ -249,6 +250,7 @@ ruler_remote_write_headers:
 				OTLPConfig:                    defaultOTLPConfig,
 				BlockScopeIngestionUntil:      map[string]flagext.Time{},
 				BlockScopeIngestionStatusCode: map[string]int{},
+				EnforcedLabels:                []string{},
 			},
 		},
 		{
@@ -273,6 +275,7 @@ retention_stream:
 				OTLPConfig:                    defaultOTLPConfig,
 				BlockScopeIngestionUntil:      map[string]flagext.Time{},
 				BlockScopeIngestionStatusCode: map[string]int{},
+				EnforcedLabels:                []string{},
 			},
 		},
 		{
@@ -296,6 +299,7 @@ reject_old_samples: true
 				OTLPConfig:                    defaultOTLPConfig,
 				BlockScopeIngestionUntil:      map[string]flagext.Time{},
 				BlockScopeIngestionStatusCode: map[string]int{},
+				EnforcedLabels:                []string{},
 			},
 		},
 		{
@@ -320,6 +324,7 @@ query_timeout: 5m
 				OTLPConfig:                    defaultOTLPConfig,
 				BlockScopeIngestionUntil:      map[string]flagext.Time{},
 				BlockScopeIngestionStatusCode: map[string]int{},
+				EnforcedLabels:                []string{},
 			},
 		},
 	} {

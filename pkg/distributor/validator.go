@@ -224,15 +224,6 @@ func (v Validator) ShouldBlockScopeIngestion(ctx validationContext, scope string
 	return now.Before(ts), ts, ctx.blockScopeIngestionStatusCode[scope]
 }
 
-func (v Validator) hasEnforcedLabels(enforcedLabels []string, stream logproto.Stream) bool {
-	for _, label := range enforcedLabels {
-		if !stream.Labels.Has(label) {
-			return false
-		}
-	}
-	return true
-}
-
 func updateMetrics(reason, userID string, stream logproto.Stream) {
 	validation.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(len(stream.Entries)))
 	bytes := util.EntriesTotalSize(stream.Entries)
