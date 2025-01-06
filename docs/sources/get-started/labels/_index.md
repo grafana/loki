@@ -98,7 +98,7 @@ Because Loki has a default limit of 15 index labels, we recommend storing only s
 For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana.com/docs/grafana-cloud/send-data/otlp/otlp-format-considerations/#logs).
 {{< /admonition >}}
 
-The default list of Resource Attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
+The default list of resource attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
 
 ## Labeling is iterative
 
@@ -384,42 +384,3 @@ Any additional log lines that match those combinations of labels/values would be
 Imagine now if you set a label for `ip`. Not only does every request from a user become a unique stream. Every request with a different action or status_code from the same user will get its own stream.
 
 Doing some quick math, if there are maybe four common actions (GET, PUT, POST, DELETE) and maybe four common status codes (although there could be more than four!), this would be 16 streams and 16 separate chunks. Now multiply this by every user if we use a label for `ip`.  You can quickly have thousands or tens of thousands of streams.
-<<<<<<< HEAD
-
-This is high cardinality, and it can lead to significant performance degradation.
-
-When we talk about _cardinality_ we are referring to the combination of labels and values and the number of streams they create. High cardinality is using labels with a large range of possible values, such as `ip`, **or** combining many labels, even if they have a small and finite set of values, such as using `status_code` and `action`.
-
-High cardinality causes Loki to build a huge index and to flush thousands of tiny chunks to the object store. Loki currently performs very poorly in this configuration. If not accounted for, high cardinality will significantly reduce the operability and cost-effectiveness of Loki.
-
-## Optimal Loki performance with parallelization
-
-Now you may be asking: If using too many labels—or using labels with too many values—is bad, then how am I supposed to query my logs? If none of the data is indexed, won't queries be really slow?
-
-As we see people using Loki who are accustomed to other index-heavy solutions, it seems like they feel obligated to define a lot of labels in order to query their logs effectively. After all, many other logging solutions are all about the index, and this is the common way of thinking.
-
-When using Loki, you may need to forget what you know and look to see how the problem can be solved differently with parallelization. Loki's superpower is breaking up queries into small pieces and dispatching them in parallel so that you can query huge amounts of log data in small amounts of time.
-
-This kind of brute force approach might not sound ideal, but let me explain why it is.
-
-Large indexes are complicated and expensive. Often a full-text index of your log data is the same size or bigger than the log data itself. To query your log data, you need this index loaded, and for performance, it should probably be in memory. This is difficult to scale, and as you ingest more logs, your index gets larger quickly.
-
-Now let's talk about Loki, where the index is typically an order of magnitude smaller than your ingested log volume. So if you are doing a good job of keeping your streams and stream churn to a minimum, the index grows very slowly compared to the ingested logs.
-
-Loki will effectively keep your static costs as low as possible (index size and memory requirements as well as static log storage) and make the query performance something you can control at runtime with horizontal scaling.
-
-To see how this works, let's look back at our example of querying your access log data for a specific IP address. We don't want to use a label to store the IP address. Instead we use a [filter expression]({{< relref "../../query/log_queries#line-filter-expression" >}}) to query for it:
-
-```
-{job="apache"} |= "11.11.11.11"
-```
-
-Behind the scenes, Loki will break up that query into smaller pieces (shards), and open up each chunk for the streams matched by the labels and start looking for this IP address.
-
-The size of those shards and the amount of parallelization are configurable and based on the resources you provision. If you want to, you can configure the shard interval down to 5m, deploy 20 queriers, and process gigabytes of logs in seconds. Or you can go crazy and provision 200 queriers and process terabytes of logs!
-
-This trade-off of smaller index and parallel brute force querying vs. a larger/faster full-text index is what allows Loki to save on costs versus other systems. The cost and complexity of operating a large index is high and is typically fixed -- you pay for it 24 hours a day if you are querying it or not.
-
-The benefits of this design mean you can make the decision about how much query power you want to have, and you can change that on demand. Query performance becomes a function of how much money you want to spend on it. Meanwhile, the data is heavily compressed and stored in low-cost object stores like S3 and GCS. This drives the fixed operating costs to a minimum while still allowing for incredibly fast query capability.
-=======
->>>>>>> 71c00518c (docs: Update labels, add cardinality topic)

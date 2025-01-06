@@ -47,6 +47,6 @@ To avoid high cardinality in Loki, you should:
 - Use structured metadata to store frequently-searched, high-cardinality metadata fields, such as customer IDs or transaction IDs, without impacting Loki's index.
 
 {{< admonition type="note" >}}
-[Structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/) is a feature in Loki and Cloud Logs that allows customers to store metadata that is too high cardinality for log lines, without needing to embed that information in log lines themselves.
-It is a great home for metadata which is not easily embeddable in a log line, but is too high cardinality to be used effectively as a label.
+[Structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/) is a feature in Loki and Cloud Logs that allows customers to store metadata that is too high cardinality for log lines, without needing to embed that information in log lines themselves.  
+It is a great home for metadata which is not easily embeddable in a log line, but is too high cardinality to be used effectively as a label. [Query acceleration with Blooms](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/bloom-filters/) also utilizes structured metadata.
 {{< /admonition >}}
