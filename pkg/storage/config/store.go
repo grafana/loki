@@ -10,9 +10,10 @@ import (
 )
 
 type ChunkStoreConfig struct {
-	ChunkCacheConfig       cache.Config `yaml:"chunk_cache_config"`
-	ChunkCacheConfigL2     cache.Config `yaml:"chunk_cache_config_l2"`
-	WriteDedupeCacheConfig cache.Config `yaml:"write_dedupe_cache_config" doc:"description=Write dedupe cache is deprecated along with legacy index types (aws, aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey, grpc-store).\nConsider using TSDB index which does not require a write dedupe cache."`
+	ChunkCacheConfig            cache.Config  `yaml:"chunk_cache_config"`
+	ChunkCacheConfigL2          cache.Config  `yaml:"chunk_cache_config_l2"`
+	WriteDedupeCacheConfig      cache.Config  `yaml:"write_dedupe_cache_config" doc:"description=Write dedupe cache is deprecated along with legacy index types (aws, aws-dynamo, bigtable, bigtable-hashed, cassandra, gcp, gcp-columnkey, grpc-store).\nConsider using TSDB index which does not require a write dedupe cache."`
+	SkipQueryWritebackOlderThan time.Duration `yaml:"skip_query_writeback_cache_older_than"`
 
 	L2ChunkCacheHandoff   time.Duration  `yaml:"l2_chunk_cache_handoff"`
 	CacheLookupsOlderThan model.Duration `yaml:"cache_lookups_older_than"`
@@ -38,6 +39,7 @@ func (cfg *ChunkStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.L2ChunkCacheHandoff, "store.chunks-cache-l2.handoff", 0, "Chunks will be handed off to the L2 cache after this duration. 0 to disable L2 cache.")
 	f.BoolVar(&cfg.chunkCacheStubs, "store.chunks-cache.cache-stubs", false, "If true, don't write the full chunk to cache, just a stub entry.")
 	cfg.WriteDedupeCacheConfig.RegisterFlagsWithPrefix("store.index-cache-write.", "", f)
+	f.DurationVar(&cfg.SkipQueryWritebackOlderThan, "store.skip-query-writeback-older-than", 0, "Chunks fetched from queriers before this duration will not be written to the cache. A value of 0 will write all chunks to the cache")
 
 	f.Var(&cfg.CacheLookupsOlderThan, "store.cache-lookups-older-than", "Cache index entries older than this period. 0 to disable.")
 }
