@@ -230,6 +230,7 @@ type Limits struct {
 	BlockScopeIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_scope_ingestion_until" json:"block_scope_ingestion_until" category:"experimental"`
 	BlockScopeIngestionStatusCode map[string]int                `yaml:"block_scope_ingestion_status_code" json:"block_scope_ingestion_status_code" category:"experimental"`
 	ScopeIngestionLabel           string                        `yaml:"scope_ingestion_label" json:"scope_ingestion_label" category:"experimental"`
+	EnforcedLabels                []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
