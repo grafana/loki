@@ -232,10 +232,6 @@ block_scheduler:
   # CLI flag: -block-scheduler.target-record-count
   [target_record_count: <int> | default = 1000]
 
-  # Maximum number of jobs that the planner can return.
-  # CLI flag: -block-scheduler.max-jobs-planned-per-interval
-  [max_jobs_planned_per_interval: <int> | default = 100]
-
   job_queue:
     # Interval to check for expired job leases
     # CLI flag: -jobqueue.lease-expiry-check-interval
