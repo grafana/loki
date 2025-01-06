@@ -1,6 +1,7 @@
 local utils = import 'mixin-utils/utils.libsonnet';
-
+local config = import '../config.libsonnet';
 (import 'grafana-builder/grafana.libsonnet') {
+  _config:: config._config,
   // Override the dashboard constructor to add:
   // - default tags,
   // - some links that propagate the selected cluster.

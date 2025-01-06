@@ -4,17 +4,17 @@
     {
       "source": {
         "git": {
-          "remote": "https://github.com/grafana/grafonnet.git",
-          "subdir": "gen/grafonnet-latest"
+          "remote": "https://github.com/grafana/grafonnet-lib.git",
+          "subdir": "grafonnet"
         }
       },
-      "version": "main"
+      "version": "master"
     },
     {
       "source": {
         "git": {
           "remote": "https://github.com/grafana/jsonnet-libs.git",
-          "subdir": "grizzly"
+          "subdir": "grafana-builder"
         }
       },
       "version": "master"
@@ -30,11 +30,21 @@
     },
     {
       "source": {
-        "local": {
-          "directory": "."
+        "git": {
+          "remote": "https://github.com/grafana/mimir.git",
+          "subdir": "operations/mimir-mixin"
         }
       },
-      "version": ""
+      "version": "main"
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/prometheus-operator/kube-prometheus.git",
+          "subdir": "jsonnet/kube-prometheus/lib"
+        }
+      },
+      "version": "main"
     }
   ],
   "legacyImports": true

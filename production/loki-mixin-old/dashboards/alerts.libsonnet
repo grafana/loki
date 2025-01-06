@@ -1,4 +1,4 @@
-{
+(import 'config.libsonnet') {
   prometheusAlerts+:: {
     groups+: [
       {
@@ -7,9 +7,9 @@
           {
             alert: 'LokiRequestErrors',
             expr: |||
-              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (%(group_by_cluster)s, job, route)
+              100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[5m])) by (%(group_by_cluster)s, job, route)
                 /
-              sum(rate(loki_request_duration_seconds_count[2m])) by (%(group_by_cluster)s, job, route)
+              sum(rate(loki_request_duration_seconds_count[5m])) by (%(group_by_cluster)s, job, route)
                 > 10
             ||| % $._config,
             'for': '15m',

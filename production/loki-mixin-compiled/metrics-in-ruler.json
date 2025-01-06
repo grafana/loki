@@ -1,0 +1,35 @@
+{
+  "metricsUsed": [
+    "cluster_namespace_job_route:loki_request_duration_seconds:99quantile",
+    "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds",
+    "loki_boltdb_shipper_compactor_running",
+    "loki_panic_total",
+    "loki_request_duration_seconds_bucket",
+    "loki_request_duration_seconds_count",
+    "loki_request_duration_seconds_sum"
+  ],
+  "ruleGroups": [
+    {
+      "namspace": "alerts",
+      "name": "loki_alerts",
+      "metrics": [
+        "cluster_namespace_job_route:loki_request_duration_seconds:99quantile",
+        "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds",
+        "loki_boltdb_shipper_compactor_running",
+        "loki_panic_total",
+        "loki_request_duration_seconds_count"
+      ],
+      "parse_errors": null
+    },
+    {
+      "namspace": "rules",
+      "name": "loki_rules",
+      "metrics": [
+        "loki_request_duration_seconds_bucket",
+        "loki_request_duration_seconds_count",
+        "loki_request_duration_seconds_sum"
+      ],
+      "parse_errors": null
+    }
+  ]
+}

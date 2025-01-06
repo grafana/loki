@@ -1,1 +1,4 @@
 vendor/
+dashboards_out/+
+alerts.yaml
+rules.yaml

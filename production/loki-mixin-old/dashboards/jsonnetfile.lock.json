@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "dependencies": [
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/grafonnet-lib.git",
+          "subdir": "grafonnet"
+        }
+      },
+      "version": "a1d61cce1da59c71409b99b5c7568511fec661ea",
+      "sum": "342u++/7rViR/zj2jeJOjshzglkZ1SY+hFNuyCBFMdc="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "grafana-builder"
+        }
+      },
+      "version": "1d31bb1b58a2a2a3ffb2296cd5aa4d5e4ae5576b",
+      "sum": "yxqWcq/N3E/a/XreeU6EuE6X7kYPnG0AspAQFKOjASo="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/jsonnet-libs.git",
+          "subdir": "mixin-utils"
+        }
+      },
+      "version": "1d31bb1b58a2a2a3ffb2296cd5aa4d5e4ae5576b",
+      "sum": "LoYq5QxJmUXEtqkEG8CFUBLBhhzDDaNANHc7Gz36ZdM="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/grafana/mimir.git",
+          "subdir": "operations/mimir-mixin"
+        }
+      },
+      "version": "61dd68b7397e197ff6bb81251737ead633fd42b9",
+      "sum": "en5dwfa7Hh4t7pWAoMc1uDXHGStqxqL1Vj+E/5NGwRQ="
+    },
+    {
+      "source": {
+        "git": {
+          "remote": "https://github.com/prometheus-operator/kube-prometheus.git",
+          "subdir": "jsonnet/kube-prometheus/lib"
+        }
+      },
+      "version": "74f4e0cda3f3c2a4e8a1ab7d9bdbee019a47c851",
+      "sum": "QKRgrgEZ3k9nLmLCrDBaeIGVqQZf+AvZTcnhdLk3TrA="
+    }
+  ],
+  "legacyImports": false
+}

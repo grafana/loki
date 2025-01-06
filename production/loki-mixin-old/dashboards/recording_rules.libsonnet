@@ -1,6 +1,6 @@
 local utils = import 'mixin-utils/utils.libsonnet';
 
-{
+(import 'config.libsonnet') {
   prometheusRules+:: {
     groups+: [{
       name: 'loki_rules',
