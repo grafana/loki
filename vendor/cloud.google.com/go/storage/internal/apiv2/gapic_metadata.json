@@ -70,6 +70,11 @@
                 "LockBucketRetentionPolicy"
               ]
             },
+            "MoveObject": {
+              "methods": [
+                "MoveObject"
+              ]
+            },
             "QueryWriteStatus": {
               "methods": [
                 "QueryWriteStatus"
