@@ -51,6 +51,9 @@ linters:
     - musttag
     - depguard
     - goconst
+    - perfsprint
+    - mnd
+    - predeclared
 
 linters-settings:
   govet:
