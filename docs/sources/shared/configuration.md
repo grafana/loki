@@ -216,7 +216,7 @@ block_scheduler:
 
   # How often the scheduler should plan jobs.
   # CLI flag: -block-scheduler.interval
-  [interval: <duration> | default = 5m]
+  [interval: <duration> | default = 15m]
 
   # Lookback period used by the scheduler to plan jobs when the consumer group
   # has no commits. 0 consumes from the start of the partition.
