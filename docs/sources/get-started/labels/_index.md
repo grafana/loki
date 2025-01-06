@@ -24,9 +24,8 @@ In Loki, the content of each log line is not indexed. Instead, log entries are g
 A label is a key-value pair, for example all of the following are labels:
 
 - deployment_environment = development
-- host = server-1
 - cloud_region = us-west-1
-- service_namespace = grafana-server
+- namespace = grafana-server
 
 A set of log messages which shares all the labels above would be called a log stream. When Loki performs searches, it first looks for all messages in your chosen stream, and then iterates through the logs in the stream to perform your query.
 
@@ -124,13 +123,14 @@ Many log collectors such as Grafana Alloy, or the Kubernetes Monitoring Helm cha
 
 Usually, labels describe the source of the log, for example:
 
-- the name of the application which produced the message
+- the namespace or additional logical grouping of applications
+- cluster, and/or region of where the logs were produced
 - the filename of the source log file on disk
-- the hostname where the log was produced
+- the hostname where the log was produced, if the environment has individually named machines or virtual machines.  If you have an environment with ephemeral machines or virtual machines, the hostname should be stored in [structured metadata](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata/).
 
 If your logs had the example labels above, then you might query them in LogQL like this:
 
-`{name="myapp", filename="/var/log/myapp.log", hostname="server-1"}`
+`{namespace="mynamespace", cluster="cluster123" filename="/var/log/myapp.log"}`
 
 Unlike index-based log aggregators, Loki doesn't require you to create a label for every field that you might wish to search in your log content. Labels are only needed to organize and identify your log streams. Loki performs searches by iterating over a log stream in a highly parallelized fashion to look for a given string.
 
