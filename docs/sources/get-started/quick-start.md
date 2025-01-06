@@ -92,6 +92,7 @@ This quickstart assumes you are running Linux.
 
 2. Download `loki-config.yaml`, `alloy-local-config.yaml`, and `docker-compose.yaml`:
 
+   <!-- INTERACTIVE ignore START -->
    {{< tabs >}}
    {{< tab-content name="wget" >}}
    ```bash
@@ -108,6 +109,15 @@ This quickstart assumes you are running Linux.
    ```
    {{< /tab-content >}}
    {{< /tabs >}}
+ <!-- INTERACTIVE ignore END -->
+
+{{< docs/ignore >}}
+   ```bash
+   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
+   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
+   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
+   ```
+{{< /docs/ignore >}}
 
 3. Deploy the sample Docker image.
 
