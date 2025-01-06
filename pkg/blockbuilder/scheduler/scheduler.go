@@ -149,15 +149,27 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 
 	s.publishLagMetrics(lag)
 
-	jobs, err := s.planner.Plan(ctx, 1) // TODO(owen-d): parallelize work within a partition
+	// TODO(owen-d): parallelize work within a partition
+	// TODO(owen-d): skip small jobs unless they're stale,
+	//  e.g. a partition which is no longer being written to shouldn't be orphaned
+	jobs, err := s.planner.Plan(ctx, 1, 0)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to plan jobs", "err", err)
 	}
+	level.Info(s.logger).Log("msg", "planned jobs", "count", len(jobs))
 
 	for _, job := range jobs {
 		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
 
 		added, status, err := s.idempotentEnqueue(job)
+		level.Info(s.logger).Log(
+			"msg", "enqueued job",
+			"added", added,
+			"status", status.String(),
+			"err", err,
+			"partition", job.Job.Partition(),
+			"num_offsets", job.Offsets().Max-job.Offsets().Min,
+		)
 
 		// if we've either added or encountered an error, move on; we're done this cycle
 		if added || err != nil {
@@ -253,7 +265,9 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 
 			// TODO(owen-d): cleaner way to enqueue next job for this partition,
 			// don't make it part of the response cycle to job completion, etc.
-			jobs, err := s.planner.Plan(ctx, 1)
+			// NB(owen-d): only immediately enqueue another job for this partition if]
+			// the job is full. Otherwise, we'd repeatedly enqueue tiny jobs with a few records.
+			jobs, err := s.planner.Plan(ctx, 1, int(s.cfg.TargetRecordCount))
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to plan subsequent jobs", "err", err)
 			}
