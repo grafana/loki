@@ -593,6 +593,31 @@ func (c *httpStorageClient) RestoreObject(ctx context.Context, params *restoreOb
 	return newObject(obj), err
 }
 
+func (c *httpStorageClient) MoveObject(ctx context.Context, params *moveObjectParams, opts ...storageOption) (*ObjectAttrs, error) {
+	s := callSettings(c.settings, opts...)
+	req := c.raw.Objects.Move(params.bucket, params.srcObject, params.dstObject).Context(ctx)
+	if err := applyConds("MoveObjectDestination", defaultGen, params.dstConds, req); err != nil {
+		return nil, err
+	}
+	if err := applySourceConds("MoveObjectSource", defaultGen, params.srcConds, req); err != nil {
+		return nil, err
+	}
+	if s.userProject != "" {
+		req.UserProject(s.userProject)
+	}
+	if err := setEncryptionHeaders(req.Header(), params.encryptionKey, false); err != nil {
+		return nil, err
+	}
+	var obj *raw.Object
+	var err error
+	err = run(ctx, func(ctx context.Context) error { obj, err = req.Context(ctx).Do(); return err }, s.retry, s.idempotent)
+	var e *googleapi.Error
+	if ok := errors.As(err, &e); ok && e.Code == http.StatusNotFound {
+		return nil, ErrObjectNotExist
+	}
+	return newObject(obj), err
+}
+
 // Default Object ACL methods.
 
 func (c *httpStorageClient) DeleteDefaultObjectACL(ctx context.Context, bucket string, entity ACLEntity, opts ...storageOption) error {
@@ -798,7 +823,7 @@ func (c *httpStorageClient) RewriteObject(ctx context.Context, req *rewriteObjec
 	if err := applyConds("Copy destination", defaultGen, req.dstObject.conds, call); err != nil {
 		return nil, err
 	}
-	if err := applySourceConds(req.srcObject.gen, req.srcObject.conds, call); err != nil {
+	if err := applySourceConds("Copy source", req.srcObject.gen, req.srcObject.conds, call); err != nil {
 		return nil, err
 	}
 	if s.userProject != "" {
@@ -1523,6 +1548,14 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 		}
 	}
 
+	metadata := map[string]string{}
+	for key, values := range res.Header {
+		if len(values) > 0 && strings.HasPrefix(key, "X-Goog-Meta-") {
+			key := key[len("X-Goog-Meta-"):]
+			metadata[key] = values[0]
+		}
+	}
+
 	attrs := ReaderObjectAttrs{
 		Size:            size,
 		ContentType:     res.Header.Get("Content-Type"),
@@ -1536,10 +1569,11 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 		Decompressed:    res.Uncompressed || uncompressedByServer(res),
 	}
 	return &Reader{
-		Attrs:    attrs,
-		size:     size,
-		remain:   remain,
-		checkCRC: checkCRC,
+		Attrs:          attrs,
+		objectMetadata: &metadata,
+		size:           size,
+		remain:         remain,
+		checkCRC:       checkCRC,
 		reader: &httpReader{
 			reopen:   reopen,
 			body:     body,
