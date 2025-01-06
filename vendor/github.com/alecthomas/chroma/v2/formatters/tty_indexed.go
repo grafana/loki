@@ -1,7 +1,6 @@
 package formatters
 
 import (
-	"fmt"
 	"io"
 	"math"
 
@@ -257,13 +256,7 @@ func (c *indexedTTYFormatter) Format(w io.Writer, style *chroma.Style, it chroma
 			}
 		}
 
-		if clr != "" {
-			fmt.Fprint(w, clr)
-		}
-		fmt.Fprint(w, token.Value)
-		if clr != "" {
-			fmt.Fprintf(w, "\033[0m")
-		}
+		writeToken(w, clr, token.Value)
 	}
 	return nil
 }
