@@ -1156,6 +1156,38 @@ func (o *ObjectHandle) Restore(ctx context.Context, opts *RestoreOptions) (*Obje
 	}, sOpts...)
 }
 
+// Move changes the name of the object to the destination name.
+// It can only be used to rename an object within the same bucket. The
+// bucket must have [HierarchicalNamespace] enabled to use this method.
+//
+// Any preconditions set on the ObjectHandle will be applied for the source
+// object. Set preconditions on the destination object using
+// [MoveObjectDestination.Conditions].
+//
+// This API is in preview and is not yet publicly available.
+func (o *ObjectHandle) Move(ctx context.Context, destination MoveObjectDestination) (*ObjectAttrs, error) {
+	if err := o.validate(); err != nil {
+		return nil, err
+	}
+
+	sOpts := makeStorageOpts(true, o.retry, o.userProject)
+	return o.c.tc.MoveObject(ctx, &moveObjectParams{
+		bucket:        o.bucket,
+		srcObject:     o.object,
+		dstObject:     destination.Object,
+		srcConds:      o.conds,
+		dstConds:      destination.Conditions,
+		encryptionKey: o.encryptionKey,
+	}, sOpts...)
+}
+
+// MoveObjectDestination provides the destination object name and (optional) preconditions
+// for [ObjectHandle.Move].
+type MoveObjectDestination struct {
+	Object     string
+	Conditions *Conditions
+}
+
 // NewWriter returns a storage Writer that writes to the GCS object
 // associated with this ObjectHandle.
 //
@@ -2055,56 +2087,91 @@ func applyConds(method string, gen int64, conds *Conditions, call interface{}) e
 	return nil
 }
 
-func applySourceConds(gen int64, conds *Conditions, call *raw.ObjectsRewriteCall) error {
+// applySourceConds modifies the provided call using the conditions in conds.
+// call is something that quacks like a *raw.WhateverCall.
+// This is specifically for calls like Rewrite and Move which have a source and destination
+// object.
+func applySourceConds(method string, gen int64, conds *Conditions, call interface{}) error {
+	cval := reflect.ValueOf(call)
 	if gen >= 0 {
-		call.SourceGeneration(gen)
+		if !setSourceGeneration(cval, gen) {
+			return fmt.Errorf("storage: %s: source generation not supported", method)
+		}
 	}
 	if conds == nil {
 		return nil
 	}
-	if err := conds.validate("CopyTo source"); err != nil {
+	if err := conds.validate(method); err != nil {
 		return err
 	}
 	switch {
 	case conds.GenerationMatch != 0:
-		call.IfSourceGenerationMatch(conds.GenerationMatch)
+		if !setIfSourceGenerationMatch(cval, conds.GenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationMatch not supported", method)
+		}
 	case conds.GenerationNotMatch != 0:
-		call.IfSourceGenerationNotMatch(conds.GenerationNotMatch)
+		if !setIfSourceGenerationNotMatch(cval, conds.GenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationNotMatch not supported", method)
+		}
 	case conds.DoesNotExist:
-		call.IfSourceGenerationMatch(0)
+		if !setIfSourceGenerationMatch(cval, int64(0)) {
+			return fmt.Errorf("storage: %s: DoesNotExist not supported", method)
+		}
 	}
 	switch {
 	case conds.MetagenerationMatch != 0:
-		call.IfSourceMetagenerationMatch(conds.MetagenerationMatch)
+		if !setIfSourceMetagenerationMatch(cval, conds.MetagenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationMatch not supported", method)
+		}
 	case conds.MetagenerationNotMatch != 0:
-		call.IfSourceMetagenerationNotMatch(conds.MetagenerationNotMatch)
+		if !setIfSourceMetagenerationNotMatch(cval, conds.MetagenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationNotMatch not supported", method)
+		}
 	}
 	return nil
 }
 
-func applySourceCondsProto(gen int64, conds *Conditions, call *storagepb.RewriteObjectRequest) error {
+// applySourceCondsProto validates and attempts to set the conditions on a protobuf
+// message using protobuf reflection. This is specifically for RPCs which have separate
+// preconditions for source and destination objects (e.g. Rewrite and Move).
+func applySourceCondsProto(method string, gen int64, conds *Conditions, msg proto.Message) error {
+	rmsg := msg.ProtoReflect()
+
 	if gen >= 0 {
-		call.SourceGeneration = gen
+		if !setConditionProtoField(rmsg, "source_generation", gen) {
+			return fmt.Errorf("storage: %s: generation not supported", method)
+		}
 	}
 	if conds == nil {
 		return nil
 	}
-	if err := conds.validate("CopyTo source"); err != nil {
+	if err := conds.validate(method); err != nil {
 		return err
 	}
+
 	switch {
 	case conds.GenerationMatch != 0:
-		call.IfSourceGenerationMatch = proto.Int64(conds.GenerationMatch)
+		if !setConditionProtoField(rmsg, "if_source_generation_match", conds.GenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationMatch not supported", method)
+		}
 	case conds.GenerationNotMatch != 0:
-		call.IfSourceGenerationNotMatch = proto.Int64(conds.GenerationNotMatch)
+		if !setConditionProtoField(rmsg, "if_source_generation_not_match", conds.GenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationNotMatch not supported", method)
+		}
 	case conds.DoesNotExist:
-		call.IfSourceGenerationMatch = proto.Int64(0)
+		if !setConditionProtoField(rmsg, "if_source_generation_match", int64(0)) {
+			return fmt.Errorf("storage: %s: DoesNotExist not supported", method)
+		}
 	}
 	switch {
 	case conds.MetagenerationMatch != 0:
-		call.IfSourceMetagenerationMatch = proto.Int64(conds.MetagenerationMatch)
+		if !setConditionProtoField(rmsg, "if_source_metageneration_match", conds.MetagenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationMatch not supported", method)
+		}
 	case conds.MetagenerationNotMatch != 0:
-		call.IfSourceMetagenerationNotMatch = proto.Int64(conds.MetagenerationNotMatch)
+		if !setConditionProtoField(rmsg, "if_source_metageneration_not_match", conds.MetagenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationNotMatch not supported", method)
+		}
 	}
 	return nil
 }
@@ -2141,6 +2208,27 @@ func setIfMetagenerationMatch(cval reflect.Value, value interface{}) bool {
 // See also setGeneration.
 func setIfMetagenerationNotMatch(cval reflect.Value, value interface{}) bool {
 	return setCondition(cval.MethodByName("IfMetagenerationNotMatch"), value)
+}
+
+// More methods to set source object precondition fields (used by Rewrite and Move APIs).
+func setSourceGeneration(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("SourceGeneration"), value)
+}
+
+func setIfSourceGenerationMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceGenerationMatch"), value)
+}
+
+func setIfSourceGenerationNotMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceGenerationNotMatch"), value)
+}
+
+func setIfSourceMetagenerationMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceMetagenerationMatch"), value)
+}
+
+func setIfSourceMetagenerationNotMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceMetagenerationNotMatch"), value)
 }
 
 func setCondition(setter reflect.Value, value interface{}) bool {

@@ -19,6 +19,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/url"
 	"regexp"
@@ -63,6 +64,7 @@ type CallOptions struct {
 	RewriteObject             []gax.CallOption
 	StartResumableWrite       []gax.CallOption
 	QueryWriteStatus          []gax.CallOption
+	MoveObject                []gax.CallOption
 }
 
 func defaultGRPCClientOptions() []option.ClientOption {
@@ -365,6 +367,19 @@ func defaultCallOptions() *CallOptions {
 				})
 			}),
 		},
+		MoveObject: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
 	}
 }
 
@@ -395,6 +410,7 @@ type internalClient interface {
 	RewriteObject(context.Context, *storagepb.RewriteObjectRequest, ...gax.CallOption) (*storagepb.RewriteResponse, error)
 	StartResumableWrite(context.Context, *storagepb.StartResumableWriteRequest, ...gax.CallOption) (*storagepb.StartResumableWriteResponse, error)
 	QueryWriteStatus(context.Context, *storagepb.QueryWriteStatusRequest, ...gax.CallOption) (*storagepb.QueryWriteStatusResponse, error)
+	MoveObject(context.Context, *storagepb.MoveObjectRequest, ...gax.CallOption) (*storagepb.Object, error)
 }
 
 // Client is a client for interacting with Cloud Storage API.
@@ -678,6 +694,11 @@ func (c *Client) QueryWriteStatus(ctx context.Context, req *storagepb.QueryWrite
 	return c.internalClient.QueryWriteStatus(ctx, req, opts...)
 }
 
+// MoveObject moves the source object to the destination object in the same bucket.
+func (c *Client) MoveObject(ctx context.Context, req *storagepb.MoveObjectRequest, opts ...gax.CallOption) (*storagepb.Object, error) {
+	return c.internalClient.MoveObject(ctx, req, opts...)
+}
+
 // gRPCClient is a client for interacting with Cloud Storage API over gRPC transport.
 //
 // Methods, except Close, may be called concurrently. However, fields must not be modified concurrently with method calls.
@@ -693,6 +714,8 @@ type gRPCClient struct {
 
 	// The x-goog-* metadata to be sent with each request.
 	xGoogHeaders []string
+
+	logger *slog.Logger
 }
 
 // NewClient creates a new storage client based on gRPC.
@@ -740,6 +763,7 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		connPool:    connPool,
 		client:      storagepb.NewStorageClient(connPool),
 		CallOptions: &client.CallOptions,
+		logger:      internaloption.GetLogger(opts),
 	}
 	c.setGoogleClientInfo()
 
@@ -790,7 +814,7 @@ func (c *gRPCClient) DeleteBucket(ctx context.Context, req *storagepb.DeleteBuck
 	opts = append((*c.CallOptions).DeleteBucket[0:len((*c.CallOptions).DeleteBucket):len((*c.CallOptions).DeleteBucket)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.client.DeleteBucket(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.client.DeleteBucket, req, settings.GRPC, c.logger, "DeleteBucket")
 		return err
 	}, opts...)
 	return err
@@ -814,7 +838,7 @@ func (c *gRPCClient) GetBucket(ctx context.Context, req *storagepb.GetBucketRequ
 	var resp *storagepb.Bucket
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.GetBucket(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.GetBucket, req, settings.GRPC, c.logger, "GetBucket")
 		return err
 	}, opts...)
 	if err != nil {
@@ -844,7 +868,7 @@ func (c *gRPCClient) CreateBucket(ctx context.Context, req *storagepb.CreateBuck
 	var resp *storagepb.Bucket
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.CreateBucket(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.CreateBucket, req, settings.GRPC, c.logger, "CreateBucket")
 		return err
 	}, opts...)
 	if err != nil {
@@ -882,7 +906,7 @@ func (c *gRPCClient) ListBuckets(ctx context.Context, req *storagepb.ListBuckets
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.client.ListBuckets(ctx, req, settings.GRPC...)
+			resp, err = executeRPC(ctx, c.client.ListBuckets, req, settings.GRPC, c.logger, "ListBuckets")
 			return err
 		}, opts...)
 		if err != nil {
@@ -926,7 +950,7 @@ func (c *gRPCClient) LockBucketRetentionPolicy(ctx context.Context, req *storage
 	var resp *storagepb.Bucket
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.LockBucketRetentionPolicy(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.LockBucketRetentionPolicy, req, settings.GRPC, c.logger, "LockBucketRetentionPolicy")
 		return err
 	}, opts...)
 	if err != nil {
@@ -953,7 +977,7 @@ func (c *gRPCClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRe
 	var resp *iampb.Policy
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.GetIamPolicy(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.GetIamPolicy, req, settings.GRPC, c.logger, "GetIamPolicy")
 		return err
 	}, opts...)
 	if err != nil {
@@ -980,7 +1004,7 @@ func (c *gRPCClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRe
 	var resp *iampb.Policy
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.SetIamPolicy(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.SetIamPolicy, req, settings.GRPC, c.logger, "SetIamPolicy")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1013,7 +1037,7 @@ func (c *gRPCClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamP
 	var resp *iampb.TestIamPermissionsResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.TestIamPermissions(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.TestIamPermissions, req, settings.GRPC, c.logger, "TestIamPermissions")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1040,7 +1064,7 @@ func (c *gRPCClient) UpdateBucket(ctx context.Context, req *storagepb.UpdateBuck
 	var resp *storagepb.Bucket
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.UpdateBucket(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.UpdateBucket, req, settings.GRPC, c.logger, "UpdateBucket")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1067,7 +1091,7 @@ func (c *gRPCClient) ComposeObject(ctx context.Context, req *storagepb.ComposeOb
 	var resp *storagepb.Object
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.ComposeObject(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.ComposeObject, req, settings.GRPC, c.logger, "ComposeObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1093,7 +1117,7 @@ func (c *gRPCClient) DeleteObject(ctx context.Context, req *storagepb.DeleteObje
 	opts = append((*c.CallOptions).DeleteObject[0:len((*c.CallOptions).DeleteObject):len((*c.CallOptions).DeleteObject)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.client.DeleteObject(ctx, req, settings.GRPC...)
+		_, err = executeRPC(ctx, c.client.DeleteObject, req, settings.GRPC, c.logger, "DeleteObject")
 		return err
 	}, opts...)
 	return err
@@ -1117,7 +1141,7 @@ func (c *gRPCClient) RestoreObject(ctx context.Context, req *storagepb.RestoreOb
 	var resp *storagepb.Object
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.RestoreObject(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.RestoreObject, req, settings.GRPC, c.logger, "RestoreObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1144,7 +1168,7 @@ func (c *gRPCClient) CancelResumableWrite(ctx context.Context, req *storagepb.Ca
 	var resp *storagepb.CancelResumableWriteResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.CancelResumableWrite(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.CancelResumableWrite, req, settings.GRPC, c.logger, "CancelResumableWrite")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1171,7 +1195,7 @@ func (c *gRPCClient) GetObject(ctx context.Context, req *storagepb.GetObjectRequ
 	var resp *storagepb.Object
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.GetObject(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.GetObject, req, settings.GRPC, c.logger, "GetObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1198,7 +1222,9 @@ func (c *gRPCClient) ReadObject(ctx context.Context, req *storagepb.ReadObjectRe
 	var resp storagepb.Storage_ReadObjectClient
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
+		c.logger.DebugContext(ctx, "api streaming client request", "serviceName", serviceName, "rpcName", "ReadObject")
 		resp, err = c.client.ReadObject(ctx, req, settings.GRPC...)
+		c.logger.DebugContext(ctx, "api streaming client response", "serviceName", serviceName, "rpcName", "ReadObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1225,7 +1251,7 @@ func (c *gRPCClient) UpdateObject(ctx context.Context, req *storagepb.UpdateObje
 	var resp *storagepb.Object
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.UpdateObject(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.UpdateObject, req, settings.GRPC, c.logger, "UpdateObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1240,7 +1266,9 @@ func (c *gRPCClient) WriteObject(ctx context.Context, opts ...gax.CallOption) (s
 	opts = append((*c.CallOptions).WriteObject[0:len((*c.CallOptions).WriteObject):len((*c.CallOptions).WriteObject)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
+		c.logger.DebugContext(ctx, "api streaming client request", "serviceName", serviceName, "rpcName", "WriteObject")
 		resp, err = c.client.WriteObject(ctx, settings.GRPC...)
+		c.logger.DebugContext(ctx, "api streaming client response", "serviceName", serviceName, "rpcName", "WriteObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1255,7 +1283,9 @@ func (c *gRPCClient) BidiWriteObject(ctx context.Context, opts ...gax.CallOption
 	opts = append((*c.CallOptions).BidiWriteObject[0:len((*c.CallOptions).BidiWriteObject):len((*c.CallOptions).BidiWriteObject)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
+		c.logger.DebugContext(ctx, "api streaming client request", "serviceName", serviceName, "rpcName", "BidiWriteObject")
 		resp, err = c.client.BidiWriteObject(ctx, settings.GRPC...)
+		c.logger.DebugContext(ctx, "api streaming client response", "serviceName", serviceName, "rpcName", "BidiWriteObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1293,7 +1323,7 @@ func (c *gRPCClient) ListObjects(ctx context.Context, req *storagepb.ListObjects
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.client.ListObjects(ctx, req, settings.GRPC...)
+			resp, err = executeRPC(ctx, c.client.ListObjects, req, settings.GRPC, c.logger, "ListObjects")
 			return err
 		}, opts...)
 		if err != nil {
@@ -1340,7 +1370,7 @@ func (c *gRPCClient) RewriteObject(ctx context.Context, req *storagepb.RewriteOb
 	var resp *storagepb.RewriteResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.RewriteObject(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.RewriteObject, req, settings.GRPC, c.logger, "RewriteObject")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1367,7 +1397,7 @@ func (c *gRPCClient) StartResumableWrite(ctx context.Context, req *storagepb.Sta
 	var resp *storagepb.StartResumableWriteResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.StartResumableWrite(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.StartResumableWrite, req, settings.GRPC, c.logger, "StartResumableWrite")
 		return err
 	}, opts...)
 	if err != nil {
@@ -1394,7 +1424,34 @@ func (c *gRPCClient) QueryWriteStatus(ctx context.Context, req *storagepb.QueryW
 	var resp *storagepb.QueryWriteStatusResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.QueryWriteStatus(ctx, req, settings.GRPC...)
+		resp, err = executeRPC(ctx, c.client.QueryWriteStatus, req, settings.GRPC, c.logger, "QueryWriteStatus")
+		return err
+	}, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *gRPCClient) MoveObject(ctx context.Context, req *storagepb.MoveObjectRequest, opts ...gax.CallOption) (*storagepb.Object, error) {
+	routingHeaders := ""
+	routingHeadersMap := make(map[string]string)
+	if reg := regexp.MustCompile("(?P<bucket>.*)"); reg.MatchString(req.GetBucket()) && len(url.QueryEscape(reg.FindStringSubmatch(req.GetBucket())[1])) > 0 {
+		routingHeadersMap["bucket"] = url.QueryEscape(reg.FindStringSubmatch(req.GetBucket())[1])
+	}
+	for headerName, headerValue := range routingHeadersMap {
+		routingHeaders = fmt.Sprintf("%s%s=%s&", routingHeaders, headerName, headerValue)
+	}
+	routingHeaders = strings.TrimSuffix(routingHeaders, "&")
+	hds := []string{"x-goog-request-params", routingHeaders}
+
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
+	opts = append((*c.CallOptions).MoveObject[0:len((*c.CallOptions).MoveObject):len((*c.CallOptions).MoveObject)], opts...)
+	var resp *storagepb.Object
+	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
+		var err error
+		resp, err = executeRPC(ctx, c.client.MoveObject, req, settings.GRPC, c.logger, "MoveObject")
 		return err
 	}, opts...)
 	if err != nil {

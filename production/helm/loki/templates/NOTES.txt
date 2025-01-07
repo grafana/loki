@@ -123,7 +123,7 @@ curl -H "Content-Type: application/json" -XPOST -s "http://127.0.0.1:3100/loki/a
 {{- end}}
 ```
 
-Then verify that Loki did received the data using the following command:
+Then verify that Loki did receive the data using the following command:
 
 ```
 curl "http://127.0.0.1:3100/loki/api/v1/query_range" --data-urlencode 'query={job="test"}' {{- if .Values.loki.auth_enabled }} -H X-Scope-OrgId:foo {{- end}} | jq .data.result
