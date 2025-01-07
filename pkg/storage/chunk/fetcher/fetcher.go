@@ -49,7 +49,8 @@ type Fetcher struct {
 	cachel2    cache.Cache
 	cacheStubs bool
 
-	l2CacheHandoff time.Duration
+	l2CacheHandoff                   time.Duration
+	skipQueryWritebackCacheOlderThan time.Duration
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
@@ -69,15 +70,16 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, l2CacheHandoff time.Duration, skipQueryWritebackOlderThan time.Duration) (*Fetcher, error) {
 	c := &Fetcher{
-		schema:         schema,
-		storage:        storage,
-		cache:          cache,
-		cachel2:        cachel2,
-		l2CacheHandoff: l2CacheHandoff,
-		cacheStubs:     cacheStubs,
-		decodeRequests: make(chan decodeRequest),
+		schema:                           schema,
+		storage:                          storage,
+		cache:                            cache,
+		cachel2:                          cachel2,
+		l2CacheHandoff:                   l2CacheHandoff,
+		cacheStubs:                       cacheStubs,
+		skipQueryWritebackCacheOlderThan: skipQueryWritebackOlderThan,
+		decodeRequests:                   make(chan decodeRequest),
 	}
 
 	c.wait.Add(chunkDecodeParallelism)
@@ -138,6 +140,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	l2OnlyChunks := make([]chunk.Chunk, 0, len(chunks))
 
 	for _, m := range chunks {
+		if c.skipQueryWritebackCacheOlderThan > 0 && m.From.Time().Before(time.Now().UTC().Add(-c.skipQueryWritebackCacheOlderThan)) {
+			continue
+		}
 		// Similar to below, this is an optimization to not bother looking in the l1 cache if there isn't a reasonable
 		// expectation to find it there.
 		if c.l2CacheHandoff > 0 && m.From.Time().Before(time.Now().UTC().Add(-extendedHandoff)) {
@@ -230,6 +235,10 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 	keysL2 := make([]string, 0, len(chunks))
 	bufsL2 := make([][]byte, 0, len(chunks))
 	for i := range chunks {
+		if c.skipQueryWritebackCacheOlderThan > 0 && chunks[i].From.Time().Before(time.Now().UTC().Add(-c.skipQueryWritebackCacheOlderThan)) {
+			continue
+		}
+
 		var encoded []byte
 		var err error
 		if !c.cacheStubs {
