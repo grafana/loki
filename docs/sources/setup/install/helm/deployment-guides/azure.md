@@ -7,7 +7,7 @@ keywords:
 
 # Deploy the Loki Helm chart on Azure
 
-This guide shows how to deploy a minimally viable Loki in **microservice** mode on Azure using the Helm chart. To run through this guide, we expect you to have the necessary tools and permissions to deploy resources on Azure, such as:
+This guide shows how to deploy a minimally viable Loki in **microservice** mode on Azure using the Helm chart. In order to successfully complete this guide, you must have the necessary tools and permissions to deploy resources on Azure, such as:
 
 - Full access to AKS (Azure Kubernetes Service)
 - Full access to Azure Blob Storage
@@ -24,7 +24,7 @@ In this guide, we will use the federated token method to deploy Loki on Azure. T
 ## Considerations
 
 {{< admonition type="caution" >}}
-This guide was accurate at the time it was last updated on **11th of December, 2024**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/) before creating your storage account and assigning roles.
+This guide was accurate at the time it was last updated on **8th of January, 2025**.  As cloud providers frequently update their services and offerings, as a best practice, you should refer to the [Azure documentation](https://learn.microsoft.com/en-us/azure/) before creating your storage account and assigning roles.
 {{< /admonition >}}
 
 - **AD Role:** In this tutorial we will create a role in Azure Active Directory (Azure AD) to allow Loki to read and write from Azure Blob Storage. This role will be assigned to the Loki service account. You may want to adjust the permissions based on your requirements.
