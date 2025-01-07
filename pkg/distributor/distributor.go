@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"runtime/pprof"
 	"slices"
 	"sort"
 	"strconv"
@@ -460,8 +461,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	now := time.Now()
 	validationContext := d.validator.getValidationContextForTime(now, tenantID)
-	levelDetector := newLevelDetector(validationContext)
-	shouldDiscoverLevels := levelDetector.shouldDiscoverLogLevels()
+	fieldDetector := newFieldDetector(validationContext)
+	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
+	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
@@ -547,10 +549,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					}
 				}
 				if shouldDiscoverLevels {
-					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
-					if ok {
-						entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
-					}
+					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
+						if ok {
+							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+						}
+					})
+				}
+				if shouldDiscoverGenericFields {
+					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
+							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+							if ok {
+								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+							}
+						}
+					})
 				}
 				stream.Entries[n] = entry
 
