@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"runtime/pprof"
 	"slices"
 	"sort"
 	"strconv"
@@ -548,18 +549,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					}
 				}
 				if shouldDiscoverLevels {
-					logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
-					if ok {
-						entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
-					}
+					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(ctx context.Context) {
+						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
+						if ok {
+							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+						}
+					})
 				}
 				if shouldDiscoverGenericFields {
-					for field, hints := range fieldDetector.validationContext.discoverGenericFields {
-						extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
-						if ok {
-							entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(ctx context.Context) {
+						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
+							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+							if ok {
+								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+							}
 						}
-					}
+					})
 				}
 				stream.Entries[n] = entry
 
