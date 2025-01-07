@@ -13,7 +13,7 @@ This guide shows how to deploy a minimally viable Loki in **microservice** mode 
 - Full access to Azure Blob Storage
 - Sufficient permissions to create federated credentials and roles in Azure AD (Active Directory)
 
-There are three primary methods for deploying Loki on Azure:
+There are three primary ways to authenticate Loki with Azure:
 
 - Hard coding a connection string - this is the simplest method but is not recommended for production environments.
 - Manged identity
