@@ -19,7 +19,7 @@ type OffsetReader interface {
 
 type Planner interface {
 	Name() string
-	Plan(ctx context.Context, maxJobsPerPartition int) ([]*JobWithMetadata, error)
+	Plan(ctx context.Context, maxJobsPerPartition int, minOffsetsPerJob int) ([]*JobWithMetadata, error)
 }
 
 const (
@@ -51,7 +51,8 @@ func (p *RecordCountPlanner) Name() string {
 	return RecordCountStrategy
 }
 
-func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int) ([]*JobWithMetadata, error) {
+func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int, minOffsetsPerJob int) ([]*JobWithMetadata, error) {
+	level.Info(p.logger).Log("msg", "planning jobs", "max_jobs_per_partition", maxJobsPerPartition, "target_record_count", p.targetRecordCount, "lookback_period", p.lookbackPeriod.String())
 	offsets, err := p.offsetReader.GroupLag(ctx, p.lookbackPeriod)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
@@ -80,6 +81,12 @@ func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int) 
 			}
 
 			currentEnd := min(currentStart+p.targetRecordCount, endOffset)
+
+			// Skip creating job if it's smaller than minimum size
+			if currentEnd-currentStart < int64(minOffsetsPerJob) {
+				break
+			}
+
 			job := NewJobWithMetadata(
 				types.NewJob(partitionOffset.Partition, types.Offsets{
 					Min: currentStart,
