@@ -32,6 +32,7 @@ import (
 	btopt "cloud.google.com/go/bigtable/internal/option"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
@@ -95,6 +96,18 @@ func NewClient(ctx context.Context, project, instance string, opts ...option.Cli
 
 // NewClientWithConfig creates a new client with the given config.
 func NewClientWithConfig(ctx context.Context, project, instance string, config ClientConfig, opts ...option.ClientOption) (*Client, error) {
+	metricsProvider := config.MetricsProvider
+	if emulatorAddr := os.Getenv("BIGTABLE_EMULATOR_HOST"); emulatorAddr != "" {
+		// Do not emit metrics when emulator is being used
+		metricsProvider = NoopMetricsProvider{}
+	}
+
+	// Create a OpenTelemetry metrics configuration
+	metricsTracerFactory, err := newBuiltinMetricsTracerFactory(ctx, project, instance, config.AppProfile, metricsProvider, opts...)
+	if err != nil {
+		return nil, err
+	}
+
 	o, err := btopt.DefaultClientOptions(prodAddr, mtlsProdAddr, Scope, clientUserAgent)
 	if err != nil {
 		return nil, err
@@ -112,19 +125,23 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 	// Allow non-default service account in DirectPath.
 	o = append(o, internaloption.AllowNonDefaultServiceAccount(true))
 	o = append(o, opts...)
+
+	// TODO(b/372244283): Remove after b/358175516 has been fixed
+	asyncRefreshMetricAttrs := metricsTracerFactory.clientAttributes
+	asyncRefreshMetricAttrs = append(asyncRefreshMetricAttrs,
+		attribute.String(metricLabelKeyTag, "async_refresh_dry_run"),
+		// Table, cluster and zone are unknown at this point
+		// Use default values
+		attribute.String(monitoredResLabelKeyTable, defaultTable),
+		attribute.String(monitoredResLabelKeyCluster, defaultCluster),
+		attribute.String(monitoredResLabelKeyZone, defaultZone),
+	)
+	o = append(o, internaloption.EnableAsyncRefreshDryRun(func() {
+		metricsTracerFactory.debugTags.Add(context.Background(), 1,
+			metric.WithAttributes(asyncRefreshMetricAttrs...))
+	}))
+
 	connPool, err := gtransport.DialPool(ctx, o...)
-	if err != nil {
-		return nil, fmt.Errorf("dialing: %w", err)
-	}
-
-	metricsProvider := config.MetricsProvider
-	if emulatorAddr := os.Getenv("BIGTABLE_EMULATOR_HOST"); emulatorAddr != "" {
-		// Do not emit metrics when emulator is being used
-		metricsProvider = NoopMetricsProvider{}
-	}
-
-	// Create a OpenTelemetry metrics configuration
-	metricsTracerFactory, err := newBuiltinMetricsTracerFactory(ctx, project, instance, config.AppProfile, metricsProvider, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1588,7 +1605,7 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 	f func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error, opts ...gax.CallOption) error {
 	attemptHeaderMD := metadata.New(nil)
 	attempTrailerMD := metadata.New(nil)
-	mt.method = method
+	mt.setMethod(method)
 
 	var callWrapper func(context.Context, gax.CallSettings) error
 	if !mt.builtInEnabled {

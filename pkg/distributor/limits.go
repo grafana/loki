@@ -23,6 +23,7 @@ type Limits interface {
 
 	IncrementDuplicateTimestamps(userID string) bool
 	DiscoverServiceName(userID string) []string
+	DiscoverGenericFields(userID string) map[string][]string
 	DiscoverLogLevels(userID string) bool
 	LogLevelFields(userID string) []string
 
