@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.25.0
+
+- [FEATURE] Added support for Overrides Exporter
+
 ## 6.24.0
 
 - [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
