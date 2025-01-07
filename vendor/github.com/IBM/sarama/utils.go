@@ -206,6 +206,7 @@ var (
 	V3_8_0_0  = newKafkaVersion(3, 8, 0, 0)
 	V3_8_1_0  = newKafkaVersion(3, 8, 1, 0)
 	V3_9_0_0  = newKafkaVersion(3, 9, 0, 0)
+	V4_0_0_0  = newKafkaVersion(4, 0, 0, 0)
 
 	SupportedVersions = []KafkaVersion{
 		V0_8_2_0,
@@ -277,9 +278,10 @@ var (
 		V3_8_0_0,
 		V3_8_1_0,
 		V3_9_0_0,
+		V4_0_0_0,
 	}
 	MinVersion     = V0_8_2_0
-	MaxVersion     = V3_9_0_0
+	MaxVersion     = V4_0_0_0
 	DefaultVersion = V2_1_0_0
 
 	// reduced set of protocol versions to matrix test
