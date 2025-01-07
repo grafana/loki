@@ -549,7 +549,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					}
 				}
 				if shouldDiscoverLevels {
-					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(ctx context.Context) {
+					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
 						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
 						if ok {
 							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
@@ -557,7 +557,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					})
 				}
 				if shouldDiscoverGenericFields {
-					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(ctx context.Context) {
+					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
 						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
 							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
 							if ok {
