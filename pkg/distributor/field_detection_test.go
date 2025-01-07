@@ -448,7 +448,7 @@ func Test_DetectGenericFields_Enabled(t *testing.T) {
 	t.Run("disabled if structured metadata is not allowed", func(t *testing.T) {
 		detector := newFieldDetector(
 			validationContext{
-				discoverGenericFields:   map[string][]string{"trace_id": []string{"trace_id", "TRACE_ID"}},
+				discoverGenericFields:   map[string][]string{"trace_id": {"trace_id", "TRACE_ID"}},
 				allowStructuredMetadata: false,
 			})
 		require.False(t, detector.shouldDiscoverGenericFields())
@@ -456,7 +456,7 @@ func Test_DetectGenericFields_Enabled(t *testing.T) {
 	t.Run("enabled if structured metadata is allowed and map is not empty", func(t *testing.T) {
 		detector := newFieldDetector(
 			validationContext{
-				discoverGenericFields:   map[string][]string{"trace_id": []string{"trace_id", "TRACE_ID"}},
+				discoverGenericFields:   map[string][]string{"trace_id": {"trace_id", "TRACE_ID"}},
 				allowStructuredMetadata: true,
 			})
 		require.True(t, detector.shouldDiscoverGenericFields())
@@ -468,9 +468,9 @@ func Test_DetectGenericFields(t *testing.T) {
 	detector := newFieldDetector(
 		validationContext{
 			discoverGenericFields: map[string][]string{
-				"trace_id":   []string{"trace_id"},
-				"org_id":     []string{"org_id", "user_id", "tenant_id"},
-				"product_id": []string{"product.id"}, // jsonpath
+				"trace_id":   {"trace_id"},
+				"org_id":     {"org_id", "user_id", "tenant_id"},
+				"product_id": {"product.id"}, // jsonpath
 			},
 			allowStructuredMetadata: true,
 		})
