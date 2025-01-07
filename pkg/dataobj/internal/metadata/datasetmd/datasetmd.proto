@@ -32,4 +32,8 @@ enum EncodingType {
   // Delta encoding. The first value within the page is stored as-is, and
   // subsequent values are stored as the delta from the previous value.
   ENCODING_TYPE_DELTA = 2;
+
+  // Bitmap encoding. Bitmaps effiently store repeating sequences of unsigned
+  // integers using a combination of run-length encoding and bitpacking.
+  ENCODING_TYPE_BITMAP = 3;
 }
