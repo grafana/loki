@@ -216,7 +216,7 @@ block_scheduler:
 
   # How often the scheduler should plan jobs.
   # CLI flag: -block-scheduler.interval
-  [interval: <duration> | default = 5m]
+  [interval: <duration> | default = 15m]
 
   # Lookback period used by the scheduler to plan jobs when the consumer group
   # has no commits. 0 consumes from the start of the partition.
@@ -3399,6 +3399,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# Experimental: Detect fields from stream labels, structured metadata, or
+# json/logfmt formatted log line and put them into structured metadata of the
+# log entry.
+discover_generic_fields:
+  [fields: <map of string to list of strings>]
 
 # If no service_name label exists, Loki maps a single label from the configured
 # list to service_name. If none of the configured labels exist in the stream,

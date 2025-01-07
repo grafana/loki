@@ -1,0 +1,39 @@
+// datasetmd.proto holds metadata types for storing columnar data.
+syntax = "proto3";
+
+package dataobj.metadata.dataset.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd";
+
+// ValueType represents the valid types that values within a column can have.
+enum ValueType {
+  // Invalid value type.
+  VALUE_TYPE_UNSPECIFIED = 0;
+
+  // VALUE_TYPE_INT64 is a column containing 64-bit integer values.
+  VALUE_TYPE_INT64 = 1;
+
+  // VALUE_TYPE_UINT64 is a column containing 64-bit unsigned integer values.
+  VALUE_TYPE_UINT64 = 2;
+
+  // VALUE_TYPE_STRING is a column containing string values.
+  VALUE_TYPE_STRING = 3;
+}
+
+// EncodingType represents the valid types that a sequence of values which a
+// column can be encoded with.
+enum EncodingType {
+  // Invalid encoding type.
+  ENCODING_TYPE_UNSPECIFIED = 0;
+
+  // Plain encoding; data is stored as-is.
+  ENCODING_TYPE_PLAIN = 1;
+
+  // Delta encoding. The first value within the page is stored as-is, and
+  // subsequent values are stored as the delta from the previous value.
+  ENCODING_TYPE_DELTA = 2;
+
+  // Bitmap encoding. Bitmaps effiently store repeating sequences of unsigned
+  // integers using a combination of run-length encoding and bitpacking.
+  ENCODING_TYPE_BITMAP = 3;
+}

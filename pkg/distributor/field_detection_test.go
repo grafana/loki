@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/plog"
 
@@ -120,7 +121,7 @@ func Test_DetectLogLevels(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -285,7 +286,7 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 }
 
 func Test_detectLogLevelFromLogEntryWithCustomLabels(t *testing.T) {
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -391,7 +392,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 		"Wm3 S7if5qCXPzvuMZ2 gNHdst Z39s9uNc58QBDeYRW umyIF BDqEdqhE tAs2gidkqee3aux8b NLDb7 ZZLekc0cQZ GUKQuBg2pL2y1S " +
 		"RJtBuW ABOqQHLSlNuUw ZlM2nGS2 jwA7cXEOJhY 3oPv4gGAz  Uqdre16MF92C06jOH dayqTCK8XmIilT uvgywFSfNadYvRDQa " +
 		"iUbswJNcwqcr6huw LAGrZS8NGlqqzcD2wFU rm Uqcrh3TKLUCkfkwLm  5CIQbxMCUz boBrEHxvCBrUo YJoF2iyif4xq3q yk "
-	ld := &LevelDetector{
+	ld := &FieldDetector{
 		validationContext: validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -407,7 +408,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
 
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -422,7 +423,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 
 func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	logLine := `FOO=bar MSG="message with keyword error but it should not get picked up" LEVEL=inFO`
-	ld := newLevelDetector(
+	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
 			allowStructuredMetadata: true,
@@ -432,5 +433,175 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelInfo, level)
+	}
+}
+
+func Test_DetectGenericFields_Enabled(t *testing.T) {
+	t.Run("disabled if map is empty", func(t *testing.T) {
+		detector := newFieldDetector(
+			validationContext{
+				discoverGenericFields:   make(map[string][]string, 0),
+				allowStructuredMetadata: true,
+			})
+		require.False(t, detector.shouldDiscoverGenericFields())
+	})
+	t.Run("disabled if structured metadata is not allowed", func(t *testing.T) {
+		detector := newFieldDetector(
+			validationContext{
+				discoverGenericFields:   map[string][]string{"trace_id": {"trace_id", "TRACE_ID"}},
+				allowStructuredMetadata: false,
+			})
+		require.False(t, detector.shouldDiscoverGenericFields())
+	})
+	t.Run("enabled if structured metadata is allowed and map is not empty", func(t *testing.T) {
+		detector := newFieldDetector(
+			validationContext{
+				discoverGenericFields:   map[string][]string{"trace_id": {"trace_id", "TRACE_ID"}},
+				allowStructuredMetadata: true,
+			})
+		require.True(t, detector.shouldDiscoverGenericFields())
+	})
+}
+
+func Test_DetectGenericFields(t *testing.T) {
+
+	detector := newFieldDetector(
+		validationContext{
+			discoverGenericFields: map[string][]string{
+				"trace_id":   {"trace_id"},
+				"org_id":     {"org_id", "user_id", "tenant_id"},
+				"product_id": {"product.id"}, // jsonpath
+			},
+			allowStructuredMetadata: true,
+		})
+
+	for _, tc := range []struct {
+		name     string
+		labels   labels.Labels
+		entry    logproto.Entry
+		expected push.LabelsAdapter
+	}{
+		{
+			name: "no match",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               "log line does not match",
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{},
+		},
+		{
+			name: "stream label matches",
+			labels: labels.Labels{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "tenant_id", Value: "fake"},
+			},
+			entry: push.Entry{
+				Line:               "log line does not match",
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "metadata matches",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line: "log line does not match",
+				StructuredMetadata: push.LabelsAdapter{
+					{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+					{Name: "user_id", Value: "fake"},
+				},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "logline (logfmt) matches",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `msg="this log line matches" trace_id="8c5f2ecbade6f01d" org_id=fake duration=1h`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "logline (logfmt) matches multiple fields",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `msg="this log line matches" tenant_id="fake_a" org_id=fake_b duration=1h`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "org_id", Value: "fake_b"}, // first field from configuration that matches takes precedence
+			},
+		},
+		{
+			name: "logline (json) matches",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `{"msg": "this log line matches", "trace_id": "8c5f2ecbade6f01d", "org_id": "fake", "duration": "1s"}`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "trace_id", Value: "8c5f2ecbade6f01d"},
+				{Name: "org_id", Value: "fake"},
+			},
+		},
+		{
+			name: "logline (json) matches multiple fields",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `{"msg": "this log line matches", "tenant_id": "fake_a", "org_id": "fake_b", "duration": "1s"}`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "org_id", Value: "fake_b"}, // first field from configuration that matches takes precedence
+			},
+		},
+		{
+			name: "logline matches jsonpath",
+			labels: labels.Labels{
+				{Name: "env", Value: "prod"},
+			},
+			entry: push.Entry{
+				Line:               `{"product": {"details": "product details", "id": "P2024/01"}}`,
+				StructuredMetadata: push.LabelsAdapter{},
+			},
+			expected: push.LabelsAdapter{
+				{Name: "product_id", Value: "P2024/01"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			extracted := push.LabelsAdapter{}
+			metadata := logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata)
+			for name, hints := range detector.validationContext.discoverGenericFields {
+				field, ok := detector.extractGenericField(name, hints, tc.labels, metadata, tc.entry)
+				if ok {
+					extracted = append(extracted, field)
+				}
+			}
+			require.ElementsMatch(t, tc.expected, extracted)
+		})
 	}
 }
