@@ -658,7 +658,6 @@ func (q *query) evalVariant(
 	}
 	defer util.LogErrorWithContext(ctx, "closing VariantsExpr", stepEvaluator.Close)
 
-	//TODO: this never returns
 	next, _, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()

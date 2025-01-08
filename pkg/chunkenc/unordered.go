@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 	"time"
 
 	"github.com/Workiva/go-datastructures/rangetree"
@@ -395,7 +394,7 @@ func (hb *unorderedHeadBlock) MultiExtractorSampleIterator(
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
 			structuredMetadata = hb.symbolizer.Lookup(structuredMetadataSymbols, structuredMetadata)
 
-			for i, extractor := range extractor {
+			for _, extractor := range extractor {
 				value, lbls, ok := extractor.ProcessString(ts, line, structuredMetadata...)
 				if !ok {
 					return nil
@@ -405,18 +404,7 @@ func (hb *unorderedHeadBlock) MultiExtractorSampleIterator(
 					s     *logproto.Series
 				)
 
-				streamLbls := lbls.Stream()
-				streamLbls = append(streamLbls, labels.Label{
-					Name:  "__variant__",
-					Value: strconv.FormatInt(int64(i), 10),
-				})
-
-				builder := log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
-				builder.Add(log.StructuredMetadataLabel, lbls.StructuredMetadata()...)
-				builder.Add(log.ParsedLabel, lbls.Parsed()...)
-        newLbls := builder.LabelsResult()
-
-				lblStr := newLbls.String()
+				lblStr := lbls.String()
 				s, found = series[lblStr]
 				if !found {
 					baseHash := extractor.BaseLabels().Hash()

@@ -3,7 +3,6 @@ package chunkenc
 import (
 	"context"
 	"sort"
-	"strconv"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/grafana/loki/v3/pkg/compression"
@@ -51,24 +50,13 @@ func (e *multiExtractorSampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
 		e.stats.AddPostFilterLines(1)
 
-		for i, extractor := range e.extractors {
+		for _, extractor := range e.extractors {
 			val, lbls, ok := extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
 			if !ok {
 				continue
 			}
 
-			streamLbls := lbls.Stream()
-			streamLbls = append(streamLbls, labels.Label{
-				Name:  "__variant__",
-				Value: strconv.FormatInt(int64(i), 10),
-			})
-
-			builder := log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
-			builder.Add(log.StructuredMetadataLabel, lbls.StructuredMetadata()...)
-			builder.Add(log.ParsedLabel, lbls.Parsed()...)
-			e.currLabels = append(e.currLabels, builder.LabelsResult())
-
-			// TODO: is it enough to add __variant__ to result labels? Do the base labels need it too?
+			e.currLabels = append(e.currLabels, lbls)
 			e.currBaseLabels = append(e.currBaseLabels, extractor.BaseLabels())
 			e.cur = append(e.cur, logproto.Sample{
 				Value:     val,

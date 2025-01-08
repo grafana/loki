@@ -610,7 +610,7 @@ func (it *sampleBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, thro
 				it.ctx,
 				from,
 				through,
-			  streamExtractors,
+				streamExtractors,
 				nextChunk,
 			)
 			if err != nil {
@@ -715,14 +715,16 @@ func (it *multiExtractorSampleIterator) buildIterators(
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
 			extractors := make([]log.StreamSampleExtractor, 0, len(it.extractors))
-			for _, extractor := range it.extractors {
+			for i, extractor := range it.extractors {
+				ext := extractor.ForStream(
+					labels.NewBuilder(chunks[0][0].Chunk.Metric).
+						Del(labels.MetricName).
+						Labels(),
+				)
+				ext = log.NewVariantsStreamSampleExtractorWrapper(i, ext)
 				extractors = append(
 					extractors,
-					extractor.ForStream(
-						labels.NewBuilder(chunks[0][0].Chunk.Metric).
-							Del(labels.MetricName).
-							Labels(),
-					),
+					ext,
 				)
 			}
 

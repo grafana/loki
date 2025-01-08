@@ -8,7 +8,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"strconv"
 	"time"
 	"unsafe"
 
@@ -1368,7 +1367,7 @@ func (hb *headBlock) MultiExtractorSampleIterator(
 
 	setQueryReferencedStructuredMetadata := false
 	for _, e := range hb.entries {
-		for i, extractor := range extractors {
+		for _, extractor := range extractors {
 			stats.AddHeadChunkBytes(int64(len(e.s)))
 			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
 			if !ok {
@@ -1379,18 +1378,7 @@ func (hb *headBlock) MultiExtractorSampleIterator(
 				s     *logproto.Series
 			)
 
-			streamLbls := lbls.Stream()
-			streamLbls = append(streamLbls, labels.Label{
-				Name:  "__variant__",
-				Value: strconv.FormatInt(int64(i), 10),
-			})
-
-			builder := log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
-			builder.Add(log.StructuredMetadataLabel, lbls.StructuredMetadata()...)
-			builder.Add(log.ParsedLabel, lbls.Parsed()...)
-			newLbls := builder.LabelsResult()
-
-			lblStr := newLbls.String()
+			lblStr := lbls.String()
 			baseHash := extractor.BaseLabels().Hash()
 			if s, found = series[lblStr]; !found {
 				s = &logproto.Series{

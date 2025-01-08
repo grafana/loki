@@ -165,7 +165,7 @@ func (s *LokiStore) SelectVariants(
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
 
-	return newSampleBatchIterator(
+	return newMultiExtractorSampleBatchIterator(
 		ctx,
 		s.schemaCfg,
 		s.chunkMetrics,

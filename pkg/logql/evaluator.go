@@ -1498,15 +1498,16 @@ func (it *bufferedVariantsIterator) Next(index int) bool {
 	// If not, keep popping samples from the underlying iterator
 	for it.iter.Next() {
 		sample := it.iter.At()
-		variantIndex := it.getVariantIndex(it.iter.Labels())
+		labels := it.iter.Labels()
+		variantIndex := it.getVariantIndex(labels)
 		if variantIndex == -1 {
-			it.err = fmt.Errorf("variant label not found in %s", it.iter.Labels())
+			it.err = fmt.Errorf("variant label not found in %s", labels)
 			return false
 		}
 
 		currentSample := sampleWithLabelsAndStreamHash{
 			sample:     sample,
-			labels:     it.iter.Labels(),
+			labels:     labels,
 			streamHash: it.iter.StreamHash(),
 		}
 
