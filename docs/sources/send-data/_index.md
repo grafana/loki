@@ -59,6 +59,7 @@ These third-party clients also enable sending logs to Loki:
 - [ilogtail](https://github.com/alibaba/ilogtail) (Go)
 - [Log4j2 appender for Loki](https://github.com/tkowalcz/tjahzi) (Java)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
+- [loki-logger-handler](https://github.com/xente/loki-logger-handler) (Python 3)
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [mjaron-tinyloki-java](https://github.com/mjfryc/mjaron-tinyloki-java) (Java)
 - [NLog-Targets-Loki](https://github.com/corentinaltepe/nlog.loki) (C#)
