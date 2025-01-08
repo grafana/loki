@@ -100,8 +100,8 @@ type BlockScheduler struct {
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(cfg Config, queue *JobQueue, offsetManager partition.OffsetManager, logger log.Logger, r prometheus.Registerer) (*BlockScheduler, error) {
-	// pin the fallback offset to the time of scheduler creation to ensure planner uses the same fallback offset on subsequent runs
-	// without this, planner would create jobs that are not aligned when the partition has no commits so far.
+	// pin the fallback offset at the time of scheduler creation to ensure planner uses the same fallback offset on subsequent runs
+	// without this, planner would create jobs that are unaligned when the partition has no commits so far.
 	fallbackOffsetMillis := int64(partition.KafkaStartOffset)
 	if cfg.LookbackPeriod > 0 {
 		fallbackOffsetMillis = time.Now().UnixMilli() - cfg.LookbackPeriod.Milliseconds()
