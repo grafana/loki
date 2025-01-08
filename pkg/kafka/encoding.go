@@ -224,7 +224,7 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 		Key:       []byte(tenantID),
 		Value:     value,
 		Partition: partition,
-		Topic:     topic + metadataTopicSuffix,
+		Topic:     MetadataTopicFor(topic),
 	}
 }
 
@@ -246,4 +246,9 @@ func DecodeStreamMetadata(record *kgo.Record) (*logproto.StreamMetadata, error) 
 	}
 
 	return metadata, nil
+}
+
+// MetadataTopicFor returns the metadata topic name for the given topic.
+func MetadataTopicFor(topic string) string {
+	return topic + metadataTopicSuffix
 }

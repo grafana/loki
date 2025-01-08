@@ -53,6 +53,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/limits"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -104,6 +105,7 @@ const (
 	Server                   string = "server"
 	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
+	IngestLimiter            string = "ingest-limiter"
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
@@ -380,6 +382,20 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(lokiPushHandler)
 	t.Server.HTTP.Path("/otlp/v1/logs").Methods("POST").Handler(otlpPushHandler)
 	return t.distributor, nil
+}
+
+func (t *Loki) initIngestLimiter() (services.Service, error) {
+	ingesterLimiter, err := limits.New(limits.Config{
+		KafkaEnabled:  t.Cfg.IngestLimiter.KafkaEnabled,
+		KafkaConfig:   t.Cfg.IngestLimiter.KafkaConfig,
+		ConsumerGroup: "loki-limiter",
+		WindowSize:    t.Cfg.IngestLimiter.WindowSize,
+	}, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, err
+	}
+	t.ingesterLimiter = ingesterLimiter
+	return ingesterLimiter, nil
 }
 
 // initCodec sets the codec used to encode and decode requests.
