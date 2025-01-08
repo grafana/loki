@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -237,6 +238,16 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 				if err == nil {
 					s.chunkMtx.Lock()
 				}
+
+				if err != nil && strings.Contains(err.Error(), validation.StreamLimitErrorMsg) {
+					level.Debug(util_log.Logger).Log(
+						"msg", "failed to create stream, exceeded stream limit",
+						"org_id", i.instanceID,
+						"err", err,
+						"stream", reqStream.Labels,
+					)
+				}
+
 				return s, err
 			},
 			func(s *stream) error {
@@ -326,8 +337,14 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 }
 
 func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels) (*stream, error) {
-	if i.configs.LogStreamCreation(i.instanceID) {
-		level.Debug(util_log.Logger).Log(
+	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
+		l := level.Debug(util_log.Logger)
+
+		if i.cfg.KafkaIngestion.Enabled {
+			l = level.Warn(util_log.Logger)
+		}
+
+		l.Log(
 			"msg", "failed to create stream, exceeded limit",
 			"org_id", i.instanceID,
 			"err", err,
