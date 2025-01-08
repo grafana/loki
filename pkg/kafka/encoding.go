@@ -2,7 +2,6 @@
 package kafka
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	math_bits "math/bits"
@@ -16,6 +15,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+)
+
+const (
+	metadataTopicSuffix = ".metadata"
 )
 
 var encoderPool = sync.Pool{
@@ -187,7 +190,7 @@ func sovPush(x uint64) (n int) {
 
 // EncodeStreamMetadata encodes the stream metadata into a Kafka record
 // using the tenantID as the key and partition as the target partition
-func EncodeStreamMetadata(partition int32, tenantID string, stream logproto.Stream, lastSeenAt time.Time) *kgo.Record {
+func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream logproto.Stream, lastSeenAt time.Time) *kgo.Record {
 	// Transform stream into metadata
 	metadata := logproto.StreamMetadata{
 		StreamHash: stream.Hash,
@@ -195,7 +198,6 @@ func EncodeStreamMetadata(partition int32, tenantID string, stream logproto.Stre
 	}
 
 	// Encode the metadata into a byte slice
-	// 8 bytes for hash + 8 bytes for timestamp
 	value, err := metadata.Marshal()
 	if err != nil {
 		// Since we're in a function that returns a *kgo.Record, we can't return an error.
@@ -207,5 +209,6 @@ func EncodeStreamMetadata(partition int32, tenantID string, stream logproto.Stre
 		Key:       []byte(tenantID),
 		Value:     value,
 		Partition: partition,
+		Topic:     topic + metadataTopicSuffix,
 	}
 }

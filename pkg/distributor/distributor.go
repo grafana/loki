@@ -1090,7 +1090,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	}
 
 	// Add metadata record
-	metadataRecord := kafka.EncodeStreamMetadata(partitionID, tenant, stream.Stream, startTime)
+	metadataRecord := kafka.EncodeStreamMetadata(partitionID, d.cfg.KafkaConfig.Topic, tenant, stream.Stream, startTime)
 	records = append(records, metadataRecord)
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
