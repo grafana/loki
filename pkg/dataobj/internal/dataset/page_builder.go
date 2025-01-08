@@ -183,9 +183,8 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 
 	// The final data of our page is the combination of the presence bitmap and
 	// the values. To denote when one ends and the other begins, we prepend the
-	// data with the size of the presence bitmap as a uvarint:
-	//
-	// <uvarint(presence-buffer-size)> <presence-buffer> <values-buffer>
+	// data with the size of the presence bitmap as a uvarint. See the doc
+	// comment of [PageData] for more information.
 	var (
 		headerSize   = streamio.UvarintSize(uint64(b.presenceBuffer.Len()))
 		presenceSize = b.presenceBuffer.Len()

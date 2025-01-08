@@ -15,7 +15,16 @@ import (
 
 // Helper types.
 type (
-	// PageData holds the raw data for a page.
+	// PageData holds the raw data for a page. Data is formatted as:
+	//
+	//   <uvarint(presence-bitmap-size)> <presence-bitmap> <values-data>
+	//
+	// The presence-bitmap is a bitmap-encoded sequence of booleans, where values
+	// describe which rows are present (1) or nil (0). The presence bitmap is
+	// always stored uncompressed.
+	//
+	// values-data is then the encoded and optionally compressed sequence of
+	// non-NULL values.
 	PageData []byte
 
 	// PageInfo describes a page.
@@ -35,20 +44,8 @@ type (
 // MemPage holds an encoded (and optionally compressed) sequence of [Value]
 // entries of a common type. Use [ColumnBuilder] to construct sets of pages.
 type MemPage struct {
-	// Information about the page.
-	Info PageInfo
-
-	// Data for the page. Data is formatted as:
-	//
-	//   [uvarint(bitmapSize)][presenceBitmap][valueData]
-	//
-	// The presenceBitmap is a bitmap-encoded sequence of booleans, where values
-	// describe which rows are present (1) or nil (0). presenceBitmap is always
-	// stored uncompressed.
-	//
-	// valueData is then the encoded and optionally compressed sequence of
-	// non-NULL values, whose type, compression, and encoding are specified by Value, Compression, and Encoding.
-	Data PageData
+	Info PageInfo // Information about the page.
+	Data PageData // Data for the page.
 }
 
 var checksumTable = crc32.MakeTable(crc32.Castagnoli)
