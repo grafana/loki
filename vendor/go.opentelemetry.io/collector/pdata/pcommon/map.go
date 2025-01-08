@@ -225,6 +225,15 @@ func (m Map) Range(f func(k string, v Value) bool) {
 	}
 }
 
+// MoveTo moves all key/values from the current map overriding the destination and
+// resetting the current instance to its zero value
+func (m Map) MoveTo(dest Map) {
+	m.getState().AssertMutable()
+	dest.getState().AssertMutable()
+	*dest.getOrig() = *m.getOrig()
+	*m.getOrig() = nil
+}
+
 // CopyTo copies all elements from the current map overriding the destination.
 func (m Map) CopyTo(dest Map) {
 	dest.getState().AssertMutable()

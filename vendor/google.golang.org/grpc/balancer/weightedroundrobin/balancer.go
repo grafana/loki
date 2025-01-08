@@ -526,17 +526,21 @@ func (w *weightedSubConn) updateConfig(cfg *lbConfig) {
 	w.cfg = cfg
 	w.mu.Unlock()
 
-	newPeriod := cfg.OOBReportingPeriod
 	if cfg.EnableOOBLoadReport == oldCfg.EnableOOBLoadReport &&
-		newPeriod == oldCfg.OOBReportingPeriod {
+		cfg.OOBReportingPeriod == oldCfg.OOBReportingPeriod {
 		// Load reporting wasn't enabled before or after, or load reporting was
 		// enabled before and after, and had the same period.  (Note that with
 		// load reporting disabled, OOBReportingPeriod is always 0.)
 		return
 	}
-	// (Optionally stop and) start the listener to use the new config's
-	// settings for OOB reporting.
+	if w.connectivityState == connectivity.Ready {
+		// (Re)start the listener to use the new config's settings for OOB
+		// reporting.
+		w.updateORCAListener(cfg)
+	}
+}
 
+func (w *weightedSubConn) updateORCAListener(cfg *lbConfig) {
 	if w.stopORCAListener != nil {
 		w.stopORCAListener()
 	}
@@ -545,9 +549,9 @@ func (w *weightedSubConn) updateConfig(cfg *lbConfig) {
 		return
 	}
 	if w.logger.V(2) {
-		w.logger.Infof("Registering ORCA listener for %v with interval %v", w.SubConn, newPeriod)
+		w.logger.Infof("Registering ORCA listener for %v with interval %v", w.SubConn, cfg.OOBReportingPeriod)
 	}
-	opts := orca.OOBListenerOptions{ReportInterval: time.Duration(newPeriod)}
+	opts := orca.OOBListenerOptions{ReportInterval: time.Duration(cfg.OOBReportingPeriod)}
 	w.stopORCAListener = orca.RegisterOOBListener(w.SubConn, w, opts)
 }
 
@@ -569,11 +573,9 @@ func (w *weightedSubConn) updateConnectivityState(cs connectivity.State) connect
 		w.mu.Lock()
 		w.nonEmptySince = time.Time{}
 		w.lastUpdated = time.Time{}
+		cfg := w.cfg
 		w.mu.Unlock()
-	case connectivity.Shutdown:
-		if w.stopORCAListener != nil {
-			w.stopORCAListener()
-		}
+		w.updateORCAListener(cfg)
 	}
 
 	oldCS := w.connectivityState

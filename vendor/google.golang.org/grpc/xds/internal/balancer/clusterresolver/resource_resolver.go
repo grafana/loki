@@ -77,7 +77,7 @@ type endpointsResolver interface {
 // discoveryMechanismKey is {type+resource_name}, it's used as the map key, so
 // that the same resource resolver can be reused (e.g. when there are two
 // mechanisms, both for the same EDS resource, but has different circuit
-// breaking config.
+// breaking config).
 type discoveryMechanismKey struct {
 	typ  DiscoveryMechanismType
 	name string

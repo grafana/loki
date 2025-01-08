@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc/internal"
+	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/xds/bootstrap"
@@ -53,16 +54,17 @@ const NameForServer = "#server"
 // only when all references are released, and it is safe for the caller to
 // invoke this close function multiple times.
 func New(name string) (XDSClient, func(), error) {
-	return newRefCounted(name, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
+	return newRefCounted(name, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout, backoff.DefaultExponential.Backoff)
 }
 
 // newClientImpl returns a new xdsClient with the given config.
-func newClientImpl(config *bootstrap.Config, watchExpiryTimeout time.Duration, idleAuthorityDeleteTimeout time.Duration) (*clientImpl, error) {
+func newClientImpl(config *bootstrap.Config, watchExpiryTimeout time.Duration, idleAuthorityDeleteTimeout time.Duration, streamBackoff func(int) time.Duration) (*clientImpl, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &clientImpl{
 		done:               grpcsync.NewEvent(),
 		config:             config,
 		watchExpiryTimeout: watchExpiryTimeout,
+		backoff:            streamBackoff,
 		serializer:         grpcsync.NewCallbackSerializer(ctx),
 		serializerClose:    cancel,
 		resourceTypes:      newResourceTypeRegistry(),
@@ -90,6 +92,11 @@ type OptionsForTesting struct {
 	// AuthorityIdleTimeout is the timeout before idle authorities are deleted.
 	// If unspecified, uses the default value used in non-test code.
 	AuthorityIdleTimeout time.Duration
+
+	// StreamBackoffAfterFailure is the backoff function used to determine the
+	// backoff duration after stream failures. If unspecified, uses the default
+	// value used in non-test code.
+	StreamBackoffAfterFailure func(int) time.Duration
 }
 
 // NewForTesting returns an xDS client configured with the provided options.
@@ -111,11 +118,14 @@ func NewForTesting(opts OptionsForTesting) (XDSClient, func(), error) {
 	if opts.AuthorityIdleTimeout == 0 {
 		opts.AuthorityIdleTimeout = defaultIdleAuthorityDeleteTimeout
 	}
+	if opts.StreamBackoffAfterFailure == nil {
+		opts.StreamBackoffAfterFailure = defaultStreamBackoffFunc
+	}
 
 	if err := bootstrap.SetFallbackBootstrapConfig(opts.Contents); err != nil {
 		return nil, nil, err
 	}
-	client, cancel, err := newRefCounted(opts.Name, opts.WatchExpiryTimeout, opts.AuthorityIdleTimeout)
+	client, cancel, err := newRefCounted(opts.Name, opts.WatchExpiryTimeout, opts.AuthorityIdleTimeout, opts.StreamBackoffAfterFailure)
 	return client, func() { bootstrap.UnsetFallbackBootstrapConfigForTesting(); cancel() }, err
 }
 

@@ -37,6 +37,7 @@ type clientImpl struct {
 	config             *bootstrap.Config
 	logger             *grpclog.PrefixLogger
 	watchExpiryTimeout time.Duration
+	backoff            func(int) time.Duration // Backoff for ADS and LRS stream failures.
 	serializer         *grpcsync.CallbackSerializer
 	serializerClose    func()
 	resourceTypes      *resourceTypeRegistry

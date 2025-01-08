@@ -227,6 +227,9 @@ const (
 	HTTPParamAccessKeyIDV2       = "x-oss-access-key-id"
 	HTTPParamSignatureV2         = "x-oss-signature"
 	HTTPParamAdditionalHeadersV2 = "x-oss-additional-headers"
+	HTTPParamCredential          = "x-oss-credential"
+	HTTPParamDate                = "x-oss-date"
+	HTTPParamOssSecurityToken    = "x-oss-security-token"
 )
 
 // Other constants
@@ -245,7 +248,7 @@ const (
 
 	DefaultContentSha256 = "UNSIGNED-PAYLOAD" // for v4 signature
 
-	Version = "v2.2.10" // Go SDK version
+	Version = "v3.0.2" // Go SDK version
 )
 
 // FrameType

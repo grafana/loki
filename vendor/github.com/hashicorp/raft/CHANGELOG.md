@@ -1,69 +1,12 @@
 # UNRELEASED
 
-# 1.7.0 (June 5th, 2024)
-
-CHANGES
-
-* Raft multi version testing [GH-559](https://github.com/hashicorp/raft/pull/559)
-
-IMPROVEMENTS
-
-* Raft pre-vote extension implementation, activated by default. [GH-530](https://github.com/hashicorp/raft/pull/530)
-
-BUG FIXES
-
-* Fix serialize NetworkTransport data race on ServerAddr(). [GH-591](https://github.com/hashicorp/raft/pull/591)
-
-# 1.6.1 (January 8th, 2024)
-
-CHANGES
-
-* Add reference use of Hashicorp Raft. [GH-584](https://github.com/hashicorp/raft/pull/584)
-* [COMPLIANCE] Add Copyright and License Headers. [GH-580](https://github.com/hashicorp/raft/pull/580)
-
-IMPROVEMENTS
-
-* Bump github.com/hashicorp/go-hclog from 1.5.0 to 1.6.2. [GH-583](https://github.com/hashicorp/raft/pull/583)
-
-BUG FIXES
-
-* Fix rare leadership transfer failures when writes happen during transfer. [GH-581](https://github.com/hashicorp/raft/pull/581)
-
-# 1.6.0 (November 15th, 2023)
-
-CHANGES
-
-* Upgrade hashicorp/go-msgpack to v2, with go.mod upgraded from v0.5.5 to v2.1.1. [GH-577](https://github.com/hashicorp/raft/pull/577)
-
-  go-msgpack v2.1.1 is by default binary compatible with v0.5.5 ("non-builtin" encoding of `time.Time`), but can decode messages produced by v1.1.5 as well ("builtin" encoding of `time.Time`).
-
-  However, if users of this libary overrode the version of go-msgpack (especially to v1), this **could break** compatibility if raft nodes are running a mix of versions.
-
-  This compatibility can be configured at runtime in Raft using `NetworkTransportConfig.MsgpackUseNewTimeFormat` -- the default is `false`, which maintains compatibility with `go-msgpack` v0.5.5, but if set to `true`, will be compatible with `go-msgpack` v1.1.5.
-
-IMPROVEMENTS
-
-* Push to notify channel when shutting down. [GH-567](https://github.com/hashicorp/raft/pull/567)
-* Add CommitIndex API [GH-560](https://github.com/hashicorp/raft/pull/560)
-* Document some Apply error cases better [GH-561](https://github.com/hashicorp/raft/pull/561)
-
-BUG FIXES
-
-* Race with `candidateFromLeadershipTransfer` [GH-570](https://github.com/hashicorp/raft/pull/570)
-
-
-# 1.5.0 (April 21st, 2023)
-
-IMPROVEMENTS
-* Fixed a performance anomaly related to pipelining RPCs that caused large increases in commit latency under high write throughput. Default behavior has changed. For more information see #541.
-
 # 1.4.0 (March 17th, 2023)
 
 FEATURES
-* Support log stores with a monotonically increasing index.  Implementing a log store with the `MonotonicLogStore` interface where `IsMonotonic()` returns true will allow Raft to clear all previous logs on user restores of Raft snapshots.
+* Support log stores with a montonically increasing index.  Implementing a log store with the `MonotonicLogStore` interface where `IsMonotonic()` returns true will allow Raft to clear all previous logs on user restores of Raft snapshots.
 
 BUG FIXES
-* Restoring a snapshot with the raft-wal log store caused a panic due to index gap that is created during snapshot restores.
+* Restoring a snapshot with the raft-wal log store caused a panic due to index gap that is created during snapshot restores. 
 
 # 1.3.0 (April 22nd, 2021)
 

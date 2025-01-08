@@ -46,14 +46,14 @@ type CredentialsCacheOptions struct {
 // CredentialsCache will look for optional interfaces on the Provider to adjust
 // how the credential cache handles credentials caching.
 //
-//   * HandleFailRefreshCredentialsCacheStrategy - Allows provider to handle
-//   credential refresh failures. This could return an updated Credentials
-//   value, or attempt another means of retrieving credentials.
+//   - HandleFailRefreshCredentialsCacheStrategy - Allows provider to handle
+//     credential refresh failures. This could return an updated Credentials
+//     value, or attempt another means of retrieving credentials.
 //
-//   * AdjustExpiresByCredentialsCacheStrategy - Allows provider to adjust how
-//   credentials Expires is modified. This could modify how the Credentials
-//   Expires is adjusted based on the CredentialsCache ExpiryWindow option.
-//   Such as providing a floor not to reduce the Expires below.
+//   - AdjustExpiresByCredentialsCacheStrategy - Allows provider to adjust how
+//     credentials Expires is modified. This could modify how the Credentials
+//     Expires is adjusted based on the CredentialsCache ExpiryWindow option.
+//     Such as providing a floor not to reduce the Expires below.
 type CredentialsCache struct {
 	provider CredentialsProvider
 
@@ -176,6 +176,12 @@ func (p *CredentialsCache) getCreds() (Credentials, bool) {
 // will cause the provider's Retrieve method to be called.
 func (p *CredentialsCache) Invalidate() {
 	p.creds.Store((*Credentials)(nil))
+}
+
+// IsCredentialsProvider returns whether credential provider wrapped by CredentialsCache
+// matches the target provider type.
+func (p *CredentialsCache) IsCredentialsProvider(target CredentialsProvider) bool {
+	return IsCredentialsProvider(p.provider, target)
 }
 
 // HandleFailRefreshCredentialsCacheStrategy is an interface for

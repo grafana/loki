@@ -88,6 +88,15 @@ type Writer struct {
 	// cancellation.
 	ChunkRetryDeadline time.Duration
 
+	// ChunkTransferTimeout sets a per-chunk request timeout for resumable uploads.
+	//
+	// For resumable uploads, the Writer will terminate the request and attempt a retry
+	// if the request to upload a particular chunk stalls for longer than this duration. Retries
+	// may continue until the ChunkRetryDeadline is reached.
+	//
+	// The default value is no timeout.
+	ChunkTransferTimeout time.Duration
+
 	// ForceEmptyContentType is an optional parameter that is used to disable
 	// auto-detection of Content-Type. By default, if a blank Content-Type
 	// is provided, then gax.DetermineContentType is called to sniff the type.
@@ -188,6 +197,7 @@ func (w *Writer) openWriter() (err error) {
 		ctx:                   w.ctx,
 		chunkSize:             w.ChunkSize,
 		chunkRetryDeadline:    w.ChunkRetryDeadline,
+		chunkTransferTimeout:  w.ChunkTransferTimeout,
 		bucket:                w.o.bucket,
 		attrs:                 &w.ObjectAttrs,
 		conds:                 w.o.conds,

@@ -8,31 +8,31 @@
 // ensure synchronous usage of the AssumeRoleProvider if the value is shared
 // between multiple Credentials or service clients.
 //
-// Assume Role
+// # Assume Role
 //
 // To assume an IAM role using STS with the SDK you can create a new Credentials
 // with the SDKs's stscreds package.
 //
-// 	// Initial credentials loaded from SDK's default credential chain. Such as
-// 	// the environment, shared credentials (~/.aws/credentials), or EC2 Instance
-// 	// Role. These credentials will be used to to make the STS Assume Role API.
-// 	cfg, err := config.LoadDefaultConfig(context.TODO())
-// 	if err != nil {
-// 		panic(err)
-// 	}
+//	// Initial credentials loaded from SDK's default credential chain. Such as
+//	// the environment, shared credentials (~/.aws/credentials), or EC2 Instance
+//	// Role. These credentials will be used to to make the STS Assume Role API.
+//	cfg, err := config.LoadDefaultConfig(context.TODO())
+//	if err != nil {
+//		panic(err)
+//	}
 //
-// 	// Create the credentials from AssumeRoleProvider to assume the role
-// 	// referenced by the "myRoleARN" ARN.
-// 	stsSvc := sts.NewFromConfig(cfg)
-// 	creds := stscreds.NewAssumeRoleProvider(stsSvc, "myRoleArn")
+//	// Create the credentials from AssumeRoleProvider to assume the role
+//	// referenced by the "myRoleARN" ARN.
+//	stsSvc := sts.NewFromConfig(cfg)
+//	creds := stscreds.NewAssumeRoleProvider(stsSvc, "myRoleArn")
 //
-// 	cfg.Credentials = aws.NewCredentialsCache(creds)
+//	cfg.Credentials = aws.NewCredentialsCache(creds)
 //
-// 	// Create service client value configured for credentials
-// 	// from assumed role.
-// 	svc := s3.NewFromConfig(cfg)
+//	// Create service client value configured for credentials
+//	// from assumed role.
+//	svc := s3.NewFromConfig(cfg)
 //
-// Assume Role with custom MFA Token provider
+// # Assume Role with custom MFA Token provider
 //
 // To assume an IAM role with a MFA token you can either specify a custom MFA
 // token provider or use the SDK's built in StdinTokenProvider that will prompt
@@ -43,29 +43,29 @@
 // With a custom token provider, the provider is responsible for refreshing the
 // token code when called.
 //
-// 	cfg, err := config.LoadDefaultConfig(context.TODO())
-// 	if err != nil {
-// 		panic(err)
-// 	}
+//		cfg, err := config.LoadDefaultConfig(context.TODO())
+//		if err != nil {
+//			panic(err)
+//		}
 //
-//  staticTokenProvider := func() (string, error) {
-//      return someTokenCode, nil
-//  }
+//	 staticTokenProvider := func() (string, error) {
+//	     return someTokenCode, nil
+//	 }
 //
-// 	// Create the credentials from AssumeRoleProvider to assume the role
-// 	// referenced by the "myRoleARN" ARN using the MFA token code provided.
-// 	creds := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), "myRoleArn", func(o *stscreds.AssumeRoleOptions) {
-// 		o.SerialNumber = aws.String("myTokenSerialNumber")
-// 		o.TokenProvider = staticTokenProvider
-// 	})
+//		// Create the credentials from AssumeRoleProvider to assume the role
+//		// referenced by the "myRoleARN" ARN using the MFA token code provided.
+//		creds := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), "myRoleArn", func(o *stscreds.AssumeRoleOptions) {
+//			o.SerialNumber = aws.String("myTokenSerialNumber")
+//			o.TokenProvider = staticTokenProvider
+//		})
 //
-// 	cfg.Credentials = aws.NewCredentialsCache(creds)
+//		cfg.Credentials = aws.NewCredentialsCache(creds)
 //
-// 	// Create service client value configured for credentials
-// 	// from assumed role.
-// 	svc := s3.NewFromConfig(cfg)
+//		// Create service client value configured for credentials
+//		// from assumed role.
+//		svc := s3.NewFromConfig(cfg)
 //
-// Assume Role with MFA Token Provider
+// # Assume Role with MFA Token Provider
 //
 // To assume an IAM role with MFA for longer running tasks where the credentials
 // may need to be refreshed setting the TokenProvider field of AssumeRoleProvider
@@ -80,23 +80,23 @@
 // have undesirable results as the StdinTokenProvider will not be synchronized. A
 // single Credentials with an AssumeRoleProvider can be shared safely.
 //
-// 	cfg, err := config.LoadDefaultConfig(context.TODO())
-// 	if err != nil {
-// 		panic(err)
-// 	}
+//	cfg, err := config.LoadDefaultConfig(context.TODO())
+//	if err != nil {
+//		panic(err)
+//	}
 //
-// 	// Create the credentials from AssumeRoleProvider to assume the role
-// 	// referenced by the "myRoleARN" ARN using the MFA token code provided.
-// 	creds := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), "myRoleArn", func(o *stscreds.AssumeRoleOptions) {
-// 		o.SerialNumber = aws.String("myTokenSerialNumber")
-// 		o.TokenProvider = stscreds.StdinTokenProvider
-// 	})
+//	// Create the credentials from AssumeRoleProvider to assume the role
+//	// referenced by the "myRoleARN" ARN using the MFA token code provided.
+//	creds := stscreds.NewAssumeRoleProvider(sts.NewFromConfig(cfg), "myRoleArn", func(o *stscreds.AssumeRoleOptions) {
+//		o.SerialNumber = aws.String("myTokenSerialNumber")
+//		o.TokenProvider = stscreds.StdinTokenProvider
+//	})
 //
-// 	cfg.Credentials = aws.NewCredentialsCache(creds)
+//	cfg.Credentials = aws.NewCredentialsCache(creds)
 //
-// 	// Create service client value configured for credentials
-// 	// from assumed role.
-// 	svc := s3.NewFromConfig(cfg)
+//	// Create service client value configured for credentials
+//	// from assumed role.
+//	svc := s3.NewFromConfig(cfg)
 package stscreds
 
 import (
@@ -136,8 +136,13 @@ type AssumeRoleAPIClient interface {
 	AssumeRole(ctx context.Context, params *sts.AssumeRoleInput, optFns ...func(*sts.Options)) (*sts.AssumeRoleOutput, error)
 }
 
-// DefaultDuration is the default amount of time in minutes that the credentials
-// will be valid for.
+// DefaultDuration is the default amount of time in minutes that the
+// credentials will be valid for. This value is only used by AssumeRoleProvider
+// for specifying the default expiry duration of an assume role.
+//
+// Other providers such as WebIdentityRoleProvider do not use this value, and
+// instead rely on STS API's default parameter handing to assign a default
+// value.
 var DefaultDuration = time.Duration(15) * time.Minute
 
 // AssumeRoleProvider retrieves temporary credentials from the STS service, and
@@ -303,6 +308,11 @@ func (p *AssumeRoleProvider) Retrieve(ctx context.Context) (aws.Credentials, err
 		return aws.Credentials{Source: ProviderName}, err
 	}
 
+	var accountID string
+	if resp.AssumedRoleUser != nil {
+		accountID = getAccountID(resp.AssumedRoleUser)
+	}
+
 	return aws.Credentials{
 		AccessKeyID:     *resp.Credentials.AccessKeyId,
 		SecretAccessKey: *resp.Credentials.SecretAccessKey,
@@ -311,5 +321,6 @@ func (p *AssumeRoleProvider) Retrieve(ctx context.Context) (aws.Credentials, err
 
 		CanExpire: true,
 		Expires:   *resp.Credentials.Expiration,
+		AccountID: accountID,
 	}, nil
 }

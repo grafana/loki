@@ -143,10 +143,11 @@ type UploadInfo struct {
 	// Verified checksum values, if any.
 	// Values are base64 (standard) encoded.
 	// For multipart objects this is a checksum of the checksum of each part.
-	ChecksumCRC32  string
-	ChecksumCRC32C string
-	ChecksumSHA1   string
-	ChecksumSHA256 string
+	ChecksumCRC32     string
+	ChecksumCRC32C    string
+	ChecksumSHA1      string
+	ChecksumSHA256    string
+	ChecksumCRC64NVME string
 }
 
 // RestoreInfo contains information of the restore operation of an archived object
@@ -215,10 +216,11 @@ type ObjectInfo struct {
 	Restore *RestoreInfo
 
 	// Checksum values
-	ChecksumCRC32  string
-	ChecksumCRC32C string
-	ChecksumSHA1   string
-	ChecksumSHA256 string
+	ChecksumCRC32     string
+	ChecksumCRC32C    string
+	ChecksumSHA1      string
+	ChecksumSHA256    string
+	ChecksumCRC64NVME string
 
 	Internal *struct {
 		K int // Data blocks

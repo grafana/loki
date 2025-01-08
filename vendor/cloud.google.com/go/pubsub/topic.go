@@ -993,8 +993,6 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 		fcSpan.End()
 	}
 
-	_, batcherSpan = startSpan(ctx, batcherSpanName, "")
-
 	bmsg := &bundledMessage{
 		msg:        msg,
 		res:        r,
@@ -1003,6 +1001,7 @@ func (t *Topic) Publish(ctx context.Context, msg *Message) *PublishResult {
 	}
 
 	if t.enableTracing {
+		_, batcherSpan = startSpan(ctx, batcherSpanName, "")
 		bmsg.batcherSpan = batcherSpan
 
 		// Inject the context from the first publish span rather than from flow control / batching.

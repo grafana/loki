@@ -222,7 +222,7 @@ type HeaderContainsMatcher struct {
 
 // NewHeaderContainsMatcher returns a new HeaderContainsMatcher. key is the HTTP
 // Header key to match on, and contains is the value that the header should
-// should contain for a successful match. An empty contains string does not
+// contain for a successful match. An empty contains string does not
 // work, use HeaderPresentMatcher in that case.
 func NewHeaderContainsMatcher(key string, contains string, invert bool) *HeaderContainsMatcher {
 	return &HeaderContainsMatcher{key: key, contains: contains, invert: invert}

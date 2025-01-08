@@ -67,6 +67,7 @@ var versions = []struct {
 	{"v3.5", V3_5_0()},
 	{"v3.6", V3_6_0()},
 	{"v3.7", V3_7_0()},
+	{"v3.8", V3_8_0()},
 }
 
 // VersionStrings returns all recognized versions, minus any patch, that can be
@@ -333,7 +334,7 @@ func (vs *Versions) versionGuess(opts ...VersionGuessOpt) guess {
 		//
 		// TODO: add introduced-version to differentiate some specific
 		// keys.
-		skipKeys: []int16{4, 5, 6, 7, 27, 52, 53, 54, 55, 56, 57, 58, 59, 62, 63, 64, 67},
+		skipKeys: []int16{4, 5, 6, 7, 27, 52, 53, 54, 55, 56, 57, 58, 59, 62, 63, 64, 67, 74, 75},
 	}
 	for _, opt := range opts {
 		opt.apply(&cfg)
@@ -378,6 +379,7 @@ func (vs *Versions) versionGuess(opts ...VersionGuessOpt) guess {
 		{max350, "v3.5"},
 		{max360, "v3.6"},
 		{max370, "v3.7"},
+		{max380, "v3.8"},
 	} {
 		for k, v := range comparison.cmp.filter(cfg.listener) {
 			if v == -1 {
@@ -520,6 +522,7 @@ func V3_4_0() *Versions  { return zkBrokerOf(max340) }
 func V3_5_0() *Versions  { return zkBrokerOf(max350) }
 func V3_6_0() *Versions  { return zkBrokerOf(max360) }
 func V3_7_0() *Versions  { return zkBrokerOf(max370) }
+func V3_8_0() *Versions  { return zkBrokerOf(max380) }
 
 func zkBrokerOf(lks listenerKeys) *Versions {
 	return &Versions{lks.filter(zkBroker)}
@@ -1158,8 +1161,37 @@ var max370 = nextMax(max360, func(v listenerKeys) listenerKeys {
 	return v
 })
 
+var max380 = nextMax(max370, func(v listenerKeys) listenerKeys {
+	// KAFKA-16314 2e8d69b78ca52196decd851c8520798aa856c073 KIP-890
+	// Then error rename in cf1ba099c0723f9cf65dda4cd334d36b7ede6327
+	v[0].inc()  // 11 produce
+	v[10].inc() // 5 find coordinator
+	v[22].inc() // 5 init producer id
+	v[24].inc() // 5 add partitions to txn
+	v[25].inc() // 4 add offsets to txn
+	v[26].inc() // 4 end txn
+	v[28].inc() // 4 txn offset commit
+
+	// KAFKA-15460 68745ef21a9d8fe0f37a8c5fbc7761a598718d46 KIP-848
+	v[16].inc() // 5 list groups
+
+	// KAFKA-14509 90e646052a17e3f6ec1a013d76c1e6af2fbb756e KIP-848 added
+	// 7b0352f1bd9b923b79e60b18b40f570d4bfafcc0
+	// b7c99e22a77392d6053fe231209e1de32b50a98b
+	// 68389c244e720566aaa8443cd3fc0b9d2ec4bb7a
+	// 5f410ceb04878ca44d2d007655155b5303a47907 stabilized
+	v = append(v,
+		k(zkBroker, rBroker), // 69 consumer group describe
+	)
+
+	// KAFKA-16265 b4e96913cc6c827968e47a31261e0bd8fdf677b5 KIP-994 (part 1)
+	v[66].inc()
+
+	return v
+})
+
 var (
-	maxStable = max370
+	maxStable = max380
 	maxTip    = nextMax(maxStable, func(v listenerKeys) listenerKeys {
 		return v
 	})

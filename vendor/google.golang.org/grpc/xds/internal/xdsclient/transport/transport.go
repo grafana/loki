@@ -192,16 +192,14 @@ func New(opts Options) (*Transport, error) {
 		return nil, errors.New("missing OnSend callback handler when creating a new transport")
 	}
 
-	// Dial the xDS management with the passed in credentials.
-	dopts := []grpc.DialOption{
-		opts.ServerCfg.CredsDialOption(),
-		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			// We decided to use these sane defaults in all languages, and
-			// kicked the can down the road as far making these configurable.
-			Time:    5 * time.Minute,
-			Timeout: 20 * time.Second,
-		}),
-	}
+	// Dial the xDS management server with dial options specified by the server
+	// configuration and a static keepalive configuration that is common across
+	// gRPC language implementations.
+	kpCfg := grpc.WithKeepaliveParams(keepalive.ClientParameters{
+		Time:    5 * time.Minute,
+		Timeout: 20 * time.Second,
+	})
+	dopts := append([]grpc.DialOption{kpCfg}, opts.ServerCfg.DialOptions()...)
 	grpcNewClient := transportinternal.GRPCNewClient.(func(string, ...grpc.DialOption) (*grpc.ClientConn, error))
 	cc, err := grpcNewClient(opts.ServerCfg.ServerURI(), dopts...)
 	if err != nil {

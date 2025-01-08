@@ -1,12 +1,13 @@
 package otgrpc
 
 import (
+	"context"
+	"errors"
 	"io"
 	"runtime"
 	"sync/atomic"
 
 	opentracing "github.com/opentracing/opentracing-go"
-	"context"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/opentracing/opentracing-go/log"
 	"google.golang.org/grpc"
@@ -18,10 +19,10 @@ import (
 //
 // For example:
 //
-//     conn, err := grpc.Dial(
-//         address,
-//         ...,  // (existing DialOptions)
-//         grpc.WithUnaryInterceptor(otgrpc.OpenTracingClientInterceptor(tracer)))
+//	conn, err := grpc.Dial(
+//	    address,
+//	    ...,  // (existing DialOptions)
+//	    grpc.WithUnaryInterceptor(otgrpc.OpenTracingClientInterceptor(tracer)))
 //
 // All gRPC client spans will inject the OpenTracing SpanContext into the gRPC
 // metadata; they will also look in the context.Context for an active
@@ -80,10 +81,10 @@ func OpenTracingClientInterceptor(tracer opentracing.Tracer, optFuncs ...Option)
 //
 // For example:
 //
-//     conn, err := grpc.Dial(
-//         address,
-//         ...,  // (existing DialOptions)
-//         grpc.WithStreamInterceptor(otgrpc.OpenTracingStreamClientInterceptor(tracer)))
+//	conn, err := grpc.Dial(
+//	    address,
+//	    ...,  // (existing DialOptions)
+//	    grpc.WithStreamInterceptor(otgrpc.OpenTracingStreamClientInterceptor(tracer)))
 //
 // All gRPC client spans will inject the OpenTracing SpanContext into the gRPC
 // metadata; they will also look in the context.Context for an active
@@ -206,7 +207,7 @@ func (cs *openTracingClientStream) SendMsg(m interface{}) error {
 
 func (cs *openTracingClientStream) RecvMsg(m interface{}) error {
 	err := cs.ClientStream.RecvMsg(m)
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		cs.finishFunc(nil)
 		return err
 	} else if err != nil {

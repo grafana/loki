@@ -147,8 +147,13 @@ type InternalOptions struct {
 	// service.
 	DefaultScopes []string
 	// SkipValidation bypasses validation on Options. It should only be used
-	// internally for clients that needs more control over their transport.
+	// internally for clients that need more control over their transport.
 	SkipValidation bool
+	// SkipUniverseDomainValidation skips the verification that the universe
+	// domain configured for the client matches the universe domain configured
+	// for the credentials. It should only be used internally for clients that
+	// need more control over their transport. The default is false.
+	SkipUniverseDomainValidation bool
 }
 
 // AddAuthorizationMiddleware adds a middleware to the provided client's

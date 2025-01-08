@@ -73,10 +73,10 @@ func DefaultResolver() Resolver {
 // DefaultPartitions returns a list of the partitions the SDK is bundled
 // with. The available partitions are: AWS Standard, AWS China, AWS GovCloud (US), AWS ISO (US), and AWS ISOB (US).
 //
-//	partitions := endpoints.DefaultPartitions
-//	for _, p := range partitions {
-//	    // ... inspect partitions
-//	}
+//    partitions := endpoints.DefaultPartitions
+//    for _, p := range partitions {
+//        // ... inspect partitions
+//    }
 func DefaultPartitions() []Partition {
 	return defaultPartitions.Partitions()
 }

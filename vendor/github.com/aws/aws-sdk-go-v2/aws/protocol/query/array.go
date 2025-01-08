@@ -9,9 +9,9 @@ import (
 // representation of a list of values of a fixed type. A serialized array might
 // look like the following:
 //
-//     ListName.member.1=foo
-//     &ListName.member.2=bar
-//     &Listname.member.3=baz
+//	ListName.member.1=foo
+//	&ListName.member.2=bar
+//	&Listname.member.3=baz
 type Array struct {
 	// The query values to add the array to.
 	values url.Values
@@ -36,20 +36,31 @@ type Array struct {
 	memberName string
 	// Elements are stored in values, so we keep track of the list size here.
 	size int32
+	// Empty lists are encoded as "<prefix>=", if we add a value later we will
+	// remove this encoding
+	emptyValue Value
 }
 
 func newArray(values url.Values, prefix string, flat bool, memberName string) *Array {
+	emptyValue := newValue(values, prefix, flat)
+	emptyValue.String("")
+
 	return &Array{
 		values:     values,
 		prefix:     prefix,
 		flat:       flat,
 		memberName: memberName,
+		emptyValue: emptyValue,
 	}
 }
 
 // Value adds a new element to the Query Array. Returns a Value type used to
 // encode the array element.
 func (a *Array) Value() Value {
+	if a.size == 0 {
+		delete(a.values, a.emptyValue.key)
+	}
+
 	// Query lists start a 1, so adjust the size first
 	a.size++
 	prefix := a.prefix

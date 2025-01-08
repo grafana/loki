@@ -1113,8 +1113,8 @@ func RecordDeliveryTimeout(timeout time.Duration) ProducerOpt {
 // For Kafka-to-Kafka transactions, the transactional ID is only one half of
 // the equation. You must also assign a group to consume from.
 //
-// To produce transactionally, you first BeginTransaction, then produce records
-// consumed from a group, then you EndTransaction. All records produced outside
+// To produce transactionally, you first [BeginTransaction], then produce records
+// consumed from a group, then you [EndTransaction]. All records produced outside
 // of a transaction will fail immediately with an error.
 //
 // After producing a batch, you must commit what you consumed. Auto committing
@@ -1449,7 +1449,7 @@ func Balancers(balancers ...GroupBalancer) GroupOpt {
 // in this timeout, the broker will remove the member from the group and
 // initiate a rebalance.
 //
-// If you are using a GroupTransactSession for EOS, wish to lower this, and are
+// If you are using a [GroupTransactSession] for EOS, wish to lower this, and are
 // talking to a Kafka cluster pre 2.5, consider lowering the
 // TransactionTimeout. If you do not, you risk a transaction finishing after a
 // group has rebalanced, which could lead to duplicate processing. If you are

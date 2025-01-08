@@ -79,7 +79,7 @@ func ValidateStruct(param interface{}, paramName string) error {
 	if err != nil {
 		// If there were validation errors then return an error containing the field errors
 		if fieldErrors, ok := err.(validator.ValidationErrors); ok {
-			err = fmt.Errorf("%s failed validation:\n%s", paramName, fieldErrors.Error())
+			err = fmt.Errorf("%s failed validation:\n%w", paramName, fieldErrors)
 			return SDKErrorf(err, "", "struct-validation-errors", getComponentInfo())
 		}
 		return SDKErrorf(err, "", "struct-validate-unknown-error", getComponentInfo())

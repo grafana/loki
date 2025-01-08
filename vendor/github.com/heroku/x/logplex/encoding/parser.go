@@ -10,9 +10,10 @@ import (
 
 // SyslogSplitFunc splits the data based on the defined length prefix.
 // format:
-//nolint:lll
 // 64 <190>1 2019-07-20T17:50:10.879238Z shuttle token shuttle - - 99\n65 <190>1 2019-07-20T17:50:10.879238Z shuttle token shuttle - - 100\n
 // ^ frame size                                                       ^ boundary
+//
+//nolint:lll
 func SyslogSplitFunc(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	// first space gives us the frame size
 	sp := bytes.IndexByte(data, ' ')
@@ -27,13 +28,13 @@ func SyslogSplitFunc(data []byte, atEOF bool) (advance int, token []byte, err er
 		return 0, nil, errors.Wrap(ErrBadFrame, "invalid frame length")
 	}
 
-	msgSize, err := strconv.ParseUint(string(data[0:sp]), 10, 64)
+	msgSize, err := strconv.Atoi(string(data[0:sp]))
 	if err != nil {
 		return 0, nil, errors.Wrap(ErrBadFrame, "couldnt parse frame length")
 	}
 
 	// 1 here is the 'space' itself, used in the framing above
-	dataBoundary := sp + int(msgSize) + 1
+	dataBoundary := sp + msgSize + 1
 
 	if dataBoundary > len(data) {
 		if atEOF {

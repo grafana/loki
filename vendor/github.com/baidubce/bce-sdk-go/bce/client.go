@@ -16,24 +16,24 @@
 
 // Package bce implements the infrastructure to access BCE services.
 //
-// - BceClient:
+//   - BceClient:
 //     It is the general client of BCE to access all services. It builds http request to access the
 //     services based on the given client configuration.
 //
-// - BceClientConfiguration:
+//   - BceClientConfiguration:
 //     The client configuration data structure which contains endpoint, region, credentials, retry
 //     policy, sign options and so on. It supports most of the default value and user can also
 //     access or change the default with its public fields' name.
 //
-// - Error types:
+//   - Error types:
 //     The error types when making request or receiving response to the BCE services contains two
 //     types: the BceClientError when making request to BCE services and the BceServiceError when
 //     recieving response from them.
 //
-// - BceRequest:
+//   - BceRequest:
 //     The request instance stands for an request to access the BCE services.
 //
-// - BceResponse:
+//   - BceResponse:
 //     The response instance stands for an response from the BCE services.
 package bce
 
@@ -67,7 +67,7 @@ type BceClient struct {
 // BuildHttpRequest - the helper method for the client to build http request
 //
 // PARAMS:
-//     - request: the input request object to be built
+//   - request: the input request object to be built
 func (c *BceClient) buildHttpRequest(request *BceRequest) {
 	// Construct the http request instance for the special fields
 	request.BuildHttpRequest()
@@ -104,10 +104,11 @@ func (c *BceClient) buildHttpRequest(request *BceRequest) {
 // response from the BCE services.
 //
 // PARAMS:
-//     - req: the request object to be sent to the BCE service
-//     - resp: the response object to receive the content from BCE service
+//   - req: the request object to be sent to the BCE service
+//   - resp: the response object to receive the content from BCE service
+//
 // RETURNS:
-//     - error: nil if ok otherwise the specific error
+//   - error: nil if ok otherwise the specific error
 func (c *BceClient) SendRequest(req *BceRequest, resp *BceResponse) error {
 	// Return client error if it is not nil
 	if req.ClientError() != nil {
@@ -158,7 +159,7 @@ func (c *BceClient) SendRequest(req *BceRequest, resp *BceResponse) error {
 
 		if resp.ElapsedTime().Milliseconds() > DEFAULT_WARN_LOG_TIMEOUT_IN_MILLS {
 			log.Warnf("request time more than 5 second, debugId: %s, requestId: %s, elapsed: %v",
-			resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
+				resp.DebugId(), resp.RequestId(), resp.ElapsedTime())
 		}
 		for k, v := range resp.Headers() {
 			log.Debugf("%s=%s", k, v)
@@ -187,11 +188,12 @@ func (c *BceClient) SendRequest(req *BceRequest, resp *BceResponse) error {
 // response from the BCE services.
 //
 // PARAMS:
-//     - req: the request object to be sent to the BCE service
-//     - resp: the response object to receive the content from BCE service
-//     - content: the content of body
+//   - req: the request object to be sent to the BCE service
+//   - resp: the response object to receive the content from BCE service
+//   - content: the content of body
+//
 // RETURNS:
-//     - error: nil if ok otherwise the specific error
+//   - error: nil if ok otherwise the specific error
 func (c *BceClient) SendRequestFromBytes(req *BceRequest, resp *BceResponse, content []byte) error {
 	// Return client error if it is not nil
 	if req.ClientError() != nil {
@@ -263,12 +265,12 @@ func NewBceClientWithAkSk(ak, sk, endPoint string) (*BceClient, error) {
 		HeadersToSign: auth.DEFAULT_HEADERS_TO_SIGN,
 		ExpireSeconds: auth.DEFAULT_EXPIRE_SECONDS}
 	defaultConf := &BceClientConfiguration{
-		Endpoint:    endPoint,
-		Region:      DEFAULT_REGION,
-		UserAgent:   DEFAULT_USER_AGENT,
-		Credentials: credentials,
-		SignOption:  defaultSignOptions,
-		Retry:       DEFAULT_RETRY_POLICY,
+		Endpoint:                  endPoint,
+		Region:                    DEFAULT_REGION,
+		UserAgent:                 DEFAULT_USER_AGENT,
+		Credentials:               credentials,
+		SignOption:                defaultSignOptions,
+		Retry:                     DEFAULT_RETRY_POLICY,
 		ConnectionTimeoutInMillis: DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS,
 		RedirectDisabled:          false}
 	v1Signer := &auth.BceV1Signer{}

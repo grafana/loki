@@ -318,7 +318,7 @@ func (o *Object) doGetRequest(request getRequest) (getResponse, error) {
 	response := <-o.resCh
 
 	// Return any error to the top level.
-	if response.Error != nil {
+	if response.Error != nil && response.Error != io.EOF {
 		return response, response.Error
 	}
 
@@ -340,7 +340,7 @@ func (o *Object) doGetRequest(request getRequest) (getResponse, error) {
 	// Data are ready on the wire, no need to reinitiate connection in lower level
 	o.seekData = false
 
-	return response, nil
+	return response, response.Error
 }
 
 // setOffset - handles the setting of offsets for
