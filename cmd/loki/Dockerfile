@@ -1,10 +1,10 @@
-FROM golang:1.22.5 as build
+FROM golang:1.22.10 as build
 
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki
 
-FROM alpine:3.20.2
+FROM alpine:3.21.1
 
 RUN apk add --no-cache ca-certificates libcap
 
