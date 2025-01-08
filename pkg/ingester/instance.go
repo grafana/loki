@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -238,16 +237,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 				if err == nil {
 					s.chunkMtx.Lock()
 				}
-
-				if err != nil && strings.Contains(err.Error(), validation.StreamLimitErrorMsg) {
-					level.Debug(util_log.Logger).Log(
-						"msg", "failed to create stream, exceeded stream limit",
-						"org_id", i.instanceID,
-						"err", err,
-						"stream", reqStream.Labels,
-					)
-				}
-
 				return s, err
 			},
 			func(s *stream) error {
