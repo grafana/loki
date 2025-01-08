@@ -16,7 +16,6 @@ func iterMemPage(p *MemPage) result.Seq[Value] {
 		if err != nil {
 			return fmt.Errorf("opening page for reading: %w", err)
 		}
-		defer presenceReader.Close()
 		defer valuesReader.Close()
 
 		presenceDec := newBitmapDecoder(bufio.NewReader(presenceReader))

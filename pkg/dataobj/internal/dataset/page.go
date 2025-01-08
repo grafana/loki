@@ -51,8 +51,8 @@ type MemPage struct {
 var checksumTable = crc32.MakeTable(crc32.Castagnoli)
 
 // reader returns a reader for decompressed page data. Reader returns an error
-// if the CRc32 fails to validate.
-func (p *MemPage) reader() (presence io.ReadCloser, values io.ReadCloser, err error) {
+// if the CRC32 fails to validate.
+func (p *MemPage) reader() (presence io.Reader, values io.ReadCloser, err error) {
 	if actual := crc32.Checksum(p.Data, checksumTable); p.Info.CRC32 != actual {
 		return nil, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Info.CRC32)
 	}
@@ -69,18 +69,18 @@ func (p *MemPage) reader() (presence io.ReadCloser, values io.ReadCloser, err er
 
 	switch p.Info.Compression {
 	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
-		return io.NopCloser(bitmapReader), io.NopCloser(compressedDataReader), nil
+		return bitmapReader, io.NopCloser(compressedDataReader), nil
 
 	case datasetmd.COMPRESSION_TYPE_SNAPPY:
 		sr := snappy.NewReader(compressedDataReader)
-		return io.NopCloser(bitmapReader), io.NopCloser(sr), nil
+		return bitmapReader, io.NopCloser(sr), nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
 		zr, err := zstd.NewReader(compressedDataReader)
 		if err != nil {
 			return nil, nil, fmt.Errorf("opening zstd reader: %w", err)
 		}
-		return io.NopCloser(bitmapReader), newZstdReader(zr), nil
+		return bitmapReader, newZstdReader(zr), nil
 	}
 
 	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", p.Info.Compression.String()))
