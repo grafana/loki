@@ -21,11 +21,19 @@ const (
 	metadataTopicSuffix = ".metadata"
 )
 
-var encoderPool = sync.Pool{
-	New: func() any {
-		return &logproto.Stream{}
-	},
-}
+var (
+	encoderPool = sync.Pool{
+		New: func() any {
+			return &logproto.Stream{}
+		},
+	}
+
+	metadataPool = sync.Pool{
+		New: func() any {
+			return &logproto.StreamMetadata{}
+		},
+	}
+)
 
 // Encode converts a logproto.Stream into one or more Kafka records.
 // It handles splitting large streams into multiple records if necessary.
@@ -191,18 +199,25 @@ func sovPush(x uint64) (n int) {
 // EncodeStreamMetadata encodes the stream metadata into a Kafka record
 // using the tenantID as the key and partition as the target partition
 func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream logproto.Stream, lastSeenAt time.Time) *kgo.Record {
-	// Transform stream into metadata
-	metadata := logproto.StreamMetadata{
-		StreamHash: stream.Hash,
-		LastSeenAt: lastSeenAt.UnixNano(),
+	// Validate stream
+	if stream.Labels == "" || stream.Hash == 0 {
+		return nil
 	}
+
+	// Get metadata from pool
+	metadata := metadataPool.Get().(*logproto.StreamMetadata)
+	defer metadataPool.Put(metadata)
+
+	// Transform stream into metadata
+	metadata.StreamHash = stream.Hash
+	metadata.LastSeenAt = lastSeenAt.UnixNano()
 
 	// Encode the metadata into a byte slice
 	value, err := metadata.Marshal()
 	if err != nil {
 		// Since we're in a function that returns a *kgo.Record, we can't return an error.
-		// The best we can do is return a record with nil value which will fail later.
-		return &kgo.Record{Key: []byte(tenantID), Partition: partition}
+		// The best we can do is return nil which will fail later.
+		return nil
 	}
 
 	return &kgo.Record{
@@ -211,4 +226,24 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 		Partition: partition,
 		Topic:     topic + metadataTopicSuffix,
 	}
+}
+
+// DecodeStreamMetadata decodes a Kafka record into a StreamMetadata.
+// It returns the decoded metadata and any error encountered.
+func DecodeStreamMetadata(record *kgo.Record) (*logproto.StreamMetadata, error) {
+	if record == nil {
+		return nil, errors.New("nil record")
+	}
+
+	if record.Value == nil {
+		return nil, errors.New("nil record value")
+	}
+
+	metadata := metadataPool.Get().(*logproto.StreamMetadata)
+	if err := metadata.Unmarshal(record.Value); err != nil {
+		metadataPool.Put(metadata)
+		return nil, fmt.Errorf("failed to unmarshal stream metadata: %w", err)
+	}
+
+	return metadata, nil
 }
