@@ -344,12 +344,6 @@ func (v *JSONSerializer) VisitVariants(e *MultiVariantExpr) {
 	}
 	v.WriteArrayEnd()
 
-	if !e.ShouldIncludeLogs() {
-		v.WriteMore()
-		v.WriteObjectField(Without)
-		v.WriteBool(true)
-	}
-
 	v.WriteObjectEnd()
 	v.WriteObjectEnd()
 	v.Flush()
@@ -796,8 +790,6 @@ func decodeVariants(iter *jsoniter.Iterator) (VariantsExpr, error) {
 			}
 
 			e.SetLogSelector(logRange)
-		case Without:
-			e.IncludeLogs(iter.ReadBool())
 		}
 	}
 

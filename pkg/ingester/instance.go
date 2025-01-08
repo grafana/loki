@@ -619,8 +619,12 @@ func (i *instance) queryVariants(
 		shard,
 		func(stream *stream) error {
 			streamSampleExtractors := make([]log.StreamSampleExtractor, 0, len(extractors))
-			for _, e := range extractors {
-				streamSampleExtractors = append(streamSampleExtractors, e.ForStream(stream.labels))
+			for i, e := range extractors {
+				ext := log.NewVariantsStreamSampleExtractorWrapper(
+					i,
+					e.ForStream(stream.labels),
+				)
+				streamSampleExtractors = append(streamSampleExtractors, ext)
 			}
 			iter, err := stream.SampleIterator(
 				ctx,
@@ -1169,7 +1173,11 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	return nil
 }
 
-func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+func sendSampleBatches(
+	ctx context.Context,
+	it iter.SampleIterator,
+	queryServer logproto.Querier_QuerySampleServer,
+) error {
 	sp := opentracing.SpanFromContext(ctx)
 
 	stats := stats.FromContext(ctx)

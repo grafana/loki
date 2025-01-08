@@ -597,7 +597,6 @@ grouping:
 
 variantsExpr:
       variantsOp OPEN_PARENTHESIS variantsList CLOSE_PARENTHESIS variantsOf OPEN_PARENTHESIS variantsRangeExpr CLOSE_PARENTHESIS { $$ = newVariantsExpr($3, $7) }
-    | variantsExpr WITHOUT LOGS { $$ = newLoglessVariantsExpr($1) }
     ;
 
 variantsOp:

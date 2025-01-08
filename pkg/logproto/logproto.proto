@@ -508,24 +508,25 @@ message DetectedLabel {
 
 
 message VariantsQueryRequest {
-  string selector = 1; // mark as reserved once we've fully migrated to plan.
-  repeated string variants = 2; // mark as reserved once we've fully migrated to plan.
-  uint32 limit = 3; // for log lines
-  google.protobuf.Timestamp start = 4 [
+  string query = 1; // mark as reserved once we've fully migrated to plan.
+  string logRange = 2;
+  repeated string variants = 3;
+  uint32 limit = 4; // for log lines
+  google.protobuf.Timestamp start = 5 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  google.protobuf.Timestamp end = 5 [
+  google.protobuf.Timestamp end = 6 [
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = false
   ];
-  Direction direction = 6; // for log lines
-  repeated string shards = 7 [(gogoproto.jsontag) = "shards,omitempty"];
-  repeated Delete deletes = 8;
-  Plan plan = 9 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
+  Direction direction = 7; // for log lines
+  repeated string shards = 8 [(gogoproto.jsontag) = "shards,omitempty"];
+  repeated Delete deletes = 9;
+  Plan plan = 10 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/querier/plan.QueryPlan"];
   // If populated, these represent the chunk references that the querier should
   // use to fetch the data, plus any other chunks reported by ingesters.
-  ChunkRefGroup storeChunks = 10 [(gogoproto.jsontag) = "storeChunks"];
+  ChunkRefGroup storeChunks = 11 [(gogoproto.jsontag) = "storeChunks"];
 }
 
 message VariantsQueryResponse {

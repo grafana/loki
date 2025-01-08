@@ -448,7 +448,7 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 }
 
 func (q *IngesterQuerier) SelectVariants(ctx context.Context, req logql.SelectVariantsParams) ([]iter.SampleIterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
+	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
 		stats.FromContext(ctx).AddIngesterReached(1)
 		return client.QueryVariants(ctx, req.VariantsQueryRequest)
 	})

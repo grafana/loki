@@ -688,14 +688,28 @@ type SelectVariantsParams struct {
 }
 
 func (s SelectVariantsParams) Expr() (syntax.VariantsExpr, error) {
-	if s.VariantsQueryRequest.Plan == nil {
-		return nil, errors.New("query plan is empty")
+	if s.Plan != nil && s.Plan.AST != nil {
+		expr, ok := s.Plan.AST.(syntax.VariantsExpr)
+		if !ok {
+			return nil, errors.New("invalid variants expression")
+		}
+		return expr, nil
 	}
-	expr, ok := s.VariantsQueryRequest.Plan.AST.(syntax.VariantsExpr)
-	if !ok {
-		return nil, errors.New("only sample expression supported")
+
+	if s.Query == "" {
+		return nil, errors.New("invalid variants expression")
 	}
-	return expr, nil
+
+	expr, err := syntax.ParseExpr(s.Query)
+	if err != nil {
+		return nil, err
+	}
+	switch e := expr.(type) {
+	case syntax.VariantsExpr:
+		return e, nil
+	default:
+		return nil, errors.New("invalid variants expression")
+	}
 }
 
 func (s SelectVariantsParams) LogSelector() (syntax.LogSelectorExpr, error) {

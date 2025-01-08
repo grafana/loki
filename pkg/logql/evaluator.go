@@ -429,9 +429,9 @@ func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
 				// extend startTs backwards by step
 				Start: q.Start().Add(-logRange.Interval).Add(-logRange.Offset),
 				// add leap nanosecond to endTs to include lines exactly at endTs. range iterators work on start exclusive, end inclusive ranges
-				End: q.End().Add(-logRange.Offset).Add(time.Nanosecond),
-				// intentionally send the vector for reducing labels.
-				Selector: logRange.String(),
+				End:      q.End().Add(-logRange.Offset).Add(time.Nanosecond),
+				Query:    expr.String(),
+				LogRange: logRange.String(),
 				Variants: variants,
 				Shards:   q.Shards(),
 				Plan: &plan.QueryPlan{
@@ -1443,6 +1443,8 @@ func (ev *DefaultEvaluator) newVariantsEvaluator(
 				if err != nil {
 					return nil, err
 				}
+
+				e.Grouping.Groups = append(e.Grouping.Groups, "__variant__")
 
 				sort.Strings(e.Grouping.Groups)
 				variantEvaluator = &VectorAggEvaluator{

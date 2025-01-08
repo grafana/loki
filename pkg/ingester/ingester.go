@@ -1691,7 +1691,7 @@ func (i *Ingester) QueryVariants(req *logproto.VariantsQueryRequest, queryServer
 	}
 	if sp != nil {
 		sp.LogKV("event", "finished instance query variants",
-			"selector", req.Selector,
+			"query", req.GetQuery,
 			"variants", req.Variants,
 			"start", req.Start,
 			"end", req.End)
@@ -1701,11 +1701,12 @@ func (i *Ingester) QueryVariants(req *logproto.VariantsQueryRequest, queryServer
 		storeReq := logql.SelectVariantsParams{VariantsQueryRequest: &logproto.VariantsQueryRequest{
 			Start:    start,
 			End:      end,
-			Selector: req.Selector,
+			Query:    req.Query,
+			LogRange: req.LogRange,
 			Variants: req.Variants,
 			Shards:   req.Shards,
-			Deletes:  req.Deletes,
-			Plan:     req.Plan,
+			// Deletes:  req.Deletes,
+			Plan: req.Plan,
 		}}
 		storeItr, err := i.store.SelectVariants(ctx, storeReq)
 		if err != nil {
