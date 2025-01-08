@@ -2,10 +2,12 @@
 package kafka
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	math_bits "math/bits"
 	"sync"
+	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -181,4 +183,29 @@ func (d *Decoder) DecodeWithoutLabels(data []byte) (logproto.Stream, error) {
 // in Protocol Buffers' variable-length integer format.
 func sovPush(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
+}
+
+// EncodeStreamMetadata encodes the stream metadata into a Kafka record
+// using the tenantID as the key and partition as the target partition
+func EncodeStreamMetadata(partition int32, tenantID string, stream logproto.Stream, lastSeenAt time.Time) *kgo.Record {
+	// Transform stream into metadata
+	metadata := logproto.StreamMetadata{
+		StreamHash: stream.Hash,
+		LastSeenAt: lastSeenAt.UnixNano(),
+	}
+
+	// Encode the metadata into a byte slice
+	// 8 bytes for hash + 8 bytes for timestamp
+	value, err := metadata.Marshal()
+	if err != nil {
+		// Since we're in a function that returns a *kgo.Record, we can't return an error.
+		// The best we can do is return a record with nil value which will fail later.
+		return &kgo.Record{Key: []byte(tenantID), Partition: partition}
+	}
+
+	return &kgo.Record{
+		Key:       []byte(tenantID),
+		Value:     value,
+		Partition: partition,
+	}
 }

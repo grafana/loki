@@ -1089,6 +1089,10 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 		return fmt.Errorf("failed to marshal write request to records: %w", err)
 	}
 
+	// Add metadata record
+	metadataRecord := kafka.EncodeStreamMetadata(partitionID, tenant, stream.Stream, startTime)
+	records = append(records, metadataRecord)
+
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))
 
 	produceResults := d.kafkaWriter.ProduceSync(ctx, records)
