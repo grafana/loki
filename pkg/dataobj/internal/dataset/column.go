@@ -1,6 +1,11 @@
 package dataset
 
-import "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+import (
+	"context"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+)
 
 // Helper types.
 type (
@@ -18,8 +23,37 @@ type (
 	}
 )
 
+// A Column represents a sequence of values within a dataset. Columns are split
+// up across one or more [Page]s to limit the amount of memory needed to read a
+// portion of the column at a time.
+type Column interface {
+	// ColumnInfo returns the metadata for the Column.
+	ColumnInfo() *ColumnInfo
+
+	// ListPages returns the set of ordered pages in the column.
+	ListPages(ctx context.Context) result.Seq[Page]
+}
+
 // MemColumn holds a set of pages of a common type.
 type MemColumn struct {
 	Info  ColumnInfo // Information about the column.
 	Pages []*MemPage // The set of pages in the column.
+}
+
+var _ Column = (*MemColumn)(nil)
+
+// ColumnInfo implements [Column] and returns c.Info.
+func (c *MemColumn) ColumnInfo() *ColumnInfo { return &c.Info }
+
+// ListPages implements [Column] and iterates through c.Pages.
+func (c *MemColumn) ListPages(_ context.Context) result.Seq[Page] {
+	return result.Iter(func(yield func(Page) bool) error {
+		for _, p := range c.Pages {
+			if !yield(p) {
+				return nil
+			}
+		}
+
+		return nil
+	})
 }
