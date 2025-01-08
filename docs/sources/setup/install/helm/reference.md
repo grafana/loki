@@ -8669,6 +8669,21 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>read.persistence</td>
+			<td>object</td>
+			<td>read.persistence is used only if legacyReadTarget is set to true</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enableStatefulSetAutoDeletePVC": true,
+  "selector": null,
+  "size": "10Gi",
+  "storageClass": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for volume claim</td>
