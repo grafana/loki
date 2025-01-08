@@ -1526,6 +1526,7 @@ read:
   tolerations: []
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
+  # -- read.persistence is used only if legacyReadTarget is set to true
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
