@@ -34,10 +34,8 @@ type (
 		CRC32            uint32 // CRC32 checksum of the page after encoding and compression.
 		RowCount         int    // RowCount is the number of rows in the page, including NULLs.
 
-		Value       datasetmd.ValueType       // Type of values stored in the page.
-		Compression datasetmd.CompressionType // Compression used for values in the page.
-		Encoding    datasetmd.EncodingType    // Encoding used for values in the page.
-		Stats       *datasetmd.Statistics     // Optional statistics for the page.
+		Encoding datasetmd.EncodingType // Encoding used for values in the page.
+		Stats    *datasetmd.Statistics  // Optional statistics for the page.
 	}
 )
 
@@ -52,7 +50,7 @@ var checksumTable = crc32.MakeTable(crc32.Castagnoli)
 
 // reader returns a reader for decompressed page data. Reader returns an error
 // if the CRC32 fails to validate.
-func (p *MemPage) reader() (presence io.Reader, values io.ReadCloser, err error) {
+func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Reader, values io.ReadCloser, err error) {
 	if actual := crc32.Checksum(p.Data, checksumTable); p.Info.CRC32 != actual {
 		return nil, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Info.CRC32)
 	}
@@ -67,7 +65,7 @@ func (p *MemPage) reader() (presence io.Reader, values io.ReadCloser, err error)
 		compressedDataReader = bytes.NewReader(p.Data[n+int(bitmapSize):])
 	)
 
-	switch p.Info.Compression {
+	switch compression {
 	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
 		return bitmapReader, io.NopCloser(compressedDataReader), nil
 
@@ -83,7 +81,7 @@ func (p *MemPage) reader() (presence io.Reader, values io.ReadCloser, err error)
 		return bitmapReader, newZstdReader(zr), nil
 	}
 
-	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", p.Info.Compression.String()))
+	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
 }
 
 // zstdReader implements [io.ReadCloser] for a [zstd.Decoder].

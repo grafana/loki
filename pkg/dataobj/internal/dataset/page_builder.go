@@ -210,9 +210,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 			CRC32:            checksum,
 			RowCount:         b.rows,
 
-			Value:       b.opts.Value,
-			Compression: b.opts.Compression,
-			Encoding:    b.opts.Encoding,
+			Encoding: b.opts.Encoding,
 
 			// TODO(rfratto): At the moment we don't compute stats because they're
 			// not going to be valuable in every scenario: the min/max values for log

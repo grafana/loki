@@ -39,13 +39,12 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	page, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, datasetmd.VALUE_TYPE_STRING, page.Info.Value)
 
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
 	t.Log("Compressed size: ", page.Info.CompressedSize)
 
 	var actual []string
-	for result := range iterMemPage(page) {
+	for result := range iterMemPage(page, opts.Value, opts.Compression) {
 		val, err := result.Value()
 		require.NoError(t, err)
 
@@ -76,7 +75,6 @@ func Test_pageBuilder_Fill(t *testing.T) {
 
 	page, err := buf.Flush()
 	require.NoError(t, err)
-	require.Equal(t, datasetmd.VALUE_TYPE_INT64, page.Info.Value)
 	require.Equal(t, page.Info.UncompressedSize, page.Info.CompressedSize)
 
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)

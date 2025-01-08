@@ -10,18 +10,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
-func iterMemPage(p *MemPage) result.Seq[Value] {
+func iterMemPage(p *MemPage, valueType datasetmd.ValueType, compressionType datasetmd.CompressionType) result.Seq[Value] {
 	return result.Iter(func(yield func(Value) bool) error {
-		presenceReader, valuesReader, err := p.reader()
+		presenceReader, valuesReader, err := p.reader(compressionType)
 		if err != nil {
 			return fmt.Errorf("opening page for reading: %w", err)
 		}
 		defer valuesReader.Close()
 
 		presenceDec := newBitmapDecoder(bufio.NewReader(presenceReader))
-		valuesDec, ok := newValueDecoder(p.Info.Value, p.Info.Encoding, bufio.NewReader(valuesReader))
+		valuesDec, ok := newValueDecoder(valueType, p.Info.Encoding, bufio.NewReader(valuesReader))
 		if !ok {
-			return fmt.Errorf("no decoder available for %s/%s", p.Info.Value, p.Info.Encoding)
+			return fmt.Errorf("no decoder available for %s/%s", valueType, p.Info.Encoding)
 		}
 
 		for {
