@@ -386,10 +386,9 @@ func (t *Loki) initDistributor() (services.Service, error) {
 
 func (t *Loki) initIngestLimiter() (services.Service, error) {
 	ingesterLimiter, err := limits.New(limits.Config{
-		KafkaEnabled:  t.Cfg.IngestLimiter.KafkaEnabled,
-		KafkaConfig:   t.Cfg.IngestLimiter.KafkaConfig,
-		ConsumerGroup: "loki-limiter",
-		WindowSize:    t.Cfg.IngestLimiter.WindowSize,
+		KafkaEnabled: t.Cfg.IngestLimiter.KafkaEnabled,
+		KafkaConfig:  t.Cfg.IngestLimiter.KafkaConfig,
+		WindowSize:   t.Cfg.IngestLimiter.WindowSize,
 	}, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err

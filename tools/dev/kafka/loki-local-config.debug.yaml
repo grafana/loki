@@ -33,6 +33,9 @@ distributor:
   kafka_writes_enabled: true
   ingester_writes_enabled: false
 
+ingest_limiter:
+  kafka_enabled: true
+
 query_range:
   results_cache:
     cache:

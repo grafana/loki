@@ -47,9 +47,9 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimit
 		kafkaConfig := cfg.KafkaConfig
 		kafkaConfig.Topic = kafka.MetadataTopicFor(kafkaConfig.Topic)
 
-		metrics := kprom.NewMetrics("loki_limiter", kprom.Registerer(reg))
+		metrics := kprom.NewMetrics("loki_ingest_limiter", kprom.Registerer(reg))
 		s.client, err = client.NewReaderClient(kafkaConfig, metrics, logger,
-			kgo.ConsumerGroup(cfg.ConsumerGroup),
+			kgo.ConsumerGroup("ingest-limiter"),
 			kgo.ConsumeTopics(kafkaConfig.Topic),
 			kgo.Balancers(kgo.RoundRobinBalancer()),
 			kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-cfg.WindowSize).UnixMilli())),

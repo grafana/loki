@@ -162,7 +162,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
-	c.Limiter.RegisterFlags(f)
+	c.IngestLimiter.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
@@ -752,6 +752,10 @@ func (t *Loki) setupModuleManager() error {
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
+	}
+
+	if t.Cfg.Distributor.KafkaEnabled {
+		deps[All] = append(deps[All], IngestLimiter)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
