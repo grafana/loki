@@ -3,12 +3,30 @@ package streamio
 import (
 	"encoding/binary"
 	"io"
+	"math/bits"
 )
 
 // [binary] does not have an implementation to write varints directly
 // to a ByteWriter, and requires appending to a buffer. To allow dataobj
 // encoders to stream values, we provide equivalent implementations of
 // [binary.AppendUvarint] and [binary.AppendVarint] which accept a ByteWriter.
+
+// VarintSize returns the number of bytes needed to encode x.
+func VarintSize(x int64) int {
+	ux := uint64(x) << 1
+	if x < 0 {
+		ux = ^ux
+	}
+	return UvarintSize(ux)
+}
+
+// UvarintSize returns the number of bytes needed to encode x.
+func UvarintSize(x uint64) int {
+	if x == 0 {
+		return 1
+	}
+	return 1 + (63-bits.LeadingZeros64(x))/7
+}
 
 // WriteVarint writes an encoded signed integer to w.
 func WriteVarint(w io.ByteWriter, x int64) error {

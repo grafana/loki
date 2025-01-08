@@ -37,3 +37,29 @@ enum EncodingType {
   // integers using a combination of run-length encoding and bitpacking.
   ENCODING_TYPE_BITMAP = 3;
 }
+
+// CompressionType represents the valid compression types that can be used for
+// compressing values in a page.
+enum CompressionType {
+  // Invalid compression type.
+  COMPRESSION_TYPE_UNSPECIFIED = 0;
+
+  // No compression.
+  COMPRESSION_TYPE_NONE = 1;
+
+  // Snappy compression.
+  COMPRESSION_TYPE_SNAPPY = 2;
+
+  // Zstd compression.
+  COMPRESSION_TYPE_ZSTD = 3;
+}
+
+// Statistics about a column or a page. All statistics are optional and are
+// conditionally set depending on the column type.
+message Statistics {
+  // Minimum value.
+  bytes min_value = 1;
+
+  // Maximum value.
+  bytes max_value = 2;
+}

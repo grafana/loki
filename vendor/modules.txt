@@ -490,7 +490,7 @@ github.com/aws/smithy-go/transport/http/internal/io
 # github.com/axiomhq/hyperloglog v0.2.2
 ## explicit; go 1.23
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.211
+# github.com/baidubce/bce-sdk-go v0.9.212
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1930,7 +1930,7 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.24.0
+# golang.org/x/oauth2 v0.25.0
 ## explicit; go 1.18
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
