@@ -93,28 +93,38 @@ type BlockScheduler struct {
 	queue   *JobQueue
 	metrics *Metrics
 
-	offsetManager partition.OffsetManager
-	planner       Planner
+	fallbackOffsetMillis int64
+	offsetManager        partition.OffsetManager
+	planner              Planner
 }
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(cfg Config, queue *JobQueue, offsetManager partition.OffsetManager, logger log.Logger, r prometheus.Registerer) (*BlockScheduler, error) {
+	// pin the fallback offset to the time of scheduler creation to ensure planner uses the same fallback offset on subsequent runs
+	// without this, planner would create jobs that are not aligned when the partition has no commits so far.
+	fallbackOffsetMillis := int64(partition.KafkaStartOffset)
+	if cfg.LookbackPeriod > 0 {
+		fallbackOffsetMillis = time.Now().UnixMilli() - cfg.LookbackPeriod.Milliseconds()
+	}
+
 	var planner Planner
 	switch cfg.Strategy {
 	case RecordCountStrategy:
-		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, cfg.LookbackPeriod, logger)
+		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, fallbackOffsetMillis, logger)
 	default:
 		return nil, fmt.Errorf("invalid strategy: %s", cfg.Strategy)
 	}
 
 	s := &BlockScheduler{
-		cfg:           cfg,
-		planner:       planner,
-		offsetManager: offsetManager,
-		logger:        logger,
-		metrics:       NewMetrics(r),
-		queue:         queue,
+		cfg:                  cfg,
+		planner:              planner,
+		offsetManager:        offsetManager,
+		logger:               logger,
+		metrics:              NewMetrics(r),
+		queue:                queue,
+		fallbackOffsetMillis: fallbackOffsetMillis,
 	}
+
 	s.Service = services.NewBasicService(nil, s.running, nil)
 	return s, nil
 }
@@ -141,7 +151,7 @@ func (s *BlockScheduler) running(ctx context.Context) error {
 }
 
 func (s *BlockScheduler) runOnce(ctx context.Context) error {
-	lag, err := s.offsetManager.GroupLag(ctx, s.cfg.LookbackPeriod)
+	lag, err := s.offsetManager.GroupLag(ctx, s.fallbackOffsetMillis)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to get group lag", "err", err)
 		return err
@@ -304,5 +314,5 @@ func (s *BlockScheduler) HandleSyncJob(_ context.Context, job *types.Job) error 
 }
 
 func (s *BlockScheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newStatusPageHandler(s.queue, s.offsetManager, s.cfg.LookbackPeriod).ServeHTTP(w, req)
+	newStatusPageHandler(s.queue, s.offsetManager, s.fallbackOffsetMillis).ServeHTTP(w, req)
 }

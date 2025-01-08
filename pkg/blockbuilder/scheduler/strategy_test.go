@@ -16,7 +16,7 @@ type mockOffsetReader struct {
 	groupLag map[int32]kadm.GroupMemberLag
 }
 
-func (m *mockOffsetReader) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetReader) GroupLag(_ context.Context, _ int64) (map[int32]kadm.GroupMemberLag, error) {
 	return m.groupLag, nil
 }
 
@@ -182,7 +182,7 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 				TargetRecordCount: tc.recordCount,
 			}
 			require.NoError(t, cfg.Validate())
-			planner := NewRecordCountPlanner(mockReader, tc.recordCount, time.Hour, log.NewNopLogger())
+			planner := NewRecordCountPlanner(mockReader, tc.recordCount, 0, log.NewNopLogger())
 			jobs, err := planner.Plan(context.Background(), 0, tc.minOffsetsPerJob)
 			require.NoError(t, err)
 
