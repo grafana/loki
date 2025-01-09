@@ -170,10 +170,12 @@ func (in instance) For(
 	go func() {
 		err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
 			res, err := fn(queries[i])
+			if err != nil {
+				return err
+			}
 			response := logql.Resp{
 				I:   i,
 				Res: res,
-				Err: err,
 			}
 
 			// Feed the result into the channel unless the work has completed.
@@ -181,7 +183,7 @@ func (in instance) For(
 			case <-ctx.Done():
 			case ch <- response:
 			}
-			return err
+			return nil
 		})
 		if err != nil {
 			ch <- logql.Resp{
@@ -192,25 +194,16 @@ func (in instance) For(
 		close(ch)
 	}()
 
-	var returnErr error
+	var err error
 	for resp := range ch {
-		if returnErr != nil {
+		if err != nil {
+			err = resp.Err
 			continue
 		}
-		if resp.Err != nil {
-			returnErr = resp.Err
-			continue
-		}
-		if err := acc.Accumulate(ctx, resp.Res, resp.I); err != nil {
-			returnErr = err
-		}
+		err = acc.Accumulate(ctx, resp.Res, resp.I)
 	}
 
-	if returnErr != nil {
-		return nil, returnErr
-	}
-
-	return acc.Result(), nil
+	return acc.Result(), err
 }
 
 // convert to matrix
