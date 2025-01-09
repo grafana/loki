@@ -196,7 +196,10 @@ func (in instance) For(
 
 	var err error
 	for resp := range ch {
-		if err != nil || resp.Err != nil {
+		if err != nil {
+			continue
+		}
+		if resp.Err != nil {
 			err = resp.Err
 			continue
 		}
