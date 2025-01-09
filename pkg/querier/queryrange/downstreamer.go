@@ -197,7 +197,6 @@ func (in instance) For(
 	var err error
 	for resp := range ch {
 		if err != nil {
-			err = resp.Err
 			continue
 		}
 		err = acc.Accumulate(ctx, resp.Res, resp.I)
