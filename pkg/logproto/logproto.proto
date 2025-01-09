@@ -57,7 +57,6 @@ message StreamRatesResponse {
 
 message StreamMetadata {
   uint64 streamHash = 1;
-  int64 lastSeenAt = 2;
 }
 
 message StreamRate {

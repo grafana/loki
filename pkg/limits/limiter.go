@@ -117,7 +117,7 @@ func (s *IngestLimiter) running(ctx context.Context) error {
 					continue
 				}
 
-				s.updateMetadata(metadata)
+				s.updateMetadata(metadata, record.Timestamp)
 			}
 		}
 	}
@@ -148,15 +148,15 @@ func (s *IngestLimiter) evictOldStreams(ctx context.Context) {
 }
 
 // updateMetadata updates the metadata map with the provided StreamMetadata.
-// It only updates the LastSeenAt timestamp if the new timestamp is newer than
-// the existing one, ensuring we maintain the most recent activity time for each stream.
-func (s *IngestLimiter) updateMetadata(metadata *logproto.StreamMetadata) {
+// It uses the provided lastSeenAt timestamp as the last seen time for the stream.
+func (s *IngestLimiter) updateMetadata(metadata *logproto.StreamMetadata, lastSeenAt time.Time) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	// Only update if the new timestamp is newer
-	if current, ok := s.metadata[metadata.StreamHash]; !ok || metadata.LastSeenAt > current {
-		s.metadata[metadata.StreamHash] = metadata.LastSeenAt
+	// Use the provided lastSeenAt timestamp as the last seen time
+	recordTime := lastSeenAt.UnixNano()
+	if current, ok := s.metadata[metadata.StreamHash]; !ok || recordTime > current {
+		s.metadata[metadata.StreamHash] = recordTime
 	}
 }
 
