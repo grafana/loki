@@ -304,7 +304,7 @@ func (err KError) Error() string {
 	case ErrOffsetsLoadInProgress:
 		return "kafka server: The coordinator is still loading offsets and cannot currently process requests"
 	case ErrConsumerCoordinatorNotAvailable:
-		return "kafka server: Offset's topic has not yet been created"
+		return "kafka server: The coordinator is not available"
 	case ErrNotCoordinatorForConsumer:
 		return "kafka server: Request was for a consumer group that is not coordinated by this broker"
 	case ErrInvalidTopic:

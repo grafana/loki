@@ -13,7 +13,7 @@ require (
 	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.24
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.13
-	github.com/IBM/sarama v1.44.0
+	github.com/IBM/sarama v1.45.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.5
@@ -116,7 +116,7 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.18.3
 	github.com/IBM/ibm-cos-sdk-go v1.12.0
-	github.com/axiomhq/hyperloglog v0.2.2
+	github.com/axiomhq/hyperloglog v0.2.3
 	github.com/buger/jsonparser v1.1.1
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
@@ -147,7 +147,7 @@ require (
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.25.0
 	golang.org/x/text v0.21.0
-	google.golang.org/protobuf v1.36.1
+	google.golang.org/protobuf v1.36.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.32.0
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078

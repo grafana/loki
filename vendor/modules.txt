@@ -263,8 +263,8 @@ github.com/IBM/ibm-cos-sdk-go/private/protocol/restxml
 github.com/IBM/ibm-cos-sdk-go/private/protocol/xml/xmlutil
 github.com/IBM/ibm-cos-sdk-go/service/s3
 github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface
-# github.com/IBM/sarama v1.44.0
-## explicit; go 1.20
+# github.com/IBM/sarama v1.45.0
+## explicit; go 1.21
 github.com/IBM/sarama
 # github.com/Masterminds/goutils v1.1.1
 ## explicit
@@ -487,7 +487,7 @@ github.com/aws/smithy-go/time
 github.com/aws/smithy-go/tracing
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
-# github.com/axiomhq/hyperloglog v0.2.2
+# github.com/axiomhq/hyperloglog v0.2.3
 ## explicit; go 1.23
 github.com/axiomhq/hyperloglog
 # github.com/baidubce/bce-sdk-go v0.9.212
@@ -2184,7 +2184,7 @@ google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
 ## explicit; go 1.21
 google.golang.org/grpc/stats/opentelemetry
 google.golang.org/grpc/stats/opentelemetry/internal
-# google.golang.org/protobuf v1.36.1
+# google.golang.org/protobuf v1.36.2
 ## explicit; go 1.21
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
