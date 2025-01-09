@@ -508,6 +508,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 		"msg", "successfully processed job",
 		"last_offset", lastOffset,
 		"duration", time.Since(start),
+		"records", lastOffset-job.Offsets().Min,
 	)
 
 	return lastOffset, nil
