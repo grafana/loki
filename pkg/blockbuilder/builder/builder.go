@@ -279,6 +279,13 @@ func (i *BlockBuilder) runOne(ctx context.Context, c *kgo.Client, workerID strin
 		completion.Success = false
 	}
 
+	// remove from inflight jobs to stop sending updates for this job
+	// to avoid race with completed job requests.
+	i.jobsMtx.Lock()
+	delete(i.inflightJobs, job.ID())
+	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
+	i.jobsMtx.Unlock()
+
 	if _, err := withBackoff(
 		ctx,
 		i.cfg.Backoff,
@@ -291,11 +298,6 @@ func (i *BlockBuilder) runOne(ctx context.Context, c *kgo.Client, workerID strin
 	); err != nil {
 		return true, err
 	}
-
-	i.jobsMtx.Lock()
-	delete(i.inflightJobs, job.ID())
-	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
-	i.jobsMtx.Unlock()
 
 	return true, err
 }
