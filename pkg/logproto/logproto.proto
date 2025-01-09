@@ -55,6 +55,11 @@ message StreamRatesResponse {
   repeated StreamRate streamRates = 1;
 }
 
+message StreamMetadata {
+  uint64 streamHash = 1;
+  int64 lastSeenAt = 2;
+}
+
 message StreamRate {
   uint64 streamHash = 1;
   uint64 streamHashNoShard = 2;
