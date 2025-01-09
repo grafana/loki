@@ -24,7 +24,7 @@ type jobQueue interface {
 }
 
 type offsetReader interface {
-	GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error)
+	GroupLag(ctx context.Context, fallbackOffsetMillis int64) (map[int32]kadm.GroupMemberLag, error)
 }
 
 type partitionInfo struct {
@@ -35,17 +35,17 @@ type partitionInfo struct {
 }
 
 type statusPageHandler struct {
-	jobQueue       jobQueue
-	offsetReader   offsetReader
-	lookbackPeriod time.Duration
+	jobQueue             jobQueue
+	offsetReader         offsetReader
+	fallbackOffsetMillis int64
 }
 
-func newStatusPageHandler(jobQueue jobQueue, offsetReader offsetReader, lookbackPeriod time.Duration) *statusPageHandler {
-	return &statusPageHandler{jobQueue: jobQueue, offsetReader: offsetReader, lookbackPeriod: lookbackPeriod}
+func newStatusPageHandler(jobQueue jobQueue, offsetReader offsetReader, fallbackOffsetMillis int64) *statusPageHandler {
+	return &statusPageHandler{jobQueue: jobQueue, offsetReader: offsetReader, fallbackOffsetMillis: fallbackOffsetMillis}
 }
 
 func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
-	offsets, err := h.offsetReader.GroupLag(context.Background(), h.lookbackPeriod)
+	offsets, err := h.offsetReader.GroupLag(context.Background(), h.fallbackOffsetMillis)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
