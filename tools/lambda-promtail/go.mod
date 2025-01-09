@@ -6,13 +6,14 @@ require (
 	github.com/aws/aws-lambda-go v1.47.0
 	github.com/aws/aws-sdk-go-v2 v1.32.7
 	github.com/aws/aws-sdk-go-v2/config v1.28.7
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.72.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.72.1
 	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/grafana/dskit v0.0.0-20241004175247-687ec485facf
 	github.com/grafana/loki/v3 v3.2.1
 	github.com/prometheus/common v0.61.0
+	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -106,7 +107,6 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/exporter-toolkit v0.11.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
