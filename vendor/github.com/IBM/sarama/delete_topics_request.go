@@ -8,6 +8,21 @@ type DeleteTopicsRequest struct {
 	Timeout time.Duration
 }
 
+func NewDeleteTopicsRequest(version KafkaVersion, topics []string, timeout time.Duration) *DeleteTopicsRequest {
+	d := &DeleteTopicsRequest{
+		Topics:  topics,
+		Timeout: timeout,
+	}
+	if version.IsAtLeast(V2_1_0_0) {
+		d.Version = 3
+	} else if version.IsAtLeast(V2_0_0_0) {
+		d.Version = 2
+	} else if version.IsAtLeast(V0_11_0_0) {
+		d.Version = 1
+	}
+	return d
+}
+
 func (d *DeleteTopicsRequest) encode(pe packetEncoder) error {
 	if err := pe.putStringArray(d.Topics); err != nil {
 		return err
