@@ -394,6 +394,12 @@ func (t *Loki) initIngestLimiter() (services.Service, error) {
 		return nil, err
 	}
 	t.ingesterLimiter = ingesterLimiter
+
+	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingesterLimiter)
+
+	// Register HTTP handler for metadata
+	t.Server.HTTP.Path("/ingest/limits").Methods("GET").Handler(ingesterLimiter)
+
 	return ingesterLimiter, nil
 }
 

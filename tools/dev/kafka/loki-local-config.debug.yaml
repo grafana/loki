@@ -35,6 +35,7 @@ distributor:
 
 ingest_limiter:
   kafka_enabled: true
+  topic: "loki"
 
 query_range:
   results_cache:

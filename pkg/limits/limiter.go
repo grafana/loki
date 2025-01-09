@@ -2,17 +2,20 @@ package limits
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/plugin/kprom"
 
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -23,12 +26,12 @@ type IngestLimiter struct {
 	services.Service
 
 	cfg    Config
-	client *kgo.Client
 	logger log.Logger
+	client *kgo.Client
 
 	// Track stream metadata
 	mtx      sync.RWMutex
-	metadata map[uint64]int64 // StreamHash -> LastSeenAt
+	metadata map[string]map[uint64]int64 // tenant -> streamHash -> lastSeenAt
 }
 
 // New creates a new IngestLimiter service. It initializes the metadata map and sets up a Kafka client
@@ -39,15 +42,18 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimit
 	s := &IngestLimiter{
 		cfg:      cfg,
 		logger:   logger,
-		metadata: make(map[uint64]int64),
+		metadata: make(map[string]map[uint64]int64),
 	}
 
 	if cfg.KafkaEnabled {
+		metrics := kprom.NewMetrics("loki_ingest_limiter",
+			kprom.Registerer(reg),
+			kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
+
 		// Create a copy of the config to modify the topic
 		kafkaConfig := cfg.KafkaConfig
 		kafkaConfig.Topic = kafka.MetadataTopicFor(kafkaConfig.Topic)
 
-		metrics := kprom.NewMetrics("loki_ingest_limiter", kprom.Registerer(reg))
 		s.client, err = client.NewReaderClient(kafkaConfig, metrics, logger,
 			kgo.ConsumerGroup("ingest-limiter"),
 			kgo.ConsumeTopics(kafkaConfig.Topic),
@@ -65,7 +71,7 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimit
 			}),
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to create kafka client: %w", err)
 		}
 	}
 
@@ -117,7 +123,7 @@ func (s *IngestLimiter) running(ctx context.Context) error {
 					continue
 				}
 
-				s.updateMetadata(metadata, record.Timestamp)
+				s.updateMetadata(metadata, string(record.Key), record.Timestamp)
 			}
 		}
 	}
@@ -129,7 +135,7 @@ func (s *IngestLimiter) running(ctx context.Context) error {
 func (s *IngestLimiter) evictOldStreams(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.WindowSize / 2)
 	defer ticker.Stop()
-
+	
 	for {
 		select {
 		case <-ctx.Done():
@@ -137,9 +143,15 @@ func (s *IngestLimiter) evictOldStreams(ctx context.Context) {
 		case <-ticker.C:
 			s.mtx.Lock()
 			cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-			for hash, lastSeen := range s.metadata {
-				if lastSeen < cutoff {
-					delete(s.metadata, hash)
+			for tenant, streams := range s.metadata {
+				for hash, lastSeen := range streams {
+					if lastSeen < cutoff {
+						delete(s.metadata[tenant], hash)
+					}
+				}
+				// Clean up empty tenant maps
+				if len(s.metadata[tenant]) == 0 {
+					delete(s.metadata, tenant)
 				}
 			}
 			s.mtx.Unlock()
@@ -148,15 +160,20 @@ func (s *IngestLimiter) evictOldStreams(ctx context.Context) {
 }
 
 // updateMetadata updates the metadata map with the provided StreamMetadata.
-// It uses the provided lastSeenAt timestamp as the last seen time for the stream.
-func (s *IngestLimiter) updateMetadata(metadata *logproto.StreamMetadata, lastSeenAt time.Time) {
+// It uses the provided lastSeenAt timestamp as the last seen time.
+func (s *IngestLimiter) updateMetadata(metadata *logproto.StreamMetadata, tenant string, lastSeenAt time.Time) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	// Initialize tenant map if it doesn't exist
+	if _, ok := s.metadata[tenant]; !ok {
+		s.metadata[tenant] = make(map[uint64]int64)
+	}
+
 	// Use the provided lastSeenAt timestamp as the last seen time
 	recordTime := lastSeenAt.UnixNano()
-	if current, ok := s.metadata[metadata.StreamHash]; !ok || recordTime > current {
-		s.metadata[metadata.StreamHash] = recordTime
+	if current, ok := s.metadata[tenant][metadata.StreamHash]; !ok || recordTime > current {
+		s.metadata[tenant][metadata.StreamHash] = recordTime
 	}
 }
 
@@ -172,4 +189,58 @@ func (s *IngestLimiter) stopping(failureCase error) error {
 		return nil
 	}
 	return failureCase
+}
+
+// GetLimits implements the IngestLimits service. It returns the current ingestion limits
+// for a given tenant, including stream count and stream rates.
+func (s *IngestLimiter) GetLimits(ctx context.Context, req *logproto.GetLimitsRequest) (*logproto.GetLimitsResponse, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	// Get streams for the requested tenant
+	streams, ok := s.metadata[req.Tenant]
+	if !ok {
+		return &logproto.GetLimitsResponse{
+			Limits: &logproto.IngestionLimits{
+				StreamCount: 0,
+				StreamRates: nil,
+			},
+		}, nil
+	}
+
+	streamCount := uint64(0)
+	streamRates := make([]*logproto.StreamRate, 0)
+
+	// Collect all stream rates for the tenant
+	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+	for hash, lastSeen := range streams {
+		if lastSeen < cutoff {
+			continue // Skip expired entries
+		}
+		streamCount++
+		streamRates = append(streamRates, &logproto.StreamRate{
+			StreamHash: hash,
+			Tenant:     req.Tenant,
+		})
+	}
+
+	return &logproto.GetLimitsResponse{
+		Limits: &logproto.IngestionLimits{
+			StreamCount: streamCount,
+			StreamRates: streamRates,
+		},
+	}, nil
+}
+
+// ServeHTTP implements the http.Handler interface.
+// It returns the current metadata map as a JSON response.
+func (s *IngestLimiter) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(s.metadata); err != nil {
+		http.Error(w, fmt.Sprintf("error encoding metadata: %v", err), http.StatusInternalServerError)
+		return
+	}
 }
