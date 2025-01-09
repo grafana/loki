@@ -1,12 +1,15 @@
-local g = import './dashboards/lib/grafana.libsonnet';
+local g = import './lib/grafana.libsonnet';
 
 {
-  // The folder to create and place dashboards in
+  // The Main Folder to Create Dashboards in
   folder: 'Loki',
 
   // a slug of the folder name, must be url friendly
   // keeps only alphanumeric characters, spaces are replaced with dashes
   folder_slug: g.util.string.slugify(self.folder),
+
+  // Whether or not dashboards should be created in sub-folders
+  // sub_folders: true,
 
   // Tags for dashboards.
   tags: [
@@ -105,4 +108,24 @@ local g = import './dashboards/lib/grafana.libsonnet';
   ruler: {
     enabled: true,
   },
+
+  // The label used to identify resources (pods/components)
+  labels: {
+    // The label used to identify the cluster
+    cluster: 'cluster',
+
+    // The label used to identify the namespace
+    namespace: 'namespace',
+
+    // The label used to identify the resource (pod/component)
+    resource_selector: 'component',
+  },
+
+  selectors: {
+    // The selector to use for filtering metric/log queries on log-level, i.e. level="info" or debug!="true"
+    log_level: 'level="info"',
+  },
+
+  // whether or not to use recording rules in the dashboard queries or the original query
+  use_recording_rules: true,
 }

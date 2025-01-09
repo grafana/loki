@@ -7,12 +7,12 @@
 ********************************************************************/
 
 // imports
-local g = import '../../../lib/grafana.libsonnet';
-local base = import '../../../lib/panels/table/base.libsonnet';
+local g = import '../../../../lib/grafana.libsonnet';
+local base = import '../../../../lib/panels/table/base.libsonnet';
 local thresholds = import '../../thresholds.libsonnet';
 local config = import '../../../../config.libsonnet';
 local variables = import '../../variables.libsonnet';
-local panelHelpers = import '../../../lib/panels/helpers.libsonnet';
+local panelHelpers = import '../../../../lib/panels/helpers.libsonnet';
 
 // local variables
 local table = g.panel.table;

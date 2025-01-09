@@ -4,11 +4,11 @@
 
 // imports
 local g = import '../../grafana.libsonnet';
-local base = import '../../../lib/panels/treemap/base.libsonnet';
+local base = import '../../../../lib/panels/treemap/base.libsonnet';
 local config = import '../../../../config.libsonnet';
 local thresholds = import '../../../common/thresholds.libsonnet';
 local variables = import '../../variables.libsonnet';
-local panelHelpers = import '../../../lib/panels/helpers.libsonnet';
+local panelHelpers = import '../../../../lib/panels/helpers.libsonnet';
 
 // local variables
 local override = panelHelpers.override('stat');
