@@ -192,14 +192,24 @@ func (in instance) For(
 		close(ch)
 	}()
 
+	var returnErr error
 	for resp := range ch {
+		if returnErr != nil {
+			continue
+		}
 		if resp.Err != nil {
-			return nil, resp.Err
+			returnErr = resp.Err
+			continue
 		}
 		if err := acc.Accumulate(ctx, resp.Res, resp.I); err != nil {
-			return nil, err
+			returnErr = err
 		}
 	}
+
+	if returnErr != nil {
+		return nil, returnErr
+	}
+
 	return acc.Result(), nil
 }
 
