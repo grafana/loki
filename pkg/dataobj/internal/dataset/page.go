@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -37,13 +38,38 @@ type (
 		Encoding datasetmd.EncodingType // Encoding used for values in the page.
 		Stats    *datasetmd.Statistics  // Optional statistics for the page.
 	}
+
+	// Pages is a set of [Page]s.
+	Pages []Page
 )
+
+// A Page holds an encoded and optionally compressed sequence of [Value]s
+// within a [Column].
+type Page interface {
+	// PageInfo returns the metadata for the Page.
+	PageInfo() *PageInfo
+
+	// ReadPage returns the [PageData] for the Page.
+	ReadPage(ctx context.Context) (PageData, error)
+}
 
 // MemPage holds an encoded (and optionally compressed) sequence of [Value]
 // entries of a common type. Use [ColumnBuilder] to construct sets of pages.
 type MemPage struct {
 	Info PageInfo // Information about the page.
 	Data PageData // Data for the page.
+}
+
+var _ Page = (*MemPage)(nil)
+
+// PageInfo implements [Page] and returns p.Info.
+func (p *MemPage) PageInfo() *PageInfo {
+	return &p.Info
+}
+
+// ReadPage implements [Page] and returns p.Data.
+func (p *MemPage) ReadPage(_ context.Context) (PageData, error) {
+	return p.Data, nil
 }
 
 var checksumTable = crc32.MakeTable(crc32.Castagnoli)

@@ -1,6 +1,7 @@
 package dataset
 
 import (
+	"cmp"
 	"fmt"
 	"unsafe"
 
@@ -122,4 +123,37 @@ func (v Value) String() string {
 		return unsafe.String(sp, v.num)
 	}
 	return v.Type().String()
+}
+
+// CompareValues returns -1 if a<b, 0 if a==b, or 1 if a>b. CompareValues
+// panics if a and b are not the same type.
+//
+// As a special case, either a or b may be nil. Two nil values are equal, and a
+// nil value is always less than a non-nil value.
+func CompareValues(a, b Value) int {
+	// nil handling. This must be done before the typecheck since nil has a
+	// special type.
+	switch {
+	case a.IsNil() && !b.IsNil():
+		return -1
+	case !a.IsNil() && b.IsNil():
+		return 1
+	case a.IsNil() && b.IsNil():
+		return 0
+	}
+
+	if a.Type() != b.Type() {
+		panic(fmt.Sprintf("page.CompareValues: cannot compare values of type %s and %s", a.Type(), b.Type()))
+	}
+
+	switch a.Type() {
+	case datasetmd.VALUE_TYPE_INT64:
+		return cmp.Compare(a.Int64(), b.Int64())
+	case datasetmd.VALUE_TYPE_UINT64:
+		return cmp.Compare(a.Uint64(), b.Uint64())
+	case datasetmd.VALUE_TYPE_STRING:
+		return cmp.Compare(a.String(), b.String())
+	default:
+		panic(fmt.Sprintf("page.CompareValues: unsupported type %s", a.Type()))
+	}
 }
