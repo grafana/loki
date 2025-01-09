@@ -7,7 +7,7 @@
   else 'index-gateway',
 
   local ingester_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|ingester|partition-ingester", pod=~"(%singester.*|partition-ingester.*|loki-single-binary)"' % $._config.pod_prefix_matcher
+  then 'container=~"loki|ingester|partition-ingester", pod=~"(%(pod_prefix)singester.*|%(pod_prefix)spartition-ingester.*|loki-single-binary)"' % {pod_prefix: $._config.pod_prefix_matcher}
   else 'container=~"ingester|partition-ingester"',
   local ingester_job_matcher = if $._config.meta_monitoring.enabled
   then '(ingester.*|partition-ingester.*|loki-single-binary)'
