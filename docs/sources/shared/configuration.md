@@ -210,10 +210,6 @@ block_builder:
   [scheduler_grpc_client_config: <grpc_client>]
 
 block_scheduler:
-  # Consumer group used by block scheduler to track the last consumed offset.
-  # CLI flag: -block-scheduler.consumer-group
-  [consumer_group: <string> | default = "block-scheduler"]
-
   # How often the scheduler should plan jobs.
   # CLI flag: -block-scheduler.interval
   [interval: <duration> | default = 15m]
