@@ -9,13 +9,18 @@ import (
 )
 
 type IngestLimits struct {
-	cfg    Config
-	logger log.Logger
+	cfg     Config
+	logger  log.Logger
+	metrics *Metrics
 	services.Service
 }
 
-func New(cfg Config, logger log.Logger, _ prometheus.Registerer) (*IngestLimits, error) {
-	l := &IngestLimits{}
+func New(cfg Config, logger log.Logger, r prometheus.Registerer) (*IngestLimits, error) {
+	l := &IngestLimits{
+		cfg:     cfg,
+		logger:  logger,
+		metrics: NewMetrics(r),
+	}
 	l.Service = services.NewBasicService(l.starting, l.running, l.stopping)
 	return l, nil
 }
