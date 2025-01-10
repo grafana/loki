@@ -616,8 +616,6 @@ endef
 # Promtail image
 promtail-image: ## build the promtail docker image
 	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile .
-promtail-image-cross:
-	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile.cross .
 promtail-debug-image: ## build the promtail debug docker image
 	$(OCI_BUILD) -t $(PROMTAIL_IMAGE)-debug -f clients/cmd/promtail/Dockerfile.debug .
 promtail-push: promtail-image-cross
@@ -626,8 +624,6 @@ promtail-push: promtail-image-cross
 # Loki image
 loki-image: ## build the loki docker image
 	$(OCI_BUILD) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile .
-loki-image-cross:
-	$(OCI_BUILD) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile.cross .
 loki-debug-image: ## build the loki debug docker image
 	$(OCI_BUILD) -t $(LOKI_IMAGE)-debug -f cmd/loki/Dockerfile.debug .
 loki-push: loki-image-cross
@@ -644,8 +640,6 @@ loki-local-image: ## build the loki docker image locally (set LOCAL_ARCH=arm64 f
 # Canary image
 loki-canary-image: ## build the canary docker image
 	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
-loki-canary-image-cross:
-	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(OCI_PUSH) $(LOKI_CANARY_IMAGE)
 loki-canary-image-cross-boringcrypto:
@@ -662,8 +656,6 @@ helm-test-push: helm-test-image
 # Query Tee image
 loki-querytee-image: ## build the querytee docker image
 	$(OCI_BUILD) -t $(QUERY_TEE_IMAGE) -f cmd/querytee/Dockerfile .
-loki-querytee-image-cross:
-	$(OCI_BUILD) -t $(QUERY_TEE_IMAGE) -f cmd/querytee/Dockerfile.cross .
 loki-querytee-push: loki-querytee-image-cross
 	$(OCI_PUSH) $(QUERY_TEE_IMAGE)
 
@@ -690,8 +682,6 @@ endif
 # Loki Operator
 loki-operator-image: ## build the operator docker image
 	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile operator/
-loki-operator-image-cross:
-	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile.cross operator/
 loki-operator-push: loki-operator-image-cross
 	$(OCI_PUSH) $(OPERATOR_IMAGE)
 
