@@ -1,5 +1,5 @@
 // imports
-local g = import '../../grafana.libsonnet';
+local g = import '../grafana.libsonnet';
 local text = g.panel.text;
 
 // local variables

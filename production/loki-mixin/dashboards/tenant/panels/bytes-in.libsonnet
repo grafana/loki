@@ -21,7 +21,7 @@ timeSeries.bytesRate({
       common.variables.metrics_datasource.name,
       shared.queries.tenant.ingestion_bytes_rate,
       {
-        refId: 'Ingestion Bytes Rate',
+        refId: 'Bytes Rate',
         legendFormat: 'Bytes',
       }
     ),
@@ -29,8 +29,8 @@ timeSeries.bytesRate({
       common.variables.metrics_datasource.name,
       shared.queries.tenant.ingestion_bytes_rate_limit,
       {
-        refId: 'Ingestion Bytes Rate Limit',
-        legendFormat: 'Bytes',
+        refId: 'Rate Limit',
+        legendFormat: 'Rate Limit',
       }
     ),
   ],
@@ -41,8 +41,9 @@ timeSeries.bytesRate({
             "dash": [10, 20],
             "fill": "dash",
           })
-          + custom.withShowPoints('never')
+          + color.withMode('fixed')
           + color.withFixedColor('red')
+          + custom.withShowPoints('never')
         ),
   ]
 })

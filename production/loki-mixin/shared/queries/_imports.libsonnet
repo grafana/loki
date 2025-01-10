@@ -16,6 +16,7 @@ local logql = g.query.loki;
   querier:: import './querier.libsonnet',
   queryFrontend:: import './query-frontend.libsonnet',
   queryScheduler:: import './query-scheduler.libsonnet',
+  read:: import './read.libsonnet',
   ruler:: import './ruler.libsonnet',
   tenant:: import './tenant.libsonnet',
 }

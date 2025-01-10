@@ -36,16 +36,11 @@ lib.dashboard.new({
   editable: config.editable,
   panels:
     // Row: Overrides
-    [
+    grid.makeGrid([
       lib.panels.row.new({
         title: 'Overrides',
       }),
-    ]
-    +
-    grid.makeGrid([
-      // Panel: Tenant Overrides
       panels.tenantOverrides,
-      // Panel: Merged Overrides
       panels.mergedOverrides,
     ], panelWidth=12, panelHeight=7, startY=1)
     +
@@ -57,18 +52,13 @@ lib.dashboard.new({
       })
       +
       lib.panels.row.withPanels([
-        // Panel: Bytes In
         panels.bytesIn,
-        // Panel: Structured Metadata Bytes In
         panels.structuredMetadataBytesIn,
-        // Panel: Lines In
         panels.linesIn,
-        // Panel: Average Line Size
         panels.avgLineSize,
       ]),
     ], panelWidth=6, panelHeight=7, startY=15)
     +
-    // Row: Discarded Samples
     grid.makeGrid([
       lib.panels.row.new({
         title: 'Discarded Samples',
@@ -76,15 +66,12 @@ lib.dashboard.new({
       })
       +
       lib.panels.row.withPanels([
-        // Panel: Bytes Discarded
         panels.discardedBytes,
-        // Panel: Lines Discarded
         panels.discardedLines,
 
       ]),
     ], panelWidth=8, panelHeight=7, startY=22)
     +
-    // Row: Miscellaneous
     grid.makeGrid([
       lib.panels.row.new({
         title: 'Miscellaneous',
@@ -92,11 +79,8 @@ lib.dashboard.new({
       })
       +
       lib.panels.row.withPanels([
-        // Panel: Active Streams
         panels.activeStreams,
-        // Panel: Queue Length
         panels.queueLength,
-        // Panel: Cell Queue Duration
         panels.queueDuration,
       ]),
     ], panelWidth=8, panelHeight=7, startY=30)

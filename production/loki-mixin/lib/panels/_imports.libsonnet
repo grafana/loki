@@ -1,11 +1,11 @@
 {
   helpers: (import './helpers.libsonnet'),
-  barChart: (import './bar-chart/base.libsonnet'),
-  gauge: (import './gauge/base.libsonnet'),
+  barChart: (import './bar-chart.libsonnet'),
+  gauge: (import './gauge.libsonnet'),
   row: (import './row.libsonnet'),
-  stat: import './stat/base.libsonnet',
-  table: (import './table/base.libsonnet'),
-  text: (import './text/base.libsonnet'),
-  timeSeries: (import './time-series/base.libsonnet'),
-  treemap: (import './treemap/base.libsonnet'),
+  stat: import './stat.libsonnet',
+  table: (import './table.libsonnet'),
+  text: (import './text.libsonnet'),
+  timeSeries: (import './time-series.libsonnet'),
+  treemap: (import './treemap.libsonnet'),
 }

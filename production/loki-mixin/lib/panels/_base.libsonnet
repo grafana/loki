@@ -70,8 +70,11 @@ local defaultParams = {
     + (
       if std.objectHas(panel, type) && std.objectHas(panel[type], 'standardOptions') then
         local standardOptions = panel[type].standardOptions;
-        local stdKeys = ['unit', 'min', 'max', 'noValue', 'mappings', 'lineWidth', 'overrides', 'displayName'];
-        local colorKeys = ['mode', 'fixedColor'];
+        local stdKeys = utils.keyNamesFromMethods(standardOptions);
+        local colorKeys = if std.objectHasAll(standardOptions, 'color') then
+          utils.keyNamesFromMethods(standardOptions.color)
+        else
+          [];
         // apply standard options, there are methods are g.panel.standardOptions and g.panel.standardOptions.color
         utils.applyOptions(standardOptions, stdKeys, merged)
         + (
@@ -86,7 +89,7 @@ local defaultParams = {
     + (
       if std.objectHas(panel, type) && std.objectHas(panel[type], 'queryOptions') then
         local queryOptions = panel[type].queryOptions;
-        local qryKeys = ['targets', 'transformations', 'interval', 'timeFrom', 'maxDataPoints'];
+        local qryKeys = utils.keyNamesFromMethods(queryOptions, exclude=['datasource']);
         // apply query options
         utils.applyOptions(queryOptions, qryKeys, merged)
         // set datasource options
@@ -100,9 +103,15 @@ local defaultParams = {
     + (
       if std.objectHas(panel, type) && std.objectHas(panel[type], 'options') then
         local options = panel[type].options;
-        local optKeys = ['graphMode', 'colorMode', 'textMode', 'tooltip', 'justifyMode'];
-        local reduceKeys = ['fields', 'calcs', 'values'];
-        local legendKeys = ['displayMode', 'calcs', 'placement', 'sortBy', 'sortDesc'];
+        local optKeys = utils.keyNamesFromMethods(options);
+        local reduceKeys = if std.objectHasAll(options, 'reduceOptions') then
+          utils.keyNamesFromMethods(options.reduceOptions)
+        else
+          [];
+        local legendKeys = if std.objectHasAll(options, 'legend') then
+          utils.keyNamesFromMethods(options.legend)
+        else
+          [];
 
         // apply standard options, there are methods are g.panel.standardOptions and g.panel.standardOptions.color
         utils.applyOptions(options, optKeys, merged)
@@ -122,4 +131,38 @@ local defaultParams = {
         {}
     )
   ),
+
+  short(params)::
+    self.new(params + { unit: 'short' }),
+
+  percent(params)::
+    self.new(params + { unit: 'percent' }),
+
+  currency(params)::
+    self.new(params + { unit: 'currencyUSD' }),
+
+  bytes(params)::
+    self.new(params + { unit: 'bytes' }),
+
+  bytesRate(params)::
+    self.new(params + { unit: 'binBps' }),
+
+  gbytes(params)::
+    self.new(params + { unit: 'gbytes' }),
+
+  // count per second
+  cps(params)::
+    self.new(params + { unit: 'cps' }),
+
+  // requests per second
+  reqps(params)::
+    self.new(params + { unit: 'reqps' }),
+
+  // queries per second
+  qps(params)::
+    self.reqps(params),
+
+  seconds(params)::
+    self.new(params + { unit: 's' }),
+
 }

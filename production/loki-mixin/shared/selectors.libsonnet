@@ -9,6 +9,7 @@ local variables = import '../dashboards/common/variables.libsonnet';
       _labels:: [],
 
       // Component patterns for different deployment modes
+      // TODO: this is not currently used, need to determine if we need to support SSD still
       _componentPatterns:: {
         ingester: '(ingester|((enterprise|loki)-)?write)',
         distributor: '(distributor|((enterprise|loki)-)?write)',
@@ -22,19 +23,16 @@ local variables = import '../dashboards/common/variables.libsonnet';
 
       // Helper to format component selector based on label type
       _formatComponentSelector(component)::
-        local pattern = if std.objectHas(self._componentPatterns, component)
-          then self._componentPatterns[component]
-          else component;
         if std.length(std.findSubstr('pod', config.labels.resource_selector)) > 0
-          then '.+%s.+' % pattern
-          else pattern,
+        then '((enterprise|loki)-)?.*%s.*' % component
+        else component,
 
       // Enhanced selector methods
-      selector(label):: {
-        eq(predicate):: it.selectorLabelEq(label, predicate),
-        neq(predicate):: it.selectorLabelNeq(label, predicate),
-        re(predicate):: it.selectorLabelRe(label, predicate),
-        nre(predicate):: it.selectorLabelNre(label, predicate),
+      label(value):: {
+        eq(predicate):: it.selectorLabelEq(value, predicate),
+        neq(predicate):: it.selectorLabelNeq(value, predicate),
+        re(predicate):: it.selectorLabelRe(value, predicate),
+        nre(predicate):: it.selectorLabelNre(value, predicate),
       },
 
       // Helper to handle operator selection
@@ -44,8 +42,8 @@ local variables = import '../dashboards/common/variables.libsonnet';
         else if op == 'neq' || op == '!=' then '!='
         else '=',
 
-      // You can also use the selector() method directly
-      // selector('tenant').re('$tenant')
+      // You can also use the label() method directly
+      // label('tenant').re('$tenant')
 
       // Common selectors
       cluster()::
@@ -61,8 +59,26 @@ local variables = import '../dashboards/common/variables.libsonnet';
       component(name, op='=')::
         self.withLabel(config.labels.resource_selector, self._handleOperator(op), self._formatComponentSelector(name)),
 
+      adminApi(op='=~')::
+        self.component('admin-api', op),
+
+      bloomGateway(op='=~')::
+        self.component('bloom-gateway', op),
+
+      bloomBuilder(op='=~')::
+        self.component('bloom-builder', op),
+
+      bloomPlanner(op='=~')::
+        self.component('bloom-planner', op),
+
+      gateway(op='=~')::
+        self.component('gateway', op),
+
       ingester(op='=~')::
         self.component('ingester', op),
+
+      indexGateway(op='=~')::
+        self.component('index-gateway', op),
 
       distributor(op='=~')::
         self.component('distributor', op),

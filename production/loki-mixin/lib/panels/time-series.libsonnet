@@ -1,6 +1,7 @@
 // imports
-local g = import '../../grafana.libsonnet';
-local utils = import '../../utils.libsonnet';
+local g = import '../grafana.libsonnet';
+local utils = import '../utils.libsonnet';
+local Base = import './_base.libsonnet';
 
 // local variables
 local timeSeries = g.panel.timeSeries;
@@ -10,9 +11,6 @@ local options = timeSeries.options;
 local stdOpts = timeSeries.standardOptions;
 local pnlOpts = timeSeries.panelOptions;
 local qryOpts = timeSeries.queryOptions;
-
-// imports
-local basePanel = import '../base.libsonnet';
 
 // local variables
 local defaultParams = {
@@ -24,36 +22,11 @@ local defaultParams = {
   lineStyle: null,
 };
 
-{
+Base + {
   new(params)::
     local merged = defaultParams + params;
     local customKeys = ['pointSize', 'showPoints', 'spanNulls', 'lineStyle', 'lineWidth'];
     // custom
     utils.applyOptions(timeSeries.fieldConfig.defaults.custom, customKeys, merged) +
-    basePanel.new(type = 'timeSeries', params = merged),
-
-  short(params)::
-    self.new(params + { unit: 'short' }),
-
-  percent(params)::
-    self.new(params + { unit: 'percent' }),
-
-  currency(params)::
-    self.new(params + { unit: 'currencyUSD' }),
-
-  bytes(params)::
-    self.new(params + { unit: 'bytes' }),
-
-  bytesRate(params)::
-    self.new(params + { unit: 'binBps' }),
-
-  gbytes(params)::
-    self.new(params + { unit: 'gbytes' }),
-
-  // count per second
-  cps(params)::
-    self.new(params + { unit: 'cps' }),
-
-  seconds(params)::
-    self.new(params + { unit: 's' }),
+    super.new(type = 'timeSeries', params = merged),
 }

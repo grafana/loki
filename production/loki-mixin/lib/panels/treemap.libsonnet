@@ -1,11 +1,9 @@
 // imports
-local g = import '../../grafana.libsonnet';
+local g = import '../grafana.libsonnet';
+local Base = import './_base.libsonnet';
 
 // local variables
 local panel = g.panel;
-
-// imports
-local basePanel = import '../base.libsonnet';
 
 // local variables
 local defaultOptions = {
@@ -20,11 +18,11 @@ local defaultParams = {} + defaultOptions;
 
 
 // treemap isn't a native plugin, so we start w/ stat panel and then add custom overrides
-{
+Base + {
   new(params)::
     local merged = defaultParams + params;
     std.mergePatch(
-      basePanel.new(type = 'stat', params = merged)
+      super.new(type = 'stat', params = merged)
       + { type: 'marcusolsson-treemap-panel' },
       {
         options: {
@@ -37,17 +35,4 @@ local defaultParams = {} + defaultOptions;
         }
       }
     ),
-
-  short(params)::
-    self.new(params + { unit: 'short' }),
-
-  percent(params)::
-    self.new(params + { unit: 'percent' }),
-
-  currency(params)::
-    self.new(params + { unit: 'currencyUSD' }),
-
-  gbytes(params)::
-    self.new(params + { unit: 'gbytes' }),
-
 }

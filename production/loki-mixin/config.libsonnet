@@ -26,87 +26,91 @@ local g = import './lib/grafana.libsonnet';
   // whether or not the dashboards should be editable
   editable: true,
 
-  // the group the label to use
-  group_label: 'group',
-
-  // a regular expression to exclude groups by i.e. 'test|staging'
-  group_exclusions: '',
-
-  // group
-  group_types: [
-    'region',
-    'cluster',
-    'dataset',
-    'env',
-    'squad',
-  ],
-
-  // overview configuration
-  overview: {
-    color: 'green',
-    textColor: 'text',
-    metric_names: {
-      instance_info: 'grafanacloud_instance_info',
-      org_total_overage: 'grafanacloud_org_total_overage',
-      org_spend_commit_credit_total: 'grafanacloud_org_spend_commit_credit_total',
-      org_spend_commit_balance_total: 'grafanacloud_org_spend_commit_balance_total',
+  components: {
+    // TODO: define additional fields for each component: path or paths?
+    adminApi: {
+      enabled: true,
+      component: 'admin-api',
+      routes: '',
     },
-  },
 
-  adminApi: {
-    enabled: true,
-  },
+    bloomBuilder: {
+      enabled: true,
+      component: 'bloom-builder',
+      routes: '',
+    },
 
-  bloomBuilder: {
-    enabled: true,
-  },
+    bloomGateway: {
+      enabled: true,
+      component: 'bloom-gateway',
+      routes: '',
+    },
 
-  bloomGateway: {
-    enabled: true,
-  },
+    bloomPlanner: {
+      enabled: true,
+      component: 'bloom-planner',
+      routes: '',
+    },
 
-  bloomPlanner: {
-    enabled: true,
-  },
+    compactor: {
+      enabled: true,
+      component: 'compactor',
+      routes: '',
+    },
 
-  compactor: {
-    enabled: true,
-  },
+    distributor: {
+      enabled: true,
+      component: 'distributor',
+      routes: '',
+    },
 
-  distributor: {
-    enabled: true,
-  },
+    gateway: {
+      enabled: true,
+      component: 'gateway',
+      routes: '',
+    },
 
-  gateway: {
-    enabled: true,
-  },
+    indexGateway: {
+      enabled: true,
+      component: 'index-gateway',
+      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
+    },
 
-  indexGateway: {
-    enabled: true,
-  },
+    ingester: {
+      enabled: true,
+      component: 'ingester',
+      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)'
+    },
 
-  ingester: {
-    enabled: true,
-  },
+    patternIngester: {
+      enabled: true,
+      component: 'pattern-ingester',
+      routes: '',
+    },
 
-  patternIngester: {
-    enabled: true,
-  },
+    querier: {
+      enabled: true,
+      component: 'querier',
+      routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)',
+    },
 
-  querier: {
-    enabled: true,
-  },
+    queryFrontend: {
+      enabled: true,
+      component: 'query-frontend',
+      routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)'
+    },
 
-  queryFrontend: {
-    enabled: true,
-  },
+    queryScheduler: {
+      enabled: true,
+      component: 'query-scheduler',
+      routes: '',
+    },
 
-  queryScheduler: {
-    enabled: true,
-  },
-
-  ruler: {
-    enabled: true,
+    ruler: {
+      enabled: true,
+      component: 'ruler',
+      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
+    }
   },
 
   // The label used to identify resources (pods/components)

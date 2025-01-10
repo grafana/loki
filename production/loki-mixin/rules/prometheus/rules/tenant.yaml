@@ -1,0 +1,208 @@
+namespace: loki_tenant
+groups:
+  - name: loki_tenant_misc
+    rules:
+      - record: loki_tenant:active_streams
+        expr: |-
+          sum by (cluster, namespace, tenant) (loki_ingester_memory_streams)
+          / on (namespace, cluster) group_left()
+          (
+              max by (namespace, cluster) (loki_distributor_replication_factor)
+              or
+              # if the loki_distributor_replication_factor doesn't exist, use default of 3
+              sum by (cluster, namespace) (loki_ingester_memory_streams)*0+3
+          )
+
+      - record: loki_tenant:missed_group_iterations:rate1m
+        expr: |-
+          sum by (cluster, namespace, org_id) (
+            label_replace(
+              rate(loki_prometheus_rule_group_iterations_missed_total{org_id=~".+"}[1m]),
+              "org_id", "$1", "user", "(.+)"
+            )
+          ) > 0
+
+      - record: loki_tenant:missed_group_iterations:rate5m
+        expr: |-
+          sum by (cluster, namespace, org_id) (
+              label_replace(
+                  rate(loki_prometheus_rule_group_iterations_missed_total{org_id=~".+"}[5m]),
+                  "org_id", "$1", "user", "(.+)"
+              )
+          ) > 0
+
+  - name: rate_limits
+    rules:
+      - record: loki_tenant:current_rate_limit
+        expr: |-
+          sum by (cluster, namespace, tenant) (
+            label_replace(
+              (
+                sum by (cluster, namespace, user) (loki_overrides{limit_name="ingestion_rate_mb"})
+                or
+                sum by (cluster, namespace, user) (
+                  label_replace(
+                    loki_tenant:bytes:rate5m{},
+                    "user", "$1", "tenant", "(.*)"
+                  )
+                  * 0 + on (cluster, namespace) group_left()
+                  loki_overrides_defaults{limit_name="ingestion_rate_mb"}
+                )
+              ),
+              "tenant", "$1", "user", "(.*)"
+            )
+          )
+          * 1024 * 1024
+
+      - record: loki_tenant:desired_rate_limit:1d
+        expr: |-
+          ceil(
+            1.1
+            *
+            max by (cluster, namespace, tenant) (
+              quantile_over_time(
+                0.95,
+                loki_tenant:bytes:rate5m{}[1d:5m]
+              )
+            )
+          )
+
+      - record: loki_tenant:desired_rate_limit:1h
+        expr: |-
+          (
+            loki_tenant:needed_rate_limit_update:mb * 1024 * 1024
+            -
+            loki_tenant:current_rate_limit
+          )
+          /
+          (1024 * 1024)
+
+      - record: loki_tenant:needed_rate_limit_update:mb
+        expr: |-
+          ceil(
+            (
+              loki_tenant:desired_rate_limit:1d > loki_tenant:current_rate_limit
+              or
+              loki_tenant:desired_rate_limit:1d < (
+                0.9
+                *
+                loki_tenant:current_rate_limit
+              )
+            )
+            / 1024
+            / 1024
+          )
+          > on (cluster, namespace) group_left()
+          min by (cluster, namespace) (
+            loki_overrides_defaults{limit_name="ingestion_rate_mb"}
+          )
+
+  - name: rules_1m
+    rules:
+      - record: loki_tenant:bytes:rate1m
+        expr: |-
+          sum by (cluster, namespace, tenant) (
+            rate(loki_distributor_bytes_received_total{aggregated_metric="false"}[1m])
+          )
+
+      - record: loki_tenant:discarded_bytes:rate1m
+        expr: |-
+          sum by (cluster, namespace, tenant, reason) (
+            rate(loki_discarded_bytes_total{job=~".*/(distributor|enterprise-logs-write|loki-write)"}[1m])
+            or
+            (
+              sum by (cluster, namespace, tenant, reason) (
+                rate(loki_discarded_bytes_total{job=~".*/(ingester.*|enterprise-logs-write|loki-write)"}[1m])
+                / on (namespace, cluster) group_left () max by (namespace, cluster) (loki_distributor_replication_factor)
+              )
+            )
+          )
+
+      - record: loki_tenant:discarded_lines:rate1m
+        expr: |-
+          sum by (cluster, namespace, tenant, reason) (
+            rate(loki_discarded_samples_total{job=~".*/(distributor|enterprise-logs-write|loki-write)"}[1m])
+            or
+            (
+              sum by (cluster, namespace, tenant, reason) (
+                rate(loki_discarded_samples_total{job=~".*/(ingester.*|enterprise-logs-write|loki-write)"}[1m])
+                / on (namespace, cluster) group_left () max by (namespace, cluster) (loki_distributor_replication_factor)
+              )
+            )
+          )
+
+      - record: loki_tenant:discarded_lines_per_second:rate1m
+        expr: |-
+          sum by (cluster, namespace, tenant) (
+            rate(loki_index_gateway_requests_total[1m])
+          )
+
+      - record: loki_tenant:lines:rate1m
+        expr: |-
+          sum by (cluster, namespace, tenant) (
+            rate(loki_distributor_lines_received_total[1m])
+          )
+
+      - record: loki_tenant:structured_metadata_bytes:rate1m
+        expr: |-
+          sum by (cluster, namespace, tenant) (
+            rate(loki_distributor_structured_metadata_bytes_received_total[1m])
+          )
+
+  - name: rules_5m
+    rules:
+      - record: loki_tenant:bytes:rate5m
+        expr: |-
+          sum by (cluster, namespace, tenant) (
+            rate(loki_distributor_bytes_received_total{aggregated_metric="false"}[5m])
+          )
+
+      - record: loki_tenant:discarded_bytes:rate5m
+        expr: |-
+          sum by (cluster, namespace, tenant, reason) (
+            rate(loki_discarded_bytes_total{pod=~"(enterprise-logs|loki).*-(distributor|write).*"}[5m])
+            or
+            (
+              sum by (cluster, namespace, tenant, reason) (
+                rate(loki_discarded_bytes_total{pod=~"(enterprise-logs|loki).*-(distributor|write).*"}[5m])
+                / on (namespace, cluster) group_left()
+                (
+                    max by (namespace, cluster) (loki_distributor_replication_factor)
+                    or
+                    # if the loki_distributor_replication_factor doesn't exist, use default of 3
+                    sum by (cluster, namespace) (loki_ingester_memory_streams)*0+3
+                )
+              )
+            )
+          )
+
+      - record: loki_tenant:discarded_lines:rate5m
+        expr: |-
+          sum by (cluster, namespace, tenant, reason) (
+            rate(loki_discarded_samples_total[5m])
+            or
+            (
+              sum by (cluster, namespace, tenant, reason) (
+                rate(loki_discarded_samples_total[5m])
+                / on (namespace, cluster) group_left()
+                (
+                    max by (namespace, cluster) (loki_distributor_replication_factor)
+                    or
+                    # if the loki_distributor_replication_factor doesn't exist, use default of 3
+                    sum by (cluster, namespace) (loki_ingester_memory_streams)*0+3
+                )
+              )
+            )
+          )
+
+      - record: loki_tenant:discarded_lines_per_second:rate5m
+        expr: |-
+          sum by (cluster, namespace, tenant) (rate(loki_index_gateway_requests_total[5m]))
+
+      - record: loki_tenant:lines:rate5m
+        expr: |-
+          sum by (cluster, namespace, tenant) (rate(loki_distributor_lines_received_total[5m]))
+
+      - record: loki_tenant:structured_metadata_bytes:rate5m
+        expr: |-
+          sum by (cluster, namespace, tenant) (rate(loki_distributor_structured_metadata_bytes_received_total[5m]))

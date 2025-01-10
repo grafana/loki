@@ -1,7 +1,7 @@
 // imports
-local g = import '../../grafana.libsonnet';
-local basePanel = import '../base.libsonnet';
-local utils = import '../../utils.libsonnet';
+local g = import '../grafana.libsonnet';
+local Base = import './_base.libsonnet';
+local utils = import '../utils.libsonnet';
 
 // local variables
 local table = g.panel.table;
@@ -9,8 +9,7 @@ local table = g.panel.table;
 // local variables
 local defaultParams = {};
 
-table +
-{
+table + Base + {
   new(params)::
     local merged = defaultParams + params;
     local optionKeys = ['cellHeight','sortBy'];
@@ -27,17 +26,5 @@ table +
       else
         {}
     )
-    + basePanel.new(type = 'table', params = merged),
-
-  short(params)::
-    self.new(params + { unit: 'short' }),
-
-  percent(params)::
-    self.new(params + { unit: 'percent' }),
-
-  currency(params)::
-    self.new(params + { unit: 'currencyUSD' }),
-
-  gbytes(params)::
-    self.new(params + { unit: 'gbytes' }),
+    + super.new(type = 'table', params = merged),
 }
