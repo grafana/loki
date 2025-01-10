@@ -135,7 +135,7 @@ func (s *IngestLimiter) running(ctx context.Context) error {
 func (s *IngestLimiter) evictOldStreams(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.WindowSize / 2)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -233,14 +233,30 @@ func (s *IngestLimiter) GetLimits(ctx context.Context, req *logproto.GetLimitsRe
 }
 
 // ServeHTTP implements the http.Handler interface.
-// It returns the current metadata map as a JSON response.
+// It returns the current stream counts per tenant as a JSON response.
 func (s *IngestLimiter) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
+	// Calculate stream counts per tenant
+	counts := make(map[string]int)
+	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+
+	for tenant, streams := range s.metadata {
+		activeStreams := 0
+		for _, lastSeen := range streams {
+			if lastSeen >= cutoff {
+				activeStreams++
+			}
+		}
+		if activeStreams > 0 {
+			counts[tenant] = activeStreams
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(s.metadata); err != nil {
-		http.Error(w, fmt.Sprintf("error encoding metadata: %v", err), http.StatusInternalServerError)
+	if err := json.NewEncoder(w).Encode(counts); err != nil {
+		http.Error(w, fmt.Sprintf("error encoding stream counts: %v", err), http.StatusInternalServerError)
 		return
 	}
 }
