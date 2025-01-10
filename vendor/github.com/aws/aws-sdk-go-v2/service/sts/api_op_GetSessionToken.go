@@ -22,7 +22,7 @@ import (
 // the call returns, IAM users can then make programmatic calls to API operations
 // that require MFA authentication. An incorrect MFA code causes the API to return
 // an access denied error. For a comparison of GetSessionToken with the other API
-// operations that produce temporary credentials, see [Requesting Temporary Security Credentials]and [Comparing the Amazon Web Services STS API operations] in the IAM User Guide.
+// operations that produce temporary credentials, see [Requesting Temporary Security Credentials]and [Compare STS credentials] in the IAM User Guide.
 //
 // No permissions are required for users to perform this operation. The purpose of
 // the sts:GetSessionToken operation is to authenticate the user using MFA. You
@@ -63,10 +63,10 @@ import (
 // credentials, see [Temporary Credentials for Users in Untrusted Environments]in the IAM User Guide.
 //
 // [Permissions for GetSessionToken]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_control-access_getsessiontoken.html
-// [Comparing the Amazon Web Services STS API operations]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html#stsapi_comparison
 // [Temporary Credentials for Users in Untrusted Environments]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html#api_getsessiontoken
 // [Safeguard your root user credentials and don't use them for everyday tasks]: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#lock-away-credentials
 // [Requesting Temporary Security Credentials]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_request.html
+// [Compare STS credentials]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_sts-comparison.html
 func (c *Client) GetSessionToken(ctx context.Context, params *GetSessionTokenInput, optFns ...func(*Options)) (*GetSessionTokenOutput, error) {
 	if params == nil {
 		params = &GetSessionTokenInput{}

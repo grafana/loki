@@ -1,3 +1,12 @@
+# v2.6.26 (2024-12-19)
+
+* **Bug Fix**: Fix improper use of printf-style functions.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v2.6.25 (2024-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v2.6.24 (2024-11-18)
 
 * **Dependency Update**: Update to smithy-go v1.22.1.
