@@ -153,13 +153,12 @@ func generateRandomString(length int) string {
 
 func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	tests := []struct {
-		name       string
-		stream     logproto.Stream
-		partition  int32
-		topic      string
-		tenantID   string
-		lastSeenAt time.Time
-		expectErr  bool
+		name      string
+		stream    logproto.Stream
+		partition int32
+		topic     string
+		tenantID  string
+		expectErr bool
 	}{
 		{
 			name: "Valid metadata",
@@ -167,11 +166,10 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 				Labels: `{app="test"}`,
 				Hash:   12345,
 			},
-			partition:  1,
-			topic:      "logs",
-			tenantID:   "tenant-1",
-			lastSeenAt: time.Now().Truncate(time.Millisecond),
-			expectErr:  false,
+			partition: 1,
+			topic:     "logs",
+			tenantID:  "tenant-1",
+			expectErr: false,
 		},
 		{
 			name: "Empty labels - should error",
@@ -179,11 +177,10 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 				Labels: "",
 				Hash:   67890,
 			},
-			partition:  2,
-			topic:      "metrics",
-			tenantID:   "tenant-2",
-			lastSeenAt: time.Now().Truncate(time.Millisecond),
-			expectErr:  true,
+			partition: 2,
+			topic:     "metrics",
+			tenantID:  "tenant-2",
+			expectErr: true,
 		},
 		{
 			name: "Zero hash - should error",
@@ -191,11 +188,10 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 				Labels: `{app="test"}`,
 				Hash:   0,
 			},
-			partition:  3,
-			topic:      "traces",
-			tenantID:   "tenant-3",
-			lastSeenAt: time.Now().Truncate(time.Millisecond),
-			expectErr:  true,
+			partition: 3,
+			topic:     "traces",
+			tenantID:  "tenant-3",
+			expectErr: true,
 		},
 		{
 			name: "Empty labels and zero hash - should error",
@@ -203,18 +199,17 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 				Labels: "",
 				Hash:   0,
 			},
-			partition:  4,
-			topic:      "traces",
-			tenantID:   "tenant-4",
-			lastSeenAt: time.Now().Truncate(time.Millisecond),
-			expectErr:  true,
+			partition: 4,
+			topic:     "traces",
+			tenantID:  "tenant-4",
+			expectErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Encode metadata
-			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.stream, tt.lastSeenAt)
+			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.stream)
 			if tt.expectErr {
 				require.Nil(t, record)
 				return
@@ -233,7 +228,6 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 
 			// Verify decoded values
 			require.Equal(t, tt.stream.Hash, metadata.StreamHash)
-			require.Equal(t, tt.lastSeenAt.UnixNano(), metadata.LastSeenAt)
 
 			// Return metadata to pool
 			metadataPool.Put(metadata)

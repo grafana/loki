@@ -28,6 +28,6 @@ func (l *IngestLimits) running(_ context.Context) error {
 	return nil
 }
 
-func (l *IngestLimits) stopping(_ context.Context) error {
+func (l *IngestLimits) stopping(_ error) error {
 	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	math_bits "math/bits"
 	"sync"
-	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -198,7 +197,7 @@ func sovPush(x uint64) (n int) {
 
 // EncodeStreamMetadata encodes the stream metadata into a Kafka record
 // using the tenantID as the key and partition as the target partition
-func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream logproto.Stream, lastSeenAt time.Time) *kgo.Record {
+func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream logproto.Stream) *kgo.Record {
 	// Validate stream
 	if stream.Labels == "" || stream.Hash == 0 {
 		return nil
@@ -210,7 +209,6 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 
 	// Transform stream into metadata
 	metadata.StreamHash = stream.Hash
-	metadata.LastSeenAt = lastSeenAt.UnixNano()
 
 	// Encode the metadata into a byte slice
 	value, err := metadata.Marshal()
@@ -224,7 +222,7 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 		Key:       []byte(tenantID),
 		Value:     value,
 		Partition: partition,
-		Topic:     topic + metadataTopicSuffix,
+		Topic:     MetadataTopicFor(topic),
 	}
 }
 
@@ -246,4 +244,9 @@ func DecodeStreamMetadata(record *kgo.Record) (*logproto.StreamMetadata, error) 
 	}
 
 	return metadata, nil
+}
+
+// MetadataTopicFor returns the metadata topic name for the given topic.
+func MetadataTopicFor(topic string) string {
+	return topic + metadataTopicSuffix
 }

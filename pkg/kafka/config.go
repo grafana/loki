@@ -33,6 +33,18 @@ var (
 	ErrInvalidProducerMaxRecordSizeBytes   = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, maxProducerRecordDataBytesLimit)
 )
 
+// IngestLimitsConfig holds configuration for the IngestLimits service.
+type IngestLimitsConfig struct {
+	Enabled    bool          `yaml:"enabled"`
+	WindowSize time.Duration `yaml:"window_size"`
+}
+
+// RegisterFlags registers the configuration flags.
+func (cfg *IngestLimitsConfig) RegisterFlagsWithPrefix(prefix string, fs *flag.FlagSet) {
+	fs.BoolVar(&cfg.Enabled, prefix+".ingest-limits.enabled", false, "Enable the ingest limits.")
+	fs.DurationVar(&cfg.WindowSize, prefix+".ingest-limits.window-size", 1*time.Minute, "The window size to use for the limiter.")
+}
+
 // Config holds the generic config for the Kafka backend.
 type Config struct {
 	Address      string        `yaml:"address"`
@@ -56,10 +68,13 @@ type Config struct {
 	ProducerMaxBufferedBytes   int64 `yaml:"producer_max_buffered_bytes"`
 
 	MaxConsumerLagAtStartup time.Duration `yaml:"max_consumer_lag_at_startup"`
+
+	IngestLimits IngestLimitsConfig `yaml:"ingest_limits,omitempty"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("kafka", f)
+	cfg.IngestLimits.RegisterFlagsWithPrefix("kafka", f)
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
