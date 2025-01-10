@@ -37,6 +37,7 @@ func (c *GRPCIngestLimitsClient) GetLimits(tenantID string) (*logproto.Ingestion
 
 func (c *GRPCIngestLimitsClient) HasStream(tenantID string, streamHash uint64) (bool, error) {
 	_ = tenantID
+	_ = streamHash
 	return false, nil
 }
 
