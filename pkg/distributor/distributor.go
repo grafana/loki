@@ -401,7 +401,7 @@ func (d *Distributor) stopping(_ error) error {
 }
 
 type KeyedStream struct {
-	HashKey     uint32
+	RingToken   uint32
 	HashNoShard uint64
 	Stream      logproto.Stream
 }
@@ -473,7 +473,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return
 		}
 		streams = append(streams, KeyedStream{
-			HashKey:     lokiring.TokenFor(tenantID, stream.Labels),
+			RingToken:   lokiring.TokenFor(tenantID, stream.Labels),
 			HashNoShard: stream.Hash,
 			Stream:      stream,
 		})
@@ -681,7 +681,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			for i, stream := range streams {
-				replicationSet, err := d.ingestersRing.Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+				replicationSet, err := d.ingestersRing.Get(stream.RingToken, ring.WriteNoExtend, descs[:0], nil, nil)
 				if err != nil {
 					return err
 				}
@@ -859,7 +859,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashNoShard: stream.Hash, Stream: stream}}
+		return []KeyedStream{{RingToken: lokiring.TokenFor(tenantID, stream.Labels), HashNoShard: stream.Hash, Stream: stream}}
 	}
 
 	d.streamShardCount.Inc()
@@ -903,7 +903,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 
 		derivedStreams = append(derivedStreams, KeyedStream{
-			HashKey:     lokiring.TokenFor(tenantID, shard.Labels),
+			RingToken:   lokiring.TokenFor(tenantID, shard.Labels),
 			HashNoShard: stream.Hash,
 			Stream:      shard,
 		})
@@ -1078,7 +1078,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	if len(stream.Stream.Entries) == 0 {
 		return nil
 	}
-	partitionID, err := subring.ActivePartitionForKey(stream.HashKey)
+	partitionID, err := subring.ActivePartitionForKey(stream.RingToken)
 	if err != nil {
 		d.kafkaAppends.WithLabelValues("kafka", "fail").Inc()
 		return fmt.Errorf("failed to find active partition for stream: %w", err)
