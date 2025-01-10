@@ -36,8 +36,7 @@ type IngestLimits struct {
 }
 
 // NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
-// if Kafka is enabled in the configuration. The client is configured to consume stream metadata
-// from a dedicated topic with the metadata suffix.
+// The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
 func NewIngestLimits(cfg kafka.Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
 	s := &IngestLimits{
@@ -46,34 +45,32 @@ func NewIngestLimits(cfg kafka.Config, logger log.Logger, reg prometheus.Registe
 		metadata: make(map[string]map[uint64]int64),
 	}
 
-	if cfg.IngestLimits.Enabled {
-		metrics := kprom.NewMetrics("loki_ingest_limits",
-			kprom.Registerer(reg),
-			kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
+	metrics := kprom.NewMetrics("loki_ingest_limits",
+		kprom.Registerer(reg),
+		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
 
-		// Create a copy of the config to modify the topic
-		kCfg := cfg
-		kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
+	// Create a copy of the config to modify the topic
+	kCfg := cfg
+	kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
 
-		s.client, err = client.NewReaderClient(kCfg, metrics, logger,
-			kgo.ConsumerGroup("ingest-limits"),
-			kgo.ConsumeTopics(kCfg.Topic),
-			kgo.Balancers(kgo.RoundRobinBalancer()),
-			kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
-			kgo.DisableAutoCommit(),
-			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-				level.Debug(logger).Log("msg", "assigned partitions", "partitions", partitions)
-			}),
-			kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-				level.Debug(logger).Log("msg", "revoked partitions", "partitions", partitions)
-			}),
-			kgo.OnPartitionsLost(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-				level.Debug(logger).Log("msg", "lost partitions", "partitions", partitions)
-			}),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create kafka client: %w", err)
-		}
+	s.client, err = client.NewReaderClient(kCfg, metrics, logger,
+		kgo.ConsumerGroup("ingest-limits"),
+		kgo.ConsumeTopics(kCfg.Topic),
+		kgo.Balancers(kgo.RoundRobinBalancer()),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
+		kgo.DisableAutoCommit(),
+		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+			level.Debug(logger).Log("msg", "assigned partitions", "partitions", partitions)
+		}),
+		kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+			level.Debug(logger).Log("msg", "revoked partitions", "partitions", partitions)
+		}),
+		kgo.OnPartitionsLost(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+			level.Debug(logger).Log("msg", "lost partitions", "partitions", partitions)
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
@@ -88,14 +85,8 @@ func (s *IngestLimits) starting(_ context.Context) error {
 
 // running implements the Service interface's running method.
 // It runs the main service loop that consumes stream metadata from Kafka and manages
-// the metadata map. If Kafka is not enabled, it simply waits for context cancellation.
-// The method also starts a goroutine to periodically evict old streams from the metadata map.
+// the metadata map. The method also starts a goroutine to periodically evict old streams from the metadata map.
 func (s *IngestLimits) running(ctx context.Context) error {
-	if !s.cfg.Enabled {
-		<-ctx.Done()
-		return nil
-	}
-
 	// Start the eviction goroutine
 	go s.evictOldStreams(ctx)
 
