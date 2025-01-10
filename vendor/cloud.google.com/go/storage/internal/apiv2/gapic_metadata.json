@@ -10,6 +10,11 @@
         "grpc": {
           "libraryClient": "Client",
           "rpcs": {
+            "BidiReadObject": {
+              "methods": [
+                "BidiReadObject"
+              ]
+            },
             "BidiWriteObject": {
               "methods": [
                 "BidiWriteObject"
