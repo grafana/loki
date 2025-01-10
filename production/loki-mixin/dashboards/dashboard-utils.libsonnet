@@ -85,7 +85,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
     $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
 
   namespaceMatcher()::
-    $._config.per_cluster_label + '=~"$cluster", '+ $._config.per_namespace_label +'=~"$namespace"',
+    $._config.per_cluster_label + '=~"$cluster", ' + $._config.per_namespace_label + '=~"$namespace"',
 
   logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
