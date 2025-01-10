@@ -401,8 +401,9 @@ func (d *Distributor) stopping(_ error) error {
 }
 
 type KeyedStream struct {
-	HashKey uint32
-	Stream  logproto.Stream
+	HashKey     uint32
+	HashNoShard uint64
+	Stream      logproto.Stream
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -472,8 +473,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			return
 		}
 		streams = append(streams, KeyedStream{
-			HashKey: lokiring.TokenFor(tenantID, stream.Labels),
-			Stream:  stream,
+			HashKey:     lokiring.TokenFor(tenantID, stream.Labels),
+			HashNoShard: stream.Hash,
+			Stream:      stream,
 		})
 	}
 
@@ -857,7 +859,7 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), Stream: stream}}
+		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashNoShard: stream.Hash, Stream: stream}}
 	}
 
 	d.streamShardCount.Inc()
@@ -901,8 +903,9 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 
 		derivedStreams = append(derivedStreams, KeyedStream{
-			HashKey: lokiring.TokenFor(tenantID, shard.Labels),
-			Stream:  shard,
+			HashKey:     lokiring.TokenFor(tenantID, shard.Labels),
+			HashNoShard: stream.Hash,
+			Stream:      shard,
 		})
 
 		if shardStreamsCfg.LoggingEnabled {
@@ -1090,7 +1093,7 @@ func (d *Distributor) sendStreamToKafka(ctx context.Context, stream KeyedStream,
 	}
 
 	// Add metadata record
-	metadataRecord := kafka.EncodeStreamMetadata(partitionID, d.cfg.KafkaConfig.Topic, tenant, stream.Stream)
+	metadataRecord := kafka.EncodeStreamMetadata(partitionID, d.cfg.KafkaConfig.Topic, tenant, stream.HashNoShard)
 	records = append(records, metadataRecord)
 
 	d.kafkaRecordsPerRequest.Observe(float64(len(records)))

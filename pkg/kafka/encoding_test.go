@@ -154,54 +154,26 @@ func generateRandomString(length int) string {
 func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	tests := []struct {
 		name      string
-		stream    logproto.Stream
+		hash      uint64
 		partition int32
 		topic     string
 		tenantID  string
 		expectErr bool
 	}{
 		{
-			name: "Valid metadata",
-			stream: logproto.Stream{
-				Labels: `{app="test"}`,
-				Hash:   12345,
-			},
+			name:      "Valid metadata",
+			hash:      12345,
 			partition: 1,
 			topic:     "logs",
 			tenantID:  "tenant-1",
 			expectErr: false,
 		},
 		{
-			name: "Empty labels - should error",
-			stream: logproto.Stream{
-				Labels: "",
-				Hash:   67890,
-			},
-			partition: 2,
-			topic:     "metrics",
-			tenantID:  "tenant-2",
-			expectErr: true,
-		},
-		{
-			name: "Zero hash - should error",
-			stream: logproto.Stream{
-				Labels: `{app="test"}`,
-				Hash:   0,
-			},
+			name:      "Zero hash - should error",
+			hash:      0,
 			partition: 3,
 			topic:     "traces",
 			tenantID:  "tenant-3",
-			expectErr: true,
-		},
-		{
-			name: "Empty labels and zero hash - should error",
-			stream: logproto.Stream{
-				Labels: "",
-				Hash:   0,
-			},
-			partition: 4,
-			topic:     "traces",
-			tenantID:  "tenant-4",
 			expectErr: true,
 		},
 	}
@@ -209,7 +181,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Encode metadata
-			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.stream)
+			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash)
 			if tt.expectErr {
 				require.Nil(t, record)
 				return
@@ -227,7 +199,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 			require.NotNil(t, metadata)
 
 			// Verify decoded values
-			require.Equal(t, tt.stream.Hash, metadata.StreamHash)
+			require.Equal(t, tt.hash, metadata.StreamHash)
 
 			// Return metadata to pool
 			metadataPool.Put(metadata)
