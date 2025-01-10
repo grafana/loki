@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/limits"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/loki/common"
 	"github.com/grafana/loki/v3/pkg/lokifrontend"
@@ -358,6 +359,7 @@ type Loki struct {
 	tenantConfigs             *runtime.TenantConfigs
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
+	ingestLimits              *limits.IngestLimits
 	Ingester                  ingester.Interface
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
@@ -672,6 +674,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
+	mm.RegisterModule(IngestLimits, t.initIngestLimits, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -715,6 +718,7 @@ func (t *Loki) setupModuleManager() error {
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
+		IngestLimits:             {Server},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
@@ -746,6 +750,10 @@ func (t *Loki) setupModuleManager() error {
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway},
 
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
+	}
+
+	if t.Cfg.Distributor.KafkaEnabled {
+		deps[All] = append(deps[All], IngestLimits)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

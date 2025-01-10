@@ -57,7 +57,23 @@ message StreamRatesResponse {
 
 message StreamMetadata {
   uint64 streamHash = 1;
-  int64 lastSeenAt = 2;
+}
+
+service IngestLimits {
+  rpc GetLimits(GetLimitsRequest) returns (GetLimitsResponse) {}
+}
+
+message GetLimitsRequest {
+  string tenant = 1;
+}
+
+message GetLimitsResponse {
+  IngestionLimits limits = 1;
+}
+
+message IngestionLimits {
+  uint64 streamCount = 1;
+  repeated StreamRate streamRates = 2;
 }
 
 message StreamRate {
