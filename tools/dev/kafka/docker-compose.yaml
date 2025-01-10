@@ -51,3 +51,5 @@ services:
   generator:
     image: ctovena/log-generator:latest
     command: -url http://host.docker.internal:3100/loki/api/v1/push
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'

@@ -7,7 +7,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
-// Config holds the configuration for the limiter service.
+// Config holds configuration for the IngestLimiter service.
 type Config struct {
 	KafkaEnabled bool          `yaml:"kafka_enabled"`
 	KafkaConfig  kafka.Config  `yaml:",inline"`
