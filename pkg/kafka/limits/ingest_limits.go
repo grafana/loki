@@ -82,7 +82,7 @@ func NewIngestLimits(cfg kafka.Config, logger log.Logger, reg prometheus.Registe
 
 // starting implements the Service interface's starting method.
 // It is called when the service starts and performs any necessary initialization.
-func (s *IngestLimits) starting(ctx context.Context) error {
+func (s *IngestLimits) starting(_ context.Context) error {
 	return nil
 }
 
@@ -194,7 +194,7 @@ func (s *IngestLimits) stopping(failureCase error) error {
 
 // GetLimits implements the IngestLimits service. It returns the current ingestion limits
 // for a given tenant, including stream count and stream rates.
-func (s *IngestLimits) GetLimits(ctx context.Context, req *logproto.GetLimitsRequest) (*logproto.GetLimitsResponse, error) {
+func (s *IngestLimits) GetLimits(_ context.Context, req *logproto.GetLimitsRequest) (*logproto.GetLimitsResponse, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
