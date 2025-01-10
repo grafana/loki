@@ -1,0 +1,23 @@
+{{- if .Values.ruler.remoteEvaluationDedicatedQueryPath }}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed (gt (int .Values.parallelQueryFrontend.replicas) 1) }}
+{{- if kindIs "invalid" .Values.parallelQueryFrontend.maxUnavailable }}
+{{- fail "`.Values.parallelQueryFrontend.maxUnavailable` must be set when `.Values.parallelQueryFrontend.replicas` is greater than 1." }}
+{{- else }}
+apiVersion: {{ include "loki.pdb.apiVersion" . }}
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "loki.parallelQueryFrontendFullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.parallelQueryFrontendLabels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "loki.parallelQueryFrontendSelectorLabels" . | nindent 6 }}
+  {{- with .Values.parallelQueryFrontend.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
