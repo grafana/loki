@@ -3,6 +3,7 @@
     <name>JSON</name>
     <alias>json</alias>
     <filename>*.json</filename>
+    <filename>*.jsonc</filename>
     <filename>*.avsc</filename>
     <mime_type>application/json</mime_type>
     <dot_all>true</dot_all>

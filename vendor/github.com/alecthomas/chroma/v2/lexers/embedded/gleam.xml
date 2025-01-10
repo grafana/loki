@@ -1,7 +1,7 @@
 <lexer>
   <config>
     <name>Gleam</name>
-    <alias>gleam></alias>
+    <alias>gleam</alias>
     <filename>*.gleam</filename>
     <mime_type>text/x-gleam</mime_type>
   </config>
