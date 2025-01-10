@@ -1,7 +1,7 @@
 services:
   zookeeper-1:
-    hostname: 'zookeeper-1'
-    image: 'docker.io/library/zookeeper:3.6.3'
+    container_name: 'zookeeper-1'
+    image: 'docker.io/library/zookeeper:3.7.2'
     init: true
     restart: always
     environment:
@@ -13,8 +13,8 @@ services:
       ZOO_MAX_CLIENT_CNXNS: '0'
       ZOO_4LW_COMMANDS_WHITELIST: 'mntr,conf,ruok'
   zookeeper-2:
-    hostname: 'zookeeper-2'
-    image: 'docker.io/library/zookeeper:3.6.3'
+    container_name: 'zookeeper-2'
+    image: 'docker.io/library/zookeeper:3.7.2'
     init: true
     restart: always
     environment:
@@ -26,8 +26,8 @@ services:
       ZOO_MAX_CLIENT_CNXNS: '0'
       ZOO_4LW_COMMANDS_WHITELIST: 'mntr,conf,ruok'
   zookeeper-3:
-    hostname: 'zookeeper-3'
-    image: 'docker.io/library/zookeeper:3.6.3'
+    container_name: 'zookeeper-3'
+    image: 'docker.io/library/zookeeper:3.7.2'
     init: true
     restart: always
     environment:
@@ -39,20 +39,20 @@ services:
       ZOO_MAX_CLIENT_CNXNS: '0'
       ZOO_4LW_COMMANDS_WHITELIST: 'mntr,conf,ruok'
   kafka-1:
-    hostname: 'kafka-1'
-    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    container_name: 'kafka-1'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.2}'
     init: true
     build:
       context: .
       dockerfile: Dockerfile.kafka
       args:
-        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
         SCALA_VERSION: ${SCALA_VERSION:-2.13}
     healthcheck:
       test:
         [
           'CMD',
-          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.2}/bin/kafka-broker-api-versions.sh',
           '--bootstrap-server',
           'kafka-1:9091',
         ]
@@ -67,13 +67,14 @@ services:
       - toxiproxy
     restart: always
     environment:
-      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
       KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
       KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29091'
       KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-1:9091,LISTENER_LOCAL://localhost:29091'
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: '2'
       KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
       KAFKA_CFG_BROKER_ID: '1'
       KAFKA_CFG_BROKER_RACK: '1'
@@ -85,20 +86,20 @@ services:
       KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
   kafka-2:
-    hostname: 'kafka-2'
-    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    container_name: 'kafka-2'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.2}'
     init: true
     build:
       context: .
       dockerfile: Dockerfile.kafka
       args:
-        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
         SCALA_VERSION: ${SCALA_VERSION:-2.13}
     healthcheck:
       test:
         [
           'CMD',
-          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.2}/bin/kafka-broker-api-versions.sh',
           '--bootstrap-server',
           'kafka-2:9091',
         ]
@@ -113,13 +114,14 @@ services:
       - toxiproxy
     restart: always
     environment:
-      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
       KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
       KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29092'
       KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-2:9091,LISTENER_LOCAL://localhost:29092'
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: '2'
       KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
       KAFKA_CFG_BROKER_ID: '2'
       KAFKA_CFG_BROKER_RACK: '2'
@@ -131,20 +133,20 @@ services:
       KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
   kafka-3:
-    hostname: 'kafka-3'
-    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    container_name: 'kafka-3'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.2}'
     init: true
     build:
       context: .
       dockerfile: Dockerfile.kafka
       args:
-        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
         SCALA_VERSION: ${SCALA_VERSION:-2.13}
     healthcheck:
       test:
         [
           'CMD',
-          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.2}/bin/kafka-broker-api-versions.sh',
           '--bootstrap-server',
           'kafka-3:9091',
         ]
@@ -159,13 +161,14 @@ services:
       - toxiproxy
     restart: always
     environment:
-      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
       KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
       KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29093'
       KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-3:9091,LISTENER_LOCAL://localhost:29093'
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: '2'
       KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
       KAFKA_CFG_BROKER_ID: '3'
       KAFKA_CFG_BROKER_RACK: '3'
@@ -177,20 +180,20 @@ services:
       KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
   kafka-4:
-    hostname: 'kafka-4'
-    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    container_name: 'kafka-4'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.2}'
     init: true
     build:
       context: .
       dockerfile: Dockerfile.kafka
       args:
-        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
         SCALA_VERSION: ${SCALA_VERSION:-2.13}
     healthcheck:
       test:
         [
           'CMD',
-          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.2}/bin/kafka-broker-api-versions.sh',
           '--bootstrap-server',
           'kafka-4:9091',
         ]
@@ -205,13 +208,14 @@ services:
       - toxiproxy
     restart: always
     environment:
-      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
       KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
       KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29094'
       KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-4:9091,LISTENER_LOCAL://localhost:29094'
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: '2'
       KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
       KAFKA_CFG_BROKER_ID: '4'
       KAFKA_CFG_BROKER_RACK: '4'
@@ -223,20 +227,20 @@ services:
       KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
   kafka-5:
-    hostname: 'kafka-5'
-    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.0}'
+    container_name: 'kafka-5'
+    image: 'sarama/fv-kafka-${KAFKA_VERSION:-3.6.2}'
     init: true
     build:
       context: .
       dockerfile: Dockerfile.kafka
       args:
-        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+        KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
         SCALA_VERSION: ${SCALA_VERSION:-2.13}
     healthcheck:
       test:
         [
           'CMD',
-          '/opt/kafka-${KAFKA_VERSION:-3.6.0}/bin/kafka-broker-api-versions.sh',
+          '/opt/kafka-${KAFKA_VERSION:-3.6.2}/bin/kafka-broker-api-versions.sh',
           '--bootstrap-server',
           'kafka-5:9091',
         ]
@@ -251,13 +255,14 @@ services:
       - toxiproxy
     restart: always
     environment:
-      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.0}
+      KAFKA_VERSION: ${KAFKA_VERSION:-3.6.2}
       KAFKA_CFG_ZOOKEEPER_CONNECT: 'zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181'
       KAFKA_CFG_LISTENERS: 'LISTENER_INTERNAL://:9091,LISTENER_LOCAL://:29095'
       KAFKA_CFG_ADVERTISED_LISTENERS: 'LISTENER_INTERNAL://kafka-5:9091,LISTENER_LOCAL://localhost:29095'
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: 'LISTENER_INTERNAL'
       KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: 'LISTENER_INTERNAL:PLAINTEXT,LISTENER_LOCAL:PLAINTEXT'
       KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: '2'
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: '2'
       KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '2'
       KAFKA_CFG_BROKER_ID: '5'
       KAFKA_CFG_BROKER_RACK: '5'
@@ -269,7 +274,7 @@ services:
       KAFKA_CFG_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_JVM_PERFORMANCE_OPTS: "-XX:+IgnoreUnrecognizedVMOptions"
   toxiproxy:
-    hostname: 'toxiproxy'
+    container_name: 'toxiproxy'
     image: 'ghcr.io/shopify/toxiproxy:2.4.0'
     init: true
     healthcheck:

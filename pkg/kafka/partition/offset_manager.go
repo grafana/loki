@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -22,9 +21,8 @@ type OffsetManager interface {
 	Topic() string
 	ConsumerGroup() string
 
-	// GroupLag returns the lag for the consumer group; if lookbackPeriod is greater than 0, then the lag is calculated
-	// based on the current time minus the lookback period; otherwise, the lag is calculated based on Kafka's start offset
-	GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error)
+	// GroupLag returns the lag for the consumer group. Uses fallbackOffsetMillis to calculate the lag if the consumer group has no commits.
+	GroupLag(ctx context.Context, fallbackOffsetMillis int64) (map[int32]kadm.GroupMemberLag, error)
 	FetchLastCommittedOffset(ctx context.Context, partition int32) (int64, error)
 	FetchPartitionOffset(ctx context.Context, partition int32, position SpecialOffset) (int64, error)
 	Commit(ctx context.Context, partition int32, offset int64) error
@@ -182,17 +180,8 @@ func (r *KafkaOffsetManager) FetchPartitionOffset(ctx context.Context, partition
 	return partition.Offset, nil
 }
 
-// GroupLag returns the lag for the consumer group; if lookbackPeriod is greater than 0, then the lag is calculated
-// based on the current time minus the lookback period; otherwise, the lag is calculated based on Kafka's start offset
-func (r *KafkaOffsetManager) GroupLag(ctx context.Context, lookbackPeriod time.Duration) (map[int32]kadm.GroupMemberLag, error) {
-	lookbackMills := int64(lookbackPeriod / time.Millisecond)
-	var fallbackOffsetMillis int64
-	if lookbackMills > 0 {
-		fallbackOffsetMillis = time.Now().UnixMilli() - lookbackMills
-	} else {
-		fallbackOffsetMillis = int64(KafkaStartOffset)
-	}
-
+// GroupLag returns the lag for the consumer group. Uses fallbackOffsetMillis to calculate the lag if the consumer group has no commits.
+func (r *KafkaOffsetManager) GroupLag(ctx context.Context, fallbackOffsetMillis int64) (map[int32]kadm.GroupMemberLag, error) {
 	lag, err := GetGroupLag(ctx, r.adminClient, r.cfg.Topic, r.ConsumerGroup(), fallbackOffsetMillis)
 	if err != nil {
 		return nil, err

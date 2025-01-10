@@ -210,13 +210,9 @@ block_builder:
   [scheduler_grpc_client_config: <grpc_client>]
 
 block_scheduler:
-  # Consumer group used by block scheduler to track the last consumed offset.
-  # CLI flag: -block-scheduler.consumer-group
-  [consumer_group: <string> | default = "block-scheduler"]
-
   # How often the scheduler should plan jobs.
   # CLI flag: -block-scheduler.interval
-  [interval: <duration> | default = 5m]
+  [interval: <duration> | default = 15m]
 
   # Lookback period used by the scheduler to plan jobs when the consumer group
   # has no commits. 0 consumes from the start of the partition.
@@ -232,9 +228,16 @@ block_scheduler:
   # CLI flag: -block-scheduler.target-record-count
   [target_record_count: <int> | default = 1000]
 
-  # Maximum number of jobs that the planner can return.
-  # CLI flag: -block-scheduler.max-jobs-planned-per-interval
-  [max_jobs_planned_per_interval: <int> | default = 100]
+  job_queue:
+    # Interval to check for expired job leases
+    # CLI flag: -jobqueue.lease-expiry-check-interval
+    [lease_expiry_check_interval: <duration> | default = 1m]
+
+    # Duration after which a job lease is considered expired if the scheduler
+    # receives no updates from builders about the job. Expired jobs are
+    # re-enqueued
+    # CLI flag: -jobqueue.lease-duration
+    [lease_duration: <duration> | default = 10m]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -1724,6 +1727,11 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
+
+# Chunks fetched from queriers before this duration will not be written to the
+# cache. A value of 0 will write all chunks to the cache
+# CLI flag: -store.skip-query-writeback-older-than
+[skip_query_writeback_cache_older_than: <duration> | default = 0s]
 
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
@@ -3387,6 +3395,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # incremented.
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
+
+# Experimental: Detect fields from stream labels, structured metadata, or
+# json/logfmt formatted log line and put them into structured metadata of the
+# log entry.
+discover_generic_fields:
+  [fields: <map of string to list of strings>]
 
 # If no service_name label exists, Loki maps a single label from the configured
 # list to service_name. If none of the configured labels exist in the stream,

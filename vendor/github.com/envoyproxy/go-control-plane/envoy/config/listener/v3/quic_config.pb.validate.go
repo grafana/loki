@@ -363,6 +363,53 @@ func (m *QuicProtocolOptions) validate(all bool) error {
 		}
 	}
 
+	if len(m.GetSaveCmsgConfig()) > 1 {
+		err := QuicProtocolOptionsValidationError{
+			field:  "SaveCmsgConfig",
+			reason: "value must contain no more than 1 item(s)",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	for idx, item := range m.GetSaveCmsgConfig() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, QuicProtocolOptionsValidationError{
+						field:  fmt.Sprintf("SaveCmsgConfig[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, QuicProtocolOptionsValidationError{
+						field:  fmt.Sprintf("SaveCmsgConfig[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return QuicProtocolOptionsValidationError{
+					field:  fmt.Sprintf("SaveCmsgConfig[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	// no validation rules for RejectNewConnections
+
 	if len(errors) > 0 {
 		return QuicProtocolOptionsMultiError(errors)
 	}

@@ -7663,6 +7663,305 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>overridesExporter</td>
+			<td>object</td>
+			<td>Configuration for the overrides-exporter</td>
+			<td><pre lang="json">
+{
+  "affinity": {
+    "podAntiAffinity": {
+      "requiredDuringSchedulingIgnoredDuringExecution": [
+        {
+          "labelSelector": {
+            "matchLabels": {
+              "app.kubernetes.io/component": "overrides-exporter"
+            }
+          },
+          "topologyKey": "kubernetes.io/hostname"
+        }
+      ]
+    }
+  },
+  "appProtocol": {
+    "grpc": ""
+  },
+  "command": null,
+  "enabled": false,
+  "extraArgs": [],
+  "extraContainers": [],
+  "extraEnv": [],
+  "extraEnvFrom": [],
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "hostAliases": [],
+  "image": {
+    "registry": null,
+    "repository": null,
+    "tag": null
+  },
+  "initContainers": [],
+  "maxUnavailable": null,
+  "nodeSelector": {},
+  "podAnnotations": {},
+  "podLabels": {},
+  "priorityClassName": null,
+  "replicas": 0,
+  "resources": {},
+  "serviceAnnotations": {},
+  "serviceLabels": {},
+  "terminationGracePeriodSeconds": 300,
+  "tolerations": [],
+  "topologySpreadConstraints": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.affinity</td>
+			<td>object</td>
+			<td>Affinity for overrides-exporter pods.</td>
+			<td><pre lang="">
+Hard node anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.appProtocol</td>
+			<td>object</td>
+			<td>Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"</td>
+			<td><pre lang="json">
+{
+  "grpc": ""
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.enabled</td>
+			<td>bool</td>
+			<td>The overrides-exporter component is optional and can be disabled if desired.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the overrides-exporter</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.hostAliases</td>
+			<td>list</td>
+			<td>hostAliases to add</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the overrides-exporter image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the overrides-exporter image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the overrides-exporter image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for overrides-exporter pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for overrides-exporter pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.podLabels</td>
+			<td>object</td>
+			<td>Labels for overrides-exporter pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for overrides-exporter pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the overrides-exporter</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the overrides-exporter</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.serviceAnnotations</td>
+			<td>object</td>
+			<td>Annotations for overrides-exporter service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for overrides-exporter service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the overrides-exporter to shutdown before it is killed</td>
+			<td><pre lang="json">
+300
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for overrides-exporter pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>patternIngester</td>
 			<td>object</td>
 			<td>Configuration for the pattern ingester</td>
@@ -9482,6 +9781,21 @@ false
 			<td>Node selector for read pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence</td>
+			<td>object</td>
+			<td>read.persistence is used only if legacyReadTarget is set to true</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enableStatefulSetAutoDeletePVC": true,
+  "selector": null,
+  "size": "10Gi",
+  "storageClass": null
+}
 </pre>
 </td>
 		</tr>

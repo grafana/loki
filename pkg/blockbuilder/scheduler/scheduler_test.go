@@ -27,7 +27,7 @@ type mockOffsetManager struct {
 
 func (m *mockOffsetManager) Topic() string         { return m.topic }
 func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
-func (m *mockOffsetManager) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetManager) GroupLag(_ context.Context, _ int64) (map[int32]kadm.GroupMemberLag, error) {
 	return nil, nil
 }
 func (m *mockOffsetManager) FetchLastCommittedOffset(_ context.Context, _ int32) (int64, error) {
@@ -41,7 +41,7 @@ func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
 }
 
 func newTestEnv(builderID string) (*testEnv, error) {
-	queue := NewJobQueue(log.NewNopLogger(), nil)
+	queue := NewJobQueue(testQueueCfg, log.NewNopLogger(), nil)
 	mockOffsetMgr := &mockOffsetManager{
 		topic:         "test-topic",
 		consumerGroup: "test-group",
