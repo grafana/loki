@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/internal/trace"
@@ -140,11 +141,55 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 		encryptionKey:  o.encryptionKey,
 		conds:          o.conds,
 		readCompressed: o.readCompressed,
+		handle:         &o.readHandle,
 	}
 
 	r, err = o.c.tc.NewRangeReader(ctx, params, opts...)
 
 	// Pass the context so that the span can be closed in Reader.Close, or close the
+	// span now if there is an error.
+	if err == nil {
+		r.ctx = ctx
+	} else {
+		trace.EndSpan(ctx, err)
+	}
+
+	return r, err
+}
+
+// NewMultiRangeDownloader creates a multi-range reader for an object.
+// Must be called on a gRPC client created using [NewGRPCClient].
+//
+// This uses the gRPC-specific bi-directional read API, which is in private
+// preview; please contact your account manager if interested.
+func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
+	// This span covers the life of the reader. It is closed via the context
+	// in Reader.Close.
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.MultiRangeDownloader")
+
+	if err := o.validate(); err != nil {
+		return nil, err
+	}
+	if o.conds != nil {
+		if err := o.conds.validate("NewMultiRangeDownloader"); err != nil {
+			return nil, err
+		}
+	}
+
+	opts := makeStorageOpts(true, o.retry, o.userProject)
+
+	params := &newMultiRangeDownloaderParams{
+		bucket:        o.bucket,
+		conds:         o.conds,
+		encryptionKey: o.encryptionKey,
+		gen:           o.gen,
+		object:        o.object,
+		handle:        &o.readHandle,
+	}
+
+	r, err := o.c.tc.NewMultiRangeDownloader(ctx, params, opts...)
+
+	// Pass the context so that the span can be closed in MultiRangeDownloader.Close(), or close the
 	// span now if there is an error.
 	if err == nil {
 		r.ctx = ctx
@@ -230,6 +275,8 @@ type Reader struct {
 
 	reader io.ReadCloser
 	ctx    context.Context
+	mu     sync.Mutex
+	handle *ReadHandle
 }
 
 // Close closes the Reader. It must be called when done reading.
@@ -312,4 +359,83 @@ func (r *Reader) Metadata() map[string]string {
 		return *r.objectMetadata
 	}
 	return nil
+}
+
+// ReadHandle returns the read handle associated with an object.
+// ReadHandle will be periodically refreshed.
+//
+// ReadHandle requires the gRPC-specific bi-directional read API, which is in
+// private preview; please contact your account manager if interested.
+// Note that this only valid for gRPC and only with zonal buckets.
+func (r *Reader) ReadHandle() ReadHandle {
+	if r.handle == nil {
+		r.handle = &ReadHandle{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return (*r.handle)
+}
+
+// MultiRangeDownloader reads a Cloud Storage object.
+//
+// Typically, a MultiRangeDownloader opens a stream to which we can add
+// different ranges to read from the object.
+//
+// This API is currently in preview and is not yet available for general use.
+type MultiRangeDownloader struct {
+	Attrs  ReaderObjectAttrs
+	reader multiRangeDownloader
+	ctx    context.Context
+}
+
+type multiRangeDownloader interface {
+	add(output io.Writer, offset, limit int64, callback func(int64, int64, error))
+	wait()
+	close() error
+	getHandle() []byte
+}
+
+// Add adds a new range to MultiRangeDownloader.
+//
+// The offset for the first byte to return in the read, relative to the start
+// of the object.
+//
+// A negative offset value will be interpreted as the number of bytes from the
+// end of the object to be returned. Requesting a negative offset with magnitude
+// larger than the size of the object will return the entire object. An offset
+// larger than the size of the object will result in an OutOfRange error.
+//
+// A limit of zero indicates that there is no limit, and a negative limit will
+// cause an error.
+//
+// This will initiate the read range but is non-blocking; call callback to
+// process the result. Add is thread-safe and can be called simultaneously
+// from different goroutines.
+func (mrd *MultiRangeDownloader) Add(output io.Writer, offset, length int64, callback func(int64, int64, error)) {
+	mrd.reader.add(output, offset, length, callback)
+}
+
+// Close the MultiRangeDownloader. It must be called when done reading.
+// Adding new ranges after this has been called will cause an error.
+//
+// This will immediately close the stream and can result in a
+// "stream closed early" error if a response for a range is still not processed.
+// Call [MultiRangeDownloader.Wait] to avoid this error.
+func (mrd *MultiRangeDownloader) Close() error {
+	err := mrd.reader.close()
+	trace.EndSpan(mrd.ctx, err)
+	return err
+}
+
+// Wait for all the responses to process on the stream.
+// Adding new ranges after this has been called will cause an error.
+// Wait will wait for all callbacks to finish.
+func (mrd *MultiRangeDownloader) Wait() {
+	mrd.reader.wait()
+}
+
+// GetHandle returns the read handle. This can be used to further speed up the
+// follow up read if the same object is read through a different stream.
+func (mrd *MultiRangeDownloader) GetHandle() []byte {
+	return mrd.reader.getHandle()
 }
