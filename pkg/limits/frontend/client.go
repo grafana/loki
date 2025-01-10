@@ -15,7 +15,7 @@ type IngestLimitsClient interface {
 
 	// HasStreams returns a slice of booleans for each stream and if it is known
 	// to the limits service.
-	HasStreams(tenantId string, streamHashes []uint64) ([]bool, error)
+	HasStreams(tenantID string, streamHashes []uint64) ([]bool, error)
 }
 
 type GRPCIngestLimitsClient struct {
@@ -31,14 +31,17 @@ func NewGRPCIngestLimitsClient(cfg Config, metrics *IngestLimitsClientMetrics) *
 }
 
 func (c *GRPCIngestLimitsClient) GetLimits(tenantID string) (*logproto.IngestionLimits, error) {
+	_ = tenantID
 	return nil, nil
 }
 
 func (c *GRPCIngestLimitsClient) HasStream(tenantID string, streamHash uint64) (bool, error) {
+	_ = tenantID
 	return false, nil
 }
 
 func (c *GRPCIngestLimitsClient) HasStreams(tenantID string, streamHashes []uint64) ([]bool, error) {
+	_ = tenantID
 	b := make([]bool, 0, len(streamHashes))
 	return b, nil
 }
