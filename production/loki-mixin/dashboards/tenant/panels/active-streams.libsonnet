@@ -10,6 +10,13 @@ lib.panels.timeSeries.short({
   |||,
   datasource: common.variables.metrics_datasource.name,
   targets: [
-    shared.queries.tenant.active_streams,
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.tenant.active_streams,
+      {
+        refId: 'Active Streams',
+        legendFormat: 'Streams',
+      }
+    ),
   ],
 })

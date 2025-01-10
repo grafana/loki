@@ -29,7 +29,7 @@ local defaultParams = {
 {
   new(params):: (
     local merged = defaultParams + params;
-    local dashKeys = ['annotations', 'description', 'editable', 'fiscalYearStartMonth', 'links', 'panels', 'refresh', 'style', 'tags', 'templating', 'timezone', 'title', 'uid', 'variables', 'weekStart'];
+    local dashKeys = std.filter(function(key) key != 'to' && key != 'from', std.objectFields(defaultParams));
     local timeKeys = ['to', 'from'];
     dashboard.new(params.title)
       + (

@@ -15,9 +15,45 @@ timeSeries.seconds({
   |||,
   datasource: common.variables.metrics_datasource.name,
   targets: [
-    shared.queries.queryScheduler.queue_duration_percentile_99,
-    shared.queries.queryScheduler.queue_duration_percentile_90,
-    shared.queries.queryScheduler.queue_duration_percentile_50,
-    shared.queries.queryScheduler.queue_duration_average,
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.queryScheduler.queue_duration_percentile_99,
+      {
+        refId: 'Queue Duration p99',
+        legendFormat: 'p99',
+      }
+    ),
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.queryScheduler.queue_duration_percentile_95,
+      {
+        refId: 'Queue Duration p95',
+        legendFormat: 'p95',
+      }
+    ),
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.queryScheduler.queue_duration_percentile_90,
+      {
+        refId: 'Queue Duration p90',
+        legendFormat: 'p90',
+      }
+    ),
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.queryScheduler.queue_duration_percentile_50,
+      {
+        refId: 'Queue Duration p50',
+        legendFormat: 'p50',
+      }
+    ),
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.queryScheduler.queue_duration_average,
+      {
+        refId: 'Queue Duration Average',
+        legendFormat: 'avg',
+      }
+    ),
   ],
 })

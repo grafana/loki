@@ -17,8 +17,22 @@ timeSeries.bytesRate({
   |||,
   datasource: common.variables.metrics_datasource.name,
   targets: [
-    shared.queries.tenant.ingestion_bytes_rate,
-    shared.queries.tenant.ingestion_bytes_rate_limit,
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.tenant.ingestion_bytes_rate,
+      {
+        refId: 'Ingestion Bytes Rate',
+        legendFormat: 'Bytes',
+      }
+    ),
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.tenant.ingestion_bytes_rate_limit,
+      {
+        refId: 'Ingestion Bytes Rate Limit',
+        legendFormat: 'Bytes',
+      }
+    ),
   ],
   overrides: [
     override.byName.new('Rate Limit')

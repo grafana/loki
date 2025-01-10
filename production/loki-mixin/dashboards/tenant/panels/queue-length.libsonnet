@@ -15,6 +15,13 @@ timeSeries.short({
   |||,
   datasource: common.variables.metrics_datasource.name,
   targets: [
-    shared.queries.queryScheduler.queue_length,
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.queryScheduler.queue_length,
+      {
+        refId: 'Active Streams',
+        legendFormat: 'Streams',
+      }
+    ),
   ],
 })

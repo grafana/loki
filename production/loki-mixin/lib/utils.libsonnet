@@ -1,16 +1,6 @@
 local config = import '../../config.libsonnet';
 
 {
-  group_filters(expr)::
-    if config.group_exclusions != '' then
-      std.strReplace(
-      expr,
-      '{',
-      '{' + config.group_label + '!~' + config.group_exclusions + ','
-    )
-    else
-      expr,
-
   methodNameFromKey(key)::
     local methodSuffix = std.asciiUpper(std.substr(key, 0, 1)) + std.substr(key, 1, std.length(key) - 1);
     'with' + methodSuffix,

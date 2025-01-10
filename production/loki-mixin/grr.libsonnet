@@ -1,7 +1,5 @@
 local config = import './config.libsonnet';
 local grr = import 'grizzly/grizzly.libsonnet';
-
-// dashboards
 local dashboards = import './dashboards/_imports.libsonnet';
 
 {

@@ -13,6 +13,13 @@ timeSeries.bytesRate({
   |||,
   datasource: common.variables.metrics_datasource.name,
   targets: [
-    shared.queries.tenant.structured_metadata_bytes_rate,
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.tenant.structured_metadata_bytes_rate,
+      {
+        refId: 'Structured Metadata Bytes In',
+        legendFormat: 'Bytes',
+      }
+    ),
   ],
 })

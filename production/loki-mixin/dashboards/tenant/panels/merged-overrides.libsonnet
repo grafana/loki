@@ -18,7 +18,15 @@ lib.panels.table.new({
   |||,
   datasource: common.variables.metrics_datasource.name,
   targets: [
-    shared.queries.tenant.merged_overrides,
+    lib.query.prometheus.new(
+      common.variables.metrics_datasource.name,
+      shared.queries.tenant.merged_overrides,
+      {
+        format: 'table',
+        instant: true,
+        refId: 'Merged Overrides',
+      }
+    ),
   ],
   fieldDisplayMode: 'color-text',
   filterable: false,
