@@ -105,7 +105,7 @@ const (
 	Server                   string = "server"
 	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
-	IngestLimiter            string = "ingest-limiter"
+	IngestLimits             string = "ingest-limits"
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
@@ -384,23 +384,27 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	return t.distributor, nil
 }
 
-func (t *Loki) initIngestLimiter() (services.Service, error) {
-	ingesterLimiter, err := limits.New(limits.Config{
-		KafkaEnabled: t.Cfg.IngestLimiter.KafkaEnabled,
-		KafkaConfig:  t.Cfg.IngestLimiter.KafkaConfig,
-		WindowSize:   t.Cfg.IngestLimiter.WindowSize,
-	}, util_log.Logger, prometheus.DefaultRegisterer)
+func (t *Loki) initIngestLimits() (services.Service, error) {
+	if !t.Cfg.KafkaConfig.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	ingestLimits, err := limits.NewIngestLimits(
+		t.Cfg.KafkaConfig,
+		util_log.Logger,
+		prometheus.DefaultRegisterer,
+	)
 	if err != nil {
 		return nil, err
 	}
-	t.ingesterLimiter = ingesterLimiter
+	t.ingestLimits = ingestLimits
 
-	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingesterLimiter)
+	logproto.RegisterIngestLimitsServer(t.Server.GRPC, ingestLimits)
 
 	// Register HTTP handler for metadata
-	t.Server.HTTP.Path("/ingest/limits").Methods("GET").Handler(ingesterLimiter)
+	t.Server.HTTP.Path("/ingest/limits").Methods("GET").Handler(ingestLimits)
 
-	return ingesterLimiter, nil
+	return ingestLimits, nil
 }
 
 // initCodec sets the codec used to encode and decode requests.

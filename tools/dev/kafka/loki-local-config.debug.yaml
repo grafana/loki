@@ -21,6 +21,9 @@ common:
 
 kafka_config:
   topic: "loki"
+  ingest_limits:
+    enabled: true
+    window_size: 1m
 
 querier:
   query_partition_ingesters: true
@@ -32,10 +35,6 @@ ingester:
 distributor:
   kafka_writes_enabled: true
   ingester_writes_enabled: false
-
-ingest_limiter:
-  kafka_enabled: true
-  topic: "loki"
 
 query_range:
   results_cache:

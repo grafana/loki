@@ -84,7 +84,6 @@ type Config struct {
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
-	IngestLimiter       limits.Config              `yaml:"ingest_limiter,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
@@ -162,7 +161,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
 	c.Distributor.RegisterFlags(f)
-	c.IngestLimiter.RegisterFlags(f)
 	c.Querier.RegisterFlags(f)
 	c.CompactorHTTPClient.RegisterFlags(f)
 	c.CompactorGRPCClient.RegisterFlags(f)
@@ -361,7 +359,7 @@ type Loki struct {
 	tenantConfigs             *runtime.TenantConfigs
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
-	ingesterLimiter           *limits.IngestLimiter
+	ingestLimits              *limits.IngestLimits
 	Ingester                  ingester.Interface
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
@@ -676,7 +674,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
-	mm.RegisterModule(IngestLimiter, t.initIngestLimiter, modules.UserInvisibleModule)
+	mm.RegisterModule(IngestLimits, t.initIngestLimits, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -720,7 +718,7 @@ func (t *Loki) setupModuleManager() error {
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
-		IngestLimiter:            {Server},
+		IngestLimits:             {Server},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
@@ -755,7 +753,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.Distributor.KafkaEnabled {
-		deps[All] = append(deps[All], IngestLimiter)
+		deps[All] = append(deps[All], IngestLimits)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

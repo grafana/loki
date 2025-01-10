@@ -21,11 +21,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// IngestLimiter is a service that manages stream metadata limits.
-type IngestLimiter struct {
+// IngestLimits is a service that manages stream metadata limits.
+type IngestLimits struct {
 	services.Service
 
-	cfg    Config
+	cfg    kafka.IngestLimitsConfig
 	logger log.Logger
 	client *kgo.Client
 
@@ -34,31 +34,31 @@ type IngestLimiter struct {
 	metadata map[string]map[uint64]int64 // tenant -> streamHash -> lastSeenAt
 }
 
-// New creates a new IngestLimiter service. It initializes the metadata map and sets up a Kafka client
+// NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // if Kafka is enabled in the configuration. The client is configured to consume stream metadata
 // from a dedicated topic with the metadata suffix.
-func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimiter, error) {
+func NewIngestLimits(cfg kafka.Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
-	s := &IngestLimiter{
-		cfg:      cfg,
+	s := &IngestLimits{
+		cfg:      cfg.IngestLimits,
 		logger:   logger,
 		metadata: make(map[string]map[uint64]int64),
 	}
 
-	if cfg.KafkaEnabled {
-		metrics := kprom.NewMetrics("loki_ingest_limiter",
+	if cfg.IngestLimits.Enabled {
+		metrics := kprom.NewMetrics("loki_ingest_limits",
 			kprom.Registerer(reg),
 			kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
 
 		// Create a copy of the config to modify the topic
-		kafkaConfig := cfg.KafkaConfig
-		kafkaConfig.Topic = kafka.MetadataTopicFor(kafkaConfig.Topic)
+		kCfg := cfg
+		kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
 
-		s.client, err = client.NewReaderClient(kafkaConfig, metrics, logger,
-			kgo.ConsumerGroup("ingest-limiter"),
-			kgo.ConsumeTopics(kafkaConfig.Topic),
+		s.client, err = client.NewReaderClient(kCfg, metrics, logger,
+			kgo.ConsumerGroup("ingest-limits"),
+			kgo.ConsumeTopics(kCfg.Topic),
 			kgo.Balancers(kgo.RoundRobinBalancer()),
-			kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-cfg.WindowSize).UnixMilli())),
+			kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
 			kgo.DisableAutoCommit(),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
 				level.Debug(logger).Log("msg", "assigned partitions", "partitions", partitions)
@@ -81,7 +81,7 @@ func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimit
 
 // starting implements the Service interface's starting method.
 // It is called when the service starts and performs any necessary initialization.
-func (s *IngestLimiter) starting(ctx context.Context) error {
+func (s *IngestLimits) starting(ctx context.Context) error {
 	return nil
 }
 
@@ -89,8 +89,8 @@ func (s *IngestLimiter) starting(ctx context.Context) error {
 // It runs the main service loop that consumes stream metadata from Kafka and manages
 // the metadata map. If Kafka is not enabled, it simply waits for context cancellation.
 // The method also starts a goroutine to periodically evict old streams from the metadata map.
-func (s *IngestLimiter) running(ctx context.Context) error {
-	if !s.cfg.KafkaEnabled {
+func (s *IngestLimits) running(ctx context.Context) error {
+	if !s.cfg.Enabled {
 		<-ctx.Done()
 		return nil
 	}
@@ -132,7 +132,7 @@ func (s *IngestLimiter) running(ctx context.Context) error {
 // evictOldStreams runs as a goroutine and periodically removes streams from the metadata map
 // that haven't been seen within the configured window size. It runs every WindowSize/2 interval
 // to ensure timely eviction of stale entries.
-func (s *IngestLimiter) evictOldStreams(ctx context.Context) {
+func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 	ticker := time.NewTicker(s.cfg.WindowSize / 2)
 	defer ticker.Stop()
 
@@ -161,7 +161,7 @@ func (s *IngestLimiter) evictOldStreams(ctx context.Context) {
 
 // updateMetadata updates the metadata map with the provided StreamMetadata.
 // It uses the provided lastSeenAt timestamp as the last seen time.
-func (s *IngestLimiter) updateMetadata(metadata *logproto.StreamMetadata, tenant string, lastSeenAt time.Time) {
+func (s *IngestLimits) updateMetadata(metadata *logproto.StreamMetadata, tenant string, lastSeenAt time.Time) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -181,7 +181,7 @@ func (s *IngestLimiter) updateMetadata(metadata *logproto.StreamMetadata, tenant
 // It performs cleanup when the service is stopping, including closing the Kafka client.
 // It returns nil for expected termination cases (context cancellation or client closure)
 // and returns the original error for other failure cases.
-func (s *IngestLimiter) stopping(failureCase error) error {
+func (s *IngestLimits) stopping(failureCase error) error {
 	if s.client != nil {
 		s.client.Close()
 	}
@@ -193,7 +193,7 @@ func (s *IngestLimiter) stopping(failureCase error) error {
 
 // GetLimits implements the IngestLimits service. It returns the current ingestion limits
 // for a given tenant, including stream count and stream rates.
-func (s *IngestLimiter) GetLimits(ctx context.Context, req *logproto.GetLimitsRequest) (*logproto.GetLimitsResponse, error) {
+func (s *IngestLimits) GetLimits(ctx context.Context, req *logproto.GetLimitsRequest) (*logproto.GetLimitsResponse, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -234,7 +234,7 @@ func (s *IngestLimiter) GetLimits(ctx context.Context, req *logproto.GetLimitsRe
 
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts per tenant as a JSON response.
-func (s *IngestLimiter) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
