@@ -132,6 +132,7 @@ local defaultParams = {
     )
   ),
 
+  // these are wrapper functions to make it easier to create panels with common units
   short(params)::
     self.new(params + { unit: 'short' }),
 
