@@ -13,7 +13,8 @@ require (
 	github.com/grafana/dskit v0.0.0-20241004175247-687ec485facf
 	github.com/grafana/loki/v3 v3.2.1
 	github.com/prometheus/common v0.61.0
-	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852
+	github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb
+	github.com/prometheus/prometheus/v2 v2.35.0-retract
 	github.com/stretchr/testify v1.10.0
 )
 
