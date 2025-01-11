@@ -16,7 +16,6 @@ local defaultOptions = {
 };
 local defaultParams = {} + defaultOptions;
 
-
 // treemap isn't a native plugin, so we start w/ stat panel and then add custom overrides
 Base + {
   new(params)::

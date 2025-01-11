@@ -1,6 +1,6 @@
 // imports
-local g = import '../../grafana.libsonnet';
-local utils = import '../../utils.libsonnet';
+local g = import '../grafana.libsonnet';
+local utils = import '../utils.libsonnet';
 local Base = import './_base.libsonnet';
 
 // local variables

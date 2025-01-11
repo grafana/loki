@@ -31,84 +31,98 @@ local g = import './lib/grafana.libsonnet';
     adminApi: {
       enabled: true,
       component: 'admin-api',
+      name: 'Admin API',
       routes: '',
     },
 
     bloomBuilder: {
       enabled: true,
       component: 'bloom-builder',
+      name: 'Bloom Builder',
       routes: '',
     },
 
     bloomGateway: {
       enabled: true,
       component: 'bloom-gateway',
+      name: 'Bloom Gateway',
       routes: '',
     },
 
     bloomPlanner: {
       enabled: true,
       component: 'bloom-planner',
+      name: 'Bloom Planner',
       routes: '',
     },
 
     compactor: {
       enabled: true,
       component: 'compactor',
+      name: 'Compactor',
       routes: '',
     },
 
     distributor: {
       enabled: true,
       component: 'distributor',
+      name: 'Distributor',
       routes: '',
     },
 
     gateway: {
       enabled: true,
       component: 'gateway',
+      name: 'Gateway',
       routes: '',
     },
 
     indexGateway: {
       enabled: true,
       component: 'index-gateway',
+      name: 'Index Gateway',
       routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
     },
 
     ingester: {
       enabled: true,
       component: 'ingester',
+      name: 'Ingester',
       routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)'
     },
 
     patternIngester: {
       enabled: true,
       component: 'pattern-ingester',
+      name: 'Pattern Ingester',
       routes: '',
     },
 
     querier: {
       enabled: true,
       component: 'querier',
+      name: 'Querier',
       routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)',
     },
 
     queryFrontend: {
       enabled: true,
       component: 'query-frontend',
+      name: 'Query Frontend',
       routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)'
     },
 
     queryScheduler: {
       enabled: true,
       component: 'query-scheduler',
+      name: 'Query Scheduler',
       routes: '',
     },
 
     ruler: {
       enabled: true,
       component: 'ruler',
+      name: 'Ruler',
       routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
     }
   },

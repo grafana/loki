@@ -1,4 +1,3 @@
 {
-  qps: (import './qps.libsonnet').new,
   latency: (import './latency.libsonnet').new,
 }

@@ -1,4 +1,5 @@
 // imports
+local config = import '../../../../config.libsonnet';
 local lib = import '../../../../lib/_imports.libsonnet';
 local common = import '../../../common/_imports.libsonnet';
 local shared = import '../../../shared/_imports.libsonnet';
@@ -19,11 +20,12 @@ local overrideColor(name, value) =
 
 {
   new(
+    title = 'QPS',
     targets = [],
     datasource = common.variables.metrics_datasource.name,
   )::
     lib.panels.timeSeries.qps({
-      title: 'QPS',
+      title: title,
       datasource: datasource,
       targets: targets,
       overrides: [

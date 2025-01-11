@@ -23,7 +23,8 @@ local defaultParams = {
 {
   new(datasource, expr, params = {}):: (
     local merged = defaultParams + params;
+    local keys = utils.keyNamesFromMethods(query);
     query.new(datasource, expr)
-      + utils.applyOptions(query, std.objectFields(defaultParams), merged)
+      + utils.applyOptions(query, keys, merged)
   ),
 }

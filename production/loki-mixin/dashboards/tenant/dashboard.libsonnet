@@ -48,40 +48,33 @@ lib.dashboard.new({
     grid.makeGrid([
       lib.panels.row.new({
         title: 'Throughput',
-        y: 15,
-      })
-      +
-      lib.panels.row.withPanels([
-        panels.bytesIn,
-        panels.structuredMetadataBytesIn,
-        panels.linesIn,
-        panels.avgLineSize,
-      ]),
+        panels: [
+          panels.bytesIn,
+          panels.structuredMetadataBytesIn,
+          panels.linesIn,
+          panels.avgLineSize,
+        ]
+      }),
     ], panelWidth=6, panelHeight=7, startY=15)
     +
     grid.makeGrid([
       lib.panels.row.new({
         title: 'Discarded Samples',
-        y: 22,
+        panels: [
+          panels.discardedBytes,
+          panels.discardedLines,
+        ]
       })
-      +
-      lib.panels.row.withPanels([
-        panels.discardedBytes,
-        panels.discardedLines,
-
-      ]),
     ], panelWidth=8, panelHeight=7, startY=22)
     +
     grid.makeGrid([
       lib.panels.row.new({
         title: 'Miscellaneous',
-        y: 30,
-      })
-      +
-      lib.panels.row.withPanels([
-        panels.activeStreams,
-        panels.queueLength,
-        panels.queueDuration,
-      ]),
+        panels: [
+          panels.activeStreams,
+          panels.queueLength,
+          panels.queueDuration,
+        ]
+      }),
     ], panelWidth=8, panelHeight=7, startY=30)
 })

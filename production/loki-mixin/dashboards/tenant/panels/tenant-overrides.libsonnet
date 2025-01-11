@@ -24,18 +24,18 @@ table.new({
   datasource: common.variables.metrics_datasource.name,
   targets: [
     lib.query.prometheus.new(
-      common.variables.metrics_datasource.name,
-      shared.queries.tenant.overrides,
-      {
+      datasource=common.variables.metrics_datasource.name,
+      expr=shared.queries.tenant.overrides,
+      params={
         format: 'table',
         instant: true,
         refId: 'Tenant Overrides',
       }
     ),
     lib.query.prometheus.new(
-      common.variables.metrics_datasource.name,
-      shared.queries.tenant.default_overrides,
-      {
+      datasource=common.variables.metrics_datasource.name,
+      expr=shared.queries.tenant.default_overrides,
+      params={
         format: 'table',
         instant: true,
         refId: 'Default Overrides',

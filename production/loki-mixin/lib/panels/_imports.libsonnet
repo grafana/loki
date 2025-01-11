@@ -2,6 +2,7 @@
   helpers: (import './helpers.libsonnet'),
   barChart: (import './bar-chart.libsonnet'),
   gauge: (import './gauge.libsonnet'),
+  heatmap: (import './heatmap.libsonnet'),
   row: (import './row.libsonnet'),
   stat: import './stat.libsonnet',
   table: (import './table.libsonnet'),

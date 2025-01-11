@@ -1,32 +1,29 @@
 // imports
 local config = import '../config.libsonnet';
 local lib = import '../../lib/_imports.libsonnet';
-local shared = import '../../shared/_imports.libsonnet';
 local common = import '../common/_imports.libsonnet';
 local panels = import './panels/_imports.libsonnet';
 
 // local variables
-local g = lib.grafana;
-local grid = g.util.grid;
+local grid = lib.grafana.util.grid;
 
-local components = [
+local componentsKeys = [
   'gateway',
-  'query-frontend',
+  'queryFrontend',
   'querier',
   'ingester',
-  'index-gateway',
-  'bloom-gateway'
+  'indexGateway',
+  'bloomGateway',
 ];
 
 local rowHeight = 1;
 local panelHeight = 7;
-local panelWidth = 8;
 
 lib.dashboard.new({
   title: 'Loki / Read',
   description: '',
   uid: 'loki-read',
-  tags: config.tags + ['read'],
+  tags: config.tags + ['read'] + std.map(function(key) config.components[key].component, componentsKeys),
   from: 'now-1h',
   to: 'now',
   links: common.links, // TODO: add links to documentation
@@ -39,26 +36,24 @@ lib.dashboard.new({
   editable: config.editable,
   panels:
     std.foldl(
-      function(acc, component)
-        acc + grid.makeGrid([
+      function(acc, key)
+        acc
+        + grid.makeGrid([
+        // add the row for the component
           lib.panels.row.new({
-            title: component,
+            title: config.components[key].name,
           }),
-          common.panels.timeSeries.qps(
-            targets=[
-              lib.query.prometheus.new(
-                common.variables.metrics_datasource.name,
-                shared.queries.read.qps(component),
-                {
-                  refId: 'qps',
-                  legendFormat: '{{status}}',
-                }
-              )
-            ],
-            datasource=common.variables.metrics_datasource.name,
-          ),
-        ], panelWidth=panelWidth, panelHeight=panelHeight, startY=std.length(acc) * (rowHeight + panelHeight) + 1),
-      components,
+        // add the qps, latency and per pod latency panels
+          panels.qps(key),
+          panels.latency(key),
+          panels.perPodLatency(key),
+        ], panelWidth=8, panelHeight=panelHeight, startY=std.length(acc) * (rowHeight + panelHeight) + 1)
+
+        // add the latency distribution heatmap and route treemap
+        + grid.makeGrid([
+          panels.latencyDistribution(key),
+        ], panelWidth=12, panelHeight=panelHeight + 1, startY=std.length(acc) * (rowHeight + panelHeight * 2) + 1),
+      componentsKeys,
       []
     )
 })

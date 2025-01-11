@@ -5,8 +5,6 @@ local common = import './common.libsonnet';
 local selector = (import '../selectors.libsonnet').new;
 local lib = import '../../lib/_imports.libsonnet';
 {
-  local it = self,
-
   queue_duration_percentile(percentile)::
     |||
       histogram_quantile(
@@ -20,10 +18,10 @@ local lib = import '../../lib/_imports.libsonnet';
       selector().queryScheduler().build(),
     ],
 
-  queue_duration_percentile_99: it.queue_duration_percentile(0.99),
-  queue_duration_percentile_95: it.queue_duration_percentile(0.95),
-  queue_duration_percentile_90: it.queue_duration_percentile(0.90),
-  queue_duration_percentile_50: it.queue_duration_percentile(0.50),
+  queue_duration_percentile_99: self.queue_duration_percentile(0.99),
+  queue_duration_percentile_95: self.queue_duration_percentile(0.95),
+  queue_duration_percentile_90: self.queue_duration_percentile(0.90),
+  queue_duration_percentile_50: self.queue_duration_percentile(0.50),
 
   queue_duration_average:
     |||

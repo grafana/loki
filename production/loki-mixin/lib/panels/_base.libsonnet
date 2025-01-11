@@ -2,6 +2,7 @@
 local g = import '../grafana.libsonnet';
 local variables = import '../dashboards/common/variables.libsonnet';
 local utils = import '../utils.libsonnet';
+local Units = import './_units.libsonnet';
 
 // local variables
 local panel = g.panel;
@@ -34,7 +35,7 @@ local defaultParams = {
   hideTimeOverride: null,
 };
 
-{
+Units + {
   new(type, params):: (
     local merged = defaultParams + params;
 
@@ -112,6 +113,10 @@ local defaultParams = {
           utils.keyNamesFromMethods(options.legend)
         else
           [];
+        local colorKeys = if std.objectHasAll(options, 'color') then
+          utils.keyNamesFromMethods(options.color)
+        else
+          [];
 
         // apply standard options, there are methods are g.panel.standardOptions and g.panel.standardOptions.color
         utils.applyOptions(options, optKeys, merged)
@@ -127,43 +132,15 @@ local defaultParams = {
           else
             {}
         )
+        + (
+          if std.objectHasAll(options, 'color') then
+            utils.applyOptions(options.color, colorKeys, merged)
+          else
+            {}
+        )
       else
         {}
     )
   ),
-
-  // these are wrapper functions to make it easier to create panels with common units
-  short(params)::
-    self.new(params + { unit: 'short' }),
-
-  percent(params)::
-    self.new(params + { unit: 'percent' }),
-
-  currency(params)::
-    self.new(params + { unit: 'currencyUSD' }),
-
-  bytes(params)::
-    self.new(params + { unit: 'bytes' }),
-
-  bytesRate(params)::
-    self.new(params + { unit: 'binBps' }),
-
-  gbytes(params)::
-    self.new(params + { unit: 'gbytes' }),
-
-  // count per second
-  cps(params)::
-    self.new(params + { unit: 'cps' }),
-
-  // requests per second
-  reqps(params)::
-    self.new(params + { unit: 'reqps' }),
-
-  // queries per second
-  qps(params)::
-    self.reqps(params),
-
-  seconds(params)::
-    self.new(params + { unit: 's' }),
 
 }

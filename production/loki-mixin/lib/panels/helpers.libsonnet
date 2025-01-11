@@ -7,7 +7,9 @@ local g = import '../grafana.libsonnet';
 
 {
   panel(type)::
-    if std.objectHas(g.panel, type) then
+    if type == 'treemap' then
+      g.panel.stat
+    else if std.objectHas(g.panel, type) then
       g.panel[type]
     else
       error 'Unknown panel type',
@@ -18,6 +20,20 @@ local g = import '../grafana.libsonnet';
       panel.standardOptions
     else
       error 'Panel type does not have standard options',
+
+  thresholds(type)::
+    local standardOptions = self.standardOptions(type);
+    if std.objectHas(standardOptions, 'thresholds') then
+      standardOptions.thresholds
+    else
+      error 'Panel type does not have thresholds',
+
+  step(type)::
+    local standardOptions = self.standardOptions(type);
+    if std.objectHas(standardOptions, 'threshold') && std.objectHas(standardOptions.threshold, 'step') then
+      standardOptions.threshold.step
+    else
+      error 'Panel type does not have threshold step',
 
   override(type)::
     local standardOptions = self.standardOptions(type);

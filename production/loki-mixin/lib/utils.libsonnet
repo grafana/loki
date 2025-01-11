@@ -37,17 +37,30 @@ local config = import '../../config.libsonnet';
     'with' + std.asciiUpper(std.substr(str, 0, 1)) + std.substr(str, 1, std.length(str) - 1),
 
   keyNamesFromMethods(obj, exclude = [])::
-    local methodNames = std.objectFields(obj);
+    local methodNames = std.sort([
+      method
+      for method in std.objectFields(obj)
+      if !std.startsWith(method, '#')
+    ]);
     local excludeMethods = [self.toMethodName(ex) for ex in exclude];
+    local allKeys = std.uniq([
+      local withoutWith =
+        if std.startsWith(method, 'with') then
+          std.substr(method, 4, std.length(method) - 4)
+        else
+          method;
+      local key = std.asciiLower(std.substr(withoutWith, 0, 1)) +
+                  std.substr(withoutWith, 1, std.length(withoutWith) - 1);
+      key
+      for method in std.uniq(methodNames)
+      if method != 'new'
+         && std.length(std.find(method, excludeMethods)) == 0
+         && !std.endsWith(method, 'Mixin')
+    ]);
     [
-      local withoutWith = if std.startsWith(method, 'with') then
-        std.substr(method, 4, std.length(method) - 4)
-      else
-        method;
-      std.asciiLower(std.substr(withoutWith, 0, 1)) +
-      std.substr(withoutWith, 1, std.length(withoutWith) - 1)
-      for method in methodNames
-      if method != 'new' && !std.member(excludeMethods, method)
+      key
+      for key in std.uniq(std.sort(allKeys))
+      if !std.startsWith(key, '#') && key != 'gridPos'
     ],
 
   applyOptions(obj, keys, params)::

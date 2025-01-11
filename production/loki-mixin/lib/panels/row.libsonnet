@@ -14,13 +14,16 @@ local defaultParams = {
   x: null,
   y: null,
   repeat: null,
+  panels: null,
 };
 
-row +
 {
   new(params):: (
     local merged = defaultParams + params;
-    local rowKeys = ['title', 'collapsed', 'repeat'];
+    local rowKeys = std.filter(
+      function(key) key != 'datasource' && key != 'type',
+      utils.keyNamesFromMethods(row)
+    );
     local gridKeys = ['h', 'w', 'x', 'y'];
 
     if std.objectHas(merged, 'title') then

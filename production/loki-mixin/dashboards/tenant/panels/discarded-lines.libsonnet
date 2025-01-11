@@ -14,9 +14,9 @@ timeSeries.cps({
   datasource: common.variables.metrics_datasource.name,
   targets: [
     lib.query.prometheus.new(
-      common.variables.metrics_datasource.name,
-      shared.queries.tenant.discarded_lines_rate,
-      {
+      datasource=common.variables.metrics_datasource.name,
+      expr=shared.queries.tenant.discarded_lines_rate,
+      params={
         refId: 'Discarded Lines Rate',
         legendFormat: 'Lines',
       }

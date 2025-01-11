@@ -14,9 +14,9 @@ timeSeries.bytesRate({
   datasource: common.variables.metrics_datasource.name,
   targets: [
     lib.query.prometheus.new(
-      common.variables.metrics_datasource.name,
-      shared.queries.tenant.discarded_bytes_rate,
-      {
+      datasource=common.variables.metrics_datasource.name,
+      expr=shared.queries.tenant.discarded_bytes_rate,
+      params={
         refId: 'Discarded Bytes Rate',
         legendFormat: 'Bytes',
       }
