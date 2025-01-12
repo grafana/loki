@@ -510,6 +510,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
+			if missing, lbMissing := d.missingEnforcedLabels(stream, tenantID, validationContext); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, tenantID, lbMissing)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(discardedBytes))
+				continue
+			}
+
 			// Truncate first so subsequent steps have consistent line lengths
 			d.truncateLines(validationContext, &stream)
 
@@ -732,6 +742,46 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// missingEnforcedLabels returns true if the stream is missing any of the required labels.
+//
+// It also returns the first label that is missing if any (for the case of multiple labels missing).
+func (d *Distributor) missingEnforcedLabels(stream logproto.Stream, tenantID string, validationContext validationContext) (bool, string) {
+	requiredLbs := validationContext.enforcedLabels
+	if len(requiredLbs) == 0 {
+		// no enforced labels configured.
+		return false, ""
+	}
+
+	ls, err := d.fetchLbs(stream, validationContext)
+	if err != nil {
+		return true, ""
+	}
+
+	for _, lb := range requiredLbs {
+		if !ls.Has(lb) {
+			return true, lb
+		}
+	}
+
+	return false, ""
+}
+
+func (d *Distributor) fetchLbs(stream logproto.Stream, validationContext validationContext) (labels.Labels, error) {
+	val, ok := d.labelCache.Get(stream.Labels)
+	if ok {
+		return val.ls, nil
+	}
+
+	ls, err := syntax.ParseLabels(stream.Labels)
+	if err != nil {
+		return nil, fmt.Errorf(validation.InvalidLabelsErrorMsg, stream.Labels, err)
+	}
+
+	d.labelCache.Add(stream.Labels, labelData{ls, ls.Hash()})
+
+	return ls, nil
 }
 
 func (d *Distributor) trackDiscardedData(
