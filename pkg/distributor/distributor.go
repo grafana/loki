@@ -748,7 +748,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
 func (d *Distributor) missingEnforcedLabels(stream logproto.Stream, tenantID string, validationContext validationContext) (bool, string) {
-	requiredLbs := validationContext.enforcedLabels
+	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
 	if len(requiredLbs) == 0 {
 		// no enforced labels configured.
 		return false, ""

@@ -426,6 +426,35 @@ func Test_IncrementTimestamp(t *testing.T) {
 	}
 }
 
+func Test_MissingEnforcedLabels(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	limits.EnforcedLabels = []string{"app"}
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	// request with all required labels.
+	request := makeWriteRequestWithLabels(100, 100,
+		[]string{
+			"{app=\"foo\"}",
+		}, false, false, false)
+
+	missing, missingLabel := distributors[0].missingEnforcedLabels(request.Streams[0], "test", validationContext{})
+	assert.False(t, missing)
+	assert.Equal(t, "", missingLabel)
+
+	// request missing the `app` label.
+	request = makeWriteRequestWithLabels(100, 100,
+		[]string{
+			"{env=\"prod\"}",
+		}, false, false, false)
+
+	missing, missingLabel = distributors[0].missingEnforcedLabels(request.Streams[0], "test", validationContext{})
+	assert.True(t, missing)
+	assert.Equal(t, "app", missingLabel)
+}
+
 func TestDistributorPushConcurrently(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
