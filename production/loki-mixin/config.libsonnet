@@ -23,109 +23,14 @@ local g = import './lib/grafana.libsonnet';
     'loki-mixin',
   ],
 
+  // default lookback period for dashboards
+  default_lookback: '1h',
+
+  // the prefix to use for dashboard uids
+  uid_prefix: '',
+
   // whether or not the dashboards should be editable
   editable: true,
-
-  components: {
-    // TODO: define additional fields for each component: path or paths?
-    adminApi: {
-      enabled: true,
-      component: 'admin-api',
-      name: 'Admin API',
-      routes: '',
-    },
-
-    bloomBuilder: {
-      enabled: true,
-      component: 'bloom-builder',
-      name: 'Bloom Builder',
-      routes: '',
-    },
-
-    bloomGateway: {
-      enabled: true,
-      component: 'bloom-gateway',
-      name: 'Bloom Gateway',
-      routes: '',
-    },
-
-    bloomPlanner: {
-      enabled: true,
-      component: 'bloom-planner',
-      name: 'Bloom Planner',
-      routes: '',
-    },
-
-    compactor: {
-      enabled: true,
-      component: 'compactor',
-      name: 'Compactor',
-      routes: '',
-    },
-
-    distributor: {
-      enabled: true,
-      component: 'distributor',
-      name: 'Distributor',
-      routes: '',
-    },
-
-    gateway: {
-      enabled: true,
-      component: 'gateway',
-      name: 'Gateway',
-      routes: '',
-    },
-
-    indexGateway: {
-      enabled: true,
-      component: 'index-gateway',
-      name: 'Index Gateway',
-      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
-    },
-
-    ingester: {
-      enabled: true,
-      component: 'ingester',
-      name: 'Ingester',
-      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)'
-    },
-
-    patternIngester: {
-      enabled: true,
-      component: 'pattern-ingester',
-      name: 'Pattern Ingester',
-      routes: '',
-    },
-
-    querier: {
-      enabled: true,
-      component: 'querier',
-      name: 'Querier',
-      routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)',
-    },
-
-    queryFrontend: {
-      enabled: true,
-      component: 'query-frontend',
-      name: 'Query Frontend',
-      routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)'
-    },
-
-    queryScheduler: {
-      enabled: true,
-      component: 'query-scheduler',
-      name: 'Query Scheduler',
-      routes: '',
-    },
-
-    ruler: {
-      enabled: true,
-      component: 'ruler',
-      name: 'Ruler',
-      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
-    }
-  },
 
   // The label used to identify resources (pods/components)
   labels: {
@@ -140,10 +45,294 @@ local g = import './lib/grafana.libsonnet';
   },
 
   selectors: {
-    // The selector to use for filtering metric/log queries on log-level, i.e. level="info" or debug!="true"
+    // the selector label to use for the job name, blank if using dynamic job label i.e. '$namespace/$container'
+    job: 'integrations/loki',
+    // The selector to use for filtering log queries on log-level, i.e. level="info" or debug!="true"
     log_level: 'level="info"',
   },
 
   // whether or not to use recording rules in the dashboard queries or the original query
   use_recording_rules: true,
+
+  // schema:
+  // {
+  //   componentName: {
+  //     enabled: true,
+  //     component: 'admin-api',
+  //     name: 'Admin API',
+  //     routes: '',
+  //     selector_value: 'admin-api', // optional, if not provided, the component name will be used
+  //     paths: ['backend'],
+  //     links: []
+  //   }
+  // }
+  components: {
+    adminApi: {
+      enabled: true,
+      component: 'admin-api',
+      name: 'Admin API',
+      routes: '',
+      paths: ['backend'],
+      links: [
+        {
+          type: 'documentation',
+          url: 'https://grafana.com/docs/enterprise-logs/latest/reference/gel-admin-api/',
+        }
+      ]
+    },
+
+    bloomBuilder: {
+      enabled: true,
+      component: 'bloom-builder',
+      name: 'Bloom Builder',
+      paths: ['write'],
+      routes: '',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#bloom-builder',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#bloom_build',
+        },
+        {
+          type: 'documentation',
+          url: 'https://grafana.com/docs/loki/latest/operations/bloom-filters/#bloom-planner-and-builder',
+        }
+      ],
+    },
+
+    bloomGateway: {
+      enabled: true,
+      component: 'bloom-gateway',
+      name: 'Bloom Gateway',
+      paths: ['read'],
+      routes: '',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#bloom-gateway',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#bloom_gateway',
+        },
+        {
+          type: 'documentation',
+          url: 'https://grafana.com/docs/loki/latest/operations/bloom-filters/#bloom-gateway',
+        }
+      ],
+    },
+
+    bloomPlanner: {
+      enabled: true,
+      component: 'bloom-planner',
+      name: 'Bloom Planner',
+      paths: ['write'],
+      routes: '',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#bloom-planner',
+        },
+        {
+          type: 'documentation',
+          url: 'https://grafana.com/docs/loki/latest/operations/bloom-filters/#bloom-planner-and-builder',
+        }
+      ],
+    },
+
+    compactor: {
+      enabled: true,
+      component: 'compactor',
+      name: 'Compactor',
+      paths: ['backend'],
+      routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#compactor',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#compactor',
+        }
+      ],
+    },
+
+    cortexGateway: {
+      enabled: false, // this is an internal component and not used by a typical Loki deployment
+      component: 'cortex-gateway',
+      selector_value: 'cortex-gw(-internal)?',
+      name: 'Cortex Gateway',
+      routes: '',
+      paths: ['read'],
+      links: [],
+    },
+
+    distributor: {
+      enabled: true,
+      component: 'distributor',
+      name: 'Distributor',
+      paths: ['write'],
+      routes: '',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#distributor',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#distributor',
+        }
+      ],
+    },
+
+    gateway: {
+      enabled: true,
+      component: 'gateway',
+      name: 'Gateway',
+      paths: ['read', 'write', 'backend'],
+      routes: '',
+      links: [],
+    },
+
+    indexGateway: {
+      enabled: true,
+      component: 'index-gateway',
+      name: 'Index Gateway',
+      paths: ['read'],
+      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#index-gateway',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#index_gateway',
+        }
+      ],
+    },
+
+    ingester: {
+      enabled: true,
+      component: 'ingester',
+      name: 'Ingester',
+      paths: ['read', 'write'],
+      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#ingester',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#ingester',
+        }
+      ],
+    },
+
+    overridesExporter: {
+      enabled: true,
+      component: 'overrides-exporter',
+      name: 'Overrides Exporter',
+      paths: ['backend'],
+      routes: '',
+      links: [
+        {
+          type: 'documentation',
+          url: 'https://grafana.com/docs/loki/latest/operations/overrides-exporter/',
+        }
+      ]
+    },
+
+    patternIngester: {
+      enabled: true,
+      component: 'pattern-ingester',
+      name: 'Pattern Ingester',
+      paths: ['read', 'write'],
+      routes: '',
+      links: [
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/',
+        }
+      ]
+    },
+
+    querier: {
+      enabled: true,
+      component: 'querier',
+      name: 'Querier',
+      paths: ['read'],
+      routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#querier',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#querier',
+        }
+      ],
+    },
+
+    queryFrontend: {
+      enabled: true,
+      component: 'query-frontend', // TODO: handle this scenario where the component is actually 'frontend', should there be a selector value here?
+      selector_value: 'frontend',
+      name: 'Query Frontend',
+      paths: ['read'],
+      routes: '(api_prom_rules|api_prom_rules_namespace_groupname|api_v1_rules|loki_api_v1_delete|loki_api_v1_detected_labels|loki_api_v1_index_stats|loki_api_v1_index_volume|loki_api_v1_index_volume_range|loki_api_v1_label_name_values|loki_api_v1_label_values|loki_api_v1_labels|loki_api_v1_patterns|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_series|prometheus_api_v1_rules)',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#frontend',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#frontend',
+        }
+      ],
+    },
+
+    queryScheduler: {
+      enabled: true,
+      component: 'query-scheduler',
+      name: 'Query Scheduler',
+      paths: ['read'],
+      routes: '',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#scheduler',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#query_scheduler',
+        }
+      ],
+    },
+
+    ruler: {
+      enabled: true,
+      component: 'ruler',
+      name: 'Ruler',
+      paths: ['backend'],
+      routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
+      links: [
+        {
+          type: 'overview',
+          url: 'https://grafana.com/docs/loki/latest/get-started/components/#ruler',
+        },
+        {
+          type: 'configuration',
+          url: 'https://grafana.com/docs/loki/latest/configure/#ruler',
+        }
+      ],
+    }
+  },
 }

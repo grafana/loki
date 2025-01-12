@@ -2,7 +2,7 @@
 local lib = import '../../../lib/_imports.libsonnet';
 local common = import '../../common/_imports.libsonnet';
 local shared = import '../../../shared/_imports.libsonnet';
-
+local config = import '../../../config.libsonnet';
 // local variables
 local timeSeries = lib.panels.timeSeries;
 local override = lib.panels.helpers.override('timeSeries');
@@ -19,7 +19,7 @@ timeSeries.bytesRate({
   targets: [
     lib.query.prometheus.new(
       datasource=common.variables.metrics_datasource.name,
-      expr=shared.queries.tenant.ingestion_bytes_rate,
+      expr=shared.queries.tenant.ingestion_bytes_rate(recording_rule=config.use_recording_rules),
       params={
         refId: 'Bytes Rate',
         legendFormat: 'Bytes',

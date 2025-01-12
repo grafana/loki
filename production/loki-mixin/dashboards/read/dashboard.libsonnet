@@ -8,12 +8,9 @@ local panels = import './panels/_imports.libsonnet';
 local grid = lib.grafana.util.grid;
 
 local componentsKeys = [
-  'gateway',
-  'queryFrontend',
-  'querier',
-  'ingester',
-  'indexGateway',
-  'bloomGateway',
+  key
+  for key in std.objectFields(config.components)
+  if config.components[key].enabled && std.length(std.find('read', config.components[key].paths)) > 0
 ];
 
 local rowHeight = 1;
@@ -22,9 +19,9 @@ local panelHeight = 7;
 lib.dashboard.new({
   title: 'Loki / Read',
   description: '',
-  uid: 'loki-read',
+  uid: '%s-loki-read' % [config.uid_prefix],
   tags: config.tags + ['read'] + std.map(function(key) config.components[key].component, componentsKeys),
-  from: 'now-1h',
+  from: 'now-%s' % [config.default_lookback],
   to: 'now',
   links: common.links, // TODO: add links to documentation
   variables: [

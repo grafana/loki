@@ -5,24 +5,27 @@ local common = import './common.libsonnet';
 local selector = (import '../selectors.libsonnet').new;
 
 {
+  // Shows the system-wide default values for all Loki limits
   default_overrides:
     |||
       max by (limit_name) (
         loki_overrides_defaults{%s}
       )
     ||| % [
-      selector().overridesExporter().build()
+      selector().component('overrides-exporter').build()
     ],
 
+  // Shows the tenant-specific limit configurations
   overrides:
     |||
       max by (user, limit_name)(
         loki_overrides{%s}
       )
     ||| % [
-      selector().overridesExporter().user().build()
+      selector().component('overrides-exporter').user().build()
     ],
 
+  // Shows effective limits by combining tenant-specific and default overrides
   merged_overrides:
     |||
       max by (limit_name) (
@@ -35,22 +38,24 @@ local selector = (import '../selectors.libsonnet').new;
         loki_overrides{%s}
       )
     ||| % [
-      selector().overridesExporter().user().build(),
-      selector().overridesExporter().build(),
-      selector().overridesExporter().user().build(),
+      selector().component('overrides-exporter').user().build(),
+      selector().component('overrides-exporter').build(),
+      selector().component('overrides-exporter').user().build(),
     ],
 
-  ingestion_bytes_rate:
-    if config.use_recording_rules then
+  // Measures bytes per second being ingested
+  ingestion_bytes_rate(recording_rule=config.use_recording_rules):
+    if recording_rule then
       'loki_tenant:bytes:rate5m{%s}' % [selector().tenant().build()]
     else |||
       sum(
         rate(loki_distributor_bytes_received_total{%s}[$__rate_interval])
       )
     ||| % [
-      selector().distributor().tenant().build()
+      selector().component('distributor').tenant().build()
     ],
 
+  // Maximum allowed ingestion rate in bytes
   ingestion_bytes_rate_limit:
     |||
       max(
@@ -61,34 +66,37 @@ local selector = (import '../selectors.libsonnet').new;
       # convert MB to bytes
       * 2^20
     ||| % [
-      selector().overridesExporter().user().build(),
-      selector().overridesExporter().build()
+      selector().component('overrides-exporter').user().build(),
+      selector().component('overrides-exporter').build()
     ],
 
-  ingestion_lines_rate:
-    if config.use_recording_rules then
+  // Measures log lines per second being ingested
+  ingestion_lines_rate(recording_rule=config.use_recording_rules):
+    if recording_rule then
       'loki_tenant:lines:rate5m{%s}' % [selector().tenant().build()]
     else |||
       sum(
         rate(loki_distributor_lines_received_total{%s}[$__rate_interval])
       )
     ||| % [
-      selector().distributor().tenant().build()
+      selector().component('distributor').tenant().build()
     ],
 
-  structured_metadata_bytes_rate:
-    if config.use_recording_rules then
+  // Measures structured metadata bytes per second being ingested
+  structured_metadata_bytes_rate(recording_rule=config.use_recording_rules):
+    if recording_rule then
       'loki_tenant:structured_metadata_bytes:rate5m{%s}' % [selector().tenant().build()]
     else |||
       sum(
         rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])
       )
     ||| % [
-      selector().distributor().tenant().build()
+      selector().component('distributor').tenant().build()
     ],
 
-  average_log_size:
-    if config.use_recording_rules then |||
+  // Average size of individual log lines including their metadata
+  average_log_size(recording_rule=config.use_recording_rules):
+    if recording_rule then |||
       (
         loki_tenant:bytes:rate5m{%s}
         +
@@ -107,10 +115,11 @@ local selector = (import '../selectors.libsonnet').new;
       sum(
         rate(loki_distributor_lines_received_total{%s}[$__rate_interval])
       )
-    ||| % std.repeat([selector().distributor().tenant().build()], 3),
+    ||| % std.repeat([selector().component('distributor').tenant().build()], 3),
 
-  discarded_bytes_rate:
-    if config.use_recording_rules then
+  // Measures bytes per second being rejected
+  discarded_bytes_rate(recording_rule=config.use_recording_rules):
+    if recording_rule then
       'loki_tenant:discarded_bytes:rate5m{%s}' % [selector().tenant().build()]
     else |||
       sum(
@@ -118,8 +127,9 @@ local selector = (import '../selectors.libsonnet').new;
       )
     ||| % [selector().write().tenant().build()],
 
-  discarded_lines_rate:
-    if config.use_recording_rules then
+  // Measures log lines per second being rejected
+  discarded_lines_rate(recording_rule=config.use_recording_rules):
+    if recording_rule then
       'loki_tenant:discarded_lines:rate5m{%s}' % [selector().tenant().build()]
     else |||
       sum(
@@ -127,8 +137,9 @@ local selector = (import '../selectors.libsonnet').new;
       )
     ||| % [selector().write().tenant().build()],
 
-  active_streams:
-    if config.use_recording_rules then
+  // Number of unique log streams currently active
+  active_streams(recording_rule=config.use_recording_rules):
+    if recording_rule then
         'loki_tenant:active_streams{%s}' % [selector().tenant().build()]
       else |||
         sum by (cluster, namespace, tenant) (
@@ -140,7 +151,7 @@ local selector = (import '../selectors.libsonnet').new;
           loki_distributor_replication_factor{%s}
         )
       ||| % [
-        selector().ingester().build(),
-        selector().distributor().build()
+        selector().component('ingester').build(),
+        selector().component('distributor').build()
     ],
 }

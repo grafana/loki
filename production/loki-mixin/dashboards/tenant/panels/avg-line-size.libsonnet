@@ -1,5 +1,6 @@
 // imports
 local lib = import '../../../lib/_imports.libsonnet';
+local config = import '../../../config.libsonnet';
 local common = import '../../common/_imports.libsonnet';
 local shared = import '../../../shared/_imports.libsonnet';
 
@@ -15,7 +16,7 @@ lib.panels.timeSeries.bytes({
   targets: [
     lib.query.prometheus.new(
       datasource=common.variables.metrics_datasource.name,
-      expr=shared.queries.tenant.average_log_size,
+      expr=shared.queries.tenant.average_log_size(recording_rule=config.use_recording_rules),
       params={
         refId: 'Average Line Size',
         legendFormat: 'Bytes',

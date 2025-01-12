@@ -21,9 +21,9 @@ lib.dashboard.new({
       enabled: true
     ```
   |||,
-  uid: 'loki-tenant',
+  uid: '%s-loki-tenant' % [config.uid_prefix],
   tags: config.tags + ['tenant', 'overrides'],
-  from: 'now-1h',
+  from: 'now-%s' % [config.default_lookback],
   to: 'now',
   links: common.links, // TODO: add links to documentation
   variables: [

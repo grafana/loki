@@ -1,5 +1,6 @@
 // imports
 local lib = import '../../../lib/_imports.libsonnet';
+local config = import '../../../config.libsonnet';
 local common = import '../../common/_imports.libsonnet';
 local shared = import '../../../shared/_imports.libsonnet';
 
@@ -12,7 +13,7 @@ lib.panels.timeSeries.short({
   targets: [
     lib.query.prometheus.new(
       datasource=common.variables.metrics_datasource.name,
-      expr=shared.queries.tenant.active_streams,
+      expr=shared.queries.tenant.active_streams(recording_rule=config.use_recording_rules),
       params={
         refId: 'Active Streams',
         legendFormat: 'Streams',

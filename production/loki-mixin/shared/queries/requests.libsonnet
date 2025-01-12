@@ -21,7 +21,7 @@ local selector = (import '../selectors.libsonnet').new;
         )
       ||| % [
         selector()
-          [camelCaseComponent]()
+          .component(component)
           .label('route').re(config.components[camelCaseComponent].routes)
           .build()
       ],
@@ -36,7 +36,7 @@ local selector = (import '../selectors.libsonnet').new;
       )
     ||| % [
       selector()
-        [camelCaseComponent]()
+        .component(component)
         .label('route').re(config.components[camelCaseComponent].routes)
         .build()
     ],
@@ -57,7 +57,7 @@ local selector = (import '../selectors.libsonnet').new;
         percentile,
         by,
         selector()
-            [camelCaseComponent]()
+            .component(component)
             .label('route').re(config.components[camelCaseComponent].routes)
             .build(),
         ]
@@ -72,7 +72,7 @@ local selector = (import '../selectors.libsonnet').new;
         percentile,
         by,
         selector()
-          [camelCaseComponent]()
+          .component(component)
           .label('route').re(config.components[camelCaseComponent].routes)
           .build(),
       ],
@@ -100,12 +100,12 @@ local selector = (import '../selectors.libsonnet').new;
       ||| % [
         by,
         selector()
-          [camelCaseComponent]()
+          .component(component)
           .label('route').re(config.components[camelCaseComponent].routes)
           .build(),
         by,
         selector()
-          [camelCaseComponent]()
+          .component(component)
           .label('route').re(config.components[camelCaseComponent].routes)
           .build(),
       ]
@@ -122,12 +122,12 @@ local selector = (import '../selectors.libsonnet').new;
       ||| % [
         by,
         selector()
-          [camelCaseComponent]()
+          .component(component)
           .label('route').re(config.components[camelCaseComponent].routes)
           .build(),
         by,
         selector()
-          [camelCaseComponent]()
+          .component(component)
           .label('route').re(config.components[camelCaseComponent].routes)
           .build(),
       ],

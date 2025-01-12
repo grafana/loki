@@ -15,7 +15,7 @@ local lib = import '../../lib/_imports.libsonnet';
       )
     ||| % [
       percentile,
-      selector().queryScheduler().build(),
+      selector().component('query-scheduler').build(),
     ],
 
   queue_duration_percentile_99: self.queue_duration_percentile(0.99),
@@ -32,12 +32,12 @@ local lib = import '../../lib/_imports.libsonnet';
       sum(
         rate(loki_query_scheduler_queue_duration_seconds_count{%s}[$__rate_interval])
       )
-    ||| % std.repeat([selector().queryScheduler().build()], 2),
+    ||| % std.repeat([selector().component('query-scheduler').build()], 2),
 
   queue_length:
     |||
       loki_query_scheduler_queue_length{%s}
     ||| % [
-      selector().tenant().queryScheduler().build(),
+      selector().tenant().component('query-scheduler').build(),
     ],
 }
