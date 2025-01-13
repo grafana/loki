@@ -36,4 +36,9 @@ enum SectionType {
   // exist within the data object. SECTION_TYPE_STREAMS does not contain any
   // actual log data.
   SECTION_TYPE_STREAMS = 1;
+
+  // SECTION_TYPE_LOGS is a section containing log records across multiple
+  // streams. Each log record contains a stream ID which refers to a stream
+  // from SECTION_TYPE_STREAMS.
+  SECTION_TYPE_LOGS = 2;
 }

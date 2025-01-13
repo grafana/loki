@@ -44,7 +44,7 @@ func NewEncoder(w streamio.Writer) *Encoder {
 	}
 }
 
-// OpenStreams opens a [StreamsEncoder]. OpenSterams fails if there is another
+// OpenStreams opens a [StreamsEncoder]. OpenStreams fails if there is another
 // open section.
 func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
 	if enc.curSection != nil {
@@ -61,6 +61,25 @@ func (enc *Encoder) OpenStreams() (*StreamsEncoder, error) {
 	}
 
 	return newStreamsEncoder(
+		enc,
+		enc.startOffset+enc.data.Len(),
+	), nil
+}
+
+// OpenLogs opens a [LogsEncoder]. OpenLogs fails if there is another open
+// section.
+func (enc *Encoder) OpenLogs() (*LogsEncoder, error) {
+	if enc.curSection != nil {
+		return nil, ErrElementExist
+	}
+
+	enc.curSection = &filemd.SectionInfo{
+		Type:           filemd.SECTION_TYPE_LOGS,
+		MetadataOffset: math.MaxUint32,
+		MetadataSize:   math.MaxUint32,
+	}
+
+	return newLogsEncoder(
 		enc,
 		enc.startOffset+enc.data.Len(),
 	), nil
