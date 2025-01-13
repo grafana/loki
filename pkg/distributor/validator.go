@@ -42,6 +42,7 @@ type validationContext struct {
 	maxLabelNamesPerSeries int
 	maxLabelNameLength     int
 	maxLabelValueLength    int
+	trackMaxLabelNames     bool
 
 	incrementDuplicateTimestamps bool
 	discoverServiceName          []string
@@ -68,6 +69,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		maxLineSize:                  v.MaxLineSize(userID),
 		maxLineSizeTruncate:          v.MaxLineSizeTruncate(userID),
 		maxLabelNamesPerSeries:       v.MaxLabelNamesPerSeries(userID),
+		trackMaxLabelNames:           v.TrackMaxLabelNames(userID),
 		maxLabelNameLength:           v.MaxLabelNameLength(userID),
 		maxLabelValueLength:          v.MaxLabelValueLength(userID),
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
