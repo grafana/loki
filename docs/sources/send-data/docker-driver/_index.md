@@ -48,7 +48,7 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once you have successfully installed the plugin you can [configure](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/) it.
+Once you have successfully installed the plugin you can [configure](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/configuration/) it.
 
 ## Upgrade the Docker driver client
 
