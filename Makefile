@@ -38,7 +38,7 @@ BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` and `make release-workflows` after changing this
 BUILD_IMAGE_VERSION ?= 0.33.7
-GO_VERSION := 1.22.6
+GO_VERSION := 1.22.10
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
