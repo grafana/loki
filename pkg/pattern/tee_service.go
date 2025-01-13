@@ -234,7 +234,7 @@ func (ts *TeeService) batchesForTenant(
 	for _, stream := range streams {
 		var descs [1]ring.InstanceDesc
 		replicationSet, err := ts.ringClient.Ring().
-			Get(stream.HashKey, ring.WriteNoExtend, descs[:0], nil, nil)
+			Get(stream.RingToken, ring.WriteNoExtend, descs[:0], nil, nil)
 		if err != nil || len(replicationSet.Instances) == 0 {
 			ts.teedStreams.WithLabelValues("dropped").Inc()
 			continue
