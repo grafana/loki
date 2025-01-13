@@ -37,12 +37,21 @@ local utils = import '../lib/utils.libsonnet';
               config.components[componentCamelCase].selector_value
             else
               config.components[componentCamelCase].component;
-          // check if the resource selector is a pod selector
-          if std.length(std.findSubstr('pod', config.labels.resource_selector)) > 0
-          then
-            '((enterprise|loki)-)?.*%s.*' % selectorValue
-          else
             selectorValue,
+
+      // Formats a component selector string based on the component name and current label configuration
+      // Returns a regex pattern for pod selectors or a simple string for other resource types
+      _formatResourceSelector(component)::
+        local selectorValue = self._formatComponentSelector(component);
+        local resourceSelector = if !std.objectHas(config.labels, config.labels.resource_selector) then
+          error 'Resource selector not found in config.labels: %s' % [config.labels.resource_selector]
+        else
+          config.labels[config.labels.resource_selector];
+        // check if the resource selector is a pod selector
+        if std.length(std.findSubstr('pod', resourceSelector)) > 0 then
+            '((enterprise|loki)-)?.*%s.*' % selectorValue
+        else
+          selectorValue,
 
       // Creates a label selector object with methods for different comparison operations (eq, neq, re, nre)
       label(value):: {
@@ -76,16 +85,89 @@ local utils = import '../lib/utils.libsonnet';
         self.cluster().namespace(),
 
       // Creates a selector for a specific Loki component with optional operator
-      component(name, op='=')::
-        self.withLabel(config.labels.resource_selector, self._handleOperator(op), self._formatComponentSelector(name)),
+      component(name, op='=~')::
+        local formattedValue = self._formatComponentSelector(name);
+        self.withLabel(config.labels.component, self._handleOperator(op), formattedValue),
 
       // Creates a selector matching multiple Loki components using regex
       components(names, op='=~')::
+        local formattedValues = std.map(
+          function(name)
+            self._formatComponentSelector(name),
+          names
+        );
         self.withLabel(
           config.labels.resource_selector,
           self._handleOperator(op),
-          '(' + std.join('|', std.map(self._formatComponentSelector, names)) + ')'
+          '(' + std.join('|', formattedValues) + ')'
         ),
+
+      // Creates a selector for a specific resource with pod-aware formatting
+      resource(value, op='=~')::
+        local formattedValue = self._formatResourceSelector(value);
+        self.withLabel(config.labels.resource_selector, self._handleOperator(op), formattedValue),
+
+      // Creates a selector matching multiple resources using regex
+      resources(values, op='=~')::
+        local formattedValues = std.map(
+          function(value)
+            self._formatResourceSelector(value),
+          values
+        );
+        self.withLabel(
+          config.labels.resource_selector,
+          self._handleOperator(op),
+          '(' + std.join('|', formattedValues) + ')'
+        ),
+
+      // Loki components
+      adminApi()::
+        self.resource('admin-api'),
+
+      bloomBuilder()::
+        self.resource('bloom-builder'),
+
+      bloomGateway()::
+        self.resource('bloom-gateway'),
+
+      bloomPlanner()::
+        self.resource('bloom-planner'),
+
+      compactor()::
+        self.resource('compactor'),
+
+      cortexGateway()::
+        self.resource('cortex-gw'),
+
+      distributor()::
+        self.resource('distributor'),
+
+      gateway()::
+        self.resource('gateway'),
+
+      indexGateway()::
+        self.resource('index-gateway'),
+
+      ingester()::
+        self.resource('ingester'),
+
+      overridesExporter()::
+        self.resource('overrides-exporter'),
+
+      patternIngester()::
+        self.resource('pattern-ingester'),
+
+      querier()::
+        self.resource('querier'),
+
+      queryFrontend()::
+        self.resource('query-frontend'),
+
+      queryScheduler()::
+        self.resource('query-scheduler'),
+
+      ruler()::
+        self.resource('ruler'),
 
       // Adds tenant label selector using the configured tenant variable
       tenant(op='=')::

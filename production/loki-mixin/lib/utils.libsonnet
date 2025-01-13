@@ -1,4 +1,5 @@
 local config = import '../../config.libsonnet';
+local g = import './grafana.libsonnet';
 
 {
   debug(obj)::
@@ -91,4 +92,23 @@ local config = import '../../config.libsonnet';
         error msg
     else
       true,
+
+  slugify(str)::
+    // no regular expression support, so we need to do the same replacement twice to
+    // replace double dashes with a single dash
+    std.strReplace(
+      std.strReplace(
+        g.util.string.slugify(str),
+        '--',
+        '-'
+      ),
+      '--',
+      '-'
+    ),
+
+  toTitleCase(str)::
+    std.join(' ', [
+      std.asciiUpper(std.substr(word, 0, 1)) + std.substr(word, 1, std.length(word) - 1)
+      for word in std.split(str, '-')
+    ]),
 }

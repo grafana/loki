@@ -15,13 +15,17 @@ local transformation = lib.panels.helpers.transformation('timeSeries');
     title = 'Latency',
     targets = [],
     datasource = common.variables.metrics_datasource.name,
+    params = {},
   )::
-    lib.panels.timeSeries.milliseconds({
-      title: title,
-      datasource: datasource,
-      targets: targets,
-    })
-    + custom.withFillOpacity(10)
-    + custom.withLineWidth(1)
-    + custom.withShowPoints('never')
+    lib.panels.timeSeries.milliseconds(
+      {
+        title: title,
+        datasource: datasource,
+        targets: targets,
+        fillOpacity: 10,
+        lineWidth: 1,
+        showPoints: 'never',
+      }
+      + params
+    ),
 }

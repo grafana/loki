@@ -1,12 +1,17 @@
 // imports
+local g = import '../grafana.libsonnet';
 local Base = import './_base.libsonnet';
 
 // local variables
+local stat = g.panel.stat;
 local defaultParams = {};
 
-Base + {
+stat + Base + {
   new(params)::
-    super.new(type='stat', params=defaultParams + params),
+    super.new(
+      type='stat',
+      params=defaultParams + params,
+    ),
 
   single(params)::
     local singleParams = {
@@ -14,7 +19,10 @@ Base + {
       colorMode: 'value',
       mode: 'fixed',
     };
-    super.new(type='stat', params=defaultParams + singleParams + params),
+    super.new(
+      type='stat',
+      params=defaultParams + singleParams + params,
+    ),
 
   text(params)::
     self.single(params + {

@@ -86,6 +86,17 @@ Units + {
         )
     )
 
+    // custom options (g.panel[type].fieldConfig.defaults.custom)
+    + (
+      if std.objectHas(panel, type) && std.objectHas(panel[type], 'fieldConfig') && std.objectHas(panel[type].fieldConfig, 'defaults') && std.objectHas(panel[type].fieldConfig.defaults, 'custom') then
+        local customOptions = panel[type].fieldConfig.defaults.custom;
+        local customKeys = utils.keyNamesFromMethods(customOptions);
+        // apply custom options
+        utils.applyOptions(customOptions, customKeys, merged)
+      else
+        {}
+    )
+
     // query options
     + (
       if std.objectHas(panel, type) && std.objectHas(panel[type], 'queryOptions') then

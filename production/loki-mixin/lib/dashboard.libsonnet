@@ -41,4 +41,10 @@ local defaultParams = {
       + utils.applyOptions(dashboard, dashKeys, merged)
       + utils.applyOptions(dashboard.time, timeKeys, merged)
   ),
+
+  generateUid(title, prefix = '', suffix = '')::
+    local slug = utils.slugify(title);
+    local uidPrefix = if std.length(prefix) > 0 then prefix + '-' else '';
+    local uidSuffix = if std.length(suffix) > 0 then '-' + suffix else '';
+    uidPrefix + slug + uidSuffix,
 }

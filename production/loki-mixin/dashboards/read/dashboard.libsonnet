@@ -5,52 +5,65 @@ local common = import '../common/_imports.libsonnet';
 local panels = import './panels/_imports.libsonnet';
 
 // local variables
-local grid = lib.grafana.util.grid;
+local defaultPanelWidth = 8;
+local defaultPanelHeight = 7;
 
-local componentsKeys = [
-  key
-  for key in std.objectFields(config.components)
-  if config.components[key].enabled && std.length(std.find('read', config.components[key].paths)) > 0
-];
+{
+  new(path):: (
+    local componentsKeys = [
+      key
+      for key in std.objectFields(config.components)
+      if config.components[key].enabled && std.length(std.find(path, config.components[key].paths)) > 0
+    ];
+    lib.dashboard.new({
+      title: 'Loki / %s' % [lib.utils.toTitleCase(path)],
+      description: '',
+      uid: lib.dashboard.generateUid(self.title, config.uid_prefix, config.uid_suffix),
+      tags: config.tags + [path] + std.map(function(key) config.components[key].component, componentsKeys),
+    from: 'now-%s' % [config.default_lookback],
+    to: 'now',
+    links: common.links, // TODO: add links to documentation
+    variables: [
+      common.variables.metrics_datasource,
+      common.variables.cluster,
+      common.variables.namespace,
+    ],
+    editable: config.editable,
+    panels:
+      // create the panels in order
+      local panelRows = std.flattenArrays(
+        [
+          [
+            // add the row for the component
+            lib.panels.row.new({
+              title: config.components[key].name,
+            }),
+            // add the qps, latency and per pod latency panels
+            panels.qps(key),
+            panels.latency(key),
+            panels.perPodLatency(key),
+            // add the latency distribution heatmap and route treemap
+            panels.latencyDistribution(key),
+            panels.routeLatency(key),
+          ]
+          for key in componentsKeys
+        ]
+      );
 
-local rowHeight = 1;
-local panelHeight = 7;
+      // create the grid for the panels, defaulting to a width of 8 and a height of 7
+      local renderedGrid = lib.grafana.util.grid.makeGrid(panelRows, defaultPanelWidth, defaultPanelHeight);
 
-lib.dashboard.new({
-  title: 'Loki / Read',
-  description: '',
-  uid: '%s-loki-read' % [config.uid_prefix],
-  tags: config.tags + ['read'] + std.map(function(key) config.components[key].component, componentsKeys),
-  from: 'now-%s' % [config.default_lookback],
-  to: 'now',
-  links: common.links, // TODO: add links to documentation
-  variables: [
-    common.variables.metrics_datasource,
-    common.variables.logs_datasource,
-    common.variables.cluster,
-    common.variables.namespace,
-  ],
-  editable: config.editable,
-  panels:
-    std.foldl(
-      function(acc, key)
-        acc
-        + grid.makeGrid([
-        // add the row for the component
-          lib.panels.row.new({
-            title: config.components[key].name,
-          }),
-        // add the qps, latency and per pod latency panels
-          panels.qps(key),
-          panels.latency(key),
-          panels.perPodLatency(key),
-        ], panelWidth=8, panelHeight=panelHeight, startY=std.length(acc) * (rowHeight + panelHeight) + 1)
+      // find the latency distribution heatmap and route treemap panels, overriding the width to 12
+      std.map(
+        function(panel)
+          if std.endsWith(panel.title, 'Latency Distribution')
+          then panel + { gridPos+: { w: 12 } }
+          else if std.endsWith(panel.title, 'Route Latency (p99)')
+          then panel + { gridPos+: { w: 12, x: 13 } }
+          else panel,
+        renderedGrid
+      ),
+  })
 
-        // add the latency distribution heatmap and route treemap
-        + grid.makeGrid([
-          panels.latencyDistribution(key),
-        ], panelWidth=12, panelHeight=panelHeight + 1, startY=std.length(acc) * (rowHeight + panelHeight * 2) + 1),
-      componentsKeys,
-      []
-    )
-})
+  ),
+}

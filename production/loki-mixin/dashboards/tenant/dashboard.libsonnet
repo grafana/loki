@@ -21,7 +21,7 @@ lib.dashboard.new({
       enabled: true
     ```
   |||,
-  uid: '%s-loki-tenant' % [config.uid_prefix],
+  uid: lib.dashboard.generateUid(self.title, config.uid_prefix, config.uid_suffix),
   tags: config.tags + ['tenant', 'overrides'],
   from: 'now-%s' % [config.default_lookback],
   to: 'now',
