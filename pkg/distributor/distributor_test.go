@@ -430,19 +430,19 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 
-	limits.EnforcedLabels = []string{"app"}
+	limits.EnforcedLabels = []string{"app", "env"}
 
 	distributors, _ := prepare(t, 1, 5, limits, nil)
 
 	// request with all required labels.
 	request := makeWriteRequestWithLabels(100, 100,
 		[]string{
-			"{app=\"foo\"}",
+			"{app=\"foo\", env=\"prod\"}",
 		}, false, false, false)
 
-	missing, missingLabel := distributors[0].missingEnforcedLabels(request.Streams[0], "test", validationContext{})
+	missing, missingLabels := distributors[0].missingEnforcedLabels(request.Streams[0], "test", validationContext{})
 	assert.False(t, missing)
-	assert.Equal(t, "", missingLabel)
+	assert.Empty(t, missingLabels)
 
 	// request missing the `app` label.
 	request = makeWriteRequestWithLabels(100, 100,
@@ -450,9 +450,19 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 			"{env=\"prod\"}",
 		}, false, false, false)
 
-	missing, missingLabel = distributors[0].missingEnforcedLabels(request.Streams[0], "test", validationContext{})
+	missing, missingLabels = distributors[0].missingEnforcedLabels(request.Streams[0], "test", validationContext{})
 	assert.True(t, missing)
-	assert.Equal(t, "app", missingLabel)
+	assert.EqualValues(t, []string{"app"}, missingLabels)
+
+	// request missing all required labels.
+	request = makeWriteRequestWithLabels(100, 100,
+		[]string{
+			"{pod=\"distributor-abc\"}",
+		}, false, false, false)
+
+	missing, missingLabels = distributors[0].missingEnforcedLabels(request.Streams[0], "test", validationContext{})
+	assert.True(t, missing)
+	assert.EqualValues(t, []string{"app", "env"}, missingLabels)
 }
 
 func TestDistributorPushConcurrently(t *testing.T) {
