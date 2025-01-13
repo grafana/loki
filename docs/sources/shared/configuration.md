@@ -4988,6 +4988,9 @@ remote_write:
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
+  # Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of
+  # RemoteWriteConfig is not permitted. If specified, it will be dropped during
+  # config parsing.
   [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.
@@ -5000,7 +5003,8 @@ remote_write:
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
-  # Add X-Scope-OrgID header in remote write requests.
+  # Add an X-Scope-OrgID header in remote write requests with the tenant ID of a
+  # Loki tenant that the recording rules are part of.
   # CLI flag: -ruler.remote-write.add-org-id-header
   [add_org_id_header: <boolean> | default = true]
 
