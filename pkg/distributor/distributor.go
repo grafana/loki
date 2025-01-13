@@ -524,7 +524,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, validationContext); missing {
+			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -747,7 +747,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
-func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, validationContext validationContext) (bool, []string) {
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
 	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
 	if len(requiredLbs) == 0 {
 		// no enforced labels configured.

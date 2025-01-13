@@ -437,19 +437,19 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 
 		// request with all required labels.
 		lbs := labels.FromMap(map[string]string{"app": "foo", "env": "prod"})
-		missing, missingLabels := distributors[0].missingEnforcedLabels(lbs, "test", validationContext{})
+		missing, missingLabels := distributors[0].missingEnforcedLabels(lbs, "test")
 		assert.False(t, missing)
 		assert.Empty(t, missingLabels)
 
 		// request missing the `app` label.
 		lbs = labels.FromMap(map[string]string{"env": "prod"})
-		missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", validationContext{})
+		missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test")
 		assert.True(t, missing)
 		assert.EqualValues(t, []string{"app"}, missingLabels)
 
 		// request missing all required labels.
 		lbs = labels.FromMap(map[string]string{"pod": "distributor-abc"})
-		missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", validationContext{})
+		missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test")
 		assert.True(t, missing)
 		assert.EqualValues(t, []string{"app", "env"}, missingLabels)
 
