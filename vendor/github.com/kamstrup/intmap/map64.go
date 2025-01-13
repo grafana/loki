@@ -19,8 +19,8 @@ type pair[K IntKey, V any] struct {
 const fillFactor64 = 0.7
 
 func phiMix64(x int) int {
-	h := x * 0x9E3779B9
-	return h ^ (h >> 16)
+	h := int64(x) * int64(0x9E3779B9)
+	return int(h ^ (h >> 16))
 }
 
 // Map is a hashmap where the keys are some any integer type.
@@ -251,7 +251,7 @@ func (m *Map[K, V]) Keys() iter.Seq[K] {
 		if m.hasZeroKey && !yield(K(0)) {
 			return
 		}
-	
+
 		for _, p := range m.data {
 			if p.K != K(0) && !yield(p.K) {
 				return

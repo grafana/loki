@@ -44,6 +44,8 @@ func WrapWithTraces(bkt objstore.Bucket) objstore.InstrumentedBucket {
 	return TracingBucket{bkt: bkt}
 }
 
+func (t TracingBucket) Provider() objstore.ObjProvider { return t.bkt.Provider() }
+
 func (t TracingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) (err error) {
 	doWithSpan(ctx, "bucket_iter", func(spanCtx context.Context, span opentracing.Span) {
 		span.LogKV("dir", dir)

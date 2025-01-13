@@ -2,6 +2,7 @@ package hyperloglog
 
 import (
 	"math/bits"
+	"slices"
 
 	"github.com/kamstrup/intmap"
 )
@@ -83,29 +84,29 @@ func (s *set) Clone() *set {
 	return &set{m: newS}
 }
 
-func (s *set) MarshalBinary() (data []byte, err error) {
+func (s *set) AppendBinary(data []byte) ([]byte, error) {
 	// 4 bytes for the size of the set, and 4 bytes for each key.
 	// list.
-	data = make([]byte, 0, 4+(4*s.m.Len()))
+	data = slices.Grow(data, 4+(4*s.m.Len()))
 
 	// Length of the set. We only need 32 bits because the size of the set
 	// couldn't exceed that on 32 bit architectures.
 	sl := s.m.Len()
-	data = append(data, []byte{
-		byte(sl >> 24),
-		byte(sl >> 16),
-		byte(sl >> 8),
+	data = append(data,
+		byte(sl>>24),
+		byte(sl>>16),
+		byte(sl>>8),
 		byte(sl),
-	}...)
+	)
 
 	// Marshal each element in the set.
 	s.m.ForEach(func(k uint32) bool {
-		data = append(data, []byte{
-			byte(k >> 24),
-			byte(k >> 16),
-			byte(k >> 8),
+		data = append(data,
+			byte(k>>24),
+			byte(k>>16),
+			byte(k>>8),
 			byte(k),
-		}...)
+		)
 		return true
 	})
 

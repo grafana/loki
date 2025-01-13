@@ -72,8 +72,8 @@ var (
 	// errMethodNotSupported indicates that the method called is not currently supported by the client.
 	// TODO: Export this error when launching the transport-agnostic client.
 	errMethodNotSupported = errors.New("storage: method is not currently supported")
-	// errMethodNotValid indicates that given HTTP method is not valid.
-	errMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
+	// errSignedURLMethodNotValid indicates that given HTTP method is not valid.
+	errSignedURLMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
 )
 
 var userAgent = fmt.Sprintf("gcloud-golang-storage/%s", internal.Version)
@@ -689,7 +689,7 @@ func validateOptions(opts *SignedURLOptions, now time.Time) error {
 	}
 	opts.Method = strings.ToUpper(opts.Method)
 	if _, ok := signedURLMethods[opts.Method]; !ok {
-		return errMethodNotValid
+		return errSignedURLMethodNotValid
 	}
 	if opts.Expires.IsZero() {
 		return errors.New("storage: missing required expires option")
@@ -937,6 +937,9 @@ func signedURLV2(bucket, name string, opts *SignedURLOptions) (string, error) {
 	return u.String(), nil
 }
 
+// ReadHandle associated with the object. This is periodically refreshed.
+type ReadHandle []byte
+
 // ObjectHandle provides operations on an object in a Google Cloud Storage bucket.
 // Use BucketHandle.Object to get a handle.
 type ObjectHandle struct {
@@ -952,6 +955,23 @@ type ObjectHandle struct {
 	retry             *retryConfig
 	overrideRetention *bool
 	softDeleted       bool
+	readHandle        ReadHandle
+}
+
+// ReadHandle returns a new ObjectHandle that uses the ReadHandle to open the objects.
+//
+// Objects that have already been opened can be opened an additional time,
+// using a read handle returned in the response, at lower latency.
+// This produces the exact same object and generation and does not check if
+// the generation is still the newest one.
+// Note that this will be a noop unless it's set on a gRPC client on buckets with
+// bi-directional read API access.
+// Also note that you can get a ReadHandle only via calling reader.ReadHandle() on a
+// previous read of the same object.
+func (o *ObjectHandle) ReadHandle(r ReadHandle) *ObjectHandle {
+	o2 := *o
+	o2.readHandle = r
+	return &o2
 }
 
 // ACL provides access to the object's access control list.
@@ -1154,6 +1174,38 @@ func (o *ObjectHandle) Restore(ctx context.Context, opts *RestoreOptions) (*Obje
 		conds:         o.conds,
 		copySourceACL: opts.CopySourceACL,
 	}, sOpts...)
+}
+
+// Move changes the name of the object to the destination name.
+// It can only be used to rename an object within the same bucket. The
+// bucket must have [HierarchicalNamespace] enabled to use this method.
+//
+// Any preconditions set on the ObjectHandle will be applied for the source
+// object. Set preconditions on the destination object using
+// [MoveObjectDestination.Conditions].
+//
+// This API is in preview and is not yet publicly available.
+func (o *ObjectHandle) Move(ctx context.Context, destination MoveObjectDestination) (*ObjectAttrs, error) {
+	if err := o.validate(); err != nil {
+		return nil, err
+	}
+
+	sOpts := makeStorageOpts(true, o.retry, o.userProject)
+	return o.c.tc.MoveObject(ctx, &moveObjectParams{
+		bucket:        o.bucket,
+		srcObject:     o.object,
+		dstObject:     destination.Object,
+		srcConds:      o.conds,
+		dstConds:      destination.Conditions,
+		encryptionKey: o.encryptionKey,
+	}, sOpts...)
+}
+
+// MoveObjectDestination provides the destination object name and (optional) preconditions
+// for [ObjectHandle.Move].
+type MoveObjectDestination struct {
+	Object     string
+	Conditions *Conditions
 }
 
 // NewWriter returns a storage Writer that writes to the GCS object
@@ -2055,56 +2107,91 @@ func applyConds(method string, gen int64, conds *Conditions, call interface{}) e
 	return nil
 }
 
-func applySourceConds(gen int64, conds *Conditions, call *raw.ObjectsRewriteCall) error {
+// applySourceConds modifies the provided call using the conditions in conds.
+// call is something that quacks like a *raw.WhateverCall.
+// This is specifically for calls like Rewrite and Move which have a source and destination
+// object.
+func applySourceConds(method string, gen int64, conds *Conditions, call interface{}) error {
+	cval := reflect.ValueOf(call)
 	if gen >= 0 {
-		call.SourceGeneration(gen)
+		if !setSourceGeneration(cval, gen) {
+			return fmt.Errorf("storage: %s: source generation not supported", method)
+		}
 	}
 	if conds == nil {
 		return nil
 	}
-	if err := conds.validate("CopyTo source"); err != nil {
+	if err := conds.validate(method); err != nil {
 		return err
 	}
 	switch {
 	case conds.GenerationMatch != 0:
-		call.IfSourceGenerationMatch(conds.GenerationMatch)
+		if !setIfSourceGenerationMatch(cval, conds.GenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationMatch not supported", method)
+		}
 	case conds.GenerationNotMatch != 0:
-		call.IfSourceGenerationNotMatch(conds.GenerationNotMatch)
+		if !setIfSourceGenerationNotMatch(cval, conds.GenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationNotMatch not supported", method)
+		}
 	case conds.DoesNotExist:
-		call.IfSourceGenerationMatch(0)
+		if !setIfSourceGenerationMatch(cval, int64(0)) {
+			return fmt.Errorf("storage: %s: DoesNotExist not supported", method)
+		}
 	}
 	switch {
 	case conds.MetagenerationMatch != 0:
-		call.IfSourceMetagenerationMatch(conds.MetagenerationMatch)
+		if !setIfSourceMetagenerationMatch(cval, conds.MetagenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationMatch not supported", method)
+		}
 	case conds.MetagenerationNotMatch != 0:
-		call.IfSourceMetagenerationNotMatch(conds.MetagenerationNotMatch)
+		if !setIfSourceMetagenerationNotMatch(cval, conds.MetagenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationNotMatch not supported", method)
+		}
 	}
 	return nil
 }
 
-func applySourceCondsProto(gen int64, conds *Conditions, call *storagepb.RewriteObjectRequest) error {
+// applySourceCondsProto validates and attempts to set the conditions on a protobuf
+// message using protobuf reflection. This is specifically for RPCs which have separate
+// preconditions for source and destination objects (e.g. Rewrite and Move).
+func applySourceCondsProto(method string, gen int64, conds *Conditions, msg proto.Message) error {
+	rmsg := msg.ProtoReflect()
+
 	if gen >= 0 {
-		call.SourceGeneration = gen
+		if !setConditionProtoField(rmsg, "source_generation", gen) {
+			return fmt.Errorf("storage: %s: generation not supported", method)
+		}
 	}
 	if conds == nil {
 		return nil
 	}
-	if err := conds.validate("CopyTo source"); err != nil {
+	if err := conds.validate(method); err != nil {
 		return err
 	}
+
 	switch {
 	case conds.GenerationMatch != 0:
-		call.IfSourceGenerationMatch = proto.Int64(conds.GenerationMatch)
+		if !setConditionProtoField(rmsg, "if_source_generation_match", conds.GenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationMatch not supported", method)
+		}
 	case conds.GenerationNotMatch != 0:
-		call.IfSourceGenerationNotMatch = proto.Int64(conds.GenerationNotMatch)
+		if !setConditionProtoField(rmsg, "if_source_generation_not_match", conds.GenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceGenerationNotMatch not supported", method)
+		}
 	case conds.DoesNotExist:
-		call.IfSourceGenerationMatch = proto.Int64(0)
+		if !setConditionProtoField(rmsg, "if_source_generation_match", int64(0)) {
+			return fmt.Errorf("storage: %s: DoesNotExist not supported", method)
+		}
 	}
 	switch {
 	case conds.MetagenerationMatch != 0:
-		call.IfSourceMetagenerationMatch = proto.Int64(conds.MetagenerationMatch)
+		if !setConditionProtoField(rmsg, "if_source_metageneration_match", conds.MetagenerationMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationMatch not supported", method)
+		}
 	case conds.MetagenerationNotMatch != 0:
-		call.IfSourceMetagenerationNotMatch = proto.Int64(conds.MetagenerationNotMatch)
+		if !setConditionProtoField(rmsg, "if_source_metageneration_not_match", conds.MetagenerationNotMatch) {
+			return fmt.Errorf("storage: %s: ifSourceMetagenerationNotMatch not supported", method)
+		}
 	}
 	return nil
 }
@@ -2141,6 +2228,27 @@ func setIfMetagenerationMatch(cval reflect.Value, value interface{}) bool {
 // See also setGeneration.
 func setIfMetagenerationNotMatch(cval reflect.Value, value interface{}) bool {
 	return setCondition(cval.MethodByName("IfMetagenerationNotMatch"), value)
+}
+
+// More methods to set source object precondition fields (used by Rewrite and Move APIs).
+func setSourceGeneration(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("SourceGeneration"), value)
+}
+
+func setIfSourceGenerationMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceGenerationMatch"), value)
+}
+
+func setIfSourceGenerationNotMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceGenerationNotMatch"), value)
+}
+
+func setIfSourceMetagenerationMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceMetagenerationMatch"), value)
+}
+
+func setIfSourceMetagenerationNotMatch(cval reflect.Value, value interface{}) bool {
+	return setCondition(cval.MethodByName("IfSourceMetagenerationNotMatch"), value)
 }
 
 func setCondition(setter reflect.Value, value interface{}) bool {
@@ -2216,7 +2324,7 @@ type withBackoff struct {
 }
 
 func (wb *withBackoff) apply(config *retryConfig) {
-	config.backoff = gaxBackoffFromStruct(&wb.backoff)
+	config.backoff = &wb.backoff
 }
 
 // WithMaxAttempts configures the maximum number of times an API call can be made
@@ -2307,58 +2415,8 @@ func (wef *withErrorFunc) apply(config *retryConfig) {
 	config.shouldRetry = wef.shouldRetry
 }
 
-type backoff interface {
-	Pause() time.Duration
-
-	SetInitial(time.Duration)
-	SetMax(time.Duration)
-	SetMultiplier(float64)
-
-	GetInitial() time.Duration
-	GetMax() time.Duration
-	GetMultiplier() float64
-}
-
-func gaxBackoffFromStruct(bo *gax.Backoff) *gaxBackoff {
-	if bo == nil {
-		return nil
-	}
-	b := &gaxBackoff{}
-	b.Backoff = *bo
-	return b
-}
-
-// gaxBackoff is a gax.Backoff that implements the backoff interface
-type gaxBackoff struct {
-	gax.Backoff
-}
-
-func (b *gaxBackoff) SetInitial(i time.Duration) {
-	b.Initial = i
-}
-
-func (b *gaxBackoff) SetMax(m time.Duration) {
-	b.Max = m
-}
-
-func (b *gaxBackoff) SetMultiplier(m float64) {
-	b.Multiplier = m
-}
-
-func (b *gaxBackoff) GetInitial() time.Duration {
-	return b.Initial
-}
-
-func (b *gaxBackoff) GetMax() time.Duration {
-	return b.Max
-}
-
-func (b *gaxBackoff) GetMultiplier() float64 {
-	return b.Multiplier
-}
-
 type retryConfig struct {
-	backoff     backoff
+	backoff     *gax.Backoff
 	policy      RetryPolicy
 	shouldRetry func(err error) bool
 	maxAttempts *int
@@ -2368,22 +2426,22 @@ func (r *retryConfig) clone() *retryConfig {
 	if r == nil {
 		return nil
 	}
-	newConfig := &retryConfig{
-		backoff:     nil,
+
+	var bo *gax.Backoff
+	if r.backoff != nil {
+		bo = &gax.Backoff{
+			Initial:    r.backoff.Initial,
+			Max:        r.backoff.Max,
+			Multiplier: r.backoff.Multiplier,
+		}
+	}
+
+	return &retryConfig{
+		backoff:     bo,
 		policy:      r.policy,
 		shouldRetry: r.shouldRetry,
 		maxAttempts: r.maxAttempts,
 	}
-
-	if r.backoff != nil {
-		bo := &gaxBackoff{}
-		bo.Initial = r.backoff.GetInitial()
-		bo.Max = r.backoff.GetMax()
-		bo.Multiplier = r.backoff.GetMultiplier()
-		newConfig.backoff = bo
-	}
-
-	return newConfig
 }
 
 // composeSourceObj wraps a *raw.ComposeRequestSourceObjects, but adds the methods

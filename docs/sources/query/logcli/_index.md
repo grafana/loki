@@ -11,5 +11,5 @@ weight: 600
 
 LogCLI is a command-line tool for querying and exploring logs in Grafana Loki:
 
-* Installation and Reference: [LogCLI](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/logcli/)
+* Installation and Reference: [LogCLI](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/getting-started/)
 * Getting started tutorial: [LogCLI Tutorial](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/logcli-tutorial)

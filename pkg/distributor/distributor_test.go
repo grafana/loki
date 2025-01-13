@@ -583,6 +583,8 @@ func TestDistributorPushToKafka(t *testing.T) {
 		require.Equal(t, 1, len(ingesters[0].pushed))
 		require.Equal(t, 1, len(ingesters[1].pushed))
 		require.Eventually(t, func() bool {
+			ingesters[2].mu.Lock()
+			defer ingesters[2].mu.Unlock()
 			return len(ingesters[2].pushed) == 1
 		}, time.Second, 10*time.Millisecond)
 	})
@@ -648,7 +650,7 @@ func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
 		limits, ingester := setup()
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
 
-		_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 1, []string{}))
+		_, err := distributors[0].Push(ctx, makeWriteRequestWithLabels(1, 1, []string{}, false, false, false))
 		require.Equal(t, err, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg))
 		topVal := ingester.Peek()
 		require.Nil(t, topVal)

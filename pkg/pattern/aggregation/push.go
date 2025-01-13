@@ -59,8 +59,9 @@ type Push struct {
 	contentType string
 	logger      log.Logger
 
-	// shutdown channels
-	quit chan struct{}
+	running  sync.WaitGroup
+	quit     chan struct{}
+	quitOnce sync.Once
 
 	// auth
 	username, password string
@@ -149,6 +150,7 @@ func NewPush(
 		metrics: metrics,
 	}
 
+	p.running.Add(1)
 	go p.run(pushPeriod)
 	return p, nil
 }
@@ -160,10 +162,10 @@ func (p *Push) WriteEntry(ts time.Time, e string, lbls labels.Labels) {
 
 // Stop will cancel any ongoing requests and stop the goroutine listening for requests
 func (p *Push) Stop() {
-	if p.quit != nil {
+	p.quitOnce.Do(func() {
 		close(p.quit)
-		p.quit = nil
-	}
+	})
+	p.running.Wait()
 }
 
 // buildPayload creates the snappy compressed protobuf to send to Loki
@@ -244,6 +246,8 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 
 // run pulls lines out of the channel and sends them to Loki
 func (p *Push) run(pushPeriod time.Duration) {
+	defer p.running.Done()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	pushTicker := time.NewTimer(pushPeriod)
 	defer pushTicker.Stop()

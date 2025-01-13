@@ -148,6 +148,11 @@ func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
 	return b.bucket.IsAccessDeniedErr(err)
 }
 
+// Provider returns the provider of the bucket.
+func (b *SSEBucketClient) Provider() objstore.ObjProvider {
+	return b.bucket.Provider()
+}
+
 // WithExpectedErrs implements objstore.Bucket.
 func (b *SSEBucketClient) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {
 	if ib, ok := b.bucket.(objstore.InstrumentedBucket); ok {

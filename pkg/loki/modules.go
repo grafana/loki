@@ -1119,13 +1119,14 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
 	}
 
-	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec)
+	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec, t.Cfg.Frontend.SupportParquetEncoding)
 
 	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace)
 	if t.Cfg.Frontend.CompressResponses {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}
 
+	// TODO: add SerializeHTTPHandler
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
 		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
@@ -1835,27 +1836,16 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, err
 	}
 
-	readerMetrics := partition.NewReaderMetrics(prometheus.DefaultRegisterer)
-	readerFactory := func(partitionID int32) (partition.Reader, error) {
-		return partition.NewKafkaReader(
-			t.Cfg.KafkaConfig,
-			partitionID,
-			logger,
-			readerMetrics,
-		)
-	}
-
 	bb, err := blockbuilder.NewBlockBuilder(
 		id,
 		t.Cfg.BlockBuilder,
+		t.Cfg.KafkaConfig,
 		t.Cfg.SchemaConfig.Configs,
-		readerFactory,
 		t.Store,
 		objectStore,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -1877,13 +1867,18 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 		return nil, fmt.Errorf("creating kafka offset manager: %w", err)
 	}
 
-	s := blockscheduler.NewScheduler(
+	s, err := blockscheduler.NewScheduler(
 		t.Cfg.BlockScheduler,
-		blockscheduler.NewJobQueueWithLogger(logger),
+		blockscheduler.NewJobQueue(t.Cfg.BlockScheduler.JobQueueConfig, logger, prometheus.DefaultRegisterer),
 		offsetManager,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Server.HTTP.Path("/blockscheduler/status").Methods("GET").Handler(s)
 
 	blockprotos.RegisterSchedulerServiceServer(
 		t.Server.GRPC,

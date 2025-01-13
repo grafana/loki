@@ -9,7 +9,6 @@ package blob
 import (
 	"context"
 	"io"
-	"math"
 	"os"
 	"sync"
 	"time"
@@ -38,8 +37,8 @@ type Client base.Client[generated.BlobClient]
 //   - options - client options; pass nil to accept the default values
 func NewClient(blobURL string, cred azcore.TokenCredential, options *ClientOptions) (*Client, error) {
 	audience := base.GetAudience((*base.ClientOptions)(options))
-	authPolicy := shared.NewStorageChallengePolicy(cred, audience)
 	conOptions := shared.GetClientOptions(options)
+	authPolicy := shared.NewStorageChallengePolicy(cred, audience, conOptions.InsecureAllowCredentialWithHTTP)
 	plOpts := runtime.PipelineOptions{PerRetry: []policy.Policy{authPolicy}}
 
 	azClient, err := azcore.NewClient(exported.ModuleName, exported.ModuleVersion, plOpts, &conOptions.ClientOptions)
@@ -359,7 +358,7 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 		OperationName: "downloadBlobToWriterAt",
 		TransferSize:  count,
 		ChunkSize:     o.BlockSize,
-		NumChunks:     uint16(((count - 1) / o.BlockSize) + 1),
+		NumChunks:     uint64(((count - 1) / o.BlockSize) + 1),
 		Concurrency:   o.Concurrency,
 		Operation: func(ctx context.Context, chunkStart int64, count int64) error {
 			downloadBlobOptions := o.getDownloadBlobOptions(HTTPRange{
@@ -396,165 +395,6 @@ func (b *Client) downloadBuffer(ctx context.Context, writer io.WriterAt, o downl
 		return 0, err
 	}
 	return count, nil
-}
-
-// downloadFile downloads an Azure blob to a Writer. The blocks are downloaded parallely,
-// but written to file serially
-func (b *Client) downloadFile(ctx context.Context, writer io.Writer, o downloadOptions) (int64, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	if o.BlockSize == 0 {
-		o.BlockSize = DefaultDownloadBlockSize
-	}
-
-	if o.Concurrency == 0 {
-		o.Concurrency = DefaultConcurrency
-	}
-
-	count := o.Range.Count
-	if count == CountToEnd { //Calculate size if not specified
-		gr, err := b.GetProperties(ctx, o.getBlobPropertiesOptions())
-		if err != nil {
-			return 0, err
-		}
-		count = *gr.ContentLength - o.Range.Offset
-	}
-
-	if count <= 0 {
-		// The file is empty, there is nothing to download.
-		return 0, nil
-	}
-
-	progress := int64(0)
-	progressLock := &sync.Mutex{}
-
-	// helper routine to get body
-	getBodyForRange := func(ctx context.Context, chunkStart, size int64) (io.ReadCloser, error) {
-		downloadBlobOptions := o.getDownloadBlobOptions(HTTPRange{
-			Offset: chunkStart + o.Range.Offset,
-			Count:  size,
-		}, nil)
-		dr, err := b.DownloadStream(ctx, downloadBlobOptions)
-		if err != nil {
-			return nil, err
-		}
-
-		var body io.ReadCloser = dr.NewRetryReader(ctx, &o.RetryReaderOptionsPerBlock)
-		if o.Progress != nil {
-			rangeProgress := int64(0)
-			body = streaming.NewResponseProgress(
-				body,
-				func(bytesTransferred int64) {
-					diff := bytesTransferred - rangeProgress
-					rangeProgress = bytesTransferred
-					progressLock.Lock()
-					progress += diff
-					o.Progress(progress)
-					progressLock.Unlock()
-				})
-		}
-
-		return body, nil
-	}
-
-	// if file fits in a single buffer, we'll download here.
-	if count <= o.BlockSize {
-		body, err := getBodyForRange(ctx, int64(0), count)
-		if err != nil {
-			return 0, err
-		}
-		defer body.Close()
-
-		return io.Copy(writer, body)
-	}
-
-	buffers := shared.NewMMBPool(int(o.Concurrency), o.BlockSize)
-	defer buffers.Free()
-
-	numChunks := uint16((count-1)/o.BlockSize + 1)
-	for bufferCounter := float64(0); bufferCounter < math.Min(float64(numChunks), float64(o.Concurrency)); bufferCounter++ {
-		if _, err := buffers.Grow(); err != nil {
-			return 0, err
-		}
-	}
-
-	acquireBuffer := func() ([]byte, error) {
-		return <-buffers.Acquire(), nil
-	}
-
-	blocks := make([]chan []byte, numChunks)
-	for b := range blocks {
-		blocks[b] = make(chan []byte)
-	}
-
-	/*
-	 * We have created as many channels as the number of chunks we have.
-	 * Each downloaded block will be sent to the channel matching its
-	 * sequence number, i.e. 0th block is sent to 0th channel, 1st block
-	 * to 1st channel and likewise. The blocks are then read and written
-	 * to the file serially by below goroutine. Do note that the blocks
-	 * are still downloaded parallelly from n/w, only serialized
-	 * and written to file here.
-	 */
-	writerError := make(chan error)
-	writeSize := int64(0)
-	go func(ch chan error) {
-		for _, block := range blocks {
-			select {
-			case <-ctx.Done():
-				return
-			case block := <-block:
-				n, err := writer.Write(block)
-				writeSize += int64(n)
-				buffers.Release(block[:cap(block)])
-				if err != nil {
-					ch <- err
-					return
-				}
-			}
-		}
-		ch <- nil
-	}(writerError)
-
-	// Prepare and do parallel download.
-	err := shared.DoBatchTransfer(ctx, &shared.BatchTransferOptions{
-		OperationName: "downloadBlobToWriterAt",
-		TransferSize:  count,
-		ChunkSize:     o.BlockSize,
-		NumChunks:     numChunks,
-		Concurrency:   o.Concurrency,
-		Operation: func(ctx context.Context, chunkStart int64, count int64) error {
-			buff, err := acquireBuffer()
-			if err != nil {
-				return err
-			}
-
-			body, err := getBodyForRange(ctx, chunkStart, count)
-			if err != nil {
-				buffers.Release(buff)
-				return nil
-			}
-
-			_, err = io.ReadFull(body, buff[:count])
-			body.Close()
-			if err != nil {
-				return err
-			}
-
-			blockIndex := chunkStart / o.BlockSize
-			blocks[blockIndex] <- buff[:count]
-			return nil
-		},
-	})
-
-	if err != nil {
-		return 0, err
-	}
-	// error from writer thread.
-	if err = <-writerError; err != nil {
-		return 0, err
-	}
-	return writeSize, nil
 }
 
 // DownloadStream reads a range of bytes from a blob. The response also includes the blob's properties and metadata.
@@ -596,11 +436,6 @@ func (b *Client) DownloadFile(ctx context.Context, file *os.File, o *DownloadFil
 	}
 	do := (*downloadOptions)(o)
 
-	filePointer, err := file.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return 0, err
-	}
-
 	// 1. Calculate the size of the destination file
 	var size int64
 
@@ -629,15 +464,7 @@ func (b *Client) DownloadFile(ctx context.Context, file *os.File, o *DownloadFil
 	}
 
 	if size > 0 {
-		writeSize, err := b.downloadFile(ctx, file, *do)
-		if err != nil {
-			return 0, err
-		}
-		_, err = file.Seek(filePointer, io.SeekStart)
-		if err != nil {
-			return 0, err
-		}
-		return writeSize, nil
+		return b.downloadBuffer(ctx, file, *do)
 	} else { // if the blob's size is 0, there is no need in downloading it
 		return 0, nil
 	}
