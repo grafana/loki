@@ -60,7 +60,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 
 		client, err := NewGroupClient(cfg, mockReader, "test-group", kprom.NewMetrics("foo"), log.NewNopLogger(),
 			kgo.ClientID(id),
-			kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, assigned map[string][]int32) {
+			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				partitionsLock.Lock()
 				defer partitionsLock.Unlock()
 				t.Logf("%s assigned partitions: %v", id, assigned["test-topic"])
@@ -68,7 +68,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 					assignedPartitions.Store(p, struct{}{})
 				}
 			}),
-			kgo.OnPartitionsRevoked(func(ctx context.Context, c *kgo.Client, revoked map[string][]int32) {
+			kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, revoked map[string][]int32) {
 				partitionsLock.Lock()
 				defer partitionsLock.Unlock()
 				t.Logf("%s revoked partitions: %v", id, revoked["test-topic"])
@@ -227,10 +227,10 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 
 		client, err := NewGroupClient(cfg, mockReader, "test-group", kprom.NewMetrics("foo"), log.NewNopLogger(),
 			kgo.ClientID(id),
-			kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, assigned map[string][]int32) {
+			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
 				t.Logf("%s assigned partitions: %v", id, assigned["test-topic"])
 			}),
-			kgo.OnPartitionsRevoked(func(ctx context.Context, c *kgo.Client, revoked map[string][]int32) {
+			kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, revoked map[string][]int32) {
 				t.Logf("%s revoked partitions: %v", id, revoked["test-topic"])
 			}),
 		)

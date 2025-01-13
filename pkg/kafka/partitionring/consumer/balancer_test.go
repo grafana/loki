@@ -264,10 +264,10 @@ func (g *testConsumerGroup) createConsumer(id string) *kgo.Client {
 		kgo.ConsumeTopics("test-topic"),
 		kgo.Balancers(NewCooperativeActiveStickyBalancer(g.mockReader)),
 		kgo.ClientID(id),
-		kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, m map[string][]int32) {
+		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
 			g.t.Logf("Assigned partitions 1: %v", m)
 		}),
-		kgo.OnPartitionsAssigned(func(ctx context.Context, c *kgo.Client, m map[string][]int32) {
+		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
 			g.t.Logf("Assigned partitions 2: %v", m)
 		}),
 	)
