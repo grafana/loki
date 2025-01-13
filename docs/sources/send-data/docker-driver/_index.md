@@ -31,7 +31,7 @@ docker plugin install grafana/loki-docker-driver:2.9.2 --alias loki --grant-all-
 ```
 
 {{< admonition type="note" >}}
-Add `-arm64` to the image tag for AMR64 hosts.
+Add `-arm64` to the image tag for ARM64 hosts.
 {{< /admonition >}}
 
 To check installed plugins, use the `docker plugin ls` command.
