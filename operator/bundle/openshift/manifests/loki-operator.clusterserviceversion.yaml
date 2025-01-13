@@ -455,7 +455,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: |-
-          MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          MaxEntriesLimitPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.global.queries.maxEntriesLimitPerQuery
@@ -637,7 +637,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: |-
-          MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          MaxEntriesLimitPerQuery defines the maximum number of log entries
           that will be returned for a query.
         displayName: Max Entries Limit per Query
         path: limits.tenants.queries.maxEntriesLimitPerQuery

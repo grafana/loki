@@ -279,7 +279,7 @@ spec:
                             type: integer
                           maxEntriesLimitPerQuery:
                             description: |-
-                              MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                              MaxEntriesLimitPerQuery defines the maximum number of log entries
                               that will be returned for a query.
                             format: int32
                             type: integer
@@ -559,7 +559,7 @@ spec:
                               type: integer
                             maxEntriesLimitPerQuery:
                               description: |-
-                                MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                                MaxEntriesLimitPerQuery defines the maximum number of log entries
                                 that will be returned for a query.
                               format: int32
                               type: integer
@@ -4166,7 +4166,7 @@ spec:
                             type: integer
                           maxEntriesLimitPerQuery:
                             description: |-
-                              MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                              MaxEntriesLimitPerQuery defines the maximum number of log entries
                               that will be returned for a query.
                             format: int32
                             type: integer
@@ -4241,7 +4241,7 @@ spec:
                               type: integer
                             maxEntriesLimitPerQuery:
                               description: |-
-                                MaxEntriesLimitsPerQuery defines the maximum number of log entries
+                                MaxEntriesLimitPerQuery defines the maximum number of log entries
                                 that will be returned for a query.
                               format: int32
                               type: integer
