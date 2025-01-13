@@ -22,8 +22,8 @@ func TestWrapTee(t *testing.T) {
 	tee3 := new(mockedTee)
 	streams := []KeyedStream{
 		{
-			HashKey: 1,
-			Stream:  push.Stream{},
+			RingToken: 1,
+			Stream:    push.Stream{},
 		},
 	}
 	tee1.On("Duplicate", "1", streams).Once()
