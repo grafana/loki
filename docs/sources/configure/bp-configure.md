@@ -56,7 +56,7 @@ It's also worth noting that the batching nature of the Loki push API can lead to
 
 Grafana Labs has found that `gzip` was very good for compression but was very slow, and this was causing slow query responses.
 
-`LZ4` was a good compromise of speed and compression performance. However, there were some issues with non-deterministic output of compressed chunks, where two ingesters compressing the same data would produce a chunk with a different checksum, even though they would still decompress back to the same input data. This was interfering with syncing chunks to reduce duplicates.
+`LZ4` is a good compromise of speed and compression performance. While compression is slightly slower than `snappy`, the compression ratio is higher, resulting in smaller chunks in object storage.
 
 ## Use `chunk_target_size`
 
