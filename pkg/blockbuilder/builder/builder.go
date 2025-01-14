@@ -501,10 +501,6 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 		}
 	}
 
-	if lastOffset <= job.Offsets().Min {
-		return lastOffset, nil
-	}
-
 	// log success
 	level.Info(logger).Log(
 		"msg", "successfully processed job",
@@ -527,7 +523,6 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 	})
 
 	var (
-		lastConsumedOffset  = offsets.Min - 1
 		lastSeenOffset      = offsets.Min - 1
 		boff                = backoff.New(ctx, i.cfg.Backoff)
 		consecutiveTimeouts = 0
@@ -536,7 +531,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 
 	for lastSeenOffset < offsets.Max && boff.Ongoing() {
 		if consecutiveTimeouts >= maxTimeouts {
-			return lastConsumedOffset, fmt.Errorf("exceeded maximum consecutive timeouts (%d) while polling records", maxTimeouts)
+			return lastSeenOffset, fmt.Errorf("exceeded maximum consecutive timeouts (%d) while polling records", maxTimeouts)
 		}
 
 		if err := context.Cause(ctx); err != nil {
@@ -545,7 +540,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 
 		// Add timeout for each poll operation
 		pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		fs := c.PollRecords(pollCtx, int(offsets.Max-lastConsumedOffset))
+		fs := c.PollRecords(pollCtx, int(offsets.Max-lastSeenOffset))
 		cancel()
 
 		if err := fs.Err(); err != nil {
@@ -593,7 +588,6 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 				return 0, fmt.Errorf("failed to decode record: %w", err)
 			}
 
-			lastConsumedOffset = record.Offset
 			if len(stream.Entries) == 0 {
 				continue
 			}
@@ -619,7 +613,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 		}
 	}
 
-	return lastConsumedOffset, boff.Err()
+	return lastSeenOffset, boff.Err()
 }
 
 func withBackoff[T any](
