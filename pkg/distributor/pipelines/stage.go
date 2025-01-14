@@ -136,7 +136,7 @@ type PromoteFieldToLabel struct {
 	Stage
 }
 
-func (s *PromoteFieldToLabel) Apply(ctx context.Context, streams *model.StreamsBuilder) error {
+func (s *PromoteFieldToLabel) Apply(ctx context.Context, _ *model.StreamsBuilder) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -147,7 +147,7 @@ type PromoteFieldToMetadata struct {
 	Stage
 }
 
-func (s *PromoteFieldToMetadata) Apply(ctx context.Context, streams *model.StreamsBuilder) error {
+func (s *PromoteFieldToMetadata) Apply(ctx context.Context, _ *model.StreamsBuilder) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

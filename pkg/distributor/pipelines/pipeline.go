@@ -23,7 +23,7 @@ type NoopProcessor struct {
 }
 
 // Apply implements Transformer
-func (n *NoopProcessor) Apply(_ context.Context, streams *model.StreamsBuilder) error {
+func (n *NoopProcessor) Apply(_ context.Context, _ *model.StreamsBuilder) error {
 	return nil
 }
 
