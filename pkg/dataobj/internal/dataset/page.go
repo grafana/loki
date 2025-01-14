@@ -34,6 +34,7 @@ type (
 		CompressedSize   int    // CompressedSize is the size of a page after compression.
 		CRC32            uint32 // CRC32 checksum of the page after encoding and compression.
 		RowCount         int    // RowCount is the number of rows in the page, including NULLs.
+		ValuesCount      int    // ValuesCount is the number of non-NULL values in the page.
 
 		Encoding datasetmd.EncodingType // Encoding used for values in the page.
 		Stats    *datasetmd.Statistics  // Optional statistics for the page.

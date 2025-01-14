@@ -55,6 +55,7 @@ func (enc *LogsEncoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.C
 			Name:             info.Name,
 			ValueType:        info.Type,
 			RowsCount:        uint32(info.RowsCount),
+			ValuesCount:      uint32(info.ValuesCount),
 			Compression:      info.Compression,
 			UncompressedSize: uint32(info.UncompressedSize),
 			CompressedSize:   uint32(info.CompressedSize),
@@ -199,6 +200,7 @@ func (enc *LogsColumnEncoder) AppendPage(page *dataset.MemPage) error {
 			CompressedSize:   uint32(page.Info.CompressedSize),
 			Crc32:            page.Info.CRC32,
 			RowsCount:        uint32(page.Info.RowCount),
+			ValuesCount:      uint32(page.Info.ValuesCount),
 			Encoding:         page.Info.Encoding,
 
 			DataOffset: uint32(enc.startOffset + enc.data.Len()),

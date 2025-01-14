@@ -89,6 +89,7 @@ func (col *streamsDatasetColumn) ColumnInfo() *dataset.ColumnInfo {
 		Compression: col.desc.Info.Compression,
 
 		RowsCount:        int(col.desc.Info.RowsCount),
+		ValuesCount:      int(col.desc.Info.ValuesCount),
 		CompressedSize:   int(col.desc.Info.CompressedSize),
 		UncompressedSize: int(col.desc.Info.UncompressedSize),
 
@@ -133,6 +134,7 @@ func (p *streamsDatasetPage) PageInfo() *dataset.PageInfo {
 		CompressedSize:   int(p.desc.Info.CompressedSize),
 		CRC32:            p.desc.Info.Crc32,
 		RowCount:         int(p.desc.Info.RowsCount),
+		ValuesCount:      int(p.desc.Info.ValuesCount),
 
 		Encoding: p.desc.Info.Encoding,
 		Stats:    p.desc.Info.Statistics,
