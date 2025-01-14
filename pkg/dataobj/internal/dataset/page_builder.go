@@ -240,4 +240,5 @@ func (b *pageBuilder) Reset() {
 	b.presenceBuffer.Reset()
 	b.valuesEnc.Reset(b.valuesWriter)
 	b.rows = 0
+	b.values = 0
 }
