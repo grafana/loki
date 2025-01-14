@@ -9,6 +9,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
@@ -31,7 +32,7 @@ func decodeFileMetadata(r streamio.Reader) (*filemd.Metadata, error) {
 	return &md, nil
 }
 
-// decodeStreamsMetadata decodes stream section metadta from r.
+// decodeStreamsMetadata decodes stream section metadata from r.
 func decodeStreamsMetadata(r streamio.Reader) (*streamsmd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
 	if err != nil {
@@ -50,6 +51,31 @@ func decodeStreamsMetadata(r streamio.Reader) (*streamsmd.Metadata, error) {
 // decodeStreamsColumnMetadata decodes stream column metadata from r.
 func decodeStreamsColumnMetadata(r streamio.Reader) (*streamsmd.ColumnMetadata, error) {
 	var metadata streamsmd.ColumnMetadata
+	if err := decodeProto(r, &metadata); err != nil {
+		return nil, fmt.Errorf("streams column metadata: %w", err)
+	}
+	return &metadata, nil
+}
+
+// decodeLogsMetadata decodes logs section metadata from r.
+func decodeLogsMetadata(r streamio.Reader) (*logsmd.Metadata, error) {
+	gotVersion, err := streamio.ReadUvarint(r)
+	if err != nil {
+		return nil, fmt.Errorf("read streams section format version: %w", err)
+	} else if gotVersion != streamsFormatVersion {
+		return nil, fmt.Errorf("unexpected streams section format version: got=%d want=%d", gotVersion, streamsFormatVersion)
+	}
+
+	var md logsmd.Metadata
+	if err := decodeProto(r, &md); err != nil {
+		return nil, fmt.Errorf("streams section metadata: %w", err)
+	}
+	return &md, nil
+}
+
+// decodeLogsColumnMetadata decodes logs column metadata from r.
+func decodeLogsColumnMetadata(r streamio.Reader) (*logsmd.ColumnMetadata, error) {
+	var metadata logsmd.ColumnMetadata
 	if err := decodeProto(r, &metadata); err != nil {
 		return nil, fmt.Errorf("streams column metadata: %w", err)
 	}
