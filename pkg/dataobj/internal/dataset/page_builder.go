@@ -44,7 +44,8 @@ type pageBuilder struct {
 	presenceEnc *bitmapEncoder
 	valuesEnc   valueEncoder
 
-	rows int // Number of rows appended to the builder.
+	rows   int // Number of rows appended to the builder.
+	values int // Number of non-NULL values appended to the builder.
 }
 
 // newPageBuilder creates a new pageBuilder that stores a sequence of [Value]s.
@@ -104,6 +105,7 @@ func (b *pageBuilder) Append(value Value) bool {
 	}
 
 	b.rows++
+	b.values++
 	return true
 }
 
@@ -209,6 +211,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 			CompressedSize:   finalData.Len(),
 			CRC32:            checksum,
 			RowCount:         b.rows,
+			ValuesCount:      b.values,
 
 			Encoding: b.opts.Encoding,
 
@@ -237,4 +240,5 @@ func (b *pageBuilder) Reset() {
 	b.presenceBuffer.Reset()
 	b.valuesEnc.Reset(b.valuesWriter)
 	b.rows = 0
+	b.values = 0
 }
