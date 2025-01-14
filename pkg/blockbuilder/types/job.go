@@ -51,6 +51,10 @@ func (s JobStatus) String() string {
 	}
 }
 
+func (s JobStatus) IsFinished() bool {
+	return s == JobStatusComplete || s == JobStatusFailed || s == JobStatusExpired
+}
+
 // Offsets represents the range of offsets to process
 type Offsets struct {
 	Min int64

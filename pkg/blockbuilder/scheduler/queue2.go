@@ -1,0 +1,242 @@
+package scheduler
+
+import (
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+)
+
+// JobQueue2 is a thread-safe implementation of a job queue with state tracking
+type JobQueue2 struct {
+	mu sync.RWMutex
+
+	pending    *PriorityQueue[string, *JobWithMetadata] // Jobs waiting to be processed, ordered by priority
+	inProgress map[string]*JobWithMetadata              // Jobs currently being processed
+	completed  *CircularBuffer[*JobWithMetadata]        // Last N completed jobs
+	statusMap  map[string]types.JobStatus               // Maps job ID to its current status
+
+	logger  log.Logger
+	metrics *jobQueueMetrics
+}
+
+// NewJobQueue2 creates a new JobQueue2 instance
+func NewJobQueue2(logger log.Logger, reg prometheus.Registerer) *JobQueue2 {
+
+	return &JobQueue2{
+		pending:    NewPriorityQueue(priorityComparator, jobIDExtractor),
+		inProgress: make(map[string]*JobWithMetadata),
+		completed:  NewCircularBuffer[*JobWithMetadata](defaultCompletedJobsCapacity),
+		statusMap:  make(map[string]types.JobStatus),
+		logger:     logger,
+		metrics:    newJobQueueMetrics(reg),
+	}
+}
+
+// priorityComparator compares two jobs by priority (higher priority first)
+func priorityComparator(a, b *JobWithMetadata) bool {
+	return a.Priority > b.Priority
+}
+
+// jobIDExtractor extracts the job ID from a JobWithMetadata
+func jobIDExtractor(j *JobWithMetadata) string {
+	return j.ID()
+}
+
+// TransitionState attempts to transition a job from one specific state to another
+func (q *JobQueue2) TransitionState(jobID string, from, to types.JobStatus) (bool, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	currentStatus, exists := q.statusMap[jobID]
+	if !exists {
+		return false, fmt.Errorf("job %s not found", jobID)
+	}
+
+	if currentStatus != from {
+		return false, fmt.Errorf("job %s is in state %s, not %s", jobID, currentStatus, from)
+	}
+
+	return q.transitionLockLess(jobID, to)
+}
+
+// TransitionAny transitions a job from any state to the specified state
+func (q *JobQueue2) TransitionAny(jobID string, to types.JobStatus, createFn func() (*JobWithMetadata, error)) (prevStatus types.JobStatus, found bool, err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	currentStatus, exists := q.statusMap[jobID]
+	if finished := currentStatus.IsFinished(); !exists || finished {
+		if createFn == nil {
+			return types.JobStatusUnknown, false, fmt.Errorf("job %s not found and no creation function provided", jobID)
+		}
+
+		if finished {
+			level.Debug(q.logger).Log("msg", "ignoring transition for completed job; will re-enqueue", "id", jobID, "from", currentStatus, "to", to)
+		}
+
+		job, err := createFn()
+		if err != nil {
+			return types.JobStatusUnknown, false, fmt.Errorf("failed to create job %s: %w", jobID, err)
+		}
+
+		q.statusMap[jobID] = types.JobStatusPending
+		q.pending.Push(job)
+		q.metrics.pending.Inc()
+		level.Debug(q.logger).Log("msg", "created new job", "id", jobID, "status", types.JobStatusPending)
+
+		if _, err := q.transitionLockLess(jobID, to); err != nil {
+			return types.JobStatusUnknown, false, err
+		}
+		return types.JobStatusUnknown, false, nil
+	}
+
+	_, err = q.transitionLockLess(jobID, to)
+	return currentStatus, true, err
+}
+
+// transitionLockLess performs the actual state transition (must be called with lock held)
+func (q *JobQueue2) transitionLockLess(jobID string, to types.JobStatus) (bool, error) {
+	from := q.statusMap[jobID]
+	if from == to {
+		return false, nil
+	}
+
+	var job *JobWithMetadata
+
+	// Remove from current state
+	switch from {
+	case types.JobStatusPending:
+		if j, exists := q.pending.Remove(jobID); exists {
+			job = j
+			q.metrics.pending.Dec()
+		}
+	case types.JobStatusInProgress:
+		if j, exists := q.inProgress[jobID]; exists {
+			job = j
+			delete(q.inProgress, jobID)
+			q.metrics.inProgress.Dec()
+		}
+	}
+
+	if job == nil {
+		return false, fmt.Errorf("job %s not found in its supposed state %s", jobID, from)
+	}
+
+	// Add to new state
+	job.Status = to
+	job.UpdateTime = time.Now()
+
+	switch to {
+	case types.JobStatusPending:
+		q.pending.Push(job)
+		q.metrics.pending.Inc()
+	case types.JobStatusInProgress:
+		q.inProgress[jobID] = job
+		q.metrics.inProgress.Inc()
+		job.StartTime = job.UpdateTime
+	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
+		q.completed.Push(job)
+		q.metrics.completed.WithLabelValues(to.String()).Inc()
+	default:
+		return false, fmt.Errorf("invalid target state: %s", to)
+	}
+
+	q.statusMap[jobID] = to
+	level.Debug(q.logger).Log("msg", "transitioned job state", "id", jobID, "from", from, "to", to)
+	return true, nil
+}
+
+// Exists checks if a job exists and returns its current status
+func (q *JobQueue2) Exists(jobID string) (types.JobStatus, bool) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	status, exists := q.statusMap[jobID]
+	return status, exists
+}
+
+// Dequeue removes and returns the highest priority pending job
+func (q *JobQueue2) Dequeue() (*types.Job, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	job, ok := q.pending.Peek()
+	if !ok {
+		return nil, false
+	}
+
+	_, err := q.transitionLockLess(job.ID(), types.JobStatusInProgress)
+	if err != nil {
+		level.Error(q.logger).Log("msg", "failed to transition dequeued job to in progress", "id", job.ID(), "err", err)
+		return nil, false
+	}
+
+	return job.Job, true
+}
+
+// ListPendingJobs returns a list of all pending jobs
+func (q *JobQueue2) ListPendingJobs() []JobWithMetadata {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	// return copies of the jobs since they can change after the lock is released
+	jobs := make([]JobWithMetadata, 0, q.pending.Len())
+	for _, j := range q.pending.List() {
+		cpy := *j.Job
+		jobs = append(jobs, JobWithMetadata{
+			Job:        &cpy, // force copy
+			Priority:   j.Priority,
+			Status:     j.Status,
+			StartTime:  j.StartTime,
+			UpdateTime: j.UpdateTime,
+		})
+	}
+
+	return jobs
+}
+
+// ListInProgressJobs returns a list of all in-progress jobs
+func (q *JobQueue2) ListInProgressJobs() []JobWithMetadata {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	// return copies of the jobs since they can change after the lock is released
+	jobs := make([]JobWithMetadata, 0, len(q.inProgress))
+	for _, j := range q.inProgress {
+		cpy := *j.Job
+		jobs = append(jobs, JobWithMetadata{
+			Job:        &cpy, // force copy
+			Priority:   j.Priority,
+			Status:     j.Status,
+			StartTime:  j.StartTime,
+			UpdateTime: j.UpdateTime,
+		})
+	}
+	return jobs
+}
+
+// ListCompletedJobs returns a list of completed jobs
+func (q *JobQueue2) ListCompletedJobs() []JobWithMetadata {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	jobs := make([]JobWithMetadata, 0, q.completed.Len())
+	q.completed.Range(func(job *JobWithMetadata) bool {
+		cpy := *job.Job
+		jobs = append(jobs, JobWithMetadata{
+			Job:        &cpy, // force copy
+			Priority:   job.Priority,
+			Status:     job.Status,
+			StartTime:  job.StartTime,
+			UpdateTime: job.UpdateTime,
+		})
+		return true
+	})
+	return jobs
+}
