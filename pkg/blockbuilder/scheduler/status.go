@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/twmb/franz-go/pkg/kadm"
 )
 
@@ -15,6 +16,8 @@ import (
 var defaultPageContent string
 var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.FuncMap{
 	"durationSince": func(t time.Time) string { return time.Since(t).Truncate(time.Second).String() },
+	"offsetsLen":    func(min, max int64) int64 { return max - min },
+	"humanize":      humanize.Comma,
 }).Parse(defaultPageContent))
 
 type jobQueue interface {
