@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -10,8 +11,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
+func newTestQueue2() *JobQueue2 {
+	return NewJobQueue2(
+		JobQueueConfig{
+			LeaseDuration:            10 * time.Minute,
+			LeaseExpiryCheckInterval: time.Minute,
+		},
+		log.NewNopLogger(),
+		prometheus.NewRegistry(),
+	)
+}
+
 func TestJobQueue2_TransitionState(t *testing.T) {
-	q := NewJobQueue2(log.NewNopLogger(), prometheus.NewRegistry())
+	q := newTestQueue2()
 	offsets := types.Offsets{Min: 0, Max: 100}
 	job := types.NewJob(1, offsets)
 	jobID := job.ID()
@@ -41,7 +53,7 @@ func TestJobQueue2_TransitionState(t *testing.T) {
 }
 
 func TestJobQueue2_TransitionAny(t *testing.T) {
-	q := NewJobQueue2(log.NewNopLogger(), prometheus.NewRegistry())
+	q := newTestQueue2()
 	offsets := types.Offsets{Min: 0, Max: 100}
 	job := types.NewJob(1, offsets)
 	jobID := job.ID()
@@ -73,7 +85,7 @@ func TestJobQueue2_TransitionAny(t *testing.T) {
 }
 
 func TestJobQueue2_Dequeue(t *testing.T) {
-	q := NewJobQueue2(log.NewNopLogger(), prometheus.NewRegistry())
+	q := newTestQueue2()
 
 	// Add jobs with different priorities
 	jobs := []struct {
@@ -115,7 +127,7 @@ func TestJobQueue2_Dequeue(t *testing.T) {
 }
 
 func TestJobQueue2_Lists(t *testing.T) {
-	q := NewJobQueue2(log.NewNopLogger(), prometheus.NewRegistry())
+	q := newTestQueue2()
 
 	// Add jobs in different states
 	jobStates := map[int32]types.JobStatus{
@@ -160,4 +172,41 @@ func TestJobQueue2_Lists(t *testing.T) {
 	for _, j := range completed {
 		require.Contains(t, []types.JobStatus{types.JobStatusComplete, types.JobStatusFailed}, j.Status)
 	}
+}
+
+func TestJobQueue2_LeaseExpiry(t *testing.T) {
+	cfg := JobQueueConfig{
+		LeaseDuration:            100 * time.Millisecond,
+		LeaseExpiryCheckInterval: 10 * time.Millisecond,
+	}
+	q := NewJobQueue2(cfg, log.NewNopLogger(), prometheus.NewRegistry())
+
+	// Create and start a job
+	job := types.NewJob(1, types.Offsets{Min: 0, Max: 100})
+	jobID := job.ID()
+
+	_, _, err := q.TransitionAny(jobID, types.JobStatusPending, func() (*JobWithMetadata, error) {
+		return NewJobWithMetadata(job, 1), nil
+	})
+	require.NoError(t, err)
+
+	// Move to in progress
+	dequeued, ok := q.Dequeue()
+	require.True(t, ok)
+	require.Equal(t, jobID, dequeued.ID())
+
+	// Wait for lease to expire
+	time.Sleep(200 * time.Millisecond)
+	err = q.requeueExpiredJobs()
+	require.NoError(t, err)
+
+	// Verify the job is back in pending
+	status, exists := q.Exists(jobID)
+	require.True(t, exists)
+	require.Equal(t, types.JobStatusPending, status)
+
+	// Check that it went through expired state
+	completed := q.ListCompletedJobs()
+	require.Len(t, completed, 1)
+	require.Equal(t, types.JobStatusExpired, completed[0].Status)
 }

@@ -1,6 +1,8 @@
 package scheduler
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -14,8 +16,9 @@ import (
 
 // JobQueue2 is a thread-safe implementation of a job queue with state tracking
 type JobQueue2 struct {
-	mu sync.RWMutex
+	cfg JobQueueConfig
 
+	mu         sync.RWMutex
 	pending    *PriorityQueue[string, *JobWithMetadata] // Jobs waiting to be processed, ordered by priority
 	inProgress map[string]*JobWithMetadata              // Jobs currently being processed
 	completed  *CircularBuffer[*JobWithMetadata]        // Last N completed jobs
@@ -26,9 +29,10 @@ type JobQueue2 struct {
 }
 
 // NewJobQueue2 creates a new JobQueue2 instance
-func NewJobQueue2(logger log.Logger, reg prometheus.Registerer) *JobQueue2 {
+func NewJobQueue2(cfg JobQueueConfig, logger log.Logger, reg prometheus.Registerer) *JobQueue2 {
 
 	return &JobQueue2{
+		cfg:        cfg,
 		pending:    NewPriorityQueue(priorityComparator, jobIDExtractor),
 		inProgress: make(map[string]*JobWithMetadata),
 		completed:  NewCircularBuffer[*JobWithMetadata](defaultCompletedJobsCapacity),
@@ -36,6 +40,66 @@ func NewJobQueue2(logger log.Logger, reg prometheus.Registerer) *JobQueue2 {
 		logger:     logger,
 		metrics:    newJobQueueMetrics(reg),
 	}
+}
+
+// RunLeaseExpiryChecker periodically checks for expired job leases and requeues them
+func (q *JobQueue2) RunLeaseExpiryChecker(ctx context.Context) {
+	ticker := time.NewTicker(q.cfg.LeaseExpiryCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			level.Debug(q.logger).Log("msg", "checking for expired job leases")
+			if err := q.requeueExpiredJobs(); err != nil {
+				level.Error(q.logger).Log("msg", "failed to requeue expired jobs", "err", err)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// requeueExpiredJobs checks for jobs that have exceeded their lease duration and requeues them
+func (q *JobQueue2) requeueExpiredJobs() error {
+	// First collect expired jobs while holding the lock
+	q.mu.Lock()
+	var expiredJobs []*JobWithMetadata
+	for id, job := range q.inProgress {
+		if time.Since(job.UpdateTime) > q.cfg.LeaseDuration {
+			level.Warn(q.logger).Log("msg", "job lease expired, will requeue", "job", id, "update_time", job.UpdateTime, "now", time.Now())
+			expiredJobs = append(expiredJobs, job)
+		}
+	}
+	q.mu.Unlock()
+
+	// Then requeue them without holding the lock
+	var multiErr error
+	for _, job := range expiredJobs {
+		// First try to transition from in-progress to expired
+		ok, err := q.TransitionState(job.ID(), types.JobStatusInProgress, types.JobStatusExpired)
+		if err != nil {
+			level.Error(q.logger).Log("msg", "failed to mark job as expired", "job", job.ID(), "err", err)
+			multiErr = errors.Join(multiErr, fmt.Errorf("failed to mark job %s as expired: %w", job.ID(), err))
+			continue
+		}
+		if !ok {
+			// Job is no longer in progress, someone else must have handled it
+			level.Debug(q.logger).Log("msg", "job no longer in progress, skipping expiry", "job", job.ID())
+			continue
+		}
+
+		// Then re-enqueue it
+		_, _, err = q.TransitionAny(job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+			return NewJobWithMetadata(job.Job, job.Priority), nil
+		})
+		if err != nil {
+			level.Error(q.logger).Log("msg", "failed to requeue expired job", "job", job.ID(), "err", err)
+			multiErr = errors.Join(multiErr, fmt.Errorf("failed to requeue expired job %s: %w", job.ID(), err))
+		}
+	}
+
+	return multiErr
 }
 
 // priorityComparator compares two jobs by priority (higher priority first)
