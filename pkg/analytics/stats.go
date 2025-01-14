@@ -23,7 +23,6 @@ import (
 )
 
 var (
-	httpClient    = http.Client{Timeout: 5 * time.Second}
 	usageStatsURL = "https://stats.grafana.org/loki-usage-report"
 	statsPrefix   = "github.com/grafana/loki/"
 	targetKey     = "target"
@@ -73,7 +72,7 @@ type Report struct {
 }
 
 // sendReport sends the report to the stats server
-func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time, URL string) error {
+func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time, URL string, httpClient *http.Client) error {
 	report := buildReport(seed, interval)
 	out, err := jsoniter.MarshalIndent(report, "", " ")
 	if err != nil {

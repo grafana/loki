@@ -185,7 +185,9 @@ spec:
   {{- else }}
   volumeClaimTemplates:
   {{- range .Values.ingester.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

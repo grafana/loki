@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/googleapis/google-cloud-go/compare/auth/oauth2adapt/v0.2.5...auth/oauth2adapt/v0.2.6) (2024-11-21)
+
+
+### Bug Fixes
+
+* **auth/oauth2adapt:** Copy map in tokenSourceAdapter.Token ([#11164](https://github.com/googleapis/google-cloud-go/issues/11164)) ([8cb0cbc](https://github.com/googleapis/google-cloud-go/commit/8cb0cbccdc32886dfb3af49fee04012937d114d2)), refs [#11161](https://github.com/googleapis/google-cloud-go/issues/11161)
+
 ## [0.2.5](https://github.com/googleapis/google-cloud-go/compare/auth/oauth2adapt/v0.2.4...auth/oauth2adapt/v0.2.5) (2024-10-30)
 
 

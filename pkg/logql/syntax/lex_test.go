@@ -108,6 +108,10 @@ func TestLex(t *testing.T) {
 		{`34+-123`, []int{NUMBER, ADD, SUB, NUMBER}},
 		{`34-123`, []int{NUMBER, SUB, NUMBER}},
 		{`sum(rate({foo="bar"}[5m])-1 > 30`, []int{SUM, OPEN_PARENTHESIS, RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, SUB, NUMBER, GT, NUMBER}},
+		{`{foo="bar"} | logfmt | bytes  < 0B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
+		{`{foo="bar"} | logfmt | bytes  < 1B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
+		{`0b01`, []int{NUMBER}},
+		{`0b10`, []int{NUMBER}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}

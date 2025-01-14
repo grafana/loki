@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"sync"
@@ -29,7 +30,7 @@ import (
 	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/auth/internal"
 	"cloud.google.com/go/auth/internal/transport"
-	"go.opencensus.io/plugin/ocgrpc"
+	"github.com/googleapis/gax-go/v2/internallog"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	grpccreds "google.golang.org/grpc/credentials"
@@ -117,6 +118,11 @@ type Options struct {
 	// APIKey specifies an API key to be used as the basis for authentication.
 	// If set DetectOpts are ignored.
 	APIKey string
+	// Logger is used for debug logging. If provided, logging will be enabled
+	// at the loggers configured level. By default logging is disabled unless
+	// enabled by setting GOOGLE_SDK_GO_LOGGING_LEVEL in which case a default
+	// logger will be used. Optional.
+	Logger *slog.Logger
 
 	// InternalOptions are NOT meant to be set directly by consumers of this
 	// package, they should only be set by generated client code.
@@ -130,6 +136,10 @@ func (o *Options) client() *http.Client {
 		return o.DetectOpts.Client
 	}
 	return nil
+}
+
+func (o *Options) logger() *slog.Logger {
+	return internallog.New(o.Logger)
 }
 
 func (o *Options) validate() error {
@@ -172,6 +182,9 @@ func (o *Options) resolveDetectOptions() *credentials.DetectOptions {
 		}
 		do.Client = transport.DefaultHTTPClientWithTLS(tlsConfig)
 		do.TokenURL = credentials.GoogleMTLSTokenURL
+	}
+	if do.Logger == nil {
+		do.Logger = o.logger()
 	}
 	return do
 }
@@ -241,6 +254,7 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 		ClientCertProvider: opts.ClientCertProvider,
 		Client:             opts.client(),
 		UniverseDomain:     opts.UniverseDomain,
+		Logger:             opts.logger(),
 	}
 	if io := opts.InternalOptions; io != nil {
 		tOpts.DefaultEndpointTemplate = io.DefaultEndpointTemplate
@@ -318,7 +332,6 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 	// Add tracing, but before the other options, so that clients can override the
 	// gRPC stats handler.
 	// This assumes that gRPC options are processed in order, left to right.
-	grpcOpts = addOCStatsHandler(grpcOpts, opts)
 	grpcOpts = addOpenTelemetryStatsHandler(grpcOpts, opts)
 	grpcOpts = append(grpcOpts, opts.GRPCDialOpts...)
 
@@ -415,13 +428,6 @@ func setAuthMetadata(token *auth.Token, m map[string]string) {
 
 func (c *grpcCredentialsProvider) RequireTransportSecurity() bool {
 	return c.secure
-}
-
-func addOCStatsHandler(dialOpts []grpc.DialOption, opts *Options) []grpc.DialOption {
-	if opts.DisableTelemetry {
-		return dialOpts
-	}
-	return append(dialOpts, grpc.WithStatsHandler(&ocgrpc.ClientHandler{}))
 }
 
 func addOpenTelemetryStatsHandler(dialOpts []grpc.DialOption, opts *Options) []grpc.DialOption {

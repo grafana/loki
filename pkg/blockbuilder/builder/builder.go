@@ -15,11 +15,14 @@ import (
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores"
@@ -42,6 +45,7 @@ type Config struct {
 	Backoff           backoff.Config `yaml:"backoff_config"`
 	WorkerParallelism int            `yaml:"worker_parallelism"`
 	SyncInterval      time.Duration  `yaml:"sync_interval"`
+	PollInterval      time.Duration  `yaml:"poll_interval"`
 
 	SchedulerAddress string `yaml:"scheduler_address"`
 	// SchedulerGRPCClientConfig configures the gRPC connection between the block-builder and its scheduler.
@@ -58,6 +62,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ChunkEncoding, prefix+"chunk-encoding", compression.Snappy.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
 	f.DurationVar(&cfg.SyncInterval, prefix+"sync-interval", 30*time.Second, "The interval at which to sync job status with the scheduler.")
+	f.DurationVar(&cfg.PollInterval, prefix+"poll-interval", 30*time.Second, "The interval at which to poll for new jobs.")
 	f.IntVar(&cfg.WorkerParallelism, prefix+"worker-parallelism", 1, "The number of workers to run in parallel to process jobs.")
 	f.StringVar(&cfg.SchedulerAddress, prefix+"scheduler-address", "", "Address of the scheduler in the format described here: https://github.com/grpc/grpc/blob/master/doc/naming.md")
 
@@ -79,6 +84,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.SyncInterval <= 0 {
 		return errors.New("sync interval must be greater than 0")
+	}
+
+	if cfg.PollInterval <= 0 {
+		return errors.New("poll interval must be greater than 0")
 	}
 
 	if cfg.WorkerParallelism < 1 {
@@ -105,13 +114,14 @@ type BlockBuilder struct {
 
 	id              string
 	cfg             Config
+	kafkaCfg        kafka.Config
 	periodicConfigs []config.PeriodConfig
-	metrics         *builderMetrics
-	logger          log.Logger
 
-	decoder       *kafka.Decoder
-	readerFactory func(partition int32) (partition.Reader, error)
+	metrics    *builderMetrics
+	logger     log.Logger
+	registerer prometheus.Registerer
 
+	decoder  *kafka.Decoder
 	store    stores.ChunkWriter
 	objStore *MultiStore
 
@@ -122,12 +132,12 @@ type BlockBuilder struct {
 func NewBlockBuilder(
 	id string,
 	cfg Config,
+	kafkaCfg kafka.Config,
 	periodicConfigs []config.PeriodConfig,
-	readerFactory func(partition int32) (partition.Reader, error),
 	store stores.ChunkWriter,
 	objStore *MultiStore,
 	logger log.Logger,
-	reg prometheus.Registerer,
+	registerer prometheus.Registerer,
 ) (*BlockBuilder,
 	error) {
 	decoder, err := kafka.NewDecoder()
@@ -135,7 +145,7 @@ func NewBlockBuilder(
 		return nil, err
 	}
 
-	t, err := types.NewGRPCTransportFromAddress(cfg.SchedulerAddress, cfg.SchedulerGRPCClientConfig, reg)
+	t, err := types.NewGRPCTransportFromAddress(cfg.SchedulerAddress, cfg.SchedulerGRPCClientConfig, registerer)
 	if err != nil {
 		return nil, fmt.Errorf("create grpc transport: %w", err)
 	}
@@ -143,13 +153,15 @@ func NewBlockBuilder(
 	i := &BlockBuilder{
 		id:               id,
 		cfg:              cfg,
+		kafkaCfg:         kafkaCfg,
 		periodicConfigs:  periodicConfigs,
-		metrics:          newBuilderMetrics(reg),
+		metrics:          newBuilderMetrics(registerer),
 		logger:           logger,
+		registerer:       registerer,
 		decoder:          decoder,
-		readerFactory:    readerFactory,
 		store:            store,
 		objStore:         objStore,
+		inflightJobs:     make(map[string]*types.Job),
 		BuilderTransport: t,
 	}
 
@@ -158,48 +170,59 @@ func NewBlockBuilder(
 }
 
 func (i *BlockBuilder) running(ctx context.Context) error {
-	wg := sync.WaitGroup{}
-
+	errgrp, ctx := errgroup.WithContext(ctx)
 	for j := 0; j < i.cfg.WorkerParallelism; j++ {
-		wg.Add(1)
-		go func(id string) {
-			defer wg.Done()
+		workerID := fmt.Sprintf("block-builder-worker-%d", j)
+		errgrp.Go(func() error {
+			c, err := client.NewReaderClient(
+				i.kafkaCfg,
+				client.NewReaderClientMetrics(workerID, i.registerer),
+				log.With(i.logger, "component", workerID),
+			)
+			if err != nil {
+				return err
+			}
 
+			var waitFor time.Duration
 			for {
 				select {
 				case <-ctx.Done():
-					return
-				default:
-					err := i.runOne(ctx, id)
+					return nil
+				case <-time.After(waitFor):
+					gotJob, err := i.runOne(ctx, c, workerID)
 					if err != nil {
 						level.Error(i.logger).Log("msg", "block builder run failed", "err", err)
 					}
+
+					// poll only when there are no jobs
+					if gotJob {
+						waitFor = 0
+					} else {
+						waitFor = i.cfg.PollInterval
+					}
 				}
 			}
-		}(fmt.Sprintf("worker-%d", j))
+
+		})
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
+	errgrp.Go(func() error {
 		ticker := time.NewTicker(i.cfg.SyncInterval)
 		defer ticker.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				return nil
 			case <-ticker.C:
 				if err := i.syncJobs(ctx); err != nil {
 					level.Error(i.logger).Log("msg", "failed to sync jobs", "err", err)
 				}
 			}
 		}
-	}()
+	})
 
-	wg.Wait()
-	return nil
+	return errgrp.Wait()
 }
 
 func (i *BlockBuilder) syncJobs(ctx context.Context) error {
@@ -218,63 +241,69 @@ func (i *BlockBuilder) syncJobs(ctx context.Context) error {
 	return nil
 }
 
-func (i *BlockBuilder) runOne(ctx context.Context, workerID string) error {
+func (i *BlockBuilder) runOne(ctx context.Context, c *kgo.Client, workerID string) (bool, error) {
 	// assuming GetJob blocks/polls until a job is available
 	resp, err := i.SendGetJobRequest(ctx, &types.GetJobRequest{
 		BuilderID: workerID,
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if !resp.OK {
 		level.Info(i.logger).Log("msg", "no available job to process")
-		return nil
+		return false, nil
 	}
 
 	job := resp.Job
 	logger := log.With(
 		i.logger,
 		"worker_id", workerID,
-		"partition", job.Partition,
-		"job_min_offset", job.Offsets.Min,
-		"job_max_offset", job.Offsets.Max,
+		"partition", job.Partition(),
+		"job_min_offset", job.Offsets().Min,
+		"job_max_offset", job.Offsets().Max,
 	)
 
 	i.jobsMtx.Lock()
-	i.inflightJobs[job.ID] = job
+	i.inflightJobs[job.ID()] = job
 	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
 	i.jobsMtx.Unlock()
 
-	lastConsumedOffset, err := i.processJob(ctx, job, logger)
+	completion := &types.CompleteJobRequest{
+		BuilderID: workerID,
+		Job:       job,
+		Success:   true,
+	}
+	if _, err = i.processJob(ctx, c, job, logger); err != nil {
+		level.Error(i.logger).Log("msg", "failed to process job", "err", err)
+		completion.Success = false
+	}
+
+	// remove from inflight jobs to stop sending sync requests
+	i.jobsMtx.Lock()
+	delete(i.inflightJobs, job.ID())
+	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
+	i.jobsMtx.Unlock()
 
 	if _, err := withBackoff(
 		ctx,
 		i.cfg.Backoff,
 		func() (res struct{}, err error) {
-			if err = i.SendCompleteJob(ctx, &types.CompleteJobRequest{
-				BuilderID:          workerID,
-				Job:                job,
-				LastConsumedOffset: lastConsumedOffset,
-			}); err != nil {
+			if err = i.SendCompleteJob(ctx, completion); err != nil {
 				level.Error(i.logger).Log("msg", "failed to mark the job as complete", "err", err)
 			}
 			return
 		},
 	); err != nil {
-		return err
+		return true, err
 	}
 
-	i.jobsMtx.Lock()
-	delete(i.inflightJobs, job.ID)
-	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
-	i.jobsMtx.Unlock()
-
-	return err
+	return true, err
 }
 
-func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
+func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
 	level.Debug(logger).Log("msg", "beginning job")
+	start := time.Now()
 
 	indexer := newTsdbCreator()
 	appender := newAppender(i.id,
@@ -297,7 +326,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 		"load records",
 		1,
 		func(ctx context.Context) error {
-			lastOffset, err = i.loadRecords(ctx, int32(job.Partition), job.Offsets, inputCh)
+			lastOffset, err = i.loadRecords(ctx, c, job.Partition(), job.Offsets(), inputCh)
 			return err
 		},
 		func(ctx context.Context) error {
@@ -305,7 +334,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 				"msg", "finished loading records",
 				"ctx_error", ctx.Err(),
 				"last_offset", lastOffset,
-				"total_records", lastOffset-job.Offsets.Min,
+				"total_records", lastOffset-job.Offsets().Min,
 			)
 			close(inputCh)
 			return nil
@@ -470,7 +499,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 		}
 	}
 
-	if lastOffset <= job.Offsets.Min {
+	if lastOffset <= job.Offsets().Min {
 		return lastOffset, nil
 	}
 
@@ -478,33 +507,44 @@ func (i *BlockBuilder) processJob(ctx context.Context, job *types.Job, logger lo
 	level.Info(logger).Log(
 		"msg", "successfully processed job",
 		"last_offset", lastOffset,
+		"duration", time.Since(start),
+		"records", lastOffset-job.Offsets().Min,
 	)
 
 	return lastOffset, nil
 }
 
-func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
-	f, err := i.readerFactory(partitionID)
-	if err != nil {
-		return 0, err
-	}
-
-	f.SetOffsetForConsumption(offsets.Min)
+func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
+	// Use NoResetOffset to avoid resetting the offset to the beginning of the partition when the requested offset is out of range.
+	// This could happen if the requested records are already outside of retention period. We should fail the job is such cases leaving the scheduler to make a decision.
+	c.AddConsumePartitions(map[string]map[int32]kgo.Offset{
+		i.kafkaCfg.Topic: {partitionID: kgo.NoResetOffset().At(offsets.Min)},
+	})
+	defer c.RemoveConsumePartitions(map[string][]int32{
+		i.kafkaCfg.Topic: {partitionID},
+	})
 
 	var (
-		lastOffset = offsets.Min - 1
-		boff       = backoff.New(ctx, i.cfg.Backoff)
+		lastConsumedOffset = offsets.Min - 1
+		lastSeenOffset     = offsets.Min - 1
+		boff               = backoff.New(ctx, i.cfg.Backoff)
 	)
 
-	for lastOffset < offsets.Max && boff.Ongoing() {
-		var records []partition.Record
-		records, err = f.Poll(ctx, int(offsets.Max-lastOffset))
-		if err != nil {
+	for lastSeenOffset < offsets.Max && boff.Ongoing() {
+		if err := context.Cause(ctx); err != nil {
+			return 0, err
+		}
+
+		fs := c.PollRecords(ctx, int(offsets.Max-lastConsumedOffset))
+		// TODO: better error handling for non-retrybale errors
+		// we don't have to iterate over all errors since we only fetch a single partition
+		if err := fs.Err(); err != nil {
+			level.Error(i.logger).Log("msg", "failed to poll records", "err", err)
 			boff.Wait()
 			continue
 		}
 
-		if len(records) == 0 {
+		if fs.Empty() {
 			// No more records available
 			break
 		}
@@ -512,27 +552,34 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 		// Reset backoff on successful poll
 		boff.Reset()
 
-		converted := make([]AppendInput, 0, len(records))
-		for _, record := range records {
+		converted := make([]AppendInput, 0, fs.NumRecords())
+		for iter := fs.RecordIter(); !iter.Done(); {
+			record := iter.Next()
+			lastSeenOffset = record.Offset
 			if record.Offset >= offsets.Max {
 				level.Debug(i.logger).Log("msg", "record offset exceeds job max offset. stop processing", "record offset", record.Offset, "max offset", offsets.Max)
 				break
 			}
-			lastOffset = record.Offset
 
-			stream, labels, err := i.decoder.Decode(record.Content)
+			stream, labels, err := i.decoder.Decode(record.Value)
 			if err != nil {
 				return 0, fmt.Errorf("failed to decode record: %w", err)
 			}
+
+			lastConsumedOffset = record.Offset
 			if len(stream.Entries) == 0 {
 				continue
 			}
 
+			// decorder reuses entries slice, so we need to copy it
+			entries := make([]logproto.Entry, len(stream.Entries))
+			copy(entries, stream.Entries)
+
 			converted = append(converted, AppendInput{
-				tenant:    record.TenantID,
+				tenant:    string(record.Key),
 				labels:    labels,
 				labelsStr: stream.Labels,
-				entries:   stream.Entries,
+				entries:   entries,
 			})
 		}
 
@@ -545,7 +592,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, partitionID int32, offse
 		}
 	}
 
-	return lastOffset, err
+	return lastConsumedOffset, boff.Err()
 }
 
 func withBackoff[T any](

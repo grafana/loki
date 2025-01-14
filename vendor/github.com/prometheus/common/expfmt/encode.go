@@ -68,7 +68,7 @@ func Negotiate(h http.Header) Format {
 		if escapeParam := ac.Params[model.EscapingKey]; escapeParam != "" {
 			switch Format(escapeParam) {
 			case model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues:
-				escapingScheme = Format(fmt.Sprintf("; escaping=%s", escapeParam))
+				escapingScheme = Format("; escaping=" + escapeParam)
 			default:
 				// If the escaping parameter is unknown, ignore it.
 			}
@@ -101,7 +101,7 @@ func NegotiateIncludingOpenMetrics(h http.Header) Format {
 		if escapeParam := ac.Params[model.EscapingKey]; escapeParam != "" {
 			switch Format(escapeParam) {
 			case model.AllowUTF8, model.EscapeUnderscores, model.EscapeDots, model.EscapeValues:
-				escapingScheme = Format(fmt.Sprintf("; escaping=%s", escapeParam))
+				escapingScheme = Format("; escaping=" + escapeParam)
 			default:
 				// If the escaping parameter is unknown, ignore it.
 			}

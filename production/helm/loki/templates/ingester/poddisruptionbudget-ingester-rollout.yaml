@@ -13,7 +13,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      rollout-group: ingester
+      rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
   {{- with .Values.ingester.maxUnavailable }}
   maxUnavailable: {{ . }}
   {{- end }}

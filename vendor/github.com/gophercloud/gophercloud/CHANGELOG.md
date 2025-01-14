@@ -1,3 +1,9 @@
+## v1.14.0 (2024-07-24)
+
+* [GH-3095](https://github.com/gophercloud/gophercloud/pull/3095) [neutron]: introduce Description argument for the portforwarding
+* [GH-3098](https://github.com/gophercloud/gophercloud/pull/3098) [neutron]: introduce Stateful argument for the security groups
+* [GH-3099](https://github.com/gophercloud/gophercloud/pull/3099) [networking]: subnet add field dns_publish_fixed_ip
+
 ## v1.13.0 (2024-07-08)
 
 * [GH-3044](https://github.com/gophercloud/gophercloud/pull/3044) [v1] Add ci jobs for openstack caracal

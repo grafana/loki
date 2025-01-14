@@ -38,6 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
 	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
+	blocktypes "github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	blockprotos "github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -50,7 +52,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	kclient "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -1118,13 +1119,14 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
 	}
 
-	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec)
+	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndMiddleware.Wrap(frontendTripper), queryrange.DefaultCodec, t.Cfg.Frontend.SupportParquetEncoding)
 
 	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.MetricsNamespace)
 	if t.Cfg.Frontend.CompressResponses {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}
 
+	// TODO: add SerializeHTTPHandler
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryTagsMiddleware(),
 		httpreq.PropagateHeadersMiddleware(httpreq.LokiActorPathHeader, httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
@@ -1338,16 +1340,29 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 	mode := t.Cfg.Ruler.Evaluation.Mode
 	logger := log.With(util_log.Logger, "component", "ruler", "evaluation_mode", mode)
 
+	var svc services.Service
 	switch mode {
 	case ruler.EvalModeLocal:
-		var engine *logql.Engine
+		var deleteStore deletion.DeleteRequestsClient
+		deleteStore, err = t.deleteRequestsClient("rule-evaluator", t.Overrides)
+		if err != nil {
+			break
+		}
 
-		engine, err = t.createRulerQueryEngine(logger)
+		var engine *logql.Engine
+		engine, err = t.createRulerQueryEngine(logger, deleteStore)
 		if err != nil {
 			break
 		}
 
 		evaluator, err = ruler.NewLocalEvaluator(engine, logger)
+
+		// The delete client needs to be stopped when the evaluator is stopped.
+		// We wrap the client on a IDLE service and call Stop on shutdown.
+		svc = services.NewIdleService(nil, func(_ error) error {
+			deleteStore.Stop()
+			return nil
+		})
 	case ruler.EvalModeRemote:
 		qfClient, e := ruler.DialQueryFrontend(&t.Cfg.Ruler.Evaluation.QueryFrontend)
 		if e != nil {
@@ -1365,7 +1380,7 @@ func (t *Loki) initRuleEvaluator() (services.Service, error) {
 
 	t.ruleEvaluator = ruler.NewEvaluatorWithJitter(evaluator, t.Cfg.Ruler.Evaluation.MaxJitter, fnv.New32a(), logger)
 
-	return nil, nil
+	return svc, nil
 }
 
 func (t *Loki) initMemberlistKV() (services.Service, error) {
@@ -1542,7 +1557,8 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
 		querierCfg := bloomgateway.QuerierConfig{
-			MinTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
+			BuildInterval:    t.Cfg.BloomBuild.Planner.PlanningInterval,
 		}
 		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
@@ -1820,27 +1836,16 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 		return nil, err
 	}
 
-	readerMetrics := partition.NewReaderMetrics(prometheus.DefaultRegisterer)
-	readerFactory := func(partitionID int32) (partition.Reader, error) {
-		return partition.NewKafkaReader(
-			t.Cfg.KafkaConfig,
-			partitionID,
-			logger,
-			readerMetrics,
-		)
-	}
-
 	bb, err := blockbuilder.NewBlockBuilder(
 		id,
 		t.Cfg.BlockBuilder,
+		t.Cfg.KafkaConfig,
 		t.Cfg.SchemaConfig.Configs,
-		readerFactory,
 		t.Store,
 		objectStore,
 		logger,
 		prometheus.DefaultRegisterer,
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -1852,17 +1857,35 @@ func (t *Loki) initBlockBuilder() (services.Service, error) {
 func (t *Loki) initBlockScheduler() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "block_scheduler")
 
-	clientMetrics := kclient.NewReaderClientMetrics("block-scheduler", prometheus.DefaultRegisterer)
-	c, err := kclient.NewReaderClient(
+	offsetManager, err := partition.NewKafkaOffsetManager(
 		t.Cfg.KafkaConfig,
-		clientMetrics,
-		log.With(logger, "component", "kafka-client"),
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		logger,
+		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating kafka client: %w", err)
+		return nil, fmt.Errorf("creating kafka offset manager: %w", err)
 	}
-	offsetReader := blockscheduler.NewOffsetReader(t.Cfg.KafkaConfig.Topic, t.Cfg.BlockScheduler.ConsumerGroup, t.Cfg.BlockScheduler.LookbackPeriod, c)
-	return blockscheduler.NewScheduler(t.Cfg.BlockScheduler, blockscheduler.NewJobQueue(), offsetReader, logger, prometheus.DefaultRegisterer), nil
+
+	s, err := blockscheduler.NewScheduler(
+		t.Cfg.BlockScheduler,
+		blockscheduler.NewJobQueue(t.Cfg.BlockScheduler.JobQueueConfig, logger, prometheus.DefaultRegisterer),
+		offsetManager,
+		logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	t.Server.HTTP.Path("/blockscheduler/status").Methods("GET").Handler(s)
+
+	blockprotos.RegisterSchedulerServiceServer(
+		t.Server.GRPC,
+		blocktypes.NewSchedulerServer(s),
+	)
+
+	return s, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
@@ -1897,12 +1920,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 	return deletion.NewPerTenantDeleteRequestsClient(client, limits), nil
 }
 
-func (t *Loki) createRulerQueryEngine(logger log.Logger) (eng *logql.Engine, err error) {
-	deleteStore, err := t.deleteRequestsClient("rule-evaluator", t.Overrides)
-	if err != nil {
-		return nil, fmt.Errorf("could not create delete requests store: %w", err)
-	}
-
+func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.Engine, err error) {
 	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil, logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)

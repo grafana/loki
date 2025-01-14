@@ -13,12 +13,12 @@ import (
 
 // OffsetReader is an interface to list offsets for all partitions of a topic from Kafka.
 type OffsetReader interface {
-	GroupLag(context.Context) (map[int32]kadm.GroupMemberLag, error)
+	GroupLag(context.Context, int64) (map[int32]kadm.GroupMemberLag, error)
 }
 
 type Planner interface {
 	Name() string
-	Plan(ctx context.Context) ([]*JobWithPriority[int], error)
+	Plan(ctx context.Context, maxJobsPerPartition int, minOffsetsPerJob int) ([]*JobWithMetadata, error)
 }
 
 const (
@@ -31,14 +31,18 @@ var validStrategies = []string{
 
 // tries to consume upto targetRecordCount records per partition
 type RecordCountPlanner struct {
-	targetRecordCount int64
-	offsetReader      OffsetReader
-	logger            log.Logger
+	targetRecordCount    int64
+	fallbackOffsetMillis int64
+	offsetReader         OffsetReader
+	logger               log.Logger
 }
 
-func NewRecordCountPlanner(targetRecordCount int64) *RecordCountPlanner {
+func NewRecordCountPlanner(offsetReader OffsetReader, targetRecordCount int64, fallbackOffsetMillis int64, logger log.Logger) *RecordCountPlanner {
 	return &RecordCountPlanner{
-		targetRecordCount: targetRecordCount,
+		targetRecordCount:    targetRecordCount,
+		fallbackOffsetMillis: fallbackOffsetMillis,
+		offsetReader:         offsetReader,
+		logger:               logger,
 	}
 }
 
@@ -46,18 +50,20 @@ func (p *RecordCountPlanner) Name() string {
 	return RecordCountStrategy
 }
 
-func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int], error) {
-	offsets, err := p.offsetReader.GroupLag(ctx)
+func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int, minOffsetsPerJob int) ([]*JobWithMetadata, error) {
+	level.Info(p.logger).Log("msg", "planning jobs", "max_jobs_per_partition", maxJobsPerPartition, "target_record_count", p.targetRecordCount)
+	offsets, err := p.offsetReader.GroupLag(ctx, p.fallbackOffsetMillis)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to get group lag", "err", err)
 		return nil, err
 	}
 
-	jobs := make([]*JobWithPriority[int], 0, len(offsets))
+	jobs := make([]*JobWithMetadata, 0, len(offsets))
 	for _, partitionOffset := range offsets {
-		// kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
-		// no additional validation is needed here
-		startOffset := partitionOffset.Commit.At + 1
+		// 1. kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
+		//    no additional validation is needed here
+		// 2. committed offset could be behind start offset if we are falling behind retention period.
+		startOffset := max(partitionOffset.Commit.At+1, partitionOffset.Start.Offset)
 		endOffset := partitionOffset.End.Offset
 
 		// Skip if there's no lag
@@ -65,26 +71,39 @@ func (p *RecordCountPlanner) Plan(ctx context.Context) ([]*JobWithPriority[int],
 			continue
 		}
 
+		var jobCount int
+		currentStart := startOffset
 		// Create jobs of size targetRecordCount until we reach endOffset
-		for currentStart := startOffset; currentStart < endOffset; {
+		for currentStart < endOffset {
+			if maxJobsPerPartition > 0 && jobCount >= maxJobsPerPartition {
+				break
+			}
+
 			currentEnd := min(currentStart+p.targetRecordCount, endOffset)
 
-			job := NewJobWithPriority(
-				types.NewJob(int(partitionOffset.Partition), types.Offsets{
+			// Skip creating job if it's smaller than minimum size
+			if currentEnd-currentStart < int64(minOffsetsPerJob) {
+				break
+			}
+
+			job := NewJobWithMetadata(
+				types.NewJob(partitionOffset.Partition, types.Offsets{
 					Min: currentStart,
 					Max: currentEnd,
-				}), int(endOffset-currentStart), // priority is remaining records to process
+				}),
+				int(endOffset-currentStart), // priority is remaining records to process
 			)
 			jobs = append(jobs, job)
 
 			currentStart = currentEnd
+			jobCount++
 		}
 	}
 
 	// Sort jobs by partition then priority
 	sort.Slice(jobs, func(i, j int) bool {
-		if jobs[i].Job.Partition != jobs[j].Job.Partition {
-			return jobs[i].Job.Partition < jobs[j].Job.Partition
+		if jobs[i].Job.Partition() != jobs[j].Job.Partition() {
+			return jobs[i].Job.Partition() < jobs[j].Job.Partition()
 		}
 		return jobs[i].Priority > jobs[j].Priority
 	})

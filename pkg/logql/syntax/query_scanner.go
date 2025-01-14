@@ -409,8 +409,10 @@ func (s *Scanner) scanNumber(ch rune, seenDot bool) (rune, rune) {
 				ch = s.next()
 				base, prefix = 8, 'o'
 			case 'b':
-				ch = s.next()
-				base, prefix = 2, 'b'
+				if peek := s.Peek(); peek == '0' || peek == '1' {
+					ch = s.next()
+					base, prefix = 2, 'b'
+				}
 			default:
 				base, prefix = 8, '0'
 				digsep = 1 // leading 0
