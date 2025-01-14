@@ -509,16 +509,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if missing, lbMissing := d.missingEnforcedLabels(stream, tenantID, validationContext); missing {
-				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, tenantID, lbMissing)
-				d.writeFailuresManager.Log(tenantID, err)
-				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(len(stream.Entries)))
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(discardedBytes))
-				continue
-			}
-
 			// if the given stream is blocked due to its scope ingestion, we skip it.
 			blocked, ingestionScope := d.streamIsBlocked(stream, tenantID, validationContext, now)
 			if blocked {
@@ -784,25 +774,22 @@ func (d *Distributor) fetchLbs(stream logproto.Stream, tenantID string, validati
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
-func (d *Distributor) missingEnforcedLabels(stream logproto.Stream, tenantID string, validationContext validationContext) (bool, string) {
-	requiredLbs := validationContext.enforcedLabels
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
+	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
 	if len(requiredLbs) == 0 {
 		// no enforced labels configured.
-		return false, ""
+		return false, []string{}
 	}
 
-	ls, err := d.fetchLbs(stream, tenantID, validationContext)
-	if err != nil {
-		return true, ""
-	}
+	missingLbs := []string{}
 
 	for _, lb := range requiredLbs {
-		if !ls.Has(lb) {
-			return true, lb
+		if !lbs.Has(lb) {
+			missingLbs = append(missingLbs, lb)
 		}
 	}
 
-	return false, ""
+	return len(missingLbs) > 0, missingLbs
 }
 
 // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.

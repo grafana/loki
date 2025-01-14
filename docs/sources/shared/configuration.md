@@ -3949,6 +3949,7 @@ otlp_config:
 # scope of the ingestion.
 # CLI flag: -limits.scope-ingestion-label
 [scope_ingestion_label: <string> | default = ""]
+
 # List of labels that must be present in the stream. If any of the labels are
 # missing, the stream will be discarded. This flag configures it globally for
 # all tenants. Experimental.
