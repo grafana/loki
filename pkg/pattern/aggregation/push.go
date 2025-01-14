@@ -222,6 +222,10 @@ func (p *Push) buildPayload(ctx context.Context) ([]byte, error) {
 		}
 	}
 
+	if len(streams) == 0 {
+		return nil, nil
+	}
+
 	req := &logproto.PushRequest{
 		Streams: streams,
 	}
