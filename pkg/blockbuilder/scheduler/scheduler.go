@@ -263,10 +263,12 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 			job.Partition(),
 			job.Offsets().Max-1, // max is exclusive, so commit max-1
 		); err == nil {
-			s.queue.TransitionAny(job.ID(), types.JobStatusComplete, func() (*JobWithMetadata, error) {
-				return NewJobWithMetadata(job, DefaultPriority), nil
-			})
 			level.Info(logger).Log("msg", "job completed successfully")
+			if _, _, transitionErr := s.queue.TransitionAny(job.ID(), types.JobStatusComplete, func() (*JobWithMetadata, error) {
+				return NewJobWithMetadata(job, DefaultPriority), nil
+			}); transitionErr != nil {
+				level.Warn(logger).Log("msg", "failed to mark successful job as complete", "err", transitionErr)
+			}
 
 			// TODO(owen-d): cleaner way to enqueue next job for this partition,
 			// don't make it part of the response cycle to job completion, etc.
