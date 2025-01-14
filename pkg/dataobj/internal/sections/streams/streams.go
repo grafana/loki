@@ -124,19 +124,19 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder, pageSize int) error {
 
 	idBuilder, err := numberColumnBuilder(pageSize)
 	if err != nil {
-		return fmt.Errorf("creating id column: %w", err)
+		return fmt.Errorf("creating ID column: %w", err)
 	}
 	minTimestampBuilder, err := numberColumnBuilder(pageSize)
 	if err != nil {
-		return fmt.Errorf("creating minimum ts column: %w", err)
+		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
 	maxTimestampBuilder, err := numberColumnBuilder(pageSize)
 	if err != nil {
-		return fmt.Errorf("creating maximum ts column: %w", err)
+		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
 	rowsCountBuilder, err := numberColumnBuilder(pageSize)
 	if err != nil {
-		return fmt.Errorf("creating maximum ts column: %w", err)
+		return fmt.Errorf("creating rows column: %w", err)
 	}
 
 	var (
@@ -232,12 +232,12 @@ func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
 func encodeColumn(enc *encoding.StreamsEncoder, columnType streamsmd.ColumnType, builder *dataset.ColumnBuilder) error {
 	column, err := builder.Flush()
 	if err != nil {
-		return fmt.Errorf("flushing column: %w", err)
+		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
 	columnEnc, err := enc.OpenColumn(columnType, &column.Info)
 	if err != nil {
-		return fmt.Errorf("opening column encoder: %w", err)
+		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
 	defer func() {
 		// Discard on defer for safety. This will return an error if we
@@ -248,7 +248,7 @@ func encodeColumn(enc *encoding.StreamsEncoder, columnType streamsmd.ColumnType,
 	for _, page := range column.Pages {
 		err := columnEnc.AppendPage(page)
 		if err != nil {
-			return fmt.Errorf("appending page: %w", err)
+			return fmt.Errorf("appending %s page: %w", columnType, err)
 		}
 	}
 
