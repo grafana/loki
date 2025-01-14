@@ -2,8 +2,8 @@
 name: helm-loki-ci
 on:
   pull_request:
-    paths:
-      - "production/helm/loki/**"
+    # paths:
+    #   - "production/helm/loki/**"
 
 jobs:
   publish-diff:
