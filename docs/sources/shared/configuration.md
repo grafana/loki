@@ -3941,7 +3941,6 @@ otlp_config:
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
 
-<<<<<<< HEAD
 [block_scope_ingestion_until: <map of string to Time>]
 
 [block_scope_ingestion_status_code: <map of string to int>]
@@ -3950,13 +3949,11 @@ otlp_config:
 # scope of the ingestion.
 # CLI flag: -limits.scope-ingestion-label
 [scope_ingestion_label: <string> | default = ""]
-=======
 # List of labels that must be present in the stream. If any of the labels are
 # missing, the stream will be discarded. This flag configures it globally for
 # all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
->>>>>>> a2c8ec7dc11546e2876e159e76eabd727ebc1929
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
