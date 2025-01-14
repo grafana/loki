@@ -56,6 +56,7 @@ func (s JobStatus) IsFinished() bool {
 }
 
 // Offsets represents the range of offsets to process
+// Inclusive on both ends.
 type Offsets struct {
 	Min int64
 	Max int64
