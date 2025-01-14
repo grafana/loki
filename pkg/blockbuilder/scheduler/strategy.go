@@ -67,11 +67,9 @@ func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int, 
 		// startOffset is the previously-committed offset, so we need to start processing the first
 		// _uncommitted_ offset
 		startOffset := max(partitionOffset.Commit.At+1, partitionOffset.Start.Offset)
-		// Likewise, endOffset is initially the next available offset. In the case of race conditions
-		// or more likely when a partition no longer has data written to it, this will not increase.
-		// therefore, we decrement it to ensure we're processing data that exists.
-		// otherwise, the builders will get stuck polling for a final offset which will never come.
-		endOffset := partitionOffset.End.Offset - 1
+		// Likewise, endOffset is initially the next available offset: this is why we treat jobs as end-exclusive:
+		// so we won't try polling forever to a partition that won't have any more records
+		endOffset := partitionOffset.End.Offset
 
 		// Skip if there's no lag
 		if startOffset >= endOffset {

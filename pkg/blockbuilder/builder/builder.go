@@ -529,7 +529,10 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 		maxTimeouts         = 3
 	)
 
-	for lastSeenOffset < offsets.Max && boff.Ongoing() {
+	// since offsets.Max is exclusive, can point to an offset that doesn't exist,
+	// so we only poll until we reach the end of the records we need to process (offsets.Max-1).
+	// this prevents us from polling indefinitely for records that don't exist.
+	for lastSeenOffset < offsets.Max-1 && boff.Ongoing() {
 		if consecutiveTimeouts >= maxTimeouts {
 			return lastSeenOffset, fmt.Errorf("exceeded maximum consecutive timeouts (%d) while polling records", maxTimeouts)
 		}
