@@ -6,7 +6,7 @@ local panels = import './panels/_imports.libsonnet';
 
 // local variables
 local defaultPanelWidth = 8;
-local defaultPanelHeight = 7;
+local defaultPanelHeight = 8;
 
 {
   new(path):: (
@@ -16,7 +16,7 @@ local defaultPanelHeight = 7;
       if config.components[key].enabled && std.length(std.find(path, config.components[key].paths)) > 0
     ];
     lib.dashboard.new({
-      title: 'Loki / %s' % [lib.utils.toTitleCase(path)],
+      title: 'Loki / %s / Resources' % [lib.utils.toTitleCase(path)],
       description: '',
       uid: lib.dashboard.generateUid(self.title, config.uid_prefix, config.uid_suffix),
       tags: config.tags + [path] + std.map(function(key) config.components[key].component, componentsKeys),
@@ -39,30 +39,27 @@ local defaultPanelHeight = 7;
               title: config.components[key].name,
             }),
             // add the qps, latency and per pod latency panels
-            panels.qps(key),
-            panels.latency(key),
-            panels.perPodLatency(key),
-            // add the latency distribution heatmap and route treemap
-            panels.latencyDistribution(key),
-            panels.routeLatency(key),
+            panels.cpu(key),
+            panels.memoryWorkingSet(key),
+            panels.memoryGoHeap(key),
           ]
+          +
+          // if the key is 'ingester' add the disk writes panel
+          if key == 'ingester' then
+            [
+              panels.diskWrites(key),
+              panels.diskReads(key),
+              panels.memoryStreams(),
+            ]
+          else
+            []
           for key in componentsKeys
         ]
       );
 
-      // create the grid for the panels, defaulting to a width of 8 and a height of 7
+      // create the grid for the panels
       local renderedGrid = lib.grafana.util.grid.makeGrid(panelRows, defaultPanelWidth, defaultPanelHeight);
-
-      // find the latency distribution heatmap and route treemap panels, overriding the width to 12
-      std.map(
-        function(panel)
-          if std.endsWith(panel.title, 'Latency Distribution')
-          then panel + { gridPos+: { w: 12 } }
-          else if std.endsWith(panel.title, 'Route Latency (p99)')
-          then panel + { gridPos+: { w: 12, x: 13 } }
-          else panel,
-        renderedGrid
-      ),
+      renderedGrid,
   })
 
   ),

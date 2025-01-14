@@ -4,15 +4,17 @@
 
 // imports
 local g = import '../grafana.libsonnet';
+local utils = import '../utils.libsonnet';
 
 {
   panel(type)::
+    local typeCamelCase = utils.toCamelCase(type);
     if type == 'treemap' then
       g.panel.stat
-    else if std.objectHas(g.panel, type) then
-      g.panel[type]
+    else if std.objectHas(g.panel, typeCamelCase) then
+      g.panel[typeCamelCase]
     else
-      error 'Unknown panel type',
+      error 'Unknown panel type: %s' % type,
 
   standardOptions(type)::
     local panel = self.panel(type);

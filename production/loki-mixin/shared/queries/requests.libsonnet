@@ -45,7 +45,7 @@ local selector = (import '../selectors.libsonnet').new;
       ||| % [routeSelector],
 
   // Calculates a specific latency percentile for requests to a component
-  latency_percentile(component, percentile, by='route', recording_rule=config.use_recording_rules)::
+  latency_percentile(component, percentile, by='route', recording_rule=config.recording_rules.loki)::
     local camelCaseComponent = lib.utils.toCamelCase(component);
     if !std.objectHas(config.components, camelCaseComponent) then
       error 'Invalid component: %s, no routes found' % [component]
@@ -80,23 +80,23 @@ local selector = (import '../selectors.libsonnet').new;
         ||| % [percentile, by, routeSelector],
 
   // Calculates the 99th percentile of request latencies
-  latency_percentile_99(component, by='route', recording_rule=config.use_recording_rules)::
+  latency_percentile_99(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.99, by, recording_rule),
 
   // Calculates the 95th percentile of request latencies
-  latency_percentile_95(component, by='route', recording_rule=config.use_recording_rules)::
+  latency_percentile_95(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.95, by, recording_rule),
 
   // Calculates the 90th percentile of request latencies
-  latency_percentile_90(component, by='route', recording_rule=config.use_recording_rules)::
+  latency_percentile_90(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.90, by, recording_rule),
 
   // Calculates the 50th percentile (median) of request latencies
-  latency_percentile_50(component, by='route', recording_rule=config.use_recording_rules)::
+  latency_percentile_50(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.50, by, recording_rule),
 
   // Calculates the average request latency for a component
-  latency_average(component, by='route', recording_rule=config.use_recording_rules)::
+  latency_average(component, by='route', recording_rule=config.recording_rules.loki)::
     local camelCaseComponent = lib.utils.toCamelCase(component);
     if !std.objectHas(config.components, camelCaseComponent) then
       error 'Invalid component: %s, no routes found' % [component]

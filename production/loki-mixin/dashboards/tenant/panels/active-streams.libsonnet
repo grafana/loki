@@ -13,7 +13,7 @@ lib.panels.timeSeries.short({
   targets: [
     lib.query.prometheus.new(
       datasource=common.variables.metrics_datasource.name,
-      expr=shared.queries.tenant.active_streams(recording_rule=config.use_recording_rules),
+      expr=shared.queries.tenant.active_streams(recording_rule=config.recording_rules.loki),
       params={
         refId: 'Active Streams',
         legendFormat: 'Streams',

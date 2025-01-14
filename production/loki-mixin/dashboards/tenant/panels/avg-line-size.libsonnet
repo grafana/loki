@@ -16,7 +16,7 @@ lib.panels.timeSeries.bytes({
   targets: [
     lib.query.prometheus.new(
       datasource=common.variables.metrics_datasource.name,
-      expr=shared.queries.tenant.average_log_size(recording_rule=config.use_recording_rules),
+      expr=shared.queries.tenant.average_log_size(recording_rule=config.recording_rules.loki),
       params={
         refId: 'Average Line Size',
         legendFormat: 'Bytes',

@@ -16,7 +16,7 @@ timeSeries.bytesRate({
   targets: [
     lib.query.prometheus.new(
       datasource=common.variables.metrics_datasource.name,
-      expr=shared.queries.tenant.discarded_bytes_rate(recording_rule=config.use_recording_rules),
+      expr=shared.queries.tenant.discarded_bytes_rate(recording_rule=config.recording_rules.loki),
       params={
         refId: 'Discarded Bytes Rate',
         legendFormat: 'Bytes',

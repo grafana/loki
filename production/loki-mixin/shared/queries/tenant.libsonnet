@@ -53,7 +53,7 @@ local selector = (import '../selectors.libsonnet').new;
     ||| % [userSelector, resourceSelector, userSelector],
 
   // Measures bytes per second being ingested
-  ingestion_bytes_rate(recording_rule=config.use_recording_rules):
+  ingestion_bytes_rate(recording_rule=config.recording_rules.loki):
     if recording_rule then
       local tenantSelector =
         selector()
@@ -94,7 +94,7 @@ local selector = (import '../selectors.libsonnet').new;
     ||| % [userSelector, resourceSelector],
 
   // Measures log lines per second being ingested
-  ingestion_lines_rate(recording_rule=config.use_recording_rules):
+  ingestion_lines_rate(recording_rule=config.recording_rules.loki):
     if recording_rule then
       local tenantSelector =
         selector()
@@ -114,7 +114,7 @@ local selector = (import '../selectors.libsonnet').new;
       ||| % [tenantSelector],
 
   // Measures structured metadata bytes per second being ingested
-  structured_metadata_bytes_rate(recording_rule=config.use_recording_rules):
+  structured_metadata_bytes_rate(recording_rule=config.recording_rules.loki):
     if recording_rule then
       local tenantSelector =
         selector()
@@ -134,7 +134,7 @@ local selector = (import '../selectors.libsonnet').new;
       ||| % [tenantSelector],
 
   // Average size of individual log lines including their metadata
-  average_log_size(recording_rule=config.use_recording_rules):
+  average_log_size(recording_rule=config.recording_rules.loki):
     if recording_rule then
       local tenantSelector =
         selector()
@@ -168,7 +168,7 @@ local selector = (import '../selectors.libsonnet').new;
       ||| % std.repeat([tenantSelector], 3),
 
   // Measures bytes per second being rejected
-  discarded_bytes_rate(recording_rule=config.use_recording_rules):
+  discarded_bytes_rate(recording_rule=config.recording_rules.loki):
     if recording_rule then
       local tenantSelector =
         selector()
@@ -188,7 +188,7 @@ local selector = (import '../selectors.libsonnet').new;
       ||| % [tenantSelector],
 
   // Measures log lines per second being rejected
-  discarded_lines_rate(recording_rule=config.use_recording_rules):
+  discarded_lines_rate(recording_rule=config.recording_rules.loki):
     if recording_rule then
       local tenantSelector =
         selector()
@@ -208,7 +208,7 @@ local selector = (import '../selectors.libsonnet').new;
     ||| % [tenantSelector],
 
   // Number of unique log streams currently active
-  active_streams(recording_rule=config.use_recording_rules):
+  active_streams(recording_rule=config.recording_rules.loki):
     if recording_rule then
       local tenantSelector =
         selector()

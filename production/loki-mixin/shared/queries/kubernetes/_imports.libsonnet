@@ -1,0 +1,3 @@
+{
+  pods:: import './pods.libsonnet',
+}

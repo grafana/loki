@@ -1,12 +1,6 @@
-local g = import './lib/grafana.libsonnet';
-
 {
   // The Main Folder to Create Dashboards in
   folder: 'Loki',
-
-  // a slug of the folder name, must be url friendly
-  // keeps only alphanumeric characters, spaces are replaced with dashes
-  folder_slug: g.util.string.slugify(self.folder),
 
   // Whether or not dashboards should be created in sub-folders
   // sub_folders: true,
@@ -49,6 +43,12 @@ local g = import './lib/grafana.libsonnet';
     // The label used to identify the container
     container: 'container',
 
+    // The label used to identify the job
+    job: 'job',
+
+    // The label used to identify the node
+    node: 'node',
+
     // The label used to identify the resource should only be (pod/component), this is the key above to use for the resource selector
     resource_selector: 'component',
   },
@@ -61,7 +61,10 @@ local g = import './lib/grafana.libsonnet';
   },
 
   // whether or not to use recording rules in the dashboard queries or the original query
-  use_recording_rules: true,
+  recording_rules: {
+    loki: true, // whether or not to use recording rules for loki queries
+    kubernetes: true, // whether or not to use recording rules for kubernetes queries
+  },
 
   // whether or not the dashboards are hosted on Grafana Cloud, this enables links to the Grafana Cloud Kubernetes App
   is_grafana_cloud: false,
@@ -189,7 +192,7 @@ local g = import './lib/grafana.libsonnet';
       enabled: false, // this is an internal component and not used by a typical Loki deployment
       component: 'cortex-gateway',
       selector_value: 'cortex-gw(-internal)?',
-      name: 'Cortex Gateway',
+      name: 'Frontend (cortex_gw)',
       routes: '.+',
       paths: ['read'],
       links: [],

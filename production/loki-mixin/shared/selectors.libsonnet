@@ -23,36 +23,6 @@ local utils = import '../lib/utils.libsonnet';
         'overrides-exporter': '(overrides-exporter|((enterprise|loki)-)?backend)',
       },
 
-      // Formats a component selector string based on the component name and current label configuration
-      // Returns a regex pattern for pod selectors or a simple string for other resource types
-      _formatComponentSelector(component)::
-        // convert the component name to camel case
-        local componentCamelCase = utils.toCamelCase(component);
-        // check if the component exists in the config
-        if !std.objectHas(config.components, componentCamelCase) then
-          error 'Invalid component: %s' % [component]
-        else
-          // get the selector value from the config, if it exists, otherwise use the component name
-          local selectorValue = if std.objectHas(config.components[componentCamelCase], 'selector_value') then
-              config.components[componentCamelCase].selector_value
-            else
-              config.components[componentCamelCase].component;
-            selectorValue,
-
-      // Formats a component selector string based on the component name and current label configuration
-      // Returns a regex pattern for pod selectors or a simple string for other resource types
-      _formatResourceSelector(component)::
-        local selectorValue = self._formatComponentSelector(component);
-        local resourceSelector = if !std.objectHas(config.labels, config.labels.resource_selector) then
-          error 'Resource selector not found in config.labels: %s' % [config.labels.resource_selector]
-        else
-          config.labels[config.labels.resource_selector];
-        // check if the resource selector is a pod selector
-        if std.length(std.findSubstr('pod', resourceSelector)) > 0 then
-            '((enterprise|loki)-)?.*%s.*' % selectorValue
-        else
-          selectorValue,
-
       // Creates a label selector object with methods for different comparison operations (eq, neq, re, nre)
       label(value):: {
         eq(predicate):: it.selectorLabelEq(value, predicate),
@@ -84,28 +54,120 @@ local utils = import '../lib/utils.libsonnet';
       base()::
         self.cluster().namespace(),
 
+      // Formats a component/resource selector string based on the component name and current label configuration
+      // Returns a regex pattern for pod selectors or a simple string for other resource types
+      _formatResourceSelector(component, type=config.labels.resource_selector)::
+        // convert the component name to camel case
+        local componentCamelCase = utils.toCamelCase(component);
+        local selectorValue = (
+          // check if the component exists in the config
+          if !std.objectHas(config.components, componentCamelCase) then
+            error 'Invalid component: %s, the component does not exist in config.components' % [component]
+          // check if the component has a selector_value, if it does, use that, otherwise use the component name
+          else if std.objectHas(config.components[componentCamelCase], 'selector_value') then
+            config.components[componentCamelCase].selector_value
+          else
+            config.components[componentCamelCase].component
+        );
+        local resourceSelector = (
+          if !std.objectHas(config.labels, type) then
+            error 'Invalid resource selector: %s, no label found in config.labels' % [type]
+          else
+            config.labels[type]
+        );
+        // check if the resource selector is a pod selector
+        if type == 'pod' then
+            '((enterprise|loki)-)?.*%s.*' % selectorValue
+        else
+          selectorValue,
+
       // Creates a selector for a specific Loki component with optional operator
       component(name, op='=~')::
-        local formattedValue = self._formatComponentSelector(name);
+        local formattedValue = self._formatResourceSelector(name, type='component');
         self.withLabel(config.labels.component, self._handleOperator(op), formattedValue),
 
       // Creates a selector matching multiple Loki components using regex
       components(names, op='=~')::
         local formattedValues = std.map(
           function(name)
-            self._formatComponentSelector(name),
+            self._formatResourceSelector(name, type='component'),
           names
         );
         self.withLabel(
-          config.labels.resource_selector,
+          config.labels.component,
           self._handleOperator(op),
           '(' + std.join('|', formattedValues) + ')'
         ),
 
-      // Creates a selector for a specific resource with pod-aware formatting
-      resource(value, op='=~')::
-        local formattedValue = self._formatResourceSelector(value);
-        self.withLabel(config.labels.resource_selector, self._handleOperator(op), formattedValue),
+      // Creates a selector for a specific Loki pod with optional operator
+      pod(name, op='=~')::
+        local formattedValue = self._formatResourceSelector(name, type='pod');
+        local baseSelector = self.withLabel(config.labels.pod, self._handleOperator(op), formattedValue);
+        if op == '=~' || op == 're' then
+          std.foldl(
+            function(acc, negation) acc.withLabel(negation.label, negation.op, negation.value),
+            self._generatePodNegations(name),
+            baseSelector
+          )
+        else
+          baseSelector,
+
+      // Creates a selector matching multiple Loki pods using regex
+      pods(names, op='=~')::
+        local formattedValues = std.map(
+          function(name)
+            self._formatResourceSelector(name, type='pod'),
+          names
+        );
+        local baseSelector = self.withLabel(
+          config.labels.pod,
+          self._handleOperator(op),
+          '(' + std.join('|', formattedValues) + ')'
+        );
+        if op == '=~' || op == 're' then
+          std.foldl(
+            function(acc, name)
+              std.foldl(
+                function(innerAcc, negation) innerAcc.withLabel(negation.label, negation.op, negation.value),
+                self._generatePodNegations(name),
+                acc
+              ),
+            names,
+            baseSelector
+          )
+        else
+          baseSelector,
+
+      // Creates a selector for a specific Loki container with optional operator
+      container(name, op='=~')::
+        local formattedValue = self._formatResourceSelector(name, type='container');
+        self.withLabel(config.labels.container, self._handleOperator(op), formattedValue),
+
+      // Creates a selector matching multiple Loki containers using regex
+      containers(names, op='=~')::
+        local formattedValues = std.map(
+          function(name)
+            self._formatResourceSelector(name, type='container'),
+          names
+        );
+        self.withLabel(
+          config.labels.container,
+          self._handleOperator(op),
+          '(' + std.join('|', formattedValues) + ')'
+        ),
+
+      // Creates a selector for a specific resource dynamically based on the config value (component/pod/container) with pod-aware formatting
+      resource(value, op='=~', type=config.labels.resource_selector)::
+        local formattedValue = self._formatResourceSelector(value, type=type);
+        local baseSelector = self.withLabel(config.labels.resource_selector, self._handleOperator(op), formattedValue);
+        if type == 'pod' && (op == '=~' || op == 're') then
+          std.foldl(
+            function(acc, negation) acc.withLabel(negation.label, negation.op, negation.value),
+            self._generatePodNegations(value),
+            baseSelector
+          )
+        else
+          baseSelector,
 
       // Creates a selector matching multiple resources using regex
       resources(values, op='=~')::
@@ -177,6 +239,13 @@ local utils = import '../lib/utils.libsonnet';
       user(op='=')::
         self.withLabel('user', self._handleOperator(op), '$' + variables.tenant.name),
 
+      // Adds user label selector using the configured tenant variable
+      job(op='=')::
+        if config.selectors.job != '' then
+          self.withLabel(config.labels.job, self._handleOperator(op), config.selectors.job)
+        else
+          self,
+
       // Creates an equality label selector
       selectorLabelEq(label, predicate):: self.withLabel(label, '=', predicate),
       // Creates a not-equals label selector
@@ -212,6 +281,28 @@ local utils = import '../lib/utils.libsonnet';
       // Generates the complete selector query string
       build()::
         self._labelExpr(),
+
+      // Helper function to generate negation patterns for pod selectors
+      _generatePodNegations(component)::
+        local componentCamelCase = utils.toCamelCase(component);
+        local currentComponent = config.components[componentCamelCase].component;
+        local negations = std.filter(
+          function(c)
+            // Only include components where:
+            // 1. It's not the current component
+            // 2. Its component name contains the current component name
+            c != componentCamelCase &&
+            std.length(std.findSubstr(currentComponent, config.components[c].component)) > 0,
+          std.objectFields(config.components)
+        );
+        [
+          {
+            label: config.labels.pod,
+            op: '!~',
+            value: '((enterprise|loki)-)?.*%s.*' % config.components[c].component,
+          }
+          for c in negations
+        ],
     };
 
     // Return either base-initialized or empty selector
