@@ -41,12 +41,14 @@ func (m *mockOffsetManager) Commit(_ context.Context, _ int32, _ int64) error {
 }
 
 func newTestEnv(builderID string) (*testEnv, error) {
-	queue := NewJobQueue(testQueueCfg, log.NewNopLogger(), nil)
 	mockOffsetMgr := &mockOffsetManager{
 		topic:         "test-topic",
 		consumerGroup: "test-group",
 	}
-	scheduler, err := NewScheduler(Config{Strategy: RecordCountStrategy}, queue, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
+	scheduler, err := NewScheduler(Config{
+		Strategy:       RecordCountStrategy,
+		JobQueueConfig: testQueueCfg,
+	}, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
 	if err != nil {
 		return nil, err
 	}
@@ -55,11 +57,11 @@ func newTestEnv(builderID string) (*testEnv, error) {
 	builder := NewWorker(builderID, transport)
 
 	return &testEnv{
-		queue:     queue,
+		queue:     scheduler.queue,
 		scheduler: scheduler,
 		transport: transport,
 		builder:   builder,
-	}, err
+	}, nil
 }
 
 func TestScheduleAndProcessJob(t *testing.T) {
