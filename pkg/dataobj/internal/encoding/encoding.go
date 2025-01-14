@@ -10,6 +10,7 @@ var (
 const (
 	fileFormatVersion    = 0x1
 	streamsFormatVersion = 0x1
+	logsFormatVersion    = 0x1
 )
 
 var (
