@@ -51,7 +51,9 @@ func New() *Streams {
 // Record a stream record within the Streams section. The provided timestamp is
 // used to track the minimum and maximum timestamp of a stream. The number of
 // calls to Record is used to track the number of rows for a stream.
-func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) {
+//
+// The stream ID of the recorded stream is returned.
+func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) uint64 {
 	ts = ts.UTC()
 
 	stream := s.getOrAddStream(streamLabels)
@@ -62,6 +64,7 @@ func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) {
 		stream.MaxTimestamp = ts
 	}
 	stream.Rows++
+	return uint64(stream.ID)
 }
 
 func (s *Streams) getOrAddStream(streamLabels labels.Labels) *Stream {
