@@ -5,10 +5,11 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/v3/pkg/distributor/model"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-	"github.com/stretchr/testify/require"
 )
 
 func newContainer(s logproto.Stream) model.KeyedStream {
