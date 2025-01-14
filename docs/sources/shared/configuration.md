@@ -3943,7 +3943,7 @@ otlp_config:
 
 # List of labels that must be present in the stream. If any of the labels are
 # missing, the stream will be discarded. This flag configures it globally for
-# all tenants.
+# all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
 
