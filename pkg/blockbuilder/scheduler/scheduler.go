@@ -88,7 +88,7 @@ type BlockScheduler struct {
 
 	cfg     Config
 	logger  log.Logger
-	queue   *JobQueue
+	queue   *JobQueue2
 	metrics *Metrics
 
 	fallbackOffsetMillis int64
@@ -119,7 +119,7 @@ func NewScheduler(cfg Config, offsetManager partition.OffsetManager, logger log.
 		offsetManager:        offsetManager,
 		logger:               logger,
 		metrics:              NewMetrics(r),
-		queue:                NewJobQueue(cfg.JobQueueConfig, logger, r),
+		queue:                NewJobQueue2(cfg.JobQueueConfig, logger, r),
 		fallbackOffsetMillis: fallbackOffsetMillis,
 	}
 
@@ -166,48 +166,71 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 	}
 	level.Info(s.logger).Log("msg", "planned jobs", "count", len(jobs))
 
+	// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
+
 	for _, job := range jobs {
-		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
-
-		added, status, err := s.idempotentEnqueue(job)
-		level.Info(s.logger).Log(
-			"msg", "enqueued job",
-			"added", added,
-			"status", status.String(),
-			"err", err,
-			"partition", job.Job.Partition(),
-			"num_offsets", job.Offsets().Max-job.Offsets().Min,
-		)
-
-		// if we've either added or encountered an error, move on; we're done this cycle
-		if added || err != nil {
-			continue
+		if err := s.handlePlannedJob(job); err != nil {
+			level.Error(s.logger).Log("msg", "failed to handle planned job", "err", err)
 		}
+	}
 
-		// scheduler is aware of incoming job; handling depends on status
-		switch status {
-		case types.JobStatusPending:
-			level.Debug(s.logger).Log(
-				"msg", "job is pending, updating priority",
-				"old_priority", job.Priority,
-			)
-			s.queue.pending.UpdatePriority(job.Job.ID(), job)
-		case types.JobStatusInProgress:
-			level.Debug(s.logger).Log(
-				"msg", "job is in progress, ignoring",
-			)
-		case types.JobStatusComplete:
-			// shouldn't happen
-			level.Debug(s.logger).Log(
-				"msg", "job is complete, ignoring",
-			)
-		default:
-			level.Error(s.logger).Log(
-				"msg", "job has unknown status, ignoring",
-				"status", status,
-			)
+	return nil
+}
+
+func (s *BlockScheduler) handlePlannedJob(job *JobWithMetadata) error {
+	logger := log.With(
+		s.logger,
+		"job", job.Job.ID(),
+		"partition", job.Job.Partition(),
+		"num_offsets", job.Offsets().Max-job.Offsets().Min,
+	)
+
+	status, exists := s.queue.Exists(job.Job.ID())
+	if !exists {
+		// New job, enqueue it
+		_, _, err := s.queue.TransitionAny(job.Job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+			return job, nil
+		})
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to enqueue new job", "err", err)
+			return err
 		}
+		level.Info(logger).Log("msg", "enqueued new job")
+		return nil
+	}
 
+	// Job exists, handle based on current status
+	switch status {
+	case types.JobStatusComplete:
+		// Job already completed successfully, no need to replan
+		level.Debug(logger).Log("msg", "job already completed successfully, skipping")
+
+	case types.JobStatusPending:
+		// Update priority of pending job
+		if updated := s.queue.UpdatePriority(job.Job.ID(), job.Priority); !updated {
+			// Job is no longer pending, skip it for this iteration
+			level.Debug(logger).Log("msg", "job no longer pending, skipping priority update")
+			return nil
+		}
+		level.Debug(logger).Log("msg", "updated priority of pending job", "new_priority", job.Priority)
+
+	case types.JobStatusFailed, types.JobStatusExpired:
+		// Re-enqueue failed or expired jobs
+		_, _, err := s.queue.TransitionAny(job.Job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+			return job, nil
+		})
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to re-enqueue failed/expired job", "err", err)
+			return err
+		}
+		level.Info(logger).Log("msg", "re-enqueued failed/expired job", "status", status)
+
+	case types.JobStatusInProgress:
+		// Job is being worked on, ignore it
+		level.Debug(logger).Log("msg", "job is in progress, ignoring")
+
+	default:
+		level.Error(logger).Log("msg", "job has unknown status, ignoring", "status", status)
 	}
 
 	return nil
@@ -229,34 +252,6 @@ func (s *BlockScheduler) HandleGetJob(ctx context.Context) (*types.Job, bool, er
 		job, ok := s.queue.Dequeue()
 		return job, ok, nil
 	}
-}
-
-// if added is true, the job was added to the queue, otherwise status is the current status of the job
-func (s *BlockScheduler) idempotentEnqueue(job *JobWithMetadata) (added bool, status types.JobStatus, err error) {
-	logger := log.With(
-		s.logger,
-		"job", job.Job.ID(),
-		"priority", job.Priority,
-	)
-
-	status, ok := s.queue.Exists(job.Job)
-
-	// scheduler is unaware of incoming job; enqueue
-	if !ok {
-		level.Debug(logger).Log(
-			"msg", "job does not exist, enqueueing",
-		)
-
-		// enqueue
-		if err := s.queue.Enqueue(job.Job, job.Priority); err != nil {
-			level.Error(logger).Log("msg", "failed to enqueue job", "err", err)
-			return false, types.JobStatusUnknown, err
-		}
-
-		return true, types.JobStatusPending, nil
-	}
-
-	return false, status, nil
 }
 
 func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, success bool) (err error) {

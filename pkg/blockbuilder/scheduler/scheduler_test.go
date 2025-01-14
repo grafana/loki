@@ -14,7 +14,7 @@ import (
 )
 
 type testEnv struct {
-	queue     *JobQueue
+	queue     *JobQueue2
 	scheduler *BlockScheduler
 	transport *types.MemoryTransport
 	builder   *Worker

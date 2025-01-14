@@ -304,3 +304,21 @@ func (q *JobQueue2) ListCompletedJobs() []JobWithMetadata {
 	})
 	return jobs
 }
+
+// UpdatePriority updates the priority of a pending job. If the job is not pending,
+// returns false to indicate the update was not performed.
+func (q *JobQueue2) UpdatePriority(id string, priority int) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Check if job is still pending
+	if job, ok := q.pending.Lookup(id); ok {
+		// nit: we're technically already updating the prio via reference,
+		// but that's fine -- we may refactor this eventually to have 3 generic types: (key, value, priority) where value implements a `Priority() T` method.
+		job.Priority = priority
+		return q.pending.UpdatePriority(id, job)
+	}
+
+	// Job is no longer pending (might be in progress, completed, etc)
+	return false
+}
