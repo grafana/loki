@@ -9,25 +9,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/testutil"
-
 	gokitlog "github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
-
-	"github.com/grafana/loki/v3/pkg/compression"
-	"github.com/grafana/loki/v3/pkg/runtime"
-
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -54,7 +51,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 		{"unlimited", 0, numLogs},
 	}
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -77,7 +74,6 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
-				nil,
 				nil,
 			)
 
@@ -112,7 +108,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 }
 
 func TestPushDeduplication(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -132,7 +128,6 @@ func TestPushDeduplication(t *testing.T) {
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
-		nil,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
@@ -148,7 +143,7 @@ func TestPushDeduplication(t *testing.T) {
 }
 
 func TestPushDeduplicationExtraMetrics(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -157,20 +152,20 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	logger := gokitlog.NewLogfmtLogger(buf)
 
-	provider := &providerMock{
-		tenantConfig: func(tenantID string) *runtime.Config {
+	tenantLimits := &mockTenantLimits{
+		providerFn: func(tenantID string) *runtime.Limits {
 			if tenantID == "fake" {
-				return &runtime.Config{
+				return &runtime.Limits{
 					LogDuplicateMetrics:    true,
 					LogDuplicateStreamInfo: true,
 				}
 			}
-
-			return &runtime.Config{}
+			return &runtime.Limits{}
 		},
 	}
 
-	runtimeCfg, err := runtime.NewTenantConfigs(provider)
+	runtimeCfg, err := runtime.NewOverrides(runtime.Limits{}, tenantLimits)
+	require.NoError(t, err)
 
 	registry := prometheus.NewRegistry()
 	manager := writefailures.NewManager(logger, registry, writefailures.Cfg{LogRate: flagext.ByteSize(1000), AddInsightsLabel: true}, runtimeCfg, "ingester")
@@ -192,7 +187,6 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 		NewStreamRateCalculator(),
 		metrics,
 		manager,
-		runtimeCfg,
 	)
 
 	_, err = s.Push(context.Background(), []logproto.Entry{
@@ -218,7 +212,7 @@ func TestPushDeduplicationExtraMetrics(t *testing.T) {
 }
 
 func TestPushRejectOldCounter(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -237,7 +231,6 @@ func TestPushRejectOldCounter(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
-		nil,
 		nil,
 	)
 
@@ -322,11 +315,11 @@ func TestStreamIterator(t *testing.T) {
 func TestEntryErrorCorrectlyReported(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.MaxChunkAge = time.Minute
-	l := validation.Limits{
+	l := runtime.Limits{
 		PerStreamRateLimit:      15,
 		PerStreamRateLimitBurst: 15,
 	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := runtime.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -345,7 +338,6 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
-		nil,
 		nil,
 	)
 	s.highestTs = time.Now()
@@ -365,7 +357,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 func TestUnorderedPush(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.MaxChunkAge = 10 * time.Second
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -384,7 +376,6 @@ func TestUnorderedPush(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
-		nil,
 		nil,
 	)
 
@@ -464,11 +455,11 @@ func TestUnorderedPush(t *testing.T) {
 }
 
 func TestPushRateLimit(t *testing.T) {
-	l := validation.Limits{
+	l := runtime.Limits{
 		PerStreamRateLimit:      10,
 		PerStreamRateLimitBurst: 10,
 	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := runtime.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -488,7 +479,6 @@ func TestPushRateLimit(t *testing.T) {
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
-		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -504,11 +494,11 @@ func TestPushRateLimit(t *testing.T) {
 }
 
 func TestPushRateLimitAllOrNothing(t *testing.T) {
-	l := validation.Limits{
+	l := runtime.Limits{
 		PerStreamRateLimit:      10,
 		PerStreamRateLimitBurst: 10,
 	}
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := runtime.NewOverrides(l, nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -529,7 +519,6 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		NewStreamRateCalculator(),
 		NilMetrics,
 		nil,
-		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -547,7 +536,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 }
 
 func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 
@@ -568,7 +557,6 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
-		nil,
 		nil,
 	)
 
@@ -615,12 +603,12 @@ func Benchmark_PushStream(b *testing.B) {
 		labels.Label{Name: "container", Value: "ingester"},
 	}
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(b)
 
-	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil, nil)
+	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter.rateLimitStrategy, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
 	expr, err := syntax.ParseLogSelector(`{namespace="loki-dev"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, &fakeTailServer{}, 10)
@@ -655,10 +643,18 @@ func defaultChunkFormat(t testing.TB) (byte, chunkenc.HeadBlockFmt) {
 	return chunkfmt, headfmt
 }
 
-type providerMock struct {
-	tenantConfig func(string) *runtime.Config
+type mockTenantLimits struct {
+	providerFn func(string) *runtime.Limits
 }
 
-func (m *providerMock) TenantConfig(userID string) *runtime.Config {
-	return m.tenantConfig(userID)
+// AllByUserID implements runtime.TenantLimits.
+func (m mockTenantLimits) AllByUserID() map[string]*runtime.Limits {
+	panic("unimplemented")
 }
+
+// TenantLimits implements runtime.TenantLimits.
+func (m mockTenantLimits) TenantLimits(userID string) *runtime.Limits {
+	return m.providerFn(userID)
+}
+
+var _ runtime.TenantLimits = mockTenantLimits{}

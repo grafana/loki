@@ -20,17 +20,16 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
-
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -56,7 +55,7 @@ func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	store.On("LabelValuesForMetricName", mock.Anything, "test", model.TimeFromUnixNano(startTime.UnixNano()), model.TimeFromUnixNano(endTime.UnixNano()), "logs", "test").Return([]string{"foo", "bar"}, nil)
 	limitsCfg := defaultLimitsTestConfig()
 	limitsCfg.QueryTimeout = model.Duration(queryTimeout)
-	limits, err := validation.NewOverrides(limitsCfg, nil)
+	limits, err := runtime.NewOverrides(limitsCfg, nil)
 	require.NoError(t, err)
 
 	q, err := newQuerier(
@@ -114,7 +113,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 
 	limitsCfg := defaultLimitsTestConfig()
 	limitsCfg.QueryTimeout = model.Duration(queryTimeout)
-	limits, err := validation.NewOverrides(limitsCfg, nil)
+	limits, err := runtime.NewOverrides(limitsCfg, nil)
 	require.NoError(t, err)
 
 	q, err := newQuerier(
@@ -168,8 +167,8 @@ func mockLabelResponse(values []string) *logproto.LabelResponse {
 	}
 }
 
-func defaultLimitsTestConfig() validation.Limits {
-	limits := validation.Limits{}
+func defaultLimitsTestConfig() runtime.Limits {
+	limits := runtime.Limits{}
 	flagext.DefaultValues(&limits)
 	return limits
 }
@@ -199,7 +198,7 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	defaultLimits.MaxStreamsMatchersPerQuery = 1
 	defaultLimits.MaxQueryLength = model.Duration(2 * time.Minute)
 
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	q, err := newQuerier(
@@ -248,13 +247,13 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 	for _, tc := range []struct {
 		desc  string
 		req   *logproto.SeriesRequest
-		setup func(*storeMock, *queryClientMock, *querierClientMock, validation.Limits, *logproto.SeriesRequest)
+		setup func(*storeMock, *queryClientMock, *querierClientMock, runtime.Limits, *logproto.SeriesRequest)
 		run   func(*testing.T, *SingleTenantQuerier, *logproto.SeriesRequest)
 	}{
 		{
 			"ingester error",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ runtime.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
@@ -268,7 +267,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"store error",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ runtime.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1"},
 				}), nil)
@@ -284,7 +283,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"no matches",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ runtime.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
 				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
@@ -298,7 +297,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"returns series",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ runtime.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1", "b": "2"},
 					{"a": "1", "b": "3"},
@@ -344,7 +343,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 		{
 			"dedupes",
 			mkReq([]string{`{a="1"}`}),
-			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ validation.Limits, req *logproto.SeriesRequest) {
+			func(store *storeMock, _ *queryClientMock, ingester *querierClientMock, _ runtime.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse([]map[string]string{
 					{"a": "1", "b": "2"},
 				}), nil)
@@ -386,7 +385,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 				tc.setup(store, queryClient, ingesterClient, defaultLimits, tc.req)
 			}
 
-			limits, err := validation.NewOverrides(defaultLimits, nil)
+			limits, err := runtime.NewOverrides(defaultLimits, nil)
 			require.NoError(t, err)
 
 			q, err := newQuerier(
@@ -404,7 +403,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 }
 
 func TestQuerier_IngesterMaxQueryLookback(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -549,7 +548,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			defaultLimits := defaultLimitsTestConfig()
 			defaultLimits.MaxConcurrentTailRequests = 5
 
-			limits, err := validation.NewOverrides(defaultLimits, nil)
+			limits, err := runtime.NewOverrides(defaultLimits, nil)
 			require.NoError(t, err)
 
 			q, err := newQuerier(
@@ -1000,7 +999,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 				conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
 			}
 
-			limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+			limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 			require.NoError(t, err)
 
 			for _, request := range requests {
@@ -1028,7 +1027,7 @@ func TestQuerier_Volumes(t *testing.T) {
 			{Name: "foo", Volume: 38},
 		}}
 
-		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 		require.NoError(t, err)
 
 		ingesterClient := newQuerierClientMock()
@@ -1063,7 +1062,7 @@ func TestQuerier_Volumes(t *testing.T) {
 			{Name: "foo", Volume: 38},
 		}}
 
-		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 		require.NoError(t, err)
 
 		ingesterClient := newQuerierClientMock()
@@ -1099,7 +1098,7 @@ func TestQuerier_Volumes(t *testing.T) {
 			{Name: "foo", Volume: 38},
 		}}
 
-		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 		require.NoError(t, err)
 
 		ingesterClient := newQuerierClientMock()
@@ -1132,7 +1131,7 @@ func TestQuerier_Volumes(t *testing.T) {
 	})
 }
 
-func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
+func setupIngesterQuerierMocks(conf Config, limits *runtime.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
 	queryClient := newQueryClientMock()
 	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
 
@@ -1235,7 +1234,7 @@ func TestQuerier_SelectLogWithDeletes(t *testing.T) {
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("Query", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	delGetter := &mockDeleteGettter{
@@ -1303,7 +1302,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 	ingesterClient := newQuerierClientMock()
 	ingesterClient.On("QuerySample", mock.Anything, mock.Anything, mock.Anything).Return(queryClient, nil)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	delGetter := &mockDeleteGettter{
@@ -1359,7 +1358,7 @@ func TestQuerier_SelectSamplesWithDeletes(t *testing.T) {
 	require.Equal(t, "test", delGetter.user)
 }
 
-func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *validation.Overrides) (*SingleTenantQuerier, error) {
+func newQuerier(cfg Config, clientCfg client.Config, clientFactory ring_client.PoolFactory, ring ring.ReadRing, dg *mockDeleteGettter, store storage.Store, limits *runtime.Overrides) (*SingleTenantQuerier, error) {
 	iq, err := newIngesterQuerier(cfg, clientCfg, ring, nil, nil, clientFactory, constants.Loki, util_log.Logger)
 	if err != nil {
 		return nil, err
@@ -1385,7 +1384,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 		manyValues = append(manyValues, "a"+strconv.Itoa(i))
 	}
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	ctx := user.InjectOrgID(context.Background(), "test")
 
@@ -1688,7 +1687,7 @@ func TestQuerier_DetectedLabels(t *testing.T) {
 func BenchmarkQuerierDetectedLabels(b *testing.B) {
 	now := time.Now()
 
-	limits, _ := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, _ := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	conf := mockQuerierConfig()

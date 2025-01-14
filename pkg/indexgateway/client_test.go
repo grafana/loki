@@ -22,9 +22,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // const (
@@ -103,13 +103,13 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	return s.GracefulStop, lis.Addr().String()
 }
 
-type mockTenantLimits map[string]*validation.Limits
+type mockTenantLimits map[string]*runtime.Limits
 
-func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
+func (tl mockTenantLimits) TenantLimits(userID string) *runtime.Limits {
 	return tl[userID]
 }
 
-func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+func (tl mockTenantLimits) AllByUserID() map[string]*runtime.Limits {
 	return tl
 }
 
@@ -172,7 +172,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 	})
 
 	t.Run("global shard size", func(t *testing.T) {
-		o, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: s}, nil)
+		o, err := runtime.NewOverrides(runtime.Limits{IndexGatewayShardSize: s}, nil)
 		require.NoError(t, err)
 
 		cfg := ClientConfig{}
@@ -200,10 +200,10 @@ func TestGatewayClient_RingMode(t *testing.T) {
 
 	t.Run("per tenant shard size", func(t *testing.T) {
 		tl := mockTenantLimits{
-			"12345": &validation.Limits{IndexGatewayShardSize: 1},
+			"12345": &runtime.Limits{IndexGatewayShardSize: 1},
 			// tenant 67890 has not tenant specific overrides
 		}
-		o, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: s}, tl)
+		o, err := runtime.NewOverrides(runtime.Limits{IndexGatewayShardSize: s}, tl)
 		require.NoError(t, err)
 
 		cfg := ClientConfig{}
@@ -241,7 +241,7 @@ func TestGatewayClient(t *testing.T) {
 	cfg.Address = storeAddress
 	cfg.PoolConfig = clientpool.PoolConfig{ClientCleanupPeriod: 500 * time.Millisecond}
 
-	overrides, _ := validation.NewOverrides(validation.Limits{}, nil)
+	overrides, _ := runtime.NewOverrides(runtime.Limits{}, nil)
 	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, logger, constants.Loki)
 	require.NoError(t, err)
 
@@ -285,12 +285,12 @@ func buildTableName(i int) string {
 
 type mockLimits struct{}
 
-func (m mockLimits) AllByUserID() map[string]*validation.Limits {
-	return map[string]*validation.Limits{}
+func (m mockLimits) AllByUserID() map[string]*runtime.Limits {
+	return map[string]*runtime.Limits{}
 }
 
-func (m mockLimits) DefaultLimits() *validation.Limits {
-	return &validation.Limits{}
+func (m mockLimits) DefaultLimits() *runtime.Limits {
+	return &runtime.Limits{}
 }
 
 func benchmarkIndexQueries(b *testing.B, queries []index.Query) {
@@ -423,7 +423,7 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 func TestDoubleRegistration(t *testing.T) {
 	logger := log.NewNopLogger()
 	r := prometheus.NewRegistry()
-	o, _ := validation.NewOverrides(validation.Limits{}, nil)
+	o, _ := runtime.NewOverrides(runtime.Limits{}, nil)
 
 	clientCfg := ClientConfig{
 		Address: "my-store-address:1234",

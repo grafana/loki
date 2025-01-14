@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -32,7 +33,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // Here is how the generic compactor works:
@@ -199,9 +199,9 @@ type storeContainer struct {
 }
 
 type Limits interface {
+	runtime.ExportedLimits
 	deletion.Limits
 	retention.Limits
-	DefaultLimits() *validation.Limits
 }
 
 func NewCompactor(cfg Config, objectStoreClients map[config.DayTime]client.ObjectClient, deleteStoreClient client.ObjectClient, schemaConfig config.SchemaConfig, limits Limits, r prometheus.Registerer, metricsNamespace string) (*Compactor, error) {

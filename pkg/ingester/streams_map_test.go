@@ -7,11 +7,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/validation"
+	runtime "github.com/grafana/loki/v3/pkg/runtime"
 )
 
 func TestStreamsMap(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(t)
@@ -31,7 +31,6 @@ func TestStreamsMap(t *testing.T) {
 			NewStreamRateCalculator(),
 			NilMetrics,
 			nil,
-			nil,
 		),
 		newStream(
 			chunkfmt,
@@ -46,7 +45,6 @@ func TestStreamsMap(t *testing.T) {
 			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
-			nil,
 			nil,
 		),
 	}

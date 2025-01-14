@@ -9,10 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
-
-	"github.com/grafana/loki/pkg/push"
-
-	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
@@ -24,13 +21,14 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
-
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
@@ -38,7 +36,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // querierClientMock is a mockable version of QuerierClient, used in querier
@@ -856,17 +853,17 @@ func (q queryMock) Exec(_ context.Context) (logqlmodel.Result, error) {
 	return q.result, nil
 }
 
-type mockTenantLimits map[string]*validation.Limits
+type mockTenantLimits map[string]*runtime.Limits
 
-func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
+func (tl mockTenantLimits) TenantLimits(userID string) *runtime.Limits {
 	limits, ok := tl[userID]
 	if !ok {
-		return &validation.Limits{}
+		return &runtime.Limits{}
 	}
 
 	return limits
 }
 
-func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+func (tl mockTenantLimits) AllByUserID() map[string]*runtime.Limits {
 	return tl
 }

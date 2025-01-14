@@ -1,4 +1,4 @@
-package validation
+package runtime
 
 import (
 	"context"
@@ -204,7 +204,9 @@ type Limits struct {
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 
-	BloomGatewayEnabled bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
+	BloomGatewayShardSize        int           `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size" category:"experimental"`
+	BloomGatewayEnabled          bool          `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
+	BloomGatewayCacheKeyInterval time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval" category:"experimental"`
 
 	BloomBuildMaxBuilders       int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
 	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
@@ -244,6 +246,14 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
+
+	// Per-tenant overrides that moved from operations_config to limits_config
+	LogStreamCreation      bool `yaml:"log_stream_creation" json:"log_stream_creation"`
+	LogPushRequest         bool `yaml:"log_push_request" json:"log_stream_request"`
+	LogPushRequestStreams  bool `yaml:"log_push_request_streams" json:"log_push_request_streams"`
+	LogDuplicateMetrics    bool `yaml:"log_duplicate_metrics" json:"log_duplicate_metrics"`
+	LogDuplicateStreamInfo bool `yaml:"log_duplicate_stream_info" json:"log_duplicate_stream_info"`
+	LimitedLogPushErrors   bool `yaml:"limited_log_push_errors" json:"limited_log_push_errors"`
 }
 
 type FieldDetectorConfig struct {
@@ -401,7 +411,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 
+	f.IntVar(&l.BloomGatewayShardSize, "bloom-gateway.shard-size", 0, "Experimental. The shard size defines how many bloom gateways should be used by a tenant for querying.")
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
+	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
 
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
 	f.BoolVar(&l.BloomPrefetchBlocks, "bloom-build.prefetch-blocks", false, "Experimental. Prefetch blocks on bloom gateways as soon as they are built.")
@@ -457,6 +469,14 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable metric aggregation. When enabled, pushed streams will be sampled for bytes and count, and these metric will be written back into Loki as a special __aggregated_metric__ stream, which can be queried for faster histogram queries.",
 	)
+
+	// moved from runtime_config to limits_config
+	f.BoolVar(&l.LogStreamCreation, "operation-config.log-stream-creation", false, "Log every new stream created by a push request (very verbose, recommend to enable via runtime config only).")
+	f.BoolVar(&l.LogPushRequest, "operation-config.log-push-request", false, "Log every push request (very verbose, recommend to enable via runtime config only).")
+	f.BoolVar(&l.LogPushRequestStreams, "operation-config.log-push-request-streams", false, "Log every stream in a push request (very verbose, recommend to enable via runtime config only).")
+	f.BoolVar(&l.LogDuplicateMetrics, "operation-config.log-duplicate-metrics", false, "Log metrics for duplicate lines received.")
+	f.BoolVar(&l.LogDuplicateStreamInfo, "operation-config.log-duplicate-stream-info", false, "Log stream info for duplicate lines received")
+	f.BoolVar(&l.LimitedLogPushErrors, "operation-config.limited-log-push-errors", true, "Log push errors with a rate limited logger, will show client push errors without overly spamming logs.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -557,6 +577,13 @@ var defaultLimits *Limits
 // those values.
 func SetDefaultLimitsForYAMLUnmarshalling(defaults Limits) {
 	defaultLimits = &defaults
+}
+
+type ExportedLimits interface {
+	// DefaultLimits returns the default values of runtime settings
+	DefaultLimits() *Limits
+	// AllByUserID gets a mapping of all tenant IDs and limits for that user
+	AllByUserID() map[string]*Limits
 }
 
 type TenantLimits interface {
@@ -1029,6 +1056,14 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
+func (o *Overrides) BloomGatewayShardSize(userID string) int {
+	return o.getOverridesForUser(userID).BloomGatewayShardSize
+}
+
+func (o *Overrides) BloomGatewayCacheKeyInterval(userID string) time.Duration {
+	return o.getOverridesForUser(userID).BloomGatewayCacheKeyInterval
+}
+
 func (o *Overrides) BloomGatewayEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).BloomGatewayEnabled
 }
@@ -1161,6 +1196,30 @@ func (o *Overrides) S3SSEKMSKeyID(user string) string {
 // S3SSEKMSEncryptionContext returns the per-tenant S3 KMS-SSE encryption context.
 func (o *Overrides) S3SSEKMSEncryptionContext(user string) string {
 	return o.getOverridesForUser(user).S3SSEKMSEncryptionContext
+}
+
+func (o *Overrides) LogStreamCreation(userID string) bool {
+	return o.getOverridesForUser(userID).LogStreamCreation
+}
+
+func (o *Overrides) LogPushRequest(userID string) bool {
+	return o.getOverridesForUser(userID).LogPushRequest
+}
+
+func (o *Overrides) LogPushRequestStreams(userID string) bool {
+	return o.getOverridesForUser(userID).LogPushRequestStreams
+}
+
+func (o *Overrides) LogDuplicateMetrics(userID string) bool {
+	return o.getOverridesForUser(userID).LogDuplicateMetrics
+}
+
+func (o *Overrides) LogDuplicateStreamInfo(userID string) bool {
+	return o.getOverridesForUser(userID).LogDuplicateStreamInfo
+}
+
+func (o *Overrides) LimitedLogPushErrors(userID string) bool {
+	return o.getOverridesForUser(userID).LimitedLogPushErrors
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	storage_errors "github.com/grafana/loki/v3/pkg/storage/errors"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // TranslateToPromqlAPIError converts error to one of promql.Errors for consumption in PromQL API.
@@ -38,7 +38,7 @@ func TranslateToPromqlAPIError(err error) error {
 	case promql.ErrStorage, promql.ErrTooManySamples, promql.ErrQueryCanceled, promql.ErrQueryTimeout:
 		// Don't translate those, just in case we use them internally.
 		return err
-	case storage_errors.QueryError, validation.LimitError:
+	case storage_errors.QueryError, runtime.LimitError:
 		// This will be returned with status code 422 by Prometheus API.
 		return err
 	default:

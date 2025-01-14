@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type mockClient struct {
@@ -41,7 +41,7 @@ func TestRemoteEvalQueryTimeout(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.RulerRemoteEvaluationTimeout = timeout
 
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	cli := mockClient{
@@ -76,7 +76,7 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.RulerRemoteEvaluationMaxResponseSize = maxSize
 
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	cli := mockClient{
@@ -109,7 +109,7 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 
 func TestRemoteEvalScalar(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	var (
@@ -161,7 +161,7 @@ func TestRemoteEvalScalar(t *testing.T) {
 // TestRemoteEvalEmptyScalarResponse validates that an empty scalar response is valid and does not cause an error
 func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	cli := mockClient{
@@ -202,7 +202,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 // TestRemoteEvalVectorResponse validates that an empty vector response is valid and does not cause an error
 func TestRemoteEvalVectorResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	now := time.Now()
@@ -268,7 +268,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 // TestRemoteEvalEmptyVectorResponse validates that an empty vector response is valid and does not cause an error
 func TestRemoteEvalEmptyVectorResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	cli := mockClient{
@@ -307,7 +307,7 @@ func TestRemoteEvalEmptyVectorResponse(t *testing.T) {
 
 func TestRemoteEvalErrorResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	var respErr = fmt.Errorf("some error occurred")
@@ -332,7 +332,7 @@ func TestRemoteEvalErrorResponse(t *testing.T) {
 
 func TestRemoteEvalNon2xxResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	const httpErr = http.StatusInternalServerError
@@ -358,7 +358,7 @@ func TestRemoteEvalNon2xxResponse(t *testing.T) {
 
 func TestRemoteEvalNonJSONResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	cli := mockClient{
@@ -383,7 +383,7 @@ func TestRemoteEvalNonJSONResponse(t *testing.T) {
 
 func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	cli := mockClient{
@@ -421,8 +421,8 @@ func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 	require.ErrorContains(t, err, fmt.Sprintf("unsupported result type: %q", loghttp.ResultTypeStream))
 }
 
-func defaultLimitsTestConfig() validation.Limits {
-	limits := validation.Limits{}
+func defaultLimitsTestConfig() runtime.Limits {
+	limits := runtime.Limits{}
 	flagext.DefaultValues(&limits)
 	return limits
 }

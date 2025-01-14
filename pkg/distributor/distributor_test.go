@@ -116,7 +116,7 @@ func TestDistributor(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
-			limits := &validation.Limits{}
+			limits := &runtime.Limits{}
 			flagext.DefaultValues(limits)
 			limits.IngestionRateMB = ingestionRateLimitMB
 			limits.IngestionBurstSizeMB = ingestionRateLimitMB
@@ -152,23 +152,23 @@ func TestDistributor(t *testing.T) {
 }
 
 func Test_IncrementTimestamp(t *testing.T) {
-	incrementingDisabled := &validation.Limits{}
+	incrementingDisabled := &runtime.Limits{}
 	flagext.DefaultValues(incrementingDisabled)
 	incrementingDisabled.RejectOldSamples = false
 	incrementingDisabled.DiscoverLogLevels = false
 
-	incrementingEnabled := &validation.Limits{}
+	incrementingEnabled := &runtime.Limits{}
 	flagext.DefaultValues(incrementingEnabled)
 	incrementingEnabled.RejectOldSamples = false
 	incrementingEnabled.IncrementDuplicateTimestamp = true
 	incrementingEnabled.DiscoverLogLevels = false
 
-	defaultLimits := &validation.Limits{}
+	defaultLimits := &runtime.Limits{}
 	flagext.DefaultValues(defaultLimits)
 	defaultLimits.DiscoverLogLevels = false
 
 	tests := map[string]struct {
-		limits       *validation.Limits
+		limits       *runtime.Limits
 		push         *logproto.PushRequest
 		expectedPush *logproto.PushRequest
 	}{
@@ -427,7 +427,7 @@ func Test_IncrementTimestamp(t *testing.T) {
 }
 
 func Test_MissingEnforcedLabels(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 
 	limits.EnforcedLabels = []string{"app", "env"}
@@ -454,7 +454,7 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 }
 
 func Test_PushWithEnforcedLabels(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 
 	// makeWriteRequest only contains a `{foo="bar"}` label.
@@ -480,7 +480,7 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 }
 
 func TestDistributorPushConcurrently(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 
 	distributors, ingesters := prepare(t, 1, 5, limits, nil)
@@ -533,7 +533,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 }
 
 func TestDistributorPushErrors(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 
 	t.Run("with RF=3 a single push can fail", func(t *testing.T) {
@@ -572,7 +572,7 @@ func TestDistributorPushErrors(t *testing.T) {
 }
 
 func TestDistributorPushToKafka(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 
 	t.Run("with kafka, any failure fails the request", func(t *testing.T) {
@@ -645,7 +645,7 @@ func TestDistributorPushToKafka(t *testing.T) {
 
 func Test_SortLabelsOnPush(t *testing.T) {
 	t.Run("with service_name already present in labels", func(t *testing.T) {
-		limits := &validation.Limits{}
+		limits := &runtime.Limits{}
 		flagext.DefaultValues(limits)
 		ingester := &mockIngester{}
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
@@ -660,8 +660,8 @@ func Test_SortLabelsOnPush(t *testing.T) {
 }
 
 func Test_TruncateLogLines(t *testing.T) {
-	setup := func() (*validation.Limits, *mockIngester) {
-		limits := &validation.Limits{}
+	setup := func() (*runtime.Limits, *mockIngester) {
+		limits := &runtime.Limits{}
 		flagext.DefaultValues(limits)
 
 		limits.MaxLineSize = 5
@@ -681,8 +681,8 @@ func Test_TruncateLogLines(t *testing.T) {
 }
 
 func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
-	setup := func() (*validation.Limits, *mockIngester) {
-		limits := &validation.Limits{}
+	setup := func() (*runtime.Limits, *mockIngester) {
+		limits := &runtime.Limits{}
 		flagext.DefaultValues(limits)
 
 		limits.MaxLineSize = 5
@@ -786,11 +786,11 @@ func TestStreamShard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			baseStream.Entries = tc.entries
 
-			distributorLimits := &validation.Limits{}
+			distributorLimits := &runtime.Limits{}
 			flagext.DefaultValues(distributorLimits)
 			distributorLimits.ShardStreams.DesiredRate = desiredRate
 
-			overrides, err := validation.NewOverrides(*distributorLimits, nil)
+			overrides, err := runtime.NewOverrides(*distributorLimits, nil)
 			require.NoError(t, err)
 
 			validator, err := NewValidator(overrides, nil)
@@ -830,11 +830,11 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 
 	streamRate := loki_flagext.ByteSize(400).Val()
 
-	distributorLimits := &validation.Limits{}
+	distributorLimits := &runtime.Limits{}
 	flagext.DefaultValues(distributorLimits)
 	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(100)
 
-	overrides, err := validation.NewOverrides(*distributorLimits, nil)
+	overrides, err := runtime.NewOverrides(*distributorLimits, nil)
 	require.NoError(t, err)
 
 	validator, err := NewValidator(overrides, nil)
@@ -1160,11 +1160,11 @@ func BenchmarkShardStream(b *testing.B) {
 
 	desiredRate := 3000
 
-	distributorLimits := &validation.Limits{}
+	distributorLimits := &runtime.Limits{}
 	flagext.DefaultValues(distributorLimits)
 	distributorLimits.ShardStreams.DesiredRate = loki_flagext.ByteSize(desiredRate)
 
-	overrides, err := validation.NewOverrides(*distributorLimits, nil)
+	overrides, err := runtime.NewOverrides(*distributorLimits, nil)
 	require.NoError(b, err)
 
 	validator, err := NewValidator(overrides, nil)
@@ -1224,7 +1224,7 @@ func BenchmarkShardStream(b *testing.B) {
 }
 
 func Benchmark_SortLabelsOnPush(b *testing.B) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	d := distributors[0]
@@ -1241,7 +1241,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 }
 
 func TestParseStreamLabels(t *testing.T) {
-	defaultLimit := &validation.Limits{}
+	defaultLimit := &runtime.Limits{}
 	flagext.DefaultValues(defaultLimit)
 
 	for _, tc := range []struct {
@@ -1249,13 +1249,13 @@ func TestParseStreamLabels(t *testing.T) {
 		origLabels     string
 		expectedLabels labels.Labels
 		expectedErr    error
-		generateLimits func() *validation.Limits
+		generateLimits func() *runtime.Limits
 	}{
 		{
 			name:       "service name label should not get counted against max labels count",
 			origLabels: `{foo="bar", service_name="unknown_service"}`,
-			generateLimits: func() *validation.Limits {
-				limits := &validation.Limits{}
+			generateLimits: func() *runtime.Limits {
+				limits := &runtime.Limits{}
 				flagext.DefaultValues(limits)
 				limits.MaxLabelNamesPerSeries = 1
 				return limits
@@ -1295,7 +1295,7 @@ func TestParseStreamLabels(t *testing.T) {
 }
 
 func Benchmark_Push(b *testing.B) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 	limits.IngestionBurstSizeMB = math.MaxInt32
 	limits.CardinalityLimit = math.MaxInt32
@@ -1511,7 +1511,7 @@ func TestShardCountFor(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			limits := &validation.Limits{}
+			limits := &runtime.Limits{}
 			flagext.DefaultValues(limits)
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
@@ -1525,7 +1525,7 @@ func TestShardCountFor(t *testing.T) {
 }
 
 func Benchmark_PushWithLineTruncation(b *testing.B) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 
 	limits.IngestionRateMB = math.MaxInt32
@@ -1562,7 +1562,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}{
 		"local strategy: limit should be set to each distributor": {
 			distributors:          2,
-			ingestionRateStrategy: validation.LocalIngestionRateStrategy,
+			ingestionRateStrategy: runtime.LocalIngestionRateStrategy,
 			ingestionRateMB:       datasize.ByteSize(100).MBytes(),
 			ingestionBurstSizeMB:  datasize.ByteSize(100).MBytes(),
 			pushes: []testPush{
@@ -1574,7 +1574,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		},
 		"global strategy: limit should be evenly shared across distributors": {
 			distributors:          2,
-			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
+			ingestionRateStrategy: runtime.GlobalIngestionRateStrategy,
 			ingestionRateMB:       datasize.ByteSize(200).MBytes(),
 			ingestionBurstSizeMB:  datasize.ByteSize(100).MBytes(),
 			pushes: []testPush{
@@ -1586,7 +1586,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 		},
 		"global strategy: burst should set to each distributor": {
 			distributors:          2,
-			ingestionRateStrategy: validation.GlobalIngestionRateStrategy,
+			ingestionRateStrategy: runtime.GlobalIngestionRateStrategy,
 			ingestionRateMB:       datasize.ByteSize(100).MBytes(),
 			ingestionBurstSizeMB:  datasize.ByteSize(200).MBytes(),
 			pushes: []testPush{
@@ -1600,7 +1600,7 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			limits := &validation.Limits{}
+			limits := &runtime.Limits{}
 			flagext.DefaultValues(limits)
 			limits.IngestionRateStrategy = testData.ingestionRateStrategy
 			limits.IngestionRateMB = testData.ingestionRateMB
@@ -1656,7 +1656,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			limits := &validation.Limits{}
+			limits := &runtime.Limits{}
 			flagext.DefaultValues(limits)
 			limits.BlockIngestionUntil = flagext.Time(tc.blockUntil)
 			limits.BlockIngestionStatusCode = tc.blockStatusCode
@@ -1677,7 +1677,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 	}
 }
 
-func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
+func prepare(t *testing.T, numDistributors, numIngesters int, limits *runtime.Limits, factory func(addr string) (ring_client.PoolClient, error)) ([]*Distributor, []mockIngester) {
 	t.Helper()
 
 	ingesters := make([]mockIngester, numIngesters)
@@ -1765,12 +1765,12 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 			})
 		}
 
-		overrides, err := validation.NewOverrides(*limits, nil)
+		overrides, err := runtime.NewOverrides(*limits, nil)
 		require.NoError(t, err)
 
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -2002,7 +2002,7 @@ func TestDistributorTee(t *testing.T) {
 		},
 	}
 
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 	limits.RejectOldSamples = false
 	distributors, _ := prepare(t, 1, 3, limits, nil)
@@ -2023,7 +2023,7 @@ func TestDistributorTee(t *testing.T) {
 }
 
 func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 	for _, tc := range []struct {
 		req              *logproto.PushRequest

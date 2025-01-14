@@ -71,7 +71,6 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // Config is the root config for Loki.
@@ -104,26 +103,23 @@ type Config struct {
 	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
 	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
 	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
-	LimitsConfig        validation.Limits          `yaml:"limits_config"`
 	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	DataObjExplorer     explorer.Config            `yaml:"dataobj_explorer,omitempty" category:"experimental"`
 
-	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
-	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
-	Tracing           tracing.Config       `yaml:"tracing"`
-	Analytics         analytics.Config     `yaml:"analytics"`
-	Profiling         ProfilingConfig      `yaml:"profiling,omitempty"`
+	LimitsConfig  runtime.Limits       `yaml:"limits_config"`
+	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 
-	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
+	Tracing   tracing.Config   `yaml:"tracing"`
+	Analytics analytics.Config `yaml:"analytics"`
+	Profiling ProfilingConfig  `yaml:"profiling,omitempty"`
 
-	Common common.Config `yaml:"common,omitempty"`
-
-	ShutdownDelay time.Duration `yaml:"shutdown_delay"`
-
-	MetricsNamespace string `yaml:"metrics_namespace"`
+	LegacyReadTarget bool          `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
+	Common           common.Config `yaml:"common,omitempty"`
+	ShutdownDelay    time.Duration `yaml:"shutdown_delay"`
+	MetricsNamespace string        `yaml:"metrics_namespace"`
 }
 
 // RegisterFlags registers flag.
@@ -186,7 +182,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.BloomBuild.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
-	c.OperationalConfig.RegisterFlags(f)
 	c.Profiling.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
 	c.BlockBuilder.RegisterFlags(f)
@@ -358,8 +353,7 @@ type Loki struct {
 	InternalServer            *server.Server
 	ring                      *ring.Ring
 	Overrides                 limiter.CombinedLimits
-	tenantConfigs             *runtime.TenantConfigs
-	TenantLimits              validation.TenantLimits
+	TenantLimits              runtime.TenantLimits
 	distributor               *distributor.Distributor
 	Ingester                  ingester.Interface
 	PatternIngester           *pattern.Ingester
@@ -673,7 +667,6 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
-	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
@@ -716,16 +709,15 @@ func (t *Loki) setupModuleManager() error {
 		Analytics:                {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
-		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
+		Distributor:              {Ring, Server, Overrides, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
 		Store:                    {Overrides, IndexGatewayRing},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
+		Ingester:                 {Store, Server, MemberlistKV, Analytics, PartitionRing},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
-		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
+		QueryFrontendTripperware: {Server, Overrides},
 		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
-		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
-		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
+		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, Analytics},
+		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics},

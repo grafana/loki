@@ -9,13 +9,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	runtime "github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type fixture struct {
@@ -43,9 +43,9 @@ var Fixtures = []testutils.Fixture{
 	fixture{gcp.Fixtures[0]},
 }
 
-func defaultLimits() (*validation.Overrides, error) {
-	var defaults validation.Limits
+func defaultLimits() (*runtime.Overrides, error) {
+	var defaults runtime.Limits
 	flagext.DefaultValues(&defaults)
 	defaults.CardinalityLimit = 5
-	return validation.NewOverrides(defaults, nil)
+	return runtime.NewOverrides(defaults, nil)
 }

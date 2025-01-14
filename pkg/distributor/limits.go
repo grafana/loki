@@ -5,12 +5,15 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 )
 
 // Limits is an interface for distributor limits/related configs
 type Limits interface {
 	retention.Limits
+	writefailures.Limits
+
 	MaxLineSize(userID string) int
 	MaxLineSizeTruncate(userID string) bool
 	MaxLabelNamesPerSeries(userID string) int

@@ -21,6 +21,7 @@ import (
 
 	ring_client "github.com/grafana/dskit/ring/client"
 
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/pattern/aggregation"
 	"github.com/grafana/loki/v3/pkg/pattern/clientpool"
@@ -151,6 +152,7 @@ func (cfg *Config) Validate() error {
 type Limits interface {
 	drain.Limits
 	aggregation.Limits
+	writefailures.Limits
 }
 
 type Ingester struct {

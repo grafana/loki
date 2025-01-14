@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"runtime"
+	rt "runtime"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -17,12 +17,11 @@ import (
 	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/v3/pkg/loki"
-	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	_ "github.com/grafana/loki/v3/pkg/util/build"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func exit(code int) {
@@ -49,8 +48,7 @@ func main() {
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
-	validation.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
-	loki_runtime.SetDefaultLimitsForYAMLUnmarshalling(config.OperationalConfig)
+	runtime.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
 
 	// Init the logger which will honor the log level set in config.Server
 	if reflect.DeepEqual(&config.Server.LogLevel, &log.Level{}) {
@@ -112,7 +110,7 @@ func main() {
 	// The larger the ballast, the lower the garbage collection frequency.
 	// https://github.com/grafana/loki/issues/781
 	ballast := make([]byte, config.BallastBytes)
-	runtime.KeepAlive(ballast)
+	rt.KeepAlive(ballast)
 
 	// Start Loki
 	t, err := loki.New(config.Config)
@@ -132,12 +130,12 @@ func main() {
 
 func setProfilingOptions(cfg loki.ProfilingConfig) {
 	if cfg.BlockProfileRate > 0 {
-		runtime.SetBlockProfileRate(cfg.BlockProfileRate)
+		rt.SetBlockProfileRate(cfg.BlockProfileRate)
 	}
 	if cfg.CPUProfileRate > 0 {
-		runtime.SetCPUProfileRate(cfg.CPUProfileRate)
+		rt.SetCPUProfileRate(cfg.CPUProfileRate)
 	}
 	if cfg.MutexProfileFraction > 0 {
-		runtime.SetMutexProfileFraction(cfg.MutexProfileFraction)
+		rt.SetMutexProfileFraction(cfg.MutexProfileFraction)
 	}
 }

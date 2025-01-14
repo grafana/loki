@@ -47,7 +47,6 @@ import (
 	storage_config "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/tracing"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -137,7 +136,7 @@ var (
 		},
 		{
 			Name:       "limits_config",
-			StructType: []reflect.Type{reflect.TypeOf(validation.Limits{})},
+			StructType: []reflect.Type{reflect.TypeOf(runtime.Limits{})},
 			Desc:       "The limits_config block configures global and per-tenant limits in Loki. The values here can be overridden in the `overrides` section of the runtime_config file",
 		},
 		{
@@ -155,11 +154,6 @@ var (
 			Name:       "runtime_config",
 			StructType: []reflect.Type{reflect.TypeOf(runtimeconfig.Config{})},
 			Desc:       "Configuration for 'runtime config' module, responsible for reloading runtime configuration file.",
-		},
-		{
-			Name:       "operational_config",
-			StructType: []reflect.Type{reflect.TypeOf(runtime.Config{})},
-			Desc:       "These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the `runtime_config` file.",
 		},
 		{
 			Name:       "tracing",

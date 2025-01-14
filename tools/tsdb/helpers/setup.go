@@ -13,13 +13,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 
 	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func Setup() (loki.Config, services.Service, string, error) {
@@ -81,15 +81,15 @@ func moduleManager(cfg *server.Config) (services.Service, error) {
 	return s, nil
 }
 
-func DefaultConfigs() (config.ChunkStoreConfig, *validation.Overrides, storage.ClientMetrics) {
+func DefaultConfigs() (config.ChunkStoreConfig, *runtime.Overrides, storage.ClientMetrics) {
 	var (
 		chunkStoreConfig config.ChunkStoreConfig
-		limits           validation.Limits
+		limits           runtime.Limits
 		clientMetrics    storage.ClientMetrics
 	)
 	chunkStoreConfig.RegisterFlags(flag.NewFlagSet("chunk-store", flag.PanicOnError))
 	limits.RegisterFlags(flag.NewFlagSet("limits", flag.PanicOnError))
-	overrides, _ := validation.NewOverrides(limits, nil)
+	overrides, _ := runtime.NewOverrides(limits, nil)
 	return chunkStoreConfig, overrides, clientMetrics
 }
 

@@ -7,22 +7,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
-type ExportedLimits interface {
-	AllByUserID() map[string]*Limits
-	DefaultLimits() *Limits
-}
-
 type OverridesExporter struct {
-	overrides    ExportedLimits
+	overrides    runtime.ExportedLimits
 	tenantDesc   *prometheus.Desc
 	defaultsDesc *prometheus.Desc
 }
 
 // TODO(jordanrushing): break out overrides from defaults?
-func NewOverridesExporter(overrides ExportedLimits) *OverridesExporter {
+func NewOverridesExporter(overrides runtime.ExportedLimits) *OverridesExporter {
 	return &OverridesExporter{
 		overrides: overrides,
 		tenantDesc: prometheus.NewDesc(

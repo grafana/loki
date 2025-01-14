@@ -10,7 +10,8 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 const (
@@ -26,11 +27,12 @@ type RingCount interface {
 }
 
 type Limits interface {
+	writefailures.Limits
 	UnorderedWrites(userID string) bool
 	UseOwnedStreamCount(userID string) bool
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
-	PerStreamRateLimit(userID string) validation.RateLimit
+	PerStreamRateLimit(userID string) runtime.RateLimit
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
 }
@@ -234,7 +236,7 @@ func (l *streamCountLimiter) getSuppliers(tenant string) (streamCountSupplier, f
 }
 
 type RateLimiterStrategy interface {
-	RateLimit(tenant string) validation.RateLimit
+	RateLimit(tenant string) runtime.RateLimit
 	SetDisabled(bool)
 }
 
@@ -243,9 +245,9 @@ type TenantBasedStrategy struct {
 	limits   Limits
 }
 
-func (l *TenantBasedStrategy) RateLimit(tenant string) validation.RateLimit {
+func (l *TenantBasedStrategy) RateLimit(tenant string) runtime.RateLimit {
 	if l.disabled {
-		return validation.Unlimited
+		return runtime.Unlimited
 	}
 
 	return l.limits.PerStreamRateLimit(tenant)
@@ -257,8 +259,8 @@ func (l *TenantBasedStrategy) SetDisabled(disabled bool) {
 
 type NoLimitsStrategy struct{}
 
-func (l *NoLimitsStrategy) RateLimit(_ string) validation.RateLimit {
-	return validation.Unlimited
+func (l *NoLimitsStrategy) RateLimit(_ string) runtime.RateLimit {
+	return runtime.Unlimited
 }
 
 func (l *NoLimitsStrategy) SetDisabled(_ bool) {

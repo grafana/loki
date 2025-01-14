@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	chunk "github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -31,7 +32,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const schemaConfigFilename = "schemaconfig"
@@ -464,7 +464,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
+	limits, err := runtime.NewOverrides(conf.LimitsConfig, nil)
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/stretchr/testify/require"
 
@@ -338,8 +338,8 @@ type fakeOverrides struct {
 	enabled bool
 }
 
-func (c *fakeOverrides) AllByUserID() map[string]*validation.Limits {
-	return map[string]*validation.Limits{
+func (c *fakeOverrides) AllByUserID() map[string]*runtime.Limits {
+	return map[string]*runtime.Limits{
 		"ingester0": {
 			ShardStreams: shardstreams.Config{
 				Enabled: c.enabled,

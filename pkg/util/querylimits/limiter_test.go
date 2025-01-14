@@ -9,31 +9,31 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 type mockTenantLimits struct {
-	limits map[string]*validation.Limits
+	limits map[string]*runtime.Limits
 }
 
-func newMockTenantLimits(limits map[string]*validation.Limits) *mockTenantLimits {
+func newMockTenantLimits(limits map[string]*runtime.Limits) *mockTenantLimits {
 	return &mockTenantLimits{
 		limits: limits,
 	}
 }
 
-func (l *mockTenantLimits) TenantLimits(userID string) *validation.Limits {
+func (l *mockTenantLimits) TenantLimits(userID string) *runtime.Limits {
 	return l.limits[userID]
 }
 
-func (l *mockTenantLimits) AllByUserID() map[string]*validation.Limits { return l.limits }
+func (l *mockTenantLimits) AllByUserID() map[string]*runtime.Limits { return l.limits }
 
 // end copy pasta
 
 func TestLimiter_Defaults(t *testing.T) {
 	// some fake tenant
-	tLimits := make(map[string]*validation.Limits)
-	tLimits["fake"] = &validation.Limits{
+	tLimits := make(map[string]*runtime.Limits)
+	tLimits["fake"] = &runtime.Limits{
 		QueryTimeout:            model.Duration(30 * time.Second),
 		MaxQueryLookback:        model.Duration(30 * time.Second),
 		MaxQueryLength:          model.Duration(30 * time.Second),
@@ -45,7 +45,7 @@ func TestLimiter_Defaults(t *testing.T) {
 		MaxQuerierBytesRead:     10,
 	}
 
-	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	overrides, _ := runtime.NewOverrides(runtime.Limits{}, newMockTenantLimits(tLimits))
 	l := NewLimiter(log.NewNopLogger(), overrides)
 
 	expectedLimits := QueryLimits{
@@ -110,8 +110,8 @@ func TestLimiter_Defaults(t *testing.T) {
 
 func TestLimiter_RejectHighLimits(t *testing.T) {
 	// some fake tenant
-	tLimits := make(map[string]*validation.Limits)
-	tLimits["fake"] = &validation.Limits{
+	tLimits := make(map[string]*runtime.Limits)
+	tLimits["fake"] = &runtime.Limits{
 		MaxQueryLookback:        model.Duration(30 * time.Second),
 		MaxQueryLength:          model.Duration(30 * time.Second),
 		MaxQueryRange:           model.Duration(30 * time.Second),
@@ -122,7 +122,7 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 		MaxQuerierBytesRead:     10,
 	}
 
-	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	overrides, _ := runtime.NewOverrides(runtime.Limits{}, newMockTenantLimits(tLimits))
 	l := NewLimiter(log.NewNopLogger(), overrides)
 	limits := QueryLimits{
 		MaxQueryLength:          model.Duration(2 * 24 * time.Hour),
@@ -154,8 +154,8 @@ func TestLimiter_RejectHighLimits(t *testing.T) {
 
 func TestLimiter_AcceptLowerLimits(t *testing.T) {
 	// some fake tenant
-	tLimits := make(map[string]*validation.Limits)
-	tLimits["fake"] = &validation.Limits{
+	tLimits := make(map[string]*runtime.Limits)
+	tLimits["fake"] = &runtime.Limits{
 		MaxQueryLookback:        model.Duration(30 * time.Second),
 		MaxQueryLength:          model.Duration(30 * time.Second),
 		MaxQueryRange:           model.Duration(2 * 24 * time.Hour),
@@ -166,7 +166,7 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 		MaxQuerierBytesRead:     10,
 	}
 
-	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	overrides, _ := runtime.NewOverrides(runtime.Limits{}, newMockTenantLimits(tLimits))
 	l := NewLimiter(log.NewNopLogger(), overrides)
 	limits := QueryLimits{
 		MaxQueryLength:          model.Duration(29 * time.Second),
@@ -192,12 +192,12 @@ func TestLimiter_AcceptLowerLimits(t *testing.T) {
 
 func TestLimiter_MergeLimits(t *testing.T) {
 	// some fake tenant
-	tLimits := make(map[string]*validation.Limits)
-	tLimits["fake"] = &validation.Limits{
+	tLimits := make(map[string]*runtime.Limits)
+	tLimits["fake"] = &runtime.Limits{
 		RequiredLabels: []string{"one", "two"},
 	}
 
-	overrides, _ := validation.NewOverrides(validation.Limits{}, newMockTenantLimits(tLimits))
+	overrides, _ := runtime.NewOverrides(runtime.Limits{}, newMockTenantLimits(tLimits))
 	l := NewLimiter(log.NewNopLogger(), overrides)
 	limits := QueryLimits{
 		RequiredLabels: []string{"one", "three"},

@@ -792,11 +792,6 @@ compactor_grpc_client:
   # CLI flag: -compactor.grpc-client.connect-backoff-max-delay
   [connect_backoff_max_delay: <duration> | default = 5s]
 
-# The limits_config block configures global and per-tenant limits in Loki. The
-# values here can be overridden in the `overrides` section of the runtime_config
-# file
-[limits_config: <limits_config>]
-
 # The frontend_worker configures the worker - running within the Loki querier -
 # picking up and executing queries enqueued by the query-frontend.
 [frontend_worker: <frontend_worker>]
@@ -901,14 +896,14 @@ dataobj_explorer:
   # CLI flag: -dataobj-explorer.storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
 
+# The limits_config block configures global and per-tenant limits in Loki. The
+# values here can be overridden in the `overrides` section of the runtime_config
+# file
+[limits_config: <limits_config>]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
-
-# These are values which allow you to control aspects of Loki's operation, most
-# commonly used for controlling types of higher verbosity logging, the values
-# here can be overridden in the `configs` section of the `runtime_config` file.
-[operational_config: <operational_config>]
 
 # Configuration for tracing.
 [tracing: <tracing>]
@@ -3817,10 +3812,19 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# Experimental. The shard size defines how many bloom gateways should be used by
+# a tenant for querying.
+# CLI flag: -bloom-gateway.shard-size
+[bloom_gateway_shard_size: <int> | default = 0]
+
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
+
+# Experimental. Interval for computing the cache key in the Bloom Gateway.
+# CLI flag: -bloom-gateway.cache-key-interval
+[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Experimental. Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.
@@ -3956,6 +3960,34 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Log every new stream created by a push request (very verbose, recommend to
+# enable via runtime config only).
+# CLI flag: -operation-config.log-stream-creation
+[log_stream_creation: <boolean> | default = false]
+
+# Log every push request (very verbose, recommend to enable via runtime config
+# only).
+# CLI flag: -operation-config.log-push-request
+[log_push_request: <boolean> | default = false]
+
+# Log every stream in a push request (very verbose, recommend to enable via
+# runtime config only).
+# CLI flag: -operation-config.log-push-request-streams
+[log_push_request_streams: <boolean> | default = false]
+
+# Log metrics for duplicate lines received.
+# CLI flag: -operation-config.log-duplicate-metrics
+[log_duplicate_metrics: <boolean> | default = false]
+
+# Log stream info for duplicate lines received
+# CLI flag: -operation-config.log-duplicate-stream-info
+[log_duplicate_stream_info: <boolean> | default = false]
+
+# Log push errors with a rate limited logger, will show client push errors
+# without overly spamming logs.
+# CLI flag: -operation-config.limited-log-push-errors
+[limited_log_push_errors: <boolean> | default = true]
 ```
 
 ### local_storage_config
@@ -4207,40 +4239,6 @@ Named store from this example can be used by setting object_store to store-1 in 
 [swift: <map of string to swift_storage_config>]
 
 [cos: <map of string to cos_storage_config>]
-```
-
-### operational_config
-
-These are values which allow you to control aspects of Loki's operation, most commonly used for controlling types of higher verbosity logging, the values here can be overridden in the `configs` section of the `runtime_config` file.
-
-```yaml
-# Log every new stream created by a push request (very verbose, recommend to
-# enable via runtime config only).
-# CLI flag: -operation-config.log-stream-creation
-[log_stream_creation: <boolean> | default = false]
-
-# Log every push request (very verbose, recommend to enable via runtime config
-# only).
-# CLI flag: -operation-config.log-push-request
-[log_push_request: <boolean> | default = false]
-
-# Log every stream in a push request (very verbose, recommend to enable via
-# runtime config only).
-# CLI flag: -operation-config.log-push-request-streams
-[log_push_request_streams: <boolean> | default = false]
-
-# Log metrics for duplicate lines received.
-# CLI flag: -operation-config.log-duplicate-metrics
-[log_duplicate_metrics: <boolean> | default = false]
-
-# Log stream info for duplicate lines received
-# CLI flag: -operation-config.log-duplicate-stream-info
-[log_duplicate_stream_info: <boolean> | default = false]
-
-# Log push errors with a rate limited logger, will show client push errors
-# without overly spamming logs.
-# CLI flag: -operation-config.limited-log-push-errors
-[limited_log_push_errors: <boolean> | default = true]
 ```
 
 ### period_config

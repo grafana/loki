@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/loki/pkg/push"
 )
@@ -52,7 +51,6 @@ func getTestTee(t *testing.T) (*TeeService, *mockPoolClient) {
 			metricAggregationEnabled: true,
 		},
 		ringClient,
-		runtime.DefaultTenantConfigs(),
 		"test",
 		nil,
 		log.NewNopLogger(),

@@ -26,11 +26,11 @@ import (
 	"github.com/grafana/loki/v3/integration/util"
 
 	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var configTemplate = template.Must(template.New("").Parse(`
@@ -509,14 +509,14 @@ func (c *Component) Restart() error {
 }
 
 type runtimeConfigValues struct {
-	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
+	TenantLimits map[string]*runtime.Limits `yaml:"overrides"`
 }
 
-func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) error {
+func (c *Component) SetTenantLimits(tenant string, limits runtime.Limits) error {
 	rcv := runtimeConfigValues{}
 	rcv.TenantLimits = c.loki.TenantLimits.AllByUserID()
 	if rcv.TenantLimits == nil {
-		rcv.TenantLimits = map[string]*validation.Limits{}
+		rcv.TenantLimits = map[string]*runtime.Limits{}
 	}
 	rcv.TenantLimits[tenant] = &limits
 
@@ -528,7 +528,7 @@ func (c *Component) SetTenantLimits(tenant string, limits validation.Limits) err
 	return os.WriteFile(c.overridesFile, config, 0640) // #nosec G306 -- this is fencing off the "other" permissions
 }
 
-func (c *Component) GetTenantLimits(tenant string) validation.Limits {
+func (c *Component) GetTenantLimits(tenant string) runtime.Limits {
 	limits := c.loki.TenantLimits.TenantLimits(tenant)
 	if limits == nil {
 		return c.loki.Cfg.LimitsConfig

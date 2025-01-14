@@ -39,7 +39,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -390,10 +389,10 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, readRingMock, nil)
+	ing, err := New(cfg, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, gokitlog.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 

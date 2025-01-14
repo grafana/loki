@@ -10,17 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/pdata/plog"
 
+	"github.com/grafana/loki/pkg/push"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 func Test_DetectLogLevels(t *testing.T) {
-	setup := func(discoverLogLevels bool) (*validation.Limits, *mockIngester) {
-		limits := &validation.Limits{}
+	setup := func(discoverLogLevels bool) (*runtime.Limits, *mockIngester) {
+		limits := &runtime.Limits{}
 		flagext.DefaultValues(limits)
 
 		limits.DiscoverLogLevels = discoverLogLevels

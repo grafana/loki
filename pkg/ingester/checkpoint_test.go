@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // small util for ensuring data exists as we expect
@@ -62,7 +61,7 @@ func TestIngesterWAL(t *testing.T) {
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	newStore := func() *mockStore {
@@ -73,7 +72,7 @@ func TestIngesterWAL(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -116,7 +115,7 @@ func TestIngesterWAL(t *testing.T) {
 	expectCheckpoint(t, walDir, false, time.Second)
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -130,7 +129,7 @@ func TestIngesterWAL(t *testing.T) {
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -144,7 +143,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	newStore := func() *mockStore {
@@ -155,7 +154,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -197,11 +196,11 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	// Limit all streams except those written during WAL recovery.
 	limitCfg := defaultLimitsTestConfig()
 	limitCfg.MaxLocalStreamsPerUser = -1
-	limits, err = validation.NewOverrides(limitCfg, nil)
+	limits, err = runtime.NewOverrides(limitCfg, nil)
 	require.NoError(t, err)
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -249,7 +248,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	newStore := func() *mockStore {
@@ -260,7 +259,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -281,7 +280,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 	expectCheckpoint(t, walDir, false, time.Second)
 
 	// restart the ingester, ensuring we replayed from WAL.
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -293,7 +292,7 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 	ingesterConfig.WAL.ReplayMemoryCeiling = 1000
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	newStore := func() *mockStore {
@@ -304,7 +303,7 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -325,7 +324,7 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// restart the ingester, ensuring we can replay from the checkpoint as well.
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -456,13 +455,14 @@ func Test_SeriesIterator(t *testing.T) {
 	l.IngestionRateMB = 1e4
 	l.IngestionBurstSizeMB = 1e4
 
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := runtime.NewOverrides(l, nil)
 	require.NoError(t, err)
 
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
 	for i := 0; i < 3; i++ {
-		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 		require.Nil(t, err)
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream2}}))
@@ -504,13 +504,14 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	streams := buildStreams()
 	instances := make([]*instance, 10)
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
 	for i := range instances {
-		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, noopWAL{}, NilMetrics, nil, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{
@@ -593,7 +594,7 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 			// First launch the ingester with unordered writes enabled
 			dft := defaultLimitsTestConfig()
 			dft.UnorderedWrites = true
-			limits, err := validation.NewOverrides(dft, nil)
+			limits, err := runtime.NewOverrides(dft, nil)
 			require.NoError(t, err)
 
 			newStore := func() *mockStore {
@@ -604,7 +605,7 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 
 			readRingMock := mockReadRingWithOneActiveIngester()
 
-			i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+			i, err := New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 			require.NoError(t, err)
 			require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -672,11 +673,11 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 			// Now disable unordered writes
 			limitCfg := defaultLimitsTestConfig()
 			limitCfg.UnorderedWrites = false
-			limits, err = validation.NewOverrides(limitCfg, nil)
+			limits, err = runtime.NewOverrides(limitCfg, nil)
 			require.NoError(t, err)
 
 			// restart the ingester
-			i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+			i, err = New(ingesterConfig, client.Config{}, newStore(), limits, nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 			require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))

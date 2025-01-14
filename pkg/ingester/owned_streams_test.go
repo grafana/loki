@@ -7,11 +7,11 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 func Test_OwnedStreamService(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{
+	limits, err := runtime.NewOverrides(runtime.Limits{
 		MaxGlobalStreamsPerUser: 100,
 	}, nil)
 	require.NoError(t, err)

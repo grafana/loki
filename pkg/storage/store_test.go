@@ -9,7 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"runtime"
+	rt "runtime"
 	"testing"
 	"time"
 
@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -44,12 +45,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/marshal"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
 	start      = model.Time(1523750400000)
-	m          runtime.MemStats
+	m          rt.MemStats
 	ctx        = user.InjectOrgID(context.Background(), "fake")
 	cm         = NewClientMetrics()
 	chunkStore = getLocalStore("/tmp/benchmark/", cm)
@@ -185,7 +185,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 var maxHeapInuse uint64
 
 func printHeap(b *testing.B, show bool) {
-	runtime.ReadMemStats(&m)
+	rt.ReadMemStats(&m)
 	if m.HeapInuse > maxHeapInuse {
 		maxHeapInuse = m.HeapInuse
 	}
@@ -196,7 +196,7 @@ func printHeap(b *testing.B, show bool) {
 }
 
 func getLocalStore(path string, cm ClientMetrics) Store {
-	limits, err := validation.NewOverrides(validation.Limits{
+	limits, err := runtime.NewOverrides(runtime.Limits{
 		MaxQueryLength: model.Duration(6000 * time.Hour),
 	}, nil)
 	if err != nil {
@@ -1318,7 +1318,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		},
 	}
 
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	limits, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.NoError(t, err)
 
 	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
@@ -1435,7 +1435,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 }
 
 func TestStore_MultiPeriod(t *testing.T) {
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	limits, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.NoError(t, err)
 
 	firstStoreDate := parseDate("2019-01-01")
@@ -1792,7 +1792,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tempDir := t.TempDir()
 
 	ingesterName := "ingester-1"
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	limits, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.NoError(t, err)
 
 	// config for BoltDB Shipper
@@ -1942,7 +1942,7 @@ func TestStore_SyncStopInteraction(t *testing.T) {
 	tempDir := t.TempDir()
 
 	ingesterName := "ingester-1"
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	limits, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.NoError(t, err)
 
 	// config for BoltDB Shipper

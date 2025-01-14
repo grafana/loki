@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
@@ -29,7 +30,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type configFactory func() config.ChunkStoreConfig
@@ -86,7 +86,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 	require.NoError(t, err)
 	flagext.DefaultValues(&tbmConfig)
 
-	limits, err := validation.NewOverrides(validation.Limits{
+	limits, err := runtime.NewOverrides(runtime.Limits{
 		MaxQueryLength: model.Duration(30 * 24 * time.Hour),
 	}, nil)
 	require.NoError(t, err)

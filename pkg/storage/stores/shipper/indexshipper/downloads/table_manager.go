@@ -18,11 +18,11 @@ import (
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -31,8 +31,7 @@ const (
 )
 
 type Limits interface {
-	AllByUserID() map[string]*validation.Limits
-	DefaultLimits() *validation.Limits
+	runtime.ExportedLimits
 	VolumeMaxSeries(userID string) int
 }
 

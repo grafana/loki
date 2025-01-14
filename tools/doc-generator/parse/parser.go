@@ -23,9 +23,9 @@ import (
 	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/grafana/loki/v3/pkg/ruler/util"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	storage_config "github.com/grafana/loki/v3/pkg/storage/config"
-	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
 var (
@@ -365,13 +365,13 @@ func getFieldCustomType(t reflect.Type) (string, bool) {
 		return fieldRelabelConfig, true
 	case reflect.TypeOf([]*relabel.Config{}).String():
 		return fieldRelabelConfig, true
-	case reflect.TypeOf([]*util_validation.BlockedQuery{}).String():
+	case reflect.TypeOf([]*validation.BlockedQuery{}).String():
 		return "blocked_query...", true
 	case reflect.TypeOf([]*prometheus_config.RemoteWriteConfig{}).String():
 		return "remote_write_config...", true
 	case reflect.TypeOf(storage_config.PeriodConfig{}).String():
 		return "period_config", true
-	case reflect.TypeOf(validation.OverwriteMarshalingStringMap{}).String():
+	case reflect.TypeOf(runtime.OverwriteMarshalingStringMap{}).String():
 		return "headers", true
 	default:
 		return "", false
@@ -460,7 +460,7 @@ func getCustomFieldType(t reflect.Type) (string, bool) {
 		return fieldRelabelConfig, true
 	case reflect.TypeOf(&prometheus_config.RemoteWriteConfig{}).String():
 		return "remote_write_config...", true
-	case reflect.TypeOf(validation.OverwriteMarshalingStringMap{}).String():
+	case reflect.TypeOf(runtime.OverwriteMarshalingStringMap{}).String():
 		return "headers", true
 	case reflect.TypeOf(relabel.Regexp{}).String():
 		return fieldString, true

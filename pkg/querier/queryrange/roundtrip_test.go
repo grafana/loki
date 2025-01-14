@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -36,7 +37,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
-	valid "github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -1529,7 +1529,7 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 }
 
 func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
-	return valid.DefaultTSDBMaxBytesPerShard
+	return runtime.DefaultTSDBMaxBytesPerShard
 }
 
 func (f fakeLimits) TSDBShardingStrategy(string) string {

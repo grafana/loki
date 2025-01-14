@@ -48,7 +48,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
-	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -237,8 +236,7 @@ type Ingester struct {
 	cfg    Config
 	logger log.Logger
 
-	clientConfig  client.Config
-	tenantConfigs *runtime.TenantConfigs
+	clientConfig client.Config
 
 	shutdownMtx  sync.Mutex // Allows processes to grab a lock and prevent a shutdown
 	instancesMtx sync.RWMutex
@@ -300,7 +298,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing, partitionRingWatcher ring.PartitionRingReader) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg, metricsNamespace string, logger log.Logger, customStreamsTracker push.UsageTracker, readRing ring.ReadRing, partitionRingWatcher ring.PartitionRingReader) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -316,7 +314,6 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		cfg:                   cfg,
 		logger:                logger,
 		clientConfig:          clientConfig,
-		tenantConfigs:         configs,
 		instances:             map[string]*instance{},
 		store:                 store,
 		periodicConfigs:       store.GetSchemaConfigs(),
@@ -328,7 +325,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, configs, "ingester"),
+		writeLogManager:       writefailures.NewManager(logger, registerer, writeFailuresCfg, limits, "ingester"),
 		customStreamsTracker:  customStreamsTracker,
 		readRing:              readRing,
 	}
@@ -1038,7 +1035,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.pipelineWrapper, i.extractorWrapper, i.streamRateCalculator, i.writeLogManager, i.customStreamsTracker)
 		if err != nil {
 			return nil, err
 		}
