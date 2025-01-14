@@ -134,8 +134,12 @@ func (q *JobQueue) requeueExpiredJobs() error {
 			level.Warn(q.logger).Log("msg", "job lease expired. requeuing", "job", id, "update_time", job.UpdateTime, "now", time.Now())
 
 			// complete the job with expired status and re-enqueue
-			delete(q.inProgress, id)
-			q.metrics.inProgress.Dec()
+			if !q.removeInProgress(id) {
+				level.Error(q.logger).Log("msg", "failed to remove job from in-progress", "job", id)
+				multiErr = errors.Join(multiErr, errors.New("failed to remove job from in-progress"))
+			} else {
+				q.metrics.inProgress.Dec()
+			}
 
 			job.Status = types.JobStatusExpired
 			q.addToCompletedBuffer(job)
@@ -238,13 +242,13 @@ func (q *JobQueue) GetInProgressJob(id string) (*types.Job, time.Time, bool) {
 	return nil, time.Time{}, false
 }
 
-// RemoveInProgress removes a job from the in-progress map
-func (q *JobQueue) RemoveInProgress(id string) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
+func (q *JobQueue) removeInProgress(id string) bool {
+	if _, ok := q.inProgress[id]; !ok {
+		return false
+	}
 	delete(q.inProgress, id)
 	q.metrics.inProgress.Dec()
+	return true
 }
 
 // MarkComplete moves a job from in-progress to completed with the given status
@@ -258,28 +262,29 @@ func (q *JobQueue) MarkComplete(id string, status types.JobStatus) {
 		return
 	}
 
-	switch jobMeta.Status {
-	case types.JobStatusInProgress:
-		// update & remove from in progress
-		delete(q.inProgress, id)
-		q.metrics.inProgress.Dec()
-	case types.JobStatusPending:
-		_, ok := q.pending.Remove(id)
-		if !ok {
-			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", id)
-		}
-		q.metrics.pending.Dec()
-	case types.JobStatusComplete:
+	currentStatus := jobMeta.Status
+	if currentStatus == types.JobStatusComplete {
 		level.Info(q.logger).Log("msg", "job is already complete, ignoring", "job", id)
 		return
-	default:
-		level.Error(q.logger).Log("msg", "unknown job status, cannot mark as complete", "job", id, "status", status)
-		return
+	}
+
+	// Only decrement metrics if we successfully remove from the appropriate queue
+	if currentStatus == types.JobStatusInProgress {
+		if !q.removeInProgress(id) {
+			level.Error(q.logger).Log("msg", "failed to remove job from in-progress", "job", id)
+			return
+		}
+	} else if currentStatus == types.JobStatusPending {
+		if _, ok := q.pending.Remove(id); ok {
+			q.metrics.pending.Dec()
+		} else {
+			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", id)
+			return
+		}
 	}
 
 	jobMeta.Status = status
 	jobMeta.UpdateTime = time.Now()
-
 	q.addToCompletedBuffer(jobMeta)
 }
 
@@ -299,9 +304,8 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	// Helper function to create a new job
-	registerInProgress := func() {
-		// Job does not exist; add it as in-progress
+	// Helper function to create a new in-progress job
+	registerNewInProgress := func() {
 		now := time.Now()
 		jobMeta := NewJobWithMetadata(job, DefaultPriority)
 		jobMeta.StartTime = now
@@ -312,37 +316,41 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 		q.metrics.inProgress.Inc()
 	}
 
-	jobMeta, ok := q.existsLockLess(jobID)
-
-	if !ok {
-		registerInProgress()
+	jobMeta, exists := q.existsLockLess(jobID)
+	if !exists {
+		// New job, register as in-progress
+		registerNewInProgress()
 		return
 	}
 
 	switch jobMeta.Status {
 	case types.JobStatusPending:
-		// Job already pending, move to in-progress
-		_, ok := q.pending.Remove(jobID)
-		if !ok {
-			level.Error(q.logger).Log("msg", "failed to remove job from pending queue", "job", jobID)
+		// Try to move from pending to in-progress
+		if _, ok := q.pending.Remove(jobID); ok {
+			jobMeta.Status = types.JobStatusInProgress
+			jobMeta.UpdateTime = time.Now()
+			q.inProgress[jobID] = jobMeta
+			q.statusMap[jobID] = types.JobStatusInProgress
+			q.metrics.pending.Dec()
+			q.metrics.inProgress.Inc()
+		} else {
+			// If we can't find it in pending, it might have been moved by another operation
+			// Fall back to creating a new in-progress job
+			level.Warn(q.logger).Log("msg", "job not found in pending queue during sync, creating new", "job", jobID)
+			registerNewInProgress()
 		}
-		jobMeta.Status = types.JobStatusInProgress
-		q.metrics.pending.Dec()
-		q.metrics.inProgress.Inc()
 	case types.JobStatusInProgress:
+		// Just update the time
+		jobMeta.UpdateTime = time.Now()
+		q.inProgress[jobID] = jobMeta
 	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
 		// Job already completed, re-enqueue a new one
 		level.Warn(q.logger).Log("msg", "job already completed, re-enqueuing", "job", jobID, "status", jobMeta.Status)
-		registerInProgress()
-		return
+		registerNewInProgress()
 	default:
-		registerInProgress()
-		return
+		level.Warn(q.logger).Log("msg", "job has unknown status, treating as new", "job", jobID, "status", jobMeta.Status)
+		registerNewInProgress()
 	}
-
-	jobMeta.UpdateTime = time.Now()
-	q.inProgress[jobID] = jobMeta
-	q.statusMap[jobID] = types.JobStatusInProgress
 }
 
 func (q *JobQueue) ListPendingJobs() []JobWithMetadata {
