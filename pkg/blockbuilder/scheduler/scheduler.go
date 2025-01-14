@@ -88,7 +88,7 @@ type BlockScheduler struct {
 
 	cfg     Config
 	logger  log.Logger
-	queue   *JobQueue2
+	queue   *JobQueue
 	metrics *Metrics
 
 	fallbackOffsetMillis int64
@@ -119,7 +119,7 @@ func NewScheduler(cfg Config, offsetManager partition.OffsetManager, logger log.
 		offsetManager:        offsetManager,
 		logger:               logger,
 		metrics:              NewMetrics(r),
-		queue:                NewJobQueue2(cfg.JobQueueConfig, logger, r),
+		queue:                NewJobQueue(cfg.JobQueueConfig, logger, r),
 		fallbackOffsetMillis: fallbackOffsetMillis,
 	}
 

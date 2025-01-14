@@ -14,7 +14,7 @@ import (
 )
 
 type testEnv struct {
-	queue     *JobQueue2
+	queue     *JobQueue
 	scheduler *BlockScheduler
 	transport *types.MemoryTransport
 	builder   *Worker
@@ -47,7 +47,7 @@ func newTestEnv(builderID string) (*testEnv, error) {
 	}
 	scheduler, err := NewScheduler(Config{
 		Strategy:       RecordCountStrategy,
-		JobQueueConfig: testQueueCfg,
+		JobQueueConfig: JobQueueConfig{},
 	}, mockOffsetMgr, log.NewNopLogger(), prometheus.NewRegistry())
 	if err != nil {
 		return nil, err
