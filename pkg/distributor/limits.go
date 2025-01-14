@@ -25,6 +25,7 @@ type Limits interface {
 
 	IncrementDuplicateTimestamps(userID string) bool
 	DiscoverServiceName(userID string) []string
+	DiscoverGenericFields(userID string) map[string][]string
 	DiscoverLogLevels(userID string) bool
 	LogLevelFields(userID string) []string
 
@@ -39,9 +40,12 @@ type Limits interface {
 
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int
+<<<<<<< HEAD
 	BlockScopeIngestionUntil(userID string) map[string]flagext.Time
 	BlockScopeIngestionStatusCode(userID string) map[string]int
 	ScopeIngestionLabel(userID string) string
+=======
+>>>>>>> a2c8ec7dc11546e2876e159e76eabd727ebc1929
 	EnforcedLabels(userID string) []string
 
 	IngestionPartitionsTenantShardSize(userID string) int

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"runtime/pprof"
 	"slices"
 	"sort"
 	"strconv"
@@ -30,7 +31,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -460,8 +460,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	now := time.Now()
 	validationContext := d.validator.getValidationContextForTime(now, tenantID)
-	levelDetector := newLevelDetector(validationContext)
-	shouldDiscoverLevels := levelDetector.shouldDiscoverLogLevels()
+	fieldDetector := newFieldDetector(validationContext)
+	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
+	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
@@ -544,6 +545,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
+			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(discardedBytes))
+				continue
+			}
+
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
@@ -569,10 +580,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					}
 				}
 				if shouldDiscoverLevels {
-					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
-					if ok {
-						entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
-					}
+					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
+						if ok {
+							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+						}
+					})
+				}
+				if shouldDiscoverGenericFields {
+					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
+							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+							if ok {
+								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+							}
+						}
+					})
 				}
 				stream.Entries[n] = entry
 
@@ -709,9 +732,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		for ingester, streams := range streamsByIngester {
 			func(ingester ring.InstanceDesc, samples []*streamTracker) {
-				// Use a background context to make sure all ingesters get samples even if we return early
-				localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
-				localCtx = user.InjectOrgID(localCtx, tenantID)
+				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
+				// This is to make sure all ingesters get samples even if we return early
+				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
 				if sp := opentracing.SpanFromContext(ctx); sp != nil {
 					localCtx = opentracing.ContextWithSpan(localCtx, sp)
 				}

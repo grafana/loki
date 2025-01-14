@@ -148,6 +148,7 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 * 3225 - DO bit (DNSSEC OK)
 * 340{1,2,3} - NAPTR record
 * 3445 - Limiting the scope of (DNS)KEY
+* 3596 - AAAA record
 * 3597 - Unknown RRs
 * 4025 - A Method for Storing IPsec Keying Material in DNS
 * 403{3,4,5} - DNSSEC + validation functions

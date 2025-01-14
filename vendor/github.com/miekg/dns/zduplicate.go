@@ -886,6 +886,15 @@ func (r1 *NULL) isDuplicate(_r2 RR) bool {
 	return true
 }
 
+func (r1 *NXNAME) isDuplicate(_r2 RR) bool {
+	r2, ok := _r2.(*NXNAME)
+	if !ok {
+		return false
+	}
+	_ = r2
+	return true
+}
+
 func (r1 *NXT) isDuplicate(_r2 RR) bool {
 	r2, ok := _r2.(*NXT)
 	if !ok {

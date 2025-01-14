@@ -19,7 +19,7 @@ package wrr
 
 import (
 	"fmt"
-	"math/rand"
+	rand "math/rand/v2"
 	"sort"
 )
 
@@ -46,19 +46,19 @@ func NewRandom() WRR {
 	return &randomWRR{}
 }
 
-var randInt63n = rand.Int63n
+var randInt64n = rand.Int64N
 
 func (rw *randomWRR) Next() (item any) {
 	if len(rw.items) == 0 {
 		return nil
 	}
 	if rw.equalWeights {
-		return rw.items[randInt63n(int64(len(rw.items)))].item
+		return rw.items[randInt64n(int64(len(rw.items)))].item
 	}
 
 	sumOfWeights := rw.items[len(rw.items)-1].accumulatedWeight
 	// Random number in [0, sumOfWeights).
-	randomWeight := randInt63n(sumOfWeights)
+	randomWeight := randInt64n(sumOfWeights)
 	// Item's accumulated weights are in ascending order, because item's weight >= 0.
 	// Binary search rw.items to find first item whose accumulatedWeight > randomWeight
 	// The return i is guaranteed to be in range [0, len(rw.items)) because randomWeight < last item's accumulatedWeight

@@ -10,6 +10,11 @@
         "grpc": {
           "libraryClient": "Client",
           "rpcs": {
+            "BidiReadObject": {
+              "methods": [
+                "BidiReadObject"
+              ]
+            },
             "BidiWriteObject": {
               "methods": [
                 "BidiWriteObject"
@@ -68,6 +73,11 @@
             "LockBucketRetentionPolicy": {
               "methods": [
                 "LockBucketRetentionPolicy"
+              ]
+            },
+            "MoveObject": {
+              "methods": [
+                "MoveObject"
               ]
             },
             "QueryWriteStatus": {

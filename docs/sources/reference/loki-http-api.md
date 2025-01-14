@@ -149,8 +149,7 @@ being returned.
 
 The API accepts several formats for timestamps:
 
-- An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds.
-- More than ten digits are interpreted as a Unix timestamp in nanoseconds.
+- All epoch values will be interpreted as a Unix timestamp in nanoseconds.
 - A floating point number is a Unix timestamp with fractions of a second.
 - A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
@@ -346,6 +345,24 @@ The items in the `values` array are sorted by timestamp.
 The most recent item is first when using `direction=backward`.
 The oldest item is first when using `direction=forward`.
 
+Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
+
+The schema is the following for streams:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| line        |VARCHAR                   |
+
+and for metrics:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| value       | DOUBLE                   |
+
 See [statistics](#statistics) for information about the statistics returned by Loki.
 
 ### Examples
@@ -517,6 +534,24 @@ And `<stream value>` is:
 The items in the `values` array are sorted by timestamp.
 The most recent item is first when using `direction=backward`.
 The oldest item is first when using `direction=forward`.
+
+Parquet can be request as a response format by setting the `Accept` header to `application/vnd.apache.parquet`.
+
+The schema is the following for streams:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| line        |VARCHAR                   |
+
+and for metrics:
+
+| column_name |       column_type        |
+|-------------|--------------------------|
+| timestamp   | TIMESTAMP WITH TIME ZONE |
+| labels      | MAP(VARCHAR, VARCHAR)    |
+| value       | DOUBLE                   |
 
 See [statistics](#statistics) for information about the statistics returned by Loki.
 

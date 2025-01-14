@@ -46,6 +46,7 @@ type validationContext struct {
 
 	incrementDuplicateTimestamps bool
 	discoverServiceName          []string
+	discoverGenericFields        map[string][]string
 	discoverLogLevels            bool
 	logLevelFields               []string
 

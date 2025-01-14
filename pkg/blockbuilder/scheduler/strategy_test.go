@@ -16,7 +16,7 @@ type mockOffsetReader struct {
 	groupLag map[int32]kadm.GroupMemberLag
 }
 
-func (m *mockOffsetReader) GroupLag(_ context.Context, _ time.Duration) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetReader) GroupLag(_ context.Context, _ int64) (map[int32]kadm.GroupMemberLag, error) {
 	return m.groupLag, nil
 }
 
@@ -30,14 +30,16 @@ func compareJobs(t *testing.T, expected, actual *JobWithMetadata) {
 
 func TestRecordCountPlanner_Plan(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		recordCount  int64
-		expectedJobs []*JobWithMetadata
-		groupLag     map[int32]kadm.GroupMemberLag
+		name             string
+		recordCount      int64
+		minOffsetsPerJob int
+		expectedJobs     []*JobWithMetadata
+		groupLag         map[int32]kadm.GroupMemberLag
 	}{
 		{
-			name:        "single partition, single job",
-			recordCount: 100,
+			name:             "single partition, single job",
+			recordCount:      100,
+			minOffsetsPerJob: 0,
 			groupLag: map[int32]kadm.GroupMemberLag{
 				0: {
 					Commit: kadm.Offset{
@@ -57,8 +59,9 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			},
 		},
 		{
-			name:        "single partition, multiple jobs",
-			recordCount: 50,
+			name:             "single partition, multiple jobs",
+			recordCount:      50,
+			minOffsetsPerJob: 0,
 			groupLag: map[int32]kadm.GroupMemberLag{
 				0: {
 					Commit: kadm.Offset{
@@ -82,8 +85,9 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			},
 		},
 		{
-			name:        "multiple partitions",
-			recordCount: 100,
+			name:             "multiple partitions",
+			recordCount:      100,
+			minOffsetsPerJob: 0,
 			groupLag: map[int32]kadm.GroupMemberLag{
 				0: {
 					Commit: kadm.Offset{
@@ -120,8 +124,9 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			},
 		},
 		{
-			name:        "no lag",
-			recordCount: 100,
+			name:             "no lag",
+			recordCount:      100,
+			minOffsetsPerJob: 0,
 			groupLag: map[int32]kadm.GroupMemberLag{
 				0: {
 					Commit: kadm.Offset{
@@ -135,6 +140,37 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			},
 			expectedJobs: nil,
 		},
+		{
+			name:             "skip small jobs",
+			recordCount:      100,
+			minOffsetsPerJob: 40,
+			groupLag: map[int32]kadm.GroupMemberLag{
+				0: {
+					Commit: kadm.Offset{
+						At: 100,
+					},
+					End: kadm.ListedOffset{
+						Offset: 130, // Only 30 records available, less than minimum
+					},
+					Partition: 0,
+				},
+				1: {
+					Commit: kadm.Offset{
+						At: 200,
+					},
+					End: kadm.ListedOffset{
+						Offset: 300, // 100 records available, more than minimum
+					},
+					Partition: 1,
+				},
+			},
+			expectedJobs: []*JobWithMetadata{
+				NewJobWithMetadata(
+					types.NewJob(1, types.Offsets{Min: 201, Max: 300}),
+					99, // priority is total remaining: 300-201
+				),
+			},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mockReader := &mockOffsetReader{
@@ -146,9 +182,8 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 				TargetRecordCount: tc.recordCount,
 			}
 			require.NoError(t, cfg.Validate())
-			planner := NewRecordCountPlanner(mockReader, tc.recordCount, time.Hour, log.NewNopLogger())
-
-			jobs, err := planner.Plan(context.Background())
+			planner := NewRecordCountPlanner(mockReader, tc.recordCount, 0, log.NewNopLogger())
+			jobs, err := planner.Plan(context.Background(), 0, tc.minOffsetsPerJob)
 			require.NoError(t, err)
 
 			require.Equal(t, len(tc.expectedJobs), len(jobs))

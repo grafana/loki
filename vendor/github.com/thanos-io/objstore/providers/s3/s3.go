@@ -345,6 +345,8 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string, wra
 	return bkt, nil
 }
 
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.S3 }
+
 // Name returns the bucket name for s3.
 func (b *Bucket) Name() string {
 	return b.name
