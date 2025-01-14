@@ -5,6 +5,37 @@ package dataobj.metadata.dataset.v1;
 
 option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd";
 
+// ColumnInfo describes an individual column within a data set.
+message ColumnInfo {
+  // Optional name of the column.
+  string name = 1;
+
+  // Type of values stored within the column.
+  ValueType value_type = 2;
+
+  // Total number of rows in the entire column.
+  uint32 rows_count = 3;
+
+  // Compression type used for all pages.
+  CompressionType compression = 4;
+
+  // Total uncompressed size of all pages in the column.
+  uint32 uncompressed_size = 5;
+
+  // Total compressed size of all pages in the column. Compressed size may
+  // match uncompressed size if no compression is used.
+  uint32 compressed_size = 6;
+
+  // Byte offset from the start of the data object to the column's metadata.
+  uint32 metadata_offset = 7;
+
+  // Size of the column's metadata in bytes.
+  uint32 metadata_size = 8;
+
+  // Statistics for the column.
+  Statistics statistics = 9;
+}
+
 // ValueType represents the valid types that values within a column can have.
 enum ValueType {
   // Invalid value type.
@@ -18,24 +49,6 @@ enum ValueType {
 
   // VALUE_TYPE_STRING is a column containing string values.
   VALUE_TYPE_STRING = 3;
-}
-
-// EncodingType represents the valid types that a sequence of values which a
-// column can be encoded with.
-enum EncodingType {
-  // Invalid encoding type.
-  ENCODING_TYPE_UNSPECIFIED = 0;
-
-  // Plain encoding; data is stored as-is.
-  ENCODING_TYPE_PLAIN = 1;
-
-  // Delta encoding. The first value within the page is stored as-is, and
-  // subsequent values are stored as the delta from the previous value.
-  ENCODING_TYPE_DELTA = 2;
-
-  // Bitmap encoding. Bitmaps effiently store repeating sequences of unsigned
-  // integers using a combination of run-length encoding and bitpacking.
-  ENCODING_TYPE_BITMAP = 3;
 }
 
 // CompressionType represents the valid compression types that can be used for
@@ -62,4 +75,50 @@ message Statistics {
 
   // Maximum value.
   bytes max_value = 2;
+}
+
+// Page describes an individual page within a column.
+message PageInfo {
+  // Uncompressed size of the page within the data object.
+  uint32 uncompressed_size = 1;
+
+  // Compressed size of the page within the data object. Compression size
+  // will match uncompressed size if no compression is used.
+  uint32 compressed_size = 2;
+
+  // CRC32 checksum of the page data.
+  uint32 crc32 = 3;
+
+  // Number of rows in the page.
+  uint32 rows_count = 4;
+
+  // Encoding type used for the page.
+  EncodingType encoding = 5;
+
+  // Byte offset from the start of the data object to the page's data.
+  uint32 data_offset = 6;
+
+  // Size of the page's data in bytes.
+  uint32 data_size = 7;
+
+  // Optional statistics for the page.
+  Statistics statistics = 8;
+}
+
+// EncodingType represents the valid types that a sequence of values which a
+// column can be encoded with.
+enum EncodingType {
+  // Invalid encoding type.
+  ENCODING_TYPE_UNSPECIFIED = 0;
+
+  // Plain encoding; data is stored as-is.
+  ENCODING_TYPE_PLAIN = 1;
+
+  // Delta encoding. The first value within the page is stored as-is, and
+  // subsequent values are stored as the delta from the previous value.
+  ENCODING_TYPE_DELTA = 2;
+
+  // Bitmap encoding. Bitmaps effiently store repeating sequences of unsigned
+  // integers using a combination of run-length encoding and bitpacking.
+  ENCODING_TYPE_BITMAP = 3;
 }
