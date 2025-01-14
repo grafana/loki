@@ -136,12 +136,27 @@ func (q *JobQueue2) TransitionAny(jobID string, to types.JobStatus, createFn fun
 
 	currentStatus, exists := q.statusMap[jobID]
 	if finished := currentStatus.IsFinished(); !exists || finished {
+
+		// we're just moving one finished type to another; no need to re-enqueue
+		if finished && to.IsFinished() {
+			q.statusMap[jobID] = to
+			if j, found := q.completed.Lookup(
+				func(jwm *JobWithMetadata) bool {
+					return jwm.ID() == jobID
+				},
+			); found {
+				j.Status = to
+				j.UpdateTime = time.Now()
+			}
+			return currentStatus, true, nil
+		}
+
 		if createFn == nil {
 			return types.JobStatusUnknown, false, fmt.Errorf("job %s not found and no creation function provided", jobID)
 		}
 
 		if finished {
-			level.Debug(q.logger).Log("msg", "ignoring transition for completed job; will re-enqueue", "id", jobID, "from", currentStatus, "to", to)
+			level.Debug(q.logger).Log("msg", "ignoring transition for completed job; will recreate", "id", jobID, "from", currentStatus, "to", to)
 		}
 
 		job, err := createFn()
@@ -320,5 +335,19 @@ func (q *JobQueue2) UpdatePriority(id string, priority int) bool {
 	}
 
 	// Job is no longer pending (might be in progress, completed, etc)
+	return false
+}
+
+// Ping updates the last-updated timestamp of a job and returns whether it was found.
+// This is useful for keeping jobs alive and preventing lease expiry.
+func (q *JobQueue2) Ping(id string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if job, ok := q.inProgress[id]; ok {
+		job.UpdateTime = time.Now()
+		return true
+	}
+
 	return false
 }

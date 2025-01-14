@@ -263,7 +263,9 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 			job.Partition(),
 			job.Offsets().Max-1, // max is exclusive, so commit max-1
 		); err == nil {
-			s.queue.MarkComplete(job.ID(), types.JobStatusComplete)
+			s.queue.TransitionAny(job.ID(), types.JobStatusComplete, func() (*JobWithMetadata, error) {
+				return NewJobWithMetadata(job, DefaultPriority), nil
+			})
 			level.Info(logger).Log("msg", "job completed successfully")
 
 			// TODO(owen-d): cleaner way to enqueue next job for this partition,
@@ -281,29 +283,49 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 			})
 
 			if nextJob < len(jobs) && jobs[nextJob].Job.Partition() == job.Partition() {
-				_, _, _ = s.idempotentEnqueue(jobs[nextJob])
+				if err := s.handlePlannedJob(jobs[nextJob]); err != nil {
+					level.Error(logger).Log("msg", "failed to handle subsequent job", "err", err)
+				}
 			}
-
 			return nil
 		}
 
 		level.Error(logger).Log("msg", "failed to commit offset", "err", err)
 	}
 
-	level.Error(logger).Log("msg", "job failed, re-enqueuing")
-	s.queue.MarkComplete(job.ID(), types.JobStatusFailed)
-	s.queue.pending.Push(
-		NewJobWithMetadata(
-			job,
-			DefaultPriority,
-		),
-	)
+	// mark as failed
+	prev, found, err := s.queue.TransitionAny(job.ID(), types.JobStatusFailed, func() (*JobWithMetadata, error) {
+		return NewJobWithMetadata(job, DefaultPriority), nil
+	})
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to mark job failure", "prev", prev, "found", found, "err", err)
+	} else {
+		level.Error(logger).Log("msg", "marked job failure", "prev", prev, "found", found)
+	}
+
+	cpy := *job
+	if err := s.handlePlannedJob(NewJobWithMetadata(&cpy, DefaultPriority)); err != nil {
+		level.Error(logger).Log("msg", "failed to handle subsequent job", "err", err)
+	}
 	return nil
 }
 
 func (s *BlockScheduler) HandleSyncJob(_ context.Context, job *types.Job) error {
-	s.queue.SyncJob(job.ID(), job)
-	return nil
+	_, _, err := s.queue.TransitionAny(
+		job.ID(),
+		types.JobStatusInProgress,
+		func() (*JobWithMetadata, error) {
+			return NewJobWithMetadata(job, DefaultPriority), nil
+		},
+	)
+
+	// Update last-updated timestamp
+	_ = s.queue.Ping(job.ID())
+
+	if err != nil {
+		level.Error(s.logger).Log("msg", "failed to sync job", "job", job.ID(), "err", err)
+	}
+	return err
 }
 
 func (s *BlockScheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
