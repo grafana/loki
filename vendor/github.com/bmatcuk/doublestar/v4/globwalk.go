@@ -112,7 +112,7 @@ func (g *glob) doGlobWalk(fsys fs.FS, pattern string, firstSegment, beforeMeta b
 	// characters. They would be equal if they are both -1, which means `dir`
 	// will be ".", and we know that doesn't have meta characters either.
 	if splitIdx <= patternStart {
-		return g.globDirWalk(fsys, dir, pattern, firstSegment, beforeMeta, fn)
+		return g.globDirWalk(fsys, unescapeMeta(dir), pattern, firstSegment, beforeMeta, fn)
 	}
 
 	return g.doGlobWalk(fsys, dir, false, beforeMeta, func(p string, d fs.DirEntry) error {
