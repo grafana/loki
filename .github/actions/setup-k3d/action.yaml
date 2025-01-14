@@ -20,10 +20,3 @@ runs:
     shell: bash
     run: |
       k3d kubeconfig merge k3d-cluster --kubeconfig-switch-context
-
-  # - name: Verify k3d installation
-  #   shell: bash
-  #   run: |
-  #     k3d --version
-  #     kubectl version
-  #     kubectl get node

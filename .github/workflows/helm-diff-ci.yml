@@ -1,8 +1,9 @@
 ---
 name: Helm Loki Diff CI
-on: [pull_request]
-    # paths:
-    #   - "production/helm/loki/**"
+on:
+  pull_request:
+    paths:
+      - 'production/helm/loki/**'
 
 permissions:
   contents: read
@@ -12,6 +13,7 @@ jobs:
   single-binary-diff:
     name: Single Binary Scenario
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -52,9 +54,7 @@ jobs:
       - name: Convert Helm Diff Output to Markdown
         id: convert_diff
         run: |
-          echo '```diff' >> formatted_diff_output.md
           cat helm_diff_output.txt >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
 
       - name: Upload diff output as artifact
         id: upload_diff
@@ -107,9 +107,7 @@ jobs:
       - name: Convert Helm Diff Output to Markdown
         id: convert_diff
         run: |
-          echo '```diff' >> formatted_diff_output.md
           cat helm_diff_output.txt >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
 
       - name: Upload diff output as artifact
         uses: actions/upload-artifact@v4
@@ -162,9 +160,7 @@ jobs:
       - name: Convert Helm Diff Output to Markdown
         id: convert_diff
         run: |
-          echo '```diff' >> formatted_diff_output.md
           cat helm_diff_output.txt >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
 
       - name: Upload diff output as artifact
         uses: actions/upload-artifact@v4
@@ -217,9 +213,7 @@ jobs:
       - name: Convert Helm Diff Output to Markdown
         id: convert_diff
         run: |
-          echo '```diff' >> formatted_diff_output.md
           cat helm_diff_output.txt >> formatted_diff_output.md
-          echo '```' >> formatted_diff_output.md
 
       - name: Upload diff output as artifact
         uses: actions/upload-artifact@v4
@@ -229,64 +223,52 @@ jobs:
           path: formatted_diff_output.md
           retention-days: 2
 
-  # simple-scalable-aws-kube-irsa-values-diff:
-  #   name: Simple Scalable AWS Kube IRSA Values Scenario
-  #   runs-on: ubuntu-latest
+  simple-scalable-aws-kube-irsa-values-diff:
+    name: Simple Scalable AWS Kube IRSA Values Scenario
+    runs-on: ubuntu-latest
 
-  #   steps:
-  #     - name: Checkout code
-  #       uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-  #     - name: Setup Helm
-  #       uses: azure/setup-helm@v4
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
 
-  #     - name: Add required Helm repositories
-  #       run: |
-  #         helm repo add minio https://charts.min.io/
-  #         helm repo add grafana https://grafana.github.io/helm-charts
-  #         helm repo add grafana-operator https://grafana.github.io/helm-charts
-  #         helm repo update
+      - name: Add required Helm repositories
+        run: |
+          helm repo add minio https://charts.min.io/
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo add grafana-operator https://grafana.github.io/helm-charts
+          helm repo update
 
-  #     - name: Setup K3D
-  #       uses: ./.github/actions/setup-k3d
+      - name: Build helm dependencies
+        run: |
+          helm dependency build production/helm/loki
 
-  #     - name: Setup Helm plugins
-  #       run: |
-  #         helm plugin install https://github.com/databus23/helm-diff
+      - name: Generate latest manifests
+        run: |
+          helm template loki-release grafana/loki -f production/helm/loki/scenarios/simple-scalable-aws-kube-irsa-values.yaml > release-manifest.yaml
 
-  #     - name: Build helm dependencies
-  #       run: |
-  #         helm dependency build production/helm/loki
+      - name: Generate current manifest
+        run: |
+          helm template loki-release production/helm/loki -f production/helm/loki/scenarios/simple-scalable-aws-kube-irsa-values.yaml > current-manifest.yaml
 
-  #     - name: Install latest helm release
-  #       run: |
-  #         helm install --create-namespace loki-release grafana/loki -f production/helm/loki/scenarios/simple-scalable-aws-kube-irsa-values.yaml
+      - name: Compare manifests
+        run: |
+          diff current-manifest.yaml release-manifest.yaml > helm_diff_output.txt || true
 
-  #     - name: Run helm diff
-  #       id: helm-diff
-  #       env:
-  #         HELM_DIFF_USE_UPGRADE_DRY_RUN: true
-  #       run: |
-  #         helm diff upgrade loki-release -f production/helm/loki/scenarios/simple-scalable-aws-kube-irsa-values.yaml production/helm/loki | tee helm_diff_output.txt
+      - name: Convert Helm Diff Output to Markdown
+        id: convert_diff
+        run: |
+          cat helm_diff_output.txt >> formatted_diff_output.md
 
-  #     - name: Convert Helm Diff Output to Markdown
-  #       id: convert_diff
-  #       run: |
-  #         echo "### Helm Diff Output" > formatted_diff_output.md
-  #         echo '```diff' >> formatted_diff_output.md
-  #         cat helm_diff_output.txt >> formatted_diff_output.md
-  #         echo '```' >> formatted_diff_output.md
-  #         cat formatted_diff_output.md
-
-  #     - name: Post diff as PR comment
-  #       uses: marocchino/sticky-pull-request-comment@v2
-  #       with:
-  #         header: "Helm Diff Output - Simple Scalable AWS Kube IRSA Values Scenario"
-  #         skip_unchanged: true
-  #         hide_and_recreate: true
-  #         append: true
-  #         hide_classify: "OUTDATED"
-  #         path: formatted_diff_output.md
+      - name: Upload diff output as artifact
+        uses: actions/upload-artifact@v4
+        id: upload_diff
+        with:
+          name: simple-scalable-aws-kube-irsa-diff-output
+          path: formatted_diff_output.md
+          retention-days: 2
 
   summary-diff-outputs:
     name: Summary Diffs
@@ -296,7 +278,7 @@ jobs:
       - default-values-diff
       - ingress-values-diff
       - legacy-monitoring-values-diff
-      # - simple-scalable-aws-kube-irsa-values-diff
+      - simple-scalable-aws-kube-irsa-values-diff
 
     steps:
       - name: Checkout code
@@ -322,17 +304,64 @@ jobs:
           name: legacy-monitoring-diff-output
           path: legacy-monitoring-values-diff
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: simple-scalable-aws-kube-irsa-diff-output
+          path: simple-scalable-aws-kube-irsa-values-diff
+
       - name: Combine diff outputs
         run: |
           echo "## Helm Diff Output - Summary" > formatted_diff_output.md
-          echo "### Single Binary Scenario" >> formatted_diff_output.md
+
+          echo "<details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo "<summary>Single Binary Scenario</summary>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo '```diff' >> formatted_diff_output.md
           cat single-binary-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo "### Default Values Scenario" >> formatted_diff_output.md
+          echo '```' >> formatted_diff_output.md
+          echo "</details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+
+          echo "<details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo "<summary>Default Values Scenario</summary>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo '```diff' >> formatted_diff_output.md
           cat default-values-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo "### Ingress Values Scenario" >> formatted_diff_output.md
+          echo '```' >> formatted_diff_output.md
+          echo "</details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+
+          echo "<details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo "<summary>Ingress Values Scenario</summary>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo '```diff' >> formatted_diff_output.md
           cat ingress-values-diff/formatted_diff_output.md >> formatted_diff_output.md
-          echo "### Legacy Monitoring Values Scenario" >> formatted_diff_output.md
+          echo '```' >> formatted_diff_output.md
+          echo "</details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+
+          echo "<details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo "<summary>Legacy Monitoring Scenario</summary>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo '```diff' >> formatted_diff_output.md
           cat legacy-monitoring-values-diff/formatted_diff_output.md >> formatted_diff_output.md
+          echo '```' >> formatted_diff_output.md
+          echo "</details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+
+          echo "<details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo "<summary>Simple Scalable AWS Kube IRSA Scenario</summary>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo '```diff' >> formatted_diff_output.md
+          cat simple-scalable-aws-kube-irsa-values-diff/formatted_diff_output.md >> formatted_diff_output.md
+          echo '```' >> formatted_diff_output.md
+          echo "</details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
 
       - name: Post diff as PR comment
         uses: marocchino/sticky-pull-request-comment@v2
