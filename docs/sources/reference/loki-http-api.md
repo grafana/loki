@@ -150,8 +150,7 @@ being returned.
 
 The API accepts several formats for timestamps:
 
-- An integer with ten or fewer digits is interpreted as a Unix timestamp in seconds.
-- More than ten digits are interpreted as a Unix timestamp in nanoseconds.
+- All epoch values will be interpreted as a Unix timestamp in nanoseconds.
 - A floating point number is a Unix timestamp with fractions of a second.
 - A string in `RFC3339` and `RFC3339Nano` format, as supported by Go's [time](https://pkg.go.dev/time) package.
 
