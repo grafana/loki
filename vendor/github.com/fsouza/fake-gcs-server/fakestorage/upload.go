@@ -54,9 +54,11 @@ type multipartMetadata struct {
 	ContentType        string            `json:"contentType"`
 	ContentEncoding    string            `json:"contentEncoding"`
 	ContentDisposition string            `json:"contentDisposition"`
+	ContentLanguage    string            `json:"ContentLanguage"`
 	CacheControl       string            `json:"cacheControl"`
 	CustomTime         time.Time         `json:"customTime,omitempty"`
 	Name               string            `json:"name"`
+	StorageClass       string            `json:"storageClass"`
 	Metadata           map[string]string `json:"metadata"`
 }
 
@@ -378,10 +380,12 @@ func (s *Server) multipartUpload(bucketName string, r *http.Request) jsonRespons
 		ObjectAttrs: ObjectAttrs{
 			BucketName:         bucketName,
 			Name:               objName,
+			StorageClass:       metadata.StorageClass,
 			ContentType:        contentType,
 			CacheControl:       metadata.CacheControl,
 			ContentEncoding:    metadata.ContentEncoding,
 			ContentDisposition: metadata.ContentDisposition,
+			ContentLanguage:    metadata.ContentLanguage,
 			CustomTime:         metadata.CustomTime,
 			ACL:                getObjectACL(predefinedACL),
 			Metadata:           metadata.Metadata,
@@ -628,6 +632,10 @@ func parseContentRange(r string) (parsed contentRange, err error) {
 	}
 
 	return parsed, nil
+}
+
+func (s *Server) deleteResumableUpload(r *http.Request) jsonResponse {
+	return jsonResponse{status: 499}
 }
 
 func loadMetadata(rc io.ReadCloser) (*multipartMetadata, error) {
