@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
-// Iter iterates over streams in the provided decoder. All sections are
-// iterated over.
+// Iter iterates over streams in the provided decoder. All streams sections are
+// iterated over in order.
 func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
 		sections, err := dec.Sections(ctx)

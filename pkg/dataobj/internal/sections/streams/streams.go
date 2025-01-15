@@ -32,19 +32,21 @@ type Stream struct {
 
 // Streams tracks information about streams in a data object.
 type Streams struct {
-	lastID atomic.Int64
-
-	lookup map[uint64][]*Stream
+	pageSize int
+	lastID   atomic.Int64
+	lookup   map[uint64][]*Stream
 
 	// orderedStreams is used for consistently iterating over the list of
 	// streams. It contains streamed added in append order.
 	ordered []*Stream
 }
 
-// New creates a new Streams section.
-func New() *Streams {
+// New creates a new Streams section. The pageSize argument specifies how large
+// pages should be.
+func New(pageSize int) *Streams {
 	return &Streams{
-		lookup: make(map[uint64][]*Stream),
+		pageSize: pageSize,
+		lookup:   make(map[uint64][]*Stream),
 	}
 }
 
@@ -113,10 +115,14 @@ func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
 }
 
 // EncodeTo encodes the list of recorded streams to the provided encoder.
-// pageSize controls the target sizes for pages and metadata respectively.
+//
 // EncodeTo may generate multiple sections if the list of streams is too big to
 // fit into a single section.
-func (s *Streams) EncodeTo(enc *encoding.Encoder, pageSize int) error {
+//
+// [Streams.Reset] is invoked after encoding, even if encoding fails.
+func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
+	defer s.Reset()
+
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
 	// this:
@@ -125,19 +131,19 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder, pageSize int) error {
 	// 2. Move some columns into an aggregated column which holds multiple label
 	//    keys and values.
 
-	idBuilder, err := numberColumnBuilder(pageSize)
+	idBuilder, err := numberColumnBuilder(s.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(pageSize)
+	minTimestampBuilder, err := numberColumnBuilder(s.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(s.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowsCountBuilder, err := numberColumnBuilder(pageSize)
+	rowsCountBuilder, err := numberColumnBuilder(s.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
@@ -154,7 +160,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder, pageSize int) error {
 		}
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
-			PageSizeHint: pageSize,
+			PageSizeHint: s.pageSize,
 			Value:        datasetmd.VALUE_TYPE_STRING,
 			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
