@@ -230,8 +230,8 @@ type Limits struct {
 
 	BlockIngestionUntil           dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
 	BlockIngestionStatusCode      int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	BlockScopeIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_scope_ingestion_until" json:"block_scope_ingestion_until" category:"experimental"`
-	BlockScopeIngestionStatusCode map[string]int                `yaml:"block_scope_ingestion_status_code" json:"block_scope_ingestion_status_code" category:"experimental"`
+	BlockScopeIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_scope_ingestion_until" json:"block_scope_ingestion_until" category:"experimental" doc:"description=Block ingestion until the given time for the given scope. The scope is the value of the scope label in the log line. Experimental."`
+	BlockScopeIngestionStatusCode map[string]int                `yaml:"block_scope_ingestion_status_code" json:"block_scope_ingestion_status_code" category:"experimental" doc:"description=HTTP status code to return when ingestion is blocked for the given scope. Experimental."`
 	ScopeIngestionLabel           string                        `yaml:"scope_ingestion_label" json:"scope_ingestion_label" category:"experimental"`
 	EnforcedLabels                []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
 

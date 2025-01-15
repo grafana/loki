@@ -3941,8 +3941,12 @@ otlp_config:
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
 
+# Block ingestion until the given time for the given scope. The scope is the
+# value of the scope label in the log line. Experimental.
 [block_scope_ingestion_until: <map of string to Time>]
 
+# HTTP status code to return when ingestion is blocked for the given scope.
+# Experimental.
 [block_scope_ingestion_status_code: <map of string to int>]
 
 # Label to use for scope ingestion. This label will be used to identify the
