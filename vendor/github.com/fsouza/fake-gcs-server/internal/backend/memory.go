@@ -49,6 +49,9 @@ func (bm *bucketInMemory) addObject(obj Object) Object {
 	if obj.Size == 0 {
 		obj.Size = int64(len(obj.Content))
 	}
+	if obj.StorageClass == "" {
+		obj.StorageClass = "STANDARD"
+	}
 	obj.Generation = getNewGenerationIfZero(obj.Generation)
 	index := findObject(obj, bm.activeObjects, false)
 	if index >= 0 {
@@ -344,7 +347,7 @@ func (s *storageMemory) UpdateObject(bucketName, objectName string, attrsToUpdat
 	return obj, nil
 }
 
-func (s *storageMemory) ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string) (StreamingObject, error) {
+func (s *storageMemory) ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string, contentDisposition string, contentLanguage string) (StreamingObject, error) {
 	var data []byte
 	for _, n := range objectNames {
 		obj, err := s.GetObject(bucketName, n)
@@ -361,12 +364,16 @@ func (s *storageMemory) ComposeObject(bucketName string, objectNames []string, d
 	var dest Object
 	streamingDest, err := s.GetObject(bucketName, destinationName)
 	if err != nil {
+		now := time.Now().Format(timestampFormat)
 		dest = Object{
 			ObjectAttrs: ObjectAttrs{
-				BucketName:  bucketName,
-				Name:        destinationName,
-				ContentType: contentType,
-				Created:     time.Now().String(),
+				BucketName:         bucketName,
+				Name:               destinationName,
+				ContentType:        contentType,
+				ContentDisposition: contentDisposition,
+				ContentLanguage:    contentLanguage,
+				Created:            now,
+				Updated:            now,
 			},
 		}
 	} else {
@@ -389,4 +396,11 @@ func (s *storageMemory) ComposeObject(bucketName string, objectNames []string, d
 	}
 
 	return result, nil
+}
+
+func (s *storageMemory) DeleteAllFiles() error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.buckets = make(map[string]bucketInMemory)
+	return nil
 }
