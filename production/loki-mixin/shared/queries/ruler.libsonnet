@@ -4,6 +4,47 @@ local variables = import '../variables.libsonnet';
 local selector = (import '../selectors.libsonnet').new;
 local lib = import '../../lib/_imports.libsonnet';
 
+// loki_ruler_client_request_duration_seconds_bucket
+// loki_ruler_clients
+// loki_ruler_config_last_reload_successful
+// loki_ruler_config_last_reload_successful_seconds
+// loki_ruler_managers_total
+// loki_ruler_remote_eval_failure_total
+// loki_ruler_remote_eval_request_duration_seconds_bucket
+// loki_ruler_remote_eval_response_bytes_bucket
+// loki_ruler_remote_eval_response_samples_bucket
+// loki_ruler_remote_eval_success_total
+// loki_ruler_sync_rules_total
+// loki_ruler_wal_appender_ready
+// loki_ruler_wal_cleaner_abandoned_storage
+// loki_ruler_wal_cleaner_cleanup_seconds_bucket
+// loki_ruler_wal_cleaner_managed_storage
+// loki_ruler_wal_disk_size
+// loki_ruler_wal_prometheus_remote_storage_exemplars_pending
+// loki_ruler_wal_prometheus_remote_storage_highest_timestamp_in_seconds
+// loki_ruler_wal_prometheus_remote_storage_histograms_pending
+// loki_ruler_wal_prometheus_remote_storage_max_samples_per_send
+// loki_ruler_wal_prometheus_remote_storage_queue_highest_sent_timestamp_seconds
+// loki_ruler_wal_prometheus_remote_storage_samples_dropped_total
+// loki_ruler_wal_prometheus_remote_storage_samples_failed_total
+// loki_ruler_wal_prometheus_remote_storage_samples_pending
+// loki_ruler_wal_prometheus_remote_storage_samples_retried_total
+// loki_ruler_wal_prometheus_remote_storage_samples_total
+// loki_ruler_wal_prometheus_remote_storage_sent_batch_duration_seconds
+// loki_ruler_wal_prometheus_remote_storage_sent_batch_duration_seconds_bucket
+// loki_ruler_wal_prometheus_remote_storage_shards
+// loki_ruler_wal_prometheus_remote_storage_shards_desired
+// loki_ruler_wal_prometheus_remote_storage_shards_max
+// loki_ruler_wal_prometheus_tsdb_wal_fsync_duration_seconds
+// loki_ruler_wal_prometheus_tsdb_wal_segment_current
+// loki_ruler_wal_prometheus_tsdb_wal_storage_size_bytes
+// loki_ruler_wal_prometheus_tsdb_wal_truncations_failed_total
+// loki_ruler_wal_prometheus_tsdb_wal_truncations_total
+// loki_ruler_wal_prometheus_wal_watcher_current_segment
+// loki_ruler_wal_replay_duration_bucket
+// loki_ruler_wal_samples_appended_total
+// loki_ruler_wal_storage_created_series_total
+// loki_ruler_wal_storage_deleted_series
 {
   _resourceSelector(component)::
     local sel = selector();

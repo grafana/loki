@@ -37,6 +37,14 @@ local lib = import '../../lib/_imports.libsonnet';
       )
     ||| % [by, self._resourceSelector(component).build()],
 
+  // Gets the rate of CPU seconds used
+  process_cpu_rate(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (
+        rate(process_cpu_seconds_total{%s}[$__rate_interval])
+      )
+    ||| % [by, self._resourceSelector(component).build()],
+
   // Gauge metrics
   // Gets the current bytes allocated
   alloc_bytes(component, by=config.labels.resource_selector)::
@@ -122,6 +130,55 @@ local lib = import '../../lib/_imports.libsonnet';
       go_info{%s}
     ||| % [self._resourceSelector(component).build()],
 
+  // Process metrics
+  // Gets the maximum number of file descriptors
+  process_max_fds(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (
+        process_max_fds{%s}
+      )
+    ||| % [by, self._resourceSelector(component).build()],
+
+  // Gets the number of open file descriptors
+  process_open_fds(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (
+        process_open_fds{%s}
+      )
+    ||| % [by, self._resourceSelector(component).build()],
+
+  // Gets the resident memory size in bytes
+  process_resident_memory_bytes(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (
+        process_resident_memory_bytes{%s}
+      )
+    ||| % [by, self._resourceSelector(component).build()],
+
+  // Gets the process start time in seconds since unix epoch
+  process_start_time_seconds(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (
+        process_start_time_seconds{%s}
+      )
+    ||| % [by, self._resourceSelector(component).build()],
+
+  // Gets the virtual memory size in bytes
+  process_virtual_memory_bytes(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (
+        process_virtual_memory_bytes{%s}
+      )
+    ||| % [by, self._resourceSelector(component).build()],
+
+  // Gets the maximum virtual memory size in bytes
+  process_virtual_memory_max_bytes(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (
+        process_virtual_memory_max_bytes{%s}
+      )
+    ||| % [by, self._resourceSelector(component).build()],
+
   // Histogram metrics
   // Gets the GC duration percentile
   gc_duration_percentile(component, percentile, by=config.labels.resource_selector)::
@@ -178,4 +235,12 @@ local lib = import '../../lib/_imports.libsonnet';
     |||
       rate(go_memstats_heap_alloc_bytes{%s}[$__rate_interval])
     ||| % [self._resourceSelector(component).build()],
+
+  // Gets the process file descriptor utilization ratio
+  process_fd_utilization_ratio(component, by=config.labels.resource_selector)::
+    |||
+      sum by (%s) (process_open_fds{%s})
+      /
+      sum by (%s) (process_max_fds{%s})
+    ||| % std.repeat([by, self._resourceSelector(component).build()], 2),
 }

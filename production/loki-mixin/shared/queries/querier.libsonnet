@@ -12,6 +12,50 @@ local lib = import '../../lib/_imports.libsonnet';
       .resource(self._component)
       .build(),
 
+  // Gets the percentile of query frontend request duration
+  querier_query_frontend_request_percentile(percentile, by='')::
+    |||
+      histogram_quantile(
+        %g,
+        sum by (le, %s) (
+          rate(loki_querier_query_frontend_request_duration_seconds_bucket{%s}[$__rate_interval])
+        )
+      )
+    ||| % [
+      percentile,
+      by,
+      self._resourceSelector,
+    ],
+
+  // Gets the 99th percentile of query frontend request duration
+  querier_query_frontend_request_p99(by=''):: self.querier_query_frontend_request_percentile(0.99, by),
+  // Gets the 95th percentile of query frontend request duration
+  querier_query_frontend_request_p95(by=''):: self.querier_query_frontend_request_percentile(0.95, by),
+  // Gets the 90th percentile of query frontend request duration
+  querier_query_frontend_request_p90(by=''):: self.querier_query_frontend_request_percentile(0.90, by),
+  // Gets the 50th percentile of query frontend request duration
+  querier_query_frontend_request_p50(by=''):: self.querier_query_frontend_request_percentile(0.50, by),
+
+  // Gets the average query frontend request duration
+  querier_query_frontend_request_average(by='')::
+    |||
+      sum by (%s) (
+        rate(loki_querier_query_frontend_request_duration_seconds_sum{%s}[$__rate_interval])
+      )
+      /
+      sum by (%s) (
+        rate(loki_querier_query_frontend_request_duration_seconds_count{%s}[$__rate_interval])
+      )
+    ||| % std.repeat([by, self._resourceSelector], 2),
+
+  // Gets the histogram of query frontend request duration
+  querier_query_frontend_request_histogram()::
+    |||
+      sum by (le) (
+        rate(loki_querier_query_frontend_request_duration_seconds_bucket{%s}[$__rate_interval])
+      )
+    ||| % [self._resourceSelector],
+
   // Counter rates
   // Gets the rate of index cache corruptions
   index_cache_corruptions_rate::

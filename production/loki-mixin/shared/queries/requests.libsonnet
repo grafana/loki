@@ -5,6 +5,13 @@ local variables = import '../variables.libsonnet';
 local selector = (import '../selectors.libsonnet').new;
 
 {
+  _resourceSelector(component)::
+    local sel = selector();
+    if std.isArray(component) then
+      sel.resources(component)
+    else
+      sel.resource(component),
+
   // Calculates request rate per status code (2xx, 3xx, 4xx, 5xx) for a given component
   rate(component)::
     local camelCaseComponent = lib.utils.toCamelCase(component);
@@ -135,4 +142,92 @@ local selector = (import '../selectors.libsonnet').new;
             )
           ) * 1e3
         ||| % [by, routeSelector, by, routeSelector],
+
+  // Gets the percentile of request message bytes
+  message_bytes_percentile(component, percentile, by='')::
+    |||
+      histogram_quantile(
+        %g,
+        sum by (le, %s) (
+          rate(loki_request_message_bytes_bucket{%s}[$__rate_interval])
+        )
+      )
+    ||| % [
+      percentile,
+      by,
+      self._resourceSelector(component).build(),
+    ],
+
+  // Gets the 99th percentile of request message bytes
+  message_bytes_p99(component, by=''):: self.message_bytes_percentile(component, 0.99, by),
+  // Gets the 95th percentile of request message bytes
+  message_bytes_p95(component, by=''):: self.message_bytes_percentile(component, 0.95, by),
+  // Gets the 90th percentile of request message bytes
+  message_bytes_p90(component, by=''):: self.message_bytes_percentile(component, 0.90, by),
+  // Gets the 50th percentile of request message bytes
+  message_bytes_p50(component, by=''):: self.message_bytes_percentile(component, 0.50, by),
+
+  // Gets the average request message bytes
+  message_bytes_average(component, by='')::
+    |||
+      sum by (%s) (
+        rate(loki_request_message_bytes_sum{%s}[$__rate_interval])
+      )
+      /
+      sum by (%s) (
+        rate(loki_request_message_bytes_count{%s}[$__rate_interval])
+      )
+    ||| % std.repeat([by, self._resourceSelector(component).build()], 2),
+
+  // Gets the histogram of request message bytes
+  message_bytes_histogram(component)::
+    |||
+      sum by (le) (
+        rate(loki_request_message_bytes_bucket{%s}[$__rate_interval])
+      )
+    ||| % [self._resourceSelector(component).build()],
+
+  // Gets the percentile of response message bytes
+  response_message_bytes_percentile(component, percentile, by='')::
+    |||
+      histogram_quantile(
+        %g,
+        sum by (le, %s) (
+          rate(loki_response_message_bytes_bucket{%s}[$__rate_interval])
+        )
+      )
+    ||| % [
+      percentile,
+      by,
+      self._resourceSelector(component).build(),
+    ],
+
+  // Gets the 99th percentile of response message bytes
+  response_message_bytes_p99(component, by=''):: self.response_message_bytes_percentile(component, 0.99, by),
+  // Gets the 95th percentile of response message bytes
+  response_message_bytes_p95(component, by=''):: self.response_message_bytes_percentile(component, 0.95, by),
+  // Gets the 90th percentile of response message bytes
+  response_message_bytes_p90(component, by=''):: self.response_message_bytes_percentile(component, 0.90, by),
+  // Gets the 50th percentile of response message bytes
+  response_message_bytes_p50(component, by=''):: self.response_message_bytes_percentile(component, 0.50, by),
+
+  // Gets the average response message bytes
+  response_message_bytes_average(component, by='')::
+    |||
+      sum by (%s) (
+        rate(loki_response_message_bytes_sum{%s}[$__rate_interval])
+      )
+      /
+      sum by (%s) (
+        rate(loki_response_message_bytes_count{%s}[$__rate_interval])
+      )
+    ||| % std.repeat([by, self._resourceSelector(component).build()], 2),
+
+  // Gets the histogram of response message bytes
+  response_message_bytes_histogram(component)::
+    |||
+      sum by (le) (
+        rate(loki_response_message_bytes_bucket{%s}[$__rate_interval])
+      )
+    ||| % [self._resourceSelector(component).build()],
 }

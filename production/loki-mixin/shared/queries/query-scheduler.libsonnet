@@ -65,6 +65,15 @@ local lib = import '../../lib/_imports.libsonnet';
       self._resourceSelector,
     ],
 
+  // Gets the 99th percentile of inflight requests
+  inflight_requests_p99(by=''):: self.inflight_requests_percentile(0.99, by),
+  // Gets the 95th percentile of inflight requests
+  inflight_requests_p95(by=''):: self.inflight_requests_percentile(0.95, by),
+  // Gets the 90th percentile of inflight requests
+  inflight_requests_p90(by=''):: self.inflight_requests_percentile(0.90, by),
+  // Gets the 50th percentile of inflight requests
+  inflight_requests_p50(by=''):: self.inflight_requests_percentile(0.50, by),
+
   // Gets the average inflight requests
   inflight_requests_average(by='')::
     |||

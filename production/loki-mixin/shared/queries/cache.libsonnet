@@ -45,6 +45,14 @@ local lib = import '../../lib/_imports.libsonnet';
       )
     ||| % std.repeat([by, self._resourceSelector(component).build()], 2),
 
+  // Gets the histogram of cache request duration
+  request_histogram(component)::
+    |||
+      sum by (le) (
+        rate(loki_cache_request_duration_seconds_bucket{%s}[$__rate_interval])
+      )
+    ||| % [self._resourceSelector(component).build()],
+
   // Gets the percentile of cache value size in bytes
   value_size_percentile(component, percentile, by='')::
     |||
