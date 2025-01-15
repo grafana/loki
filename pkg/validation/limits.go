@@ -451,7 +451,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 	f.Var((*dskit_flagext.StringSlice)(&l.EnforcedLabels), "validation.enforced-labels", "List of labels that must be present in the stream. If any of the labels are missing, the stream will be discarded. This flag configures it globally for all tenants. Experimental.")
 
-	f.StringVar(&l.ScopeIngestionLabel, "limits.scope-ingestion-label", "", "Label to use for scope ingestion. This label will be used to identify the scope of the ingestion.")
+	f.StringVar(&l.ScopeIngestionLabel, "limits.scope-ingestion-label", "", "Label to use for scope ingestion. This label will be used to identify the scope of the ingestion. The block scope ingestion feature will look for this label in the stream and block the ingestion based on the ingestion until time. Experimental.")
 
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 

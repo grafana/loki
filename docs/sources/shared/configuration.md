@@ -3950,7 +3950,9 @@ otlp_config:
 [block_scope_ingestion_status_code: <map of string to int>]
 
 # Label to use for scope ingestion. This label will be used to identify the
-# scope of the ingestion.
+# scope of the ingestion. The block scope ingestion feature will look for this
+# label in the stream and block the ingestion based on the ingestion until time.
+# Experimental.
 # CLI flag: -limits.scope-ingestion-label
 [scope_ingestion_label: <string> | default = ""]
 
