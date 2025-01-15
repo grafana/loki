@@ -26,6 +26,9 @@
   reqps(params)::
     self.new(params + { unit: 'reqps' }),
 
+  rps(params)::
+    self.new(params + { unit: 'reqps' }),
+
   // queries per second
   qps(params)::
     self.reqps(params),

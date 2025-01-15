@@ -11,7 +11,7 @@ local shared = import '../../../shared/_imports.libsonnet';
       targets=[
         lib.query.prometheus.new(
           datasource=common.variables.metrics_datasource.name,
-          expr=shared.queries.requests.latency_percentile_99(
+          expr=shared.queries.requests.latency_p99(
             component=config.components[key].component,
             by='pod',
             recording_rule=false,

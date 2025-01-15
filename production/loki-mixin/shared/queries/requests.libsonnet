@@ -80,19 +80,19 @@ local selector = (import '../selectors.libsonnet').new;
         ||| % [percentile, by, routeSelector],
 
   // Calculates the 99th percentile of request latencies
-  latency_percentile_99(component, by='route', recording_rule=config.recording_rules.loki)::
+  latency_p99(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.99, by, recording_rule),
 
   // Calculates the 95th percentile of request latencies
-  latency_percentile_95(component, by='route', recording_rule=config.recording_rules.loki)::
+  latency_p95(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.95, by, recording_rule),
 
   // Calculates the 90th percentile of request latencies
-  latency_percentile_90(component, by='route', recording_rule=config.recording_rules.loki)::
+  latency_p90(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.90, by, recording_rule),
 
   // Calculates the 50th percentile (median) of request latencies
-  latency_percentile_50(component, by='route', recording_rule=config.recording_rules.loki)::
+  latency_p50(component, by='route', recording_rule=config.recording_rules.loki)::
     self.latency_percentile(component, 0.50, by, recording_rule),
 
   // Calculates the average request latency for a component

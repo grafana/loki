@@ -3,25 +3,22 @@ local lib = import '../../../lib/_imports.libsonnet';
 local common = import '../../common/_imports.libsonnet';
 local shared = import '../../../shared/_imports.libsonnet';
 
-// local variables
-local timeSeries = lib.panels.timeSeries;
-
-timeSeries.short({
-  title: 'Queue Length',
+lib.panels.timeSeries.percent({
+  title: 'Query Parsing (Sharded Engine)',
   description: |||
-    The query scheduler queue length for the Tenant.
-
-    Only applicable when [Shuffle Sharding](https://grafana.com/docs/loki/latest/operations/shuffle-sharding/) is enabled.
+    The number of queries that were parsed by the Sharded Engine.
   |||,
   datasource: common.variables.metrics_datasource.name,
   targets: [
     lib.query.prometheus.new(
       datasource=common.variables.metrics_datasource.name,
-      expr=shared.queries.queryScheduler.queue_length,
+      expr=shared.queries.queryFrontend.sharded_queries_percent,
       params={
-        refId: 'Active Streams',
-        legendFormat: 'Streams',
+        refId: 'parsed_queries',
+        legendFormat: '{{type}}',
       }
     ),
   ],
+  fillOpacity: 10,
+  showPoints: 'never',
 })

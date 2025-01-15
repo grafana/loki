@@ -20,7 +20,7 @@ local shared = import '../../../shared/_imports.libsonnet';
       targets=[
         lib.query.prometheus.new(
           datasource=common.variables.metrics_datasource.name,
-          expr=shared.queries.requests.latency_percentile_99(
+          expr=shared.queries.requests.latency_p99(
             component=config.components[key].component,
             by='',
           ),
@@ -31,7 +31,7 @@ local shared = import '../../../shared/_imports.libsonnet';
         ),
         lib.query.prometheus.new(
           datasource=common.variables.metrics_datasource.name,
-          expr=shared.queries.requests.latency_percentile_95(
+          expr=shared.queries.requests.latency_p95(
             component=config.components[key].component,
             by='',
           ),
@@ -42,7 +42,7 @@ local shared = import '../../../shared/_imports.libsonnet';
         ),
         lib.query.prometheus.new(
           datasource=common.variables.metrics_datasource.name,
-          expr=shared.queries.requests.latency_percentile_90(
+          expr=shared.queries.requests.latency_p90(
             component=config.components[key].component,
             by='',
           ),
@@ -53,7 +53,7 @@ local shared = import '../../../shared/_imports.libsonnet';
         ),
         lib.query.prometheus.new(
           datasource=common.variables.metrics_datasource.name,
-          expr=shared.queries.requests.latency_percentile_50(
+          expr=shared.queries.requests.latency_p50(
             component=config.components[key].component,
             by='',
           ),

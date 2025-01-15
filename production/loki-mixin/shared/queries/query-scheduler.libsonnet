@@ -1,43 +1,104 @@
 // imports
 local config = import '../../config.libsonnet';
 local variables = import '../variables.libsonnet';
-local common = import './common.libsonnet';
 local selector = (import '../selectors.libsonnet').new;
 local lib = import '../../lib/_imports.libsonnet';
+
 {
-  queue_duration_percentile(percentile)::
+  _component:: 'query-scheduler',
+
+  _resourceSelector::
+    selector()
+      .resource(self._component)
+      .build(),
+
+  // Histogram queries for queue duration
+  // Gets the percentile of queue duration
+  queue_duration_percentile(percentile, by='')::
     |||
       histogram_quantile(
         %g,
-        sum by (le) (
+        sum by (le, %s) (
           rate(loki_query_scheduler_queue_duration_seconds_bucket{%s}[$__rate_interval])
         )
       )
     ||| % [
       percentile,
-      selector().component('query-scheduler').build(),
+      by,
+      self._resourceSelector,
     ],
 
-  queue_duration_percentile_99: self.queue_duration_percentile(0.99),
-  queue_duration_percentile_95: self.queue_duration_percentile(0.95),
-  queue_duration_percentile_90: self.queue_duration_percentile(0.90),
-  queue_duration_percentile_50: self.queue_duration_percentile(0.50),
+  // Gets the 99th percentile of queue duration
+  queue_duration_p99(by=''):: self.queue_duration_percentile(0.99, by),
+  // Gets the 95th percentile of queue duration
+  queue_duration_p95(by=''):: self.queue_duration_percentile(0.95, by),
+  // Gets the 90th percentile of queue duration
+  queue_duration_p90(by=''):: self.queue_duration_percentile(0.90, by),
+  // Gets the 50th percentile of queue duration
+  queue_duration_p50(by=''):: self.queue_duration_percentile(0.50, by),
 
-  queue_duration_average:
+  // Gets the average queue duration
+  queue_duration_average(by='')::
     |||
-      sum(
+      sum by (%s) (
         rate(loki_query_scheduler_queue_duration_seconds_sum{%s}[$__rate_interval])
       )
       /
-      sum(
+      sum by (%s) (
         rate(loki_query_scheduler_queue_duration_seconds_count{%s}[$__rate_interval])
       )
-    ||| % std.repeat([selector().component('query-scheduler').build()], 2),
+    ||| % std.repeat([by, self._resourceSelector], 2),
 
-  queue_length:
+  // Histogram queries for inflight requests
+  // Gets the percentile of inflight requests
+  inflight_requests_percentile(percentile, by='')::
     |||
-      loki_query_scheduler_queue_length{%s}
+      histogram_quantile(
+        %g,
+        sum by (le, %s) (
+          rate(loki_query_scheduler_inflight_requests_bucket{%s}[$__rate_interval])
+        )
+      )
     ||| % [
-      selector().tenant().component('query-scheduler').build(),
+      percentile,
+      by,
+      self._resourceSelector,
     ],
+
+  // Gets the average inflight requests
+  inflight_requests_average(by='')::
+    |||
+      sum by (%s) (
+        rate(loki_query_scheduler_inflight_requests_sum{%s}[$__rate_interval])
+      )
+      /
+      sum by (%s) (
+        rate(loki_query_scheduler_inflight_requests_count{%s}[$__rate_interval])
+      )
+    ||| % std.repeat([by, self._resourceSelector], 2),
+
+  // Gauge metrics
+  // Gets the number of connected frontend clients
+  connected_frontend_clients::
+    |||
+      loki_query_scheduler_connected_frontend_clients{%s}
+    ||| % [self._resourceSelector],
+
+  // Gets the number of connected querier clients
+  connected_querier_clients::
+    |||
+      loki_query_scheduler_connected_querier_clients{%s}
+    ||| % [self._resourceSelector],
+
+  // Gets the current number of inflight requests
+  inflight_requests::
+    |||
+      loki_query_scheduler_inflight_requests{%s}
+    ||| % [self._resourceSelector],
+
+  // Gets whether the scheduler is running
+  running::
+    |||
+      loki_query_scheduler_running{%s}
+    ||| % [self._resourceSelector],
 }

@@ -72,8 +72,8 @@ lib.dashboard.new({
         title: 'Miscellaneous',
         panels: [
           panels.activeStreams,
-          panels.queueLength,
-          panels.queueDuration,
+          common.panels.timeSeries.queueLength(),
+          common.panels.timeSeries.queueDuration(),
         ]
       }),
     ], panelWidth=8, panelHeight=7, startY=30)

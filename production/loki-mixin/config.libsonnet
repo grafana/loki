@@ -26,6 +26,13 @@
   // whether or not the dashboards should be editable
   editable: true,
 
+  // whether or not to create panels in various dashboards for a given object store
+  object_stores: {
+    aws_s3: true,
+    azure_blob: true,
+    google_gcs: true,
+  },
+
   // The label used to identify resources (pods/components)
   labels: {
     // The label used to identify the cluster
@@ -246,6 +253,7 @@
     ingester: {
       enabled: true,
       component: 'ingester',
+      selector_value: 'ingester|partition-ingester',
       name: 'Ingester',
       paths: ['read', 'write'],
       routes: '(/base.Ruler/Rules|/indexgatewaypb.IndexGateway/GetChunkRef|/indexgatewaypb.IndexGateway/GetSeries|/indexgatewaypb.IndexGateway/GetShards|/indexgatewaypb.IndexGateway/GetStats|/indexgatewaypb.IndexGateway/GetVolume|/indexgatewaypb.IndexGateway/LabelNamesForMetricName|/indexgatewaypb.IndexGateway/LabelValuesForMetricName|/indexgatewaypb.IndexGateway/QueryIndex|/logproto.BloomGateway/FilterChunkRefs|/logproto.Pattern/Query|/logproto.Querier/GetChunkIDs|/logproto.Querier/GetDetectedLabels|/logproto.Querier/GetStats|/logproto.Querier/GetVolume|/logproto.Querier/Label|/logproto.Querier/Query|/logproto.Querier/QuerySample|/logproto.Querier/Series|/logproto.StreamData/GetStreamRates)',
