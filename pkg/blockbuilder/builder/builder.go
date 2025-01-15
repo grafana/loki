@@ -274,7 +274,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, c *kgo.Client, workerID strin
 		Job:       job,
 		Success:   true,
 	}
-	if _, processErr := i.processJob(ctx, c, job, logger); processErr != nil {
+	if processErr := i.processJob(ctx, c, job, logger); processErr != nil {
 		level.Error(i.logger).Log("msg", "failed to process job", "err", processErr)
 		err = errors.Wrap(processErr, "processing job")
 		completion.Success = false
@@ -302,7 +302,7 @@ func (i *BlockBuilder) runOne(ctx context.Context, c *kgo.Client, workerID strin
 	return true, err
 }
 
-func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
+func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types.Job, logger log.Logger) (err error) {
 	level.Debug(logger).Log("msg", "beginning job")
 	start := time.Now()
 
@@ -465,7 +465,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 		"err", err,
 	)
 	if err != nil {
-		return 0, errors.Wrap(err, "running pipeline")
+		return errors.Wrap(err, "running pipeline")
 	}
 
 	var (
@@ -476,7 +476,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 	built, err := indexer.create(ctx, nodeName, tableRanges)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to build index", "err", err)
-		return 0, errors.Wrap(err, "building index")
+		return errors.Wrap(err, "building index")
 	}
 
 	u := newUploader(i.objStore)
@@ -497,7 +497,7 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 			)
 			return
 		}); err != nil {
-			return 0, err
+			return errors.Wrap(err, "running pipeline")
 		}
 	}
 
@@ -509,10 +509,10 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 		"records", lastOffset-job.Offsets().Min,
 	)
 
-	return lastOffset, nil
+	return nil
 }
 
-func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (int64, error) {
+func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partitionID int32, offsets types.Offsets, ch chan<- []AppendInput) (lastConsumedOffset int64, err error) {
 	// Use NoResetOffset to avoid resetting the offset to the beginning of the partition when the requested offset is out of range.
 	// This could happen if the requested records are already outside of retention period. We should fail the job is such cases leaving the scheduler to make a decision.
 	c.AddConsumePartitions(map[string]map[int32]kgo.Offset{
@@ -522,8 +522,8 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 		i.kafkaCfg.Topic: {partitionID},
 	})
 
+	lastConsumedOffset = offsets.Min - 1
 	var (
-		lastSeenOffset      = offsets.Min - 1
 		boff                = backoff.New(ctx, i.cfg.Backoff)
 		consecutiveTimeouts = 0
 		maxTimeouts         = 3
@@ -532,18 +532,18 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 	// since offsets.Max is exclusive, can point to an offset that doesn't exist,
 	// so we only poll until we reach the end of the records we need to process (offsets.Max-1).
 	// this prevents us from polling indefinitely for records that don't exist.
-	for lastSeenOffset < offsets.Max-1 && boff.Ongoing() {
+	for lastConsumedOffset < offsets.Max-1 && boff.Ongoing() {
 		if consecutiveTimeouts >= maxTimeouts {
-			return lastSeenOffset, fmt.Errorf("exceeded maximum consecutive timeouts (%d) while polling records", maxTimeouts)
+			return lastConsumedOffset, fmt.Errorf("exceeded maximum consecutive timeouts (%d) while polling records", maxTimeouts)
 		}
 
 		if err := context.Cause(ctx); err != nil {
-			return 0, err
+			return lastConsumedOffset, err
 		}
 
 		// Add timeout for each poll operation
 		pollCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		fs := c.PollRecords(pollCtx, int(offsets.Max-lastSeenOffset))
+		fs := c.PollRecords(pollCtx, int(offsets.Max-lastConsumedOffset))
 		cancel()
 
 		if err := fs.Err(); err != nil {
@@ -551,7 +551,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 				level.Warn(i.logger).Log(
 					"msg", "timeout polling records",
 					"partition", partitionID,
-					"last_offset", lastSeenOffset,
+					"last_offset", lastConsumedOffset,
 					"target_offset", offsets.Max,
 				)
 				boff.Wait()
@@ -562,7 +562,7 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 				"msg", "failed to poll records",
 				"err", err,
 				"partition", partitionID,
-				"last_offset", lastSeenOffset,
+				"last_offset", lastConsumedOffset,
 			)
 			boff.Wait()
 			continue
@@ -580,7 +580,6 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 		converted := make([]AppendInput, 0, fs.NumRecords())
 		for iter := fs.RecordIter(); !iter.Done(); {
 			record := iter.Next()
-			lastSeenOffset = record.Offset
 			if record.Offset >= offsets.Max {
 				level.Debug(i.logger).Log("msg", "record offset exceeds job max offset. stop processing", "record offset", record.Offset, "max offset", offsets.Max)
 				break
@@ -588,8 +587,10 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 
 			stream, labels, err := i.decoder.Decode(record.Value)
 			if err != nil {
-				return 0, fmt.Errorf("failed to decode record: %w", err)
+				return lastConsumedOffset, errors.Wrap(err, "failed to decode record")
 			}
+
+			lastConsumedOffset = record.Offset
 
 			if len(stream.Entries) == 0 {
 				continue
@@ -611,12 +612,12 @@ func (i *BlockBuilder) loadRecords(ctx context.Context, c *kgo.Client, partition
 			select {
 			case ch <- converted:
 			case <-ctx.Done():
-				return 0, ctx.Err()
+				return lastConsumedOffset, ctx.Err()
 			}
 		}
 	}
 
-	return lastSeenOffset, boff.Err()
+	return lastConsumedOffset, boff.Err()
 }
 
 func withBackoff[T any](
