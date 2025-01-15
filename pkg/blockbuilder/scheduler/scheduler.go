@@ -132,6 +132,7 @@ func (s *BlockScheduler) running(ctx context.Context) error {
 	}
 
 	go s.queue.RunLeaseExpiryChecker(ctx)
+	go s.publishLagLoop(ctx)
 
 	ticker := time.NewTicker(s.cfg.Interval)
 	for {
@@ -148,14 +149,6 @@ func (s *BlockScheduler) running(ctx context.Context) error {
 }
 
 func (s *BlockScheduler) runOnce(ctx context.Context) error {
-	lag, err := s.offsetManager.GroupLag(ctx, s.fallbackOffsetMillis)
-	if err != nil {
-		level.Error(s.logger).Log("msg", "failed to get group lag", "err", err)
-		return err
-	}
-
-	s.publishLagMetrics(lag)
-
 	// TODO(owen-d): parallelize work within a partition
 	// TODO(owen-d): skip small jobs unless they're stale,
 	//  e.g. a partition which is no longer being written to shouldn't be orphaned
@@ -174,6 +167,24 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *BlockScheduler) publishLagLoop(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			lag, err := s.offsetManager.GroupLag(ctx, s.fallbackOffsetMillis)
+			if err != nil {
+				level.Error(s.logger).Log("msg", "failed to get group lag for metric publishing", "err", err)
+			}
+			s.publishLagMetrics(lag)
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (s *BlockScheduler) handlePlannedJob(job *JobWithMetadata) error {
