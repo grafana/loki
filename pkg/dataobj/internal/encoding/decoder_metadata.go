@@ -16,6 +16,23 @@ import (
 
 // decode* methods for metadata shared by Decoder implementations.
 
+// decodeTailer decodes the tailer of the file to retrieve the metadata size
+// and the magic value.
+func decodeTailer(r streamio.Reader) (metadataSize uint32, err error) {
+	if err := binary.Read(r, binary.LittleEndian, &metadataSize); err != nil {
+		return 0, fmt.Errorf("read metadata size: %w", err)
+	}
+
+	var gotMagic [4]byte
+	if _, err := io.ReadFull(r, gotMagic[:]); err != nil {
+		return 0, fmt.Errorf("read magic: %w", err)
+	} else if string(gotMagic[:]) != string(magic) {
+		return 0, fmt.Errorf("unexpected magic: got=%q want=%q", gotMagic, magic)
+	}
+
+	return
+}
+
 // decodeFileMetadata decodes file metadata from r.
 func decodeFileMetadata(r streamio.Reader) (*filemd.Metadata, error) {
 	gotVersion, err := streamio.ReadUvarint(r)
