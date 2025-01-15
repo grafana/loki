@@ -1630,7 +1630,7 @@ github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 github.com/stretchr/testify/suite
-# github.com/thanos-io/objstore v0.0.0-20241217111833-063ea3806b2f
+# github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 ## explicit; go 1.22
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/clientutil

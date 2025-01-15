@@ -46,6 +46,9 @@ var DefaultConfig = Config{
 
 // Config Azure storage configuration.
 type Config struct {
+	AzTenantID              string             `yaml:"az_tenant_id"`
+	ClientID                string             `yaml:"client_id"`
+	ClientSecret            string             `yaml:"client_secret"`
 	StorageAccountName      string             `yaml:"storage_account"`
 	StorageAccountKey       string             `yaml:"storage_account_key"`
 	StorageConnectionString string             `yaml:"storage_connection_string"`
@@ -82,6 +85,14 @@ func (conf *Config) validate() error {
 
 	if conf.UserAssignedID != "" && conf.StorageConnectionString != "" {
 		errMsg = append(errMsg, "user_assigned_id cannot be set when using storage_connection_string authentication")
+	}
+
+	if conf.UserAssignedID != "" && conf.ClientID != "" {
+		errMsg = append(errMsg, "user_assigned_id cannot be set when using client_id authentication")
+	}
+
+	if (conf.AzTenantID != "" || conf.ClientSecret != "" || conf.ClientID != "") && (conf.AzTenantID == "" || conf.ClientSecret == "" || conf.ClientID == "") {
+		errMsg = append(errMsg, "az_tenant_id, client_id, and client_secret must be set together")
 	}
 
 	if conf.StorageAccountKey != "" && conf.StorageConnectionString != "" {
