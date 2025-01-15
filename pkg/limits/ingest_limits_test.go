@@ -6,20 +6,22 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-func TestIngestLimits_HasStreams(t *testing.T) {
+func TestIngestLimits_GetStreamLimits(t *testing.T) {
 	tests := []struct {
 		name           string
 		tenant         string
 		streamHashes   []uint64
 		setupMetadata  map[string]map[uint64]int64
 		windowSize     time.Duration
-		expectedAnswer []bool
+		expectedActive uint64
+		expectedStatus []bool // 1 for active, 0 for inactive
 	}{
 		{
 			name:         "tenant not found",
@@ -32,10 +34,11 @@ func TestIngestLimits_HasStreams(t *testing.T) {
 				},
 			},
 			windowSize:     time.Hour,
-			expectedAnswer: []bool{false, false, false},
+			expectedActive: 0,
+			expectedStatus: []bool{false, false, false},
 		},
 		{
-			name:         "all streams found and active",
+			name:         "all streams active",
 			tenant:       "tenant1",
 			streamHashes: []uint64{1, 2, 3},
 			setupMetadata: map[string]map[uint64]int64{
@@ -43,37 +46,43 @@ func TestIngestLimits_HasStreams(t *testing.T) {
 					1: time.Now().UnixNano(),
 					2: time.Now().UnixNano(),
 					3: time.Now().UnixNano(),
+					4: time.Now().UnixNano(), // Additional active stream
 				},
 			},
 			windowSize:     time.Hour,
-			expectedAnswer: []bool{true, true, true},
+			expectedActive: 4,                        // Total active streams for tenant
+			expectedStatus: []bool{true, true, true}, // Status of requested streams
 		},
 		{
-			name:         "some streams expired",
+			name:         "mixed active and expired streams",
 			tenant:       "tenant1",
-			streamHashes: []uint64{1, 2, 3},
+			streamHashes: []uint64{1, 2, 3, 4},
 			setupMetadata: map[string]map[uint64]int64{
 				"tenant1": {
 					1: time.Now().UnixNano(),
 					2: time.Now().Add(-2 * time.Hour).UnixNano(), // expired
 					3: time.Now().UnixNano(),
+					4: time.Now().Add(-2 * time.Hour).UnixNano(), // expired
+					5: time.Now().UnixNano(),                     // Additional active stream
 				},
 			},
 			windowSize:     time.Hour,
-			expectedAnswer: []bool{true, false, true},
+			expectedActive: 3,                                // Total active streams for tenant
+			expectedStatus: []bool{true, false, true, false}, // Status of requested streams
 		},
 		{
-			name:         "some streams not found",
+			name:         "all streams expired",
 			tenant:       "tenant1",
-			streamHashes: []uint64{1, 2, 3},
+			streamHashes: []uint64{1, 2},
 			setupMetadata: map[string]map[uint64]int64{
 				"tenant1": {
-					1: time.Now().UnixNano(),
-					3: time.Now().UnixNano(),
+					1: time.Now().Add(-2 * time.Hour).UnixNano(),
+					2: time.Now().Add(-2 * time.Hour).UnixNano(),
 				},
 			},
 			windowSize:     time.Hour,
-			expectedAnswer: []bool{true, false, true},
+			expectedActive: 0,
+			expectedStatus: []bool{false, false},
 		},
 		{
 			name:         "empty stream hashes",
@@ -86,7 +95,8 @@ func TestIngestLimits_HasStreams(t *testing.T) {
 				},
 			},
 			windowSize:     time.Hour,
-			expectedAnswer: []bool{},
+			expectedActive: 2,
+			expectedStatus: []bool{},
 		},
 	}
 
@@ -102,174 +112,29 @@ func TestIngestLimits_HasStreams(t *testing.T) {
 			}
 
 			// Create request
-			req := &logproto.HasStreamsRequest{
+			req := &logproto.GetStreamLimitsRequest{
 				Tenant:     tt.tenant,
 				StreamHash: tt.streamHashes,
 			}
 
-			// Call HasStreams
-			resp, err := s.HasStreams(context.Background(), req)
+			// Call GetStreamLimits
+			resp, err := s.GetStreamLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
 			require.Equal(t, tt.tenant, resp.Tenant)
-			require.Len(t, resp.Answer, len(tt.streamHashes))
+			require.Equal(t, tt.expectedActive, resp.ActiveStreams)
+			require.Len(t, resp.RecordedStreams, len(tt.streamHashes))
 
-			// Verify answers
-			for i, expected := range tt.expectedAnswer {
-				require.Equal(t, expected, resp.Answer[i].Answer, "stream hash %d", tt.streamHashes[i])
-				require.Equal(t, tt.streamHashes[i], resp.Answer[i].StreamHash)
+			// Verify stream status
+			for i, hash := range tt.streamHashes {
+				require.Equal(t, hash, resp.RecordedStreams[i].StreamHash)
+				require.Equal(t, tt.expectedStatus[i], resp.RecordedStreams[i].Active)
 			}
 		})
 	}
 }
 
-func TestIngestLimits_HasStreams_Concurrent(t *testing.T) {
-	// Setup test data
-	now := time.Now()
-	metadata := map[string]map[uint64]int64{
-		"tenant1": {
-			1: now.UnixNano(),
-			2: now.Add(-30 * time.Minute).UnixNano(),
-			3: now.Add(-2 * time.Hour).UnixNano(), // expired
-		},
-	}
-
-	s := &IngestLimits{
-		cfg: kafka.IngestLimitsConfig{
-			WindowSize: time.Hour,
-		},
-		logger:   log.NewNopLogger(),
-		metadata: metadata,
-	}
-
-	// Run concurrent requests
-	concurrency := 10
-	done := make(chan struct{})
-	for i := 0; i < concurrency; i++ {
-		go func() {
-			defer func() { done <- struct{}{} }()
-
-			req := &logproto.HasStreamsRequest{
-				Tenant:     "tenant1",
-				StreamHash: []uint64{1, 2, 3},
-			}
-
-			resp, err := s.HasStreams(context.Background(), req)
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-			require.Equal(t, "tenant1", resp.Tenant)
-			require.Len(t, resp.Answer, 3)
-
-			// Verify answers
-			require.True(t, resp.Answer[0].Answer)  // active
-			require.True(t, resp.Answer[1].Answer)  // active within window
-			require.False(t, resp.Answer[2].Answer) // expired
-		}()
-	}
-
-	// Wait for all goroutines to complete
-	for i := 0; i < concurrency; i++ {
-		<-done
-	}
-}
-
-func TestIngestLimits_NumStreams(t *testing.T) {
-	tests := []struct {
-		name          string
-		tenant        string
-		setupMetadata map[string]map[uint64]int64
-		windowSize    time.Duration
-		expectedNum   uint64
-	}{
-		{
-			name:   "tenant not found",
-			tenant: "tenant1",
-			setupMetadata: map[string]map[uint64]int64{
-				"tenant2": {
-					1: time.Now().UnixNano(),
-					2: time.Now().UnixNano(),
-				},
-			},
-			windowSize:  time.Hour,
-			expectedNum: 0,
-		},
-		{
-			name:   "all streams active",
-			tenant: "tenant1",
-			setupMetadata: map[string]map[uint64]int64{
-				"tenant1": {
-					1: time.Now().UnixNano(),
-					2: time.Now().UnixNano(),
-					3: time.Now().UnixNano(),
-				},
-			},
-			windowSize:  time.Hour,
-			expectedNum: 3,
-		},
-		{
-			name:   "some streams expired",
-			tenant: "tenant1",
-			setupMetadata: map[string]map[uint64]int64{
-				"tenant1": {
-					1: time.Now().UnixNano(),
-					2: time.Now().Add(-2 * time.Hour).UnixNano(), // expired
-					3: time.Now().UnixNano(),
-					4: time.Now().Add(-2 * time.Hour).UnixNano(), // expired
-				},
-			},
-			windowSize:  time.Hour,
-			expectedNum: 2,
-		},
-		{
-			name:   "all streams expired",
-			tenant: "tenant1",
-			setupMetadata: map[string]map[uint64]int64{
-				"tenant1": {
-					1: time.Now().Add(-2 * time.Hour).UnixNano(),
-					2: time.Now().Add(-2 * time.Hour).UnixNano(),
-				},
-			},
-			windowSize:  time.Hour,
-			expectedNum: 0,
-		},
-		{
-			name:   "no streams",
-			tenant: "tenant1",
-			setupMetadata: map[string]map[uint64]int64{
-				"tenant1": {},
-			},
-			windowSize:  time.Hour,
-			expectedNum: 0,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create IngestLimits instance with mock data
-			s := &IngestLimits{
-				cfg: kafka.IngestLimitsConfig{
-					WindowSize: tt.windowSize,
-				},
-				logger:   log.NewNopLogger(),
-				metadata: tt.setupMetadata,
-			}
-
-			// Create request
-			req := &logproto.NumStreamsRequest{
-				Tenant: tt.tenant,
-			}
-
-			// Call NumStreams
-			resp, err := s.NumStreams(context.Background(), req)
-			require.NoError(t, err)
-			require.NotNil(t, resp)
-			require.Equal(t, tt.tenant, resp.Tenant)
-			require.Equal(t, tt.expectedNum, resp.Num)
-		})
-	}
-}
-
-func TestIngestLimits_NumStreams_Concurrent(t *testing.T) {
+func TestIngestLimits_GetStreamLimits_Concurrent(t *testing.T) {
 	// Setup test data with a mix of active and expired streams
 	now := time.Now()
 	metadata := map[string]map[uint64]int64{
@@ -297,15 +162,23 @@ func TestIngestLimits_NumStreams_Concurrent(t *testing.T) {
 		go func() {
 			defer func() { done <- struct{}{} }()
 
-			req := &logproto.NumStreamsRequest{
-				Tenant: "tenant1",
+			req := &logproto.GetStreamLimitsRequest{
+				Tenant:     "tenant1",
+				StreamHash: []uint64{1, 2, 3, 4, 5},
 			}
 
-			resp, err := s.NumStreams(context.Background(), req)
+			resp, err := s.GetStreamLimits(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
 			require.Equal(t, "tenant1", resp.Tenant)
-			require.Equal(t, uint64(3), resp.Num) // Should count only the 3 active streams
+			require.Equal(t, uint64(3), resp.ActiveStreams) // Should count only the 3 active streams
+
+			// Verify stream status
+			expectedStatus := []bool{true, true, false, true, false} // active, active, expired, active, expired
+			for i, status := range expectedStatus {
+				require.Equal(t, req.StreamHash[i], resp.RecordedStreams[i].StreamHash)
+				require.Equal(t, status, resp.RecordedStreams[i].Active)
+			}
 		}()
 	}
 
@@ -313,4 +186,20 @@ func TestIngestLimits_NumStreams_Concurrent(t *testing.T) {
 	for i := 0; i < concurrency; i++ {
 		<-done
 	}
+}
+
+func TestNewIngestLimits(t *testing.T) {
+	cfg := kafka.Config{
+		IngestLimits: kafka.IngestLimitsConfig{
+			WindowSize: time.Hour,
+		},
+		Topic: "test-topic",
+	}
+
+	s, err := NewIngestLimits(cfg, log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NotNil(t, s)
+	require.NotNil(t, s.client)
+	require.Equal(t, cfg.IngestLimits, s.cfg)
+	require.NotNil(t, s.metadata)
 }

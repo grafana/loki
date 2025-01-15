@@ -184,37 +184,61 @@ func (s *IngestLimits) stopping(failureCase error) error {
 }
 
 // ServeHTTP implements the http.Handler interface.
-// It returns the current stream counts per tenant as a JSON response.
+// It returns the current stream counts and status per tenant as a JSON response.
 func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	// Calculate stream counts per tenant
-	counts := make(map[string]int)
+	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
+	// Calculate stream counts and status per tenant
+	type recordedStream struct {
+		StreamHash uint64 `json:"streamHash"`
+		Active     bool   `json:"active"`
+	}
+	type tenantLimits struct {
+		Tenant          string           `json:"tenant"`
+		ActiveStreams   uint64           `json:"activeStreams"`
+		RecordedStreams []recordedStream `json:"recordedStreams"`
+	}
+
+	response := make(map[string]tenantLimits)
 	for tenant, streams := range s.metadata {
-		activeStreams := 0
-		for _, lastSeen := range streams {
-			if lastSeen >= cutoff {
+		var activeStreams uint64
+		recordedStreams := make([]recordedStream, 0, len(streams))
+
+		// Count active streams and record their status
+		for hash, lastSeen := range streams {
+			isActive := lastSeen >= cutoff
+			if isActive {
 				activeStreams++
 			}
+			recordedStreams = append(recordedStreams, recordedStream{
+				StreamHash: hash,
+				Active:     isActive,
+			})
 		}
-		if activeStreams > 0 {
-			counts[tenant] = activeStreams
+
+		if activeStreams > 0 || len(recordedStreams) > 0 {
+			response[tenant] = tenantLimits{
+				Tenant:          tenant,
+				ActiveStreams:   activeStreams,
+				RecordedStreams: recordedStreams,
+			}
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(counts); err != nil {
-		http.Error(w, fmt.Sprintf("error encoding stream counts: %v", err), http.StatusInternalServerError)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, fmt.Sprintf("error encoding stream limits: %v", err), http.StatusInternalServerError)
 		return
 	}
 }
 
-// HasStreams implements the logproto.IngestLimitsServer interface.
-// It checks if the given stream hashes exist for a tenant.
-func (s *IngestLimits) HasStreams(ctx context.Context, req *logproto.HasStreamsRequest) (*logproto.HasStreamsResponse, error) {
+// GetStreamLimits implements the logproto.IngestLimitsServer interface.
+// It returns the number of active streams for a tenant and the status of requested streams.
+func (s *IngestLimits) GetStreamLimits(_ context.Context, req *logproto.GetStreamLimitsRequest) (*logproto.GetStreamLimitsResponse, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -224,55 +248,22 @@ func (s *IngestLimits) HasStreams(ctx context.Context, req *logproto.HasStreamsR
 	// Get the tenant's streams
 	streams := s.metadata[req.Tenant]
 	if streams == nil {
-		// If tenant not found, return all streams as not found
-		answers := make([]*logproto.HasStreamsAnswer, len(req.StreamHash))
+		// If tenant not found, return zero active streams and all streams as inactive
+		recordedStreams := make([]*logproto.RecordedStreams, len(req.StreamHash))
 		for i, hash := range req.StreamHash {
-			answers[i] = &logproto.HasStreamsAnswer{
+			recordedStreams[i] = &logproto.RecordedStreams{
 				StreamHash: hash,
-				Answer:     false,
+				Active:     false,
 			}
 		}
-		return &logproto.HasStreamsResponse{
-			Tenant: req.Tenant,
-			Answer: answers,
+		return &logproto.GetStreamLimitsResponse{
+			Tenant:          req.Tenant,
+			ActiveStreams:   0,
+			RecordedStreams: recordedStreams,
 		}, nil
 	}
 
-	// Check each requested stream hash
-	answers := make([]*logproto.HasStreamsAnswer, len(req.StreamHash))
-	for i, hash := range req.StreamHash {
-		lastSeen, exists := streams[hash]
-		answers[i] = &logproto.HasStreamsAnswer{
-			StreamHash: hash,
-			Answer:     exists && lastSeen >= cutoff,
-		}
-	}
-
-	return &logproto.HasStreamsResponse{
-		Tenant: req.Tenant,
-		Answer: answers,
-	}, nil
-}
-
-// NumStreams implements the logproto.IngestLimitsServer interface.
-// It returns the number of active streams for a tenant.
-func (s *IngestLimits) NumStreams(ctx context.Context, req *logproto.NumStreamsRequest) (*logproto.NumStreamsResponse, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	// Get the cutoff time for active streams
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-
-	// Get the tenant's streams
-	streams := s.metadata[req.Tenant]
-	if streams == nil {
-		return &logproto.NumStreamsResponse{
-			Tenant: req.Tenant,
-			Num:    0,
-		}, nil
-	}
-
-	// Count active streams
+	// Count total active streams for the tenant
 	var activeStreams uint64
 	for _, lastSeen := range streams {
 		if lastSeen >= cutoff {
@@ -280,8 +271,22 @@ func (s *IngestLimits) NumStreams(ctx context.Context, req *logproto.NumStreamsR
 		}
 	}
 
-	return &logproto.NumStreamsResponse{
-		Tenant: req.Tenant,
-		Num:    activeStreams,
+	// Check each requested stream hash
+	recordedStreams := make([]*logproto.RecordedStreams, len(req.StreamHash))
+	for i, hash := range req.StreamHash {
+		lastSeen, exists := streams[hash]
+		recordedStreams[i] = &logproto.RecordedStreams{
+			StreamHash: hash,
+			Active:     false,
+		}
+		if exists && lastSeen >= cutoff {
+			recordedStreams[i].Active = true
+		}
+	}
+
+	return &logproto.GetStreamLimitsResponse{
+		Tenant:          req.Tenant,
+		ActiveStreams:   activeStreams,
+		RecordedStreams: recordedStreams,
 	}, nil
 }
