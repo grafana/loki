@@ -122,7 +122,7 @@ func TestCRI_tags(t *testing.T) {
 			},
 			expected: []string{
 				"partial line 1 log finished",     // belongs to stream `{foo="bar"}`
-				"partial line 2 another full log", // belongs to stream `{foo="bar2"}
+				"partial line 2 another full log", // belongs to stream `{foo="bar2"}`
 			},
 		},
 		{

@@ -19,17 +19,17 @@
 package xdsclient
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 )
 
 const (
-	defaultWatchExpiryTimeout         = 15 * time.Second
-	defaultIdleAuthorityDeleteTimeout = 5 * time.Minute
+	defaultWatchExpiryTimeout       = 15 * time.Second
+	defaultIdleChannelExpiryTimeout = 5 * time.Minute
 )
 
 var (
@@ -37,6 +37,8 @@ var (
 	// overridden in tests to give them visibility into certain events.
 	xdsClientImplCreateHook = func(string) {}
 	xdsClientImplCloseHook  = func(string) {}
+
+	defaultStreamBackoffFunc = backoff.DefaultExponential.Backoff
 )
 
 func clientRefCountedClose(name string) {
@@ -60,7 +62,7 @@ func clientRefCountedClose(name string) {
 // newRefCounted creates a new reference counted xDS client implementation for
 // name, if one does not exist already. If an xDS client for the given name
 // exists, it gets a reference to it and returns it.
-func newRefCounted(name string, watchExpiryTimeout, idleAuthorityTimeout time.Duration) (XDSClient, func(), error) {
+func newRefCounted(name string, config *bootstrap.Config, watchExpiryTimeout, idleChannelExpiryTimeout time.Duration, streamBackoff func(int) time.Duration) (XDSClient, func(), error) {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
 
@@ -70,11 +72,7 @@ func newRefCounted(name string, watchExpiryTimeout, idleAuthorityTimeout time.Du
 	}
 
 	// Create the new client implementation.
-	config, err := bootstrap.GetConfiguration()
-	if err != nil {
-		return nil, nil, fmt.Errorf("xds: failed to get xDS bootstrap config: %v", err)
-	}
-	c, err := newClientImpl(config, watchExpiryTimeout, idleAuthorityTimeout)
+	c, err := newClientImpl(config, watchExpiryTimeout, idleChannelExpiryTimeout, streamBackoff)
 	if err != nil {
 		return nil, nil, err
 	}

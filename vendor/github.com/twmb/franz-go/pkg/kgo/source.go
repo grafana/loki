@@ -1041,6 +1041,7 @@ func (s *source) handleReqResp(br *broker, req *fetchRequest, resp *kmsg.FetchRe
 
 		fetchTopic := FetchTopic{
 			Topic:      topic,
+			TopicID:    rt.TopicID,
 			Partitions: make([]FetchPartition, 0, len(rt.Partitions)),
 		}
 

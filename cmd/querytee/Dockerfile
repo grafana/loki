@@ -5,7 +5,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki-querytee
 
-FROM gcr.io/distroless/base-nossl:debug
+FROM gcr.io/distroless/static:debug
 COPY --from=build /src/loki/cmd/querytee/querytee /usr/bin/querytee
 
 SHELL [ "/busybox/sh", "-c" ]

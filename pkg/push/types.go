@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 	"unsafe"
-
-	"golang.org/x/exp/slices"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.

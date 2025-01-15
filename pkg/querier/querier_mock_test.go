@@ -142,6 +142,19 @@ func (c *querierClientMock) Close() error {
 	return nil
 }
 
+type mockIngesterClientFactory struct {
+	requestedClients map[string]int
+}
+
+// newIngesterClientMockFactory creates a factory function always returning
+// the input querierClientMock
+func (f mockIngesterClientFactory) newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {
+	return ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		f.requestedClients[addr]++
+		return c, nil
+	})
+}
+
 // newIngesterClientMockFactory creates a factory function always returning
 // the input querierClientMock
 func newIngesterClientMockFactory(c *querierClientMock) ring_client.PoolFactory {

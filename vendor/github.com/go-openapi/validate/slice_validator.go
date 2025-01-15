@@ -45,7 +45,7 @@ func newSliceValidator(path, in string,
 
 	var v *schemaSliceValidator
 	if opts.recycleValidators {
-		v = poolOfSliceValidators.BorrowValidator()
+		v = pools.poolOfSliceValidators.BorrowValidator()
 	} else {
 		v = new(schemaSliceValidator)
 	}
@@ -83,7 +83,7 @@ func (s *schemaSliceValidator) Validate(data interface{}) *Result {
 
 	var result *Result
 	if s.Options.recycleResult {
-		result = poolOfResults.BorrowResult()
+		result = pools.poolOfResults.BorrowResult()
 	} else {
 		result = new(Result)
 	}
@@ -146,5 +146,5 @@ func (s *schemaSliceValidator) Validate(data interface{}) *Result {
 }
 
 func (s *schemaSliceValidator) redeem() {
-	poolOfSliceValidators.RedeemValidator(s)
+	pools.poolOfSliceValidators.RedeemValidator(s)
 }

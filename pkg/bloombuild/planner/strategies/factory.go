@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/common"
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -32,18 +33,42 @@ type PlanningStrategy interface {
 	Plan(ctx context.Context, table config.DayTable, tenant string, tsdbs TSDBSet, metas []bloomshipper.Meta) ([]*protos.Task, error)
 }
 
-func NewStrategy(
-	tenantID string,
+type Metrics struct {
+	*ChunkSizeStrategyMetrics
+}
+
+func NewMetrics(reg prometheus.Registerer) *Metrics {
+	return &Metrics{
+		ChunkSizeStrategyMetrics: NewChunkSizeStrategyMetrics(reg),
+	}
+}
+
+type Factory struct {
+	limits  Limits
+	logger  log.Logger
+	metrics *Metrics
+}
+
+func NewFactory(
 	limits Limits,
+	metrics *Metrics,
 	logger log.Logger,
-) (PlanningStrategy, error) {
-	strategy := limits.BloomPlanningStrategy(tenantID)
+) *Factory {
+	return &Factory{
+		limits:  limits,
+		logger:  logger,
+		metrics: metrics,
+	}
+}
+
+func (f *Factory) GetStrategy(tenantID string) (PlanningStrategy, error) {
+	strategy := f.limits.BloomPlanningStrategy(tenantID)
 
 	switch strategy {
 	case SplitKeyspaceStrategyName:
-		return NewSplitKeyspaceStrategy(limits, logger)
+		return NewSplitKeyspaceStrategy(f.limits, f.logger)
 	case SplitBySeriesChunkSizeStrategyName:
-		return NewChunkSizeStrategy(limits, logger)
+		return NewChunkSizeStrategy(f.limits, f.metrics.ChunkSizeStrategyMetrics, f.logger)
 	default:
 		return nil, fmt.Errorf("unknown bloom planning strategy (%s)", strategy)
 	}

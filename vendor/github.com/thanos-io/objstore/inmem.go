@@ -34,6 +34,8 @@ func NewInMemBucket() *InMemBucket {
 	}
 }
 
+func (b *InMemBucket) Provider() ObjProvider { return MEMORY }
+
 // Objects returns a copy of the internally stored objects.
 // NOTE: For assert purposes.
 func (b *InMemBucket) Objects() map[string][]byte {
@@ -104,6 +106,20 @@ func (b *InMemBucket) Iter(_ context.Context, dir string, f func(string) error, 
 		}
 	}
 	return nil
+}
+
+func (i *InMemBucket) SupportedIterOptions() []IterOptionType {
+	return []IterOptionType{Recursive}
+}
+
+func (b *InMemBucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs IterObjectAttributes) error, options ...IterOption) error {
+	if err := ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
+	return b.Iter(ctx, dir, func(name string) error {
+		return f(IterObjectAttributes{Name: name})
+	}, options...)
 }
 
 // Get returns a reader for the given object name.

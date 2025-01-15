@@ -131,6 +131,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.patternIngester.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.patternIngester.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
@@ -162,7 +166,9 @@ spec:
   {{- if .Values.patternIngester.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.patternIngester.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

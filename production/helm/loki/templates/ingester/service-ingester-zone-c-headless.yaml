@@ -33,6 +33,6 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
-    name: ingester-zone-c
-    rollout-group: ingester
+    name: {{ include "loki.prefixIngesterName" . }}ingester-zone-c
+    rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
 {{- end -}}

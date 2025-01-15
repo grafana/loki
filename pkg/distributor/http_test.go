@@ -78,41 +78,9 @@ func TestRequestParserWrapping(t *testing.T) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
 	require.NoError(t, err)
 
-	distributors[0].pushHandler(httptest.NewRecorder(), req, stubParser)
+	distributors[0].pushHandler(httptest.NewRecorder(), req, stubParser, push.HTTPError)
 
 	require.True(t, called)
-}
-
-func Test_OtelErrorHeaderInterceptor(t *testing.T) {
-	for _, tc := range []struct {
-		name         string
-		inputCode    int
-		expectedCode int
-	}{
-		{
-			name:         "500",
-			inputCode:    http.StatusInternalServerError,
-			expectedCode: http.StatusServiceUnavailable,
-		},
-		{
-			name:         "400",
-			inputCode:    http.StatusBadRequest,
-			expectedCode: http.StatusBadRequest,
-		},
-		{
-			name:         "204",
-			inputCode:    http.StatusNoContent,
-			expectedCode: http.StatusNoContent,
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRecorder()
-			i := newOtelErrorHeaderInterceptor(r)
-
-			http.Error(i, "error", tc.inputCode)
-			require.Equal(t, tc.expectedCode, r.Code)
-		})
-	}
 }
 
 func stubParser(

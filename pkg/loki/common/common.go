@@ -66,6 +66,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 	f.StringVar(&c.CompactorGRPCAddress, "common.compactor-grpc-address", "", "the grpc address of the compactor in the form host:port")
+	f.StringVar(&c.PathPrefix, "common.path-prefix", "", "prefix for the path")
 }
 
 type Storage struct {

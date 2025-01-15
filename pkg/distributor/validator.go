@@ -45,7 +45,9 @@ type validationContext struct {
 
 	incrementDuplicateTimestamps bool
 	discoverServiceName          []string
+	discoverGenericFields        map[string][]string
 	discoverLogLevels            bool
+	logLevelFields               []string
 
 	allowStructuredMetadata    bool
 	maxStructuredMetadataSize  int
@@ -53,6 +55,7 @@ type validationContext struct {
 
 	blockIngestionUntil      time.Time
 	blockIngestionStatusCode int
+	enforcedLabels           []string
 
 	userID string
 }
@@ -71,11 +74,14 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
 		discoverServiceName:          v.DiscoverServiceName(userID),
 		discoverLogLevels:            v.DiscoverLogLevels(userID),
+		logLevelFields:               v.LogLevelFields(userID),
+		discoverGenericFields:        v.DiscoverGenericFields(userID),
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
 		blockIngestionUntil:          v.BlockIngestionUntil(userID),
 		blockIngestionStatusCode:     v.BlockIngestionStatusCode(userID),
+		enforcedLabels:               v.EnforcedLabels(userID),
 	}
 }
 

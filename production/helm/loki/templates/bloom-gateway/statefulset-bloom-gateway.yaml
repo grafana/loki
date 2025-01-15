@@ -161,7 +161,9 @@ spec:
   {{- if .Values.bloomGateway.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.bloomGateway.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

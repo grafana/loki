@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/pattern/drain"
 	"github.com/grafana/loki/v3/pkg/pattern/iter"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -37,6 +38,10 @@ func newStream(
 	drainCfg *drain.Config,
 	drainLimits drain.Limits,
 ) (*stream, error) {
+	linesSkipped, err := metrics.linesSkipped.CurryWith(prometheus.Labels{"tenant": instanceID})
+	if err != nil {
+		return nil, err
+	}
 	return &stream{
 		fp:           fp,
 		labels:       labels,
@@ -47,6 +52,7 @@ func newStream(
 			PatternsEvictedTotal:  metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "false"),
 			PatternsPrunedTotal:   metrics.patternsDiscardedTotal.WithLabelValues(instanceID, guessedFormat, "true"),
 			PatternsDetectedTotal: metrics.patternsDetectedTotal.WithLabelValues(instanceID, guessedFormat),
+			LinesSkipped:          linesSkipped,
 			TokensPerLine:         metrics.tokensPerLine.WithLabelValues(instanceID, guessedFormat),
 			StatePerLine:          metrics.statePerLine.WithLabelValues(instanceID, guessedFormat),
 		}),

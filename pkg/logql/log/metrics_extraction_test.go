@@ -163,6 +163,22 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantOk: true,
 		},
 		{
+			name: "convert bytes without spaces",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,
+			)),
+			in: labels.FromStrings("foo", "13MiB",
+				"bar", "foo",
+				"buzz", "blip",
+				"namespace", "dev",
+			),
+			want: 13 * 1024 * 1024,
+			wantLbs: labels.FromStrings("bar", "foo",
+				"buzz", "blip",
+			),
+			wantOk: true,
+		},
+		{
 			name: "convert bytes with structured metadata",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,

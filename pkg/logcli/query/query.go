@@ -50,6 +50,7 @@ type Query struct {
 	NoLabels               bool
 	IgnoreLabelsKey        []string
 	ShowLabelsKey          []string
+	IncludeCommonLabels    bool
 	FixedLabelsLen         int
 	ColoredOutput          bool
 	LocalConfig            string
@@ -118,7 +119,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 		out = out.WithWriter(partFile)
 	}
 
-	result := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward)
+	result := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward, q.IncludeCommonLabels)
 
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
@@ -523,7 +524,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	resPrinter := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward)
+	resPrinter := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward, q.IncludeCommonLabels)
 	if statistics {
 		resPrinter.PrintStats(result.Statistics)
 	}
@@ -553,11 +554,11 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, name string) (*config.Sc
 	defer cancel()
 
 	ok, err := oc.ObjectExists(ctx, name)
-	if !ok {
-		return nil, errNotExists
-	}
 	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, errNotExists
 	}
 
 	rdr, _, err := oc.GetObject(ctx, name)

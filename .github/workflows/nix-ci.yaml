@@ -1,11 +1,16 @@
 ---
 name: "Lint And Build Nix Flake"
 on:
+  push:
+    branches:
+      - main
   pull_request:
     paths:
       - "flake.nix"
+      - "flake.lock"
       - "go.mod"
       - "nix/**"
+      - .github/workflows/nix-ci.yaml
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -22,7 +27,16 @@ jobs:
       - uses: cachix/install-nix-action@v30
         with:
           nix_path: nixpkgs=channel:nixos-unstable
+      - uses: dorny/paths-filter@v3
+        id: nix-changes
+        with:
+          filters: |
+            nix:
+              - 'nix/**'
+              - 'flake.nix'
+              - 'flake.lock'
       - run: nix run --print-build-logs .#test
+        if: steps.nix-changes.outputs.nix == 'true'
   packages:
     runs-on: ubuntu-latest
     steps:

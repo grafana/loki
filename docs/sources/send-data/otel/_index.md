@@ -18,7 +18,7 @@ For ingesting logs to Loki using the OpenTelemetry Collector, you must use the [
 
 When logs are ingested by Loki using an OpenTelemetry protocol (OTLP) ingestion endpoint, some of the data is stored as [Structured Metadata]({{< relref "../../get-started/labels/structured-metadata" >}}).
 
-You must set `allow_structured_metadata` to `true` within your Loki config file. Otherwise, Loki will reject the log payload as malformed.
+You must set `allow_structured_metadata` to `true` within your Loki config file. Otherwise, Loki will reject the log payload as malformed.  Note that Structured Metadata is enabled by default in Loki 3.0 and later.
 
 ```yaml
 limits_config:
@@ -79,6 +79,7 @@ Since the OpenTelemetry protocol differs from the Loki storage model, here is ho
   - cloud.region
   - container.name
   - deployment.environment
+  - deployment.environment.name
   - k8s.cluster.name
   - k8s.container.name
   - k8s.cronjob.name

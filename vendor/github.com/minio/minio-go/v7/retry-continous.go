@@ -20,7 +20,7 @@ package minio
 import "time"
 
 // newRetryTimerContinous creates a timer with exponentially increasing delays forever.
-func (c *Client) newRetryTimerContinous(unit, cap time.Duration, jitter float64, doneCh chan struct{}) <-chan int {
+func (c *Client) newRetryTimerContinous(baseSleep, maxSleep time.Duration, jitter float64, doneCh chan struct{}) <-chan int {
 	attemptCh := make(chan int)
 
 	// normalize jitter to the range [0, 1.0]
@@ -39,10 +39,10 @@ func (c *Client) newRetryTimerContinous(unit, cap time.Duration, jitter float64,
 		if attempt > maxAttempt {
 			attempt = maxAttempt
 		}
-		// sleep = random_between(0, min(cap, base * 2 ** attempt))
-		sleep := unit * time.Duration(1<<uint(attempt))
-		if sleep > cap {
-			sleep = cap
+		// sleep = random_between(0, min(maxSleep, base * 2 ** attempt))
+		sleep := baseSleep * time.Duration(1<<uint(attempt))
+		if sleep > maxSleep {
+			sleep = maxSleep
 		}
 		if jitter != NoJitter {
 			sleep -= time.Duration(c.random.Float64() * float64(sleep) * jitter)

@@ -4,10 +4,10 @@ import (
 	"container/heap"
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"time"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -102,8 +102,7 @@ func (a *QuantileSketchAccumulator) Result() []logqlmodel.Result {
 		)
 	}
 
-	warnings := maps.Keys(a.warnings)
-	sort.Strings(warnings)
+	warnings := slices.Sorted(maps.Keys(a.warnings))
 
 	return []logqlmodel.Result{
 		{
@@ -178,8 +177,7 @@ func (a *CountMinSketchAccumulator) Result() []logqlmodel.Result {
 		)
 	}
 
-	warnings := maps.Keys(a.warnings)
-	sort.Strings(warnings)
+	warnings := slices.Sorted(maps.Keys(a.warnings))
 
 	return []logqlmodel.Result{
 		{
@@ -476,10 +474,7 @@ func (acc *AccumulatedStreams) Result() []logqlmodel.Result {
 		)
 	}
 
-	warnings := maps.Keys(acc.warnings)
-	sort.Strings(warnings)
-
-	res.Warnings = warnings
+	res.Warnings = slices.Sorted(maps.Keys(acc.warnings))
 
 	return []logqlmodel.Result{res}
 }

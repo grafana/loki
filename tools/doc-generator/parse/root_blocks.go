@@ -4,6 +4,7 @@ package parse
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/grpcclient"
@@ -12,7 +13,6 @@ import (
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
 	"github.com/grafana/dskit/server"
-	"golang.org/x/exp/slices"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild"

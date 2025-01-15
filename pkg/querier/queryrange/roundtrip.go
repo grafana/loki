@@ -523,7 +523,7 @@ func getOperation(path string) string {
 	case path == "/loki/api/v1/detected_fields":
 		return DetectedFieldsOp
 	case strings.HasSuffix(path, "/values"):
-		if strings.HasPrefix(path, "/loki/api/v1/label") || strings.HasPrefix(path, "/prom/label") {
+		if strings.HasPrefix(path, "/loki/api/v1/label") || strings.HasPrefix(path, "/api/prom/label") {
 			return LabelNamesOp
 		}
 

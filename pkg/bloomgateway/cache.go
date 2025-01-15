@@ -113,6 +113,7 @@ func (m merger) MergeResponse(responses ...resultscache.Response) (resultscache.
 
 type ClientCache struct {
 	cache  *resultscache.ResultsCache
+	next   logproto.BloomGatewayClient
 	limits CacheLimits
 	logger log.Logger
 }
@@ -149,12 +150,19 @@ func NewBloomGatewayClientCacheMiddleware(
 	)
 
 	return &ClientCache{
+		next:   next,
 		cache:  resultsCache,
 		limits: limits,
 		logger: logger,
 	}
 }
 
+// PrefetchBloomBlocks implements logproto.BloomGatewayClient.
+func (c *ClientCache) PrefetchBloomBlocks(ctx context.Context, in *logproto.PrefetchBloomBlocksRequest, opts ...grpc.CallOption) (*logproto.PrefetchBloomBlocksResponse, error) {
+	return c.next.PrefetchBloomBlocks(ctx, in, opts...)
+}
+
+// FilterChunkRefs implements logproto.BloomGatewayClient.
 func (c *ClientCache) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest, opts ...grpc.CallOption) (*logproto.FilterChunkRefResponse, error) {
 	cacheReq := requestWithGrpcCallOptions{
 		FilterChunkRefRequest: req,

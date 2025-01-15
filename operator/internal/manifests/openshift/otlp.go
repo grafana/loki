@@ -86,6 +86,7 @@ func DefaultOTLPAttributes(disableRecommended bool) config.OTLPAttributeConfig {
 				"k8s.event.user_agent",
 				"k8s.user.groups",
 				"k8s.user.username",
+				"level",
 				"log.iostream",
 			},
 		},

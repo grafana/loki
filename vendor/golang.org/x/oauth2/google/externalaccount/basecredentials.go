@@ -329,7 +329,7 @@ type SubjectTokenSupplier interface {
 type AwsSecurityCredentialsSupplier interface {
 	// AwsRegion should return the AWS region or an error.
 	AwsRegion(ctx context.Context, options SupplierOptions) (string, error)
-	// GetAwsSecurityCredentials should return a valid set of AwsSecurityCredentials or an error.
+	// AwsSecurityCredentials should return a valid set of AwsSecurityCredentials or an error.
 	// The external account token source does not cache the returned security credentials, so caching
 	// logic should be implemented in the supplier to prevent multiple requests for the same security credentials.
 	AwsSecurityCredentials(ctx context.Context, options SupplierOptions) (*AwsSecurityCredentials, error)

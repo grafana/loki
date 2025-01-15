@@ -12,6 +12,7 @@ type Config struct {
 	BucketName      string         `yaml:"bucket_name"`
 	ServiceAccount  flagext.Secret `yaml:"service_account" doc:"description_method=GCSServiceAccountLongDescription"`
 	ChunkBufferSize int            `yaml:"chunk_buffer_size"`
+	MaxRetries      int            `yaml:"max_retries"`
 
 	// Allow upstream callers to inject a round tripper
 	Transport http.RoundTripper `yaml:"-"`
@@ -27,6 +28,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.BucketName, prefix+"gcs.bucket-name", "", "GCS bucket name")
 	f.Var(&cfg.ServiceAccount, prefix+"gcs.service-account", cfg.GCSServiceAccountShortDescription())
 	f.IntVar(&cfg.ChunkBufferSize, prefix+"gcs.chunk-buffer-size", 0, "The maximum size of the buffer that GCS client for a single PUT request. 0 to disable buffering.")
+	f.IntVar(&cfg.MaxRetries, prefix+"gcs.max-retries", 10, "The maximum number of retries for idempotent operations. Overrides the default gcs storage client behavior if this value is greater than 0. Set this to 1 to disable retries.")
 }
 
 func (cfg *Config) GCSServiceAccountShortDescription() string {

@@ -134,7 +134,7 @@ func (bb) ParseConfig(j json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 		// This will never occur, valid configuration is emitted from the xDS
 		// Client. Validity is already checked in the xDS Client, however, this
 		// double validation is present because Unmarshalling and Validating are
-		// coupled into one json.Unmarshal operation). We will switch this in
+		// coupled into one json.Unmarshal operation. We will switch this in
 		// the future to two separate operations.
 		return nil, fmt.Errorf("error unmarshalling xDS LB Policy: %v", err)
 	}
@@ -184,7 +184,10 @@ func (b *clusterResolverBalancer) handleClientConnUpdate(update *ccUpdate) {
 		return
 	}
 
-	b.logger.Infof("Received new balancer config: %v", pretty.ToJSON(update.state.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received new balancer config: %v", pretty.ToJSON(update.state.BalancerConfig))
+	}
+
 	cfg, _ := update.state.BalancerConfig.(*LBConfig)
 	if cfg == nil {
 		b.logger.Warningf("Ignoring unsupported balancer configuration of type: %T", update.state.BalancerConfig)
@@ -249,7 +252,6 @@ func (b *clusterResolverBalancer) updateChildConfig() {
 	for i, a := range addrs {
 		endpoints[i].Attributes = a.BalancerAttributes
 		endpoints[i].Addresses = []resolver.Address{a}
-		endpoints[i].Addresses[0].BalancerAttributes = nil
 	}
 	if err := b.child.UpdateClientConnState(balancer.ClientConnState{
 		ResolverState: resolver.State{

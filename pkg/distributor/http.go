@@ -19,38 +19,19 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseLokiRequest)
+	d.pushHandler(w, r, push.ParseLokiRequest, push.HTTPError)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	interceptor := newOtelErrorHeaderInterceptor(w)
-	d.pushHandler(interceptor, r, push.ParseOTLPRequest)
+	d.pushHandler(w, r, push.ParseOTLPRequest, push.OTLPError)
 }
 
-// otelErrorHeaderInterceptor maps 500 errors to 503.
-// According to the OTLP specification, 500 errors are never retried on the client side, but 503 are.
-type otelErrorHeaderInterceptor struct {
-	http.ResponseWriter
-}
-
-func newOtelErrorHeaderInterceptor(w http.ResponseWriter) *otelErrorHeaderInterceptor {
-	return &otelErrorHeaderInterceptor{ResponseWriter: w}
-}
-
-func (i *otelErrorHeaderInterceptor) WriteHeader(statusCode int) {
-	if statusCode == http.StatusInternalServerError {
-		statusCode = http.StatusServiceUnavailable
-	}
-
-	i.ResponseWriter.WriteHeader(statusCode)
-}
-
-func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		errorWriter(w, err.Error(), http.StatusBadRequest, logger)
 		return
 	}
 
@@ -70,7 +51,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
 
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		errorWriter(w, err.Error(), http.StatusBadRequest, logger)
 		return
 	}
 
@@ -106,7 +87,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				"err", body,
 			)
 		}
-		http.Error(w, body, int(resp.Code))
+		errorWriter(w, body, int(resp.Code), logger)
 	} else {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -115,7 +96,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				"err", err.Error(),
 			)
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		errorWriter(w, err.Error(), http.StatusInternalServerError, logger)
 	}
 }
 

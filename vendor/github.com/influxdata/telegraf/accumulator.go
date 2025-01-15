@@ -38,10 +38,10 @@ type Accumulator interface {
 		tags map[string]string,
 		t ...time.Time)
 
-	// AddMetric adds an metric to the accumulator.
+	// AddMetric adds a metric to the accumulator.
 	AddMetric(Metric)
 
-	// SetPrecision sets the timestamp rounding precision.  All metrics addeds
+	// SetPrecision sets the timestamp rounding precision. All metrics
 	// added to the accumulator will have their timestamp rounded to the
 	// nearest multiple of precision.
 	SetPrecision(precision time.Duration)
@@ -56,6 +56,14 @@ type Accumulator interface {
 
 // TrackingID uniquely identifies a tracked metric group
 type TrackingID uint64
+
+type TrackingData interface {
+	// ID is the TrackingID
+	ID() TrackingID
+
+	// RefCount is the number of tracking metrics still persistent and referencing this tracking ID
+	RefCount() int32
+}
 
 // DeliveryInfo provides the results of a delivered metric group.
 type DeliveryInfo interface {
@@ -73,7 +81,7 @@ type DeliveryInfo interface {
 type TrackingAccumulator interface {
 	Accumulator
 
-	// Add the Metric and arrange for tracking feedback after processing..
+	// Add the Metric and arrange for tracking feedback after processing.
 	AddTrackingMetric(m Metric) TrackingID
 
 	// Add a group of Metrics and arrange for a signal when the group has been

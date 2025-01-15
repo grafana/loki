@@ -244,6 +244,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Ingester.LifecyclerConfig.Zone = rc.InstanceZone
 		r.Ingester.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.Ingester.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.Ingester.KafkaIngestion.PartitionRingConfig.KVStore = rc.KVStore
 	}
 
 	if mergeWithExisting {
@@ -566,9 +567,9 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore) {
+	if !reflect.DeepEqual(cfg.Common.Storage.ObjectStore, defaults.StorageConfig.ObjectStore.Config) {
 		applyConfig = func(r *ConfigWrapper) {
-			r.StorageConfig.ObjectStore = r.Common.Storage.ObjectStore
+			r.StorageConfig.ObjectStore.Config = r.Common.Storage.ObjectStore
 		}
 	}
 

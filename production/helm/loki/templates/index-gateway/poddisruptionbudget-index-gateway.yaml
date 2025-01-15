@@ -7,6 +7,7 @@ apiVersion: {{ include "loki.pdb.apiVersion" . }}
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.indexGatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.indexGatewayLabels" . | nindent 4 }}
 spec:

@@ -1,0 +1,482 @@
+linters:
+  disable-all: true
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - depguard
+    - dogsled
+    - errcheck
+    - errname
+    - errorlint
+    - gocheckcompilerdirectives
+    - gocritic
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - interfacebloat
+    - lll
+    - makezero
+    - mirror
+    - nakedret
+    - nilerr
+    - nolintlint
+    - perfsprint
+    - prealloc
+    - predeclared
+    - revive
+    - sqlclosecheck
+    - staticcheck
+    - tenv
+    - testifylint
+    - tparallel
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+
+linters-settings:
+  depguard:
+    rules:
+      # Name of a rule.
+      main:
+        # Packages that are not allowed where the value is a suggestion.
+        deny:
+          - pkg: log
+            desc: 'Use injected telegraf.Logger instead'
+        # List of file globs that will match this list of settings to compare against.
+        # Default: $all
+        files:
+          - "!**/agent/**"
+          - "!**/cmd/**"
+          - "!**/config/**"
+          - "!**/filter/**"
+          - "!**/internal/**"
+          - "!**/logger/**"
+          - "!**/metric/**"
+          - "!**/models/**"
+          - "!**/plugins/serializers/**"
+          - "!**/scripts/**"
+          - "!**/selfstat/**"
+          - "!**/testutil/**"
+          - "!**/tools/**"
+          - "!**/*_test.go"
+  errcheck:
+    # report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`.
+    # Such cases aren't reported by default.
+    # Default: false
+    check-blank: true
+
+    # List of functions to exclude from checking, where each entry is a single function to exclude.
+    # See https://github.com/kisielk/errcheck#excluding-functions for details.
+    exclude-functions:
+      - "(*hash/maphash.Hash).Write"
+      - "(*hash/maphash.Hash).WriteByte"
+      - "(*hash/maphash.Hash).WriteString"
+      - "(*github.com/influxdata/telegraf/plugins/outputs/postgresql/sqltemplate.Template).UnmarshalText"
+
+  gocritic:
+    # Disable all checks.
+    # Default: false
+    disable-all: true
+    # Which checks should be enabled in addition to default checks; can't be combined with 'disabled-checks'.
+    # By default, list of stable checks is used (https://go-critic.github.io/overview#checks-overview).
+    # To see which checks are enabled run `GL_DEBUG=gocritic golangci-lint run --enable=gocritic`.
+    enabled-checks:
+      # diagnostic
+      - argOrder
+      - badCall
+      - badCond
+      - badLock
+      - badRegexp
+      - badSorting
+      - badSyncOnceFunc
+      - builtinShadowDecl
+      - caseOrder
+      - codegenComment
+      - commentedOutCode
+      - deferInLoop
+      - deprecatedComment
+      - dupArg
+      - dupBranchBody
+      - dupCase
+      - dupSubExpr
+      - dynamicFmtString
+      - emptyDecl
+      - evalOrder
+      - exitAfterDefer
+      - externalErrorReassign
+      - filepathJoin
+      - flagName
+      - mapKey
+      - nilValReturn
+      - offBy1
+      - regexpPattern
+      - sloppyLen
+      - sloppyReassign
+      - sloppyTypeAssert
+      - sortSlice
+      - sprintfQuotedString
+      - sqlQuery
+      - syncMapLoadAndDelete
+      - truncateCmp
+      - uncheckedInlineErr
+      - unnecessaryDefer
+      - weakCond
+      # performance
+      - appendCombine
+      - equalFold
+      - hugeParam
+      - indexAlloc
+      - preferDecodeRune
+      - preferFprint
+      - preferStringWriter
+      - preferWriteByte
+      - rangeExprCopy
+      - rangeValCopy
+      - sliceClear
+      - stringXbytes
+
+    # Settings passed to gocritic.
+    # The settings key is the name of a supported gocritic checker.
+    # The list of supported checkers can be find in https://go-critic.github.io/overview.
+    settings:
+      hugeParam:
+        # Size in bytes that makes the warning trigger.
+        # Default: 80
+        sizeThreshold: 512
+      rangeValCopy:
+        # Size in bytes that makes the warning trigger.
+        # Default: 128
+        sizeThreshold: 512
+
+  gosec:
+    # To select a subset of rules to run.
+    # Available rules: https://github.com/securego/gosec#available-rules
+    # Default: [] - means include all rules
+    includes:
+      - G101
+      - G102
+      - G103
+      - G106
+      - G107
+      - G108
+      - G109
+      - G110
+      - G111
+      - G112
+      - G114
+      - G201
+      - G202
+      - G203
+      - G301
+      - G302
+      - G303
+      - G305
+      - G306
+      - G401
+      - G403
+      - G404
+      - G405
+      - G406
+      - G501
+      - G502
+      - G503
+      - G505
+      - G506
+      - G507
+      - G601
+      - G602
+      # G104, G105, G113, G204, G304, G307, G402, G504 were not enabled intentionally
+      # TODO: review G115 when reporting false positives is fixed (https://github.com/securego/gosec/issues/1212)
+    # To specify the configuration of rules.
+    config:
+      # Maximum allowed permissions mode for os.OpenFile and os.Chmod
+      # Default: "0600"
+      G302: "0640"
+      # Maximum allowed permissions mode for os.WriteFile and ioutil.WriteFile
+      # Default: "0600"
+      G306: "0640"
+  govet:
+    settings:
+      ## Check the logging function like it would be a printf
+      printf:
+        # Comma-separated list of print function names to check (in addition to default, see `go tool vet help printf`).
+        # Default: []
+        funcs:
+          - (github.com/influxdata/telegraf.Logger).Debugf
+          - (github.com/influxdata/telegraf.Logger).Infof
+          - (github.com/influxdata/telegraf.Logger).Warnf
+          - (github.com/influxdata/telegraf.Logger).Errorf
+          - (github.com/influxdata/telegraf.Logger).Debug
+          - (github.com/influxdata/telegraf.Logger).Info
+          - (github.com/influxdata/telegraf.Logger).Warn
+          - (github.com/influxdata/telegraf.Logger).Error
+  lll:
+    # Max line length, lines longer will be reported.
+    # '\t' is counted as 1 character by default, and can be changed with the tab-width option.
+    # Default: 120.
+    line-length: 160
+    # Tab width in spaces.
+    # Default: 1
+    tab-width: 4
+  nakedret:
+    # Make an issue if func has more lines of code than this setting, and it has naked returns.
+    # Default: 30
+    max-func-lines: 1
+  nolintlint:
+    # Enable to require an explanation of nonzero length after each nolint directive.
+    # Default: false
+    require-explanation: true
+    # Enable to require nolint directives to mention the specific linter being suppressed.
+    # Default: false
+    require-specific: true
+  prealloc:
+    # Report pre-allocation suggestions only on simple loops that have no returns/breaks/continues/gotos in them.
+    # Default: true
+    simple: false
+  revive:
+    rules:
+      - name: argument-limit
+        arguments: [ 6 ]
+      - name: atomic
+      - name: bare-return
+      - name: blank-imports
+      - name: bool-literal-in-expr
+      - name: call-to-gc
+      - name: comment-spacings
+      - name: confusing-naming
+      - name: confusing-results
+      - name: constant-logical-expr
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: datarace
+      - name: deep-exit
+      - name: defer
+      - name: dot-imports
+      - name: duplicated-imports
+      - name: early-return
+      - name: empty-block
+      - name: empty-lines
+      - name: enforce-map-style
+        arguments: ["make"]
+        exclude: [ "TEST" ]
+      - name: enforce-repeated-arg-type-style
+        arguments: ["short"]
+      - name: enforce-slice-style
+        arguments: ["make"]
+      - name: error-naming
+      - name: error-return
+      - name: error-strings
+      - name: errorf
+      - name: function-result-limit
+        arguments: [ 3 ]
+      - name: get-return
+      - name: identical-branches
+      - name: if-return
+      - name: import-alias-naming
+        arguments:
+          - "^[a-z][a-z0-9_]*[a-z0-9]+$"
+      - name: import-shadowing
+      - name: increment-decrement
+      - name: indent-error-flow
+      - name: max-public-structs
+        exclude: [ "TEST" ]
+        arguments: [ 5 ]
+      - name: modifies-parameter
+      - name: modifies-value-receiver
+      - name: optimize-operands-order
+      - name: package-comments
+      - name: range
+      - name: range-val-address
+      - name: range-val-in-closure
+      - name: receiver-naming
+      - name: redefines-builtin-id
+      - name: redundant-import-alias
+      - name: string-format
+        arguments:
+          - - 'fmt.Errorf[0],errors.New[0]'
+            - '/^([^A-Z]|$)/'
+            - 'Error string must not start with a capital letter.'
+          - - 'fmt.Errorf[0],errors.New[0]'
+            - '/(^|[^\.!?])$/'
+            - 'Error string must not end in punctuation.'
+          - - 'panic'
+            - '/^[^\n]*$/'
+            - 'Must not contain line breaks.'
+      - name: string-of-int
+      - name: struct-tag
+      - name: superfluous-else
+      - name: time-equal
+      - name: time-naming
+      - name: unconditional-recursion
+      - name: unexported-naming
+      - name: unnecessary-stmt
+      - name: unreachable-code
+      - name: unused-parameter
+      - name: var-declaration
+      - name: var-naming
+      - name: waitgroup-by-value
+  tenv:
+    # The option `all` will run against whole test files (`_test.go`) regardless of method/function signatures.
+    # Otherwise, only methods that take `*testing.T`, `*testing.B`, and `testing.TB` as arguments are checked.
+    # Default: false
+    all: true
+  testifylint:
+    # Disable all checkers (https://github.com/Antonboom/testifylint#checkers).
+    # Default: false
+    disable-all: true
+    # Enable checkers by name
+    enable:
+      - blank-import
+      - bool-compare
+      - compares
+      - contains
+      - empty
+      - encoded-compare
+      - error-is-as
+      - error-nil
+      - expected-actual
+      - float-compare
+      - formatter
+      - go-require
+      - len
+      - negative-positive
+      - nil-compare
+      - regexp
+      - require-error
+      - suite-broken-parallel
+      - suite-dont-use-pkg
+      - suite-extra-assert-call
+      - suite-subtest-run
+      - suite-thelper
+      - useless-assert
+
+issues:
+  # List of regexps of issue texts to exclude.
+  #
+  # But independently of this option we use default exclude patterns,
+  # it can be disabled by `exclude-use-default: false`.
+  # To list all excluded by default patterns execute `golangci-lint run --help`
+  #
+  # Default: https://golangci-lint.run/usage/false-positives/#default-exclusions
+  exclude:
+    # revive:var-naming
+    - don't use an underscore in package name
+    # EXC0001 errcheck: Almost all programs ignore errors on these functions, and in most cases it's ok
+    - Error return value of .((os\.)?std(out|err)\..*|.*Close.*|.*Flush|.*Disconnect|.*Clear|os\.Remove(All)?|.*print(f|ln)?|os\.(Un)?Setenv). is not checked
+    # EXC0013 revive: Annoying issue about not having a comment. The rare codebase has such comments
+    - package comment should be of the form "(.+)...
+    # EXC0015 revive: Annoying issue about not having a comment. The rare codebase has such comments
+    - should have a package comment
+
+  # Excluding configuration per-path, per-linter, per-text and per-source
+  exclude-rules:
+    - path: plugins/parsers/influx
+      linters:
+        - govet
+
+    - path: cmd/telegraf/(main|printer|cmd_plugins).go
+      text: "Error return value of `outputBuffer.Write` is not checked" #errcheck
+
+    - path: plugins/inputs/win_perf_counters/pdh.go
+      linters:
+        - errcheck
+
+    - path: _test\.go
+      text: "Potential hardcoded credentials" #gosec:G101
+
+    - path: _test\.go
+      text: "Use of weak random number generator" #gosec:G404
+
+    - path-except: ^plugins/(aggregators|inputs|outputs|parsers|processors|serializers)/...
+      text: "max-public-structs: you have exceeded the maximum number" #revive:max-public-structs
+
+  # Independently of option `exclude` we use default exclude patterns,
+  # it can be disabled by this option.
+  # To list all excluded by default patterns execute `golangci-lint run --help`.
+  # Default: true
+  exclude-use-default: false
+
+  # Which dirs to exclude: issues from them won't be reported.
+  # Can use regexp here: `generated.*`, regexp is applied on full path,
+  # including the path prefix if one is set.
+  # Default dirs are skipped independently of this option's value (see exclude-dirs-use-default).
+  # "/" will be replaced by current OS file path separator to properly work on Windows.
+  # Default: []
+  exclude-dirs:
+    - assets
+    - docs
+    - etc
+
+  # Which files to exclude: they will be analyzed, but issues from them won't be reported.
+  # There is no need to include all autogenerated files,
+  # we confidently recognize autogenerated files.
+  # If it's not, please let us know.
+  # "/" will be replaced by current OS file path separator to properly work on Windows.
+  # Default: []
+  exclude-files:
+    - plugins/parsers/influx/machine.go*
+
+  # Maximum issues count per one linter.
+  # Set to 0 to disable.
+  # Default: 50
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text.
+  # Set to 0 to disable.
+  # Default: 3
+  max-same-issues: 0
+
+# output configuration options
+output:
+  # The formats used to render issues.
+  # Formats:
+  # - `colored-line-number`
+  # - `line-number`
+  # - `json`
+  # - `colored-tab`
+  # - `tab`
+  # - `html`
+  # - `checkstyle`
+  # - `code-climate`
+  # - `junit-xml`
+  # - `junit-xml-extended`
+  # - `github-actions`
+  # - `teamcity`
+  # - `sarif`
+  # Output path can be either `stdout`, `stderr` or path to the file to write to.
+  #
+  # For the CLI flag (`--out-format`), multiple formats can be specified by separating them by comma.
+  # The output can be specified for each of them by separating format name and path by colon symbol.
+  # Example: "--out-format=checkstyle:report.xml,json:stdout,colored-line-number"
+  # The CLI flag (`--out-format`) override the configuration file.
+  #
+  # Default:
+  #   formats:
+  #     - format: colored-line-number
+  #       path: stdout
+  formats:
+    - format: tab
+      path: stdout
+
+  # Make issues output unique by line.
+  # Default: true
+  uniq-by-line: false
+
+  # Sort results by the order defined in `sort-order`.
+  # Default: false
+  sort-results: true
+
+  # Show statistics per linter.
+  # Default: false
+  show-stats: true
+
+run:
+  # Timeout for analysis, e.g. 30s, 5m.
+  # Default: 1m
+  timeout: 10m

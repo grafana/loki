@@ -55,7 +55,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.ingester.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -185,7 +185,9 @@ spec:
   {{- else }}
   volumeClaimTemplates:
   {{- range .Values.ingester.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

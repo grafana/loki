@@ -266,7 +266,7 @@ func (s Streams) ToProto() []logproto.Stream {
 	}
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
-		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
+		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries)) // #nosec G103 -- we know the string is not mutated
 		result = append(result, logproto.Stream{
 			Labels:  s.Labels.String(),
 			Entries: entries,

@@ -350,6 +350,14 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 		for topic := range latest {
 			allTopics = append(allTopics, topic)
 		}
+
+		// We filter out topics will not match any of our regex's.
+		// This ensures that the `tps` field does not contain topics
+		// we will never use (the client works with misc. topics in
+		// there, but it's better to avoid it -- and allows us to use
+		// `tps` in GetConsumeTopics).
+		allTopics = c.filterMetadataAllTopics(allTopics)
+
 		tpsConsumerLoad = tpsConsumer.ensureTopics(allTopics)
 		defer tpsConsumer.storeData(tpsConsumerLoad)
 
@@ -504,6 +512,7 @@ func (mp metadataPartition) newPartition(cl *Client, isProduce bool) *topicParti
 			failing:             mp.loadErr != 0,
 			sink:                mp.sns.sink,
 			topicPartitionData:  td,
+			lastAckedOffset:     -1,
 		}
 	} else {
 		p.cursor = &cursor{

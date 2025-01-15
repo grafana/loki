@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cespare/xxhash"
+	"github.com/cespare/xxhash/v2"
 	"github.com/facette/natsort"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"

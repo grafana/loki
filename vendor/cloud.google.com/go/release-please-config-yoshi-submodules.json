@@ -282,6 +282,9 @@
         "optimization": {
             "component": "optimization"
         },
+        "oracledatabase": {
+            "component": "oracledatabase"
+        },
         "orchestration": {
             "component": "orchestration"
         },

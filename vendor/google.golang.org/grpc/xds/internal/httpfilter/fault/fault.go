@@ -24,7 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	rand "math/rand/v2"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -162,7 +162,7 @@ func (i *interceptor) NewStream(ctx context.Context, _ iresolver.RPCInfo, done f
 }
 
 // For overriding in tests
-var randIntn = rand.Intn
+var randIntn = rand.IntN
 var newTimer = time.NewTimer
 
 func injectDelay(ctx context.Context, delayCfg *cpb.FaultDelay) error {

@@ -1,7 +1,7 @@
 package util
 
 import (
-	"golang.org/x/exp/slices"
+	"slices"
 
 	"github.com/grafana/loki/pkg/push"
 

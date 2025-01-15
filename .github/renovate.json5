@@ -1,0 +1,91 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
+  "prHourlyLimit": 4,
+  "baseBranches": [
+    "main"
+  ],
+  "packageRules": [
+    {
+      "matchBaseBranches": [
+        "release-2.9.x",
+        "release-2.8.x"
+      ],
+      "enabled": false,
+      "matchPackageNames": [
+        "*"
+      ]
+    },
+    {
+      // Disable Go version updates
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["go", "toolchain"],
+      "enabled": false
+    },
+    {
+      // Disable Go and loki-build-image updates for Dockerfiles
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["golang", "grafana/loki-build-image"],
+      "enabled": false
+    },
+    {
+      // Don't automatically merge GitHub Actions updates
+      "matchManagers": ["github-actions"],
+      "enabled": true,
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "autoApprove": false,
+      "automerge": false
+    },
+    {
+      // Separate out Helm updates from other dependencies
+      // Don't automatically merge Helm updates
+      // Updates to this require the docs to be updated
+      "matchManagers": ["helm-requirements", "helm-values", "helmv3"],
+      "groupName": "helm-{{packageName}}",
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "matchPackageNames": ["!grafana/loki"], // This is updated via a different job
+      "autoApprove": false,
+      "automerge": false
+    },
+    {
+      // Disable operator updates
+      "matchFileNames": ["operator/go.mod", "operator/api/loki/go.mod"],
+      "enabled": false,
+      "autoApprove": false,
+      "automerge": false
+    },
+    {
+      // Enable all other updates
+      "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
+      "groupName": "{{packageName}}",
+      "enabled": true,
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      // After we have tested the above configuration, we can enable the following
+      "automerge": false,
+      "autoApprove": false
+    }
+  ],
+  "digest": {
+    "enabled": false
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "addLabels": [
+      "area/security"
+    ]
+  },
+  "osvVulnerabilityAlerts": true,
+  "prConcurrentLimit": 10,
+  "rebaseWhen": "conflicted",
+  "branchPrefix": "deps-update/",
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "semanticCommitType": "fix",
+  "semanticCommitScope": "deps"
+}
