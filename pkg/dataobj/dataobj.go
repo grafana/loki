@@ -6,7 +6,7 @@ import (
 
 	"github.com/thanos-io/objstore"
 
-	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // BuilderConfig configures a data object [Builder].
@@ -30,14 +30,14 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) *Bui
 	return &Builder{}
 }
 
-// Append buffers an entry to be written to a data object. If the Builder is
+// Append buffers a stream to be written to a data object. If the Builder is
 // full, Append returns false without appending the entry.
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) Append(entry push.PushRequest) bool {
+func (b *Builder) Append(stream logproto.Stream) bool {
 	// TODO(rfratto): implement
-	_ = entry
+	_ = stream
 	return true
 }
 
