@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"context"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
+	"github.com/thanos-io/objstore"
+	"github.com/twmb/franz-go/pkg/kgo"
+
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/thanos-io/objstore"
-	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 // For now, assume a single tenant
@@ -97,13 +100,28 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		},
 	}
 	if !p.builder.Append(req) {
-		err = p.builder.Flush(p.ctx)
-		if err != nil {
+		backoff := backoff.New(p.ctx, backoff.Config{
+			MinBackoff: 100 * time.Millisecond,
+			MaxBackoff: 10 * time.Second,
+		})
+
+		for backoff.Ongoing() {
+			err = p.builder.Flush(p.ctx)
+			if err == nil {
+				break
+			}
 			level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
+			backoff.Wait()
 		}
-		err = p.client.CommitRecords(p.ctx, record)
-		if err != nil {
+
+		backoff.Reset()
+		for backoff.Ongoing() {
+			err = p.client.CommitRecords(p.ctx, record)
+			if err == nil {
+				break
+			}
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+			backoff.Wait()
 		}
 		p.builder.Append(req)
 	}
