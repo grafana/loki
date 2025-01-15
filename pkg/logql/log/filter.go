@@ -472,8 +472,8 @@ func containsLower(line, substr []byte) bool {
 			c := line[linePos]
 			s := substr[substrPos]
 
-			// Fast ASCII comparison
-			if c < utf8.RuneSelf && s < utf8.RuneSelf {
+			// Fast ASCII comparison, only check if the character is a letter
+			if c < utf8.RuneSelf && s < utf8.RuneSelf && unicode.IsLetter(rune(c)) && unicode.IsLetter(rune(s)) {
 				if c != s && c+'a'-'A' != s && c != s+'a'-'A' {
 					matched = false
 					break
