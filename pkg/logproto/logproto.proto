@@ -84,20 +84,33 @@ message RejectedStream {
 }
 
 service IngestLimits {
-  rpc GetLimits(GetLimitsRequest) returns (GetLimitsResponse) {}
+  rpc HasStreams(HasStreamsRequest) returns (HasStreamsResponse) {}
+
+  rpc NumStreams(NumStreamsRequest) returns (NumStreamsResponse) {}
 }
 
-message GetLimitsRequest {
+message HasStreamsRequest {
+  string tenant = 1;
+  repeated uint64 streamHash = 2;
+}
+
+message HasStreamsResponse {
+  string tenant = 1;
+  repeated HasStreamsAnswer answer = 2;
+}
+
+message HasStreamsAnswer {
+  uint64 streamHash = 1;
+  bool answer = 2;
+}
+
+message NumStreamsRequest {
   string tenant = 1;
 }
 
-message GetLimitsResponse {
-  IngestionLimits limits = 1;
-}
-
-message IngestionLimits {
-  uint64 streamCount = 1;
-  repeated StreamRate streamRates = 2;
+message NumStreamsResponse {
+  string tenant = 1;
+  uint64 num = 2;
 }
 
 message StreamRate {
