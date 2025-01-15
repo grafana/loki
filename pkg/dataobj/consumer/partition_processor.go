@@ -15,7 +15,7 @@ import (
 )
 
 // For now, assume a single tenant
-var tenantID = []byte("foo")
+var tenantID = []byte("fake")
 
 type partitionProcessor struct {
 	// Kafka client and topic/partition info

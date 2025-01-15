@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -38,6 +39,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -59,6 +62,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -386,6 +390,7 @@ type Loki struct {
 	partitionRing             *ring.PartitionInstanceRing
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
+	dataObjConsumer           *consumer.Service
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -701,6 +706,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
 	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
+	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -740,6 +746,7 @@ func (t *Loki) setupModuleManager() error {
 		MemberlistKV:             {Server},
 		BlockBuilder:             {PartitionRing, Store, Server},
 		BlockScheduler:           {Server},
+		DataObjConsumer:          {PartitionRing, Store, Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
@@ -860,4 +867,30 @@ func (t *Loki) recursiveIsModuleActive(target, m string) bool {
 		}
 	}
 	return false
+}
+
+func (t *Loki) initDataObjConsumer() (services.Service, error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get schema for now")
+	}
+	objstore, err := bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj", util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	t.dataObjConsumer = consumer.New(
+		t.Cfg.KafkaConfig,
+		// todo
+		dataobj.BuilderConfig{},
+		objstore,
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		t.partitionRing,
+		prometheus.DefaultRegisterer,
+		util_log.Logger,
+	)
+
+	return t.dataObjConsumer, nil
 }

@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
@@ -69,7 +70,7 @@ func New(kafkaCfg kafka.Config, builderCfg dataobj.BuilderConfig, bucket objstor
 }
 
 func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", partitions)
+	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", formatPartitionsMap(partitions))
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
 
@@ -87,7 +88,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 }
 
 func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
-	level.Info(s.logger).Log("msg", "partitions revoked", "partitions", partitions)
+	level.Info(s.logger).Log("msg", "partitions revoked", "partitions", formatPartitionsMap(partitions))
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
 
@@ -126,8 +127,6 @@ func (s *Service) run(ctx context.Context) error {
 			continue
 		}
 
-		// Use a WaitGroup to ensure all records are sent before fetching next batch
-		var wg sync.WaitGroup
 		fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
 			s.partitionMtx.RLock()
 			handlers, ok := s.partitionHandlers[ftp.Topic]
@@ -147,22 +146,15 @@ func (s *Service) run(ctx context.Context) error {
 				return
 			}
 
-			// Launch a goroutine to send records for this partition
-			wg.Add(1)
-			go func(p *partitionProcessor, recs []*kgo.Record) {
-				defer wg.Done()
-				for _, record := range recs {
-					select {
-					case <-p.ctx.Done():
-						return
-					case p.records <- record:
-						// Record sent successfully
-					}
+			for _, record := range records {
+				select {
+				case <-processor.ctx.Done():
+					return
+				case processor.records <- record:
+					// Record sent successfully
 				}
-			}(processor, records)
+			}
 		})
-		// Wait for all records to be sent before fetching next batch
-		wg.Wait()
 	}
 }
 
@@ -185,4 +177,32 @@ func (s *Service) stopping(failureCase error) error {
 	// This is to ensure that all records have been processed before closing and offsets committed.
 	s.client.Close()
 	return failureCase
+}
+
+// Helper function to format []int32 slice
+func formatInt32Slice(slice []int32) string {
+	if len(slice) == 0 {
+		return "[]"
+	}
+	result := "["
+	for i, v := range slice {
+		if i > 0 {
+			result += ","
+		}
+		result += strconv.Itoa(int(v))
+	}
+	result += "]"
+	return result
+}
+
+// Helper function to format map[string][]int32 into a readable string
+func formatPartitionsMap(partitions map[string][]int32) string {
+	var result string
+	for topic, parts := range partitions {
+		if len(result) > 0 {
+			result += ", "
+		}
+		result += topic + "=" + formatInt32Slice(parts)
+	}
+	return result
 }
