@@ -3,6 +3,7 @@ package dataset
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"unsafe"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
@@ -55,7 +56,10 @@ func (enc *plainEncoder) Encode(v Value) error {
 	// This saves a few allocations by avoiding a copy of the string.
 	// Implementations of io.Writer are not supposed to modifiy the slice passed
 	// to Write, so this is generally safe.
-	_, err := enc.w.Write(unsafe.Slice(unsafe.StringData(sv), len(sv)))
+	n, err := enc.w.Write(unsafe.Slice(unsafe.StringData(sv), len(sv)))
+	if n != len(sv) {
+		return fmt.Errorf("short write; expected %d bytes, wrote %d", len(sv), n)
+	}
 	return err
 }
 
@@ -99,12 +103,9 @@ func (dec *plainDecoder) Decode() (Value, error) {
 	}
 
 	dst := make([]byte, int(sz))
-	if _, err := dec.r.Read(dst); err != nil {
+	if _, err := io.ReadFull(dec.r, dst); err != nil {
 		return StringValue(""), err
-	} else if len(dst) != int(sz) {
-		return StringValue(""), fmt.Errorf("short read; expected %d bytes, got %d", sz, len(dst))
 	}
-
 	return StringValue(string(dst)), nil
 }
 
