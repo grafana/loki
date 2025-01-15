@@ -56,7 +56,7 @@ func New(pageSize int) *Streams {
 // calls to Record is used to track the number of rows for a stream.
 //
 // The stream ID of the recorded stream is returned.
-func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) uint64 {
+func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) int64 {
 	ts = ts.UTC()
 
 	stream := s.getOrAddStream(streamLabels)
@@ -67,7 +67,7 @@ func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) uint64 {
 		stream.MaxTimestamp = ts
 	}
 	stream.Rows++
-	return uint64(stream.ID)
+	return stream.ID
 }
 
 // EstimatedSize returns the estimated size of the Streams section in bytes.
