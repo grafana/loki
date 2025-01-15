@@ -78,11 +78,15 @@ func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	for _, partitionOffset := range offsets {
-		// only include partitions having lag
-		if partitionOffset.Lag > 0 {
+		// only include partitions having lag that are in retention
+		startOffset := max(partitionOffset.Commit.At+1, partitionOffset.Start.Offset)
+		endOffset := partitionOffset.End.Offset
+
+		// only include partitions having lag that are in retention
+		if startOffset < endOffset {
 			data.PartitionInfo = append(data.PartitionInfo, partitionInfo{
 				Partition:       partitionOffset.Partition,
-				Lag:             partitionOffset.Lag,
+				Lag:             endOffset - startOffset,
 				EndOffset:       partitionOffset.End.Offset,
 				CommittedOffset: partitionOffset.Commit.At,
 			})
