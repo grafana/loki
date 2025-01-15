@@ -146,8 +146,10 @@ func (l *Logs) getMetadataColumn(key string) *dataset.ColumnBuilder {
 // EncodeTo may generate multiple sections if the list of log records is too
 // big to fit into a single section.
 //
-// After encoding successfully, [Logs.Reset] is called.
+// [Logs.Reset] is invoked after encoding, even if encoding fails.
 func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
+	defer l.Reset()
+
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide, due to a lot of metadata columns.
 	// There are two approaches to handle this:
@@ -191,11 +193,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 		}
 	}
 
-	if err := logsEnc.Commit(); err != nil {
-		return err
-	}
-	l.Reset()
-	return nil
+	return logsEnc.Commit()
 }
 
 func (l *Logs) sort() (dataset.Dataset, error) {

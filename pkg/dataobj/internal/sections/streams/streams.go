@@ -119,8 +119,10 @@ func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
 // EncodeTo may generate multiple sections if the list of streams is too big to
 // fit into a single section.
 //
-// After encoding successfully, [Streams.Reset] is called.
+// [Streams.Reset] is invoked after encoding, even if encoding fails.
 func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
+	defer s.Reset()
+
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
 	// this:
@@ -224,11 +226,7 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		}
 	}
 
-	if err := streamsEnc.Commit(); err != nil {
-		return err
-	}
-	s.Reset()
-	return nil
+	return streamsEnc.Commit()
 }
 
 func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
