@@ -119,7 +119,7 @@
       enabled: true,
       component: 'bloom-builder',
       name: 'Bloom Builder',
-      paths: ['write'],
+      paths: ['read'],
       routes: '.+',
       links: [
         {
@@ -163,7 +163,7 @@
       enabled: true,
       component: 'bloom-planner',
       name: 'Bloom Planner',
-      paths: ['write'],
+      paths: ['read'],
       routes: '.+',
       links: [
         {

@@ -36,7 +36,7 @@ local query_result_settings(expr) =
       }
     },
 
-  metrics_datasource: variables.datasource({
+  metrics_datasource:: variables.datasource({
       label: 'Metrics Datasource',
       name: 'metrics_datasource',
       type: 'prometheus',
@@ -45,7 +45,7 @@ local query_result_settings(expr) =
       regex: '^(?!grafanacloud-(?:ml-metrics|usage)).*',
     }),
 
-  logs_datasource: variables.datasource({
+  logs_datasource:: variables.datasource({
       label: 'Logs Datasource',
       name: 'logs_datasource',
       type: 'loki',
@@ -54,7 +54,7 @@ local query_result_settings(expr) =
       regex: '^(?!grafanacloud-.*(?:alert-state-history|usage-insights)).*',
     }),
 
-  cluster:
+  cluster::
     local expr = 'label_values(loki_build_info, cluster)';
     variables.query({
       label: 'Cluster',
@@ -64,9 +64,9 @@ local query_result_settings(expr) =
       datasourceFromVariable: it.metrics_datasource,
       sort: 5,
     })
-      + self.queryResultOpts(expr),
+      + it.queryResultOpts(expr),
 
-  namespace:
+  namespace::
     local expr = 'label_values(loki_build_info{cluster="$cluster"}, namespace)';
     variables.query({
       label: 'Namespace',
@@ -76,9 +76,41 @@ local query_result_settings(expr) =
       datasourceFromVariable: it.metrics_datasource,
       sort: 5,
     })
-      + self.queryResultOpts(expr),
+      + it.queryResultOpts(expr),
 
-  tenant:
+  component_metric(metric='loki_build_info')::
+    variables.constant({
+      label: 'component_metric',
+      name: 'component_metric',
+      description: 'The metric to use to derive the component label from',
+      query: metric,
+    }),
+
+  component::
+    local expr = query_result(|||
+      group by (component) (
+          label_replace(
+              label_join(
+                  loki_build_info{cluster="$cluster",namespace="$namespace"},
+                  "component", ";", "component", "container", "job"
+              ),
+              "component", "$1", "component", "^(?:;*)(?:[^;/]*/)?([^;]+).*"
+          )
+      )
+    |||);
+
+    variables.query({
+      label: 'Component',
+      name: 'component',
+      description: 'The component to use, this is derived from either the component, container or job ($namespace/$component) labels that are attached to the $component_metric',
+      refId: 'PrometheusVariableQueryEditor-VariableQuery',
+      query: query_result_settings(expr),
+      regex: '\\{component="(?<value>(?!loki)(?!enterprise)[^"]+)".+',
+      datasourceFromVariable: it.metrics_datasource,
+    })
+      + it.queryResultOpts(expr),
+
+  tenant::
     local expr = 'label_values(loki_overrides{cluster="$cluster",namespace="$namespace"}, user)';
     variables.query({
       label: 'Tenant',
@@ -88,5 +120,5 @@ local query_result_settings(expr) =
       datasourceFromVariable: it.metrics_datasource,
       sort: 5,
     })
-      + self.queryResultOpts(expr),
+      + it.queryResultOpts(expr),
 }
