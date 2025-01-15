@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
@@ -27,7 +26,7 @@ type mockOffsetManager struct {
 
 func (m *mockOffsetManager) Topic() string         { return m.topic }
 func (m *mockOffsetManager) ConsumerGroup() string { return m.consumerGroup }
-func (m *mockOffsetManager) GroupLag(_ context.Context, _ int64) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetManager) GroupLag(_ context.Context, _ int64) (map[int32]partition.Lag, error) {
 	return nil, nil
 }
 func (m *mockOffsetManager) FetchLastCommittedOffset(_ context.Context, _ int32) (int64, error) {

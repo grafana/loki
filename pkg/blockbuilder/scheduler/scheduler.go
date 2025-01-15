@@ -15,7 +15,6 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
@@ -236,11 +235,11 @@ func (s *BlockScheduler) handlePlannedJob(job *JobWithMetadata) error {
 	return nil
 }
 
-func (s *BlockScheduler) publishLagMetrics(lag map[int32]kadm.GroupMemberLag) {
-	for partition, offsets := range lag {
+func (s *BlockScheduler) publishLagMetrics(lag map[int32]partition.Lag) {
+	for partition, l := range lag {
 		// useful for scaling builders
-		s.metrics.lag.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(offsets.Lag))
-		s.metrics.committedOffset.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(offsets.Commit.At))
+		s.metrics.lag.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(l.Lag()))
+		s.metrics.committedOffset.WithLabelValues(strconv.Itoa(int(partition))).Set(float64(l.LastCommittedOffset()))
 	}
 }
 

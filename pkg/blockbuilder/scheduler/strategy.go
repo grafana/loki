@@ -6,14 +6,14 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 // OffsetReader is an interface to list offsets for all partitions of a topic from Kafka.
 type OffsetReader interface {
-	GroupLag(context.Context, int64) (map[int32]kadm.GroupMemberLag, error)
+	GroupLag(context.Context, int64) (map[int32]partition.Lag, error)
 }
 
 type Planner interface {
@@ -59,25 +59,15 @@ func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int, 
 	}
 
 	jobs := make([]*JobWithMetadata, 0, len(offsets))
-	for _, partitionOffset := range offsets {
-		// 1. kadm.GroupMemberLag contains valid Commit.At even when consumer group never committed any offset.
-		//    no additional validation is needed here
-		// 2. committed offset could be behind start offset if we are falling behind retention period.
-
-		// startOffset is the previously-committed offset, so we need to start processing the first
-		// _uncommitted_ offset
-		startOffset := max(partitionOffset.Commit.At+1, partitionOffset.Start.Offset)
-		// endOffset is initially the next available offset: this is why we treat jobs as end-exclusive:
-		// so we won't try polling forever to a partition that won't have any more records
-		endOffset := partitionOffset.End.Offset
-
+	for partition, l := range offsets {
 		// Skip if there's no lag
-		if startOffset >= endOffset {
+		if l.Lag() <= 0 {
 			continue
 		}
 
 		var jobCount int
-		currentStart := startOffset
+		currentStart := l.FirstUncommittedOffset()
+		endOffset := l.NextAvailableOffset()
 		// Create jobs of size targetRecordCount until we reach endOffset
 		for currentStart < endOffset {
 			if maxJobsPerPartition > 0 && jobCount >= maxJobsPerPartition {
@@ -92,7 +82,7 @@ func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int, 
 			}
 
 			job := NewJobWithMetadata(
-				types.NewJob(partitionOffset.Partition, types.Offsets{
+				types.NewJob(partition, types.Offsets{
 					Min: currentStart,
 					Max: currentEnd,
 				}),

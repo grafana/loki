@@ -17,7 +17,6 @@
         <th>Partition</th>
         <th>Start Offset</th>
         <th>End Offset</th>
-        <th>Offset Length</th>
         <th>Creation Timestamp</th>
     </tr>
     </thead>
@@ -29,7 +28,6 @@
         <td>{{ .Partition }}</td>
         <td>{{ .Offsets.Min }}</td>
         <td>{{ .Offsets.Max }}</td>
-        <td>{{ offsetsLen .Offsets.Min .Offsets.Max | humanize }}</td>
         <td>{{ .UpdateTime | durationSince }} ago ({{ .UpdateTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
         </tr>
     {{ end }}
@@ -44,7 +42,6 @@
         <th>Partition</th>
         <th>Start Offset</th>
         <th>End Offset</th>
-        <th>Offset Length</th>
         <th>Start Timestamp</th>
         <th>Last Updated Timestamp</th>
     </tr>
@@ -57,7 +54,6 @@
         <td>{{ .Partition }}</td>
         <td>{{ .Offsets.Min }}</td>
         <td>{{ .Offsets.Max }}</td>
-        <td>{{ offsetsLen .Offsets.Min .Offsets.Max | humanize }}</td>
         <td>{{ .StartTime | durationSince }} ago ({{ .StartTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
         <td>{{ .UpdateTime | durationSince }} ago ({{ .UpdateTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
         </tr>
@@ -73,7 +69,6 @@
         <th>Partition</th>
         <th>Start Offset</th>
         <th>End Offset</th>
-        <th>Offset Length</th>
         <th>Status</th>
         <th>Start Timestamp</th>
         <th>Completion Timestamp</th>
@@ -87,7 +82,6 @@
         <td>{{ .Partition }}</td>
         <td>{{ .Offsets.Min }}</td>
         <td>{{ .Offsets.Max }}</td>
-        <td>{{ offsetsLen .Offsets.Min .Offsets.Max | humanize }}</td>
         <td>{{ .Status }}</td>
         <td>{{ .StartTime | durationSince }} ago ({{ .StartTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>
         <td>{{ .UpdateTime | durationSince }} ago ({{ .UpdateTime.Format "Mon, 02 Jan 2006 15:04:05 -0700" }})</td>

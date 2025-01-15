@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/twmb/franz-go/pkg/kadm"
 )
 
 //go:embed status.gohtml
@@ -26,10 +25,6 @@ type jobQueue interface {
 	ListCompletedJobs() []JobWithMetadata
 }
 
-type offsetReader interface {
-	GroupLag(ctx context.Context, fallbackOffsetMillis int64) (map[int32]kadm.GroupMemberLag, error)
-}
-
 type partitionInfo struct {
 	Partition       int32
 	Lag             int64
@@ -39,11 +34,11 @@ type partitionInfo struct {
 
 type statusPageHandler struct {
 	jobQueue             jobQueue
-	offsetReader         offsetReader
+	offsetReader         OffsetReader
 	fallbackOffsetMillis int64
 }
 
-func newStatusPageHandler(jobQueue jobQueue, offsetReader offsetReader, fallbackOffsetMillis int64) *statusPageHandler {
+func newStatusPageHandler(jobQueue jobQueue, offsetReader OffsetReader, fallbackOffsetMillis int64) *statusPageHandler {
 	return &statusPageHandler{jobQueue: jobQueue, offsetReader: offsetReader, fallbackOffsetMillis: fallbackOffsetMillis}
 }
 
@@ -77,20 +72,19 @@ func (h *statusPageHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		CompletedJobs:  h.jobQueue.ListCompletedJobs(),
 	}
 
-	for _, partitionOffset := range offsets {
+	for partition, l := range offsets {
 		// only include partitions having lag that are in retention
-		startOffset := max(partitionOffset.Commit.At+1, partitionOffset.Start.Offset)
-		endOffset := partitionOffset.End.Offset
-
-		// only include partitions having lag that are in retention
-		if startOffset < endOffset {
-			data.PartitionInfo = append(data.PartitionInfo, partitionInfo{
-				Partition:       partitionOffset.Partition,
-				Lag:             endOffset - startOffset,
-				EndOffset:       partitionOffset.End.Offset,
-				CommittedOffset: partitionOffset.Commit.At,
-			})
+		lag := l.Lag()
+		if lag <= 0 {
+			continue
 		}
+
+		data.PartitionInfo = append(data.PartitionInfo, partitionInfo{
+			Partition:       partition,
+			Lag:             lag,
+			EndOffset:       l.NextAvailableOffset(),
+			CommittedOffset: l.LastCommittedOffset(),
+		})
 	}
 	slices.SortFunc(data.PartitionInfo, func(a, b partitionInfo) int {
 		return int(a.Partition - b.Partition)
