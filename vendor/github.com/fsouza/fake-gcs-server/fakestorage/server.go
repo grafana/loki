@@ -267,12 +267,16 @@ func (s *Server) buildMuxer() {
 		r.Path("/b/").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.createBucketByPost))
 		r.Path("/b/{bucketName}").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.getBucket))
 		r.Path("/b/{bucketName}").Methods(http.MethodPatch).HandlerFunc(jsonToHTTPHandler(s.updateBucket))
+		r.Path("/b/{bucketName}").Methods(http.MethodPost).Headers("X-HTTP-Method-Override", "PATCH").HandlerFunc(jsonToHTTPHandler(s.updateBucket))
 		r.Path("/b/{bucketName}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteBucket))
 		r.Path("/b/{bucketName}/o").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjects))
 		r.Path("/b/{bucketName}/o/").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjects))
 		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodPatch).HandlerFunc(jsonToHTTPHandler(s.patchObject))
+		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodPost).Headers("X-HTTP-Method-Override", "PATCH").HandlerFunc(jsonToHTTPHandler(s.patchObject))
 		r.Path("/b/{bucketName}/o/{objectName:.+}/acl").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.listObjectACL))
 		r.Path("/b/{bucketName}/o/{objectName:.+}/acl").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.setObjectACL))
+		r.Path("/b/{bucketName}/o/{objectName:.+}/acl/{entity}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteObjectACL))
+		r.Path("/b/{bucketName}/o/{objectName:.+}/acl/{entity}").Methods(http.MethodGet).HandlerFunc(jsonToHTTPHandler(s.getObjectACL))
 		r.Path("/b/{bucketName}/o/{objectName:.+}/acl/{entity}").Methods(http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.setObjectACL))
 		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodGet, http.MethodHead).HandlerFunc(s.getObject)
 		r.Path("/b/{bucketName}/o/{objectName:.+}").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteObject))
@@ -285,6 +289,7 @@ func (s *Server) buildMuxer() {
 	handler.Path("/_internal/config").Methods(http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.updateServerConfig))
 	handler.MatcherFunc(s.publicHostMatcher).Path("/_internal/config").Methods(http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.updateServerConfig))
 	handler.Path("/_internal/reseed").Methods(http.MethodPut, http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.reseedServer))
+	handler.Path("/_internal/delete_all").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.deleteAllFiles))
 	// Internal - end
 
 	// XML API
@@ -304,6 +309,8 @@ func (s *Server) buildMuxer() {
 	handler.Path("/upload/storage/v1/b/{bucketName}/o/").Methods(http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.insertObject))
 	handler.Path("/upload/storage/v1/b/{bucketName}/o").Methods(http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.uploadFileContent))
 	handler.Path("/upload/storage/v1/b/{bucketName}/o/").Methods(http.MethodPut).HandlerFunc(jsonToHTTPHandler(s.uploadFileContent))
+	handler.Path("/upload/storage/v1/b/{bucketName}/o").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteResumableUpload))
+	handler.Path("/upload/storage/v1/b/{bucketName}/o/").Methods(http.MethodDelete).HandlerFunc(jsonToHTTPHandler(s.deleteResumableUpload))
 	handler.Path("/upload/resumable/{uploadId}").Methods(http.MethodPut, http.MethodPost).HandlerFunc(jsonToHTTPHandler(s.uploadFileContent))
 
 	// Batch endpoint
@@ -359,6 +366,20 @@ func (s *Server) reseedServer(r *http.Request) jsonResponse {
 	}
 
 	return jsonResponse{data: fromBackendObjects(backendObjects)}
+}
+
+func (s *Server) deleteAllFiles(r *http.Request) jsonResponse {
+	if err := s.backend.DeleteAllFiles(); err != nil {
+		return jsonResponse{
+			status:       http.StatusInternalServerError,
+			errorMessage: err.Error(),
+		}
+	}
+
+	return jsonResponse{
+		status: http.StatusOK,
+		data:   map[string]string{"message": "All files deleted successfully"},
+	}
 }
 
 func generateObjectsFromFiles(folder string) ([]Object, []string) {
