@@ -94,6 +94,7 @@ func (enc *LogsEncoder) Commit() error {
 	} else if enc.curColumn != nil {
 		return ErrElementExist
 	}
+	enc.closed = true
 
 	defer bytesBufferPool.Put(enc.data)
 
