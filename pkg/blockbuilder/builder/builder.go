@@ -279,6 +279,12 @@ func (i *BlockBuilder) runOne(ctx context.Context, c *kgo.Client, workerID strin
 		completion.Success = false
 	}
 
+	// remove from inflight jobs to stop sending sync requests
+	i.jobsMtx.Lock()
+	delete(i.inflightJobs, job.ID())
+	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
+	i.jobsMtx.Unlock()
+
 	if _, err := withBackoff(
 		ctx,
 		i.cfg.Backoff,
@@ -292,16 +298,12 @@ func (i *BlockBuilder) runOne(ctx context.Context, c *kgo.Client, workerID strin
 		return true, err
 	}
 
-	i.jobsMtx.Lock()
-	delete(i.inflightJobs, job.ID())
-	i.metrics.inflightJobs.Set(float64(len(i.inflightJobs)))
-	i.jobsMtx.Unlock()
-
 	return true, err
 }
 
 func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types.Job, logger log.Logger) (lastOffsetConsumed int64, err error) {
 	level.Debug(logger).Log("msg", "beginning job")
+	start := time.Now()
 
 	indexer := newTsdbCreator()
 	appender := newAppender(i.id,
@@ -505,6 +507,8 @@ func (i *BlockBuilder) processJob(ctx context.Context, c *kgo.Client, job *types
 	level.Info(logger).Log(
 		"msg", "successfully processed job",
 		"last_offset", lastOffset,
+		"duration", time.Since(start),
+		"records", lastOffset-job.Offsets().Min,
 	)
 
 	return lastOffset, nil

@@ -26,7 +26,6 @@ var (
 )
 
 type Config struct {
-	ConsumerGroup     string         `yaml:"consumer_group"`
 	Interval          time.Duration  `yaml:"interval"`
 	LookbackPeriod    time.Duration  `yaml:"lookback_period"`
 	Strategy          string         `yaml:"strategy"`
@@ -35,8 +34,7 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.Interval, prefix+"interval", 5*time.Minute, "How often the scheduler should plan jobs.")
-	f.StringVar(&cfg.ConsumerGroup, prefix+"consumer-group", "block-scheduler", "Consumer group used by block scheduler to track the last consumed offset.")
+	f.DurationVar(&cfg.Interval, prefix+"interval", 15*time.Minute, "How often the scheduler should plan jobs.")
 	f.DurationVar(&cfg.LookbackPeriod, prefix+"lookback-period", 0, "Lookback period used by the scheduler to plan jobs when the consumer group has no commits. 0 consumes from the start of the partition.")
 	f.StringVar(
 		&cfg.Strategy,
@@ -93,28 +91,38 @@ type BlockScheduler struct {
 	queue   *JobQueue
 	metrics *Metrics
 
-	offsetManager partition.OffsetManager
-	planner       Planner
+	fallbackOffsetMillis int64
+	offsetManager        partition.OffsetManager
+	planner              Planner
 }
 
 // NewScheduler creates a new scheduler instance
 func NewScheduler(cfg Config, queue *JobQueue, offsetManager partition.OffsetManager, logger log.Logger, r prometheus.Registerer) (*BlockScheduler, error) {
+	// pin the fallback offset at the time of scheduler creation to ensure planner uses the same fallback offset on subsequent runs
+	// without this, planner would create jobs that are unaligned when the partition has no commits so far.
+	fallbackOffsetMillis := int64(partition.KafkaStartOffset)
+	if cfg.LookbackPeriod > 0 {
+		fallbackOffsetMillis = time.Now().UnixMilli() - cfg.LookbackPeriod.Milliseconds()
+	}
+
 	var planner Planner
 	switch cfg.Strategy {
 	case RecordCountStrategy:
-		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, cfg.LookbackPeriod, logger)
+		planner = NewRecordCountPlanner(offsetManager, cfg.TargetRecordCount, fallbackOffsetMillis, logger)
 	default:
 		return nil, fmt.Errorf("invalid strategy: %s", cfg.Strategy)
 	}
 
 	s := &BlockScheduler{
-		cfg:           cfg,
-		planner:       planner,
-		offsetManager: offsetManager,
-		logger:        logger,
-		metrics:       NewMetrics(r),
-		queue:         queue,
+		cfg:                  cfg,
+		planner:              planner,
+		offsetManager:        offsetManager,
+		logger:               logger,
+		metrics:              NewMetrics(r),
+		queue:                queue,
+		fallbackOffsetMillis: fallbackOffsetMillis,
 	}
+
 	s.Service = services.NewBasicService(nil, s.running, nil)
 	return s, nil
 }
@@ -141,7 +149,7 @@ func (s *BlockScheduler) running(ctx context.Context) error {
 }
 
 func (s *BlockScheduler) runOnce(ctx context.Context) error {
-	lag, err := s.offsetManager.GroupLag(ctx, s.cfg.LookbackPeriod)
+	lag, err := s.offsetManager.GroupLag(ctx, s.fallbackOffsetMillis)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to get group lag", "err", err)
 		return err
@@ -149,15 +157,27 @@ func (s *BlockScheduler) runOnce(ctx context.Context) error {
 
 	s.publishLagMetrics(lag)
 
-	jobs, err := s.planner.Plan(ctx, 1) // TODO(owen-d): parallelize work within a partition
+	// TODO(owen-d): parallelize work within a partition
+	// TODO(owen-d): skip small jobs unless they're stale,
+	//  e.g. a partition which is no longer being written to shouldn't be orphaned
+	jobs, err := s.planner.Plan(ctx, 1, 0)
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to plan jobs", "err", err)
 	}
+	level.Info(s.logger).Log("msg", "planned jobs", "count", len(jobs))
 
 	for _, job := range jobs {
 		// TODO: end offset keeps moving each time we plan jobs, maybe we should not use it as part of the job ID
 
 		added, status, err := s.idempotentEnqueue(job)
+		level.Info(s.logger).Log(
+			"msg", "enqueued job",
+			"added", added,
+			"status", status.String(),
+			"err", err,
+			"partition", job.Job.Partition(),
+			"num_offsets", job.Offsets().Max-job.Offsets().Min,
+		)
 
 		// if we've either added or encountered an error, move on; we're done this cycle
 		if added || err != nil {
@@ -253,7 +273,9 @@ func (s *BlockScheduler) HandleCompleteJob(ctx context.Context, job *types.Job, 
 
 			// TODO(owen-d): cleaner way to enqueue next job for this partition,
 			// don't make it part of the response cycle to job completion, etc.
-			jobs, err := s.planner.Plan(ctx, 1)
+			// NB(owen-d): only immediately enqueue another job for this partition if]
+			// the job is full. Otherwise, we'd repeatedly enqueue tiny jobs with a few records.
+			jobs, err := s.planner.Plan(ctx, 1, int(s.cfg.TargetRecordCount))
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to plan subsequent jobs", "err", err)
 			}
@@ -290,5 +312,5 @@ func (s *BlockScheduler) HandleSyncJob(_ context.Context, job *types.Job) error 
 }
 
 func (s *BlockScheduler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newStatusPageHandler(s.queue, s.offsetManager, s.cfg.LookbackPeriod).ServeHTTP(w, req)
+	newStatusPageHandler(s.queue, s.offsetManager, s.fallbackOffsetMillis).ServeHTTP(w, req)
 }

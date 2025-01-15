@@ -210,13 +210,9 @@ block_builder:
   [scheduler_grpc_client_config: <grpc_client>]
 
 block_scheduler:
-  # Consumer group used by block scheduler to track the last consumed offset.
-  # CLI flag: -block-scheduler.consumer-group
-  [consumer_group: <string> | default = "block-scheduler"]
-
   # How often the scheduler should plan jobs.
   # CLI flag: -block-scheduler.interval
-  [interval: <duration> | default = 5m]
+  [interval: <duration> | default = 15m]
 
   # Lookback period used by the scheduler to plan jobs when the consumer group
   # has no commits. 0 consumes from the start of the partition.
@@ -1731,6 +1727,11 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
+
+# Chunks fetched from queriers before this duration will not be written to the
+# cache. A value of 0 will write all chunks to the cache
+# CLI flag: -store.skip-query-writeback-older-than
+[skip_query_writeback_cache_older_than: <duration> | default = 0s]
 
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
@@ -3395,6 +3396,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# Experimental: Detect fields from stream labels, structured metadata, or
+# json/logfmt formatted log line and put them into structured metadata of the
+# log entry.
+discover_generic_fields:
+  [fields: <map of string to list of strings>]
+
 # If no service_name label exists, Loki maps a single label from the configured
 # list to service_name. If none of the configured labels exist in the stream,
 # label is set to unknown_service. Empty list disables setting the label.
@@ -3933,6 +3940,12 @@ otlp_config:
 # status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
+
+# List of labels that must be present in the stream. If any of the labels are
+# missing, the stream will be discarded. This flag configures it globally for
+# all tenants. Experimental.
+# CLI flag: -validation.enforced-labels
+[enforced_labels: <list of strings> | default = []]
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
@@ -4981,6 +4994,9 @@ remote_write:
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
+  # Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of
+  # RemoteWriteConfig is not permitted. If specified, it will be dropped during
+  # config parsing.
   [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.
@@ -4993,7 +5009,8 @@ remote_write:
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
-  # Add X-Scope-OrgID header in remote write requests.
+  # Add an X-Scope-OrgID header in remote write requests with the tenant ID of a
+  # Loki tenant that the recording rules are part of.
   # CLI flag: -ruler.remote-write.add-org-id-header
   [add_org_id_header: <boolean> | default = true]
 

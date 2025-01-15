@@ -102,6 +102,17 @@ func (ms LogRecord) SetFlags(v LogRecordFlags) {
 	ms.orig.Flags = uint32(v)
 }
 
+// EventName returns the eventname associated with this LogRecord.
+func (ms LogRecord) EventName() string {
+	return ms.orig.EventName
+}
+
+// SetEventName replaces the eventname associated with this LogRecord.
+func (ms LogRecord) SetEventName(v string) {
+	ms.state.AssertMutable()
+	ms.orig.EventName = v
+}
+
 // SeverityText returns the severitytext associated with this LogRecord.
 func (ms LogRecord) SeverityText() string {
 	return ms.orig.SeverityText
@@ -153,6 +164,7 @@ func (ms LogRecord) CopyTo(dest LogRecord) {
 	dest.SetTraceID(ms.TraceID())
 	dest.SetSpanID(ms.SpanID())
 	dest.SetFlags(ms.Flags())
+	dest.SetEventName(ms.EventName())
 	dest.SetSeverityText(ms.SeverityText())
 	dest.SetSeverityNumber(ms.SeverityNumber())
 	ms.Body().CopyTo(dest.Body())

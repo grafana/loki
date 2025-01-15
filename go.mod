@@ -7,13 +7,13 @@ toolchain go1.23.1
 require (
 	cloud.google.com/go/bigtable v1.34.0
 	cloud.google.com/go/pubsub v1.45.3
-	cloud.google.com/go/storage v1.49.0
+	cloud.google.com/go/storage v1.50.0
 	dario.cat/mergo v1.0.1
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/Azure/go-autorest/autorest/adal v0.9.24
 	github.com/Azure/go-autorest/autorest/azure/auth v0.5.13
-	github.com/IBM/sarama v1.44.0
+	github.com/IBM/sarama v1.45.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Workiva/go-datastructures v1.1.5
@@ -21,8 +21,8 @@ require (
 	github.com/alicebob/miniredis/v2 v2.34.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go v1.55.5
-	github.com/baidubce/bce-sdk-go v0.9.211
-	github.com/bmatcuk/doublestar/v4 v4.7.1
+	github.com/baidubce/bce-sdk-go v0.9.213
+	github.com/bmatcuk/doublestar/v4 v4.8.0
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/containerd/fifo v1.1.0
@@ -60,7 +60,7 @@ require (
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.31.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/influxdata/telegraf v1.33.0
+	github.com/influxdata/telegraf v1.33.1
 	github.com/jmespath/go-jmespath v0.4.0
 	github.com/joncrlsn/dque v0.0.0-20211108142734-c2ef48c5192a
 	github.com/json-iterator/go v1.1.12
@@ -91,20 +91,20 @@ require (
 	github.com/shurcooL/httpfs v0.0.0-20230704072500-f1e31cf0ba5c
 	github.com/shurcooL/vfsgen v0.0.0-20200824052919-0d455de96546
 	github.com/sony/gobreaker/v2 v2.1.0
-	github.com/spf13/afero v1.11.0
+	github.com/spf13/afero v1.12.0
 	github.com/stretchr/testify v1.10.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/xdg-go/scram v1.1.2
 	go.etcd.io/bbolt v1.3.11
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/crypto v0.31.0
-	golang.org/x/net v0.33.0
+	golang.org/x/crypto v0.32.0
+	golang.org/x/net v0.34.0
 	golang.org/x/sync v0.10.0
-	golang.org/x/sys v0.28.0
-	golang.org/x/time v0.8.0
-	google.golang.org/api v0.214.0
-	google.golang.org/grpc v1.68.1
+	golang.org/x/sys v0.29.0
+	golang.org/x/time v0.9.0
+	google.golang.org/api v0.216.0
+	google.golang.org/grpc v1.69.4
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/klog/v2 v2.130.1
@@ -114,9 +114,9 @@ require (
 	github.com/Azure/go-autorest/autorest v0.11.29
 	github.com/DataDog/sketches-go v1.4.6
 	github.com/DmitriyVTitov/size v1.5.0
-	github.com/IBM/go-sdk-core/v5 v5.18.3
+	github.com/IBM/go-sdk-core/v5 v5.18.5
 	github.com/IBM/ibm-cos-sdk-go v1.12.0
-	github.com/axiomhq/hyperloglog v0.2.2
+	github.com/axiomhq/hyperloglog v0.2.3
 	github.com/buger/jsonparser v1.1.1
 	github.com/d4l3k/messagediff v1.2.1
 	github.com/dolthub/swiss v0.2.1
@@ -133,7 +133,7 @@ require (
 	github.com/prometheus/alertmanager v0.27.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
-	github.com/schollz/progressbar/v3 v3.17.1
+	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shirou/gopsutil/v4 v4.24.12
 	github.com/thanos-io/objstore v0.0.0-20241217111833-063ea3806b2f
 	github.com/twmb/franz-go v1.18.0
@@ -143,28 +143,28 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.5.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/willf/bloom v2.0.3+incompatible
-	go.opentelemetry.io/collector/pdata v1.22.0
+	go.opentelemetry.io/collector/pdata v1.23.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
-	golang.org/x/oauth2 v0.24.0
+	golang.org/x/oauth2 v0.25.0
 	golang.org/x/text v0.21.0
-	google.golang.org/protobuf v1.36.1
+	google.golang.org/protobuf v1.36.2
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.32.0
 	k8s.io/utils v0.0.0-20241104163129-6fe5fd82f078
 )
 
 require (
-	cel.dev/expr v0.16.1 // indirect
+	cel.dev/expr v0.16.2 // indirect
 	cloud.google.com/go/auth v0.13.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.6 // indirect
-	cloud.google.com/go/monitoring v1.21.2 // indirect
+	cloud.google.com/go/monitoring v1.22.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.25.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.48.1 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.48.1 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.0 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.4 // indirect
-	github.com/dlclark/regexp2 v1.11.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.6 // indirect
+	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/ebitengine/purego v0.8.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.4 // indirect
@@ -195,11 +195,10 @@ require (
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/contrib/detectors/gcp v1.29.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.29.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.29.0 // indirect
+	go.opentelemetry.io/contrib/detectors/gcp v1.31.0 // indirect
+	go.opentelemetry.io/otel/sdk v1.31.0 // indirect
+	go.opentelemetry.io/otel/sdk/metric v1.31.0 // indirect
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
-	google.golang.org/grpc/stats/opentelemetry v0.0.0-20240907200651-3ffb98b2c93a // indirect
 )
 
 require (
@@ -222,23 +221,23 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.2.2 // indirect
 	github.com/Code-Hex/go-generics-cache v1.5.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver/v3 v3.3.0 // indirect
+	github.com/Masterminds/semver/v3 v3.3.1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/alecthomas/chroma/v2 v2.14.0
+	github.com/alecthomas/chroma/v2 v2.15.0
 	github.com/alecthomas/units v0.0.0-20240626203959-61d1e3462e30 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20230218143504-906a9b012302 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.32.5 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.27.39 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.44 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.19 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.24 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.24 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.32.7 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.28.6 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.47 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.21 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.26 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.26 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.4 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.24.5 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.32.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.24.7 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.33.2 // indirect
 	github.com/aws/smithy-go v1.22.1 // indirect
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -291,7 +290,7 @@ require (
 	github.com/google/pprof v0.0.0-20241029153458-d1b30febd7db // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
-	github.com/googleapis/gax-go/v2 v2.14.0 // indirect
+	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
 	github.com/gophercloud/gophercloud v1.14.0 // indirect
 	github.com/grafana/pyroscope-go/godeltaprof v0.1.8 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
@@ -369,16 +368,16 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/term v0.28.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241118233622-e639e219e697 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241209162323-e6fa225c2576
+	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250102185135-69823020774d
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
-	k8s.io/api v0.31.0 // indirect
-	k8s.io/client-go v0.31.0 // indirect
+	k8s.io/api v0.31.3 // indirect
+	k8s.io/client-go v0.31.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
 	rsc.io/binaryregexp v0.2.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
@@ -390,7 +389,7 @@ replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v
 
 replace github.com/Azure/azure-storage-blob-go => github.com/MasslessParticle/azure-storage-blob-go v0.14.1-0.20240322194317-344980fda573
 
-replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.20.1
+replace github.com/hashicorp/consul => github.com/hashicorp/consul v1.20.2
 
 // Use fork of gocql that has gokit logs and Prometheus metrics.
 replace github.com/gocql/gocql => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85

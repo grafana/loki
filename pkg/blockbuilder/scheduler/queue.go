@@ -332,6 +332,7 @@ func (q *JobQueue) SyncJob(jobID string, job *types.Job) {
 	case types.JobStatusInProgress:
 	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
 		// Job already completed, re-enqueue a new one
+		level.Warn(q.logger).Log("msg", "job already completed, re-enqueuing", "job", jobID, "status", jobMeta.Status)
 		registerInProgress()
 		return
 	default:

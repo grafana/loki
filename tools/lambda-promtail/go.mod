@@ -4,15 +4,16 @@ go 1.22
 
 require (
 	github.com/aws/aws-lambda-go v1.47.0
-	github.com/aws/aws-sdk-go-v2 v1.32.7
-	github.com/aws/aws-sdk-go-v2/config v1.28.7
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.71.1
+	github.com/aws/aws-sdk-go-v2 v1.32.8
+	github.com/aws/aws-sdk-go-v2/config v1.28.10
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.72.2
 	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/grafana/dskit v0.0.0-20241004175247-687ec485facf
 	github.com/grafana/loki/v3 v3.2.1
 	github.com/prometheus/common v0.61.0
+	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -24,19 +25,19 @@ require (
 	github.com/alecthomas/units v0.0.0-20240626203959-61d1e3462e30 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.7 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.48 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.22 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.26 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.26 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.51 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.23 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.27 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.27 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.1 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.26 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.27 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.12.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.24.8 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.33.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.12.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.24.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.8 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.33.6 // indirect
 	github.com/aws/smithy-go v1.22.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/c2h5oh/datasize v0.0.0-20231215233829-aa82cc1e6500 // indirect
@@ -106,7 +107,6 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/exporter-toolkit v0.11.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
-	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sercand/kuberesolver/v5 v5.1.1 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect

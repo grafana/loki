@@ -1,3 +1,7 @@
+# v1.12.1 (2024-11-18)
+
+* **Dependency Update**: Update to smithy-go v1.22.1.
+
 # v1.12.0 (2024-10-04)
 
 * **Feature**: Add support for HTTP client metrics.
