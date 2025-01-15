@@ -67,7 +67,7 @@ func (p *RecordCountPlanner) Plan(ctx context.Context, maxJobsPerPartition int, 
 		// startOffset is the previously-committed offset, so we need to start processing the first
 		// _uncommitted_ offset
 		startOffset := max(partitionOffset.Commit.At+1, partitionOffset.Start.Offset)
-		// Likewise, endOffset is initially the next available offset: this is why we treat jobs as end-exclusive:
+		// endOffset is initially the next available offset: this is why we treat jobs as end-exclusive:
 		// so we won't try polling forever to a partition that won't have any more records
 		endOffset := partitionOffset.End.Offset
 

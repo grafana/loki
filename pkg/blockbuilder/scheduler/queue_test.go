@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
-func newTestQueue2() *JobQueue {
+func newTestQueue() *JobQueue {
 	return NewJobQueue(
 		JobQueueConfig{
 			LeaseDuration:            10 * time.Minute,
@@ -22,8 +22,8 @@ func newTestQueue2() *JobQueue {
 	)
 }
 
-func TestJobQueue2_TransitionState(t *testing.T) {
-	q := newTestQueue2()
+func TestJobQueue_TransitionState(t *testing.T) {
+	q := newTestQueue()
 	offsets := types.Offsets{Min: 0, Max: 100}
 	job := types.NewJob(1, offsets)
 	jobID := job.ID()
@@ -52,8 +52,8 @@ func TestJobQueue2_TransitionState(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestJobQueue2_TransitionAny(t *testing.T) {
-	q := newTestQueue2()
+func TestJobQueue_TransitionAny(t *testing.T) {
+	q := newTestQueue()
 	offsets := types.Offsets{Min: 0, Max: 100}
 	job := types.NewJob(1, offsets)
 	jobID := job.ID()
@@ -84,8 +84,8 @@ func TestJobQueue2_TransitionAny(t *testing.T) {
 	require.Equal(t, types.JobStatusInProgress, status)
 }
 
-func TestJobQueue2_Dequeue(t *testing.T) {
-	q := newTestQueue2()
+func TestJobQueue_Dequeue(t *testing.T) {
+	q := newTestQueue()
 
 	// Add jobs with different priorities
 	jobs := []struct {
@@ -126,8 +126,8 @@ func TestJobQueue2_Dequeue(t *testing.T) {
 	require.Nil(t, job)
 }
 
-func TestJobQueue2_Lists(t *testing.T) {
-	q := newTestQueue2()
+func TestJobQueue_Lists(t *testing.T) {
+	q := newTestQueue()
 
 	// Add jobs in different states
 	jobStates := map[int32]types.JobStatus{
@@ -174,7 +174,7 @@ func TestJobQueue2_Lists(t *testing.T) {
 	}
 }
 
-func TestJobQueue2_LeaseExpiry(t *testing.T) {
+func TestJobQueue_LeaseExpiry(t *testing.T) {
 	cfg := JobQueueConfig{
 		LeaseDuration:            100 * time.Millisecond,
 		LeaseExpiryCheckInterval: 10 * time.Millisecond,

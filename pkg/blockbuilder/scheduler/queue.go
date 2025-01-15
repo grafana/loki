@@ -88,7 +88,7 @@ type JobQueue struct {
 	metrics *jobQueueMetrics
 }
 
-// NewJobQueue creates a new JobQueue2 instance
+// NewJobQueue creates a new JobQueue instance
 func NewJobQueue(cfg JobQueueConfig, logger log.Logger, reg prometheus.Registerer) *JobQueue {
 
 	return &JobQueue{
@@ -195,8 +195,11 @@ func (q *JobQueue) TransitionAny(jobID string, to types.JobStatus, createFn func
 	defer q.mu.Unlock()
 
 	currentStatus, exists := q.statusMap[jobID]
+
+	// If the job isn't found or has already finished, create a new job
 	if finished := currentStatus.IsFinished(); !exists || finished {
 
+		// exception:
 		// we're just moving one finished type to another; no need to re-enqueue
 		if finished && to.IsFinished() {
 			q.statusMap[jobID] = to
@@ -216,7 +219,7 @@ func (q *JobQueue) TransitionAny(jobID string, to types.JobStatus, createFn func
 		}
 
 		if finished {
-			level.Debug(q.logger).Log("msg", "ignoring transition for completed job; will recreate", "id", jobID, "from", currentStatus, "to", to)
+			level.Debug(q.logger).Log("msg", "creating a copy of already-completed job", "id", jobID, "from", currentStatus, "to", to)
 		}
 
 		job, err := createFn()
@@ -224,6 +227,7 @@ func (q *JobQueue) TransitionAny(jobID string, to types.JobStatus, createFn func
 			return types.JobStatusUnknown, false, fmt.Errorf("failed to create job %s: %w", jobID, err)
 		}
 
+		// temporarily mark as pending so we can transition it to the target state
 		q.statusMap[jobID] = types.JobStatusPending
 		q.pending.Push(job)
 		q.metrics.pending.Inc()
@@ -270,6 +274,7 @@ func (q *JobQueue) transitionLockLess(jobID string, to types.JobStatus) (bool, e
 	// Add to new state
 	job.Status = to
 	job.UpdateTime = time.Now()
+	q.statusMap[jobID] = to
 
 	switch to {
 	case types.JobStatusPending:
@@ -282,11 +287,11 @@ func (q *JobQueue) transitionLockLess(jobID string, to types.JobStatus) (bool, e
 	case types.JobStatusComplete, types.JobStatusFailed, types.JobStatusExpired:
 		q.completed.Push(job)
 		q.metrics.completed.WithLabelValues(to.String()).Inc()
+		delete(q.statusMap, jobID) // remove from status map so we don't grow indefinitely
 	default:
 		return false, fmt.Errorf("invalid target state: %s", to)
 	}
 
-	q.statusMap[jobID] = to
 	level.Debug(q.logger).Log("msg", "transitioned job state", "id", jobID, "from", from, "to", to)
 	return true, nil
 }
