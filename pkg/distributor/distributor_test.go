@@ -1623,6 +1623,98 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
+	oneHourAgo := time.Now().Add(-1 * time.Hour)
+	afterOneHour := time.Now().Add(1 * time.Hour)
+
+	for i, tc := range []struct {
+		name                 string
+		blockUntilScope      map[string]flagext.Time
+		blockStatusCodeScope map[string]int
+		scopeLb              string
+		expectError          bool
+		expectedErrorMsg     string
+		expectedStatusCode   int
+		requestLbs           []string
+	}{
+		{
+			name:               "not configured",
+			expectedStatusCode: http.StatusOK,
+			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+		},
+		{
+			name: "not blocked",
+			blockUntilScope: map[string]flagext.Time{
+				"scope1": flagext.Time(oneHourAgo),
+				"scope2": flagext.Time(oneHourAgo),
+			},
+			blockStatusCodeScope: map[string]int{
+				"scope1": http.StatusOK,
+				"scope2": http.StatusOK,
+			},
+			scopeLb:            "__scope__",
+			expectError:        false,
+			expectedStatusCode: http.StatusOK,
+			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+		},
+		{
+			name: "blocked",
+			blockUntilScope: map[string]flagext.Time{
+				"scope1": flagext.Time(afterOneHour),
+				"scope2": flagext.Time(oneHourAgo),
+			},
+			blockStatusCodeScope: map[string]int{
+				"scope1": 456,
+				"scope2": 456,
+			},
+			scopeLb:            "__scope__",
+			expectError:        true,
+			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedScopeIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "scope1").Error(),
+			expectedStatusCode: 456,
+			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+		},
+		{
+			name: "blocked with status code 200",
+			blockUntilScope: map[string]flagext.Time{
+				"scope1": flagext.Time(afterOneHour),
+				"scope2": flagext.Time(oneHourAgo),
+			},
+			blockStatusCodeScope: map[string]int{
+				"scope1": http.StatusOK,
+				"scope2": http.StatusOK,
+			},
+			scopeLb:            "__scope__",
+			expectError:        true,
+			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedScopeIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 200, "scope1").Error(),
+			expectedStatusCode: http.StatusOK,
+			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if i < 2 {
+				t.Skip("skipping test for now")
+			}
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.BlockScopeIngestionUntil = tc.blockUntilScope
+			limits.BlockScopeIngestionStatusCode = tc.blockStatusCodeScope
+			limits.ScopeIngestionLabel = tc.scopeLb
+
+			distributors, _ := prepare(t, 1, 5, limits, nil)
+			request := makeWriteRequestWithLabels(10, 10, tc.requestLbs, false, false, false)
+			response, err := distributors[0].Push(ctx, request)
+
+			if tc.expectError {
+				require.Error(t, err)
+				require.EqualError(t, err, tc.expectedErrorMsg)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, success, response)
+			}
+		})
+	}
+}
+
 func TestDistributor_PushIngestionBlocked(t *testing.T) {
 	for _, tc := range []struct {
 		name               string

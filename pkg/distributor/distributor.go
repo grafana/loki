@@ -534,9 +534,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			// if the given stream is blocked due to its scope ingestion, we skip it.
-			blocked, statusCode, ingestionScope := d.streamIsBlocked(lbs, validationContext, tenantID, now)
+			blocked, statusCode, ingestionScope, until := d.streamIsBlocked(lbs, validationContext, tenantID, now)
 			if blocked {
-				err := fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, now.Format(time.RFC3339), statusCode, ingestionScope)
+				err := fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, until.Format(time.RFC3339), statusCode, ingestionScope)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.BlockedScopeIngestion, tenantID).Add(float64(len(stream.Entries)))
@@ -777,26 +777,26 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) 
 }
 
 // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
-func (d *Distributor) streamIsBlocked(lbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string) {
+func (d *Distributor) streamIsBlocked(lbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string, time.Time) {
 	scopeIngestionLb := d.validator.Limits.ScopeIngestionLabel(tenantID)
 	if scopeIngestionLb == "" {
 		// not configured.
-		return false, http.StatusOK, ""
+		return false, 0, "", time.Time{}
 	}
 
 	scope := lbs.Get(scopeIngestionLb)
 	if scope == "" {
 		// stream isn't telling its scope, so we default to not blocking it.
 		// if tenant prefer blocking these streams, they should use the enforced labels feature.
-		return false, http.StatusOK, ""
+		return false, 0, "", time.Time{}
 	}
 
-	blockIngestion, _, statusCode := d.validator.ShouldBlockScopeIngestion(validationCtx, scope, now)
+	blockIngestion, until, statusCode := d.validator.ShouldBlockScopeIngestion(validationCtx, scope, now)
 	if blockIngestion {
-		return true, statusCode, scope
+		return true, statusCode, scope, until
 	}
 
-	return false, http.StatusOK, scope
+	return false, 0, scope, time.Time{}
 }
 
 func (d *Distributor) trackDiscardedData(
