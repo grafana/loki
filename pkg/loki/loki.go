@@ -881,6 +881,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
 	t.dataObjConsumer = consumer.New(
 		t.Cfg.KafkaConfig,
 		// todo
