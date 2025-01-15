@@ -226,7 +226,8 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 		{
@@ -245,7 +246,8 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 		{
@@ -269,6 +271,7 @@ retention_stream:
 				// Rest from new defaults
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 				OTLPConfig:              defaultOTLPConfig,
+				EnforcedLabels:          []string{},
 			},
 		},
 		{
@@ -290,7 +293,8 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 		{
@@ -313,7 +317,8 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 	} {

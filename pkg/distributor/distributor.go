@@ -523,6 +523,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
+			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(discardedBytes))
+				continue
+			}
+
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
@@ -731,6 +741,27 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// missingEnforcedLabels returns true if the stream is missing any of the required labels.
+//
+// It also returns the first label that is missing if any (for the case of multiple labels missing).
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
+	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
+	if len(requiredLbs) == 0 {
+		// no enforced labels configured.
+		return false, []string{}
+	}
+
+	missingLbs := []string{}
+
+	for _, lb := range requiredLbs {
+		if !lbs.Has(lb) {
+			missingLbs = append(missingLbs, lb)
+		}
+	}
+
+	return len(missingLbs) > 0, missingLbs
 }
 
 func (d *Distributor) trackDiscardedData(

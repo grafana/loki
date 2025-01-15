@@ -34,6 +34,9 @@ message ColumnInfo {
 
   // Statistics for the column.
   Statistics statistics = 9;
+
+  // Total number of non-NULL values in the entire column.
+  uint32 values_count = 10;
 }
 
 // ValueType represents the valid types that values within a column can have.
@@ -103,6 +106,9 @@ message PageInfo {
 
   // Optional statistics for the page.
   Statistics statistics = 8;
+
+  // Total number of non-NULL values in the page.
+  uint32 values_count = 9;
 }
 
 // EncodingType represents the valid types that a sequence of values which a
