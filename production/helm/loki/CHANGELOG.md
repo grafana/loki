@@ -16,6 +16,10 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Removed minio-mc init container from admin-api.
 - [BUGFIX] Fixed admin-api and gateway deployment container args.
 
+## 6.24.1
+
+- [ENHANCEMENT] Fix Inconsistency between sidecar.securityContext and loki.containerSecurityContext
+
 ## 6.25.0
 
 - [FEATURE] Added support for Overrides Exporter
@@ -170,7 +174,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
-
 
 ## 6.4.2
 

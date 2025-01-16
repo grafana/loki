@@ -10,6 +10,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -29,6 +31,7 @@ type Record struct {
 
 // Logs accumulate a set of [Record]s within a data object.
 type Logs struct {
+	metrics  *Metrics
 	rows     int
 	pageSize int
 
@@ -43,7 +46,11 @@ type Logs struct {
 
 // Nwe creates a new Logs section. The pageSize argument specifies how large
 // pages should be.
-func New(pageSize int) *Logs {
+func New(metrics *Metrics, pageSize int) *Logs {
+	if metrics == nil {
+		metrics = NewMetrics()
+	}
+
 	// We control the Value/Encoding tuple so creating column builders can't
 	// fail; if it does, we're left in an unrecoverable state where nothing can
 	// be encoded properly so we panic.
@@ -78,6 +85,7 @@ func New(pageSize int) *Logs {
 	}
 
 	return &Logs{
+		metrics:  metrics,
 		pageSize: pageSize,
 
 		streamIDs:  streamIDs,
@@ -91,6 +99,8 @@ func New(pageSize int) *Logs {
 
 // Append adds a new entry to the set of Logs.
 func (l *Logs) Append(entry Record) {
+	l.metrics.appendsTotal.Inc()
+
 	// Sort metadata to ensure consistent encoding. Metadata is sorted by key.
 	// While keys must be unique, we sort by value if two keys match; this
 	// ensures that the same value always gets encoded for duplicate keys.
@@ -115,6 +125,7 @@ func (l *Logs) Append(entry Record) {
 	}
 
 	l.rows++
+	l.metrics.recordCount.Inc()
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
@@ -163,6 +174,9 @@ func (l *Logs) getMetadataColumn(key string) *dataset.ColumnBuilder {
 //
 // [Logs.Reset] is invoked after encoding, even if encoding fails.
 func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
+	timer := prometheus.NewTimer(l.metrics.encodeSeconds)
+	defer timer.ObserveDuration()
+
 	defer l.Reset()
 
 	// TODO(rfratto): handle one section becoming too large. This can happen when
@@ -294,6 +308,7 @@ func encodeColumn(enc *encoding.LogsEncoder, columnType logsmd.ColumnType, colum
 // Reset resets all state, allowing Logs to be reused.
 func (l *Logs) Reset() {
 	l.rows = 0
+	l.metrics.recordCount.Set(0)
 
 	l.streamIDs.Reset()
 	l.timestamps.Reset()

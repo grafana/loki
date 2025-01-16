@@ -10941,7 +10941,15 @@ null
 			<td>object</td>
 			<td>The SecurityContext for the sidecar.</td>
 			<td><pre lang="json">
-{}
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true
+}
 </pre>
 </td>
 		</tr>
