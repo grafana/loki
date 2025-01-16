@@ -47,6 +47,5 @@ func (cfg *Config) Validate() error {
 }
 
 type Limits interface {
-	CacheLimits
 	BloomGatewayEnabled(tenantID string) bool
 }
