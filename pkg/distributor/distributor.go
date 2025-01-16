@@ -797,14 +797,14 @@ func (d *Distributor) streamIsBlocked(streamLbs labels.Labels, validationCtx val
 			}
 		}
 
-		return d.applyPolicy(policy, streamLbs, validationCtx, now)
+		return d.applyPolicy(policy, validationCtx, now)
 	}
 
 	// didn't match any existing policy.
 	return false, 0, "", time.Time{}
 }
 
-func (d *Distributor) applyPolicy(policy string, lbs labels.Labels, validationCtx validationContext, now time.Time) (bool, int, string, time.Time) {
+func (d *Distributor) applyPolicy(policy string, validationCtx validationContext, now time.Time) (bool, int, string, time.Time) {
 	blockIngestion, until, statusCode := d.validator.ShouldBlockPolicyIngestion(validationCtx, policy, now)
 	if blockIngestion {
 		return true, statusCode, policy, until

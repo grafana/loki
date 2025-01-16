@@ -1627,7 +1627,7 @@ func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 	oneHourAgo := time.Now().Add(-1 * time.Hour)
 	afterOneHour := time.Now().Add(1 * time.Hour)
 
-	for i, tc := range []struct {
+	for _, tc := range []struct {
 		name                 string
 		blockUntilPolicy     map[string]flagext.Time
 		blockStatusCodeScope map[string]int
@@ -1703,9 +1703,6 @@ func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if i < 2 {
-				t.Skip("skipping test for now")
-			}
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 			limits.BlockPolicyIngestionUntil = tc.blockUntilPolicy
