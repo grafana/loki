@@ -194,6 +194,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.KafkaConfig.RegisterFlags(f)
 	c.BlockBuilder.RegisterFlags(f)
 	c.BlockScheduler.RegisterFlags(f)
+	c.IngestLimits.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
