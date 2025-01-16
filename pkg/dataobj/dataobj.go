@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 
 	"github.com/grafana/dskit/flagext"
@@ -28,11 +29,11 @@ var ErrBufferFull = errors.New("buffer full")
 type BuilderConfig struct {
 	// SHAPrefixSize sets the number of bytes of the SHA filename to use as a
 	// folder path.
-	SHAPrefixSize int
+	SHAPrefixSize int `yaml:"sha_prefix_size"`
 
 	// TargetPageSize configures a target size for encoded pages within the data
 	// object. TargetPageSize accounts for encoding, but not for compression.
-	TargetPageSize flagext.Bytes
+	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
 
 	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
 	// metadata payloads can't be split and must be downloaded in a single
@@ -43,10 +44,20 @@ type BuilderConfig struct {
 	// combinations), so the option is omitted for now.
 
 	// TargetObjectSize configures a target size for data objects.
-	TargetObjectSize flagext.Bytes
+	TargetObjectSize flagext.Bytes `yaml:"target_object_size"`
 }
 
-func (cfg *BuilderConfig) validate() error {
+// RegisterFlagsWithPrefix registers flags with the given prefix.
+func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.IntVar(&cfg.SHAPrefixSize, prefix+"sha-prefix-size", 2, "The size of the SHA prefix to use for the data object builder.")
+	_ = cfg.TargetPageSize.Set("2MB")
+	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
+	_ = cfg.TargetObjectSize.Set("1GB")
+	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
+}
+
+// Validate validates the BuilderConfig.
+func (cfg *BuilderConfig) Validate() error {
 	var errs []error
 
 	if cfg.SHAPrefixSize <= 0 {
@@ -88,7 +99,7 @@ type Builder struct {
 //
 // NewBuilder returns an error if BuilderConfig is invalid.
 func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Builder, error) {
-	if err := cfg.validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
