@@ -3,7 +3,7 @@
   then 'container=~"loki|ingester|partition-ingester", pod=~"(ingester.*|partition-ingester.*|loki-single-binary)"'
   else 'container=~"ingester|partition-ingester"',
   local ingester_job_matcher = if $._config.meta_monitoring.enabled
-  then '(ingester.*|partition-ingester.*|loki-single-binary)'
+  then '%s(ingester.*|partition-ingester.*|loki-single-binary)' % $._config.meta_monitoring.job_prefix
   else '(ingester.*|partition-ingester.*)',
 
   grafanaDashboards+:: if $._config.ssd.enabled then {} else {

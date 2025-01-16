@@ -80,7 +80,10 @@
 
     // Meta-monitoring related configuration
     meta_monitoring: {
-      enabled: false,
+      enabled: true,
+
+      // The prefix used to match the job labels, i.e. job="logs/loki-ingester"
+      job_prefix: '((loki|enterprise-logs)-)?',
     },
   },
 }
