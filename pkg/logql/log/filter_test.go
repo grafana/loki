@@ -246,8 +246,8 @@ var cases = []struct {
 	},
 	{
 		name:     "short_line_with_match",
-		line:     "this is a short log line",
-		substr:   "SHORT",
+		line:     "this is a shorT log line",
+		substr:   "short",
 		expected: true,
 	},
 	{
@@ -264,8 +264,8 @@ var cases = []struct {
 	},
 	{
 		name:     "long_line_match_middle",
-		line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, levels and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
-		substr:   "LEVELS",
+		line:     "2023-06-14T12:34:56.789Z INFO  [service_name] This is a much longer log line with timestamps, leVelS and other information that typically appears in production logs. RequestID=123456 UserID=789 Action=GetUser Duration=123ms Status=200",
+		substr:   "levels",
 		expected: true,
 	},
 	{
@@ -282,8 +282,8 @@ var cases = []struct {
 	},
 	{
 		name:     "short_unicode_line_with_match",
-		line:     "🌟 Unicode line with emojis 🎉 and special chars ñ é ß",
-		substr:   "EMOJIS",
+		line:     "🌟 Unicode line with eMojiS 🎉 and special chars ñ é ß",
+		substr:   "emojis",
 		expected: true,
 	},
 	{
@@ -301,13 +301,61 @@ var cases = []struct {
 	{
 		name:     "long_unicode_line_match_middle",
 		line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
-		substr:   "UNICODE",
+		substr:   "unicode",
 		expected: true,
 	},
 	{
 		name:     "long_unicode_line_match_end",
 		line:     "2023-06-14T12:34:56.789Z 🚀 [микросервис] Длинное сообщение с Unicode символами 统一码 が大好き! エラー分析: システムは正常に動作しています。RequestID=123456 状態=良好 Résultat=Succès ß=γ 🎯 τέλος",
 		substr:   "τέλος",
+		expected: true,
+	},
+	{
+		name:     "utf8_case_insensitive_match_middle",
+		line:     "ΣΑΣ ΓΕΙΑ ΚΟΣΜΕ", // "WORLD HELLO WORLD" in Greek uppercase
+		substr:   "γεια",           // "hello" in Greek lowercase
+		expected: true,
+	},
+	{
+		name:     "utf8_case_insensitive_no_match",
+		line:     "ΣΑΣ ΚΟΣΜΕ", // "WORLD WORLD" in Greek uppercase
+		substr:   "γεια",      // "hello" in Greek lowercase
+		expected: false,
+	},
+	{
+		name:     "empty_substr",
+		line:     "any line",
+		substr:   "",
+		expected: true,
+	},
+	{
+		name:     "empty_line",
+		line:     "",
+		substr:   "something",
+		expected: false,
+	},
+	{
+		name:     "both_empty",
+		line:     "",
+		substr:   "",
+		expected: true,
+	},
+	{
+		name:     "substr_longer_than_line",
+		line:     "short",
+		substr:   "longer than line",
+		expected: false,
+	},
+	{
+		name:     "invalid_utf8_in_line",
+		line:     string([]byte{0xFF, 0xFE, 0xFD}),
+		substr:   "test",
+		expected: false,
+	},
+	{
+		name:     "partial_utf8_match",
+		line:     "Hello 世界", // "Hello World" with CJK characters
+		substr:   "世",        // Just "World"
 		expected: true,
 	},
 }
@@ -318,7 +366,7 @@ func Test_containsLower(t *testing.T) {
 			line := []byte(c.line)
 			substr := []byte(c.substr)
 			m := containsLower(line, substr)
-			require.Equal(t, c.expected, m)
+			require.Equal(t, c.expected, m, "line: %s substr: %s", c.line, c.substr)
 		})
 	}
 }
