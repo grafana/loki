@@ -36,6 +36,13 @@ The WAL also includes a backpressure mechanism to allow a large WAL to be replay
 
 ### Metrics
 
+The following metrics are available for monitoring the WAL:
+
+* `loki_ingester_wal_corruptions_total`: Total number of WAL corruptions encountered
+* `loki_ingester_wal_disk_full_failures_total`: Total number of disk full failures
+* `loki_ingester_wal_records_logged`: Counter for WAL records logged
+* `loki_ingester_wal_logged_bytes_total`: Total bytes written to WAL
+
 ## Changes to deployment
 
 1. Since ingesters need to have the same persistent volume across restarts/rollout, all the ingesters should be run on [StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) with fixed volumes.
@@ -121,22 +128,3 @@ By following the above steps, you can ensure a smooth scaling down process for t
 * When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
 * 2 ingesters should not be working with the same volume/directory for the WAL.
 * A Rollout should bring down an ingester completely and then start the new ingester, not the other way around.
-
-### Metrics
-
-The following metrics are available for monitoring the WAL:
-
-* `loki_ingester_wal_corruptions_total`: Total number of WAL corruptions encountered
-* `loki_ingester_wal_disk_full_failures_total`: Total number of disk full failures
-* `loki_ingester_wal_records_logged`: Counter for WAL records logged
-* `loki_ingester_wal_logged_bytes_total`: Total bytes written to WAL
-
-### Configuration
-
-The WAL can be configured using the following flags:
-
-* `--ingester.wal-enabled`: Enable writing of ingested data into WAL (default: true)
-* `--ingester.wal-dir`: Directory where the WAL data is stored and/or recovered from (default: "wal")
-* `--ingester.checkpoint-duration`: Interval at which checkpoints should be created (default: 5m)
-* `--ingester.flush-on-shutdown`: When WAL is enabled, should chunks be flushed to long-term storage on shutdown (default: false)
-* `--ingester.wal-replay-memory-ceiling`: Maximum memory size the WAL may use during replay (default: 4GB). After hitting this, it will flush data to storage before continuing.
