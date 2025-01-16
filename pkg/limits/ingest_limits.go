@@ -2,7 +2,6 @@ package limits
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // IngestLimits is a service that manages stream metadata limits.
@@ -183,72 +183,99 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	return failureCase
 }
 
-// GetLimits implements the IngestLimits service. It returns the current ingestion limits
-// for a given tenant, including stream count and stream rates.
-func (s *IngestLimits) GetLimits(_ context.Context, req *logproto.GetLimitsRequest) (*logproto.GetLimitsResponse, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	// Get streams for the requested tenant
-	streams, ok := s.metadata[req.Tenant]
-	if !ok {
-		return &logproto.GetLimitsResponse{
-			Limits: &logproto.IngestionLimits{
-				StreamCount: 0,
-				StreamRates: nil,
-			},
-		}, nil
-	}
-
-	streamCount := uint64(0)
-	streamRates := make([]*logproto.StreamRate, 0)
-
-	// Collect all stream rates for the tenant
-	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-	for hash, lastSeen := range streams {
-		if lastSeen < cutoff {
-			continue // Skip expired entries
-		}
-		streamCount++
-		streamRates = append(streamRates, &logproto.StreamRate{
-			StreamHash: hash,
-			Tenant:     req.Tenant,
-		})
-	}
-
-	return &logproto.GetLimitsResponse{
-		Limits: &logproto.IngestionLimits{
-			StreamCount: streamCount,
-			StreamRates: streamRates,
-		},
-	}, nil
-}
-
 // ServeHTTP implements the http.Handler interface.
-// It returns the current stream counts per tenant as a JSON response.
+// It returns the current stream counts and status per tenant as a JSON response.
 func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	// Calculate stream counts per tenant
-	counts := make(map[string]int)
+	// Get the cutoff time for active streams
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
+	// Calculate stream counts and status per tenant
+	type tenantLimits struct {
+		Tenant          string   `json:"tenant"`
+		ActiveStreams   uint64   `json:"activeStreams"`
+		RecordedStreams []uint64 `json:"recordedStreams"`
+	}
+
+	response := make(map[string]tenantLimits)
 	for tenant, streams := range s.metadata {
-		activeStreams := 0
-		for _, lastSeen := range streams {
-			if lastSeen >= cutoff {
+		var activeStreams uint64
+		recordedStreams := make([]uint64, 0, len(streams))
+
+		// Count active streams and record their status
+		for hash, lastSeen := range streams {
+			isActive := lastSeen >= cutoff
+			if isActive {
 				activeStreams++
 			}
+			recordedStreams = append(recordedStreams, hash)
 		}
-		if activeStreams > 0 {
-			counts[tenant] = activeStreams
+
+		if activeStreams > 0 || len(recordedStreams) > 0 {
+			response[tenant] = tenantLimits{
+				Tenant:          tenant,
+				ActiveStreams:   activeStreams,
+				RecordedStreams: recordedStreams,
+			}
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(counts); err != nil {
-		http.Error(w, fmt.Sprintf("error encoding stream counts: %v", err), http.StatusInternalServerError)
-		return
+	util.WriteJSONResponse(w, response)
+}
+
+// GetStreamLimits implements the logproto.IngestLimitsServer interface.
+// It returns the number of active streams for a tenant and the status of requested streams.
+func (s *IngestLimits) GetStreamLimits(_ context.Context, req *logproto.GetStreamLimitsRequest) (*logproto.GetStreamLimitsResponse, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	// Get the cutoff time for active streams
+	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+
+	// Get the tenant's streams
+	streams := s.metadata[req.Tenant]
+	if streams == nil {
+		// If tenant not found, return zero active streams and all streams as inactive
+		recordedStreams := make([]*logproto.RecordedStreams, len(req.StreamHash))
+		for i, hash := range req.StreamHash {
+			recordedStreams[i] = &logproto.RecordedStreams{
+				StreamHash: hash,
+				Active:     false,
+			}
+		}
+		return &logproto.GetStreamLimitsResponse{
+			Tenant:          req.Tenant,
+			ActiveStreams:   0,
+			RecordedStreams: recordedStreams,
+		}, nil
 	}
+
+	// Count total active streams for the tenant
+	var activeStreams uint64
+	for _, lastSeen := range streams {
+		if lastSeen >= cutoff {
+			activeStreams++
+		}
+	}
+
+	// Check each requested stream hash
+	recordedStreams := make([]*logproto.RecordedStreams, len(req.StreamHash))
+	for i, hash := range req.StreamHash {
+		lastSeen, exists := streams[hash]
+		recordedStreams[i] = &logproto.RecordedStreams{
+			StreamHash: hash,
+			Active:     false,
+		}
+		if exists && lastSeen >= cutoff {
+			recordedStreams[i].Active = true
+		}
+	}
+
+	return &logproto.GetStreamLimitsResponse{
+		Tenant:          req.Tenant,
+		ActiveStreams:   activeStreams,
+		RecordedStreams: recordedStreams,
+	}, nil
 }
