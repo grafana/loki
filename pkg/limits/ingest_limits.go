@@ -225,9 +225,9 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	util.WriteJSONResponse(w, response)
 }
 
-// GetStreamLimits implements the logproto.IngestLimitsServer interface.
+// GetStreamUsage implements the logproto.IngestLimitsServer interface.
 // It returns the number of active streams for a tenant and the status of requested streams.
-func (s *IngestLimits) GetStreamLimits(_ context.Context, req *logproto.GetStreamLimitsRequest) (*logproto.GetStreamLimitsResponse, error) {
+func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStreamUsageRequest) (*logproto.GetStreamUsageResponse, error) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -245,7 +245,7 @@ func (s *IngestLimits) GetStreamLimits(_ context.Context, req *logproto.GetStrea
 				Active:     false,
 			}
 		}
-		return &logproto.GetStreamLimitsResponse{
+		return &logproto.GetStreamUsageResponse{
 			Tenant:          req.Tenant,
 			ActiveStreams:   0,
 			RecordedStreams: recordedStreams,
@@ -273,7 +273,7 @@ func (s *IngestLimits) GetStreamLimits(_ context.Context, req *logproto.GetStrea
 		}
 	}
 
-	return &logproto.GetStreamLimitsResponse{
+	return &logproto.GetStreamUsageResponse{
 		Tenant:          req.Tenant,
 		ActiveStreams:   activeStreams,
 		RecordedStreams: recordedStreams,

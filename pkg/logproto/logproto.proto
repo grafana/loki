@@ -84,15 +84,15 @@ message RejectedStream {
 }
 
 service IngestLimits {
-  rpc GetStreamLimits(GetStreamLimitsRequest) returns (GetStreamLimitsResponse) {}
+  rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
 }
 
-message GetStreamLimitsRequest {
+message GetStreamUsageRequest {
   string tenant = 1;
   repeated uint64 streamHash = 2;
 }
 
-message GetStreamLimitsResponse {
+message GetStreamUsageResponse {
   string tenant = 1;
   uint64 activeStreams = 2;
   repeated RecordedStreams recordedStreams = 3;
