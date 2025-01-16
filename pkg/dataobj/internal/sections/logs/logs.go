@@ -173,10 +173,9 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	// 2. Move some columns into an aggregated column which holds multiple label
 	//    keys and values.
 
-	// Create a sorted dataset for us to encode.
-	dset, err := l.sort()
+	dset, err := l.buildDataset()
 	if err != nil {
-		return fmt.Errorf("sorting logs: %w", err)
+		return fmt.Errorf("building dataset: %w", err)
 	}
 	cols, err := result.Collect(dset.ListColumns(context.Background())) // dset is in memory; "real" context not needed.
 	if err != nil {
@@ -194,7 +193,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	}()
 
 	// Encode our columns. The slice order here *must* match the order in
-	// [Logs.sort]!
+	// [Logs.buildDataset]!
 	{
 		errs := make([]error, 0, len(cols))
 		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, cols[0]))
@@ -211,7 +210,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	return logsEnc.Commit()
 }
 
-func (l *Logs) sort() (dataset.Dataset, error) {
+func (l *Logs) buildDataset() (dataset.Dataset, error) {
 	// Our columns are ordered as follows:
 	//
 	// 1. StreamID
@@ -242,9 +241,18 @@ func (l *Logs) sort() (dataset.Dataset, error) {
 	messages, _ := l.messages.Flush()
 	columns = append(columns, messages)
 
-	// dset is in memory, so we don't need a "real" context in dataset.Sort.
-	dset := dataset.FromMemory(columns)
-	return dataset.Sort(context.Background(), dset, []dataset.Column{streamID, timestamp}, l.pageSize)
+	// TODO(rfratto): We need to be able to sort the columns first by StreamID
+	// and then by timestamp, but as it is now this is way too slow; sorting a
+	// 20MB dataset took several minutes due to the number of page loads
+	// happening across streams.
+	//
+	// Sorting can be made more efficient by:
+	//
+	// 1. Separating streams into separate datasets while appending
+	// 2. Sorting each stream separately
+	// 3. Combining sorted streams into a single dataset, which will already be
+	//    sorted.
+	return dataset.FromMemory(columns), nil
 }
 
 func encodeColumn(enc *encoding.LogsEncoder, columnType logsmd.ColumnType, column dataset.Column) error {
