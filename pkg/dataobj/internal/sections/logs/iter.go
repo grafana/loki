@@ -1,8 +1,10 @@
 package logs
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/grafana/loki/pkg/push"
@@ -121,6 +123,16 @@ func decodeRecord(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error)
 			record.Line = columnValue.String()
 		}
 	}
+
+	// Metadata is originally sorted in received order; we sort it by key
+	// per-record since it might not be obvious why keys appear in a certain
+	// order.
+	slices.SortFunc(record.Metadata, func(a, b push.LabelAdapter) int {
+		if res := cmp.Compare(a.Name, b.Name); res != 0 {
+			return res
+		}
+		return cmp.Compare(a.Value, b.Value)
+	})
 
 	return record, nil
 }

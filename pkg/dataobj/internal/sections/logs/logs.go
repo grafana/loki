@@ -117,6 +117,21 @@ func (l *Logs) Append(entry Record) {
 	l.rows++
 }
 
+// EstimatedSize returns the estimated size of the Logs section in bytes.
+func (l *Logs) EstimatedSize() int {
+	var size int
+
+	size += l.streamIDs.EstimatedSize()
+	size += l.timestamps.EstimatedSize()
+	size += l.messages.EstimatedSize()
+
+	for _, md := range l.metadatas {
+		size += md.EstimatedSize()
+	}
+
+	return size
+}
+
 func (l *Logs) getMetadataColumn(key string) *dataset.ColumnBuilder {
 	idx, ok := l.metadataLookup[key]
 	if !ok {

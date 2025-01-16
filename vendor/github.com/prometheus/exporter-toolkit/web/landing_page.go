@@ -106,6 +106,10 @@ func NewLandingPage(c LandingConfig) (*LandingPageHandler, error) {
 }
 
 func (h *LandingPageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Add("Content-Type", "text/html; charset=UTF-8")
 	w.Write(h.landingPage)
 }
