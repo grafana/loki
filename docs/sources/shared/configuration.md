@@ -3941,20 +3941,17 @@ otlp_config:
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
 
-# Block ingestion until the given time for the given scope. The scope is the
-# value of the scope label in the log line. Experimental.
-[block_scope_ingestion_until: <map of string to Time>]
+# Block ingestion until the given time for the given policy. The policy is the
+# value of the policy label in the log line. Experimental.
+[block_policy_ingestion_until: <map of string to Time>]
 
-# HTTP status code to return when ingestion is blocked for the given scope.
+# HTTP status code to return when ingestion is blocked for the given policy.
 # Experimental.
-[block_scope_ingestion_status_code: <map of string to int>]
+[block_policy_ingestion_status_code: <map of string to int>]
 
-# Label to use for scope ingestion. This label will be used to identify the
-# scope of the ingestion. The block scope ingestion feature will look for this
-# label in the stream and block the ingestion based on the ingestion until time.
-# Experimental.
-# CLI flag: -limits.scope-ingestion-label
-[scope_ingestion_label: <string> | default = ""]
+# Map of policies to streams. Push streams that matches a policy selector will
+# be considered as belonging to that policy. Experimental.
+[policy_stream_mapping: <map of string to string>]
 
 # List of labels that must be present in the stream. If any of the labels are
 # missing, the stream will be discarded. This flag configures it globally for

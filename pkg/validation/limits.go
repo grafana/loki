@@ -228,12 +228,12 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil           dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode      int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	BlockScopeIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_scope_ingestion_until" json:"block_scope_ingestion_until" category:"experimental" doc:"description=Block ingestion until the given time for the given scope. The scope is the value of the scope label in the log line. Experimental."`
-	BlockScopeIngestionStatusCode map[string]int                `yaml:"block_scope_ingestion_status_code" json:"block_scope_ingestion_status_code" category:"experimental" doc:"description=HTTP status code to return when ingestion is blocked for the given scope. Experimental."`
-	ScopeIngestionLabel           string                        `yaml:"scope_ingestion_label" json:"scope_ingestion_label" category:"experimental"`
-	EnforcedLabels                []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	BlockIngestionUntil            dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionStatusCode       int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	BlockPolicyIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_policy_ingestion_until" json:"block_policy_ingestion_until" category:"experimental" doc:"description=Block ingestion until the given time for the given policy. The policy is the value of the policy label in the log line. Experimental."`
+	BlockPolicyIngestionStatusCode map[string]int                `yaml:"block_policy_ingestion_status_code" json:"block_policy_ingestion_status_code" category:"experimental" doc:"description=HTTP status code to return when ingestion is blocked for the given policy. Experimental."`
+	PolicyStreamMapping            map[string]string             `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to streams. Push streams that matches a policy selector will be considered as belonging to that policy. Experimental."`
+	EnforcedLabels                 []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -451,8 +451,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 	f.Var((*dskit_flagext.StringSlice)(&l.EnforcedLabels), "validation.enforced-labels", "List of labels that must be present in the stream. If any of the labels are missing, the stream will be discarded. This flag configures it globally for all tenants. Experimental.")
 
-	f.StringVar(&l.ScopeIngestionLabel, "limits.scope-ingestion-label", "", "Label to use for scope ingestion. This label will be used to identify the scope of the ingestion. The block scope ingestion feature will look for this label in the stream and block the ingestion based on the ingestion until time. Experimental.")
-
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
 	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
@@ -616,16 +614,16 @@ func (o *Overrides) IngestionBurstSizeBytes(userID string) int {
 	return int(o.getOverridesForUser(userID).IngestionBurstSizeMB * bytesInMB)
 }
 
-func (o *Overrides) BlockScopeIngestionUntil(userID string) map[string]dskit_flagext.Time {
-	return o.getOverridesForUser(userID).BlockScopeIngestionUntil
+func (o *Overrides) BlockPolicyIngestionUntil(userID string) map[string]dskit_flagext.Time {
+	return o.getOverridesForUser(userID).BlockPolicyIngestionUntil
 }
 
-func (o *Overrides) BlockScopeIngestionStatusCode(userID string) map[string]int {
-	return o.getOverridesForUser(userID).BlockScopeIngestionStatusCode
+func (o *Overrides) BlockPolicyIngestionStatusCode(userID string) map[string]int {
+	return o.getOverridesForUser(userID).BlockPolicyIngestionStatusCode
 }
 
-func (o *Overrides) ScopeIngestionLabel(userID string) string {
-	return o.getOverridesForUser(userID).ScopeIngestionLabel
+func (o *Overrides) PolicyStreamMapping(userID string) map[string]string {
+	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
 
 func (o *Overrides) EnforcedLabels(userID string) []string {

@@ -536,12 +536,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// if the given stream is blocked due to its scope ingestion, we skip it.
 			blocked, statusCode, ingestionScope, until := d.streamIsBlocked(lbs, validationContext, tenantID, now)
 			if blocked {
-				err := fmt.Errorf(validation.BlockedScopeIngestionErrorMsg, tenantID, until.Format(time.RFC3339), statusCode, ingestionScope)
+				err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), statusCode, ingestionScope)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.BlockedScopeIngestion, tenantID).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.BlockedScopeIngestion, tenantID).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(discardedBytes))
 				continue
 			}
 
@@ -778,25 +778,37 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) 
 
 // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
 func (d *Distributor) streamIsBlocked(lbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string, time.Time) {
-	scopeIngestionLb := d.validator.Limits.ScopeIngestionLabel(tenantID)
-	if scopeIngestionLb == "" {
+	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
+	if len(policyStreamMapping) == 0 {
 		// not configured.
 		return false, 0, "", time.Time{}
 	}
 
-	scope := lbs.Get(scopeIngestionLb)
-	if scope == "" {
-		// stream isn't telling its scope, so we default to not blocking it.
-		// if tenant prefer blocking these streams, they should use the enforced labels feature.
-		return false, 0, "", time.Time{}
+	for policy, streamSelector := range policyStreamMapping {
+		matchers, err := syntax.ParseMatchers(streamSelector, true)
+		if err != nil {
+			continue
+		}
+
+		for _, matcher := range matchers {
+			if !matcher.Matches(lbs.Get(matcher.Name)) {
+				continue
+			}
+		}
+
+		return d.applyPolicy(policy, lbs, validationCtx, now)
 	}
 
-	blockIngestion, until, statusCode := d.validator.ShouldBlockScopeIngestion(validationCtx, scope, now)
+	return false, 0, "", time.Time{}
+}
+
+func (d *Distributor) applyPolicy(policy string, lbs labels.Labels, validationCtx validationContext, now time.Time) (bool, int, string, time.Time) {
+	blockIngestion, until, statusCode := d.validator.ShouldBlockPolicyIngestion(validationCtx, policy, now)
 	if blockIngestion {
-		return true, statusCode, scope, until
+		return true, statusCode, policy, until
 	}
 
-	return false, 0, scope, time.Time{}
+	return false, 0, "", time.Time{}
 }
 
 func (d *Distributor) trackDiscardedData(

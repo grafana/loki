@@ -54,40 +54,40 @@ type validationContext struct {
 	maxStructuredMetadataSize  int
 	maxStructuredMetadataCount int
 
-	blockIngestionUntil           time.Time
-	blockIngestionStatusCode      int
-	blockScopeIngestionUntil      map[string]flagext.Time
-	blockScopeIngestionStatusCode map[string]int
-	scopeIngestionLabel           string
-	enforcedLabels                []string
+	blockIngestionUntil            time.Time
+	blockIngestionStatusCode       int
+	blockPolicyIngestionUntil      map[string]flagext.Time
+	blockPolicyIngestionStatusCode map[string]int
+	policyStreamMapping            map[string]string
+	enforcedLabels                 []string
 
 	userID string
 }
 
 func (v Validator) getValidationContextForTime(now time.Time, userID string) validationContext {
 	return validationContext{
-		userID:                        userID,
-		rejectOldSample:               v.RejectOldSamples(userID),
-		rejectOldSampleMaxAge:         now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
-		creationGracePeriod:           now.Add(v.CreationGracePeriod(userID)).UnixNano(),
-		maxLineSize:                   v.MaxLineSize(userID),
-		maxLineSizeTruncate:           v.MaxLineSizeTruncate(userID),
-		maxLabelNamesPerSeries:        v.MaxLabelNamesPerSeries(userID),
-		maxLabelNameLength:            v.MaxLabelNameLength(userID),
-		maxLabelValueLength:           v.MaxLabelValueLength(userID),
-		incrementDuplicateTimestamps:  v.IncrementDuplicateTimestamps(userID),
-		discoverServiceName:           v.DiscoverServiceName(userID),
-		discoverLogLevels:             v.DiscoverLogLevels(userID),
-		logLevelFields:                v.LogLevelFields(userID),
-		allowStructuredMetadata:       v.AllowStructuredMetadata(userID),
-		maxStructuredMetadataSize:     v.MaxStructuredMetadataSize(userID),
-		maxStructuredMetadataCount:    v.MaxStructuredMetadataCount(userID),
-		blockIngestionUntil:           v.BlockIngestionUntil(userID),
-		blockIngestionStatusCode:      v.BlockIngestionStatusCode(userID),
-		blockScopeIngestionUntil:      v.BlockScopeIngestionUntil(userID),
-		blockScopeIngestionStatusCode: v.BlockScopeIngestionStatusCode(userID),
-		scopeIngestionLabel:           v.ScopeIngestionLabel(userID),
-		enforcedLabels:                v.EnforcedLabels(userID),
+		userID:                         userID,
+		rejectOldSample:                v.RejectOldSamples(userID),
+		rejectOldSampleMaxAge:          now.Add(-v.RejectOldSamplesMaxAge(userID)).UnixNano(),
+		creationGracePeriod:            now.Add(v.CreationGracePeriod(userID)).UnixNano(),
+		maxLineSize:                    v.MaxLineSize(userID),
+		maxLineSizeTruncate:            v.MaxLineSizeTruncate(userID),
+		maxLabelNamesPerSeries:         v.MaxLabelNamesPerSeries(userID),
+		maxLabelNameLength:             v.MaxLabelNameLength(userID),
+		maxLabelValueLength:            v.MaxLabelValueLength(userID),
+		incrementDuplicateTimestamps:   v.IncrementDuplicateTimestamps(userID),
+		discoverServiceName:            v.DiscoverServiceName(userID),
+		discoverLogLevels:              v.DiscoverLogLevels(userID),
+		logLevelFields:                 v.LogLevelFields(userID),
+		allowStructuredMetadata:        v.AllowStructuredMetadata(userID),
+		maxStructuredMetadataSize:      v.MaxStructuredMetadataSize(userID),
+		maxStructuredMetadataCount:     v.MaxStructuredMetadataCount(userID),
+		blockIngestionUntil:            v.BlockIngestionUntil(userID),
+		blockIngestionStatusCode:       v.BlockIngestionStatusCode(userID),
+		blockPolicyIngestionUntil:      v.BlockPolicyIngestionUntil(userID),
+		blockPolicyIngestionStatusCode: v.BlockPolicyIngestionStatusCode(userID),
+		policyStreamMapping:            v.PolicyStreamMapping(userID),
+		enforcedLabels:                 v.EnforcedLabels(userID),
 	}
 }
 
@@ -216,13 +216,13 @@ func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (b
 	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
 }
 
-func (v Validator) ShouldBlockScopeIngestion(ctx validationContext, scope string, now time.Time) (bool, time.Time, int) {
-	ts := time.Time(ctx.blockScopeIngestionUntil[scope])
+func (v Validator) ShouldBlockPolicyIngestion(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
+	ts := time.Time(ctx.blockPolicyIngestionUntil[policy])
 	if ts.IsZero() {
 		return false, time.Time{}, 0
 	}
 
-	return now.Before(ts), ts, ctx.blockScopeIngestionStatusCode[scope]
+	return now.Before(ts), ts, ctx.blockPolicyIngestionStatusCode[policy]
 }
 
 func updateMetrics(reason, userID string, stream logproto.Stream) {

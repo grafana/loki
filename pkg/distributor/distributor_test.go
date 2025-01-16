@@ -1669,7 +1669,7 @@ func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
 			},
 			scopeLb:            "__scope__",
 			expectError:        true,
-			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedScopeIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "scope1").Error(),
+			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "scope1").Error(),
 			expectedStatusCode: 456,
 			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
 		},
@@ -1685,7 +1685,7 @@ func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
 			},
 			scopeLb:            "__scope__",
 			expectError:        true,
-			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedScopeIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 200, "scope1").Error(),
+			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 200, "scope1").Error(),
 			expectedStatusCode: http.StatusOK,
 			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
 		},
@@ -1696,9 +1696,8 @@ func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
 			}
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.BlockScopeIngestionUntil = tc.blockUntilScope
-			limits.BlockScopeIngestionStatusCode = tc.blockStatusCodeScope
-			limits.ScopeIngestionLabel = tc.scopeLb
+			limits.BlockPolicyIngestionUntil = tc.blockUntilScope
+			limits.BlockPolicyIngestionStatusCode = tc.blockStatusCodeScope
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 			request := makeWriteRequestWithLabels(10, 10, tc.requestLbs, false, false, false)
