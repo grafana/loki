@@ -2,7 +2,6 @@ package limits
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 // IngestLimits is a service that manages stream metadata limits.
@@ -193,20 +193,16 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
 	// Calculate stream counts and status per tenant
-	type recordedStream struct {
-		StreamHash uint64 `json:"streamHash"`
-		Active     bool   `json:"active"`
-	}
 	type tenantLimits struct {
-		Tenant          string           `json:"tenant"`
-		ActiveStreams   uint64           `json:"activeStreams"`
-		RecordedStreams []recordedStream `json:"recordedStreams"`
+		Tenant          string   `json:"tenant"`
+		ActiveStreams   uint64   `json:"activeStreams"`
+		RecordedStreams []uint64 `json:"recordedStreams"`
 	}
 
 	response := make(map[string]tenantLimits)
 	for tenant, streams := range s.metadata {
 		var activeStreams uint64
-		recordedStreams := make([]recordedStream, 0, len(streams))
+		recordedStreams := make([]uint64, 0, len(streams))
 
 		// Count active streams and record their status
 		for hash, lastSeen := range streams {
@@ -214,10 +210,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 			if isActive {
 				activeStreams++
 			}
-			recordedStreams = append(recordedStreams, recordedStream{
-				StreamHash: hash,
-				Active:     isActive,
-			})
+			recordedStreams = append(recordedStreams, hash)
 		}
 
 		if activeStreams > 0 || len(recordedStreams) > 0 {
@@ -229,11 +222,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, fmt.Sprintf("error encoding stream limits: %v", err), http.StatusInternalServerError)
-		return
-	}
+	util.WriteJSONResponse(w, response)
 }
 
 // GetStreamLimits implements the logproto.IngestLimitsServer interface.
