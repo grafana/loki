@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
 
@@ -33,9 +34,13 @@ type Stream struct {
 
 // Streams tracks information about streams in a data object.
 type Streams struct {
+	metrics  *Metrics
 	pageSize int
 	lastID   atomic.Int64
 	lookup   map[uint64][]*Stream
+
+	globalMinTimestamp time.Time // Minimum timestamp across all streams, used for metrics.
+	globalMaxTimestamp time.Time // Maximum timestamp across all streams, used for metrics.
 
 	// orderedStreams is used for consistently iterating over the list of
 	// streams. It contains streamed added in append order.
@@ -44,8 +49,12 @@ type Streams struct {
 
 // New creates a new Streams section. The pageSize argument specifies how large
 // pages should be.
-func New(pageSize int) *Streams {
+func New(metrics *Metrics, pageSize int) *Streams {
+	if metrics == nil {
+		metrics = NewMetrics()
+	}
 	return &Streams{
+		metrics:  metrics,
 		pageSize: pageSize,
 		lookup:   make(map[uint64][]*Stream),
 	}
@@ -58,6 +67,7 @@ func New(pageSize int) *Streams {
 // The stream ID of the recorded stream is returned.
 func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) int64 {
 	ts = ts.UTC()
+	s.observeRecord(ts)
 
 	stream := s.getOrAddStream(streamLabels)
 	if stream.MinTimestamp.IsZero() || ts.Before(stream.MinTimestamp) {
@@ -68,6 +78,19 @@ func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) int64 {
 	}
 	stream.Rows++
 	return stream.ID
+}
+
+func (s *Streams) observeRecord(ts time.Time) {
+	s.metrics.recordsTotal.Inc()
+
+	if ts.Before(s.globalMinTimestamp) || s.globalMinTimestamp.IsZero() {
+		s.globalMinTimestamp = ts
+		s.metrics.minTimestamp.Set(float64(ts.Unix()))
+	}
+	if ts.After(s.globalMaxTimestamp) || s.globalMaxTimestamp.IsZero() {
+		s.globalMaxTimestamp = ts
+		s.metrics.maxTimestamp.Set(float64(ts.Unix()))
+	}
 }
 
 // EstimatedSize returns the estimated size of the Streams section in bytes.
@@ -131,6 +154,7 @@ func (s *Streams) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	newStream := &Stream{ID: s.lastID.Add(1), Labels: streamLabels}
 	s.lookup[hash] = append(s.lookup[hash], newStream)
 	s.ordered = append(s.ordered, newStream)
+	s.metrics.streamCount.Inc()
 	return newStream
 }
 
@@ -159,6 +183,8 @@ func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
 //
 // [Streams.Reset] is invoked after encoding, even if encoding fails.
 func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
+	timer := prometheus.NewTimer(s.metrics.encodeSeconds)
+	defer timer.ObserveDuration()
 	defer s.Reset()
 
 	// TODO(rfratto): handle one section becoming too large. This can happen when
@@ -307,4 +333,10 @@ func (s *Streams) Reset() {
 	s.lastID.Store(0)
 	clear(s.lookup)
 	s.ordered = s.ordered[:0]
+	s.globalMinTimestamp = time.Time{}
+	s.globalMaxTimestamp = time.Time{}
+
+	s.metrics.streamCount.Set(0)
+	s.metrics.minTimestamp.Set(0)
+	s.metrics.maxTimestamp.Set(0)
 }

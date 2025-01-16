@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
 
 	"github.com/thanos-io/objstore"
 
@@ -23,19 +22,15 @@ import (
 // At the moment, reader is only used for tests.
 type reader struct {
 	bucket objstore.Bucket
-	prefix string
 }
 
-func newReader(bucket objstore.Bucket, prefix string) *reader {
-	return &reader{
-		bucket: bucket,
-		prefix: prefix,
-	}
+func newReader(bucket objstore.Bucket) *reader {
+	return &reader{bucket: bucket}
 }
 
 // Objects returns an iterator over all data objects for the provided tenant.
 func (r *reader) Objects(ctx context.Context, tenant string) result.Seq[string] {
-	tenantPath := path.Join(r.prefix, fmt.Sprintf("tenant-%s/objects/", tenant))
+	tenantPath := fmt.Sprintf("tenant-%s/objects/", tenant)
 
 	return result.Iter(func(yield func(string) bool) error {
 		errIterationStopped := errors.New("iteration stopped")

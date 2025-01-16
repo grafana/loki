@@ -74,8 +74,6 @@ func Test(t *testing.T) {
 
 			TargetPageSize:   1_500_000,
 			TargetObjectSize: 10_000_000,
-
-			StorageBucketPrefix: "dataobj/",
 		}
 
 		builder, err := NewBuilder(builderConfig, bucket, "fake")
@@ -88,7 +86,7 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		reader := newReader(bucket, "dataobj/")
+		reader := newReader(bucket)
 
 		objects, err := result.Collect(reader.Objects(context.Background(), "fake"))
 		require.NoError(t, err)

@@ -9,10 +9,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"path"
 
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
@@ -47,19 +47,16 @@ type BuilderConfig struct {
 
 	// TargetObjectSize configures a target size for data objects.
 	TargetObjectSize flagext.Bytes `yaml:"target_object_size"`
-
-	// StorageBucketPrefix is the prefix to use for the storage bucket.
-	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.SHAPrefixSize, prefix+"sha-prefix-size", 2, "The size of the SHA prefix to use for the data object builder.")
 	_ = cfg.TargetPageSize.Set("2MB")
-	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	_ = cfg.TargetObjectSize.Set("1GB")
+
+	f.IntVar(&cfg.SHAPrefixSize, prefix+"sha-prefix-size", 2, "The size of the SHA prefix to use for the data object builder.")
+	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
-	f.StringVar(&cfg.StorageBucketPrefix, prefix+"storage-bucket-prefix", "dataobj/", "The prefix to use for the storage bucket.")
 }
 
 // Validate validates the BuilderConfig.
@@ -91,12 +88,14 @@ func (cfg *BuilderConfig) Validate() error {
 // synchronizing calls.
 type Builder struct {
 	cfg      BuilderConfig
+	metrics  *metrics
 	bucket   objstore.Bucket
 	tenantID string
 
 	labelCache *lru.Cache[string, labels.Labels]
 
-	state builderState
+	currentSizeEstimate int
+	state               builderState
 
 	streams *streams.Streams
 	logs    *logs.Logs
@@ -133,19 +132,22 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 	}
 
 	var (
+		metrics = newMetrics(cfg)
+
 		flushBuffer = bytes.NewBuffer(make([]byte, 0, int(cfg.TargetObjectSize)))
 		encoder     = encoding.NewEncoder(flushBuffer)
 	)
 
 	return &Builder{
 		cfg:      cfg,
+		metrics:  metrics,
 		bucket:   bucket,
 		tenantID: tenantID,
 
 		labelCache: labelCache,
 
-		streams: streams.New(int(cfg.TargetPageSize)),
-		logs:    logs.New(int(cfg.TargetPageSize)),
+		streams: streams.New(metrics.streams, int(cfg.TargetPageSize)),
+		logs:    logs.New(metrics.logs, int(cfg.TargetPageSize)),
 
 		flushBuffer: flushBuffer,
 		encoder:     encoder,
@@ -171,9 +173,16 @@ func (b *Builder) Append(stream logproto.Stream) error {
 
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
-	if b.state != builderStateEmpty && b.estimatedSize()+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
+	//
+	// Since this check only happens after the first call to Append,
+	// b.currentSizeEstimate will always be updated to reflect the size following
+	// the previous append.
+	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
 		return ErrBufferFull
 	}
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
 
 	for _, entry := range stream.Entries {
 		streamID := b.streams.Record(ls, entry.Timestamp)
@@ -186,6 +195,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 		})
 	}
 
+	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil
 }
@@ -208,6 +218,7 @@ func (b *Builder) estimatedSize() int {
 	var size int
 	size += b.streams.EstimatedSize()
 	size += b.logs.EstimatedSize()
+	b.metrics.sizeEstimate.Set(float64(size))
 	return size
 }
 
@@ -260,11 +271,13 @@ func (b *Builder) Flush(ctx context.Context) error {
 		b.state = builderStateFlush
 	}
 
+	timer := prometheus.NewTimer(b.metrics.flushTime)
+	defer timer.ObserveDuration()
+
 	sum := sha256.Sum224(b.flushBuffer.Bytes())
 	sumStr := hex.EncodeToString(sum[:])
 
 	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
-	objectPath = path.Join(b.cfg.StorageBucketPrefix, objectPath)
 	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(b.flushBuffer.Bytes())); err != nil {
 		return err
 	}
@@ -274,6 +287,9 @@ func (b *Builder) Flush(ctx context.Context) error {
 }
 
 func (b *Builder) buildObject() error {
+	timer := prometheus.NewTimer(b.metrics.buildTime)
+	defer timer.ObserveDuration()
+
 	// We reset after a successful flush, but we also reset the buffer before
 	// building for safety.
 	b.flushBuffer.Reset()
@@ -286,7 +302,11 @@ func (b *Builder) buildObject() error {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
-	return nil
+	// We pass context.Background() below to avoid allowing building an object to
+	// time out; timing out on build would discard anything we built and would
+	// cause data loss.
+	dec := encoding.ReadSeekerDecoder(bytes.NewReader(b.flushBuffer.Bytes()))
+	return b.metrics.encoding.Observe(context.Background(), dec)
 }
 
 // Reset discards pending data and resets the builder to an empty state.
@@ -296,4 +316,21 @@ func (b *Builder) Reset() {
 
 	b.state = builderStateEmpty
 	b.flushBuffer.Reset()
+	b.metrics.sizeEstimate.Set(0)
+}
+
+// RegisterMetrics registers metrics about builder to report to reg. All
+// metrics will have a tenant label set to the tenant ID of the Builder.
+//
+// If multiple Builders for the same tenant are running in the same process,
+// reg must contain additional labels to differentiate between them.
+func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
+	reg = prometheus.WrapRegistererWith(prometheus.Labels{"tenant": b.tenantID}, reg)
+	return b.metrics.Register(reg)
+}
+
+// UnregisterMetrics unregisters metrics about builder from reg.
+func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
+	reg = prometheus.WrapRegistererWith(prometheus.Labels{"tenant": b.tenantID}, reg)
+	b.metrics.Unregister(reg)
 }
