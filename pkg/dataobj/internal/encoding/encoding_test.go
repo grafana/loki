@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -77,6 +78,15 @@ func TestStreams(t *testing.T) {
 
 		require.NoError(t, streamsEnc.Commit())
 		require.NoError(t, enc.Flush())
+	})
+
+	t.Run("Metrics", func(t *testing.T) {
+		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf.Bytes()))
+
+		metrics := encoding.NewMetrics()
+		metrics.Register(prometheus.NewRegistry())
+
+		metrics.Observe(context.Background(), dec)
 	})
 
 	t.Run("Decode", func(t *testing.T) {
