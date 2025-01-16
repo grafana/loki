@@ -80,6 +80,21 @@ func (cb *ColumnBuilder) Append(row int, value Value) error {
 	panic("ColumnBuilder.Append: failed to append value to fresh buffer")
 }
 
+// EstimatedSize returns the estimated size of all data in cb. EstimatedSize
+// includes the compressed size of all cut pages in cb, followed by the size
+// estimate of the in-progress page.
+//
+// Because compression isn't considered for the in-progress page, EstimatedSize
+// tends to overestimate the actual size after flushing.
+func (cb *ColumnBuilder) EstimatedSize() int {
+	var size int
+	for _, p := range cb.pages {
+		size += p.Info.CompressedSize
+	}
+	size += cb.builder.EstimatedSize()
+	return size
+}
+
 // Backfill adds NULLs into cb up to (but not including) the provided row
 // number. If values exist up to the provided row number, Backfill does
 // nothing.

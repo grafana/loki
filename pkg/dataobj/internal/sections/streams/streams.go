@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
 // A Stream is an individual stream within a data object.
@@ -55,7 +56,7 @@ func New(pageSize int) *Streams {
 // calls to Record is used to track the number of rows for a stream.
 //
 // The stream ID of the recorded stream is returned.
-func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) uint64 {
+func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) int64 {
 	ts = ts.UTC()
 
 	stream := s.getOrAddStream(streamLabels)
@@ -66,7 +67,44 @@ func (s *Streams) Record(streamLabels labels.Labels, ts time.Time) uint64 {
 		stream.MaxTimestamp = ts
 	}
 	stream.Rows++
-	return uint64(stream.ID)
+	return stream.ID
+}
+
+// EstimatedSize returns the estimated size of the Streams section in bytes.
+func (s *Streams) EstimatedSize() int {
+	// Since columns are only built when encoding, we can't use
+	// [dataset.ColumnBuilder.EstimatedSize] here.
+	//
+	// Instead, we use a basic heuristic, estimating delta encoding and
+	// compression:
+	//
+	// 1. Assume an ID delta of 1.
+	// 2. Assume a timestamp delta of 1s.
+	// 3. Assume a row count delta of 500.
+	// 4. Assume (conservative) 2x compression ratio of all label values.
+
+	var (
+		idDeltaSize        = streamio.VarintSize(1)
+		timestampDeltaSize = streamio.VarintSize(int64(time.Second))
+		rowDeltaSize       = streamio.VarintSize(500)
+	)
+
+	var labelsSize int
+	for _, stream := range s.ordered {
+		for _, lbl := range stream.Labels {
+			labelsSize += len(lbl.Value)
+		}
+	}
+
+	var sizeEstimate int
+
+	sizeEstimate += len(s.ordered) * idDeltaSize        // ID
+	sizeEstimate += len(s.ordered) * timestampDeltaSize // Min timestamp
+	sizeEstimate += len(s.ordered) * timestampDeltaSize // Max timestamp
+	sizeEstimate += len(s.ordered) * rowDeltaSize       // Rows
+	sizeEstimate += labelsSize / 2                      // All labels (2x compression ratio)
+
+	return sizeEstimate
 }
 
 func (s *Streams) getOrAddStream(streamLabels labels.Labels) *Stream {
