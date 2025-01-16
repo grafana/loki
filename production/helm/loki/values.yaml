@@ -3372,8 +3372,16 @@ minio:
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide
   # Since we only have 1 replica, that means 2 drives must be used.
   drivesPerNode: 2
-  rootUser: enterprise-logs
-  rootPassword: supersecret
+  # root user; not used for GEL authentication
+  rootUser: root-user
+  rootPassword: supersecretpassword
+  # The first user in the list below is used for Loki/GEL authentication.
+  # You can add additional users if desired; they will not impact Loki/GEL.
+  # `accessKey` = username, `secretKey` = password
+  users:
+    - accessKey: logs-user
+      secretKey: supersecretpassword
+      policy: readwrite
   buckets:
     - name: chunks
       policy: none
