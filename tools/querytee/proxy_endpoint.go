@@ -19,6 +19,7 @@ type ResponsesComparator interface {
 }
 
 type ComparisonSummary struct {
+	skipped        bool
 	missingMetrics int
 }
 
@@ -182,6 +183,8 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 					"route-name", p.routeName,
 					"query", r.URL.RawQuery, "err", err)
 				result = comparisonFailed
+			} else if summary != nil && summary.skipped {
+				result = comparisonSkipped
 			}
 
 			if p.instrumentCompares && summary != nil {
@@ -228,9 +231,17 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *backendResp
 }
 
 func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse) (*ComparisonSummary, error) {
+	if expectedResponse.err != nil {
+		return &ComparisonSummary{skipped: true}, nil
+	}
+
+	if actualResponse.err != nil {
+		return nil, fmt.Errorf("skipped comparison of response because the request to the secondary backend failed: %w", actualResponse.err)
+	}
+
 	// compare response body only if we get a 200
 	if expectedResponse.status != 200 {
-		return nil, fmt.Errorf("skipped comparison of response because we got status code %d from preferred backend's response", expectedResponse.status)
+		return &ComparisonSummary{skipped: true}, nil
 	}
 
 	if actualResponse.status != 200 {

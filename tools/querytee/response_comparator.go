@@ -96,6 +96,10 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		return nil, errors.Wrap(err, "unable to unmarshal actual matrix")
 	}
 
+	if allMatrixSamplesWithinRecentSampleWindow(expected, opts) && allMatrixSamplesWithinRecentSampleWindow(actual, opts) {
+		return &ComparisonSummary{skipped: true}, nil
+	}
+
 	if len(expected) != len(actual) {
 		return nil, fmt.Errorf("expected %d metrics but got %d", len(expected),
 			len(actual))
@@ -139,6 +143,28 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	return nil, nil
 }
 
+func allMatrixSamplesWithinRecentSampleWindow(m model.Matrix, opts SampleComparisonOptions) bool {
+	if opts.SkipRecentSamples == 0 {
+		return false
+	}
+
+	for _, series := range m {
+		for _, sample := range series.Values {
+			if time.Since(sample.Timestamp.Time()) > opts.SkipRecentSamples {
+				return false
+			}
+		}
+
+		for _, sample := range series.Histograms {
+			if time.Since(sample.Timestamp.Time()) > opts.SkipRecentSamples {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error) {
 	var expected, actual model.Vector
 
@@ -150,6 +176,10 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to unmarshal actual vector")
+	}
+
+	if allVectorSamplesWithinRecentSampleWindow(expected, opts) && allVectorSamplesWithinRecentSampleWindow(actual, opts) {
+		return &ComparisonSummary{skipped: true}, nil
 	}
 
 	if len(expected) != len(actual) {
@@ -196,6 +226,20 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	}
 
 	return &ComparisonSummary{missingMetrics: len(missingMetrics)}, err
+}
+
+func allVectorSamplesWithinRecentSampleWindow(v model.Vector, opts SampleComparisonOptions) bool {
+	if opts.SkipRecentSamples == 0 {
+		return false
+	}
+
+	for _, sample := range v {
+		if time.Since(sample.Timestamp.Time()) > opts.SkipRecentSamples {
+			return false
+		}
+	}
+
+	return true
 }
 
 func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error) {
@@ -250,7 +294,7 @@ func compareSampleValue(first, second model.SampleValue, opts SampleComparisonOp
 	return math.Abs(f-s) <= opts.Tolerance
 }
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOptions) (*ComparisonSummary, error) {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error) {
 	var expected, actual loghttp.Streams
 
 	err := jsoniter.Unmarshal(expectedRaw, &expected)
@@ -260,6 +304,10 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOp
 	err = jsoniter.Unmarshal(actualRaw, &actual)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to unmarshal actual streams")
+	}
+
+	if allStreamEntriesWithinRecentSampleWindow(actual, opts) && allStreamEntriesWithinRecentSampleWindow(expected, opts) {
+		return &ComparisonSummary{skipped: true}, nil
 	}
 
 	if len(expected) != len(actual) {
@@ -294,6 +342,12 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOp
 
 		for i, expectedSamplePair := range expectedStream.Entries {
 			actualSamplePair := actualStream.Entries[i]
+
+			// skip recent samples
+			if opts.SkipRecentSamples > 0 && time.Since(expectedSamplePair.Timestamp) < opts.SkipRecentSamples {
+				continue
+			}
+
 			if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
 				return nil, fmt.Errorf("expected timestamp %v but got %v for stream %s", expectedSamplePair.Timestamp.UnixNano(),
 					actualSamplePair.Timestamp.UnixNano(), expectedStream.Labels)
@@ -306,4 +360,20 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOp
 	}
 
 	return nil, nil
+}
+
+func allStreamEntriesWithinRecentSampleWindow(s loghttp.Streams, opts SampleComparisonOptions) bool {
+	if opts.SkipRecentSamples == 0 {
+		return false
+	}
+
+	for _, stream := range s {
+		for _, sample := range stream.Entries {
+			if time.Since(sample.Timestamp) > opts.SkipRecentSamples {
+				return false
+			}
+		}
+	}
+
+	return true
 }
