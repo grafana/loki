@@ -26,7 +26,7 @@ import (
 type IngestLimits struct {
 	services.Service
 
-	cfg    kafka.IngestLimitsConfig
+	cfg    Config
 	logger log.Logger
 	client *kgo.Client
 
@@ -37,10 +37,10 @@ type IngestLimits struct {
 
 // NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
-func NewIngestLimits(cfg kafka.Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
+func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
 	s := &IngestLimits{
-		cfg:      cfg.IngestLimits,
+		cfg:      cfg,
 		logger:   logger,
 		metadata: make(map[string]map[uint64]int64),
 	}
@@ -50,7 +50,7 @@ func NewIngestLimits(cfg kafka.Config, logger log.Logger, reg prometheus.Registe
 		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
 
 	// Create a copy of the config to modify the topic
-	kCfg := cfg
+	kCfg := cfg.KafkaConfig
 	kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
 
 	s.client, err = client.NewReaderClient(kCfg, metrics, logger,
