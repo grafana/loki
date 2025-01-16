@@ -1394,22 +1394,6 @@ client:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
-  results_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -bloom-gateway-client.cache.compression
-    [compression: <string> | default = ""]
-
-  # Flag to control whether to cache bloom gateway client requests/responses.
-  # CLI flag: -bloom-gateway-client.cache_results
-  [cache_results: <boolean> | default = false]
-
   # Comma separated addresses list in DNS Service Discovery format:
   # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
   # CLI flag: -bloom-gateway-client.addresses
@@ -1465,7 +1449,6 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-gateway-client.cache`
 - `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
@@ -3828,19 +3811,10 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# Experimental. The shard size defines how many bloom gateways should be used by
-# a tenant for querying.
-# CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 0]
-
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
-
-# Experimental. Interval for computing the cache key in the Bloom Gateway.
-# CLI flag: -bloom-gateway.cache-key-interval
-[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Experimental. Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.
