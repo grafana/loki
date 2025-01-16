@@ -344,4 +344,44 @@ local utils = import 'mixin-utils/utils.libsonnet';
   p99LatencyByPod(metric, selectorStr)::
     $.newQueryPanel('Per Pod Latency (p99)', 'ms') +
     latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', 'pod'),
+
+  replaceMatchers(expr)::
+    $.replaceJobMatchers(
+      $.replaceClusterMatchers(expr)
+    ),
+
+  replaceClusterMatchers(expr)::
+    // Replace the recording rules cluster label with the per-cluster label
+    std.strReplace(
+      // Replace the cluster label for equality matchers with the per-cluster label
+      std.strReplace(
+        // Replace the cluster label for regex matchers with the per-cluster label
+        std.strReplace(
+          expr,
+          'cluster=~"$cluster"',
+          $._config.per_cluster_label + '=~"$cluster"'
+        ),
+        'cluster="$cluster"',
+        $._config.per_cluster_label + '="$cluster"'
+      ),
+      'cluster_job',
+      $._config.per_cluster_label + '_job'
+    ),
+
+  replaceJobMatchers(expr)::
+    // If meta monitoring is enabled, replace the job label with the per-job label and the job prefix
+    if $._config.meta_monitoring.enabled then
+      // Replace the job label for equality matchers with the per-job label
+      std.strReplace(
+        // Replace the job label for regex matchers with the per-job label and the job prefix
+        std.strReplace(
+          expr,
+          'job=~"$namespace/',
+          $._config.per_job_label + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
+        ),
+        'job="$namespace/',
+        $._config.per_job_label + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
+      )
+    else
+      expr,
 }
