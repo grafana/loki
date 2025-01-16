@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-func TestIngestLimits_GetStreamLimits(t *testing.T) {
+func TestIngestLimits_GetStreamUsage(t *testing.T) {
 	tests := []struct {
 		name           string
 		tenant         string
@@ -112,13 +112,13 @@ func TestIngestLimits_GetStreamLimits(t *testing.T) {
 			}
 
 			// Create request
-			req := &logproto.GetStreamLimitsRequest{
+			req := &logproto.GetStreamUsageRequest{
 				Tenant:     tt.tenant,
 				StreamHash: tt.streamHashes,
 			}
 
-			// Call GetStreamLimits
-			resp, err := s.GetStreamLimits(context.Background(), req)
+			// Call GetStreamUsage
+			resp, err := s.GetStreamUsage(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
 			require.Equal(t, tt.tenant, resp.Tenant)
@@ -134,7 +134,7 @@ func TestIngestLimits_GetStreamLimits(t *testing.T) {
 	}
 }
 
-func TestIngestLimits_GetStreamLimits_Concurrent(t *testing.T) {
+func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 	// Setup test data with a mix of active and expired streams
 	now := time.Now()
 	metadata := map[string]map[uint64]int64{
@@ -162,12 +162,12 @@ func TestIngestLimits_GetStreamLimits_Concurrent(t *testing.T) {
 		go func() {
 			defer func() { done <- struct{}{} }()
 
-			req := &logproto.GetStreamLimitsRequest{
+			req := &logproto.GetStreamUsageRequest{
 				Tenant:     "tenant1",
 				StreamHash: []uint64{1, 2, 3, 4, 5},
 			}
 
-			resp, err := s.GetStreamLimits(context.Background(), req)
+			resp, err := s.GetStreamUsage(context.Background(), req)
 			require.NoError(t, err)
 			require.NotNil(t, resp)
 			require.Equal(t, "tenant1", resp.Tenant)
