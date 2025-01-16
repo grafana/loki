@@ -45,6 +45,10 @@ parameter contains a log selector query instead of returning inconsistent result
 
 Loki changes the default value of `-ruler.alertmanager-use-v2` from `false` to `true`. Alertmanager APIv1 was deprecated in Alertmanager 0.16.0 and is removed as of 0.27.0.
 
+#### `operational_config`
+
+The settings from the `operational_config` configuration block moved into the `limits_config`. The per-tenant configuration of these settings also moved into the `overrides` section in the runtime configuration file.
+
 ### Experimental Bloom Filters
 
 {{< admonition type="note" >}}
