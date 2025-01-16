@@ -903,9 +903,13 @@ kafka_config:
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
 ingest_limits:
-  [enabled: <boolean>]
+  # Enable the ingest limits service.
+  # CLI flag: -ingest-limits.enabled
+  [enabled: <boolean> | default = false]
 
-  [window_size: <duration>]
+  # The time window for which stream metadata is considered active.
+  # CLI flag: -ingest-limits.window-size
+  [window_size: <duration> | default = 1h]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
