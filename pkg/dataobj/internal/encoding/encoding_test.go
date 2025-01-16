@@ -84,9 +84,8 @@ func TestStreams(t *testing.T) {
 		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf.Bytes()))
 
 		metrics := encoding.NewMetrics()
-		metrics.Register(prometheus.NewRegistry())
-
-		metrics.Observe(context.Background(), dec)
+		require.NoError(t, metrics.Register(prometheus.NewRegistry()))
+		require.NoError(t, metrics.Observe(context.Background(), dec))
 	})
 
 	t.Run("Decode", func(t *testing.T) {

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"path"
 
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -48,9 +47,6 @@ type BuilderConfig struct {
 
 	// TargetObjectSize configures a target size for data objects.
 	TargetObjectSize flagext.Bytes `yaml:"target_object_size"`
-
-	// StorageBucketPrefix is the prefix to use for the storage bucket.
-	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -61,7 +57,6 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.IntVar(&cfg.SHAPrefixSize, prefix+"sha-prefix-size", 2, "The size of the SHA prefix to use for the data object builder.")
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
-	f.StringVar(&cfg.StorageBucketPrefix, prefix+"storage-bucket-prefix", "dataobj/", "The prefix to use for the storage bucket.")
 }
 
 // Validate validates the BuilderConfig.
@@ -270,7 +265,7 @@ func (b *Builder) Flush(ctx context.Context) error {
 	case builderStateEmpty:
 		return nil // Nothing to flush
 	case builderStateDirty:
-		if err := b.buildObject(ctx); err != nil {
+		if err := b.buildObject(); err != nil {
 			return fmt.Errorf("building object: %w", err)
 		}
 		b.state = builderStateFlush
@@ -283,7 +278,6 @@ func (b *Builder) Flush(ctx context.Context) error {
 	sumStr := hex.EncodeToString(sum[:])
 
 	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
-	objectPath = path.Join(b.cfg.StorageBucketPrefix, objectPath)
 	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(b.flushBuffer.Bytes())); err != nil {
 		return err
 	}
@@ -292,7 +286,7 @@ func (b *Builder) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (b *Builder) buildObject(ctx context.Context) error {
+func (b *Builder) buildObject() error {
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
 
@@ -308,8 +302,11 @@ func (b *Builder) buildObject(ctx context.Context) error {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
+	// We pass context.Background() below to avoid allowing building an object to
+	// time out; timing out on build would discard anything we built and would
+	// cause data loss.
 	dec := encoding.ReadSeekerDecoder(bytes.NewReader(b.flushBuffer.Bytes()))
-	return b.metrics.encoding.Observe(ctx, dec)
+	return b.metrics.encoding.Observe(context.Background(), dec)
 }
 
 // Reset discards pending data and resets the builder to an empty state.
