@@ -111,6 +111,7 @@ type Config struct {
 	TableManager         index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV         memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig          kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
+	IngestLimits         limits.Config              `yaml:"ingest_limits,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`

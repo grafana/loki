@@ -104,7 +104,7 @@ func TestIngestLimits_GetStreamLimits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create IngestLimits instance with mock data
 			s := &IngestLimits{
-				cfg: kafka.IngestLimitsConfig{
+				cfg: Config{
 					WindowSize: tt.windowSize,
 				},
 				logger:   log.NewNopLogger(),
@@ -148,7 +148,7 @@ func TestIngestLimits_GetStreamLimits_Concurrent(t *testing.T) {
 	}
 
 	s := &IngestLimits{
-		cfg: kafka.IngestLimitsConfig{
+		cfg: Config{
 			WindowSize: time.Hour,
 		},
 		logger:   log.NewNopLogger(),
@@ -189,17 +189,17 @@ func TestIngestLimits_GetStreamLimits_Concurrent(t *testing.T) {
 }
 
 func TestNewIngestLimits(t *testing.T) {
-	cfg := kafka.Config{
-		IngestLimits: kafka.IngestLimitsConfig{
-			WindowSize: time.Hour,
+	cfg := Config{
+		KafkaConfig: kafka.Config{
+			Topic: "test-topic",
 		},
-		Topic: "test-topic",
+		WindowSize: time.Hour,
 	}
 
 	s, err := NewIngestLimits(cfg, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	require.NotNil(t, s.client)
-	require.Equal(t, cfg.IngestLimits, s.cfg)
+	require.Equal(t, cfg, s.cfg)
 	require.NotNil(t, s.metadata)
 }

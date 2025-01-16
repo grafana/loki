@@ -387,12 +387,14 @@ func (t *Loki) initDistributor() (services.Service, error) {
 }
 
 func (t *Loki) initIngestLimits() (services.Service, error) {
-	if !t.Cfg.KafkaConfig.IngestLimits.Enabled {
+	if !t.Cfg.IngestLimits.Enabled || !t.Cfg.Distributor.KafkaEnabled {
 		return nil, nil
 	}
 
+	t.Cfg.IngestLimits.KafkaConfig = t.Cfg.KafkaConfig
+
 	ingestLimits, err := limits.NewIngestLimits(
-		t.Cfg.KafkaConfig,
+		t.Cfg.IngestLimits,
 		util_log.Logger,
 		prometheus.DefaultRegisterer,
 	)
@@ -410,7 +412,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 }
 
 func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
-	if !t.Cfg.KafkaConfig.IngestLimits.Enabled {
+	if !t.Cfg.IngestLimits.Enabled {
 		return nil, nil
 	}
 
