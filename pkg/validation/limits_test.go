@@ -72,6 +72,15 @@ ruler_max_rules_per_rule_group: 210
 ruler_max_rule_groups_per_tenant: 220
 ruler_remote_write_sigv4_config:
   region: us-east-1
+policy_stream_mapping:
+  policy1: "{team=\"squad-1\", env=\"prod\"}"
+  policy2: "{team=\"squad-2\", env=\"dev\"}"
+  policy3: "{team=\"squad-1\", env=\"prod\"}"
+enforced_labels:
+  - team
+block_policy_ingestion_status_code:
+  policy1: 400
+  policy2: 400
 per_tenant_override_config: ""
 per_tenant_override_period: 230s
 query_timeout: 5m
@@ -117,6 +126,16 @@ volume_max_series: 10001
   "ruler_max_rule_groups_per_tenant":220,
   "ruler_remote_write_sigv4_config": {
     "region": "us-east-1"
+  },
+  "policy_stream_mapping": {
+    "policy1": "{team=\"squad-1\", env=\"prod\"}",
+    "policy2": "{team=\"squad-2\", env=\"dev\"}",
+    "policy3": "{team=\"squad-1\", env=\"prod\"}"
+  },
+  "enforced_labels": ["team"],
+  "block_policy_ingestion_status_code": {
+    "policy1": 400,
+    "policy2": 400
   },
   "per_tenant_override_config": "",
   "per_tenant_override_period": "230s",
@@ -230,6 +249,7 @@ ruler_remote_write_headers:
 				OTLPConfig:                     defaultOTLPConfig,
 				BlockPolicyIngestionUntil:      map[string]flagext.Time{},
 				BlockPolicyIngestionStatusCode: map[string]int{},
+				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
 			},
 		},
@@ -252,6 +272,7 @@ ruler_remote_write_headers:
 				OTLPConfig:                     defaultOTLPConfig,
 				BlockPolicyIngestionUntil:      map[string]flagext.Time{},
 				BlockPolicyIngestionStatusCode: map[string]int{},
+				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
 			},
 		},
@@ -278,6 +299,7 @@ retention_stream:
 				OTLPConfig:                     defaultOTLPConfig,
 				BlockPolicyIngestionUntil:      map[string]flagext.Time{},
 				BlockPolicyIngestionStatusCode: map[string]int{},
+				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
 			},
 		},
@@ -303,6 +325,7 @@ reject_old_samples: true
 				OTLPConfig:                     defaultOTLPConfig,
 				BlockPolicyIngestionUntil:      map[string]flagext.Time{},
 				BlockPolicyIngestionStatusCode: map[string]int{},
+				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
 			},
 		},
@@ -329,6 +352,7 @@ query_timeout: 5m
 				OTLPConfig:                     defaultOTLPConfig,
 				BlockPolicyIngestionUntil:      map[string]flagext.Time{},
 				BlockPolicyIngestionStatusCode: map[string]int{},
+				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
 			},
 		},

@@ -534,9 +534,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			// if the given stream is blocked due to its scope ingestion, we skip it.
-			blocked, statusCode, ingestionScope, until := d.streamIsBlocked(lbs, validationContext, tenantID, now)
+			blocked, statusCode, policy, until := d.streamIsBlocked(lbs, validationContext, tenantID, now)
 			if blocked {
-				err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), statusCode, ingestionScope)
+				err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), statusCode, policy)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(len(stream.Entries)))
@@ -777,7 +777,7 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) 
 }
 
 // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
-func (d *Distributor) streamIsBlocked(lbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string, time.Time) {
+func (d *Distributor) streamIsBlocked(streamLbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string, time.Time) {
 	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
 	if len(policyStreamMapping) == 0 {
 		// not configured.
@@ -787,18 +787,20 @@ func (d *Distributor) streamIsBlocked(lbs labels.Labels, validationCtx validatio
 	for policy, streamSelector := range policyStreamMapping {
 		matchers, err := syntax.ParseMatchers(streamSelector, true)
 		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to parse stream selector", "error", err, "stream_selector", streamSelector, "tenant_id", tenantID)
 			continue
 		}
 
 		for _, matcher := range matchers {
-			if !matcher.Matches(lbs.Get(matcher.Name)) {
+			if !matcher.Matches(streamLbs.Get(matcher.Name)) {
 				continue
 			}
 		}
 
-		return d.applyPolicy(policy, lbs, validationCtx, now)
+		return d.applyPolicy(policy, streamLbs, validationCtx, now)
 	}
 
+	// didn't match any existing policy.
 	return false, 0, "", time.Time{}
 }
 

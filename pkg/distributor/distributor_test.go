@@ -1623,15 +1623,15 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 	}
 }
 
-func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
+func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 	oneHourAgo := time.Now().Add(-1 * time.Hour)
 	afterOneHour := time.Now().Add(1 * time.Hour)
 
 	for i, tc := range []struct {
 		name                 string
-		blockUntilScope      map[string]flagext.Time
+		blockUntilPolicy     map[string]flagext.Time
 		blockStatusCodeScope map[string]int
-		scopeLb              string
+		policyStreamMapping  map[string]string
 		expectError          bool
 		expectedErrorMsg     string
 		expectedStatusCode   int
@@ -1640,42 +1640,50 @@ func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
 		{
 			name:               "not configured",
 			expectedStatusCode: http.StatusOK,
-			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+			requestLbs:         []string{`{team="squad-1", env="dev"}`, `{team="squad-1", env="prod"}`, `{team="squad-2", env="dev"}`, `{team="squad-2", env="prod"}`},
 		},
 		{
 			name: "not blocked",
-			blockUntilScope: map[string]flagext.Time{
-				"scope1": flagext.Time(oneHourAgo),
-				"scope2": flagext.Time(oneHourAgo),
+			blockUntilPolicy: map[string]flagext.Time{
+				"policy1": flagext.Time(oneHourAgo),
+				"policy2": flagext.Time(oneHourAgo),
 			},
 			blockStatusCodeScope: map[string]int{
-				"scope1": http.StatusOK,
-				"scope2": http.StatusOK,
+				"policy1": http.StatusOK,
+				"policy2": http.StatusOK,
 			},
-			scopeLb:            "__scope__",
+			policyStreamMapping: map[string]string{
+				"policy1": `{team="squad-1", env="prod"}`,
+				"policy2": `{team="squad-1", env="dev"}`,
+				"policy3": `{team="squad-2", env="prod"}`,
+			},
 			expectError:        false,
 			expectedStatusCode: http.StatusOK,
-			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+			requestLbs:         []string{`{team="squad-1", env="prod"}`, `{team="squad-1", env="dev"}`, `{team="squad-2", env="prod"}`, `{team="squad-2", env="dev"}`},
 		},
 		{
 			name: "blocked",
-			blockUntilScope: map[string]flagext.Time{
-				"scope1": flagext.Time(afterOneHour),
-				"scope2": flagext.Time(oneHourAgo),
+			blockUntilPolicy: map[string]flagext.Time{
+				"policy1": flagext.Time(afterOneHour),
+				"policy2": flagext.Time(oneHourAgo),
 			},
 			blockStatusCodeScope: map[string]int{
-				"scope1": 456,
-				"scope2": 456,
+				"policy1": 456,
+				"policy2": 456,
 			},
-			scopeLb:            "__scope__",
+			policyStreamMapping: map[string]string{
+				"policy1": `{team="squad-1", env="prod"}`,
+				"policy2": `{team="squad-1", env="dev"}`,
+				"policy3": `{team="squad-2", env="prod"}`,
+			},
 			expectError:        true,
-			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "scope1").Error(),
+			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "policy1").Error(),
 			expectedStatusCode: 456,
-			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+			requestLbs:         []string{`{team="squad-1", env="prod"}`, `{team="squad-1", env="dev"}`, `{team="squad-2", env="prod"}`, `{team="squad-2", env="dev"}`},
 		},
 		{
 			name: "blocked with status code 200",
-			blockUntilScope: map[string]flagext.Time{
+			blockUntilPolicy: map[string]flagext.Time{
 				"scope1": flagext.Time(afterOneHour),
 				"scope2": flagext.Time(oneHourAgo),
 			},
@@ -1683,11 +1691,15 @@ func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
 				"scope1": http.StatusOK,
 				"scope2": http.StatusOK,
 			},
-			scopeLb:            "__scope__",
+			policyStreamMapping: map[string]string{
+				"policy1": `{team="squad-1", env="prod"}`,
+				"policy2": `{team="squad-1", env="dev"}`,
+				"policy3": `{team="squad-2", env="prod"}`,
+			},
 			expectError:        true,
-			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 200, "scope1").Error(),
+			expectedErrorMsg:   httpgrpc.Errorf(400, validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 200, "policy1").Error(),
 			expectedStatusCode: http.StatusOK,
-			requestLbs:         []string{`{__scope__="scope1", pod="abce", environment="prod"}`, `{__scope__="scope2", pod="abce", environment="prod"}`},
+			requestLbs:         []string{`{team="squad-1", env="prod"}`, `{team="squad-1", env="dev"}`, `{team="squad-2", env="prod"}`, `{team="squad-2", env="dev"}`},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1696,8 +1708,9 @@ func TestDistributor_PushIngestionBlockedScope(t *testing.T) {
 			}
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
-			limits.BlockPolicyIngestionUntil = tc.blockUntilScope
+			limits.BlockPolicyIngestionUntil = tc.blockUntilPolicy
 			limits.BlockPolicyIngestionStatusCode = tc.blockStatusCodeScope
+			limits.PolicyStreamMapping = tc.policyStreamMapping
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 			request := makeWriteRequestWithLabels(10, 10, tc.requestLbs, false, false, false)
