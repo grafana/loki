@@ -96,11 +96,27 @@ type Builder struct {
 
 	labelCache *lru.Cache[string, labels.Labels]
 
-	dirty bool // Whether the builder has been modified since the last flush.
+	state builderState
 
 	streams *streams.Streams
 	logs    *logs.Logs
+
+	flushBuffer *bytes.Buffer
+	encoder     *encoding.Encoder
 }
+
+type builderState int
+
+const (
+	// builderStateReady indicates the builder is empty and ready to accept new data.
+	builderStateEmpty builderState = iota
+
+	// builderStateDirty indicates the builder has been modified since the last flush.
+	builderStateDirty
+
+	// builderStateFlushing indicates the builder has data to flush.
+	builderStateFlush
+)
 
 // NewBuilder creates a new Builder which stores data objects for the specified
 // tenant in a bucket.
@@ -116,6 +132,11 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
 
+	var (
+		flushBuffer = bytes.NewBuffer(make([]byte, 0, int(cfg.TargetObjectSize)))
+		encoder     = encoding.NewEncoder(flushBuffer)
+	)
+
 	return &Builder{
 		cfg:      cfg,
 		bucket:   bucket,
@@ -125,6 +146,9 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 
 		streams: streams.New(int(cfg.TargetPageSize)),
 		logs:    logs.New(int(cfg.TargetPageSize)),
+
+		flushBuffer: flushBuffer,
+		encoder:     encoder,
 	}, nil
 }
 
@@ -135,6 +159,11 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
 func (b *Builder) Append(stream logproto.Stream) error {
+	// Don't allow appending to a builder that has data to be flushed.
+	if b.state == builderStateFlush {
+		return ErrBufferFull
+	}
+
 	ls, err := b.parseLabels(stream.Labels)
 	if err != nil {
 		return err
@@ -142,7 +171,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
-	if b.dirty && b.estimatedSize()+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
+	if b.state != builderStateEmpty && b.estimatedSize()+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
 		return ErrBufferFull
 	}
 
@@ -157,7 +186,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 		})
 	}
 
-	b.dirty = true
+	b.state = builderStateDirty
 	return nil
 }
 
@@ -216,34 +245,55 @@ func streamSizeEstimate(stream logproto.Stream) int {
 
 // Flush flushes all buffered data to object storage. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
+//
+// If Flush builds an object but fails to upload it to object storage, the
+// built object is cached and can be retried. [Builder.Reset] can be called to
+// discard any pending data and allow new data to be appended.
 func (b *Builder) Flush(ctx context.Context) error {
-	if !b.dirty {
-		return nil
-	}
-	defer b.reset()
-
-	buf := bytesBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer bytesBufferPool.Put(buf)
-
-	enc := encoding.NewEncoder(buf)
-
-	if err := b.streams.EncodeTo(enc); err != nil {
-		return fmt.Errorf("encoding streams: %w", err)
-	} else if err := b.logs.EncodeTo(enc); err != nil {
-		return fmt.Errorf("encoding logs: %w", err)
-	} else if err := enc.Flush(); err != nil {
-		return fmt.Errorf("encoding object: %w", err)
+	switch b.state {
+	case builderStateEmpty:
+		return nil // Nothing to flush
+	case builderStateDirty:
+		if err := b.buildObject(); err != nil {
+			return fmt.Errorf("building object: %w", err)
+		}
+		b.state = builderStateFlush
 	}
 
-	sum := sha256.Sum224(buf.Bytes())
+	sum := sha256.Sum224(b.flushBuffer.Bytes())
 	sumStr := hex.EncodeToString(sum[:])
 
 	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
 	objectPath = path.Join(b.cfg.StorageBucketPrefix, objectPath)
-	return b.bucket.Upload(ctx, objectPath, bytes.NewReader(buf.Bytes()))
+	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(b.flushBuffer.Bytes())); err != nil {
+		return err
+	}
+
+	b.Reset()
+	return nil
 }
 
-func (b *Builder) reset() {
-	b.dirty = false
+func (b *Builder) buildObject() error {
+	// We reset after a successful flush, but we also reset the buffer before
+	// building for safety.
+	b.flushBuffer.Reset()
+
+	if err := b.streams.EncodeTo(b.encoder); err != nil {
+		return fmt.Errorf("encoding streams: %w", err)
+	} else if err := b.logs.EncodeTo(b.encoder); err != nil {
+		return fmt.Errorf("encoding logs: %w", err)
+	} else if err := b.encoder.Flush(); err != nil {
+		return fmt.Errorf("encoding object: %w", err)
+	}
+
+	return nil
+}
+
+// Reset discards pending data and resets the builder to an empty state.
+func (b *Builder) Reset() {
+	b.logs.Reset()
+	b.streams.Reset()
+
+	b.state = builderStateEmpty
+	b.flushBuffer.Reset()
 }
