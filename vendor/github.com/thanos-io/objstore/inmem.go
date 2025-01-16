@@ -193,6 +193,11 @@ func (b *InMemBucket) GetRange(_ context.Context, name string, off, length int64
 	}, nil
 }
 
+func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.Reader, error)) error {
+	panic("unimplemented: inMemBucket.GetAndReplace")
+	return nil
+}
+
 // Exists checks if the given directory exists in memory.
 func (b *InMemBucket) Exists(_ context.Context, name string) (bool, error) {
 	b.mtx.RLock()

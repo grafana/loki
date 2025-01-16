@@ -25,7 +25,9 @@ type reader struct {
 }
 
 func newReader(bucket objstore.Bucket) *reader {
-	return &reader{bucket: bucket}
+	return &reader{
+		bucket: bucket,
+	}
 }
 
 // Objects returns an iterator over all data objects for the provided tenant.

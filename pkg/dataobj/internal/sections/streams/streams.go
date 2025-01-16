@@ -3,6 +3,7 @@
 package streams
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
@@ -63,6 +65,17 @@ func New(metrics *Metrics, pageSize int) *Streams {
 		pageSize: pageSize,
 		lookup:   make(map[uint64][]*Stream),
 	}
+}
+
+func (s *Streams) Iter(ctx context.Context) result.Seq[Stream] {
+	return result.Iter(func(yield func(Stream) bool) error {
+		for _, stream := range s.ordered {
+			if !yield(*stream) {
+				return nil
+			}
+		}
+		return nil
+	})
 }
 
 // Record a stream record within the Streams section. The provided timestamp is
@@ -187,7 +200,6 @@ func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
 func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	timer := prometheus.NewTimer(s.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
-	defer s.Reset()
 
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle

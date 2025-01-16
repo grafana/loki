@@ -12,9 +12,10 @@ type partitionOffsetMetrics struct {
 	lastOffset    int64
 
 	// Error counters
-	flushFailures  prometheus.Counter
-	commitFailures prometheus.Counter
-	appendFailures prometheus.Counter
+	flushFailures          prometheus.Counter
+	commitFailures         prometheus.Counter
+	metastoreWriteFailures prometheus.Counter
+	appendFailures         prometheus.Counter
 
 	// Processing delay histogram
 	processingDelay prometheus.Histogram
@@ -33,6 +34,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 		appendFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_append_failures_total",
 			Help: "Total number of append failures",
+		}),
+		metastoreWriteFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_metastore_write_failures_total",
+			Help: "Total number of metastore write failures",
 		}),
 		processingDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_dataobj_consumer_processing_delay_seconds",
@@ -106,6 +111,10 @@ func (p *partitionOffsetMetrics) incCommitFailures() {
 
 func (p *partitionOffsetMetrics) incAppendFailures() {
 	p.appendFailures.Inc()
+}
+
+func (p *partitionOffsetMetrics) incMetastoreWriteFailures() {
+	p.metastoreWriteFailures.Inc()
 }
 
 func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {

@@ -3,6 +3,8 @@ package consumer
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"strconv"
 	"sync"
 	"time"
@@ -16,6 +18,11 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logproto"
+)
+
+const (
+	metastoreWindowSize = 12 * time.Hour
 )
 
 type partitionProcessor struct {
@@ -62,7 +69,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 
 	return &partitionProcessor{
 		client:     client,
-		logger:     log.With(logger, "topic", topic, "partition", partition),
+		logger:     log.With(logger, "component", "dataobj-consumer", "topic", topic, "partition", partition),
 		topic:      topic,
 		partition:  partition,
 		records:    make(chan *kgo.Record, 1000),
@@ -157,8 +164,9 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			MaxBackoff: 10 * time.Second,
 		})
 
+		var dataobjPath string
 		for backoff.Ongoing() {
-			err = p.builder.Flush(p.ctx)
+			dataobjPath, err = p.builder.Flush(p.ctx)
 			if err == nil {
 				break
 			}
@@ -166,6 +174,15 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			p.metrics.incFlushFailures()
 			backoff.Wait()
 		}
+
+		err = p.writeMetastores(backoff, dataobjPath)
+		if err != nil {
+			level.Error(p.logger).Log("msg", "failed to write metastores", "err", err)
+			p.metrics.incMetastoreWriteFailures()
+			return
+		}
+
+		p.builder.Reset()
 
 		backoff.Reset()
 		for backoff.Ongoing() {
@@ -183,4 +200,77 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			p.metrics.incAppendFailures()
 		}
 	}
+}
+
+func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPath string) error {
+	// Scan dataobj streams to find out how many metastore objects need to be updated/created.
+	minTimestamp := time.Time{}
+	maxTimestamp := time.Time{}
+	for stream := range p.builder.StreamsIter() {
+		if stream.MustValue().MinTimestamp.Before(minTimestamp) || minTimestamp.IsZero() {
+			minTimestamp = stream.MustValue().MinTimestamp
+		}
+		if stream.MustValue().MaxTimestamp.After(maxTimestamp) || maxTimestamp.IsZero() {
+			maxTimestamp = stream.MustValue().MaxTimestamp
+		}
+	}
+
+	// Work our way through the metastore objects window by window, updating & creating them as needed.
+	// Each one handles its own retries in order to keep making progress in the event of a failure.
+	minMetastoreWindow := minTimestamp.Truncate(metastoreWindowSize)
+	maxMetastoreWindow := maxTimestamp.Truncate(metastoreWindowSize)
+	for metastoreWindow := minMetastoreWindow; metastoreWindow.Compare(maxMetastoreWindow) <= 0; metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
+		metastorePath := fmt.Sprintf("tenant-%s/metastore/%s.store", p.tenantID, metastoreWindow.Format(time.RFC3339))
+		backoff.Reset()
+		for backoff.Ongoing() {
+			err := p.bucket.GetAndReplace(p.ctx, metastorePath, func(existing io.ReadCloser) (io.Reader, error) {
+				var existingMetastoreBuilder *dataobj.Builder
+				buf, err := io.ReadAll(existing)
+				if err != nil {
+					return nil, err
+				}
+
+				if len(buf) > 0 {
+					existingMetastoreBuilder, err = dataobj.ToBuilder(p.builderCfg, p.bucket, string(p.tenantID), bytes.NewReader(buf))
+					if err != nil {
+						return nil, err
+					}
+				} else {
+					var err error
+					existingMetastoreBuilder, err = dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				for stream := range p.builder.StreamsIter() {
+					stream := stream.MustValue()
+					if stream.MinTimestamp.After(metastoreWindow.Add(metastoreWindowSize)) || stream.MaxTimestamp.Before(metastoreWindow) {
+						continue
+					}
+					existingMetastoreBuilder.Append(logproto.Stream{
+						Labels: stream.Labels.String(),
+						Entries: []logproto.Entry{{
+							Timestamp: metastoreWindow,
+							Line:      dataobjPath,
+						}},
+					})
+				}
+
+				newMetastore, err := existingMetastoreBuilder.FlushToBuffer()
+				if err != nil {
+					return nil, err
+				}
+				return newMetastore, nil
+			})
+			if err == nil {
+				level.Error(p.logger).Log("msg", "successfully merged & updated metastore", "store", metastorePath)
+				break
+			}
+			level.Error(p.logger).Log("msg", "failed to get and replace metastore object", "err", err)
+			p.metrics.metastoreWriteFailures.Inc()
+			backoff.Wait()
+		}
+	}
+	return nil
 }

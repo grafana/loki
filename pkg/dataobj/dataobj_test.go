@@ -1,9 +1,11 @@
 package dataobj
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -85,7 +87,8 @@ func Test(t *testing.T) {
 		for _, entry := range streams {
 			require.NoError(t, builder.Append(entry))
 		}
-		require.NoError(t, builder.Flush(context.Background()))
+		_, err = builder.Flush(context.Background())
+		require.NoError(t, err)
 	})
 
 	t.Run("Read", func(t *testing.T) {
@@ -124,11 +127,11 @@ func Test_Builder_Append(t *testing.T) {
 	builder, err := NewBuilder(builderConfig, bucket, "fake")
 	require.NoError(t, err)
 
-	for {
+	for i := 0; ; i++ {
 		require.NoError(t, ctx.Err())
 
 		err := builder.Append(logproto.Stream{
-			Labels: `{cluster="test",app="foo"}`,
+			Labels: fmt.Sprintf(`{cluster="test",app="foo",key="%d"}`, i),
 			Entries: []push.Entry{{
 				Timestamp: time.Now().UTC(),
 				Line:      strings.Repeat("a", 1024),
@@ -139,6 +142,52 @@ func Test_Builder_Append(t *testing.T) {
 		}
 		require.NoError(t, err)
 	}
+
+	path, err := builder.Flush(context.Background())
+	require.NoError(t, err)
+
+	metastore, err := NewBuilder(builderConfig, bucket, "metastore")
+	require.NoError(t, err)
+
+	stores := map[time.Time]*Builder{}
+	stores[time.Now().UTC().Truncate(time.Hour*3)] = metastore
+
+	for stream := range builder.streams.Iter(ctx) {
+		fmt.Println(stream.MustValue().Labels.String())
+		minWindow := stream.MustValue().MinTimestamp.Truncate(time.Hour * 3)
+		maxWindow := stream.MustValue().MaxTimestamp.Truncate(time.Hour * 3)
+
+		stores[minWindow].Append(logproto.Stream{
+			Labels: stream.MustValue().Labels.String(),
+			Entries: []push.Entry{{
+				Timestamp: minWindow,
+				Line:      path,
+			}},
+		})
+		if minWindow != maxWindow {
+			fmt.Println("crosses time boundary")
+		}
+	}
+
+	for window, store := range stores {
+		path := fmt.Sprintf("tenant-fake/metastore/%s", window.Format(time.RFC3339))
+		metastoreBytes, err := store.FlushToBuffer()
+		require.NoError(t, err)
+		fmt.Printf("metastore %q: %d\n", path, metastoreBytes.Len())
+	}
+
+	builder.Reset()
+
+	start := time.Now()
+	builder, err = ToBuilder(builder.cfg, bucket, "fake", bytes.NewReader(bucket.Objects()[path]))
+	require.NoError(t, err)
+	fmt.Printf("ToBuilder took: %s\n", time.Since(start))
+
+	/*
+		 	for stream := range builder.streams.Iter(ctx) {
+				//fmt.Println(stream.MustValue().Labels.String())
+			}
+	*/
 }
 
 // sortStreams returns a new slice of streams where entries in individual
