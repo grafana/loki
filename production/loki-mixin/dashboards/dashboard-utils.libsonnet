@@ -20,7 +20,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
               options: [],
               query: 'loki',
               refresh: 1,
-              regex: '',
+              regex: '(?!grafanacloud-.+(alert-state-history|usage-insights)).+',
               type: 'datasource',
             },
           ],
