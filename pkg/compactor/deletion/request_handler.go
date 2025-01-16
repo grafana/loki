@@ -76,7 +76,19 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+	}
 
+	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
+		shardByInterval = 0
+		deleteRequests = []DeleteRequest{
+			{
+				StartTime: startTime,
+				EndTime:   endTime,
+				Query:     query,
+				UserID:    userID,
+			},
+		}
+	} else {
 		deleteRequests = make([]DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
 		// although delete request end time is inclusive, setting endTimeInclusive to true would keep 1ms gap between the splits,
 		// which might make us miss deletion of some of the logs. We set it to false to have some overlap between the request to stay safe.
@@ -90,15 +102,6 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 				},
 			)
 		})
-	} else {
-		deleteRequests = []DeleteRequest{
-			{
-				StartTime: startTime,
-				EndTime:   endTime,
-				Query:     query,
-				UserID:    userID,
-			},
-		}
 	}
 
 	createdDeleteRequests, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests)
