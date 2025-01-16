@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"path"
 
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -46,6 +47,9 @@ type BuilderConfig struct {
 
 	// TargetObjectSize configures a target size for data objects.
 	TargetObjectSize flagext.Bytes `yaml:"target_object_size"`
+
+	// StorageBucketPrefix is the prefix to use for the storage bucket.
+	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -55,6 +59,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	_ = cfg.TargetObjectSize.Set("1GB")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
+	f.StringVar(&cfg.StorageBucketPrefix, prefix+"storage-bucket-prefix", "dataobj/", "The prefix to use for the storage bucket.")
 }
 
 // Validate validates the BuilderConfig.
@@ -234,8 +239,9 @@ func (b *Builder) Flush(ctx context.Context) error {
 	sum := sha256.Sum224(buf.Bytes())
 	sumStr := hex.EncodeToString(sum[:])
 
-	path := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
-	return b.bucket.Upload(ctx, path, bytes.NewReader(buf.Bytes()))
+	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
+	objectPath = path.Join(b.cfg.StorageBucketPrefix, objectPath)
+	return b.bucket.Upload(ctx, objectPath, bytes.NewReader(buf.Bytes()))
 }
 
 func (b *Builder) reset() {
