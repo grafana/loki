@@ -14,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // For now, assume a single tenant
@@ -44,6 +43,10 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 	if err != nil {
 		panic(err)
 	}
+	builder, err := dataobj.NewBuilder(builderCfg, bucket, string(tenantID))
+	if err != nil {
+		panic(err)
+	}
 	return &partitionProcessor{
 		client:    client,
 		logger:    log.With(logger, "topic", topic, "partition", partition),
@@ -52,7 +55,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		records:   make(chan *kgo.Record, 1000),
 		ctx:       ctx,
 		cancel:    cancel,
-		builder:   dataobj.NewBuilder(builderCfg, bucket, string(tenantID)),
+		builder:   builder,
 		decoder:   decoder,
 	}
 }
@@ -91,15 +94,13 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
 		return
 	}
-	req := logproto.PushRequest{
-		Streams: []logproto.Stream{
-			{
-				Labels:  stream.Labels,
-				Entries: stream.Entries,
-			},
-		},
-	}
-	if !p.builder.Append(req) {
+
+	if err := p.builder.Append(stream); err != nil {
+		if err != dataobj.ErrBufferFull {
+			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
+			return
+		}
+
 		backoff := backoff.New(p.ctx, backoff.Config{
 			MinBackoff: 100 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
@@ -123,6 +124,9 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
 			backoff.Wait()
 		}
-		p.builder.Append(req)
+
+		if err := p.builder.Append(stream); err != nil {
+			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
+		}
 	}
 }
