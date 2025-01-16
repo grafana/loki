@@ -20,7 +20,7 @@ func (cfg *Config) Validate() error {
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("dataobj-consumer", f)
+	cfg.RegisterFlagsWithPrefix("dataobj-consumer.", f)
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
