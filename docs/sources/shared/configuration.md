@@ -3828,11 +3828,6 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# Experimental. The shard size defines how many bloom gateways should be used by
-# a tenant for querying.
-# CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 0]
-
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
