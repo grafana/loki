@@ -54,6 +54,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/limits"
+	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -106,6 +107,7 @@ const (
 	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
 	IngestLimits             string = "ingest-limits"
+	IngestLimitsFrontend     string = "ingest-limits-frontend"
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
 	Ingester                 string = "ingester"
@@ -405,6 +407,23 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	t.Server.HTTP.Path("/ingest/limits").Methods("GET").Handler(ingestLimits)
 
 	return ingestLimits, nil
+}
+
+func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
+	if !t.Cfg.KafkaConfig.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	ingestLimitsFrontend, err := limits_frontend.NewFrontend(
+		t.Cfg.LimitsFrontendConfig,
+		util_log.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.ingestLimitsFrontend = ingestLimitsFrontend
+	logproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
+	return ingestLimitsFrontend, nil
 }
 
 // initCodec sets the codec used to encode and decode requests.
