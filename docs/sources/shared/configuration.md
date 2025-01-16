@@ -906,14 +906,10 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
-  ingest_limits:
-    # Enable the ingest limits.
-    # CLI flag: -kafka.ingest-limits.enabled
-    [enabled: <boolean> | default = false]
+ingest_limits:
+  [enabled: <boolean>]
 
-    # The window size to use for the limiter.
-    # CLI flag: -kafka.ingest-limits.window-size
-    [window_size: <duration> | default = 1m]
+  [window_size: <duration>]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
