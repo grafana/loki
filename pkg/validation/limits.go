@@ -232,7 +232,7 @@ type Limits struct {
 	BlockIngestionStatusCode       int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	BlockPolicyIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_policy_ingestion_until" json:"block_policy_ingestion_until" category:"experimental" doc:"description=Block ingestion until the given time for the given policy. The policy is the value of the policy label in the log line. Experimental."`
 	BlockPolicyIngestionStatusCode map[string]int                `yaml:"block_policy_ingestion_status_code" json:"block_policy_ingestion_status_code" category:"experimental" doc:"description=HTTP status code to return when ingestion is blocked for the given policy. Experimental."`
-	PolicyStreamMapping            map[string]string             `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to streams. Push streams that matches a policy selector will be considered as belonging to that policy. Experimental."`
+	PolicyStreamMapping            map[string]string             `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors. Push streams that matches a policy selector will be considered as belonging to that policy. Experimental."`
 	EnforcedLabels                 []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`

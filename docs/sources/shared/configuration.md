@@ -3949,8 +3949,8 @@ otlp_config:
 # Experimental.
 [block_policy_ingestion_status_code: <map of string to int>]
 
-# Map of policies to streams. Push streams that matches a policy selector will
-# be considered as belonging to that policy. Experimental.
+# Map of policies to stream selectors. Push streams that matches a policy
+# selector will be considered as belonging to that policy. Experimental.
 [policy_stream_mapping: <map of string to string>]
 
 # List of labels that must be present in the stream. If any of the labels are
