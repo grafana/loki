@@ -387,7 +387,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 }
 
 func (t *Loki) initIngestLimits() (services.Service, error) {
-	if !t.Cfg.IngestLimits.Enabled || !t.Cfg.Distributor.KafkaEnabled {
+	if !t.Cfg.IngestLimits.Enabled {
 		return nil, nil
 	}
 
