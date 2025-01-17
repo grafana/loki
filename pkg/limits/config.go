@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/ring"
+
 	"github.com/grafana/loki/v3/pkg/kafka"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
