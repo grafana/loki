@@ -27,6 +27,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
-	f.StringVar(&cfg.TenantID, prefix+".tenant-id", "fake", "The tenant ID to use for the data object builder.")
+	f.StringVar(&cfg.TenantID, prefix+"tenant-id", "fake", "The tenant ID to use for the data object builder.")
 	f.StringVar(&cfg.StorageBucketPrefix, prefix+"storage-bucket-prefix", "dataobj/", "The prefix to use for the storage bucket.")
 }
