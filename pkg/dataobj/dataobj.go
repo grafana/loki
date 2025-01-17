@@ -132,11 +132,12 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 	}
 
 	var (
-		metrics = newMetrics(cfg)
+		metrics = newMetrics()
 
 		flushBuffer = bytes.NewBuffer(make([]byte, 0, int(cfg.TargetObjectSize)))
 		encoder     = encoding.NewEncoder(flushBuffer)
 	)
+	metrics.ObserveConfig(cfg)
 
 	return &Builder{
 		cfg:      cfg,
