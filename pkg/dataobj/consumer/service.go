@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"time"
@@ -117,12 +118,16 @@ func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 
 func (s *Service) run(ctx context.Context) error {
 	for {
-		fetches := s.client.PollFetches(ctx)
+		fetches := s.client.PollRecords(ctx, -1)
 		if fetches.IsClientClosed() {
 			return nil
 		}
 		if errs := fetches.Errors(); len(errs) > 0 {
-			level.Error(s.logger).Log("msg", "error fetching records", "err", errs)
+			var multiErr error
+			for _, err := range errs {
+				multiErr = errors.Join(multiErr, err.Err)
+			}
+			level.Error(s.logger).Log("msg", "error fetching records", "err", multiErr.Error())
 			continue
 		}
 		if fetches.Empty() {
