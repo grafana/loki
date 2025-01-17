@@ -5,9 +5,10 @@ on:
     paths:
       - "production/helm/loki/**"
 
+# These permissions are needed to assume roles from Github's OIDC.
 permissions:
   contents: read
-  pull-requests: write
+  id-token: write
 
 jobs:
   single-binary-diff:
