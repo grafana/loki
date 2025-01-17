@@ -22,29 +22,175 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
  [scalable]({{< relref "../../get-started/deployment-modes#simple-scalable" >}}) deployment. The storage needs to be configured after generation.
 
 <div id="app">
-  <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
-  <select name="node-type" v-model="node"> 
-  <option v-for="node of nodes">{{ node }}</option>
-  </select>
-  <label>Ingest<i class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null"></i></label>
-  <div style="display: flex;">
-    <input style="padding-right:4.5em;" v-model="ingestInGB" name="ingest" placeholder="Desired ingest in GB/day" type="number" max="1048576" min="0"/>
-    <span style="margin: auto auto auto -4em;">GB/day</span>
-  </div>
-  <label>Log retention period<i class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null"></i></label>
-  <div style="display: flex;">
-    <input style="padding-right:4.5em;"  v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
-    <span style="margin: auto auto auto -4em;">days</span>
-  </div>
-  <label>Query performance<i class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null"></i></label>
-  <div id="queryperf" style="display: inline-flex;">
-  <label for="basic">
-  <input type="radio" id="basic" value="Basic" v-model="queryperf"/>Basic
-  </label>
-  <label for="super">
-  <input type="radio" id="super" value="Super" v-model="queryperf"/>Super
-  </label>
-  </div>
+    <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
+    <select name="node-type" v-model="node">
+    <option v-for="node of nodes">{{ node }}</option>
+    </select>
+    <div class="controls">
+        <label class="radio-label">
+            <input type="radio" name="tableSelector" value="table1" checked> Table 1
+        </label>
+        <label class="radio-label">
+            <input type="radio" name="tableSelector" value="table2"> Table 2
+        </label>
+        <label class="radio-label">
+            <input type="radio" name="tableSelector" value="table3"> Table 3
+        </label>
+    </div>
+    <div id="table1" class="table-container">
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>CPU Requet</th>
+                <th>Memory Request</th>
+                <th>Base Replicas</th>
+            </tr>
+            <tr>
+                <td>Ingester</td>
+                <td>4</td>
+                <td>8</td>
+                <td>150</td>
+            </tr>
+            <tr>
+                <td>Distributor</td>
+                <td>2</td>
+                <td>1</td>
+                <td>100</td>
+            </tr>
+            <tr>
+                <td>Index gateway</td>
+                <td>1</td>
+                <td>4</td>
+                <td>20</td>
+            </tr>
+            <tr>
+                <td>Querier</td>
+                <td>1.5</td>
+                <td>3</td>
+                <td>250</td>
+            </tr>
+            <tr>
+                <td>Query-frontend</td>
+                <td>1</td>
+                <td>4</td>
+                <td>16</td>
+            </tr>
+            <tr>
+                <td>Query-scheduler</td>
+                <td>2</td>
+                <td>0.5</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>Compactor</td>
+                <td>6</td>
+                <td>20</td>
+                <td>1 (Singleton)</td>
+            </tr>
+        </table>
+    <div id="table2" class="table-container">
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>CPU Requet</th>
+                <th>Memory Request</th>
+                <th>Base Replicas</th>
+            </tr>
+            <tr>
+                <td>Ingester</td>
+                <td>2</td>
+                <td>6</td>
+                <td>90</td>
+            </tr>
+            <tr>
+                <td>Distributor</td>
+                <td>2</td>
+                <td>1</td>
+                <td>40</td>
+            </tr>
+            <tr>
+                <td>Index gateway</td>
+                <td>0.5</td>
+                <td>4</td>
+                <td>10</td>
+            </tr>
+            <tr>
+                <td>Querier</td>
+                <td>1.5</td>
+                <td>2</td>
+                <td>100</td>
+            </tr>
+            <tr>
+                <td>Query-frontend</td>
+                <td>1</td>
+                <td>2</td>
+                <td>8</td>
+            </tr>
+            <tr>
+                <td>Query-scheduler</td>
+                <td>1</td>
+                <td>0.5</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>Compactor</td>
+                <td>6</td>
+                <td>20</td>
+                <td>1 (Singleton)</td>
+            </tr>
+        </table>
+    <div id="table3" class="table-container">
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>CPU Requet</th>
+                <th>Memory Request</th>
+                <th>Base Replicas</th>
+            </tr>
+            <tr>
+                <td>Ingester</td>
+                <td>2</td>
+                <td>4</td>
+                <td>6</td>
+            </tr>
+            <tr>
+                <td>Distributor</td>
+                <td>2</td>
+                <td>0.5</td>
+                <td>4</td>
+            </tr>
+            <tr>
+                <td>Index gateway</td>
+                <td>0.5</td>
+                <td>2</td>
+                <td>4</td>
+            </tr>
+            <tr>
+                <td>Querier</td>
+                <td>1</td>
+                <td>1</td>
+                <td>10</td>
+            </tr>
+            <tr>
+                <td>Query-frontend</td>
+                <td>1</td>
+                <td>2</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>Query-scheduler</td>
+                <td>1</td>
+                <td>0.5</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>Compactor</td>
+                <td>2</td>
+                <td>10</td>
+                <td>1 (Singleton)</td>
+            </tr>
+        </table>
+    </div>
 
   <div v-if="clusterSize">
     <table>
