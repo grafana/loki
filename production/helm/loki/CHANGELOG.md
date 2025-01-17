@@ -17,14 +17,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Removed minio-mc init container from admin-api.
 - [BUGFIX] Fixed admin-api and gateway deployment container args.
+- [FEATURE] Added support for Overrides Exporter
 
 ## 6.24.1
 
 - [ENHANCEMENT] Fix Inconsistency between sidecar.securityContext and loki.containerSecurityContext
-
-## 6.25.0
-
-- [FEATURE] Added support for Overrides Exporter
 
 ## 6.24.0
 
