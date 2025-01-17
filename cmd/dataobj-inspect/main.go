@@ -13,8 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
-const format = "2006-01-02 15:04:05.000000 MST"
-
 func main() {
 	flag.Parse()
 
