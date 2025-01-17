@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
@@ -49,6 +50,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -70,6 +72,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
@@ -1886,6 +1889,36 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 	)
 
 	return s, nil
+}
+
+func (t *Loki) initDataObjConsumer() (services.Service, error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema for now: %w", err)
+	}
+	var store objstore.Bucket
+	store, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj", util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	if t.Cfg.DataObjConsumer.StorageBucketPrefix != "" {
+		store = objstore.NewPrefixedBucket(store, t.Cfg.DataObjConsumer.StorageBucketPrefix)
+	}
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
+	t.dataObjConsumer = consumer.New(
+		t.Cfg.KafkaConfig,
+		t.Cfg.DataObjConsumer.BuilderConfig,
+		store,
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		t.partitionRing,
+		prometheus.DefaultRegisterer,
+		util_log.Logger,
+	)
+
+	return t.dataObjConsumer, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {

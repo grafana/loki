@@ -28,8 +28,6 @@ import (
 	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
-	"github.com/thanos-io/objstore"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
@@ -62,7 +60,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/scheduler"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
-	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
@@ -751,7 +748,7 @@ func (t *Loki) setupModuleManager() error {
 		MemberlistKV:             {Server},
 		BlockBuilder:             {PartitionRing, Store, Server},
 		BlockScheduler:           {Server},
-		DataObjConsumer:          {PartitionRing, Store, Server},
+		DataObjConsumer:          {PartitionRing, Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
@@ -872,34 +869,4 @@ func (t *Loki) recursiveIsModuleActive(target, m string) bool {
 		}
 	}
 	return false
-}
-
-func (t *Loki) initDataObjConsumer() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
-		return nil, nil
-	}
-	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to get schema for now")
-	}
-	var store objstore.Bucket
-	store, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj", util_log.Logger)
-	if err != nil {
-		return nil, err
-	}
-	if t.Cfg.DataObjConsumer.StorageBucketPrefix != "" {
-		store = objstore.NewPrefixedBucket(store, t.Cfg.DataObjConsumer.StorageBucketPrefix)
-	}
-	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
-	t.dataObjConsumer = consumer.New(
-		t.Cfg.KafkaConfig,
-		t.Cfg.DataObjConsumer.BuilderConfig,
-		store,
-		t.Cfg.Ingester.LifecyclerConfig.ID,
-		t.partitionRing,
-		prometheus.DefaultRegisterer,
-		util_log.Logger,
-	)
-
-	return t.dataObjConsumer, nil
 }
