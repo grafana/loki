@@ -9,7 +9,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -153,10 +152,6 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 		flushBuffer: flushBuffer,
 		encoder:     encoder,
 	}, nil
-}
-
-func Decoder(obj io.ReadSeeker) encoding.Decoder {
-	return encoding.ReadSeekerDecoder(obj)
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
