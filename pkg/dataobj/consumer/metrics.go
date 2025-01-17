@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"context"
-	"strconv"
 	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,47 +25,37 @@ type partitionOffsetMetrics struct {
 }
 
 func newPartitionOffsetMetrics(ctx context.Context, client *kgo.Client, topic string, partition int32) *partitionOffsetMetrics {
-	labels := prometheus.Labels{
-		"partition": strconv.Itoa(int(partition)),
-		"topic":     topic,
-	}
-
 	p := &partitionOffsetMetrics{
 		partition: partition,
 		topic:     topic,
 		client:    client,
 		ctx:       ctx,
 		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name:        "loki_dataobj_consumer_flush_failures_total",
-			Help:        "Total number of flush failures",
-			ConstLabels: labels,
+			Name: "loki_dataobj_consumer_flush_failures_total",
+			Help: "Total number of flush failures",
 		}),
 		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name:        "loki_dataobj_consumer_commit_failures_total",
-			Help:        "Total number of commit failures",
-			ConstLabels: labels,
+			Name: "loki_dataobj_consumer_commit_failures_total",
+			Help: "Total number of commit failures",
 		}),
 		appendFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name:        "loki_dataobj_consumer_append_failures_total",
-			Help:        "Total number of append failures",
-			ConstLabels: labels,
+			Name: "loki_dataobj_consumer_append_failures_total",
+			Help: "Total number of append failures",
 		}),
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
-			Name:        "loki_dataobj_consumer_current_offset",
-			Help:        "The last consumed offset for this partition",
-			ConstLabels: labels,
+			Name: "loki_dataobj_consumer_current_offset",
+			Help: "The last consumed offset for this partition",
 		},
 		p.getCurrentOffset,
 	)
 
 	p.latestOffset = prometheus.NewGaugeFunc(
 		prometheus.GaugeOpts{
-			Name:        "loki_dataobj_consumer_latest_offset",
-			Help:        "The latest available offset for this partition",
-			ConstLabels: labels,
+			Name: "loki_dataobj_consumer_latest_offset",
+			Help: "The latest available offset for this partition",
 		},
 		p.getLatestOffset,
 	)
