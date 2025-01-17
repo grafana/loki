@@ -368,6 +368,7 @@ type Loki struct {
 	TenantLimits              validation.TenantLimits
 	distributor               *distributor.Distributor
 	ingestLimits              *limits.IngestLimits
+	ingestLimitsRing          *ring.Ring
 	ingestLimitsFrontend      *limits_frontend.Frontend
 	Ingester                  ingester.Interface
 	PatternIngester           *pattern.Ingester
@@ -679,6 +680,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuntimeConfig, t.initRuntimeConfig, modules.UserInvisibleModule)
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
+	mm.RegisterModule(IngestLimitsRing, t.initIngestLimitsRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -728,7 +730,8 @@ func (t *Loki) setupModuleManager() error {
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
-		IngestLimits:             {Server},
+		IngestLimitsRing:         {MemberlistKV, Server},
+		IngestLimits:             {MemberlistKV, Server},
 		IngestLimitsFrontend:     {Server},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
@@ -763,7 +766,7 @@ func (t *Loki) setupModuleManager() error {
 		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
 	}
 
-	if t.Cfg.Distributor.KafkaEnabled {
+	if t.Cfg.IngestLimits.Enabled {
 		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
 	}
 

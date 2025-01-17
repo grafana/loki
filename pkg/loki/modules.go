@@ -107,6 +107,7 @@ const (
 	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
 	IngestLimits             string = "ingest-limits"
+	IngestLimitsRing         string = "ingest-limits-ring"
 	IngestLimitsFrontend     string = "ingest-limits-frontend"
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
@@ -384,6 +385,30 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(lokiPushHandler)
 	t.Server.HTTP.Path("/otlp/v1/logs").Methods("POST").Handler(otlpPushHandler)
 	return t.distributor, nil
+}
+
+func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	t.ingestLimitsRing, err = ring.New(
+		t.Cfg.IngestLimits.LifecyclerConfig.RingConfig,
+		limits.RingKey,
+		limits.RingName,
+		util_log.Logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	}
+
+	return t.ingestLimitsRing, nil
 }
 
 func (t *Loki) initIngestLimits() (services.Service, error) {
