@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 type partitionOffsetMetrics struct {
@@ -68,27 +68,16 @@ func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
 }
 
 func (p *partitionOffsetMetrics) getLatestOffset() float64 {
-	req := kmsg.ListOffsetsRequest{
-		Topics: []kmsg.ListOffsetsRequestTopic{
-			{
-				Topic: p.topic,
-				Partitions: []kmsg.ListOffsetsRequestTopicPartition{
-					{
-						Partition: p.partition,
-						Timestamp: -1, // Latest offset
-					},
-				},
-			},
-		},
-	}
-	resp, err := p.client.Request(p.ctx, &req)
+	adm := kadm.NewClient(p.client)
+	resp, err := adm.ListEndOffsets(p.ctx, p.topic)
 	if err != nil {
 		return 0
 	}
-	if listResp, ok := resp.(*kmsg.ListOffsetsResponse); ok && len(listResp.Topics) > 0 && len(listResp.Topics[0].Partitions) > 0 {
-		return float64(listResp.Topics[0].Partitions[0].Offset)
+	offset, ok := resp.Lookup(p.topic, p.partition)
+	if !ok {
+		return 0
 	}
-	return 0
+	return float64(offset.Offset)
 }
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {

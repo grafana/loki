@@ -185,6 +185,7 @@ func (s *Service) stopping(failureCase error) error {
 	// Only close the client once all partitions have been stopped.
 	// This is to ensure that all records have been processed before closing and offsets committed.
 	s.client.Close()
+	level.Info(s.logger).Log("msg", "consumer stopped")
 	return failureCase
 }
 
