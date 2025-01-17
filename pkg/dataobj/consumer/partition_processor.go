@@ -34,6 +34,9 @@ type partitionProcessor struct {
 	builderCfg  dataobj.BuilderConfig
 	bucket      objstore.Bucket
 
+	// Metrics
+	metrics *partitionOffsetMetrics
+
 	// Control and coordination
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -52,6 +55,11 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		"partition": strconv.Itoa(int(partition)),
 	}, reg)
 
+	metrics := newPartitionOffsetMetrics(ctx, client, topic, partition)
+	if err := metrics.register(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
+	}
+
 	return &partitionProcessor{
 		client:     client,
 		logger:     log.With(logger, "topic", topic, "partition", partition),
@@ -65,6 +73,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		builderCfg: builderCfg,
 		bucket:     bucket,
 		tenantID:   []byte(tenantID),
+		metrics:    metrics,
 	}
 }
 
@@ -93,6 +102,7 @@ func (p *partitionProcessor) stop() {
 	if p.builder != nil {
 		p.builder.UnregisterMetrics(p.reg)
 	}
+	p.metrics.unregister(p.reg)
 }
 
 func (p *partitionProcessor) initBuilder() error {
@@ -113,6 +123,9 @@ func (p *partitionProcessor) initBuilder() error {
 }
 
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
+	// Update offset metric at the end of processing
+	defer p.metrics.updateOffset(record.Offset)
+
 	// Initialize builder if this is the first record
 	if err := p.initBuilder(); err != nil {
 		level.Error(p.logger).Log("msg", "failed to initialize builder", "err", err)
@@ -132,6 +145,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	if err := p.builder.Append(stream); err != nil {
 		if err != dataobj.ErrBufferFull {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
+			p.metrics.incAppendFailures()
 			return
 		}
 
@@ -146,6 +160,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 				break
 			}
 			level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
+			p.metrics.incFlushFailures()
 			backoff.Wait()
 		}
 
@@ -156,11 +171,13 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 				break
 			}
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+			p.metrics.incCommitFailures()
 			backoff.Wait()
 		}
 
 		if err := p.builder.Append(stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
+			p.metrics.incAppendFailures()
 		}
 	}
 }
