@@ -287,6 +287,7 @@ jobs:
 
       - id: get-secrets
         uses: grafana/shared-workflows/actions/get-vault-secrets@main
+        if: github.event.pull_request.head.repo.fork == false
         with:
           repo_secrets: |
             GRAFANA_APP_ID=github_actions:grafana-loki-app-id
@@ -295,6 +296,7 @@ jobs:
 
       - name: Generate a token
         id: generate-token
+        if: github.event.pull_request.head.repo.fork == false
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ env.GRAFANA_APP_ID }}
@@ -302,33 +304,38 @@ jobs:
           owner: grafana
           repositories: loki
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: single-binary-diff-output
           path: single-binary-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: default-values-diff-output
           path: default-values-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: ingress-diff-output
           path: ingress-values-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: legacy-monitoring-diff-output
           path: legacy-monitoring-values-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: simple-scalable-aws-kube-irsa-diff-output
           path: simple-scalable-aws-kube-irsa-values-diff
 
       - name: Combine diff outputs
-        if: github.event.pull_request.head.repo.fork
+        if: github.event.pull_request.head.repo.fork == false
         run: |
           echo "## Helm Diff Output - Summary" > formatted_diff_output.md
 
@@ -384,7 +391,7 @@ jobs:
 
       - name: Post Comment
         uses: actions/github-script@v7
-        if: github.event.pull_request.head.repo.fork
+        if: github.event.pull_request.head.repo.fork == false
         with:
           github-token: ${{ steps.generate-token.outputs.token }}
           script: |
