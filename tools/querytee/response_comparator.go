@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -96,7 +97,14 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		return nil, errors.Wrap(err, "unable to unmarshal actual matrix")
 	}
 
-	if allMatrixSamplesWithinRecentSampleWindow(expected, opts) && allMatrixSamplesWithinRecentSampleWindow(actual, opts) {
+	// Filter out series that only contain recent samples
+	if opts.SkipRecentSamples > 0 {
+		expected = filterRecentOnlySeries(expected, opts.SkipRecentSamples)
+		actual = filterRecentOnlySeries(actual, opts.SkipRecentSamples)
+	}
+
+	// If both matrices are empty after filtering, we can skip comparison
+	if len(expected) == 0 && len(actual) == 0 {
 		return &ComparisonSummary{skipped: true}, nil
 	}
 
@@ -117,51 +125,113 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		}
 
 		actualMetric := actual[actualMetricIndex]
-		expectedMetricLen := len(expectedMetric.Values)
-		actualMetricLen := len(actualMetric.Values)
 
-		if expectedMetricLen != actualMetricLen {
-			err := fmt.Errorf("expected %d samples for metric %s but got %d", expectedMetricLen,
-				expectedMetric.Metric, actualMetricLen)
-			if expectedMetricLen > 0 && actualMetricLen > 0 {
-				level.Error(util_log.Logger).Log("msg", err.Error(), "oldest-expected-ts", expectedMetric.Values[0].Timestamp,
-					"newest-expected-ts", expectedMetric.Values[expectedMetricLen-1].Timestamp,
-					"oldest-actual-ts", actualMetric.Values[0].Timestamp, "newest-actual-ts", actualMetric.Values[actualMetricLen-1].Timestamp)
-			}
-			return nil, err
-		}
-
-		for i, expectedSamplePair := range expectedMetric.Values {
-			actualSamplePair := actualMetric.Values[i]
-			err := compareSamplePair(expectedSamplePair, actualSamplePair, opts)
-			if err != nil {
-				return nil, errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
-			}
+		err := compareMatrixSamples(expectedMetric, actualMetric, opts)
+		if err != nil {
+			return nil, fmt.Errorf("%w\nExpected result for series:\n%v\n\nActual result for series:\n%v", err, expectedMetric, actualMetric)
 		}
 	}
 
 	return nil, nil
 }
 
-func allMatrixSamplesWithinRecentSampleWindow(m model.Matrix, opts SampleComparisonOptions) bool {
-	if opts.SkipRecentSamples == 0 {
-		return false
+func compareMatrixSamples(expected, actual *model.SampleStream, opts SampleComparisonOptions) error {
+	expectedSamplesTail, actualSamplesTail, err := comparePairs(expected.Values, actual.Values, func(p1 model.SamplePair, p2 model.SamplePair) error {
+		err := compareSamplePair(p1, p2, opts)
+		if err != nil {
+			return fmt.Errorf("float sample pair does not match for metric %s: %w", expected.Metric, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
-	for _, series := range m {
-		for _, sample := range series.Values {
-			if time.Since(sample.Timestamp.Time()) > opts.SkipRecentSamples {
+	expectedFloatSamplesCount := len(expected.Values)
+	actualFloatSamplesCount := len(actual.Values)
+
+	if expectedFloatSamplesCount == actualFloatSamplesCount {
+		return nil
+	}
+
+	skipAllFloatSamples := canSkipAllSamples(func(p model.SamplePair) bool {
+		return time.Since(p.Timestamp.Time())-opts.SkipRecentSamples < 0
+	}, expectedSamplesTail, actualSamplesTail)
+
+	if skipAllFloatSamples {
+		return nil
+	}
+
+	err = fmt.Errorf(
+		"expected %d float sample(s) for metric %s but got %d float sample(s) ",
+		len(expected.Values),
+		expected.Metric,
+		len(actual.Values),
+	)
+
+	shouldLog := false
+	logger := util_log.Logger
+
+	if expectedFloatSamplesCount > 0 && actualFloatSamplesCount > 0 {
+		logger = log.With(logger,
+			"oldest-expected-float-ts", expected.Values[0].Timestamp,
+			"newest-expected-float-ts", expected.Values[expectedFloatSamplesCount-1].Timestamp,
+			"oldest-actual-float-ts", actual.Values[0].Timestamp,
+			"newest-actual-float-ts", actual.Values[actualFloatSamplesCount-1].Timestamp,
+		)
+		shouldLog = true
+	}
+
+	if shouldLog {
+		level.Error(logger).Log("msg", err.Error())
+	}
+	return err
+}
+
+// comparePairs runs compare for pairs in s1 and s2. It stops on the first error the compare returns.
+// If len(s1) != len(s2) it compares only elements inside the longest prefix of both. If all elements within the prefix match,
+// it returns the tail of s1 and s2, and a nil error.
+func comparePairs[S ~[]M, M any](s1, s2 S, compare func(M, M) error) (S, S, error) {
+	var i int
+	for ; i < len(s1) && i < len(s2); i++ {
+		err := compare(s1[i], s2[i])
+		if err != nil {
+			return s1, s2, err
+		}
+	}
+	return s1[i:], s2[i:], nil
+}
+
+// trimBeginning returns s without the prefix that satisfies skip().
+func trimBeginning[S ~[]M, M any](s S, skip func(M) bool) S {
+	var i int
+	for ; i < len(s); i++ {
+		if !skip(s[i]) {
+			break
+		}
+	}
+	return s[i:]
+}
+
+// filterSlice returns a new slice with elements from s removed that satisfy skip().
+func filterSlice[S ~[]M, M any](s S, skip func(M) bool) S {
+	res := make(S, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if !skip(s[i]) {
+			res = append(res, s[i])
+		}
+	}
+	return res
+}
+
+func canSkipAllSamples[S ~[]M, M any](skip func(M) bool, ss ...S) bool {
+	for _, s := range ss {
+		for _, p := range s {
+			if !skip(p) {
 				return false
 			}
 		}
-
-		for _, sample := range series.Histograms {
-			if time.Since(sample.Timestamp.Time()) > opts.SkipRecentSamples {
-				return false
-			}
-		}
 	}
-
 	return true
 }
 
@@ -264,11 +334,11 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 }
 
 func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions) error {
-	if expected.Timestamp != actual.Timestamp {
-		return fmt.Errorf("expected timestamp %v but got %v", expected.Timestamp, actual.Timestamp)
-	}
 	if opts.SkipRecentSamples > 0 && time.Since(expected.Timestamp.Time()) < opts.SkipRecentSamples {
 		return nil
+	}
+	if expected.Timestamp != actual.Timestamp {
+		return fmt.Errorf("expected timestamp %v but got %v", expected.Timestamp, actual.Timestamp)
 	}
 	if !compareSampleValue(expected.Value, actual.Value, opts) {
 		return fmt.Errorf("expected value %s for timestamp %v but got %s", expected.Value, expected.Timestamp, actual.Value)
@@ -306,7 +376,14 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, opts SampleCompariso
 		return nil, errors.Wrap(err, "unable to unmarshal actual streams")
 	}
 
-	if allStreamEntriesWithinRecentSampleWindow(actual, opts) && allStreamEntriesWithinRecentSampleWindow(expected, opts) {
+	// Filter out streams that only contain recent entries
+	if opts.SkipRecentSamples > 0 {
+		expected = filterRecentOnlyStreams(expected, opts.SkipRecentSamples)
+		actual = filterRecentOnlyStreams(actual, opts.SkipRecentSamples)
+	}
+
+	// If both streams are empty after filtering, we can skip comparison
+	if len(expected) == 0 && len(actual) == 0 {
 		return &ComparisonSummary{skipped: true}, nil
 	}
 
@@ -326,54 +403,88 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, opts SampleCompariso
 		}
 
 		actualStream := actual[actualStreamIndex]
-		expectedValuesLen := len(expectedStream.Entries)
-		actualValuesLen := len(actualStream.Entries)
 
-		if expectedValuesLen != actualValuesLen {
-			err := fmt.Errorf("expected %d values for stream %s but got %d", expectedValuesLen,
-				expectedStream.Labels, actualValuesLen)
-			if expectedValuesLen > 0 && actualValuesLen > 0 {
-				level.Error(util_log.Logger).Log("msg", err.Error(), "oldest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
-					"newest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
-					"oldest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "newest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
+		expectedEntriesTail, actualEntriesTail, err := comparePairs(expectedStream.Entries, actualStream.Entries, func(e1, e2 loghttp.Entry) error {
+			if opts.SkipRecentSamples > 0 && time.Since(e1.Timestamp) < opts.SkipRecentSamples {
+				return nil
 			}
+			if !e1.Timestamp.Equal(e2.Timestamp) {
+				return fmt.Errorf("expected timestamp %v but got %v for stream %s", e1.Timestamp.UnixNano(),
+					e2.Timestamp.UnixNano(), expectedStream.Labels)
+			}
+			if e1.Line != e2.Line {
+				return fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s", e1.Line,
+					e1.Timestamp.UnixNano(), e2.Line, expectedStream.Labels)
+			}
+			return nil
+		})
+		if err != nil {
 			return nil, err
 		}
 
-		for i, expectedSamplePair := range expectedStream.Entries {
-			actualSamplePair := actualStream.Entries[i]
+		expectedEntriesCount := len(expectedStream.Entries)
+		actualEntriesCount := len(actualStream.Entries)
 
-			// skip recent samples
-			if opts.SkipRecentSamples > 0 && time.Since(expectedSamplePair.Timestamp) < opts.SkipRecentSamples {
-				continue
-			}
-
-			if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
-				return nil, fmt.Errorf("expected timestamp %v but got %v for stream %s", expectedSamplePair.Timestamp.UnixNano(),
-					actualSamplePair.Timestamp.UnixNano(), expectedStream.Labels)
-			}
-			if expectedSamplePair.Line != actualSamplePair.Line {
-				return nil, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s", expectedSamplePair.Line,
-					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, expectedStream.Labels)
-			}
+		if expectedEntriesCount == actualEntriesCount {
+			continue
 		}
+
+		skipAllEntries := canSkipAllSamples(func(e loghttp.Entry) bool {
+			return time.Since(e.Timestamp)-opts.SkipRecentSamples < 0
+		}, expectedEntriesTail, actualEntriesTail)
+
+		if skipAllEntries {
+			continue
+		}
+
+		err = fmt.Errorf("expected %d entries for stream %s but got %d", expectedEntriesCount,
+			expectedStream.Labels, actualEntriesCount)
+
+		if expectedEntriesCount > 0 && actualEntriesCount > 0 {
+			level.Error(util_log.Logger).Log("msg", err.Error(),
+				"oldest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
+				"newest-expected-ts", expectedStream.Entries[expectedEntriesCount-1].Timestamp.UnixNano(),
+				"oldest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(),
+				"newest-actual-ts", actualStream.Entries[actualEntriesCount-1].Timestamp.UnixNano())
+		}
+		return nil, err
 	}
 
 	return nil, nil
 }
 
-func allStreamEntriesWithinRecentSampleWindow(s loghttp.Streams, opts SampleComparisonOptions) bool {
-	if opts.SkipRecentSamples == 0 {
-		return false
-	}
+// filterRecentOnlySeries removes series that only contain samples within the recent window
+func filterRecentOnlySeries(matrix model.Matrix, recentWindow time.Duration) model.Matrix {
+	result := make(model.Matrix, 0, len(matrix))
 
-	for _, stream := range s {
-		for _, sample := range stream.Entries {
-			if time.Since(sample.Timestamp) > opts.SkipRecentSamples {
-				return false
-			}
+	for _, series := range matrix {
+		skipAllSamples := canSkipAllSamples(func(p model.SamplePair) bool {
+			return time.Since(p.Timestamp.Time())-recentWindow < 0
+		}, series.Values)
+
+		// Only keep series that have at least one old sample
+		if !skipAllSamples {
+			result = append(result, series)
 		}
 	}
 
-	return true
+	return result
+}
+
+// filterRecentOnlyStreams removes streams that only contain entries within the recent window
+func filterRecentOnlyStreams(streams loghttp.Streams, recentWindow time.Duration) loghttp.Streams {
+	result := make(loghttp.Streams, 0, len(streams))
+
+	for _, stream := range streams {
+		skipAllEntries := canSkipAllSamples(func(e loghttp.Entry) bool {
+			return time.Since(e.Timestamp)-recentWindow < 0
+		}, stream.Entries)
+
+		// Only keep streams that have at least one old entry
+		if !skipAllEntries {
+			result = append(result, stream)
+		}
+	}
+
+	return result
 }
