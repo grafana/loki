@@ -18,15 +18,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
-// For now, assume a single tenant
-var tenantID = []byte("fake")
-
 type partitionProcessor struct {
 	// Kafka client and topic/partition info
 	client    *kgo.Client
 	topic     string
 	partition int32
-
+	tenantID  []byte
 	// Processing pipeline
 	records chan *kgo.Record
 	builder *dataobj.Builder
@@ -45,7 +42,7 @@ type partitionProcessor struct {
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
+func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
@@ -67,6 +64,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		reg:        reg,
 		builderCfg: builderCfg,
 		bucket:     bucket,
+		tenantID:   []byte(tenantID),
 	}
 }
 
@@ -100,7 +98,7 @@ func (p *partitionProcessor) stop() {
 func (p *partitionProcessor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
-		builder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(tenantID))
+		builder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
 		if err != nil {
 			initErr = err
 			return
@@ -122,7 +120,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	}
 
 	// todo: handle multi-tenant
-	if !bytes.Equal(record.Key, tenantID) {
+	if !bytes.Equal(record.Key, p.tenantID) {
 		return
 	}
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)

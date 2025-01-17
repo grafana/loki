@@ -34,7 +34,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
-	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
@@ -1899,18 +1898,15 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)
 	}
-	var store objstore.Bucket
-	store, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj", util_log.Logger)
+
+	store, err := bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj", util_log.Logger)
 	if err != nil {
 		return nil, err
-	}
-	if t.Cfg.DataObjConsumer.StorageBucketPrefix != "" {
-		store = objstore.NewPrefixedBucket(store, t.Cfg.DataObjConsumer.StorageBucketPrefix)
 	}
 	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
 	t.dataObjConsumer = consumer.New(
 		t.Cfg.KafkaConfig,
-		t.Cfg.DataObjConsumer.BuilderConfig,
+		t.Cfg.DataObjConsumer,
 		store,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		t.partitionRing,

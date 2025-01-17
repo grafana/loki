@@ -15,7 +15,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
@@ -32,18 +31,21 @@ type Service struct {
 	reg    prometheus.Registerer
 	client *consumer.Client
 
-	builderCfg dataobj.BuilderConfig
-	bucket     objstore.Bucket
+	cfg    Config
+	bucket objstore.Bucket
 
 	// Partition management
 	partitionMtx      sync.RWMutex
 	partitionHandlers map[string]map[int32]*partitionProcessor
 }
 
-func New(kafkaCfg kafka.Config, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+func New(kafkaCfg kafka.Config, cfg Config, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+	if cfg.StorageBucketPrefix != "" {
+		bucket = objstore.NewPrefixedBucket(bucket, cfg.StorageBucketPrefix)
+	}
 	s := &Service{
 		logger:            log.With(logger, "component", groupName),
-		builderCfg:        builderCfg,
+		cfg:               cfg,
 		bucket:            bucket,
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
@@ -83,7 +85,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.builderCfg, s.bucket, topic, partition, s.logger, s.reg)
+			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.bucket, s.cfg.TenantID, topic, partition, s.logger, s.reg)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}
