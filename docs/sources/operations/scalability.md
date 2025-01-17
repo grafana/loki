@@ -7,7 +7,7 @@ weight:
 # Manage larger production deployments
 
 When needing to scale Loki due to increased log volume, operators should consider running several Loki processes
-partitioned by role (ingester, distributor, querier, ...) rather than a single Loki
+partitioned by role (ingester, distributor, querier, and so on) rather than a single Loki
 process. Grafana Labs' [production setup](https://github.com/grafana/loki/blob/main/production/ksonnet/loki)
 contains `.libsonnet` files that demonstrates configuring separate components
 and scaling for resource usage.
