@@ -32,6 +32,11 @@ type partitionProcessor struct {
 	builder *dataobj.Builder
 	decoder *kafka.Decoder
 
+	// Builder initialization
+	builderOnce sync.Once
+	builderCfg  dataobj.BuilderConfig
+	bucket      objstore.Bucket
+
 	// Control and coordination
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -46,28 +51,22 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 	if err != nil {
 		panic(err)
 	}
-	builder, err := dataobj.NewBuilder(builderCfg, bucket, string(tenantID))
-	if err != nil {
-		panic(err)
-	}
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partition)),
 	}, reg)
-	err = builder.RegisterMetrics(reg)
-	if err != nil {
-		panic(err)
-	}
+
 	return &partitionProcessor{
-		client:    client,
-		logger:    log.With(logger, "topic", topic, "partition", partition),
-		topic:     topic,
-		partition: partition,
-		records:   make(chan *kgo.Record, 1000),
-		ctx:       ctx,
-		cancel:    cancel,
-		builder:   builder,
-		decoder:   decoder,
-		reg:       reg,
+		client:     client,
+		logger:     log.With(logger, "topic", topic, "partition", partition),
+		topic:      topic,
+		partition:  partition,
+		records:    make(chan *kgo.Record, 1000),
+		ctx:        ctx,
+		cancel:     cancel,
+		decoder:    decoder,
+		reg:        reg,
+		builderCfg: builderCfg,
+		bucket:     bucket,
 	}
 }
 
@@ -93,10 +92,35 @@ func (p *partitionProcessor) start() {
 func (p *partitionProcessor) stop() {
 	p.cancel()
 	p.wg.Wait()
-	p.builder.UnregisterMetrics(p.reg)
+	if p.builder != nil {
+		p.builder.UnregisterMetrics(p.reg)
+	}
+}
+
+func (p *partitionProcessor) initBuilder() error {
+	var initErr error
+	p.builderOnce.Do(func() {
+		builder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(tenantID))
+		if err != nil {
+			initErr = err
+			return
+		}
+		if err := builder.RegisterMetrics(p.reg); err != nil {
+			initErr = err
+			return
+		}
+		p.builder = builder
+	})
+	return initErr
 }
 
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
+	// Initialize builder if this is the first record
+	if err := p.initBuilder(); err != nil {
+		level.Error(p.logger).Log("msg", "failed to initialize builder", "err", err)
+		return
+	}
+
 	// todo: handle multi-tenant
 	if !bytes.Equal(record.Key, tenantID) {
 		return
