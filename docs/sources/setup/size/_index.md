@@ -25,210 +25,53 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
     <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
     <select name="node-type" v-model="node">
     <option v-for="node of nodes">{{ node }}</option>
-    </select>
-    <div class="controls">
-        <label class="radio-label">
-            <input type="radio" name="tableSelector" value="table1" checked> Table 1
-        </label>
-        <label class="radio-label">
-            <input type="radio" name="tableSelector" value="table2"> Table 2
-        </label>
-        <label class="radio-label">
-            <input type="radio" name="tableSelector" value="table3"> Table 3
-        </label>
-    </div>
-    <div id="table1" class="table-container">
-        <table>
-            <tr>
-                <th>Component</th>
-                <th>CPU Requet</th>
-                <th>Memory Request</th>
-                <th>Base Replicas</th>
-            </tr>
-            <tr>
-                <td>Ingester</td>
-                <td>4</td>
-                <td>8</td>
-                <td>150</td>
-            </tr>
-            <tr>
-                <td>Distributor</td>
-                <td>2</td>
-                <td>1</td>
-                <td>100</td>
-            </tr>
-            <tr>
-                <td>Index gateway</td>
-                <td>1</td>
-                <td>4</td>
-                <td>20</td>
-            </tr>
-            <tr>
-                <td>Querier</td>
-                <td>1.5</td>
-                <td>3</td>
-                <td>250</td>
-            </tr>
-            <tr>
-                <td>Query-frontend</td>
-                <td>1</td>
-                <td>4</td>
-                <td>16</td>
-            </tr>
-            <tr>
-                <td>Query-scheduler</td>
-                <td>2</td>
-                <td>0.5</td>
-                <td>2</td>
-            </tr>
-            <tr>
-                <td>Compactor</td>
-                <td>6</td>
-                <td>20</td>
-                <td>1 (Singleton)</td>
-            </tr>
-        </table>
-    <div id="table2" class="table-container">
-        <table>
-            <tr>
-                <th>Component</th>
-                <th>CPU Requet</th>
-                <th>Memory Request</th>
-                <th>Base Replicas</th>
-            </tr>
-            <tr>
-                <td>Ingester</td>
-                <td>2</td>
-                <td>6</td>
-                <td>90</td>
-            </tr>
-            <tr>
-                <td>Distributor</td>
-                <td>2</td>
-                <td>1</td>
-                <td>40</td>
-            </tr>
-            <tr>
-                <td>Index gateway</td>
-                <td>0.5</td>
-                <td>4</td>
-                <td>10</td>
-            </tr>
-            <tr>
-                <td>Querier</td>
-                <td>1.5</td>
-                <td>2</td>
-                <td>100</td>
-            </tr>
-            <tr>
-                <td>Query-frontend</td>
-                <td>1</td>
-                <td>2</td>
-                <td>8</td>
-            </tr>
-            <tr>
-                <td>Query-scheduler</td>
-                <td>1</td>
-                <td>0.5</td>
-                <td>2</td>
-            </tr>
-            <tr>
-                <td>Compactor</td>
-                <td>6</td>
-                <td>20</td>
-                <td>1 (Singleton)</td>
-            </tr>
-        </table>
-    <div id="table3" class="table-container">
-        <table>
-            <tr>
-                <th>Component</th>
-                <th>CPU Requet</th>
-                <th>Memory Request</th>
-                <th>Base Replicas</th>
-            </tr>
-            <tr>
-                <td>Ingester</td>
-                <td>2</td>
-                <td>4</td>
-                <td>6</td>
-            </tr>
-            <tr>
-                <td>Distributor</td>
-                <td>2</td>
-                <td>0.5</td>
-                <td>4</td>
-            </tr>
-            <tr>
-                <td>Index gateway</td>
-                <td>0.5</td>
-                <td>2</td>
-                <td>4</td>
-            </tr>
-            <tr>
-                <td>Querier</td>
-                <td>1</td>
-                <td>1</td>
-                <td>10</td>
-            </tr>
-            <tr>
-                <td>Query-frontend</td>
-                <td>1</td>
-                <td>2</td>
-                <td>2</td>
-            </tr>
-            <tr>
-                <td>Query-scheduler</td>
-                <td>1</td>
-                <td>0.5</td>
-                <td>2</td>
-            </tr>
-            <tr>
-                <td>Compactor</td>
-                <td>2</td>
-                <td>10</td>
-                <td>1 (Singleton)</td>
-            </tr>
-        </table>
-    </div>
+    </select><br>
+</div>
 
-  <div v-if="clusterSize">
-    <table>
-    <tr>
-      <th>Read Replicas</th>
-      <th>Write Replicas</th>
-      <th>Nodes</th>
-      <th>Cores</th>
-      <th>Memory</th>
-    </tr>
-    <tr>
-      <td>{{ clusterSize.TotalReadReplicas }}</td>
-      <td>{{ clusterSize.TotalWriteReplicas }}</td>
-      <td>{{ clusterSize.TotalNodes}}</td>
-      <td>{{ clusterSize.TotalCoresRequest}}</td>
-      <td>{{ clusterSize.TotalMemoryRequest}} GB</td>
-    </tr>
-    </table>
-  </div>
+{{< tabs >}}
+{{< tab-content name="~1PB/month (30TB/day)" >}}
+| Component       | CPU Request | Memory Request | Base Replicas  |
+|------------------|-------------|----------------|----------------|
+| Ingester         | 4           | 8              | 150            |
+| Distributor      | 2           | 1              | 100            |
+| Index gateway    | 1           | 4              | 20             |
+| Querier          | 1.5         | 3              | 250            |
+| Query-frontend   | 1           | 4              | 16             |
+| Query-scheduler  | 2           | 0.5            | 2              |
+| Compactor        | 6           | 20             | 1 (Singleton)  |
+{{< /tab-content >}}
+{{< tab-content name="100TB to 1PB /month (3-30TB/day)" >}}
+| Component       | CPU Request | Memory Request | Base Replicas  |
+|------------------|-------------|----------------|----------------|
+| Ingester         | 2           | 6              | 90             |
+| Distributor      | 2           | 1              | 40             |
+| Index gateway    | 0.5         | 4              | 10             |
+| Querier          | 1.5         | 2              | 100            |
+| Query-frontend   | 1           | 2              | 8              |
+| Query-scheduler  | 1           | 0.5            | 2              |
+| Compactor        | 6           | 20             | 1 (Singleton)  |
+{{< /tab-content >}}
+{{< tab-content name="Less than 100TB/month (3TB/day)" >}}
+| Component       | CPU Request | Memory Request | Base Replicas  |
+|------------------|-------------|----------------|----------------|
+| Ingester         | 2           | 4              | 6              |
+| Distributor      | 2           | 0.5            | 4              |
+| Index gateway    | 0.5         | 2              | 4              |
+| Querier          | 1           | 1              | 10             |
+| Query-frontend   | 1           | 2              | 2              |
+| Query-scheduler  | 1           | 0.5            | 2              |
+| Compactor        | 2           | 10             | 1 (Singleton)  |
+{{< /tab-content >}}
+{{< /tabs >}}   
 
-  <a v-bind:href="helmURL" class="primary-button">Generate and download values file</a>
 
   <blockquote v-if="help">
-    <span v-if="help === 'ingest'">
-    Defines the log volume in gigabytes, ie 1e+9 bytes, expected to be ingested each day.
-    </span>
     <span v-else-if="help === 'node'">
     Defines the node type of the Kubernetes cluster. Is a vendor or type
     missing? If so, add it to <code>pkg/sizing/node.go</code>.
     </span>
-    <span v-else-if="help === 'retention'">
-    Defines how long the ingested logs should be kept.
-    </span>
-    <span v-else-if="help === 'queryperf'">
-    Defines the expected query performance. Basic is sized for a max query throughput of around 3GB/s. Super aims for 25% more throughput.
-    </span>
   </blockquote>
-</div>
+
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
 <style>
@@ -240,18 +83,10 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
   padding-left: 8px;
 }
 
-#app #queryperf label {
-  padding: 1em;
-  text-align: center;
-}
-
-#app #queryperf label input {
-  display: block;
-}
-
 #app a {
   padding: .5em;
 
+}
 }
 </style>
 
@@ -264,11 +99,7 @@ createApp({
     return {
       nodes: ["Loading..."],
       node: "Loading...",
-      bytesDayIngest: null,
-      retention: null,
-      queryperf: 'Basic',
       help: null,
-      clusterSize: null
     }
   },
 
@@ -305,20 +136,10 @@ createApp({
       const url = `${API_URL}/nodes`
       this.nodes = await (await fetch(url,{mode: 'cors'})).json()
     },
-    async calculateClusterSize() {
-      if (this.node == 'Loading...' || this.bytesDayIngest== null || this.retention == null) {
-        return
-      }
-      const url = `${API_URL}/cluster?${this.queryString}`
-      this.clusterSize = await (await fetch(url,{mode: 'cors'})).json()
-    }
   },
 
   watch: {
     node:           'calculateClusterSize',
-    bytesDayIngest: 'calculateClusterSize',
-    retention:      'calculateClusterSize',
-    queryperf:      'calculateClusterSize'
   }
 }).mount('#app')
 </script>
