@@ -732,7 +732,7 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
 		IngestLimitsRing:         {MemberlistKV, Server},
 		IngestLimits:             {MemberlistKV, Server},
-		IngestLimitsFrontend:     {Server},
+		IngestLimitsFrontend:     {MemberlistKV, IngestLimitsRing, Server},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
