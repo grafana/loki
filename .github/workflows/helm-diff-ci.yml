@@ -3,7 +3,7 @@ name: Helm Loki Diff CI
 on:
   pull_request:
     paths:
-      - 'production/helm/loki/**'
+      - "production/helm/loki/**"
 
 permissions:
   contents: read
@@ -363,12 +363,17 @@ jobs:
           echo "</details>" >> formatted_diff_output.md
           echo "" >> formatted_diff_output.md
 
-      - name: Post diff as PR comment
-        uses: marocchino/sticky-pull-request-comment@v2
+      - name: Post Comment
+        uses: actions/github-script@v6
         with:
-          header: "Helm Diff Output - Summary"
-          skip_unchanged: true
-          hide_and_recreate: true
-          append: true
-          hide_classify: "OUTDATED"
-          path: formatted_diff_output.md
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const diffContent = fs.readFileSync('formatted_diff_output.md', 'utf8');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.name,
+              issue_number: context.issue.number,
+              body: diffContent
+            });
