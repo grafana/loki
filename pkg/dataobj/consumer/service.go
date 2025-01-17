@@ -121,7 +121,7 @@ func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 func (s *Service) run(ctx context.Context) error {
 	for {
 		fetches := s.client.PollRecords(ctx, -1)
-		if fetches.IsClientClosed() {
+		if fetches.IsClientClosed() || ctx.Err() != nil {
 			return nil
 		}
 		if errs := fetches.Errors(); len(errs) > 0 {
