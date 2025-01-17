@@ -28,6 +28,7 @@ type Service struct {
 	services.Service
 
 	logger log.Logger
+	reg    prometheus.Registerer
 	client *consumer.Client
 
 	builderCfg dataobj.BuilderConfig
@@ -44,6 +45,7 @@ func New(kafkaCfg kafka.Config, builderCfg dataobj.BuilderConfig, bucket objstor
 		builderCfg:        builderCfg,
 		bucket:            bucket,
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
+		reg:               reg,
 	}
 
 	client, err := consumer.NewGroupClient(
@@ -80,7 +82,7 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.builderCfg, s.bucket, s.logger, topic, partition)
+			processor := newPartitionProcessor(ctx, client, s.builderCfg, s.bucket, topic, partition, s.logger, s.reg)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}

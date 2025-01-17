@@ -3,12 +3,14 @@ package consumer
 import (
 	"bytes"
 	"context"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -34,16 +36,24 @@ type partitionProcessor struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	reg    prometheus.Registerer
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, logger log.Logger, topic string, partition int32) *partitionProcessor {
+func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		panic(err)
 	}
 	builder, err := dataobj.NewBuilder(builderCfg, bucket, string(tenantID))
+	if err != nil {
+		panic(err)
+	}
+	reg = prometheus.WrapRegistererWith(prometheus.Labels{
+		"partition": strconv.Itoa(int(partition)),
+	}, reg)
+	err = builder.RegisterMetrics(reg)
 	if err != nil {
 		panic(err)
 	}
@@ -57,6 +67,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		cancel:    cancel,
 		builder:   builder,
 		decoder:   decoder,
+		reg:       reg,
 	}
 }
 
@@ -82,6 +93,7 @@ func (p *partitionProcessor) start() {
 func (p *partitionProcessor) stop() {
 	p.cancel()
 	p.wg.Wait()
+	p.builder.UnregisterMetrics(p.reg)
 }
 
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
