@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -31,7 +31,13 @@ var parserPool = sync.Pool{
 	},
 }
 
-const maxInputSize = 5120
+// (E.Welch) We originally added this limit from fuzz testing and realizing there should be some maximum limit to an allowed query size.
+// The original limit was 5120 based on some internet searching and a best estimate of what a reasonable limit would be.
+// We have seen use cases with queries containing a lot of filter expressions or long expanded variable names where this limit was too small.
+// Apparently the spec does not specify a limit, and more internet searching suggests almost all browsers will handle 100k+ length urls without issue
+// Some limit here still seems prudent however, so the new limit is now 128k.
+// Also note this is used to allocate the buffer for reading the query string, so there is some memory cost to making this larger.
+const maxInputSize = 131072
 
 func init() {
 	// Improve the error messages coming out of yacc.
@@ -99,6 +105,14 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	return p.Parse()
 }
 
+func MustParseExpr(input string) Expr {
+	expr, err := ParseExpr(input)
+	if err != nil {
+		panic(err)
+	}
+	return expr
+}
+
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
@@ -138,7 +152,7 @@ func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
 	}
 	matcherExpr, ok := expr.(*MatchersExpr)
 	if !ok {
-		return nil, errors.New("only label matchers is supported")
+		return nil, logqlmodel.ErrParseMatchers
 	}
 	return matcherExpr.Mts, nil
 }

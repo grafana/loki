@@ -26,7 +26,74 @@
   "description": "Stores and retrieves potentially large, immutable data objects.",
   "discoveryVersion": "v1",
   "documentationLink": "https://developers.google.com/storage/docs/json_api/",
-  "etag": "\"39353535313838393033333032363632303533\"",
+  "endpoints": [
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west3.rep.googleapis.com/",
+      "location": "europe-west3"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west8.rep.googleapis.com/",
+      "location": "europe-west8"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-west9.rep.googleapis.com/",
+      "location": "europe-west9"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.me-central2.rep.googleapis.com/",
+      "location": "me-central2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-central1.rep.googleapis.com/",
+      "location": "us-central1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-east1.rep.googleapis.com/",
+      "location": "us-east1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-east4.rep.googleapis.com/",
+      "location": "us-east4"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-east5.rep.googleapis.com/",
+      "location": "us-east5"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-south1.rep.googleapis.com/",
+      "location": "us-south1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west1.rep.googleapis.com/",
+      "location": "us-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west2.rep.googleapis.com/",
+      "location": "us-west2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west3.rep.googleapis.com/",
+      "location": "us-west3"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west4.rep.googleapis.com/",
+      "location": "us-west4"
+    }
+  ],
+  "etag": "\"3133343838373034343130353038353234313337\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -92,6 +159,242 @@
   },
   "protocol": "rest",
   "resources": {
+    "anywhereCaches": {
+      "methods": {
+        "disable": {
+          "description": "Disables an Anywhere Cache instance.",
+          "httpMethod": "POST",
+          "id": "storage.anywhereCaches.disable",
+          "parameterOrder": [
+            "bucket",
+            "anywhereCacheId"
+          ],
+          "parameters": {
+            "anywhereCacheId": {
+              "description": "The ID of requested Anywhere Cache instance.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "bucket": {
+              "description": "Name of the parent bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/anywhereCaches/{anywhereCacheId}/disable",
+          "response": {
+            "$ref": "AnywhereCache"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "get": {
+          "description": "Returns the metadata of an Anywhere Cache instance.",
+          "httpMethod": "GET",
+          "id": "storage.anywhereCaches.get",
+          "parameterOrder": [
+            "bucket",
+            "anywhereCacheId"
+          ],
+          "parameters": {
+            "anywhereCacheId": {
+              "description": "The ID of requested Anywhere Cache instance.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "bucket": {
+              "description": "Name of the parent bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/anywhereCaches/{anywhereCacheId}",
+          "response": {
+            "$ref": "AnywhereCache"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "insert": {
+          "description": "Creates an Anywhere Cache instance.",
+          "httpMethod": "POST",
+          "id": "storage.anywhereCaches.insert",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the parent bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/anywhereCaches",
+          "request": {
+            "$ref": "AnywhereCache"
+          },
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "list": {
+          "description": "Returns a list of Anywhere Cache instances of the bucket matching the criteria.",
+          "httpMethod": "GET",
+          "id": "storage.anywhereCaches.list",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the parent bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "pageSize": {
+              "description": "Maximum number of items to return in a single page of responses. Maximum 1000.",
+              "format": "int32",
+              "location": "query",
+              "minimum": "0",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A previously-returned page token representing part of the larger set of results to view.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/anywhereCaches",
+          "response": {
+            "$ref": "AnywhereCaches"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "pause": {
+          "description": "Pauses an Anywhere Cache instance.",
+          "httpMethod": "POST",
+          "id": "storage.anywhereCaches.pause",
+          "parameterOrder": [
+            "bucket",
+            "anywhereCacheId"
+          ],
+          "parameters": {
+            "anywhereCacheId": {
+              "description": "The ID of requested Anywhere Cache instance.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "bucket": {
+              "description": "Name of the parent bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/anywhereCaches/{anywhereCacheId}/pause",
+          "response": {
+            "$ref": "AnywhereCache"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "resume": {
+          "description": "Resumes a paused or disabled Anywhere Cache instance.",
+          "httpMethod": "POST",
+          "id": "storage.anywhereCaches.resume",
+          "parameterOrder": [
+            "bucket",
+            "anywhereCacheId"
+          ],
+          "parameters": {
+            "anywhereCacheId": {
+              "description": "The ID of requested Anywhere Cache instance.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "bucket": {
+              "description": "Name of the parent bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/anywhereCaches/{anywhereCacheId}/resume",
+          "response": {
+            "$ref": "AnywhereCache"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "update": {
+          "description": "Updates the config(ttl and admissionPolicy) of an Anywhere Cache instance.",
+          "httpMethod": "PATCH",
+          "id": "storage.anywhereCaches.update",
+          "parameterOrder": [
+            "bucket",
+            "anywhereCacheId"
+          ],
+          "parameters": {
+            "anywhereCacheId": {
+              "description": "The ID of requested Anywhere Cache instance.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "bucket": {
+              "description": "Name of the parent bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/anywhereCaches/{anywhereCacheId}",
+          "request": {
+            "$ref": "AnywhereCache"
+          },
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        }
+      }
+    },
     "bucketAccessControls": {
       "methods": {
         "delete": {
@@ -307,7 +610,7 @@
     "buckets": {
       "methods": {
         "delete": {
-          "description": "Permanently deletes an empty bucket.",
+          "description": "Deletes an empty bucket. Deletions are permanent unless soft delete is enabled on the bucket.",
           "httpMethod": "DELETE",
           "id": "storage.buckets.delete",
           "parameterOrder": [
@@ -359,6 +662,12 @@
               "required": true,
               "type": "string"
             },
+            "generation": {
+              "description": "If present, specifies the generation of the bucket. This is required if softDeleted is true.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
             "ifMetagenerationMatch": {
               "description": "Makes the return of the bucket metadata conditional on whether the bucket's current metageneration matches the given value.",
               "format": "int64",
@@ -383,6 +692,11 @@
               ],
               "location": "query",
               "type": "string"
+            },
+            "softDeleted": {
+              "description": "If true, return the soft-deleted version of this bucket. The default is false. For more information, see [Soft Delete](https://cloud.google.com/storage/docs/soft-delete).",
+              "location": "query",
+              "type": "boolean"
             },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
@@ -438,6 +752,38 @@
             "https://www.googleapis.com/auth/devstorage.full_control"
           ]
         },
+        "getStorageLayout": {
+          "description": "Returns the storage layout configuration for the specified bucket. Note that this operation requires storage.objects.list permission.",
+          "httpMethod": "GET",
+          "id": "storage.buckets.getStorageLayout",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of a bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "prefix": {
+              "description": "An optional prefix used for permission check. It is useful when the caller only has storage.objects.list permission under a specific prefix.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/storageLayout",
+          "response": {
+            "$ref": "BucketStorageLayout"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
         "insert": {
           "description": "Creates a new bucket.",
           "httpMethod": "POST",
@@ -446,6 +792,12 @@
             "project"
           ],
           "parameters": {
+            "enableObjectRetention": {
+              "default": "false",
+              "description": "When set to true, object retention is enabled for this bucket.",
+              "location": "query",
+              "type": "boolean"
+            },
             "predefinedAcl": {
               "description": "Apply a predefined set of access controls to this bucket.",
               "enum": [
@@ -568,6 +920,11 @@
               ],
               "location": "query",
               "type": "string"
+            },
+            "softDeleted": {
+              "description": "If true, only soft-deleted bucket versions will be returned. The default is false. For more information, see [Soft Delete](https://cloud.google.com/storage/docs/soft-delete).",
+              "location": "query",
+              "type": "boolean"
             },
             "userProject": {
               "description": "The project to be billed for this request.",
@@ -720,6 +1077,85 @@
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/devstorage.full_control"
+          ]
+        },
+        "relocate": {
+          "description": "Initiates a long-running Relocate Bucket operation on the specified bucket.",
+          "httpMethod": "POST",
+          "id": "storage.buckets.relocate",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket to be moved.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/relocate",
+          "request": {
+            "$ref": "RelocateBucketRequest"
+          },
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "restore": {
+          "description": "Restores a soft-deleted bucket.",
+          "httpMethod": "POST",
+          "id": "storage.buckets.restore",
+          "parameterOrder": [
+            "bucket",
+            "generation"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of a bucket.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "generation": {
+              "description": "Generation of a bucket.",
+              "format": "int64",
+              "location": "query",
+              "required": true,
+              "type": "string"
+            },
+            "projection": {
+              "description": "Set of properties to return. Defaults to full.",
+              "enum": [
+                "full",
+                "noAcl"
+              ],
+              "enumDescriptions": [
+                "Include all properties.",
+                "Omit owner, acl and defaultObjectAcl properties."
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/restore",
+          "response": {
+            "$ref": "Bucket"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
           ]
         },
         "setIamPolicy": {
@@ -1134,6 +1570,540 @@
           "scopes": [
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/devstorage.full_control"
+          ]
+        }
+      }
+    },
+    "folders": {
+      "methods": {
+        "delete": {
+          "description": "Permanently deletes a folder. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "DELETE",
+          "id": "storage.folders.delete",
+          "parameterOrder": [
+            "bucket",
+            "folder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the folder resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "folder": {
+              "description": "Name of a folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "If set, only deletes the folder if its metageneration matches this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "If set, only deletes the folder if its metageneration does not match this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/folders/{folder}",
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "get": {
+          "description": "Returns metadata for the specified folder. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "GET",
+          "id": "storage.folders.get",
+          "parameterOrder": [
+            "bucket",
+            "folder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the folder resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "folder": {
+              "description": "Name of a folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "Makes the return of the folder metadata conditional on whether the folder's current metageneration matches the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "Makes the return of the folder metadata conditional on whether the folder's current metageneration does not match the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/folders/{folder}",
+          "response": {
+            "$ref": "Folder"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "insert": {
+          "description": "Creates a new folder. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "POST",
+          "id": "storage.folders.insert",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the folder resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "recursive": {
+              "description": "If true, any parent folder which doesn’t exist will be created automatically.",
+              "location": "query",
+              "type": "boolean"
+            }
+          },
+          "path": "b/{bucket}/folders",
+          "request": {
+            "$ref": "Folder"
+          },
+          "response": {
+            "$ref": "Folder"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "list": {
+          "description": "Retrieves a list of folders matching the criteria. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "GET",
+          "id": "storage.folders.list",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which to look for folders.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "delimiter": {
+              "description": "Returns results in a directory-like mode. The only supported value is '/'. If set, items will only contain folders that either exactly match the prefix, or are one level below the prefix.",
+              "location": "query",
+              "type": "string"
+            },
+            "endOffset": {
+              "description": "Filter results to folders whose names are lexicographically before endOffset. If startOffset is also set, the folders listed will have names between startOffset (inclusive) and endOffset (exclusive).",
+              "location": "query",
+              "type": "string"
+            },
+            "pageSize": {
+              "description": "Maximum number of items to return in a single page of responses.",
+              "format": "int32",
+              "location": "query",
+              "minimum": "0",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A previously-returned page token representing part of the larger set of results to view.",
+              "location": "query",
+              "type": "string"
+            },
+            "prefix": {
+              "description": "Filter results to folders whose paths begin with this prefix. If set, the value must either be an empty string or end with a '/'.",
+              "location": "query",
+              "type": "string"
+            },
+            "startOffset": {
+              "description": "Filter results to folders whose names are lexicographically equal to or after startOffset. If endOffset is also set, the folders listed will have names between startOffset (inclusive) and endOffset (exclusive).",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/folders",
+          "response": {
+            "$ref": "Folders"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "rename": {
+          "description": "Renames a source folder to a destination folder. Only applicable to buckets with hierarchical namespace enabled.",
+          "httpMethod": "POST",
+          "id": "storage.folders.rename",
+          "parameterOrder": [
+            "bucket",
+            "sourceFolder",
+            "destinationFolder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the folders are in.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "destinationFolder": {
+              "description": "Name of the destination folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifSourceMetagenerationMatch": {
+              "description": "Makes the operation conditional on whether the source object's current metageneration matches the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceMetagenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the source object's current metageneration does not match the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "sourceFolder": {
+              "description": "Name of the source folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/folders/{sourceFolder}/renameTo/folders/{destinationFolder}",
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        }
+      }
+    },
+    "managedFolders": {
+      "methods": {
+        "delete": {
+          "description": "Permanently deletes a managed folder.",
+          "httpMethod": "DELETE",
+          "id": "storage.managedFolders.delete",
+          "parameterOrder": [
+            "bucket",
+            "managedFolder"
+          ],
+          "parameters": {
+            "allowNonEmpty": {
+              "description": "Allows the deletion of a managed folder even if it is not empty. A managed folder is empty if there are no objects or managed folders that it applies to. Callers must have storage.managedFolders.setIamPolicy permission.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "bucket": {
+              "description": "Name of the bucket containing the managed folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "If set, only deletes the managed folder if its metageneration matches this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "If set, only deletes the managed folder if its metageneration does not match this value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "managedFolder": {
+              "description": "The managed folder name/path.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/managedFolders/{managedFolder}",
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "get": {
+          "description": "Returns metadata of the specified managed folder.",
+          "httpMethod": "GET",
+          "id": "storage.managedFolders.get",
+          "parameterOrder": [
+            "bucket",
+            "managedFolder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket containing the managed folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "Makes the return of the managed folder metadata conditional on whether the managed folder's current metageneration matches the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "Makes the return of the managed folder metadata conditional on whether the managed folder's current metageneration does not match the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "managedFolder": {
+              "description": "The managed folder name/path.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/managedFolders/{managedFolder}",
+          "response": {
+            "$ref": "ManagedFolder"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "getIamPolicy": {
+          "description": "Returns an IAM policy for the specified managed folder.",
+          "httpMethod": "GET",
+          "id": "storage.managedFolders.getIamPolicy",
+          "parameterOrder": [
+            "bucket",
+            "managedFolder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket containing the managed folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "managedFolder": {
+              "description": "The managed folder name/path.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "optionsRequestedPolicyVersion": {
+              "description": "The IAM policy format version to be returned. If the optionsRequestedPolicyVersion is for an older version that doesn't support part of the requested IAM policy, the request fails.",
+              "format": "int32",
+              "location": "query",
+              "minimum": "1",
+              "type": "integer"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/managedFolders/{managedFolder}/iam",
+          "response": {
+            "$ref": "Policy"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "insert": {
+          "description": "Creates a new managed folder.",
+          "httpMethod": "POST",
+          "id": "storage.managedFolders.insert",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket containing the managed folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/managedFolders",
+          "request": {
+            "$ref": "ManagedFolder"
+          },
+          "response": {
+            "$ref": "ManagedFolder"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "list": {
+          "description": "Lists managed folders in the given bucket.",
+          "httpMethod": "GET",
+          "id": "storage.managedFolders.list",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket containing the managed folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "pageSize": {
+              "description": "Maximum number of items to return in a single page of responses.",
+              "format": "int32",
+              "location": "query",
+              "minimum": "0",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A previously-returned page token representing part of the larger set of results to view.",
+              "location": "query",
+              "type": "string"
+            },
+            "prefix": {
+              "description": "The managed folder name/path prefix to filter the output list of results.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/managedFolders",
+          "response": {
+            "$ref": "ManagedFolders"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "setIamPolicy": {
+          "description": "Updates an IAM policy for the specified managed folder.",
+          "httpMethod": "PUT",
+          "id": "storage.managedFolders.setIamPolicy",
+          "parameterOrder": [
+            "bucket",
+            "managedFolder"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket containing the managed folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "managedFolder": {
+              "description": "The managed folder name/path.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/managedFolders/{managedFolder}/iam",
+          "request": {
+            "$ref": "Policy"
+          },
+          "response": {
+            "$ref": "Policy"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control"
+          ]
+        },
+        "testIamPermissions": {
+          "description": "Tests a set of permissions on the given managed folder to see which, if any, are held by the caller.",
+          "httpMethod": "GET",
+          "id": "storage.managedFolders.testIamPermissions",
+          "parameterOrder": [
+            "bucket",
+            "managedFolder",
+            "permissions"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket containing the managed folder.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "managedFolder": {
+              "description": "The managed folder name/path.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "permissions": {
+              "description": "Permissions to test.",
+              "location": "query",
+              "repeated": true,
+              "required": true,
+              "type": "string"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/managedFolders/{managedFolder}/iam/testPermissions",
+          "response": {
+            "$ref": "TestIamPermissionsResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
           ]
         }
       }
@@ -1572,6 +2542,34 @@
     },
     "objects": {
       "methods": {
+        "bulkRestore": {
+          "description": "Initiates a long-running bulk restore operation on the specified bucket.",
+          "httpMethod": "POST",
+          "id": "storage.objects.bulkRestore",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the object resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/o/bulkRestore",
+          "request": {
+            "$ref": "BulkRestoreObjectsRequest"
+          },
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
         "compose": {
           "description": "Concatenates a list of existing objects into a new object in the same bucket.",
           "httpMethod": "POST",
@@ -1925,6 +2923,16 @@
               "location": "query",
               "type": "string"
             },
+            "restoreToken": {
+              "description": "Restore token used to differentiate soft-deleted objects with the same name and generation. Only applicable for hierarchical namespace buckets and if softDeleted is set to true. This parameter is optional, and is only required in the rare case when there are multiple soft-deleted objects with the same name and generation.",
+              "location": "query",
+              "type": "string"
+            },
+            "softDeleted": {
+              "description": "If true, only soft-deleted object versions will be listed. The default is false. For more information, see [Soft Delete](https://cloud.google.com/storage/docs/soft-delete).",
+              "location": "query",
+              "type": "boolean"
+            },
             "userProject": {
               "description": "The project to be billed for this request. Required for Requester Pays buckets.",
               "location": "query",
@@ -2136,6 +3144,11 @@
               "location": "query",
               "type": "string"
             },
+            "includeFoldersAsPrefixes": {
+              "description": "Only applicable if delimiter is set to '/'. If true, will also include folders and managed folders (besides objects) in the returned prefixes.",
+              "location": "query",
+              "type": "boolean"
+            },
             "includeTrailingDelimiter": {
               "description": "If true, objects that end in exactly one instance of delimiter will have their metadata included in items in addition to prefixes.",
               "location": "query",
@@ -2177,6 +3190,11 @@
               "location": "query",
               "type": "string"
             },
+            "softDeleted": {
+              "description": "If true, only soft-deleted object versions will be listed. The default is false. For more information, see [Soft Delete](https://cloud.google.com/storage/docs/soft-delete).",
+              "location": "query",
+              "type": "boolean"
+            },
             "startOffset": {
               "description": "Filter results to objects whose names are lexicographically equal to or after startOffset. If endOffset is also set, the objects listed will have names between startOffset (inclusive) and endOffset (exclusive).",
               "location": "query",
@@ -2188,7 +3206,7 @@
               "type": "string"
             },
             "versions": {
-              "description": "If true, lists all versions of an object as distinct results. The default is false. For more information, see Object Versioning.",
+              "description": "If true, lists all versions of an object as distinct results. The default is false. For more information, see [Object Versioning](https://cloud.google.com/storage/docs/object-versioning).",
               "location": "query",
               "type": "boolean"
             }
@@ -2205,6 +3223,98 @@
             "https://www.googleapis.com/auth/devstorage.read_write"
           ],
           "supportsSubscription": true
+        },
+        "move": {
+          "description": "Moves the source object to the destination object in the same bucket.",
+          "httpMethod": "POST",
+          "id": "storage.objects.move",
+          "parameterOrder": [
+            "bucket",
+            "sourceObject",
+            "destinationObject"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the object resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "destinationObject": {
+              "description": "Name of the destination object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "ifGenerationMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object. `ifGenerationMatch` and `ifGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifGenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.`ifGenerationMatch` and `ifGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current metageneration matches the given value. `ifMetagenerationMatch` and `ifMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the destination object's current metageneration does not match the given value. `ifMetagenerationMatch` and `ifMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceGenerationMatch": {
+              "description": "Makes the operation conditional on whether the source object's current generation matches the given value. `ifSourceGenerationMatch` and `ifSourceGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceGenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the source object's current generation does not match the given value. `ifSourceGenerationMatch` and `ifSourceGenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceMetagenerationMatch": {
+              "description": "Makes the operation conditional on whether the source object's current metageneration matches the given value. `ifSourceMetagenerationMatch` and `ifSourceMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifSourceMetagenerationNotMatch": {
+              "description": "Makes the operation conditional on whether the source object's current metageneration does not match the given value. `ifSourceMetagenerationMatch` and `ifSourceMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "sourceObject": {
+              "description": "Name of the source object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/o/{sourceObject}/moveTo/o/{destinationObject}",
+          "response": {
+            "$ref": "Object"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
         },
         "patch": {
           "description": "Patches an object's metadata.",
@@ -2257,6 +3367,11 @@
               "required": true,
               "type": "string"
             },
+            "overrideUnlockedRetention": {
+              "description": "Must be true to remove the retention configuration, reduce its unlocked retention period, or change its mode from unlocked to locked.",
+              "location": "query",
+              "type": "boolean"
+            },
             "predefinedAcl": {
               "description": "Apply a predefined set of access controls to this object.",
               "enum": [
@@ -2301,6 +3416,97 @@
           "request": {
             "$ref": "Object"
           },
+          "response": {
+            "$ref": "Object"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control"
+          ]
+        },
+        "restore": {
+          "description": "Restores a soft-deleted object.",
+          "httpMethod": "POST",
+          "id": "storage.objects.restore",
+          "parameterOrder": [
+            "bucket",
+            "object",
+            "generation"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which the object resides.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "copySourceAcl": {
+              "description": "If true, copies the source object's ACL; otherwise, uses the bucket's default object ACL. The default is false.",
+              "location": "query",
+              "type": "boolean"
+            },
+            "generation": {
+              "description": "Selects a specific revision of this object.",
+              "format": "int64",
+              "location": "query",
+              "required": true,
+              "type": "string"
+            },
+            "ifGenerationMatch": {
+              "description": "Makes the operation conditional on whether the object's one live generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifGenerationNotMatch": {
+              "description": "Makes the operation conditional on whether none of the object's live generations match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationMatch": {
+              "description": "Makes the operation conditional on whether the object's one live metageneration matches the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "ifMetagenerationNotMatch": {
+              "description": "Makes the operation conditional on whether none of the object's live metagenerations match the given value.",
+              "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "object": {
+              "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "projection": {
+              "description": "Set of properties to return. Defaults to full.",
+              "enum": [
+                "full",
+                "noAcl"
+              ],
+              "enumDescriptions": [
+                "Include all properties.",
+                "Omit the owner, acl property."
+              ],
+              "location": "query",
+              "type": "string"
+            },
+            "restoreToken": {
+              "description": "Restore token used to differentiate sof-deleted objects with the same name and generation. Only applicable for hierarchical namespace buckets. This parameter is optional, and is only required in the rare case when there are multiple soft-deleted objects with the same name and generation.",
+              "location": "query",
+              "type": "string"
+            },
+            "userProject": {
+              "description": "The project to be billed for this request. Required for Requester Pays buckets.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/o/{object}/restore",
           "response": {
             "$ref": "Object"
           },
@@ -2617,6 +3823,11 @@
               "required": true,
               "type": "string"
             },
+            "overrideUnlockedRetention": {
+              "description": "Must be true to remove the retention configuration, reduce its unlocked retention period, or change its mode from unlocked to locked.",
+              "location": "query",
+              "type": "boolean"
+            },
             "predefinedAcl": {
               "description": "Apply a predefined set of access controls to this object.",
               "enum": [
@@ -2740,7 +3951,7 @@
               "type": "string"
             },
             "versions": {
-              "description": "If true, lists all versions of an object as distinct results. The default is false. For more information, see Object Versioning.",
+              "description": "If true, lists all versions of an object as distinct results. The default is false. For more information, see [Object Versioning](https://cloud.google.com/storage/docs/object-versioning).",
               "location": "query",
               "type": "boolean"
             }
@@ -2761,6 +3972,149 @@
             "https://www.googleapis.com/auth/devstorage.read_write"
           ],
           "supportsSubscription": true
+        }
+      }
+    },
+    "operations": {
+      "methods": {
+        "advanceRelocateBucket": {
+          "description": "Starts asynchronous advancement of the relocate bucket operation in the case of required write downtime, to allow it to lock the bucket at the source location, and proceed with the bucket location swap. The server makes a best effort to advance the relocate bucket operation, but success is not guaranteed.",
+          "httpMethod": "POST",
+          "id": "storage.buckets.operations.advanceRelocateBucket",
+          "parameterOrder": [
+            "bucket",
+            "operationId"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket to advance the relocate for.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "operationId": {
+              "description": "ID of the operation resource.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/operations/{operationId}/advanceRelocateBucket",
+          "request": {
+            "$ref": "AdvanceRelocateBucketOperationRequest"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "cancel": {
+          "description": "Starts asynchronous cancellation on a long-running operation. The server makes a best effort to cancel the operation, but success is not guaranteed.",
+          "httpMethod": "POST",
+          "id": "storage.buckets.operations.cancel",
+          "parameterOrder": [
+            "bucket",
+            "operationId"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "The parent bucket of the operation resource.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "operationId": {
+              "description": "The ID of the operation resource.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/operations/{operationId}/cancel",
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "get": {
+          "description": "Gets the latest state of a long-running operation.",
+          "httpMethod": "GET",
+          "id": "storage.buckets.operations.get",
+          "parameterOrder": [
+            "bucket",
+            "operationId"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "The parent bucket of the operation resource.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "operationId": {
+              "description": "The ID of the operation resource.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/operations/{operationId}",
+          "response": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
+        },
+        "list": {
+          "description": "Lists operations that match the specified filter in the request.",
+          "httpMethod": "GET",
+          "id": "storage.buckets.operations.list",
+          "parameterOrder": [
+            "bucket"
+          ],
+          "parameters": {
+            "bucket": {
+              "description": "Name of the bucket in which to look for operations.",
+              "location": "path",
+              "required": true,
+              "type": "string"
+            },
+            "filter": {
+              "description": "A filter to narrow down results to a preferred subset. The filtering language is documented in more detail in [AIP-160](https://google.aip.dev/160).",
+              "location": "query",
+              "type": "string"
+            },
+            "pageSize": {
+              "description": "Maximum number of items to return in a single page of responses. Fewer total results may be returned than requested. The service uses this parameter or 100 items, whichever is smaller.",
+              "format": "int32",
+              "location": "query",
+              "minimum": "0",
+              "type": "integer"
+            },
+            "pageToken": {
+              "description": "A previously-returned page token representing part of the larger set of results to view.",
+              "location": "query",
+              "type": "string"
+            }
+          },
+          "path": "b/{bucket}/operations",
+          "response": {
+            "$ref": "GoogleLongrunningListOperationsResponse"
+          },
+          "scopes": [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/cloud-platform.read-only",
+            "https://www.googleapis.com/auth/devstorage.full_control",
+            "https://www.googleapis.com/auth/devstorage.read_only",
+            "https://www.googleapis.com/auth/devstorage.read_write"
+          ]
         }
       }
     },
@@ -2931,7 +4285,7 @@
               ]
             },
             "update": {
-              "description": "Updates the state of an HMAC key. See the HMAC Key resource descriptor for valid states.",
+              "description": "Updates the state of an HMAC key. See the [HMAC Key resource descriptor](https://cloud.google.com/storage/docs/json_api/v1/projects/hmacKeys/update#request-body) for valid states.",
               "httpMethod": "PUT",
               "id": "storage.projects.hmacKeys.update",
               "parameterOrder": [
@@ -3010,9 +4364,108 @@
       }
     }
   },
-  "revision": "20230710",
+  "revision": "20241206",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
+    "AdvanceRelocateBucketOperationRequest": {
+      "description": "An AdvanceRelocateBucketOperation request.",
+      "id": "AdvanceRelocateBucketOperationRequest",
+      "properties": {
+        "expireTime": {
+          "description": "Specifies the time when the relocation will revert to the sync stage if the relocation hasn't succeeded.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "ttl": {
+          "description": "Specifies the duration after which the relocation will revert to the sync stage if the relocation hasn't succeeded. Optional, if not supplied, a default value of 12h will be used.",
+          "format": "google-duration",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AnywhereCache": {
+      "description": "An Anywhere Cache instance.",
+      "id": "AnywhereCache",
+      "properties": {
+        "admissionPolicy": {
+          "description": "The cache-level entry admission policy.",
+          "type": "string"
+        },
+        "anywhereCacheId": {
+          "description": "The ID of the Anywhere cache instance.",
+          "type": "string"
+        },
+        "bucket": {
+          "description": "The name of the bucket containing this cache instance.",
+          "type": "string"
+        },
+        "createTime": {
+          "description": "The creation time of the cache instance in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "description": "The ID of the resource, including the project number, bucket name and anywhere cache ID.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "storage#anywhereCache",
+          "description": "The kind of item this is. For Anywhere Cache, this is always storage#anywhereCache.",
+          "type": "string"
+        },
+        "pendingUpdate": {
+          "description": "True if the cache instance has an active Update long-running operation.",
+          "type": "boolean"
+        },
+        "selfLink": {
+          "description": "The link to this cache instance.",
+          "type": "string"
+        },
+        "state": {
+          "description": "The current state of the cache instance.",
+          "type": "string"
+        },
+        "ttl": {
+          "description": "The TTL of all cache entries in whole seconds. e.g., \"7200s\". ",
+          "format": "google-duration",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "The modification time of the cache instance metadata in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "zone": {
+          "description": "The zone in which the cache instance is running. For example, us-central1-a.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "AnywhereCaches": {
+      "description": "A list of Anywhere Caches.",
+      "id": "AnywhereCaches",
+      "properties": {
+        "items": {
+          "description": "The list of items.",
+          "items": {
+            "$ref": "AnywhereCache"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "storage#anywhereCaches",
+          "description": "The kind of item this is. For lists of Anywhere Caches, this is always storage#anywhereCaches.",
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "The continuation token, used to page through large result sets. Provide this value in a subsequent request to return the next page of results.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Bucket": {
       "description": "A bucket.",
       "id": "Bucket",
@@ -3035,6 +4488,15 @@
             "enabled": {
               "description": "Whether or not Autoclass is enabled on this bucket",
               "type": "boolean"
+            },
+            "terminalStorageClass": {
+              "description": "The storage class that objects in the bucket eventually transition to if they are not read for a certain length of time. Valid values are NEARLINE and ARCHIVE.",
+              "type": "string"
+            },
+            "terminalStorageClassUpdateTime": {
+              "description": "A date and time in RFC 3339 format representing the time of the most recent update to \"terminalStorageClass\".",
+              "format": "date-time",
+              "type": "string"
             },
             "toggleTime": {
               "description": "A date and time in RFC 3339 format representing the instant at which \"enabled\" was last toggled.",
@@ -3127,6 +4589,26 @@
           "description": "HTTP 1.1 Entity tag for the bucket.",
           "type": "string"
         },
+        "generation": {
+          "description": "The generation of this bucket.",
+          "format": "int64",
+          "type": "string"
+        },
+        "hardDeleteTime": {
+          "description": "The hard delete time of the bucket in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "hierarchicalNamespace": {
+          "description": "The bucket's hierarchical namespace configuration.",
+          "properties": {
+            "enabled": {
+              "description": "When set to true, hierarchical namespace is enabled for this bucket.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
         "iamConfiguration": {
           "description": "The bucket's IAM configuration.",
           "properties": {
@@ -3171,6 +4653,49 @@
           "description": "The ID of the bucket. For buckets, the id and name properties are the same.",
           "type": "string"
         },
+        "ipFilter": {
+          "description": "The bucket's IP filter configuration. Specifies the network sources that are allowed to access the operations on the bucket, as well as its underlying objects. Only enforced when the mode is set to 'Enabled'.",
+          "properties": {
+            "mode": {
+              "description": "The mode of the IP filter. Valid values are 'Enabled' and 'Disabled'.",
+              "type": "string"
+            },
+            "publicNetworkSource": {
+              "description": "The public network source of the bucket's IP filter.",
+              "properties": {
+                "allowedIpCidrRanges": {
+                  "description": "The list of public IPv4, IPv6 cidr ranges that are allowed to access the bucket.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "vpcNetworkSources": {
+              "description": "The list of [VPC network](https://cloud.google.com/vpc/docs/vpc) sources of the bucket's IP filter.",
+              "items": {
+                "properties": {
+                  "allowedIpCidrRanges": {
+                    "description": "The list of IPv4, IPv6 cidr ranges subnetworks that are allowed to access the bucket.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "network": {
+                    "description": "Name of the network. Format: projects/{PROJECT_ID}/global/networks/{NETWORK_NAME}",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
         "kind": {
           "default": "storage#bucket",
           "description": "The kind of item this is. For buckets, this is always storage#bucket.",
@@ -3185,7 +4710,7 @@
           "type": "object"
         },
         "lifecycle": {
-          "description": "The bucket's lifecycle configuration. See lifecycle management for more information.",
+          "description": "The bucket's lifecycle configuration. See [Lifecycle Management](https://cloud.google.com/storage/docs/lifecycle) for more information.",
           "properties": {
             "rule": {
               "description": "A lifecycle management rule, which is made of an action to take and the condition(s) under which the action will be taken.",
@@ -3284,7 +4809,7 @@
           "type": "object"
         },
         "location": {
-          "description": "The location of the bucket. Object data for objects in the bucket resides in physical storage within this region. Defaults to US. See the developer's guide for the authoritative list.",
+          "description": "The location of the bucket. Object data for objects in the bucket resides in physical storage within this region. Defaults to US. See the [Developer's Guide](https://cloud.google.com/storage/docs/locations) for the authoritative list.",
           "type": "string"
         },
         "locationType": {
@@ -3318,6 +4843,16 @@
           },
           "description": "The name of the bucket.",
           "type": "string"
+        },
+        "objectRetention": {
+          "description": "The bucket's object retention config.",
+          "properties": {
+            "mode": {
+              "description": "The bucket's object retention mode. Can be Enabled.",
+              "type": "string"
+            }
+          },
+          "type": "object"
         },
         "owner": {
           "description": "The owner of the bucket. This is always the project team's owner group.",
@@ -3362,6 +4897,10 @@
           "description": "The Recovery Point Objective (RPO) of this bucket. Set to ASYNC_TURBO to turn on Turbo Replication on a bucket.",
           "type": "string"
         },
+        "satisfiesPZI": {
+          "description": "Reserved for future use.",
+          "type": "boolean"
+        },
         "satisfiesPZS": {
           "description": "Reserved for future use.",
           "type": "boolean"
@@ -3370,8 +4909,29 @@
           "description": "The URI of this bucket.",
           "type": "string"
         },
+        "softDeletePolicy": {
+          "description": "The bucket's soft delete policy, which defines the period of time that soft-deleted objects will be retained, and cannot be permanently deleted.",
+          "properties": {
+            "effectiveTime": {
+              "description": "Server-determined value that indicates the time from which the policy, or one with a greater retention, was effective. This value is in RFC 3339 format.",
+              "format": "date-time",
+              "type": "string"
+            },
+            "retentionDurationSeconds": {
+              "description": "The duration in seconds that soft-deleted objects in the bucket will be retained and cannot be permanently deleted.",
+              "format": "int64",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "softDeleteTime": {
+          "description": "The soft delete time of the bucket in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
         "storageClass": {
-          "description": "The bucket's default storage class, used whenever no storageClass is specified for a newly-created object. This defines how objects in the bucket are stored and determines the SLA and the cost of storage. Values include MULTI_REGIONAL, REGIONAL, STANDARD, NEARLINE, COLDLINE, ARCHIVE, and DURABLE_REDUCED_AVAILABILITY. If this value is not specified when the bucket is created, it will default to STANDARD. For more information, see storage classes.",
+          "description": "The bucket's default storage class, used whenever no storageClass is specified for a newly-created object. This defines how objects in the bucket are stored and determines the SLA and the cost of storage. Values include MULTI_REGIONAL, REGIONAL, STANDARD, NEARLINE, COLDLINE, ARCHIVE, and DURABLE_REDUCED_AVAILABILITY. If this value is not specified when the bucket is created, it will default to STANDARD. For more information, see [Storage Classes](https://cloud.google.com/storage/docs/storage-classes).",
           "type": "string"
         },
         "timeCreated": {
@@ -3395,7 +4955,7 @@
           "type": "object"
         },
         "website": {
-          "description": "The bucket's website configuration, controlling how the service behaves when accessing bucket contents as a web site. See the Static Website Examples for more information.",
+          "description": "The bucket's website configuration, controlling how the service behaves when accessing bucket contents as a web site. See the [Static Website Examples](https://cloud.google.com/storage/docs/static-website) for more information.",
           "properties": {
             "mainPageSuffix": {
               "description": "If the requested object path is missing, the service will ensure the path has a trailing '/', append this suffix, and attempt to retrieve the resulting object. This allows the creation of index.html objects to represent directory pages.",
@@ -3502,6 +5062,53 @@
       },
       "type": "object"
     },
+    "BucketStorageLayout": {
+      "description": "The storage layout configuration of a bucket.",
+      "id": "BucketStorageLayout",
+      "properties": {
+        "bucket": {
+          "description": "The name of the bucket.",
+          "type": "string"
+        },
+        "customPlacementConfig": {
+          "description": "The bucket's custom placement configuration for Custom Dual Regions.",
+          "properties": {
+            "dataLocations": {
+              "description": "The list of regional locations in which data is placed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "hierarchicalNamespace": {
+          "description": "The bucket's hierarchical namespace configuration.",
+          "properties": {
+            "enabled": {
+              "description": "When set to true, hierarchical namespace is enabled for this bucket.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "kind": {
+          "default": "storage#storageLayout",
+          "description": "The kind of item this is. For storage layout, this is always storage#storageLayout.",
+          "type": "string"
+        },
+        "location": {
+          "description": "The location of the bucket.",
+          "type": "string"
+        },
+        "locationType": {
+          "description": "The type of the bucket location.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "Buckets": {
       "description": "A list of buckets.",
       "id": "Buckets",
@@ -3520,6 +5127,38 @@
         },
         "nextPageToken": {
           "description": "The continuation token, used to page through large result sets. Provide this value in a subsequent request to return the next page of results.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "BulkRestoreObjectsRequest": {
+      "description": "A bulk restore objects request.",
+      "id": "BulkRestoreObjectsRequest",
+      "properties": {
+        "allowOverwrite": {
+          "description": "If false (default), the restore will not overwrite live objects with the same name at the destination. This means some deleted objects may be skipped. If true, live objects will be overwritten resulting in a noncurrent object (if versioning is enabled). If versioning is not enabled, overwriting the object will result in a soft-deleted object. In either case, if a noncurrent object already exists with the same name, a live version can be written without issue.",
+          "type": "boolean"
+        },
+        "copySourceAcl": {
+          "description": "If true, copies the source object's ACL; otherwise, uses the bucket's default object ACL. The default is false.",
+          "type": "boolean"
+        },
+        "matchGlobs": {
+          "description": "Restores only the objects matching any of the specified glob(s). If this parameter is not specified, all objects will be restored within the specified time range.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "softDeletedAfterTime": {
+          "description": "Restores only the objects that were soft-deleted after this time.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "softDeletedBeforeTime": {
+          "description": "Restores only the objects that were soft-deleted before this time.",
+          "format": "date-time",
           "type": "string"
         }
       },
@@ -3656,6 +5295,176 @@
       },
       "type": "object"
     },
+    "Folder": {
+      "description": "A folder. Only available in buckets with hierarchical namespace enabled.",
+      "id": "Folder",
+      "properties": {
+        "bucket": {
+          "description": "The name of the bucket containing this folder.",
+          "type": "string"
+        },
+        "createTime": {
+          "description": "The creation time of the folder in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "description": "The ID of the folder, including the bucket name, folder name.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "storage#folder",
+          "description": "The kind of item this is. For folders, this is always storage#folder.",
+          "type": "string"
+        },
+        "metageneration": {
+          "description": "The version of the metadata for this folder. Used for preconditions and for detecting changes in metadata.",
+          "format": "int64",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the folder. Required if not specified by URL parameter.",
+          "type": "string"
+        },
+        "pendingRenameInfo": {
+          "description": "Only present if the folder is part of an ongoing rename folder operation. Contains information which can be used to query the operation status.",
+          "properties": {
+            "operationId": {
+              "description": "The ID of the rename folder operation.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "selfLink": {
+          "description": "The link to this folder.",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "The modification time of the folder metadata in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Folders": {
+      "description": "A list of folders.",
+      "id": "Folders",
+      "properties": {
+        "items": {
+          "description": "The list of items.",
+          "items": {
+            "$ref": "Folder"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "storage#folders",
+          "description": "The kind of item this is. For lists of folders, this is always storage#folders.",
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "The continuation token, used to page through large result sets. Provide this value in a subsequent request to return the next page of results.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningListOperationsResponse": {
+      "description": "The response message for storage.buckets.operations.list.",
+      "id": "GoogleLongrunningListOperationsResponse",
+      "properties": {
+        "kind": {
+          "default": "storage#operations",
+          "description": "The kind of item this is. For lists of operations, this is always storage#operations.",
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "The continuation token, used to page through large result sets. Provide this value in a subsequent request to return the next page of results.",
+          "type": "string"
+        },
+        "operations": {
+          "description": "A list of operations that matches the specified filter in the request.",
+          "items": {
+            "$ref": "GoogleLongrunningOperation"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleLongrunningOperation": {
+      "description": "This resource represents a long-running operation that is the result of a network API call.",
+      "id": "GoogleLongrunningOperation",
+      "properties": {
+        "done": {
+          "description": "If the value is \"false\", it means the operation is still in progress. If \"true\", the operation is completed, and either \"error\" or \"response\" is available.",
+          "type": "boolean"
+        },
+        "error": {
+          "$ref": "GoogleRpcStatus",
+          "description": "The error result of the operation in case of failure or cancellation."
+        },
+        "kind": {
+          "default": "storage#operation",
+          "description": "The kind of item this is. For operations, this is always storage#operation.",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "Service-specific metadata associated with the operation. It typically contains progress information and common metadata such as create time. Some services might not provide such metadata. Any method that returns a long-running operation should document the metadata type, if any.",
+          "type": "object"
+        },
+        "name": {
+          "description": "The server-assigned name, which is only unique within the same service that originally returns it. If you use the default HTTP mapping, the \"name\" should be a resource name ending with \"operations/{operationId}\".",
+          "type": "string"
+        },
+        "response": {
+          "additionalProperties": {
+            "description": "Properties of the object. Contains field @type with type URL.",
+            "type": "any"
+          },
+          "description": "The normal response of the operation in case of success. If the original method returns no data on success, such as \"Delete\", the response is google.protobuf.Empty. If the original method is standard Get/Create/Update, the response should be the resource. For other methods, the response should have the type \"XxxResponse\", where \"Xxx\" is the original method name. For example, if the original method name is \"TakeSnapshot()\", the inferred response type is \"TakeSnapshotResponse\".",
+          "type": "object"
+        },
+        "selfLink": {
+          "description": "The link to this long running operation.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "GoogleRpcStatus": {
+      "description": "The \"Status\" type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each \"Status\" message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+      "id": "GoogleRpcStatus",
+      "properties": {
+        "code": {
+          "description": "The status code, which should be an enum value of google.rpc.Code.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "details": {
+          "description": "A list of messages that carry the error details. There is a common set of message types for APIs to use.",
+          "items": {
+            "additionalProperties": {
+              "description": "Properties of the object. Contains field @type with type URL.",
+              "type": "any"
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "A developer-facing error message, which should be in English.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "HmacKey": {
       "description": "JSON template to produce a JSON-style HMAC Key resource for Create responses.",
       "id": "HmacKey",
@@ -3740,6 +5549,72 @@
         "kind": {
           "default": "storage#hmacKeysMetadata",
           "description": "The kind of item this is. For lists of hmacKeys, this is always storage#hmacKeysMetadata.",
+          "type": "string"
+        },
+        "nextPageToken": {
+          "description": "The continuation token, used to page through large result sets. Provide this value in a subsequent request to return the next page of results.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ManagedFolder": {
+      "description": "A managed folder.",
+      "id": "ManagedFolder",
+      "properties": {
+        "bucket": {
+          "description": "The name of the bucket containing this managed folder.",
+          "type": "string"
+        },
+        "createTime": {
+          "description": "The creation time of the managed folder in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "description": "The ID of the managed folder, including the bucket name and managed folder name.",
+          "type": "string"
+        },
+        "kind": {
+          "default": "storage#managedFolder",
+          "description": "The kind of item this is. For managed folders, this is always storage#managedFolder.",
+          "type": "string"
+        },
+        "metageneration": {
+          "description": "The version of the metadata for this managed folder. Used for preconditions and for detecting changes in metadata.",
+          "format": "int64",
+          "type": "string"
+        },
+        "name": {
+          "description": "The name of the managed folder. Required if not specified by URL parameter.",
+          "type": "string"
+        },
+        "selfLink": {
+          "description": "The link to this managed folder.",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "The last update time of the managed folder metadata in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ManagedFolders": {
+      "description": "A list of managed folders.",
+      "id": "ManagedFolders",
+      "properties": {
+        "items": {
+          "description": "The list of items.",
+          "items": {
+            "$ref": "ManagedFolder"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "default": "storage#managedFolders",
+          "description": "The kind of item this is. For lists of managed folders, this is always storage#managedFolders.",
           "type": "string"
         },
         "nextPageToken": {
@@ -3875,7 +5750,7 @@
           "type": "string"
         },
         "crc32c": {
-          "description": "CRC32c checksum, as described in RFC 4960, Appendix B; encoded using base64 in big-endian byte order. For more information about using the CRC32c checksum, see Hashes and ETags: Best Practices.",
+          "description": "CRC32c checksum, as described in RFC 4960, Appendix B; encoded using base64 in big-endian byte order. For more information about using the CRC32c checksum, see [Data Validation and Change Detection](https://cloud.google.com/storage/docs/data-validation).",
           "type": "string"
         },
         "customTime": {
@@ -3910,6 +5785,11 @@
           "format": "int64",
           "type": "string"
         },
+        "hardDeleteTime": {
+          "description": "This is the time (in the future) when the soft-deleted object will no longer be restorable. It is equal to the soft delete time plus the current soft delete retention duration of the bucket.",
+          "format": "date-time",
+          "type": "string"
+        },
         "id": {
           "description": "The ID of the object, including the bucket name, object name, and generation number.",
           "type": "string"
@@ -3924,7 +5804,7 @@
           "type": "string"
         },
         "md5Hash": {
-          "description": "MD5 hash of the data; encoded using base64. For more information about using the MD5 hash, see Hashes and ETags: Best Practices.",
+          "description": "MD5 hash of the data; encoded using base64. For more information about using the MD5 hash, see [Data Validation and Change Detection](https://cloud.google.com/storage/docs/data-validation).",
           "type": "string"
         },
         "mediaLink": {
@@ -3962,6 +5842,25 @@
           },
           "type": "object"
         },
+        "restoreToken": {
+          "description": "Restore token used to differentiate deleted objects with the same name and generation. This field is only returned for deleted objects in hierarchical namespace buckets.",
+          "type": "string"
+        },
+        "retention": {
+          "description": "A collection of object level retention parameters.",
+          "properties": {
+            "mode": {
+              "description": "The bucket's object retention mode, can only be Unlocked or Locked.",
+              "type": "string"
+            },
+            "retainUntilTime": {
+              "description": "A time in RFC 3339 format until which object retention protects this object.",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
         "retentionExpirationTime": {
           "description": "A server-determined value that specifies the earliest time that the object's retention period expires. This value is in RFC 3339 format. Note 1: This field is not provided for objects with an active event-based hold, since retention expiration is unknown until the hold is removed. Note 2: This value can be provided even when temporary hold is set (so that the user can reason about policy without having to first unset the temporary hold).",
           "format": "date-time",
@@ -3974,6 +5873,11 @@
         "size": {
           "description": "Content-Length of the data in bytes.",
           "format": "uint64",
+          "type": "string"
+        },
+        "softDeleteTime": {
+          "description": "The time at which the object became soft-deleted in RFC 3339 format.",
+          "format": "date-time",
           "type": "string"
         },
         "storageClass": {
@@ -3990,7 +5894,12 @@
           "type": "string"
         },
         "timeDeleted": {
-          "description": "The deletion time of the object in RFC 3339 format. Will be returned if and only if this version of the object has been deleted.",
+          "description": "The time at which the object became noncurrent in RFC 3339 format. Will be returned if and only if this version of the object has been deleted.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "timeFinalized": {
+          "description": "The time when the object was finalized.",
           "format": "date-time",
           "type": "string"
         },
@@ -4140,14 +6049,15 @@
       "type": "object"
     },
     "Policy": {
-      "description": "A bucket/object IAM policy.",
+      "description": "A bucket/object/managedFolder IAM policy.",
       "id": "Policy",
       "properties": {
         "bindings": {
           "annotations": {
             "required": [
               "storage.buckets.setIamPolicy",
-              "storage.objects.setIamPolicy"
+              "storage.objects.setIamPolicy",
+              "storage.managedFolders.setIamPolicy"
             ]
           },
           "description": "An association between a role, which comes with a set of permissions, and members who may assume that role.",
@@ -4161,7 +6071,8 @@
                 "annotations": {
                   "required": [
                     "storage.buckets.setIamPolicy",
-                    "storage.objects.setIamPolicy"
+                    "storage.objects.setIamPolicy",
+                    "storage.managedFolders.setIamPolicy"
                   ]
                 },
                 "description": "A collection of identifiers for members who may assume the provided role. Recognized identifiers are as follows:  \n- allUsers — A special identifier that represents anyone on the internet; with or without a Google account.  \n- allAuthenticatedUsers — A special identifier that represents anyone who is authenticated with a Google account or a service account.  \n- user:emailid — An email address that represents a specific account. For example, user:alice@gmail.com or user:joe@example.com.  \n- serviceAccount:emailid — An email address that represents a service account. For example,  serviceAccount:my-other-app@appspot.gserviceaccount.com .  \n- group:emailid — An email address that represents a Google group. For example, group:admins@example.com.  \n- domain:domain — A Google Apps domain name that represents all the users of that domain. For example, domain:google.com or domain:example.com.  \n- projectOwner:projectid — Owners of the given project. For example, projectOwner:my-example-project  \n- projectEditor:projectid — Editors of the given project. For example, projectEditor:my-example-project  \n- projectViewer:projectid — Viewers of the given project. For example, projectViewer:my-example-project",
@@ -4174,7 +6085,8 @@
                 "annotations": {
                   "required": [
                     "storage.buckets.setIamPolicy",
-                    "storage.objects.setIamPolicy"
+                    "storage.objects.setIamPolicy",
+                    "storage.managedFolders.setIamPolicy"
                   ]
                 },
                 "description": "The role to which members belong. Two types of roles are supported: new IAM roles, which grant permissions that do not map directly to those provided by ACLs, and legacy IAM roles, which do map directly to ACL permissions. All roles are of the format roles/storage.specificRole.\nThe new IAM roles are:  \n- roles/storage.admin — Full control of Google Cloud Storage resources.  \n- roles/storage.objectViewer — Read-Only access to Google Cloud Storage objects.  \n- roles/storage.objectCreator — Access to create objects in Google Cloud Storage.  \n- roles/storage.objectAdmin — Full control of Google Cloud Storage objects.   The legacy IAM roles are:  \n- roles/storage.legacyObjectReader — Read-only access to objects without listing. Equivalent to an ACL entry on an object with the READER role.  \n- roles/storage.legacyObjectOwner — Read/write access to existing objects without listing. Equivalent to an ACL entry on an object with the OWNER role.  \n- roles/storage.legacyBucketReader — Read access to buckets with object listing. Equivalent to an ACL entry on a bucket with the READER role.  \n- roles/storage.legacyBucketWriter — Read access to buckets with object listing/creation/deletion. Equivalent to an ACL entry on a bucket with the WRITER role.  \n- roles/storage.legacyBucketOwner — Read and write access to existing buckets with object listing/creation/deletion. Equivalent to an ACL entry on a bucket with the OWNER role.",
@@ -4196,13 +6108,41 @@
           "type": "string"
         },
         "resourceId": {
-          "description": "The ID of the resource to which this policy belongs. Will be of the form projects/_/buckets/bucket for buckets, and projects/_/buckets/bucket/objects/object for objects. A specific generation may be specified by appending #generationNumber to the end of the object name, e.g. projects/_/buckets/my-bucket/objects/data.txt#17. The current generation can be denoted with #0. This field is ignored on input.",
+          "description": "The ID of the resource to which this policy belongs. Will be of the form projects/_/buckets/bucket for buckets, projects/_/buckets/bucket/objects/object for objects, and projects/_/buckets/bucket/managedFolders/managedFolder. A specific generation may be specified by appending #generationNumber to the end of the object name, e.g. projects/_/buckets/my-bucket/objects/data.txt#17. The current generation can be denoted with #0. This field is ignored on input.",
           "type": "string"
         },
         "version": {
           "description": "The IAM policy format version.",
           "format": "int32",
           "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "RelocateBucketRequest": {
+      "description": "A Relocate Bucket request.",
+      "id": "RelocateBucketRequest",
+      "properties": {
+        "destinationCustomPlacementConfig": {
+          "description": "The bucket's new custom placement configuration if relocating to a Custom Dual Region.",
+          "properties": {
+            "dataLocations": {
+              "description": "The list of regional locations in which data is placed.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "destinationLocation": {
+          "description": "The new location the bucket will be relocated to.",
+          "type": "string"
+        },
+        "validateOnly": {
+          "description": "If true, validate the operation, but do not actually relocate the bucket.",
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -4258,7 +6198,7 @@
       "type": "object"
     },
     "TestIamPermissionsResponse": {
-      "description": "A storage.(buckets|objects).testIamPermissions response.",
+      "description": "A storage.(buckets|objects|managedFolders).testIamPermissions response.",
       "id": "TestIamPermissionsResponse",
       "properties": {
         "kind": {
@@ -4267,7 +6207,7 @@
           "type": "string"
         },
         "permissions": {
-          "description": "The permissions held by the caller. Permissions are always of the format storage.resource.capability, where resource is one of buckets or objects. The supported permissions are as follows:  \n- storage.buckets.delete — Delete bucket.  \n- storage.buckets.get — Read bucket metadata.  \n- storage.buckets.getIamPolicy — Read bucket IAM policy.  \n- storage.buckets.create — Create bucket.  \n- storage.buckets.list — List buckets.  \n- storage.buckets.setIamPolicy — Update bucket IAM policy.  \n- storage.buckets.update — Update bucket metadata.  \n- storage.objects.delete — Delete object.  \n- storage.objects.get — Read object data and metadata.  \n- storage.objects.getIamPolicy — Read object IAM policy.  \n- storage.objects.create — Create object.  \n- storage.objects.list — List objects.  \n- storage.objects.setIamPolicy — Update object IAM policy.  \n- storage.objects.update — Update object metadata.",
+          "description": "The permissions held by the caller. Permissions are always of the format storage.resource.capability, where resource is one of buckets, objects, or managedFolders. The supported permissions are as follows:  \n- storage.buckets.delete — Delete bucket.  \n- storage.buckets.get — Read bucket metadata.  \n- storage.buckets.getIamPolicy — Read bucket IAM policy.  \n- storage.buckets.create — Create bucket.  \n- storage.buckets.list — List buckets.  \n- storage.buckets.setIamPolicy — Update bucket IAM policy.  \n- storage.buckets.update — Update bucket metadata.  \n- storage.objects.delete — Delete object.  \n- storage.objects.get — Read object data and metadata.  \n- storage.objects.getIamPolicy — Read object IAM policy.  \n- storage.objects.create — Create object.  \n- storage.objects.list — List objects.  \n- storage.objects.setIamPolicy — Update object IAM policy.  \n- storage.objects.update — Update object metadata. \n- storage.managedFolders.delete — Delete managed folder.  \n- storage.managedFolders.get — Read managed folder metadata.  \n- storage.managedFolders.getIamPolicy — Read managed folder IAM policy.  \n- storage.managedFolders.create — Create managed folder.  \n- storage.managedFolders.list — List managed folders.  \n- storage.managedFolders.setIamPolicy — Update managed folder IAM policy.",
           "items": {
             "type": "string"
           },

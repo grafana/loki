@@ -4,11 +4,19 @@ package worker
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/status"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/pkg/errors"
 	"go.uber.org/atomic"
+	"google.golang.org/grpc/codes"
+
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
+	"github.com/grafana/loki/v3/pkg/util/server"
 )
 
 // newExecutionContext returns a new execution context (execCtx) that wraps the input workerCtx and
@@ -25,8 +33,8 @@ import (
 // - The execution context is canceled when the worker context gets cancelled (ie. querier is shutting down)
 // and there's no inflight query execution. In case there's an inflight query, the execution context is canceled
 // once the inflight query terminates and the response has been sent.
-func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx context.Context, execCancel context.CancelFunc, inflightQuery *atomic.Bool) {
-	execCtx, execCancel = context.WithCancel(context.Background())
+func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx context.Context, execCancel context.CancelCauseFunc, inflightQuery *atomic.Bool) {
+	execCtx, execCancel = context.WithCancelCause(context.Background())
 	inflightQuery = atomic.NewBool(false)
 
 	go func() {
@@ -69,11 +77,78 @@ func newExecutionContext(workerCtx context.Context, logger log.Logger) (execCtx 
 			}
 
 			level.Debug(logger).Log("msg", "querier worker context has been canceled and there's no inflight query, canceling the execution context too")
-			execCancel()
+			execCancel(errors.New("querier worker context has been canceled and there's no inflight query"))
 		case <-execCtx.Done():
 			// Nothing to do. The execution context has been explicitly canceled.
 		}
 	}()
 
 	return
+}
+
+// handleHTTPRequest converts the request and applies it to the handler.
+func handleHTTPRequest(ctx context.Context, request *httpgrpc.HTTPRequest, handler RequestHandler, codec RequestCodec) *httpgrpc.HTTPResponse {
+	req, ctx, err := codec.DecodeHTTPGrpcRequest(ctx, request)
+	if err != nil {
+		response, ok := httpgrpc.HTTPResponseFromError(err)
+		if !ok {
+			return &httpgrpc.HTTPResponse{
+				Code: http.StatusInternalServerError,
+				Body: []byte(err.Error()),
+			}
+		}
+		return response
+	}
+
+	resp, err := handler.Do(ctx, req)
+	if err != nil {
+		code, err := server.ClientHTTPStatusAndError(err)
+		return &httpgrpc.HTTPResponse{
+			Code: int32(code),
+			Body: []byte(err.Error()),
+		}
+	}
+
+	response, err := queryrange.DefaultCodec.EncodeHTTPGrpcResponse(ctx, request, resp)
+	if err != nil {
+		code, err := server.ClientHTTPStatusAndError(err)
+		return &httpgrpc.HTTPResponse{
+			Code: int32(code),
+			Body: []byte(err.Error()),
+		}
+	}
+
+	return response
+}
+
+// handleQueryRequest applies unwraps a request and applies it to the handler.
+func handleQueryRequest(ctx context.Context, request *queryrange.QueryRequest, handler RequestHandler, codec RequestCodec) *queryrange.QueryResponse {
+	r, ctx, err := codec.QueryRequestUnwrap(ctx, request)
+	if err != nil {
+		return &queryrange.QueryResponse{
+			Status: status.New(codes.Internal, err.Error()).Proto(),
+		}
+	}
+
+	resp, err := handler.Do(ctx, r)
+	if err != nil {
+		if s, ok := status.FromError(err); ok {
+			return &queryrange.QueryResponse{
+				Status: s.Proto(),
+			}
+		}
+
+		// This block covers any errors that are not gRPC errors and will include all query errors.
+		// It's important to map non-retryable errors to a non 5xx status code so they will not be retried.
+		return queryrange.QueryResponseWrapError(err)
+	}
+
+	response, err := queryrange.QueryResponseWrap(resp)
+	if err != nil {
+		return &queryrange.QueryResponse{
+			Status: status.New(codes.Internal, err.Error()).Proto(),
+		}
+	}
+
+	return response
 }

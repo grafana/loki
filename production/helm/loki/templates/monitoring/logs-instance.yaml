@@ -4,6 +4,7 @@ apiVersion: monitoring.grafana.com/v1alpha1
 kind: LogsInstance
 metadata:
   name: {{ include "loki.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
   {{- with .annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

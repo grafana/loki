@@ -22,10 +22,9 @@ package router
 import (
 	"fmt"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/xds/internal/httpfilter"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	pb "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/router/v3"
@@ -55,12 +54,12 @@ func (builder) ParseFilterConfig(cfg proto.Message) (httpfilter.FilterConfig, er
 	if cfg == nil {
 		return nil, fmt.Errorf("router: nil configuration message provided")
 	}
-	any, ok := cfg.(*anypb.Any)
+	m, ok := cfg.(*anypb.Any)
 	if !ok {
 		return nil, fmt.Errorf("router: error parsing config %v: unknown type %T", cfg, cfg)
 	}
 	msg := new(pb.Router)
-	if err := ptypes.UnmarshalAny(any, msg); err != nil {
+	if err := m.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("router: error parsing config %v: %v", cfg, err)
 	}
 	return config{}, nil

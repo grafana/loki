@@ -32,6 +32,14 @@ const (
 	databaseOptionsPath                 = databaseBasePath + "/options"
 	databaseUpgradeMajorVersionPath     = databaseBasePath + "/%s/upgrade"
 	databasePromoteReplicaToPrimaryPath = databaseReplicaPath + "/promote"
+	databaseTopicPath                   = databaseBasePath + "/%s/topics/%s"
+	databaseTopicsPath                  = databaseBasePath + "/%s/topics"
+	databaseMetricsCredentialsPath      = databaseBasePath + "/metrics/credentials"
+	databaseEvents                      = databaseBasePath + "/%s/events"
+	databaseIndexesPath                 = databaseBasePath + "/%s/indexes"
+	databaseIndexPath                   = databaseBasePath + "/%s/indexes/%s"
+	databaseLogsinkPath                 = databaseBasePath + "/%s/logsink/%s"
+	databaseLogsinksPath                = databaseBasePath + "/%s/logsink"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -116,6 +124,7 @@ type DatabasesService interface {
 	GetUser(context.Context, string, string) (*DatabaseUser, *Response, error)
 	ListUsers(context.Context, string, *ListOptions) ([]DatabaseUser, *Response, error)
 	CreateUser(context.Context, string, *DatabaseCreateUserRequest) (*DatabaseUser, *Response, error)
+	UpdateUser(context.Context, string, string, *DatabaseUpdateUserRequest) (*DatabaseUser, *Response, error)
 	DeleteUser(context.Context, string, string) (*Response, error)
 	ResetUserAuth(context.Context, string, string, *DatabaseResetUserAuthRequest) (*DatabaseUser, *Response, error)
 	ListDBs(context.Context, string, *ListOptions) ([]DatabaseDB, *Response, error)
@@ -146,6 +155,21 @@ type DatabasesService interface {
 	UpdateMySQLConfig(context.Context, string, *MySQLConfig) (*Response, error)
 	ListOptions(todo context.Context) (*DatabaseOptions, *Response, error)
 	UpgradeMajorVersion(context.Context, string, *UpgradeVersionRequest) (*Response, error)
+	ListTopics(context.Context, string, *ListOptions) ([]DatabaseTopic, *Response, error)
+	CreateTopic(context.Context, string, *DatabaseCreateTopicRequest) (*DatabaseTopic, *Response, error)
+	GetTopic(context.Context, string, string) (*DatabaseTopic, *Response, error)
+	DeleteTopic(context.Context, string, string) (*Response, error)
+	UpdateTopic(context.Context, string, string, *DatabaseUpdateTopicRequest) (*Response, error)
+	GetMetricsCredentials(context.Context) (*DatabaseMetricsCredentials, *Response, error)
+	UpdateMetricsCredentials(context.Context, *DatabaseUpdateMetricsCredentialsRequest) (*Response, error)
+	ListDatabaseEvents(context.Context, string, *ListOptions) ([]DatabaseEvent, *Response, error)
+	ListIndexes(context.Context, string, *ListOptions) ([]DatabaseIndex, *Response, error)
+	DeleteIndex(context.Context, string, string) (*Response, error)
+	CreateLogsink(ctx context.Context, databaseID string, createLogsink *DatabaseCreateLogsinkRequest) (*DatabaseLogsink, *Response, error)
+	GetLogsink(ctx context.Context, databaseID string, logsinkID string) (*DatabaseLogsink, *Response, error)
+	ListLogsinks(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseLogsink, *Response, error)
+	UpdateLogsink(ctx context.Context, databaseID string, logsinkID string, updateLogsink *DatabaseUpdateLogsinkRequest) (*Response, error)
+	DeleteLogsink(ctx context.Context, databaseID, logsinkID string) (*Response, error)
 }
 
 // DatabasesServiceOp handles communication with the Databases related methods
@@ -162,23 +186,28 @@ var _ DatabasesService = &DatabasesServiceOp{}
 // "pg", "mysql" or "redis". A Database also includes connection information and other
 // properties of the service like region, size and current status.
 type Database struct {
-	ID                 string                     `json:"id,omitempty"`
-	Name               string                     `json:"name,omitempty"`
-	EngineSlug         string                     `json:"engine,omitempty"`
-	VersionSlug        string                     `json:"version,omitempty"`
-	Connection         *DatabaseConnection        `json:"connection,omitempty"`
-	PrivateConnection  *DatabaseConnection        `json:"private_connection,omitempty"`
-	Users              []DatabaseUser             `json:"users,omitempty"`
-	NumNodes           int                        `json:"num_nodes,omitempty"`
-	SizeSlug           string                     `json:"size,omitempty"`
-	DBNames            []string                   `json:"db_names,omitempty"`
-	RegionSlug         string                     `json:"region,omitempty"`
-	Status             string                     `json:"status,omitempty"`
-	MaintenanceWindow  *DatabaseMaintenanceWindow `json:"maintenance_window,omitempty"`
-	CreatedAt          time.Time                  `json:"created_at,omitempty"`
-	PrivateNetworkUUID string                     `json:"private_network_uuid,omitempty"`
-	Tags               []string                   `json:"tags,omitempty"`
-	ProjectID          string                     `json:"project_id,omitempty"`
+	ID                       string                     `json:"id,omitempty"`
+	Name                     string                     `json:"name,omitempty"`
+	EngineSlug               string                     `json:"engine,omitempty"`
+	VersionSlug              string                     `json:"version,omitempty"`
+	Connection               *DatabaseConnection        `json:"connection,omitempty"`
+	UIConnection             *DatabaseConnection        `json:"ui_connection,omitempty"`
+	PrivateConnection        *DatabaseConnection        `json:"private_connection,omitempty"`
+	StandbyConnection        *DatabaseConnection        `json:"standby_connection,omitempty"`
+	StandbyPrivateConnection *DatabaseConnection        `json:"standby_private_connection,omitempty"`
+	Users                    []DatabaseUser             `json:"users,omitempty"`
+	NumNodes                 int                        `json:"num_nodes,omitempty"`
+	SizeSlug                 string                     `json:"size,omitempty"`
+	DBNames                  []string                   `json:"db_names,omitempty"`
+	RegionSlug               string                     `json:"region,omitempty"`
+	Status                   string                     `json:"status,omitempty"`
+	MaintenanceWindow        *DatabaseMaintenanceWindow `json:"maintenance_window,omitempty"`
+	CreatedAt                time.Time                  `json:"created_at,omitempty"`
+	PrivateNetworkUUID       string                     `json:"private_network_uuid,omitempty"`
+	Tags                     []string                   `json:"tags,omitempty"`
+	ProjectID                string                     `json:"project_id,omitempty"`
+	StorageSizeMib           uint64                     `json:"storage_size_mib,omitempty"`
+	MetricsEndpoints         []*ServiceAddress          `json:"metrics_endpoints,omitempty"`
 }
 
 // DatabaseCA represents a database ca.
@@ -188,13 +217,21 @@ type DatabaseCA struct {
 
 // DatabaseConnection represents a database connection
 type DatabaseConnection struct {
-	URI      string `json:"uri,omitempty"`
-	Database string `json:"database,omitempty"`
-	Host     string `json:"host,omitempty"`
-	Port     int    `json:"port,omitempty"`
-	User     string `json:"user,omitempty"`
-	Password string `json:"password,omitempty"`
-	SSL      bool   `json:"ssl,omitempty"`
+	Protocol         string            `json:"protocol"`
+	URI              string            `json:"uri,omitempty"`
+	Database         string            `json:"database,omitempty"`
+	Host             string            `json:"host,omitempty"`
+	Port             int               `json:"port,omitempty"`
+	User             string            `json:"user,omitempty"`
+	Password         string            `json:"password,omitempty"`
+	SSL              bool              `json:"ssl,omitempty"`
+	ApplicationPorts map[string]uint32 `json:"application_ports,omitempty"`
+}
+
+// ServiceAddress represents a host:port for a generic service (e.g. metrics endpoint)
+type ServiceAddress struct {
+	Host string `json:"host"`
+	Port int    `json:"port"`
 }
 
 // DatabaseUser represents a user in the database
@@ -202,7 +239,29 @@ type DatabaseUser struct {
 	Name          string                     `json:"name,omitempty"`
 	Role          string                     `json:"role,omitempty"`
 	Password      string                     `json:"password,omitempty"`
+	AccessCert    string                     `json:"access_cert,omitempty"`
+	AccessKey     string                     `json:"access_key,omitempty"`
 	MySQLSettings *DatabaseMySQLUserSettings `json:"mysql_settings,omitempty"`
+	Settings      *DatabaseUserSettings      `json:"settings,omitempty"`
+}
+
+// KafkaACL contains Kafka specific user access control information
+type KafkaACL struct {
+	ID         string `json:"id,omitempty"`
+	Permission string `json:"permission,omitempty"`
+	Topic      string `json:"topic,omitempty"`
+}
+
+// OpenSearchACL contains OpenSearch specific user access control information
+type OpenSearchACL struct {
+	Permission string `json:"permission,omitempty"`
+	Index      string `json:"index,omitempty"`
+}
+
+// DatabaseUserSettings contains user settings
+type DatabaseUserSettings struct {
+	ACL           []*KafkaACL      `json:"acl,omitempty"`
+	OpenSearchACL []*OpenSearchACL `json:"opensearch_acl,omitempty"`
 }
 
 // DatabaseMySQLUserSettings contains MySQL-specific user settings
@@ -243,12 +302,14 @@ type DatabaseCreateRequest struct {
 	Tags               []string               `json:"tags,omitempty"`
 	BackupRestore      *DatabaseBackupRestore `json:"backup_restore,omitempty"`
 	ProjectID          string                 `json:"project_id"`
+	StorageSizeMib     uint64                 `json:"storage_size_mib,omitempty"`
 }
 
 // DatabaseResizeRequest can be used to initiate a database resize operation.
 type DatabaseResizeRequest struct {
-	SizeSlug string `json:"size,omitempty"`
-	NumNodes int    `json:"num_nodes,omitempty"`
+	SizeSlug       string `json:"size,omitempty"`
+	NumNodes       int    `json:"num_nodes,omitempty"`
+	StorageSizeMib uint64 `json:"storage_size_mib,omitempty"`
 }
 
 // DatabaseMigrateRequest can be used to initiate a database migrate operation.
@@ -271,6 +332,80 @@ type DatabaseDB struct {
 	Name string `json:"name"`
 }
 
+// DatabaseTopic represents a Kafka topic
+type DatabaseTopic struct {
+	Name              string            `json:"name"`
+	Partitions        []*TopicPartition `json:"partitions,omitempty"`
+	ReplicationFactor *uint32           `json:"replication_factor,omitempty"`
+	State             string            `json:"state,omitempty"`
+	Config            *TopicConfig      `json:"config,omitempty"`
+}
+
+// DatabaseLogsink represents a logsink
+type DatabaseLogsink struct {
+	ID     string                 `json:"sink_id"`
+	Name   string                 `json:"sink_name,omitempty"`
+	Type   string                 `json:"sink_type,omitempty"`
+	Config *DatabaseLogsinkConfig `json:"config,omitempty"`
+}
+
+// TopicPartition represents the state of a Kafka topic partition
+type TopicPartition struct {
+	EarliestOffset uint64                `json:"earliest_offset,omitempty"`
+	InSyncReplicas uint32                `json:"in_sync_replicas,omitempty"`
+	Id             uint32                `json:"id,omitempty"`
+	Size           uint64                `json:"size,omitempty"`
+	ConsumerGroups []*TopicConsumerGroup `json:"consumer_groups,omitempty"`
+}
+
+// TopicConsumerGroup represents a consumer group for a particular Kafka topic
+type TopicConsumerGroup struct {
+	Name   string `json:"name,omitempty"`
+	Offset uint64 `json:"offset,omitempty"`
+}
+
+// TopicConfig represents all configurable options for a Kafka topic
+type TopicConfig struct {
+	CleanupPolicy                   string   `json:"cleanup_policy,omitempty"`
+	CompressionType                 string   `json:"compression_type,omitempty"`
+	DeleteRetentionMS               *uint64  `json:"delete_retention_ms,omitempty"`
+	FileDeleteDelayMS               *uint64  `json:"file_delete_delay_ms,omitempty"`
+	FlushMessages                   *uint64  `json:"flush_messages,omitempty"`
+	FlushMS                         *uint64  `json:"flush_ms,omitempty"`
+	IndexIntervalBytes              *uint64  `json:"index_interval_bytes,omitempty"`
+	MaxCompactionLagMS              *uint64  `json:"max_compaction_lag_ms,omitempty"`
+	MaxMessageBytes                 *uint64  `json:"max_message_bytes,omitempty"`
+	MessageDownConversionEnable     *bool    `json:"message_down_conversion_enable,omitempty"`
+	MessageFormatVersion            string   `json:"message_format_version,omitempty"`
+	MessageTimestampDifferenceMaxMS *uint64  `json:"message_timestamp_difference_max_ms,omitempty"`
+	MessageTimestampType            string   `json:"message_timestamp_type,omitempty"`
+	MinCleanableDirtyRatio          *float32 `json:"min_cleanable_dirty_ratio,omitempty"`
+	MinCompactionLagMS              *uint64  `json:"min_compaction_lag_ms,omitempty"`
+	MinInsyncReplicas               *uint32  `json:"min_insync_replicas,omitempty"`
+	Preallocate                     *bool    `json:"preallocate,omitempty"`
+	RetentionBytes                  *int64   `json:"retention_bytes,omitempty"`
+	RetentionMS                     *int64   `json:"retention_ms,omitempty"`
+	SegmentBytes                    *uint64  `json:"segment_bytes,omitempty"`
+	SegmentIndexBytes               *uint64  `json:"segment_index_bytes,omitempty"`
+	SegmentJitterMS                 *uint64  `json:"segment_jitter_ms,omitempty"`
+	SegmentMS                       *uint64  `json:"segment_ms,omitempty"`
+}
+
+// DatabaseCreateTopicRequest is used to create a new topic within a kafka cluster
+type DatabaseCreateTopicRequest struct {
+	Name              string       `json:"name"`
+	PartitionCount    *uint32      `json:"partition_count,omitempty"`
+	ReplicationFactor *uint32      `json:"replication_factor,omitempty"`
+	Config            *TopicConfig `json:"config,omitempty"`
+}
+
+// DatabaseUpdateTopicRequest ...
+type DatabaseUpdateTopicRequest struct {
+	PartitionCount    *uint32      `json:"partition_count,omitempty"`
+	ReplicationFactor *uint32      `json:"replication_factor,omitempty"`
+	Config            *TopicConfig `json:"config,omitempty"`
+}
+
 // DatabaseReplica represents a read-only replica of a particular database
 type DatabaseReplica struct {
 	ID                 string              `json:"id"`
@@ -282,17 +417,21 @@ type DatabaseReplica struct {
 	CreatedAt          time.Time           `json:"created_at"`
 	PrivateNetworkUUID string              `json:"private_network_uuid,omitempty"`
 	Tags               []string            `json:"tags,omitempty"`
+	StorageSizeMib     uint64              `json:"storage_size_mib,omitempty"`
+	Size               string              `json:"size"`
 }
 
 // DatabasePool represents a database connection pool
 type DatabasePool struct {
-	User              string              `json:"user"`
-	Name              string              `json:"name"`
-	Size              int                 `json:"size"`
-	Database          string              `json:"db"`
-	Mode              string              `json:"mode"`
-	Connection        *DatabaseConnection `json:"connection"`
-	PrivateConnection *DatabaseConnection `json:"private_connection,omitempty"`
+	User                     string              `json:"user"`
+	Name                     string              `json:"name"`
+	Size                     int                 `json:"size"`
+	Database                 string              `json:"db"`
+	Mode                     string              `json:"mode"`
+	Connection               *DatabaseConnection `json:"connection"`
+	PrivateConnection        *DatabaseConnection `json:"private_connection,omitempty"`
+	StandbyConnection        *DatabaseConnection `json:"standby_connection,omitempty"`
+	StandbyPrivateConnection *DatabaseConnection `json:"standby_private_connection,omitempty"`
 }
 
 // DatabaseCreatePoolRequest is used to create a new database connection pool
@@ -316,11 +455,18 @@ type DatabaseUpdatePoolRequest struct {
 type DatabaseCreateUserRequest struct {
 	Name          string                     `json:"name"`
 	MySQLSettings *DatabaseMySQLUserSettings `json:"mysql_settings,omitempty"`
+	Settings      *DatabaseUserSettings      `json:"settings,omitempty"`
+}
+
+// DatabaseUpdateUserRequest is used to update an existing database user
+type DatabaseUpdateUserRequest struct {
+	Settings *DatabaseUserSettings `json:"settings,omitempty"`
 }
 
 // DatabaseResetUserAuthRequest is used to reset a users DB auth
 type DatabaseResetUserAuthRequest struct {
 	MySQLSettings *DatabaseMySQLUserSettings `json:"mysql_settings,omitempty"`
+	Settings      *DatabaseUserSettings      `json:"settings,omitempty"`
 }
 
 // DatabaseCreateDBRequest is used to create a new engine-specific database within the cluster
@@ -335,6 +481,7 @@ type DatabaseCreateReplicaRequest struct {
 	Size               string   `json:"size"`
 	PrivateNetworkUUID string   `json:"private_network_uuid"`
 	Tags               []string `json:"tags,omitempty"`
+	StorageSizeMib     uint64   `json:"storage_size_mib,omitempty"`
 }
 
 // DatabaseUpdateFirewallRulesRequest is used to set the firewall rules for a database
@@ -349,6 +496,35 @@ type DatabaseFirewallRule struct {
 	Type        string    `json:"type"`
 	Value       string    `json:"value"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// DatabaseCreateLogsinkRequest is used to create logsink for a database cluster
+type DatabaseCreateLogsinkRequest struct {
+	Name   string                 `json:"sink_name"`
+	Type   string                 `json:"sink_type"`
+	Config *DatabaseLogsinkConfig `json:"config"`
+}
+
+// DatabaseUpdateLogsinkRequest is used to update logsink for a database cluster
+type DatabaseUpdateLogsinkRequest struct {
+	Config *DatabaseLogsinkConfig `json:"config"`
+}
+
+// DatabaseLogsinkConfig represents one of the configurable options (rsyslog_logsink, elasticsearch_logsink, or opensearch_logsink) for a logsink.
+type DatabaseLogsinkConfig struct {
+	URL          string  `json:"url,omitempty"`
+	IndexPrefix  string  `json:"index_prefix,omitempty"`
+	IndexDaysMax int     `json:"index_days_max,omitempty"`
+	Timeout      float32 `json:"timeout,omitempty"`
+	Server       string  `json:"server,omitempty"`
+	Port         int     `json:"port,omitempty"`
+	TLS          bool    `json:"tls,omitempty"`
+	Format       string  `json:"format,omitempty"`
+	Logline      string  `json:"logline,omitempty"`
+	SD           string  `json:"sd,omitempty"`
+	CA           string  `json:"ca,omitempty"`
+	Key          string  `json:"key,omitempty"`
+	Cert         string  `json:"cert,omitempty"`
 }
 
 // PostgreSQLConfig holds advanced configurations for PostgreSQL database clusters.
@@ -551,12 +727,39 @@ type databaseOptionsRoot struct {
 	Options *DatabaseOptions `json:"options"`
 }
 
+type databaseTopicRoot struct {
+	Topic *DatabaseTopic `json:"topic"`
+}
+
+type databaseTopicsRoot struct {
+	Topics []DatabaseTopic `json:"topics"`
+}
+
+type databaseLogsinksRoot struct {
+	Sinks []DatabaseLogsink `json:"sinks"`
+}
+
+type databaseMetricsCredentialsRoot struct {
+	Credentials *DatabaseMetricsCredentials `json:"credentials"`
+}
+
+type DatabaseMetricsCredentials struct {
+	BasicAuthUsername string `json:"basic_auth_username"`
+	BasicAuthPassword string `json:"basic_auth_password"`
+}
+
+type DatabaseUpdateMetricsCredentialsRequest struct {
+	Credentials *DatabaseMetricsCredentials `json:"credentials"`
+}
+
 // DatabaseOptions represents the available database engines
 type DatabaseOptions struct {
 	MongoDBOptions     DatabaseEngineOptions `json:"mongodb"`
 	MySQLOptions       DatabaseEngineOptions `json:"mysql"`
 	PostgresSQLOptions DatabaseEngineOptions `json:"pg"`
 	RedisOptions       DatabaseEngineOptions `json:"redis"`
+	KafkaOptions       DatabaseEngineOptions `json:"kafka"`
+	OpensearchOptions  DatabaseEngineOptions `json:"opensearch"`
 }
 
 // DatabaseEngineOptions represents the configuration options that are available for a given database engine
@@ -570,6 +773,45 @@ type DatabaseEngineOptions struct {
 type DatabaseLayout struct {
 	NodeNum int      `json:"num_nodes"`
 	Sizes   []string `json:"sizes"`
+}
+
+// ListDatabaseEvents contains a list of project events.
+type ListDatabaseEvents struct {
+	Events []DatabaseEvent `json:"events"`
+}
+
+// DatbaseEvent contains the information about a Datbase event.
+type DatabaseEvent struct {
+	ID          string `json:"id"`
+	ServiceName string `json:"cluster_name"`
+	EventType   string `json:"event_type"`
+	CreateTime  string `json:"create_time"`
+}
+
+type ListDatabaseEventsRoot struct {
+	Events []DatabaseEvent `json:"events"`
+}
+
+type DatabaseIndex struct {
+	IndexName        string            `json:"index_name"`
+	NumberofShards   uint64            `json:"number_of_shards"`
+	NumberofReplicas uint64            `json:"number_of_replicas"`
+	Size             int64             `json:"size,omitempty"`
+	Health           string            `json:"health,omitempty"`
+	Status           string            `json:"status,omitempty"`
+	Docs             int64             `json:"docs,omitempty"`
+	CreateTime       string            `json:"create_time"`
+	Replication      *IndexReplication `json:"replication,omitempty"`
+}
+
+type IndexReplication struct {
+	LeaderIndex   string `json:"leader_index,omitempty"`
+	LeaderProject string `json:"leader_project,omitempty"`
+	LeaderService string `json:"leader_service,omitempty"`
+}
+
+type databaseIndexesRoot struct {
+	Indexes []DatabaseIndex `json:"indexes"`
 }
 
 // URN returns a URN identifier for the database
@@ -755,6 +997,21 @@ func (svc *DatabasesServiceOp) ListUsers(ctx context.Context, databaseID string,
 func (svc *DatabasesServiceOp) CreateUser(ctx context.Context, databaseID string, createUser *DatabaseCreateUserRequest) (*DatabaseUser, *Response, error) {
 	path := fmt.Sprintf(databaseUsersPath, databaseID)
 	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, createUser)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseUserRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.User, resp, nil
+}
+
+// UpdateUser will update an existing database user
+func (svc *DatabasesServiceOp) UpdateUser(ctx context.Context, databaseID, userID string, updateUser *DatabaseUpdateUserRequest) (*DatabaseUser, *Response, error) {
+	path := fmt.Sprintf(databaseUserPath, databaseID, userID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updateUser)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1255,5 +1512,245 @@ func (svc *DatabasesServiceOp) UpgradeMajorVersion(ctx context.Context, database
 		return resp, err
 	}
 
+	return resp, nil
+}
+
+// ListTopics returns all topics for a given kafka cluster
+func (svc *DatabasesServiceOp) ListTopics(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseTopic, *Response, error) {
+	path := fmt.Sprintf(databaseTopicsPath, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseTopicsRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Topics, resp, nil
+}
+
+// GetTopic returns a single kafka topic by name
+func (svc *DatabasesServiceOp) GetTopic(ctx context.Context, databaseID, name string) (*DatabaseTopic, *Response, error) {
+	path := fmt.Sprintf(databaseTopicPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseTopicRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Topic, resp, nil
+}
+
+// CreateTopic will create a new kafka topic
+func (svc *DatabasesServiceOp) CreateTopic(ctx context.Context, databaseID string, createTopic *DatabaseCreateTopicRequest) (*DatabaseTopic, *Response, error) {
+	path := fmt.Sprintf(databaseTopicsPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, createTopic)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseTopicRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Topic, resp, nil
+}
+
+// UpdateTopic updates a single kafka topic
+func (svc *DatabasesServiceOp) UpdateTopic(ctx context.Context, databaseID string, name string, updateTopic *DatabaseUpdateTopicRequest) (*Response, error) {
+	path := fmt.Sprintf(databaseTopicPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updateTopic)
+	if err != nil {
+		return nil, err
+	}
+	root := new(databaseTopicRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// DeleteTopic will delete an existing kafka topic
+func (svc *DatabasesServiceOp) DeleteTopic(ctx context.Context, databaseID, name string) (*Response, error) {
+	path := fmt.Sprintf(databaseTopicPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// GetMetricsCredentials gets the credentials required to access a user's metrics endpoints
+func (svc *DatabasesServiceOp) GetMetricsCredentials(ctx context.Context) (*DatabaseMetricsCredentials, *Response, error) {
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, databaseMetricsCredentialsPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(databaseMetricsCredentialsRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Credentials, resp, nil
+}
+
+// UpdateMetricsAuth updates the credentials required to access a user's metrics endpoints
+func (svc *DatabasesServiceOp) UpdateMetricsCredentials(ctx context.Context, updateCreds *DatabaseUpdateMetricsCredentialsRequest) (*Response, error) {
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, databaseMetricsCredentialsPath, updateCreds)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// ListDatabaseEvents returns all the events for a given cluster
+func (svc *DatabasesServiceOp) ListDatabaseEvents(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseEvent, *Response, error) {
+	path := fmt.Sprintf(databaseEvents, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(ListDatabaseEventsRoot)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Events, resp, nil
+}
+
+// ListIndexes returns all indexes for a given opensearch cluster
+func (svc *DatabasesServiceOp) ListIndexes(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseIndex, *Response, error) {
+	path := fmt.Sprintf(databaseIndexesPath, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseIndexesRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Indexes, resp, nil
+}
+
+// DeleteIndex will delete an existing opensearch index
+func (svc *DatabasesServiceOp) DeleteIndex(ctx context.Context, databaseID, name string) (*Response, error) {
+	path := fmt.Sprintf(databaseIndexPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// CreateLogsink creates a new logsink for a database
+func (svc *DatabasesServiceOp) CreateLogsink(ctx context.Context, databaseID string, createLogsink *DatabaseCreateLogsinkRequest) (*DatabaseLogsink, *Response, error) {
+	path := fmt.Sprintf(databaseLogsinksPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPost, path, createLogsink)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseLogsink)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetLogsink gets a logsink for a database
+func (svc *DatabasesServiceOp) GetLogsink(ctx context.Context, databaseID string, logsinkID string) (*DatabaseLogsink, *Response, error) {
+	path := fmt.Sprintf(databaseLogsinkPath, databaseID, logsinkID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	root := new(DatabaseLogsink)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// ListTopics returns all topics for a given kafka cluster
+func (svc *DatabasesServiceOp) ListLogsinks(ctx context.Context, databaseID string, opts *ListOptions) ([]DatabaseLogsink, *Response, error) {
+	path := fmt.Sprintf(databaseLogsinksPath, databaseID)
+	path, err := addOptions(path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseLogsinksRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Sinks, resp, nil
+}
+
+// UpdateLogsink updates a logsink for a database cluster
+func (svc *DatabasesServiceOp) UpdateLogsink(ctx context.Context, databaseID string, logsinkID string, updateLogsink *DatabaseUpdateLogsinkRequest) (*Response, error) {
+	path := fmt.Sprintf(databaseLogsinkPath, databaseID, logsinkID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updateLogsink)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// DeleteLogsink deletes a logsink for a database cluster
+func (svc *DatabasesServiceOp) DeleteLogsink(ctx context.Context, databaseID, logsinkID string) (*Response, error) {
+	path := fmt.Sprintf(databaseLogsinkPath, databaseID, logsinkID)
+	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
 	return resp, nil
 }

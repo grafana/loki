@@ -8,9 +8,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/flagext"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
 func TestBackground(t *testing.T) {
@@ -47,7 +47,7 @@ func TestBackgroundSizeLimit(t *testing.T) {
 	require.NoError(t, err)
 
 	c := cache.NewBackground("mock", cache.BackgroundConfig{
-		WriteBackGoroutines: 1,
+		WriteBackGoroutines: 0,
 		WriteBackBuffer:     100,
 		WriteBackSizeLimit:  flagext.ByteSize(limit),
 	}, cache.NewMockCache(), nil)
@@ -63,10 +63,10 @@ func TestBackgroundSizeLimit(t *testing.T) {
 
 	// store the first 10KB
 	require.NoError(t, c.Store(ctx, []string{firstKey}, [][]byte{first}))
+	require.Equal(t, cache.QueueSize(c), int64(10e3))
+
 	// second key will not be stored because it will exceed the 15KB limit
 	require.NoError(t, c.Store(ctx, []string{secondKey}, [][]byte{second}))
-	cache.Flush(c)
-
-	found, _, _, _ := c.Fetch(ctx, []string{firstKey, secondKey})
-	require.Equal(t, []string{firstKey}, found)
+	require.Equal(t, cache.QueueSize(c), int64(10e3))
+	c.Stop()
 }

@@ -1,25 +1,184 @@
 ***********************************************************************
  Welcome to Grafana Loki
  Chart version: {{ .Chart.Version }}
+ Chart Name: {{ .Chart.Name }}
  Loki version: {{ .Chart.AppVersion }}
 ***********************************************************************
 
+** Please be patient while the chart is being deployed **
+
+Tip:
+
+  Watch the deployment status using the command: kubectl get pods -w --namespace {{ $.Release.Namespace }}
+
+If pods are taking too long to schedule make sure pod affinity can be fulfilled in the current cluster.
+
+***********************************************************************
 Installed components:
+***********************************************************************
+
 {{- if .Values.monitoring.selfMonitoring.enabled }}
 * grafana-agent-operator
 {{- end }}
 {{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
-* loki 
+* loki
 {{- else -}}
 {{- if .Values.gateway.enabled }}
 * gateway
 {{- end }}
 {{- if .Values.minio.enabled }}
-* minio 
+* minio
 {{- end }}
+{{- if eq (include "loki.deployment.isScalable" .) "true" }}
 * read
 * write
 {{- if not .Values.read.legacyReadTarget }}
 * backend
 {{- end }}
+{{- else }}
+* compactor
+* index gateway
+* query scheduler
+* ruler
+* distributor
+* ingester
+* querier
+* query frontend
+{{- end }}
+{{- end }}
+
+
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+
+Loki has been deployed as a single binary.
+This means a single pod is handling reads and writes. You can scale that pod vertically by adding more CPU and memory resources.
+
+{{- end }}
+
+
+***********************************************************************
+Sending logs to Loki
+***********************************************************************
+
+{{- if .Values.gateway.enabled }}
+
+Loki has been configured with a gateway (nginx) to support reads and writes from a single component.
+
+{{- end }}
+
+You can send logs from inside the cluster using the cluster DNS:
+
+{{- if .Values.gateway.enabled }}
+
+http://{{ include "loki.gatewayFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}/loki/api/v1/push
+
+{{- else }}
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+
+http://{{ include "loki.singleBinaryFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.http_listen_port }}/loki/api/v1/push
+
+{{- end}}
+{{- if eq (include "loki.deployment.isScalable" .) "true" }}
+
+http://{{ include "loki.writeFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.http_listen_port }}/loki/api/v1/push
+
+{{- end }}
+{{- if eq (include "loki.deployment.isDistributed" .) "true" }}
+
+http://{{ include "loki.distributorFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100/loki/api/v1/push
+
+{{- end }}
+{{- end }}
+
+You can test to send data from outside the cluster by port-forwarding the gateway to your local machine:
+{{- if .Values.gateway.enabled }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.gatewayFullname" . }} 3100:{{ .Values.gateway.service.port }} &
+
+{{- else }}
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.singleBinaryFullname" . }} 3100:{{ .Values.loki.server.http_listen_port }} &
+
+{{- end}}
+{{- if eq (include "loki.deployment.isScalable" .) "true" }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.writeFullname" . }} 3100:{{ .Values.loki.server.http_listen_port }} &
+
+{{- end }}
+{{- if eq (include "loki.deployment.isDistributed" .) "true" }}
+
+  kubectl port-forward --namespace {{ $.Release.Namespace }} svc/{{ include "loki.distributorFullname" . }} 3100:3100 &
+
+{{- end }}
+{{- end }}
+
+And then using http://127.0.0.1:3100/loki/api/v1/push URL as shown below:
+
+```
+curl -H "Content-Type: application/json" -XPOST -s "http://127.0.0.1:3100/loki/api/v1/push"  \
+--data-raw "{\"streams\": [{\"stream\": {\"job\": \"test\"}, \"values\": [[\"$(date +%s)000000000\", \"fizzbuzz\"]]}]}"
+{{- if .Values.loki.auth_enabled }} \
+-H X-Scope-OrgId:foo
+{{- end}}
+```
+
+Then verify that Loki did receive the data using the following command:
+
+```
+curl "http://127.0.0.1:3100/loki/api/v1/query_range" --data-urlencode 'query={job="test"}' {{- if .Values.loki.auth_enabled }} -H X-Scope-OrgId:foo {{- end}} | jq .data.result
+```
+
+***********************************************************************
+Connecting Grafana to Loki
+***********************************************************************
+
+If Grafana operates within the cluster, you'll set up a new Loki datasource by utilizing the following URL:
+
+{{- if .Values.gateway.enabled }}
+
+http://{{ include "loki.gatewayFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}/
+
+{{- else }}
+{{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+
+http://{{ include "loki.singleBinaryFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.http_listen_port }}/
+
+{{- end}}
+{{- if eq (include "loki.deployment.isScalable" .) "true" }}
+
+http://{{ include "loki.readFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.http_listen_port }}/
+
+{{- end }}
+{{- if eq (include "loki.deployment.isDistributed" .) "true" }}
+
+http://{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100/
+
+{{- end }}
+{{- end }}
+
+
+
+{{- if .Values.loki.auth_enabled }}
+
+***********************************************************************
+Multi-tenancy
+***********************************************************************
+
+Loki is configured with auth enabled (multi-tenancy) and expects tenant headers (`X-Scope-OrgID`) to be set for all API calls.
+
+You must configure Grafana's Loki datasource using the `HTTP Headers` section with the `X-Scope-OrgID` to target a specific tenant.
+For each tenant, you can create a different datasource.
+
+The agent of your choice must also be configured to propagate this header.
+For example, when using Promtail you can use the `tenant` stage. https://grafana.com/docs/loki/latest/send-data/promtail/stages/tenant/
+
+When not provided with the `X-Scope-OrgID` while auth is enabled, Loki will reject reads and writes with a 404 status code `no org id`.
+
+You can also use a reverse proxy, to automatically add the `X-Scope-OrgID` header as suggested by https://grafana.com/docs/loki/latest/operations/authentication/
+
+For more information, read our documentation about multi-tenancy: https://grafana.com/docs/loki/latest/operations/multi-tenancy/
+
+> When using curl you can pass `X-Scope-OrgId` header using `-H X-Scope-OrgId:foo` option, where foo can be replaced with the tenant of your choice.
+
 {{- end }}

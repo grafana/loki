@@ -6,43 +6,21 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  # Nixpkgs / NixOS version to use.
-
   outputs = { self, nixpkgs, flake-utils }:
-    let
-      nix = import ./nix { inherit self; };
-    in
-    {
-      overlays = {
-        golangci-lint = import ./nix/overlays/golangci-lint.nix;
-        helm-docs = import ./nix/overlays/helm-docs.nix;
-        default = nix.overlay;
-      };
-    } //
     flake-utils.lib.eachDefaultSystem (system:
       let
-
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [
-            (import ./nix/overlays/golangci-lint.nix)
-            (import ./nix/overlays/helm-docs.nix)
-            nix.overlay
-          ];
-          config = { allowUnfree = true; };
-        };
+        pkgs = import nixpkgs
+          {
+            inherit system;
+            config = { allowUnfree = true; };
+          };
       in
-      {
-        # The default package for 'nix build'. This makes sense if the
-        # flake provides only one package or there is a clear "main"
-        # package.
+      rec {
         defaultPackage = pkgs.loki;
 
-        packages = with pkgs; {
-          inherit
-            loki
-            loki-helm-test
-            loki-helm-test-docker;
+        packages = import ./nix {
+          inherit self pkgs;
+          inherit (pkgs) lib;
         };
 
         apps = {
@@ -56,45 +34,56 @@
               }/bin/lint.sh";
           };
 
-          loki = {
+          test = {
             type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki";
-          };
-          promtail = {
-            type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/promtail";
-          };
-          logcli = {
-            type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/logcli";
-          };
-          loki-canary = {
-            type = "app";
-            program = with pkgs; "${loki.overrideAttrs(old: rec { doCheck = false; })}/bin/loki-canary";
-          };
-          loki-helm-test = {
-            type = "app";
-            program = with pkgs; "${loki-helm-test}/bin/helm-test";
+            program =
+              let
+                loki = packages.loki.overrideAttrs (old: {
+                  buildInputs = with pkgs; lib.optionals stdenv.hostPlatform.isLinux [ systemd.dev ];
+                  doCheck = true;
+                  checkFlags = [
+                    "-covermode=atomic"
+                    "-coverprofile=coverage.txt"
+                    "-p=4"
+                  ];
+                  subPackages = [
+                    "./..." # for tests
+                    "cmd/loki"
+                    "cmd/logcli"
+                    "cmd/loki-canary"
+                    "clients/cmd/promtail"
+                  ];
+                });
+              in
+              "${
+                (pkgs.writeShellScriptBin "test.sh" ''
+                  ${loki}/bin/loki --version
+                  ${loki}/bin/logcli --version
+                  ${loki}/bin/loki-canary --version
+                  ${loki}/bin/promtail --version
+                '')
+              }/bin/test.sh";
           };
         };
 
         devShell = pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
+            (pkgs.callPackage ./nix/packages/chart-releaser.nix {
+              inherit pkgs;
+              inherit (pkgs) buildGoModule fetchFromGitHub;
+            })
+
+            chart-testing
             gcc
             go
-            systemd
-            yamllint
-            nixpkgs-fmt
-            statix
-            nettools
-
             golangci-lint
             gotools
             helm-docs
-            faillint
-            chart-testing
-            chart-releaser
-          ];
+            nettools
+            nixpkgs-fmt
+            statix
+            yamllint
+          ] // packages;
         };
       });
 }

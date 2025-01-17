@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"cloud.google.com/go/internal/trace"
@@ -65,6 +66,19 @@ type ReaderObjectAttrs struct {
 	// meaningful in the context of a particular generation of a
 	// particular object.
 	Metageneration int64
+
+	// CRC32C is the CRC32 checksum of the entire object's content using the
+	// Castagnoli93 polynomial, if available.
+	CRC32C uint32
+
+	// Decompressed is true if the object is stored as a gzip file and was
+	// decompressed when read.
+	// Objects are automatically decompressed if the object's metadata property
+	// "Content-Encoding" is set to "gzip" or satisfies decompressive
+	// transcoding as per https://cloud.google.com/storage/docs/transcoding.
+	//
+	// To prevent decompression on reads, use [ObjectHandle.ReadCompressed].
+	Decompressed bool
 }
 
 // NewReader creates a new Reader to read the contents of the
@@ -72,6 +86,12 @@ type ReaderObjectAttrs struct {
 // ErrObjectNotExist will be returned if the object is not found.
 //
 // The caller must call Close on the returned Reader when done reading.
+//
+// By default, reads are made using the Cloud Storage XML API. We recommend
+// using the JSON API instead, which can be done by setting [WithJSONReads]
+// when calling [NewClient]. This ensures consistency with other client
+// operations, which all use JSON. JSON will become the default in a future
+// release.
 func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
 	return o.NewRangeReader(ctx, 0, -1)
 }
@@ -85,10 +105,18 @@ func (o *ObjectHandle) NewReader(ctx context.Context) (*Reader, error) {
 // If the object's metadata property "Content-Encoding" is set to "gzip" or satisfies
 // decompressive transcoding per https://cloud.google.com/storage/docs/transcoding
 // that file will be served back whole, regardless of the requested range as
-// Google Cloud Storage dictates.
+// Google Cloud Storage dictates. If decompressive transcoding occurs,
+// [Reader.Attrs.Decompressed] will be true.
+//
+// By default, reads are made using the Cloud Storage XML API. We recommend
+// using the JSON API instead, which can be done by setting [WithJSONReads]
+// when calling [NewClient]. This ensures consistency with other client
+// operations, which all use JSON. JSON will become the default in a future
+// release.
 func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64) (r *Reader, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.NewRangeReader")
-	defer func() { trace.EndSpan(ctx, err) }()
+	// This span covers the life of the reader. It is closed via the context
+	// in Reader.Close.
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.Reader")
 
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -113,9 +141,61 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 		encryptionKey:  o.encryptionKey,
 		conds:          o.conds,
 		readCompressed: o.readCompressed,
+		handle:         &o.readHandle,
 	}
 
 	r, err = o.c.tc.NewRangeReader(ctx, params, opts...)
+
+	// Pass the context so that the span can be closed in Reader.Close, or close the
+	// span now if there is an error.
+	if err == nil {
+		r.ctx = ctx
+	} else {
+		trace.EndSpan(ctx, err)
+	}
+
+	return r, err
+}
+
+// NewMultiRangeDownloader creates a multi-range reader for an object.
+// Must be called on a gRPC client created using [NewGRPCClient].
+//
+// This uses the gRPC-specific bi-directional read API, which is in private
+// preview; please contact your account manager if interested.
+func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
+	// This span covers the life of the reader. It is closed via the context
+	// in Reader.Close.
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Object.MultiRangeDownloader")
+
+	if err := o.validate(); err != nil {
+		return nil, err
+	}
+	if o.conds != nil {
+		if err := o.conds.validate("NewMultiRangeDownloader"); err != nil {
+			return nil, err
+		}
+	}
+
+	opts := makeStorageOpts(true, o.retry, o.userProject)
+
+	params := &newMultiRangeDownloaderParams{
+		bucket:        o.bucket,
+		conds:         o.conds,
+		encryptionKey: o.encryptionKey,
+		gen:           o.gen,
+		object:        o.object,
+		handle:        &o.readHandle,
+	}
+
+	r, err := o.c.tc.NewMultiRangeDownloader(ctx, params, opts...)
+
+	// Pass the context so that the span can be closed in MultiRangeDownloader.Close(), or close the
+	// span now if there is an error.
+	if err == nil {
+		r.ctx = ctx
+	} else {
+		trace.EndSpan(ctx, err)
+	}
 
 	return r, err
 }
@@ -178,16 +258,6 @@ func setConditionsHeaders(headers http.Header, conds *Conditions) error {
 	return nil
 }
 
-// Wrap a request to look similar to an apiary library request, in order to
-// be used by run().
-type readerRequestWrapper struct {
-	req *http.Request
-}
-
-func (w *readerRequestWrapper) Header() http.Header {
-	return w.req.Header
-}
-
 var emptyBody = ioutil.NopCloser(strings.NewReader(""))
 
 // Reader reads a Cloud Storage object.
@@ -197,18 +267,23 @@ var emptyBody = ioutil.NopCloser(strings.NewReader(""))
 // the stored CRC, returning an error from Read if there is a mismatch. This integrity check
 // is skipped if transcoding occurs. See https://cloud.google.com/storage/docs/transcoding.
 type Reader struct {
-	Attrs              ReaderObjectAttrs
+	Attrs          ReaderObjectAttrs
+	objectMetadata *map[string]string
+
 	seen, remain, size int64
-	checkCRC           bool   // should we check the CRC?
-	wantCRC            uint32 // the CRC32c value the server sent in the header
-	gotCRC             uint32 // running crc
+	checkCRC           bool // Did we check the CRC? This is now only used by tests.
 
 	reader io.ReadCloser
+	ctx    context.Context
+	mu     sync.Mutex
+	handle *ReadHandle
 }
 
 // Close closes the Reader. It must be called when done reading.
 func (r *Reader) Close() error {
-	return r.reader.Close()
+	err := r.reader.Close()
+	trace.EndSpan(r.ctx, err)
+	return err
 }
 
 func (r *Reader) Read(p []byte) (int, error) {
@@ -216,17 +291,17 @@ func (r *Reader) Read(p []byte) (int, error) {
 	if r.remain != -1 {
 		r.remain -= int64(n)
 	}
-	if r.checkCRC {
-		r.gotCRC = crc32.Update(r.gotCRC, crc32cTable, p[:n])
-		// Check CRC here. It would be natural to check it in Close, but
-		// everybody defers Close on the assumption that it doesn't return
-		// anything worth looking at.
-		if err == io.EOF {
-			if r.gotCRC != r.wantCRC {
-				return n, fmt.Errorf("storage: bad CRC on read: got %d, want %d",
-					r.gotCRC, r.wantCRC)
-			}
-		}
+	return n, err
+}
+
+// WriteTo writes all the data from the Reader to w. Fulfills the io.WriterTo interface.
+// This is called implicitly when calling io.Copy on a Reader.
+func (r *Reader) WriteTo(w io.Writer) (int64, error) {
+	// This implicitly calls r.reader.WriteTo for gRPC only. JSON and XML don't have an
+	// implementation of WriteTo.
+	n, err := io.Copy(w, r.reader)
+	if r.remain != -1 {
+		r.remain -= int64(n)
 	}
 	return n, err
 }
@@ -271,4 +346,96 @@ func (r *Reader) CacheControl() string {
 // Deprecated: use Reader.Attrs.LastModified.
 func (r *Reader) LastModified() (time.Time, error) {
 	return r.Attrs.LastModified, nil
+}
+
+// Metadata returns user-provided metadata, in key/value pairs.
+//
+// It can be nil if no metadata is present, or if the client uses the JSON
+// API for downloads. Only the XML and gRPC APIs support getting
+// custom metadata via the Reader; for JSON make a separate call to
+// ObjectHandle.Attrs.
+func (r *Reader) Metadata() map[string]string {
+	if r.objectMetadata != nil {
+		return *r.objectMetadata
+	}
+	return nil
+}
+
+// ReadHandle returns the read handle associated with an object.
+// ReadHandle will be periodically refreshed.
+//
+// ReadHandle requires the gRPC-specific bi-directional read API, which is in
+// private preview; please contact your account manager if interested.
+// Note that this only valid for gRPC and only with zonal buckets.
+func (r *Reader) ReadHandle() ReadHandle {
+	if r.handle == nil {
+		r.handle = &ReadHandle{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return (*r.handle)
+}
+
+// MultiRangeDownloader reads a Cloud Storage object.
+//
+// Typically, a MultiRangeDownloader opens a stream to which we can add
+// different ranges to read from the object.
+//
+// This API is currently in preview and is not yet available for general use.
+type MultiRangeDownloader struct {
+	Attrs  ReaderObjectAttrs
+	reader multiRangeDownloader
+	ctx    context.Context
+}
+
+type multiRangeDownloader interface {
+	add(output io.Writer, offset, limit int64, callback func(int64, int64, error))
+	wait()
+	close() error
+	getHandle() []byte
+}
+
+// Add adds a new range to MultiRangeDownloader.
+//
+// The offset for the first byte to return in the read, relative to the start
+// of the object.
+//
+// A negative offset value will be interpreted as the number of bytes from the
+// end of the object to be returned. Requesting a negative offset with magnitude
+// larger than the size of the object will return the entire object. An offset
+// larger than the size of the object will result in an OutOfRange error.
+//
+// A limit of zero indicates that there is no limit, and a negative limit will
+// cause an error.
+//
+// This will initiate the read range but is non-blocking; call callback to
+// process the result. Add is thread-safe and can be called simultaneously
+// from different goroutines.
+func (mrd *MultiRangeDownloader) Add(output io.Writer, offset, length int64, callback func(int64, int64, error)) {
+	mrd.reader.add(output, offset, length, callback)
+}
+
+// Close the MultiRangeDownloader. It must be called when done reading.
+// Adding new ranges after this has been called will cause an error.
+//
+// This will immediately close the stream and can result in a
+// "stream closed early" error if a response for a range is still not processed.
+// Call [MultiRangeDownloader.Wait] to avoid this error.
+func (mrd *MultiRangeDownloader) Close() error {
+	err := mrd.reader.close()
+	trace.EndSpan(mrd.ctx, err)
+	return err
+}
+
+// Wait for all the responses to process on the stream.
+// Adding new ranges after this has been called will cause an error.
+// Wait will wait for all callbacks to finish.
+func (mrd *MultiRangeDownloader) Wait() {
+	mrd.reader.wait()
+}
+
+// GetHandle returns the read handle. This can be used to further speed up the
+// follow up read if the same object is read through a different stream.
+func (mrd *MultiRangeDownloader) GetHandle() []byte {
+	return mrd.reader.getHandle()
 }

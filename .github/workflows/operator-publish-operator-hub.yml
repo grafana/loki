@@ -1,0 +1,25 @@
+name: "Publish release on operator hub"
+on:
+  release:
+    types: [published]
+
+jobs:
+  operator-hub-prod-release:
+    if: startsWith(github.event.release.tag_name, 'operator/')
+    uses: ./.github/workflows/operator-reusable-hub-release.yml
+    with:
+      org: redhat-openshift-ecosystem
+      repo: community-operators-prod
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+
+  operator-hub-community-release:
+    if: startsWith(github.event.release.tag_name, 'operator/')
+    uses: ./.github/workflows/operator-reusable-hub-release.yml
+    with:
+      org: k8s-operatorhub
+      repo: community-operators
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

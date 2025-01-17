@@ -14,9 +14,9 @@ or drop entries when a log entry matches a configurable LogQL
 [stream selector]({{< relref "../../../query/log_queries#log-stream-selector" >}}) and
 [filter expressions]({{< relref "../../../query/log_queries#line-filter-expression" >}}).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The filters do not include label filter expressions such as `| label == "foobar"`.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Schema
 
@@ -48,7 +48,7 @@ match:
     [<stages>...]
 ```
 
-Refer to the [Promtail Stages Configuration Reference]({{< relref "./_index.md#prometheus-pipeline-stages" >}}) for the
+Refer to the [Promtail Stages Configuration Reference]({{< relref "./_index.md#promtail-pipeline-stages" >}}) for the
 schema on the various stages supported here.
 
 ### Example

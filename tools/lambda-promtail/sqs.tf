@@ -32,6 +32,10 @@ data "aws_iam_policy_document" "queue_policy" {
       "sqs:SendMessage"
     ]
     resources = ["arn:aws:sqs:*:*:${var.sqs_queue_name_prefix}-main-queue"]
+    principals {
+      type        = "Service"
+      identifiers = ["s3.amazonaws.com"]
+    }
     condition {
       test     = "ArnEquals"
       variable = "aws:SourceArn"

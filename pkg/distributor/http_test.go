@@ -1,15 +1,22 @@
 package distributor
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
+
+	"github.com/grafana/loki/v3/pkg/loghttp/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestDistributorRingHandler(t *testing.T) {
@@ -53,4 +60,37 @@ func TestDistributorRingHandler(t *testing.T) {
 		require.Contains(t, string(body), "Not running with Global Rating Limit - ring not being used by the Distributor")
 		require.NotContains(t, string(body), "<th>Instance ID</th>")
 	})
+}
+
+func TestRequestParserWrapping(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.RejectOldSamples = false
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+
+	var called bool
+	distributors[0].RequestParserWrapper = func(requestParser push.RequestParser) push.RequestParser {
+		called = true
+		return requestParser
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+	require.NoError(t, err)
+
+	distributors[0].pushHandler(httptest.NewRecorder(), req, stubParser, push.HTTPError)
+
+	require.True(t, called)
+}
+
+func stubParser(
+	_ string,
+	_ *http.Request,
+	_ push.TenantsRetention,
+	_ push.Limits,
+	_ push.UsageTracker,
+	_ bool,
+	_ log.Logger,
+) (*logproto.PushRequest, *push.Stats, error) {
+	return &logproto.PushRequest{}, &push.Stats{}, nil
 }

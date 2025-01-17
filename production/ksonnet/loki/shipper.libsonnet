@@ -13,34 +13,24 @@
     using_tsdb_shipper: false,
     using_shipper_store: $._config.using_boltdb_shipper || $._config.using_tsdb_shipper,
 
-    boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store when using_boltdb_shipper=true. If this is not intentional, consider disabling it. shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
-    tsdb_shipper_shared_store: error 'must define tsdb_shipper_shared_store when using_tsdb_shipper=true. If this is not intentional, consider disabling it. shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
-
-    // run ingesters and queriers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
-    stateful_ingesters: if self.using_shipper_store then true else super.stateful_ingesters,
     stateful_queriers: if self.using_shipper_store && !self.use_index_gateway then true else super.stateful_queriers,
 
     compactor_pvc_size: '10Gi',
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_shipper_store then 24 else super.index_period_hours,
     loki+: if self.using_shipper_store then {
-      storage_config+: if $._config.using_boltdb_shipper then {
-        boltdb_shipper+: {
-          shared_store: $._config.boltdb_shipper_shared_store,
+      storage_config+: {
+        boltdb_shipper+: if $._config.using_boltdb_shipper then {
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
-        },
-      } else {} + if $._config.using_tsdb_shipper then {
-        tsdb_shipper+: {
-          shared_store: $._config.tsdb_shipper_shared_store,
+        } else {},
+        tsdb_shipper+: if $._config.using_tsdb_shipper then {
           active_index_directory: '/data/tsdb-index',
           cache_location: '/data/tsdb-cache',
-        },
-      } else {},
+        } else {},
+      },
       compactor+: {
         working_directory: '/data/compactor',
-        // prefer tsdb index over boltdb
-        shared_store: if $._config.using_tsdb_shipper then $._config.tsdb_shipper_shared_store else $._config.boltdb_shipper_shared_store,
       },
     } else {},
   },
@@ -72,6 +62,7 @@
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
     k.util.resourcesRequests('4', '2Gi') +
+    k.util.resourcesLimits(null, '4Gi') +
     container.withEnvMixin($._config.commonEnvs)
   else {},
 

@@ -30,8 +30,10 @@ $ git commit -m "docs: fix spelling error"
 $ git push -u fork HEAD
 ```
 
-Note that if you downloaded Loki using `go get`, the message `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki`
+{{< admonition type="note" >}}
+If you downloaded Loki using `go get`, the message `package github.com/grafana/loki: no Go files in /go/src/github.com/grafana/loki`
 is normal and requires no actions to resolve.
+{{< /admonition >}}
 
 ### Building
 

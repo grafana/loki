@@ -89,7 +89,7 @@ func New(cc balancer.ClientConn, logger *grpclog.PrefixLogger, newWRR func() wrr
 }
 
 // Start starts the aggregator. It can be called after Stop to restart the
-// aggretator.
+// aggregator.
 func (wbsa *Aggregator) Start() {
 	wbsa.mu.Lock()
 	defer wbsa.mu.Unlock()
@@ -176,6 +176,14 @@ func (wbsa *Aggregator) ResumeStateUpdates() {
 	if wbsa.needUpdateStateOnResume {
 		wbsa.cc.UpdateState(wbsa.build())
 	}
+}
+
+// NeedUpdateStateOnResume sets the UpdateStateOnResume bool to true, letting a
+// picker update be sent once ResumeStateUpdates is called.
+func (wbsa *Aggregator) NeedUpdateStateOnResume() {
+	wbsa.mu.Lock()
+	defer wbsa.mu.Unlock()
+	wbsa.needUpdateStateOnResume = true
 }
 
 // UpdateState is called to report a balancer state change from sub-balancer.

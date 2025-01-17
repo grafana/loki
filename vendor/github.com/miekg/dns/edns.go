@@ -185,7 +185,7 @@ func (rr *OPT) Do() bool {
 
 // SetDo sets the DO (DNSSEC OK) bit.
 // If we pass an argument, set the DO bit to that value.
-// It is possible to pass 2 or more arguments. Any arguments after the 1st is silently ignored.
+// It is possible to pass 2 or more arguments, but they will be ignored.
 func (rr *OPT) SetDo(do ...bool) {
 	if len(do) == 1 {
 		if do[0] {
@@ -508,6 +508,7 @@ func (e *EDNS0_LLQ) String() string {
 		" " + strconv.FormatUint(uint64(e.LeaseLife), 10)
 	return s
 }
+
 func (e *EDNS0_LLQ) copy() EDNS0 {
 	return &EDNS0_LLQ{e.Code, e.Version, e.Opcode, e.Error, e.Id, e.LeaseLife}
 }
@@ -755,36 +756,48 @@ const (
 	ExtendedErrorCodeNoReachableAuthority
 	ExtendedErrorCodeNetworkError
 	ExtendedErrorCodeInvalidData
+	ExtendedErrorCodeSignatureExpiredBeforeValid
+	ExtendedErrorCodeTooEarly
+	ExtendedErrorCodeUnsupportedNSEC3IterValue
+	ExtendedErrorCodeUnableToConformToPolicy
+	ExtendedErrorCodeSynthesized
+	ExtendedErrorCodeInvalidQueryType
 )
 
 // ExtendedErrorCodeToString maps extended error info codes to a human readable
 // description.
 var ExtendedErrorCodeToString = map[uint16]string{
-	ExtendedErrorCodeOther:                      "Other",
-	ExtendedErrorCodeUnsupportedDNSKEYAlgorithm: "Unsupported DNSKEY Algorithm",
-	ExtendedErrorCodeUnsupportedDSDigestType:    "Unsupported DS Digest Type",
-	ExtendedErrorCodeStaleAnswer:                "Stale Answer",
-	ExtendedErrorCodeForgedAnswer:               "Forged Answer",
-	ExtendedErrorCodeDNSSECIndeterminate:        "DNSSEC Indeterminate",
-	ExtendedErrorCodeDNSBogus:                   "DNSSEC Bogus",
-	ExtendedErrorCodeSignatureExpired:           "Signature Expired",
-	ExtendedErrorCodeSignatureNotYetValid:       "Signature Not Yet Valid",
-	ExtendedErrorCodeDNSKEYMissing:              "DNSKEY Missing",
-	ExtendedErrorCodeRRSIGsMissing:              "RRSIGs Missing",
-	ExtendedErrorCodeNoZoneKeyBitSet:            "No Zone Key Bit Set",
-	ExtendedErrorCodeNSECMissing:                "NSEC Missing",
-	ExtendedErrorCodeCachedError:                "Cached Error",
-	ExtendedErrorCodeNotReady:                   "Not Ready",
-	ExtendedErrorCodeBlocked:                    "Blocked",
-	ExtendedErrorCodeCensored:                   "Censored",
-	ExtendedErrorCodeFiltered:                   "Filtered",
-	ExtendedErrorCodeProhibited:                 "Prohibited",
-	ExtendedErrorCodeStaleNXDOMAINAnswer:        "Stale NXDOMAIN Answer",
-	ExtendedErrorCodeNotAuthoritative:           "Not Authoritative",
-	ExtendedErrorCodeNotSupported:               "Not Supported",
-	ExtendedErrorCodeNoReachableAuthority:       "No Reachable Authority",
-	ExtendedErrorCodeNetworkError:               "Network Error",
-	ExtendedErrorCodeInvalidData:                "Invalid Data",
+	ExtendedErrorCodeOther:                       "Other",
+	ExtendedErrorCodeUnsupportedDNSKEYAlgorithm:  "Unsupported DNSKEY Algorithm",
+	ExtendedErrorCodeUnsupportedDSDigestType:     "Unsupported DS Digest Type",
+	ExtendedErrorCodeStaleAnswer:                 "Stale Answer",
+	ExtendedErrorCodeForgedAnswer:                "Forged Answer",
+	ExtendedErrorCodeDNSSECIndeterminate:         "DNSSEC Indeterminate",
+	ExtendedErrorCodeDNSBogus:                    "DNSSEC Bogus",
+	ExtendedErrorCodeSignatureExpired:            "Signature Expired",
+	ExtendedErrorCodeSignatureNotYetValid:        "Signature Not Yet Valid",
+	ExtendedErrorCodeDNSKEYMissing:               "DNSKEY Missing",
+	ExtendedErrorCodeRRSIGsMissing:               "RRSIGs Missing",
+	ExtendedErrorCodeNoZoneKeyBitSet:             "No Zone Key Bit Set",
+	ExtendedErrorCodeNSECMissing:                 "NSEC Missing",
+	ExtendedErrorCodeCachedError:                 "Cached Error",
+	ExtendedErrorCodeNotReady:                    "Not Ready",
+	ExtendedErrorCodeBlocked:                     "Blocked",
+	ExtendedErrorCodeCensored:                    "Censored",
+	ExtendedErrorCodeFiltered:                    "Filtered",
+	ExtendedErrorCodeProhibited:                  "Prohibited",
+	ExtendedErrorCodeStaleNXDOMAINAnswer:         "Stale NXDOMAIN Answer",
+	ExtendedErrorCodeNotAuthoritative:            "Not Authoritative",
+	ExtendedErrorCodeNotSupported:                "Not Supported",
+	ExtendedErrorCodeNoReachableAuthority:        "No Reachable Authority",
+	ExtendedErrorCodeNetworkError:                "Network Error",
+	ExtendedErrorCodeInvalidData:                 "Invalid Data",
+	ExtendedErrorCodeSignatureExpiredBeforeValid: "Signature Expired Before Valid",
+	ExtendedErrorCodeTooEarly:                    "Too Early",
+	ExtendedErrorCodeUnsupportedNSEC3IterValue:   "Unsupported NSEC3 Iterations Value",
+	ExtendedErrorCodeUnableToConformToPolicy:     "Unable To Conform To Policy",
+	ExtendedErrorCodeSynthesized:                 "Synthesized",
+	ExtendedErrorCodeInvalidQueryType:            "Invalid Query Type",
 }
 
 // StringToExtendedErrorCode is a map from human readable descriptions to

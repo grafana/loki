@@ -11,15 +11,17 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/pkg/validation"
+
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
-	testStreamLabels = "FIXME"
-	testTime         = time.Now()
+	testStreamLabels       = labels.Labels{{Name: "my", Value: "label"}}
+	testStreamLabelsString = testStreamLabels.String()
+	testTime               = time.Now()
 )
 
 type fakeLimits struct {
@@ -61,7 +63,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			},
 			logproto.Entry{Timestamp: testTime.Add(-time.Hour * 5), Line: "test"},
 			fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg,
-				testStreamLabels,
+				testStreamLabelsString,
 				testTime.Add(-time.Hour*5).Format(timeFormat),
 				testTime.Add(-1*time.Hour).Format(timeFormat), // same as RejectOldSamplesMaxAge
 			),
@@ -71,7 +73,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"test",
 			nil,
 			logproto.Entry{Timestamp: testTime.Add(time.Hour * 5), Line: "test"},
-			fmt.Errorf(validation.TooFarInFutureErrorMsg, testStreamLabels, testTime.Add(time.Hour*5).Format(timeFormat)),
+			fmt.Errorf(validation.TooFarInFutureErrorMsg, testStreamLabelsString, testTime.Add(time.Hour*5).Format(timeFormat)),
 		},
 		{
 			"line too long",
@@ -82,7 +84,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
-			fmt.Errorf(validation.LineTooLongErrorMsg, 10, testStreamLabels, 11),
+			fmt.Errorf(validation.LineTooLongErrorMsg, 10, testStreamLabelsString, 11),
 		},
 		{
 			"disallowed structured metadata",
@@ -93,7 +95,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
-			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabels),
+			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabelsString),
 		},
 		{
 			"structured metadata too big",
@@ -105,7 +107,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
-			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabels, 6, 4),
+			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabelsString, 6, 4),
 		},
 		{
 			"structured metadata too many",
@@ -117,7 +119,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}, {Name: "too", Value: "many"}}},
-			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabels, 2, 1),
+			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabelsString, 2, 1),
 		},
 	}
 	for _, tt := range tests {
@@ -126,10 +128,10 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			flagext.DefaultValues(l)
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
-			v, err := NewValidator(o)
+			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateEntry(v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
 			assert.Equal(t, tt.expected, err)
 		})
 	}
@@ -224,7 +226,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			flagext.DefaultValues(l)
 			o, err := validation.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
-			v, err := NewValidator(o)
+			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
 			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels})

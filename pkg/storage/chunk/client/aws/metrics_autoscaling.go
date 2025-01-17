@@ -13,8 +13,8 @@ import (
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/config"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -27,7 +27,7 @@ const (
 
 	// fetch Ingester queue length
 	// average the queue length over 2 minutes to avoid aliasing with the 1-minute flush period
-	defaultQueueLenQuery = `sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))`
+	defaultQueueLenQuery = `sum(avg_over_time(loki_ingester_flush_queue_length{job="cortex/ingester"}[2m])) or sum(avg_over_time(cortex_ingester_flush_queue_length{job="cortex/ingester"}[2m]))`
 	// fetch write throttle rate per DynamoDB table
 	defaultThrottleRateQuery = `sum(rate(cortex_dynamo_throttled_total{operation="DynamoDB.BatchWriteItem"}[1m])) by (table) > 0`
 	// fetch write capacity usage per DynamoDB table

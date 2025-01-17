@@ -20,17 +20,9 @@ func (e expr) validate() error {
 		return ErrNoCapture
 	}
 	// Consecutive captures are not allowed.
-	for i, n := range e {
-		if i+1 >= len(e) {
-			break
-		}
-		if _, ok := n.(capture); ok {
-			if _, ok := e[i+1].(capture); ok {
-				return fmt.Errorf("found consecutive capture '%s': %w", n.String()+e[i+1].String(), ErrInvalidExpr)
-			}
-		}
+	if err := e.validateNoConsecutiveCaptures(); err != nil {
+		return err
 	}
-
 	caps := e.captures()
 	uniq := map[string]struct{}{}
 	for _, c := range caps {
@@ -42,9 +34,32 @@ func (e expr) validate() error {
 	return nil
 }
 
+func (e expr) validateNoConsecutiveCaptures() error {
+	for i, n := range e {
+		if i+1 >= len(e) {
+			break
+		}
+		if _, ok := n.(capture); ok {
+			if _, ok := e[i+1].(capture); ok {
+				return fmt.Errorf("found consecutive capture '%s': %w", n.String()+e[i+1].String(), ErrInvalidExpr)
+			}
+		}
+	}
+	return nil
+}
+
+func (e expr) validateNoNamedCaptures() error {
+	for i, n := range e {
+		if c, ok := e[i].(capture); ok && !c.isUnnamed() {
+			return fmt.Errorf("%w: found '%s'", ErrCaptureNotAllowed, n.String())
+		}
+	}
+	return nil
+}
+
 func (e expr) captures() (captures []string) {
 	for _, n := range e {
-		if c, ok := n.(capture); ok && !c.isUnamed() {
+		if c, ok := n.(capture); ok && !c.isUnnamed() {
 			captures = append(captures, c.Name())
 		}
 	}
@@ -65,8 +80,8 @@ func (c capture) Name() string {
 	return string(c)
 }
 
-func (c capture) isUnamed() bool {
-	return string(c) == underscore
+func (c capture) isUnnamed() bool {
+	return len(c) == 1 && c[0] == underscore[0]
 }
 
 type literals []byte

@@ -24,6 +24,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -74,11 +76,17 @@ type OpenMetricsParser struct {
 	builder labels.ScratchBuilder
 	series  []byte
 	text    []byte
-	mtype   MetricType
+	mtype   model.MetricType
 	val     float64
 	ts      int64
 	hasTS   bool
 	start   int
+	// offsets is a list of offsets into series that describe the positions
+	// of the metric name and label names and values for this series.
+	// p.offsets[0] is the start character of the metric name.
+	// p.offsets[1] is the end of the metric name.
+	// Subsequently, p.offsets is a pair of pair of offsets for the positions
+	// of the label name and value start and end characters.
 	offsets []int
 
 	eOffsets      []int
@@ -86,11 +94,44 @@ type OpenMetricsParser struct {
 	exemplarVal   float64
 	exemplarTs    int64
 	hasExemplarTs bool
+
+	skipCTSeries bool
 }
 
-// NewOpenMetricsParser returns a new parser of the byte slice.
-func NewOpenMetricsParser(b []byte) Parser {
-	return &OpenMetricsParser{l: &openMetricsLexer{b: b}}
+type openMetricsParserOptions struct {
+	SkipCTSeries bool
+}
+
+type OpenMetricsOption func(*openMetricsParserOptions)
+
+// WithOMParserCTSeriesSkipped turns off exposing _created lines
+// as series, which makes those only used for parsing created timestamp
+// for `CreatedTimestamp` method purposes.
+//
+// It's recommended to use this option to avoid using _created lines for other
+// purposes than created timestamp, but leave false by default for the
+// best-effort compatibility.
+func WithOMParserCTSeriesSkipped() OpenMetricsOption {
+	return func(o *openMetricsParserOptions) {
+		o.SkipCTSeries = true
+	}
+}
+
+// NewOpenMetricsParser returns a new parser for the byte slice with option to skip CT series parsing.
+func NewOpenMetricsParser(b []byte, st *labels.SymbolTable, opts ...OpenMetricsOption) Parser {
+	options := &openMetricsParserOptions{}
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	parser := &OpenMetricsParser{
+		l:            &openMetricsLexer{b: b},
+		builder:      labels.NewScratchBuilderWithSymbolTable(st, 16),
+		skipCTSeries: options.SkipCTSeries,
+	}
+
+	return parser
 }
 
 // Series returns the bytes of the series, the timestamp if set, and the value
@@ -126,7 +167,7 @@ func (p *OpenMetricsParser) Help() ([]byte, []byte) {
 // Type returns the metric name and type in the current entry.
 // Must only be called after Next returned a type entry.
 // The returned byte slices become invalid after the next call to Next.
-func (p *OpenMetricsParser) Type() ([]byte, MetricType) {
+func (p *OpenMetricsParser) Type() ([]byte, model.MetricType) {
 	return p.l.b[p.offsets[0]:p.offsets[1]], p.mtype
 }
 
@@ -134,7 +175,6 @@ func (p *OpenMetricsParser) Type() ([]byte, MetricType) {
 // Must only be called after Next returned a unit entry.
 // The returned byte slices become invalid after the next call to Next.
 func (p *OpenMetricsParser) Unit() ([]byte, []byte) {
-	// The Prometheus format does not have units.
 	return p.l.b[p.offsets[0]:p.offsets[1]], p.text
 }
 
@@ -152,20 +192,18 @@ func (p *OpenMetricsParser) Metric(l *labels.Labels) string {
 	s := string(p.series)
 
 	p.builder.Reset()
-	p.builder.Add(labels.MetricName, s[:p.offsets[0]-p.start])
+	metricName := unreplace(s[p.offsets[0]-p.start : p.offsets[1]-p.start])
+	p.builder.Add(labels.MetricName, metricName)
 
-	for i := 1; i < len(p.offsets); i += 4 {
+	for i := 2; i < len(p.offsets); i += 4 {
 		a := p.offsets[i] - p.start
 		b := p.offsets[i+1] - p.start
+		label := unreplace(s[a:b])
 		c := p.offsets[i+2] - p.start
 		d := p.offsets[i+3] - p.start
+		value := unreplace(s[c:d])
 
-		value := s[c:d]
-		// Replacer causes allocations. Replace only when necessary.
-		if strings.IndexByte(s[c:d], byte('\\')) >= 0 {
-			value = lvalReplacer.Replace(value)
-		}
-		p.builder.Add(s[a:b], value)
+		p.builder.Add(label, value)
 	}
 
 	p.builder.Sort()
@@ -174,8 +212,10 @@ func (p *OpenMetricsParser) Metric(l *labels.Labels) string {
 	return s
 }
 
-// Exemplar writes the exemplar of the current sample into the passed
-// exemplar. It returns the whether an exemplar exists.
+// Exemplar writes the exemplar of the current sample into the passed exemplar.
+// It returns whether an exemplar exists. As OpenMetrics only ever has one
+// exemplar per sample, every call after the first (for the same sample) will
+// always return false.
 func (p *OpenMetricsParser) Exemplar(e *exemplar.Exemplar) bool {
 	if len(p.exemplar) == 0 {
 		return false
@@ -204,7 +244,95 @@ func (p *OpenMetricsParser) Exemplar(e *exemplar.Exemplar) bool {
 	p.builder.Sort()
 	e.Labels = p.builder.Labels()
 
+	// Wipe exemplar so that future calls return false.
+	p.exemplar = p.exemplar[:0]
 	return true
+}
+
+// CreatedTimestamp returns the created timestamp for a current Metric if exists or nil.
+// NOTE(Maniktherana): Might use additional CPU/mem resources due to deep copy of parser required for peeking given 1.0 OM specification on _created series.
+func (p *OpenMetricsParser) CreatedTimestamp() *int64 {
+	if !TypeRequiresCT(p.mtype) {
+		// Not a CT supported metric type, fast path.
+		return nil
+	}
+
+	var (
+		currLset                labels.Labels
+		buf                     []byte
+		peekWithoutNameLsetHash uint64
+	)
+	p.Metric(&currLset)
+	currFamilyLsetHash, buf := currLset.HashWithoutLabels(buf, labels.MetricName, "le", "quantile")
+	// Search for the _created line for the currFamilyLsetHash using ephemeral parser until
+	// we see EOF or new metric family. We have to do it as we don't know where (and if)
+	// that CT line is.
+	// TODO(bwplotka): Make sure OM 1.1/2.0 pass CT via metadata or exemplar-like to avoid this.
+	peek := deepCopy(p)
+	for {
+		eType, err := peek.Next()
+		if err != nil {
+			// This means peek will give error too later on, so def no CT line found.
+			// This might result in partial scrape with wrong/missing CT, but only
+			// spec improvement would help.
+			// TODO(bwplotka): Make sure OM 1.1/2.0 pass CT via metadata or exemplar-like to avoid this.
+			return nil
+		}
+		if eType != EntrySeries {
+			// Assume we hit different family, no CT line found.
+			return nil
+		}
+
+		var peekedLset labels.Labels
+		peek.Metric(&peekedLset)
+		peekedName := peekedLset.Get(model.MetricNameLabel)
+		if !strings.HasSuffix(peekedName, "_created") {
+			// Not a CT line, search more.
+			continue
+		}
+
+		// We got a CT line here, but let's search if CT line is actually for our series, edge case.
+		peekWithoutNameLsetHash, _ = peekedLset.HashWithoutLabels(buf, labels.MetricName, "le", "quantile")
+		if peekWithoutNameLsetHash != currFamilyLsetHash {
+			// CT line for a different series, for our series no CT.
+			return nil
+		}
+		ct := int64(peek.val)
+		return &ct
+	}
+}
+
+// TypeRequiresCT returns true if the metric type requires a _created timestamp.
+func TypeRequiresCT(t model.MetricType) bool {
+	switch t {
+	case model.MetricTypeCounter, model.MetricTypeSummary, model.MetricTypeHistogram:
+		return true
+	default:
+		return false
+	}
+}
+
+// deepCopy creates a copy of a parser without re-using the slices' original memory addresses.
+func deepCopy(p *OpenMetricsParser) OpenMetricsParser {
+	newB := make([]byte, len(p.l.b))
+	copy(newB, p.l.b)
+
+	newLexer := &openMetricsLexer{
+		b:     newB,
+		i:     p.l.i,
+		start: p.l.start,
+		err:   p.l.err,
+		state: p.l.state,
+	}
+
+	newParser := OpenMetricsParser{
+		l:            newLexer,
+		builder:      p.builder,
+		mtype:        p.mtype,
+		val:          p.val,
+		skipCTSeries: false,
+	}
+	return newParser
 }
 
 // nextToken returns the next token from the openMetricsLexer.
@@ -221,8 +349,8 @@ func (p *OpenMetricsParser) parseError(exp string, got token) error {
 	return fmt.Errorf("%s, got %q (%q) while parsing: %q", exp, p.l.b[p.l.start:e], got, p.l.b[p.start:e])
 }
 
-// Next advances the parser to the next sample. It returns false if no
-// more samples were read or an error occurred.
+// Next advances the parser to the next sample.
+// It returns (EntryInvalid, io.EOF) if no samples were read.
 func (p *OpenMetricsParser) Next() (Entry, error) {
 	var err error
 
@@ -244,7 +372,13 @@ func (p *OpenMetricsParser) Next() (Entry, error) {
 	case tHelp, tType, tUnit:
 		switch t2 := p.nextToken(); t2 {
 		case tMName:
-			p.offsets = append(p.offsets, p.l.start, p.l.i)
+			mStart := p.l.start
+			mEnd := p.l.i
+			if p.l.b[mStart] == '"' && p.l.b[mEnd-1] == '"' {
+				mStart++
+				mEnd--
+			}
+			p.offsets = append(p.offsets, mStart, mEnd)
 		default:
 			return EntryInvalid, p.parseError("expected metric name after "+t.String(), t2)
 		}
@@ -262,21 +396,21 @@ func (p *OpenMetricsParser) Next() (Entry, error) {
 		case tType:
 			switch s := yoloString(p.text); s {
 			case "counter":
-				p.mtype = MetricTypeCounter
+				p.mtype = model.MetricTypeCounter
 			case "gauge":
-				p.mtype = MetricTypeGauge
+				p.mtype = model.MetricTypeGauge
 			case "histogram":
-				p.mtype = MetricTypeHistogram
+				p.mtype = model.MetricTypeHistogram
 			case "gaugehistogram":
-				p.mtype = MetricTypeGaugeHistogram
+				p.mtype = model.MetricTypeGaugeHistogram
 			case "summary":
-				p.mtype = MetricTypeSummary
+				p.mtype = model.MetricTypeSummary
 			case "info":
-				p.mtype = MetricTypeInfo
+				p.mtype = model.MetricTypeInfo
 			case "stateset":
-				p.mtype = MetricTypeStateset
+				p.mtype = model.MetricTypeStateset
 			case "unknown":
-				p.mtype = MetricTypeUnknown
+				p.mtype = model.MetricTypeUnknown
 			default:
 				return EntryInvalid, fmt.Errorf("invalid metric type %q", s)
 			}
@@ -301,59 +435,46 @@ func (p *OpenMetricsParser) Next() (Entry, error) {
 			return EntryUnit, nil
 		}
 
+	case tBraceOpen:
+		// We found a brace, so make room for the eventual metric name. If these
+		// values aren't updated, then the metric name was not set inside the
+		// braces and we can return an error.
+		if len(p.offsets) == 0 {
+			p.offsets = []int{-1, -1}
+		}
+		if p.offsets, err = p.parseLVals(p.offsets, false); err != nil {
+			return EntryInvalid, err
+		}
+
+		p.series = p.l.b[p.start:p.l.i]
+		if err := p.parseSeriesEndOfLine(p.nextToken()); err != nil {
+			return EntryInvalid, err
+		}
+		if p.skipCTSeries && p.isCreatedSeries() {
+			return p.Next()
+		}
+		return EntrySeries, nil
 	case tMName:
-		p.offsets = append(p.offsets, p.l.i)
+		p.offsets = append(p.offsets, p.start, p.l.i)
 		p.series = p.l.b[p.start:p.l.i]
 
 		t2 := p.nextToken()
 		if t2 == tBraceOpen {
-			p.offsets, err = p.parseLVals(p.offsets)
+			p.offsets, err = p.parseLVals(p.offsets, false)
 			if err != nil {
 				return EntryInvalid, err
 			}
 			p.series = p.l.b[p.start:p.l.i]
 			t2 = p.nextToken()
 		}
-		p.val, err = p.getFloatValue(t2, "metric")
-		if err != nil {
+
+		if err := p.parseSeriesEndOfLine(t2); err != nil {
 			return EntryInvalid, err
 		}
-
-		p.hasTS = false
-		switch t2 := p.nextToken(); t2 {
-		case tEOF:
-			return EntryInvalid, errors.New("data does not end with # EOF")
-		case tLinebreak:
-			break
-		case tComment:
-			if err := p.parseComment(); err != nil {
-				return EntryInvalid, err
-			}
-		case tTimestamp:
-			p.hasTS = true
-			var ts float64
-			// A float is enough to hold what we need for millisecond resolution.
-			if ts, err = parseFloat(yoloString(p.l.buf()[1:])); err != nil {
-				return EntryInvalid, fmt.Errorf("%v while parsing: %q", err, p.l.b[p.start:p.l.i])
-			}
-			if math.IsNaN(ts) || math.IsInf(ts, 0) {
-				return EntryInvalid, fmt.Errorf("invalid timestamp %f", ts)
-			}
-			p.ts = int64(ts * 1000)
-			switch t3 := p.nextToken(); t3 {
-			case tLinebreak:
-			case tComment:
-				if err := p.parseComment(); err != nil {
-					return EntryInvalid, err
-				}
-			default:
-				return EntryInvalid, p.parseError("expected next entry after timestamp", t3)
-			}
-		default:
-			return EntryInvalid, p.parseError("expected timestamp or # symbol", t2)
+		if p.skipCTSeries && p.isCreatedSeries() {
+			return p.Next()
 		}
 		return EntrySeries, nil
-
 	default:
 		err = p.parseError("expected a valid start token", t)
 	}
@@ -363,7 +484,7 @@ func (p *OpenMetricsParser) Next() (Entry, error) {
 func (p *OpenMetricsParser) parseComment() error {
 	var err error
 	// Parse the labels.
-	p.eOffsets, err = p.parseLVals(p.eOffsets)
+	p.eOffsets, err = p.parseLVals(p.eOffsets, true)
 	if err != nil {
 		return err
 	}
@@ -387,7 +508,7 @@ func (p *OpenMetricsParser) parseComment() error {
 		var ts float64
 		// A float is enough to hold what we need for millisecond resolution.
 		if ts, err = parseFloat(yoloString(p.l.buf()[1:])); err != nil {
-			return fmt.Errorf("%v while parsing: %q", err, p.l.b[p.start:p.l.i])
+			return fmt.Errorf("%w while parsing: %q", err, p.l.b[p.start:p.l.i])
 		}
 		if math.IsNaN(ts) || math.IsInf(ts, 0) {
 			return fmt.Errorf("invalid exemplar timestamp %f", ts)
@@ -404,38 +525,47 @@ func (p *OpenMetricsParser) parseComment() error {
 	return nil
 }
 
-func (p *OpenMetricsParser) parseLVals(offsets []int) ([]int, error) {
-	first := true
+func (p *OpenMetricsParser) parseLVals(offsets []int, isExemplar bool) ([]int, error) {
+	t := p.nextToken()
 	for {
-		t := p.nextToken()
+		curTStart := p.l.start
+		curTI := p.l.i
 		switch t {
 		case tBraceClose:
 			return offsets, nil
-		case tComma:
-			if first {
-				return nil, p.parseError("expected label name or left brace", t)
-			}
-			t = p.nextToken()
-			if t != tLName {
+		case tLName:
+		case tQString:
+		default:
+			return nil, p.parseError("expected label name", t)
+		}
+
+		t = p.nextToken()
+		// A quoted string followed by a comma or brace is a metric name. Set the
+		// offsets and continue processing. If this is an exemplar, this format
+		// is not allowed.
+		if t == tComma || t == tBraceClose {
+			if isExemplar {
 				return nil, p.parseError("expected label name", t)
 			}
-		case tLName:
-			if !first {
-				return nil, p.parseError("expected comma", t)
+			if offsets[0] != -1 || offsets[1] != -1 {
+				return nil, fmt.Errorf("metric name already set while parsing: %q", p.l.b[p.start:p.l.i])
 			}
-		default:
-			if first {
-				return nil, p.parseError("expected label name or left brace", t)
+			offsets[0] = curTStart + 1
+			offsets[1] = curTI - 1
+			if t == tBraceClose {
+				return offsets, nil
 			}
-			return nil, p.parseError("expected comma or left brace", t)
-
+			t = p.nextToken()
+			continue
 		}
-		first = false
-		// t is now a label name.
+		// We have a label name, and it might be quoted.
+		if p.l.b[curTStart] == '"' {
+			curTStart++
+			curTI--
+		}
+		offsets = append(offsets, curTStart, curTI)
 
-		offsets = append(offsets, p.l.start, p.l.i)
-
-		if t := p.nextToken(); t != tEqual {
+		if t != tEqual {
 			return nil, p.parseError("expected equal", t)
 		}
 		if t := p.nextToken(); t != tLValue {
@@ -448,7 +578,75 @@ func (p *OpenMetricsParser) parseLVals(offsets []int) ([]int, error) {
 		// The openMetricsLexer ensures the value string is quoted. Strip first
 		// and last character.
 		offsets = append(offsets, p.l.start+1, p.l.i-1)
+
+		// Free trailing commas are allowed.
+		t = p.nextToken()
+		if t == tComma {
+			t = p.nextToken()
+		} else if t != tBraceClose {
+			return nil, p.parseError("expected comma or brace close", t)
+		}
 	}
+}
+
+// isCreatedSeries returns true if the current series is a _created series.
+func (p *OpenMetricsParser) isCreatedSeries() bool {
+	var newLbs labels.Labels
+	p.Metric(&newLbs)
+	name := newLbs.Get(model.MetricNameLabel)
+	if TypeRequiresCT(p.mtype) && strings.HasSuffix(name, "_created") {
+		return true
+	}
+	return false
+}
+
+// parseSeriesEndOfLine parses the series end of the line (value, optional
+// timestamp, commentary, etc.) after the metric name and labels.
+// It starts parsing with the provided token.
+func (p *OpenMetricsParser) parseSeriesEndOfLine(t token) error {
+	if p.offsets[0] == -1 {
+		return fmt.Errorf("metric name not set while parsing: %q", p.l.b[p.start:p.l.i])
+	}
+
+	var err error
+	p.val, err = p.getFloatValue(t, "metric")
+	if err != nil {
+		return err
+	}
+
+	p.hasTS = false
+	switch t2 := p.nextToken(); t2 {
+	case tEOF:
+		return errors.New("data does not end with # EOF")
+	case tLinebreak:
+		break
+	case tComment:
+		if err := p.parseComment(); err != nil {
+			return err
+		}
+	case tTimestamp:
+		p.hasTS = true
+		var ts float64
+		// A float is enough to hold what we need for millisecond resolution.
+		if ts, err = parseFloat(yoloString(p.l.buf()[1:])); err != nil {
+			return fmt.Errorf("%w while parsing: %q", err, p.l.b[p.start:p.l.i])
+		}
+		if math.IsNaN(ts) || math.IsInf(ts, 0) {
+			return fmt.Errorf("invalid timestamp %f", ts)
+		}
+		p.ts = int64(ts * 1000)
+		switch t3 := p.nextToken(); t3 {
+		case tLinebreak:
+		case tComment:
+			if err := p.parseComment(); err != nil {
+				return err
+			}
+		default:
+			return p.parseError("expected next entry after timestamp", t3)
+		}
+	}
+
+	return nil
 }
 
 func (p *OpenMetricsParser) getFloatValue(t token, after string) (float64, error) {
@@ -457,7 +655,7 @@ func (p *OpenMetricsParser) getFloatValue(t token, after string) (float64, error
 	}
 	val, err := parseFloat(yoloString(p.l.buf()[1:]))
 	if err != nil {
-		return 0, fmt.Errorf("%v while parsing: %q", err, p.l.b[p.start:p.l.i])
+		return 0, fmt.Errorf("%w while parsing: %q", err, p.l.b[p.start:p.l.i])
 	}
 	// Ensure canonical NaN value.
 	if math.IsNaN(p.exemplarVal) {

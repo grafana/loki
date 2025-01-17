@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/build"
+	"github.com/grafana/loki/v3/pkg/util/build"
 
 	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"
@@ -23,7 +23,6 @@ import (
 )
 
 var (
-	httpClient    = http.Client{Timeout: 5 * time.Second}
 	usageStatsURL = "https://stats.grafana.org/loki-usage-report"
 	statsPrefix   = "github.com/grafana/loki/"
 	targetKey     = "target"
@@ -73,7 +72,7 @@ type Report struct {
 }
 
 // sendReport sends the report to the stats server
-func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time, URL string) error {
+func sendReport(ctx context.Context, seed *ClusterSeed, interval time.Time, URL string, httpClient *http.Client) error {
 	report := buildReport(seed, interval)
 	out, err := jsoniter.MarshalIndent(report, "", " ")
 	if err != nil {
@@ -136,9 +135,13 @@ func buildMetrics() map[string]interface{} {
 		"memstats":      memstats(),
 		"num_cpu":       runtime.NumCPU(),
 		"num_goroutine": runtime.NumGoroutine(),
+		// the highest recorded cpu usage over the interval
+		"cpu_usage": cpuUsage.Value(),
 	}
+	// reset cpu usage
+	cpuUsage.Set(0)
 	expvar.Do(func(kv expvar.KeyValue) {
-		if !strings.HasPrefix(kv.Key, statsPrefix) || kv.Key == statsPrefix+targetKey || kv.Key == statsPrefix+editionKey {
+		if !strings.HasPrefix(kv.Key, statsPrefix) || kv.Key == statsPrefix+targetKey || kv.Key == statsPrefix+editionKey || kv.Key == statsPrefix+cpuUsageKey {
 			return
 		}
 		var value interface{}

@@ -6,11 +6,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
 
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulestore"
+	ruler "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
 )
 
-func NewRuler(cfg Config, evaluator Evaluator, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits) (*ruler.Ruler, error) {
+func NewRuler(cfg Config, evaluator Evaluator, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, metricsNamespace string) (*ruler.Ruler, error) {
 	// For backward compatibility, client and clients are defined in the remote_write config.
 	// When both are present, an error is thrown.
 	if len(cfg.RemoteWrite.Clients) > 0 && cfg.RemoteWrite.Client != nil {
@@ -31,6 +31,7 @@ func NewRuler(cfg Config, evaluator Evaluator, reg prometheus.Registerer, logger
 		reg,
 		logger,
 		limits,
+		metricsNamespace,
 	)
 	if err != nil {
 		return nil, err
@@ -42,5 +43,6 @@ func NewRuler(cfg Config, evaluator Evaluator, reg prometheus.Registerer, logger
 		logger,
 		ruleStore,
 		limits,
+		metricsNamespace,
 	)
 }

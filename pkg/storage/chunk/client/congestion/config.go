@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type Config struct {
@@ -38,6 +38,7 @@ func (c *ControllerConfig) RegisterFlags(f *flag.FlagSet) {
 	c.RegisterFlagsWithPrefix("", f)
 }
 
+// nolint:goconst
 func (c *ControllerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.Strategy, prefix+"strategy", "", "Congestion control strategy to use (default: none, options: 'aimd').")
 	f.UintVar(&c.AIMD.Start, prefix+"strategy.aimd.start", 2000, "AIMD starting throughput window size: how many requests can be sent per second (default: 2000).")

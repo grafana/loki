@@ -9,19 +9,20 @@ server:
 
 common:
   path_prefix: /loki
-  storage:
-    s3:
-      endpoint: minio:9000
-      insecure: true
-      bucketnames: loki-data
-      access_key_id: loki
-      secret_access_key: supersecret
-      s3forcepathstyle: true
-  compactor_address: http://loki-write:3100
+  compactor_address: http://loki-backend:3100
   replication_factor: 3
 
+storage_config:
+  aws:
+    endpoint: minio:9000
+    insecure: true
+    bucketnames: loki-data
+    access_key_id: loki
+    secret_access_key: supersecret
+    s3forcepathstyle: true
+
 memberlist:
-  join_members: ["loki-read", "loki-write"]
+  join_members: ["loki-read", "loki-write", "loki-backend"]
   dead_node_reclaim_time: 30s
   gossip_to_dead_nodes_time: 15s
   left_ingesters_timeout: 30s
@@ -54,6 +55,10 @@ ruler:
   enable_sharding: true  
   wal:
     dir: /loki/ruler-wal
+  evaluation:
+    mode: remote
+    query_frontend:
+      address: dns:///loki-read:9095
   storage:
     type: local
     local:
@@ -85,11 +90,24 @@ schema_config:
     index:
       prefix: index_
       period: 24h
+  - from: 2024-01-10
+    store: tsdb
+    object_store: s3
+    schema: v12
+    index:
+      prefix: index_
+      period: 24h
+  - from: 2024-03-29
+    store: tsdb
+    object_store: s3
+    schema: v13
+    index:
+      prefix: index_
+      period: 24h
 
 
 limits_config:
   max_cache_freshness_per_query: '10m'
-  enforce_metric_name: false
   reject_old_samples: true
   reject_old_samples_max_age: 30m
   ingestion_rate_mb: 10
@@ -97,9 +115,6 @@ limits_config:
   # parallelize queries in 15min intervals
   split_queries_by_interval: 15m
   volume_enabled: true
-
-chunk_store_config:
-  max_look_back_period: 336h
 
 table_manager:
   retention_deletes_enabled: true
@@ -125,4 +140,3 @@ querier:
 
 compactor:
   working_directory: /tmp/compactor
-  shared_store: s3

@@ -4,14 +4,14 @@ package syntax
 import (
   "time"
   "github.com/prometheus/prometheus/model/labels"
-  "github.com/grafana/loki/pkg/logql/log"
+  "github.com/grafana/loki/v3/pkg/logql/log"
 
 )
 %}
 
 %union{
   Expr                    Expr
-  Filter                  labels.MatchType
+  Filter                  log.LineMatchType
   Grouping                *Grouping
   Labels                  []string
   LogExpr                 LogSelectorExpr
@@ -134,8 +134,9 @@ import (
 %token <bytes> BYTES
 %token <str>      IDENTIFIER STRING NUMBER PARSER_FLAG
 %token <duration> DURATION RANGE
-%token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
-                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
+%token <val>      MATCHERS LABELS EQ RE NRE NPA OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT PIPE_PATTERN
+                  OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG
+		  MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK APPROX_TOPK
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
@@ -239,10 +240,12 @@ labelReplaceExpr:
     ;
 
 filter:
-      PIPE_MATCH                       { $$ = labels.MatchRegexp }
-    | PIPE_EXACT                       { $$ = labels.MatchEqual }
-    | NRE                              { $$ = labels.MatchNotRegexp }
-    | NEQ                              { $$ = labels.MatchNotEqual }
+      PIPE_MATCH                       { $$ = log.LineMatchRegexp }
+    | PIPE_EXACT                       { $$ = log.LineMatchEqual }
+    | PIPE_PATTERN                     { $$ = log.LineMatchPattern }
+    | NRE                              { $$ = log.LineMatchNotRegexp }
+    | NEQ                              { $$ = log.LineMatchNotEqual }
+    | NPA                              { $$ = log.LineMatchNotPattern }
     ;
 
 selector:
@@ -287,9 +290,9 @@ filterOp:
   ;
 
 orFilter:
-    STRING                                              { $$ = newLineFilterExpr(labels.MatchEqual, "", $1) }
-  | filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS	{ $$ = newLineFilterExpr(labels.MatchEqual, $1, $3) }
-  | STRING OR orFilter                                  { $$ = newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", $1), $3) }
+    STRING                                              { $$ = newLineFilterExpr(log.LineMatchEqual, "", $1) }
+  | filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS	{ $$ = newLineFilterExpr(log.LineMatchEqual, $1, $3) }
+  | STRING OR orFilter                                  { $$ = newOrLineFilter(newLineFilterExpr(log.LineMatchEqual, "", $1), $3) }
   ;
 
 lineFilter:
@@ -398,13 +401,13 @@ bytesFilter:
     ;
 
 numberFilter:
-      IDENTIFIER GT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1, mustNewFloat($3))}
-    | IDENTIFIER GTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER LT NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, mustNewFloat($3))}
-    | IDENTIFIER LTE NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER NEQ NUMBER     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER EQ NUMBER      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
-    | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
+      IDENTIFIER GT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1,  $3.Val)}
+    | IDENTIFIER GTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1,$3.Val)}
+    | IDENTIFIER LT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, $3.Val)}
+    | IDENTIFIER LTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3.Val)}
+    | IDENTIFIER NEQ literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, $3.Val)}
+    | IDENTIFIER EQ literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
+    | IDENTIFIER CMP_EQ literalExpr  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
     ;
 
 dropLabel:
@@ -543,6 +546,7 @@ vectorOp:
       | TOPK    { $$ = OpTypeTopK }
       | SORT    { $$ = OpTypeSort }
       | SORT_DESC    { $$ = OpTypeSortDesc }
+      | APPROX_TOPK  { $$ = OpTypeApproxTopK }
       ;
 
 rangeOp:

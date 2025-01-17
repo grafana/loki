@@ -29,7 +29,8 @@ import (
 )
 
 const (
-	pluginName             = "file_watcher"
+	// PluginName is the name of the PEM file watcher plugin.
+	PluginName             = "file_watcher"
 	defaultRefreshInterval = 10 * time.Minute
 )
 
@@ -39,7 +40,7 @@ func init() {
 
 type pluginBuilder struct{}
 
-func (p *pluginBuilder) ParseConfig(c interface{}) (*certprovider.BuildableConfig, error) {
+func (p *pluginBuilder) ParseConfig(c any) (*certprovider.BuildableConfig, error) {
 	data, ok := c.(json.RawMessage)
 	if !ok {
 		return nil, fmt.Errorf("meshca: unsupported config type: %T", c)
@@ -48,13 +49,13 @@ func (p *pluginBuilder) ParseConfig(c interface{}) (*certprovider.BuildableConfi
 	if err != nil {
 		return nil, err
 	}
-	return certprovider.NewBuildableConfig(pluginName, opts.canonical(), func(certprovider.BuildOptions) certprovider.Provider {
+	return certprovider.NewBuildableConfig(PluginName, opts.canonical(), func(certprovider.BuildOptions) certprovider.Provider {
 		return newProvider(opts)
 	}), nil
 }
 
 func (p *pluginBuilder) Name() string {
-	return pluginName
+	return PluginName
 }
 
 func pluginConfigFromJSON(jd json.RawMessage) (Options, error) {

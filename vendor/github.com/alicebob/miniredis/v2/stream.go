@@ -38,7 +38,9 @@ type streamGroup struct {
 
 type consumer struct {
 	numPendingEntries int
-	// TODO: "last seen" timestamp
+	// these timestamps aren't tracked perfectly
+	lastSeen    time.Time // "idle" XINFO key
+	lastSuccess time.Time // "inactive" XINFO key
 }
 
 type pendingEntry struct {
@@ -271,7 +273,7 @@ func (s *streamKey) trimBefore(id string) int {
 	s.mu.Lock()
 	var delete []string
 	for _, entry := range s.entries {
-		if entry.ID < id {
+		if streamCmp(entry.ID, id) < 0 {
 			delete = append(delete, entry.ID)
 		} else {
 			break
@@ -481,4 +483,18 @@ func (g *streamGroup) copy() *streamGroup {
 		pending:   g.pending,
 		consumers: cns,
 	}
+}
+
+func (g *streamGroup) setLastSeen(c string, t time.Time) {
+	cons, ok := g.consumers[c]
+	if !ok {
+		cons = &consumer{}
+	}
+	cons.lastSeen = t
+	g.consumers[c] = cons
+}
+
+func (g *streamGroup) setLastSuccess(c string, t time.Time) {
+	g.setLastSeen(c, t)
+	g.consumers[c].lastSuccess = t
 }

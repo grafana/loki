@@ -96,6 +96,7 @@ const (
 	TypeLP         uint16 = 107
 	TypeEUI48      uint16 = 108
 	TypeEUI64      uint16 = 109
+	TypeNXNAME     uint16 = 128
 	TypeURI        uint16 = 256
 	TypeCAA        uint16 = 257
 	TypeAVC        uint16 = 258
@@ -135,8 +136,8 @@ const (
 	RcodeNXRrset        = 8  // NXRRSet   - RR Set that should exist does not [DNS Update]
 	RcodeNotAuth        = 9  // NotAuth   - Server Not Authoritative for zone [DNS Update]
 	RcodeNotZone        = 10 // NotZone   - Name not contained in zone        [DNS Update/TSIG]
-	RcodeBadSig         = 16 // BADSIG    - TSIG Signature Failure            [TSIG]
-	RcodeBadVers        = 16 // BADVERS   - Bad OPT Version                   [EDNS0]
+	RcodeBadSig         = 16 // BADSIG    - TSIG Signature Failure            [TSIG]  https://www.rfc-editor.org/rfc/rfc6895.html#section-2.3
+	RcodeBadVers        = 16 // BADVERS   - Bad OPT Version                   [EDNS0] https://www.rfc-editor.org/rfc/rfc6895.html#section-2.3
 	RcodeBadKey         = 17 // BADKEY    - Key not recognized                [TSIG]
 	RcodeBadTime        = 18 // BADTIME   - Signature out of time window      [TSIG]
 	RcodeBadMode        = 19 // BADMODE   - Bad TKEY Mode                     [TKEY]
@@ -236,6 +237,9 @@ var CertTypeToString = map[uint16]string{
 	CertOID:     "OID",
 }
 
+// Prefix for IPv4 encoded as IPv6 address
+const ipv4InIPv6Prefix = "::ffff:"
+
 //go:generate go run types_generate.go
 
 // Question holds a DNS question. Usually there is just one. While the
@@ -289,6 +293,19 @@ func (rr *NULL) String() string {
 
 func (*NULL) parse(c *zlexer, origin string) *ParseError {
 	return &ParseError{err: "NULL records do not have a presentation format"}
+}
+
+// NXNAME is a meta record. See https://www.iana.org/go/draft-ietf-dnsop-compact-denial-of-existence-04
+// Reference: https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml
+type NXNAME struct {
+	Hdr RR_Header
+	// Does not have any rdata
+}
+
+func (rr *NXNAME) String() string { return rr.Hdr.String() }
+
+func (*NXNAME) parse(c *zlexer, origin string) *ParseError {
+	return &ParseError{err: "NXNAME records do not have a presentation format"}
 }
 
 // CNAME RR. See RFC 1034.
@@ -397,6 +414,17 @@ type X25 struct {
 
 func (rr *X25) String() string {
 	return rr.Hdr.String() + rr.PSDNAddress
+}
+
+// ISDN RR. See RFC 1183, Section 3.2.
+type ISDN struct {
+	Hdr        RR_Header
+	Address    string
+	SubAddress string
+}
+
+func (rr *ISDN) String() string {
+	return rr.Hdr.String() + sprintTxt([]string{rr.Address, rr.SubAddress})
 }
 
 // RT RR. See RFC 1183, Section 3.3.
@@ -751,6 +779,11 @@ func (rr *AAAA) String() string {
 	if rr.AAAA == nil {
 		return rr.Hdr.String()
 	}
+
+	if rr.AAAA.To4() != nil {
+		return rr.Hdr.String() + ipv4InIPv6Prefix + rr.AAAA.String()
+	}
+
 	return rr.Hdr.String() + rr.AAAA.String()
 }
 
@@ -778,7 +811,7 @@ func (rr *GPOS) String() string {
 	return rr.Hdr.String() + rr.Longitude + " " + rr.Latitude + " " + rr.Altitude
 }
 
-// LOC RR. See RFC RFC 1876.
+// LOC RR. See RFC 1876.
 type LOC struct {
 	Hdr       RR_Header
 	Version   uint8
@@ -890,6 +923,11 @@ func (rr *RRSIG) String() string {
 	return s
 }
 
+// NXT RR. See RFC 2535.
+type NXT struct {
+	NSEC
+}
+
 // NSEC RR. See RFC 4034 and RFC 3755.
 type NSEC struct {
 	Hdr        RR_Header
@@ -974,7 +1012,7 @@ func (rr *TALINK) String() string {
 		sprintName(rr.PreviousName) + " " + sprintName(rr.NextName)
 }
 
-// SSHFP RR. See RFC RFC 4255.
+// SSHFP RR. See RFC 4255.
 type SSHFP struct {
 	Hdr         RR_Header
 	Algorithm   uint8
@@ -988,7 +1026,7 @@ func (rr *SSHFP) String() string {
 		" " + strings.ToUpper(rr.FingerPrint)
 }
 
-// KEY RR. See RFC RFC 2535.
+// KEY RR. See RFC 2535.
 type KEY struct {
 	DNSKEY
 }
@@ -1298,7 +1336,7 @@ type NINFO struct {
 
 func (rr *NINFO) String() string { return rr.Hdr.String() + sprintTxt(rr.ZSData) }
 
-// NID RR. See RFC RFC 6742.
+// NID RR. See RFC 6742.
 type NID struct {
 	Hdr        RR_Header
 	Preference uint16
@@ -1517,7 +1555,7 @@ func (a *APLPrefix) str() string {
 	case net.IPv6len:
 		// add prefix for IPv4-mapped IPv6
 		if v4 := a.Network.IP.To4(); v4 != nil {
-			sb.WriteString("::ffff:")
+			sb.WriteString(ipv4InIPv6Prefix)
 		}
 		sb.WriteString(a.Network.IP.String())
 	}

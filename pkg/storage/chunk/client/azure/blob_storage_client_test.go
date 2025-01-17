@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/grafana/dskit/flagext"
@@ -17,7 +19,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 var metrics = NewBlobStorageMetrics()
@@ -66,7 +68,7 @@ func (suite *FederatedTokenTestSuite) TestGetServicePrincipalToken() {
 		return suite.mockOAuthConfig, nil
 	}
 
-	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+	servicePrincipalTokenFromFederatedTokenFunc := func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
 		require.True(suite.T(), *suite.mockOAuthConfig == oauthConfig, "should return the mocked object")
 		require.Equal(suite.T(), "myClientId", clientID)
 		require.Equal(suite.T(), "myJwtToken", jwt)
@@ -78,6 +80,28 @@ func (suite *FederatedTokenTestSuite) TestGetServicePrincipalToken() {
 
 	require.NoError(suite.T(), err)
 	require.True(suite.T(), suite.mockedServicePrincipalToken == token, "should return the mocked object")
+}
+
+func (suite *FederatedTokenTestSuite) Test_HandleNoServicePrincipalToken() {
+	newOAuthConfigFunc := func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error) {
+		require.Equal(suite.T(), azure.PublicCloud.ActiveDirectoryEndpoint, activeDirectoryEndpoint)
+		require.Equal(suite.T(), "myTenantId", tenantID)
+
+		_, err := adal.NewOAuthConfig(activeDirectoryEndpoint, tenantID)
+		require.NoError(suite.T(), err)
+
+		return suite.mockOAuthConfig, nil
+	}
+
+	servicePrincipalTokenFromFederatedTokenFunc := func(_ adal.OAuthConfig, _ string, _ string, _ string, _ ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error) {
+		return nil, errors.New("No token")
+	}
+
+	token, err := suite.config.getServicePrincipalToken(authFunctions{newOAuthConfigFunc, servicePrincipalTokenFromFederatedTokenFunc})
+
+	require.Error(suite.T(), err)
+	require.EqualError(suite.T(), err, "No token")
+	require.True(suite.T(), token == nil, "should return error if no token was retrieved")
 }
 
 func Test_Hedging(t *testing.T) {
@@ -118,7 +142,6 @@ func Test_Hedging(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			count := atomic.NewInt32(0)
 			// hijack the client to count the number of calls

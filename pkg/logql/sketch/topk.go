@@ -2,11 +2,10 @@ package sketch
 
 import (
 	"container/heap"
-	"reflect"
 	"sort"
 	"unsafe"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/go-kit/log"
@@ -15,7 +14,7 @@ import (
 
 type element struct {
 	Event string
-	Count int64
+	Count float64
 }
 
 type TopKResult []element
@@ -109,13 +108,13 @@ func newCMSTopK(k int, w, d uint32) (*Topk, error) {
 
 func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 	cms := &CountMinSketch{
-		depth: t.Cms.Depth,
-		width: t.Cms.Width,
+		Depth: t.Cms.Depth,
+		Width: t.Cms.Width,
 	}
-	for row := uint32(0); row < cms.depth; row++ {
-		s := row * cms.width
-		e := s + cms.width
-		cms.counters = append(cms.counters, t.Cms.Counters[s:e])
+	for row := uint32(0); row < cms.Depth; row++ {
+		s := row * cms.Width
+		e := s + cms.Width
+		cms.Counters = append(cms.Counters, t.Cms.Counters[s:e])
 	}
 
 	hll := hyperloglog.New()
@@ -144,12 +143,12 @@ func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 
 func (t *Topk) ToProto() (*logproto.TopK, error) {
 	cms := &logproto.CountMinSketch{
-		Depth: t.sketch.depth,
-		Width: t.sketch.width,
+		Depth: t.sketch.Depth,
+		Width: t.sketch.Width,
 	}
-	cms.Counters = make([]uint32, 0, cms.Depth*cms.Width)
+	cms.Counters = make([]float64, 0, cms.Depth*cms.Width)
 	for row := uint32(0); row < cms.Depth; row++ {
-		cms.Counters = append(cms.Counters, t.sketch.counters[row]...)
+		cms.Counters = append(cms.Counters, t.sketch.Counters[row]...)
 	}
 
 	hllBytes, err := t.hll.MarshalBinary()
@@ -176,7 +175,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 
 // wrapper to bundle together updating of the bf portion of the sketch and pushing of a new element
 // to the heap
-func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
+func (t *Topk) heapPush(h *MinHeap, event string, estimate float64, h1, h2 uint32) {
 	var pos uint32
 	for i := range t.bf {
 		pos = t.sketch.getPos(h1, h2, uint32(i))
@@ -187,7 +186,7 @@ func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
 
 // wrapper to bundle together updating of the bf portion of the sketch for the removed and added event
 // as well as replacing the min heap element with the new event and it's count
-func (t *Topk) heapMinReplace(event string, estimate uint32, removed string) {
+func (t *Topk) heapMinReplace(event string, estimate float64, removed string) {
 	t.updateBF(removed, event)
 	(*t.heap)[0].event = event
 	(*t.heap)[0].count = estimate
@@ -197,8 +196,8 @@ func (t *Topk) heapMinReplace(event string, estimate uint32, removed string) {
 // updates the BF to ensure that the removed event won't be mistakenly thought
 // to be in the heap, and updates the BF to ensure that we would get a truthy result for the added event
 func (t *Topk) updateBF(removed, added string) {
-	r1, r2 := hashn(removed)
-	a1, a2 := hashn(added)
+	r1, r2 := hashn(unsafeGetBytes(removed))
+	a1, a2 := hashn(unsafeGetBytes(added))
 	var pos uint32
 	for i := range t.bf {
 		// removed event
@@ -210,14 +209,8 @@ func (t *Topk) updateBF(removed, added string) {
 	}
 }
 
-// todo: is there a way to save more bytes/allocs via a pool?
 func unsafeGetBytes(s string) []byte {
-	if s == "" {
-		return nil // or []byte{}
-	}
-	return (*[0x7fff0000]byte)(unsafe.Pointer(
-		(*reflect.StringHeader)(unsafe.Pointer(&s)).Data),
-	)[:len(s):len(s)]
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 // Observe is our sketch event observation function, which is a bit more complex than the original count min sketch + heap TopK
@@ -237,7 +230,7 @@ func unsafeGetBytes(s string) []byte {
 // for each node in the heap and rebalance the heap, and then if the event we're observing has an estimate that is still
 // greater than the minimum heap element count, we should put this event into the heap and remove the other one.
 func (t *Topk) Observe(event string) {
-	estimate, h1, h2 := t.sketch.ConservativeIncrement(event)
+	estimate, h1, h2 := t.sketch.ConservativeIncrement(unsafeGetBytes(event))
 	t.hll.Insert(unsafeGetBytes(event))
 
 	if t.InTopk(h1, h2) {
@@ -253,12 +246,12 @@ func (t *Topk) Observe(event string) {
 		var h1, h2 uint32
 		var pos uint32
 		for i := range *t.heap {
-			(*t.heap)[i].count = t.sketch.Count((*t.heap)[i].event)
+			(*t.heap)[i].count = t.sketch.Count(unsafeGetBytes((*t.heap)[i].event))
 			if i <= len(*t.heap)/2 {
 				heap.Fix(t.heap, i)
 			}
 			// ensure all the bf buckets are truthy for the event
-			h1, h2 = hashn((*t.heap)[i].event)
+			h1, h2 = hashn(unsafeGetBytes((*t.heap)[i].event))
 			for j := range t.bf {
 				pos = t.sketch.getPos(h1, h2, uint32(j))
 				t.bf[j][pos] = true
@@ -276,7 +269,7 @@ func (t *Topk) Observe(event string) {
 	if estimate > t.heap.Peek().(*node).count {
 		if len(*t.heap) == t.max {
 			e := t.heap.Peek().(*node).event
-			//r1, r2 := hashn(e)
+			// r1, r2 := hashn(e)
 			t.heapMinReplace(event, estimate, e)
 			return
 		}
@@ -311,11 +304,11 @@ func (t *Topk) Merge(from *Topk) error {
 
 	var all TopKResult
 	for _, e := range *t.heap {
-		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		all = append(all, element{Event: e.event, Count: t.sketch.Count(unsafeGetBytes(e.event))})
 	}
 
 	for _, e := range *from.heap {
-		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		all = append(all, element{Event: e.event, Count: t.sketch.Count(unsafeGetBytes(e.event))})
 	}
 
 	all = removeDuplicates(all)
@@ -324,8 +317,8 @@ func (t *Topk) Merge(from *Topk) error {
 	var h1, h2 uint32
 	// TODO: merging should also potentially replace it's bloomfilter? or 0 everything in the bloomfilter
 	for _, e := range all[:t.max] {
-		h1, h2 = hashn(e.Event)
-		t.heapPush(temp, e.Event, uint32(e.Count), h1, h2)
+		h1, h2 = hashn(unsafeGetBytes(e.Event))
+		t.heapPush(temp, e.Event, float64(e.Count), h1, h2)
 	}
 	t.heap = temp
 
@@ -354,7 +347,7 @@ func (t *Topk) Topk() TopKResult {
 	for _, e := range *t.heap {
 		res = append(res, element{
 			Event: e.event,
-			Count: int64(t.sketch.Count(e.event)),
+			Count: t.sketch.Count(unsafeGetBytes(e.event)),
 		})
 	}
 	sort.Sort(res)

@@ -1,9 +1,11 @@
 package log
 
 import (
-	"reflect"
+	"context"
 	"sync"
 	"unsafe"
+
+	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -25,6 +27,7 @@ type StreamPipeline interface {
 	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
 	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (resultLine []byte, resultLabels LabelsResult, matches bool)
 	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (resultLine string, resultLabels LabelsResult, matches bool)
+	ReferencedStructuredMetadata() bool
 }
 
 // Stage is a single step of a Pipeline.
@@ -33,6 +36,12 @@ type StreamPipeline interface {
 type Stage interface {
 	Process(ts int64, line []byte, lbs *LabelsBuilder) ([]byte, bool)
 	RequiredLabelNames() []string
+}
+
+// PipelineWrapper takes a pipeline, wraps it is some desired functionality and
+// returns a new pipeline
+type PipelineWrapper interface {
+	Wrap(ctx context.Context, pipeline Pipeline, query, tenant string) Pipeline
 }
 
 // NewNoopPipeline creates a pipelines that does not process anything and returns log streams as is.
@@ -87,9 +96,16 @@ type noopStreamPipeline struct {
 	builder *LabelsBuilder
 }
 
+func (n noopStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
-	n.builder.Add(structuredMetadata...)
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+	}
+	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 	return line, n.builder.LabelsResult(), true
 }
 
@@ -201,10 +217,19 @@ func (p *pipeline) Reset() {
 	}
 }
 
+func (p *streamPipeline) ReferencedStructuredMetadata() bool {
+	return p.builder.referencedStructuredMetadata
+}
+
 func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
-	p.builder.Add(structuredMetadata...)
+
+	for i, lb := range structuredMetadata {
+		structuredMetadata[i].Name = prometheus.NormalizeLabel(lb.Name)
+	}
+
+	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
 
 	for _, s := range p.stages {
 		line, ok = s.Process(ts, line, p.builder)
@@ -292,6 +317,10 @@ type filteringStreamPipeline struct {
 	pipeline StreamPipeline
 }
 
+func (sp *filteringStreamPipeline) ReferencedStructuredMetadata() bool {
+	return false
+}
+
 func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
 	return sp.pipeline.BaseLabels()
 }
@@ -351,13 +380,9 @@ func ReduceStages(stages []Stage) Stage {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
 }

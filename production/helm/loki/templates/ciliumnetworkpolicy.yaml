@@ -1,0 +1,238 @@
+{{- if and (.Values.networkPolicy.enabled) (eq .Values.networkPolicy.flavor "cilium") }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-namespace-only
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  endpointSelector: {}
+  egress:
+  - toEndpoints:
+    - {}
+  ingress:
+  - fromEndpoints:
+    - {}
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-dns
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  egress:
+  - toPorts:
+    - ports:
+      - port: dns
+        protocol: UDP
+    toEndpoints:
+    - namespaceSelector: {}
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-ingress
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+        {{- if .Values.gateway.enabled }}
+          - gateway
+        {{- else }}
+          - read
+          - write
+        {{- end }}
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  ingress:
+  - toPorts:
+    - ports: 
+      - port: http
+        protocol: TCP
+  {{- if .Values.networkPolicy.ingress.namespaceSelector }}
+    fromEndpoints:
+    - matchLabels:
+        {{- toYaml .Values.networkPolicy.ingress.namespaceSelector | nindent 8 }}
+        {{- if .Values.networkPolicy.ingress.podSelector }}
+        {{- toYaml .Values.networkPolicy.ingress.podSelector | nindent 8 }}
+        {{- end }}
+  {{- end }}
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-ingress-metrics
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  ingress:
+  - toPorts:
+    - ports: 
+      - port: http-metrics
+        protocol: TCP
+  {{- if .Values.networkPolicy.metrics.cidrs }}
+    {{- range $cidr := .Values.networkPolicy.metrics.cidrs }}
+    toCIDR:
+    - {{ $cidr }}
+    {{- end }}
+    {{- if .Values.networkPolicy.metrics.namespaceSelector }}
+    fromEndpoints:
+    - matchLabels:
+        {{- toYaml .Values.networkPolicy.metrics.namespaceSelector | nindent 8 }}
+        {{- if .Values.networkPolicy.metrics.podSelector }}
+        {{- toYaml .Values.networkPolicy.metrics.podSelector | nindent 8 }}
+        {{- end }}
+    {{- end }}
+  {{- end }}
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-alertmanager
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+  egress:
+  - toPorts:
+    - ports: 
+      - port: "{{ .Values.networkPolicy.alertmanager.port }}"
+        protocol: TCP
+  {{- if .Values.networkPolicy.alertmanager.namespaceSelector }}
+    toEndpoints:
+    - matchLabels:
+        {{- toYaml .Values.networkPolicy.alertmanager.namespaceSelector | nindent 8 }}
+        {{- if .Values.networkPolicy.alertmanager.podSelector }}
+        {{- toYaml .Values.networkPolicy.alertmanager.podSelector | nindent 8 }}
+        {{- end }}
+  {{- end }}
+
+{{- if .Values.networkPolicy.externalStorage.ports }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-external-storage
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  egress:
+  - toPorts:
+    - ports:
+      {{- range $port := .Values.networkPolicy.externalStorage.ports }} 
+      - port: "{{ $port }}"
+        protocol: TCP
+      {{- end }}
+  {{- if .Values.networkPolicy.externalStorage.cidrs }}
+    {{- range $cidr := .Values.networkPolicy.externalStorage.cidrs }}
+    toCIDR:
+    - {{ $cidr }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- if .Values.networkPolicy.egressWorld.enabled }}
+{{- $global := . }}
+{{- $componentsList := list "read" "write" "backend" }}
+{{- if .Values.tableManager.enabled }}
+{{- $componentsList = append $componentsList "table-manager" }}
+{{- end }}
+{{- range $component := $componentsList }}
+{{- with $global }}
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-{{ $component }}-world-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- if eq $component "read" }}
+      {{- include "loki.readSelectorLabels" . | nindent 6 }}
+      {{- else if eq $component "write" }}
+      {{- include "loki.writeSelectorLabels" . | nindent 6 }}
+      {{- else if eq $component "table-manager" }}
+      {{- include "loki.tableManagerSelectorLabels" . | nindent 6 }}
+      {{- else }}
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+      {{- end }}
+  egress:
+  - toEntities:
+    - world
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.networkPolicy.egressKubeApiserver.enabled }}
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-backend-kubeapiserver-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
+  egress:
+  - toEntities:
+    - kube-apiserver
+{{- end }}
+
+{{- end }}
+
+{{- if and .Values.networkPolicy.discovery.port (eq .Values.networkPolicy.flavor "cilium") }}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: {{ include "loki.name" . }}-egress-discovery
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+spec:
+  endpointSelector:
+    matchLabels:
+      {{- include "loki.selectorLabels" . | nindent 6 }}
+  egress:
+  - toPorts:
+    - ports: 
+      - port: "{{ .Values.networkPolicy.discovery.port }}"
+        protocol: TCP
+  {{- if .Values.networkPolicy.discovery.namespaceSelector }}
+    toEndpoints:
+    - matchLabels:
+        {{- toYaml .Values.networkPolicy.discovery.namespaceSelector | nindent 8 }}
+        {{- if .Values.networkPolicy.discovery.podSelector }}
+        {{- toYaml .Values.networkPolicy.discovery.podSelector | nindent 8 }}
+        {{- end }}
+  {{- end }}
+{{- end }}

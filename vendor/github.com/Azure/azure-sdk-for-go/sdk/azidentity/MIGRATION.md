@@ -1,6 +1,6 @@
 # Migrating from autorest/adal to azidentity
 
-`azidentity` provides Azure Active Directory (Azure AD) authentication for the newest Azure SDK modules (`github.com/azure-sdk-for-go/sdk/...`). Older Azure SDK packages (`github.com/azure-sdk-for-go/services/...`) use types from `github.com/go-autorest/autorest/adal` instead.
+`azidentity` provides Microsoft Entra ID ([formerly Azure Active Directory](https://learn.microsoft.com/entra/fundamentals/new-name)) authentication for the newest Azure SDK modules (`github.com/azure-sdk-for-go/sdk/...`). Older Azure SDK packages (`github.com/azure-sdk-for-go/services/...`) use types from `github.com/go-autorest/autorest/adal` instead.
 
 This guide shows common authentication code using `autorest/adal` and its equivalent using `azidentity`.
 
@@ -18,7 +18,7 @@ This guide shows common authentication code using `autorest/adal` and its equiva
 
 ### `autorest/adal`
 
-Token providers require a token audience (resource identifier) and an instance of `adal.OAuthConfig`, which requires an Azure AD endpoint and tenant:
+Token providers require a token audience (resource identifier) and an instance of `adal.OAuthConfig`, which requires a Microsoft Entra endpoint and tenant:
 
 ```go
 import "github.com/Azure/go-autorest/autorest/adal"
@@ -284,7 +284,7 @@ if err == nil {
 }
 ```
 
-Note that `azidentity` credentials use the Azure AD v2.0 endpoint, which requires OAuth 2 scopes instead of the resource identifiers `autorest/adal` expects. For more information, see [Azure AD documentation](https://docs.microsoft.com/azure/active-directory/develop/v2-permissions-and-consent).
+Note that `azidentity` credentials use the Microsoft Entra endpoint, which requires OAuth 2 scopes instead of the resource identifiers `autorest/adal` expects. For more information, see [Microsoft Entra ID documentation](https://learn.microsoft.com/entra/identity-platform/permissions-consent-overview).
 
 ## Use azidentity credentials with older packages
 

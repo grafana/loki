@@ -26,70 +26,98 @@
 package googledirectpath
 
 import (
+	"encoding/json"
 	"fmt"
+	rand "math/rand/v2"
 	"net/url"
+	"sync"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/google"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/googlecloud"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
-	"google.golang.org/grpc/internal/grpcrand"
+	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/resolver"
-	_ "google.golang.org/grpc/xds" // To register xds resolvers and balancers.
-	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
-	"google.golang.org/protobuf/types/known/structpb"
 
-	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
+	_ "google.golang.org/grpc/xds" // To register xds resolvers and balancers.
 )
 
 const (
-	c2pScheme             = "google-c2p"
-	c2pExperimentalScheme = "google-c2p-experimental"
-	c2pAuthority          = "traffic-director-c2p.xds.googleapis.com"
+	c2pScheme    = "google-c2p"
+	c2pAuthority = "traffic-director-c2p.xds.googleapis.com"
 
-	tdURL          = "dns:///directpath-pa.googleapis.com"
-	httpReqTimeout = 10 * time.Second
-	zoneURL        = "http://metadata.google.internal/computeMetadata/v1/instance/zone"
-	ipv6URL        = "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ipv6s"
+	defaultUniverseDomain   = "googleapis.com"
+	zoneURL                 = "http://metadata.google.internal/computeMetadata/v1/instance/zone"
+	ipv6URL                 = "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ipv6s"
+	ipv6CapableMetadataName = "TRAFFICDIRECTOR_DIRECTPATH_C2P_IPV6_CAPABLE"
+	httpReqTimeout          = 10 * time.Second
 
-	gRPCUserAgentName               = "gRPC Go"
-	clientFeatureNoOverprovisioning = "envoy.lb.does_not_support_overprovisioning"
-	ipv6CapableMetadataName         = "TRAFFICDIRECTOR_DIRECTPATH_C2P_IPV6_CAPABLE"
-
-	logPrefix = "[google-c2p-resolver]"
-
+	logPrefix        = "[google-c2p-resolver]"
 	dnsName, xdsName = "dns", "xds"
 )
 
-// For overriding in unittests.
 var (
-	onGCE = googlecloud.OnGCE
-
-	newClientWithConfig = func(config *bootstrap.Config) (xdsclient.XDSClient, func(), error) {
-		return xdsclient.NewWithConfig(config)
-	}
-
-	logger = internalgrpclog.NewPrefixLogger(grpclog.Component("directpath"), logPrefix)
+	logger           = internalgrpclog.NewPrefixLogger(grpclog.Component("directpath"), logPrefix)
+	universeDomainMu sync.Mutex
+	universeDomain   = ""
+	// For overriding in unittests.
+	onGCE   = googlecloud.OnGCE
+	randInt = rand.Int
 )
 
 func init() {
-	resolver.Register(c2pResolverBuilder{
-		scheme: c2pScheme,
-	})
-	// TODO(apolcyn): remove this experimental scheme before the 1.52 release
-	resolver.Register(c2pResolverBuilder{
-		scheme: c2pExperimentalScheme,
-	})
+	resolver.Register(c2pResolverBuilder{})
 }
 
-type c2pResolverBuilder struct {
-	scheme string
+// SetUniverseDomain informs the gRPC library of the universe domain
+// in which the process is running (for example, "googleapis.com").
+// It is the caller's responsibility to ensure that the domain is correct.
+//
+// This setting is used by the "google-c2p" resolver (the resolver used
+// for URIs with the "google-c2p" scheme) to configure its dependencies.
+//
+// If a gRPC channel is created with the "google-c2p" URI scheme and this
+// function has NOT been called, then gRPC configures the universe domain as
+// "googleapis.com".
+//
+// Returns nil if either:
+//
+//	a) The universe domain has not yet been configured.
+//	b) The universe domain has been configured and matches the provided value.
+//
+// Otherwise, returns an error.
+func SetUniverseDomain(domain string) error {
+	universeDomainMu.Lock()
+	defer universeDomainMu.Unlock()
+	if domain == "" {
+		return fmt.Errorf("universe domain cannot be empty")
+	}
+	if universeDomain == "" {
+		universeDomain = domain
+		return nil
+	}
+	if universeDomain != domain {
+		return fmt.Errorf("universe domain cannot be set to %s, already set to different value: %s", domain, universeDomain)
+	}
+	return nil
 }
+
+func getXdsServerURI() string {
+	universeDomainMu.Lock()
+	defer universeDomainMu.Unlock()
+	if universeDomain == "" {
+		universeDomain = defaultUniverseDomain
+	}
+	// Put env var override logic after default value logic so
+	// that tests still run the default value logic.
+	if envconfig.C2PResolverTestOnlyTrafficDirectorURI != "" {
+		return envconfig.C2PResolverTestOnlyTrafficDirectorURI
+	}
+	return fmt.Sprintf("dns:///directpath-pa.%s", universeDomain)
+}
+
+type c2pResolverBuilder struct{}
 
 func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts resolver.BuildOptions) (resolver.Resolver, error) {
 	if t.URL.Host != "" {
@@ -98,7 +126,6 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 
 	if !runDirectPath() {
 		// If not xDS, fallback to DNS.
-		t.Scheme = dnsName
 		t.URL.Scheme = dnsName
 		return resolver.Get(dnsName).Build(t, cc, opts)
 	}
@@ -113,103 +140,67 @@ func (c2pResolverBuilder) Build(t resolver.Target, cc resolver.ClientConn, opts 
 	go func() { zoneCh <- getZone(httpReqTimeout) }()
 	go func() { ipv6CapableCh <- getIPv6Capable(httpReqTimeout) }()
 
-	balancerName := envconfig.C2PResolverTestOnlyTrafficDirectorURI
-	if balancerName == "" {
-		balancerName = tdURL
+	xdsServerURI := getXdsServerURI()
+	nodeCfg := newNodeConfig(<-zoneCh, <-ipv6CapableCh)
+	xdsServerCfg := newXdsServerConfig(xdsServerURI)
+	authoritiesCfg := newAuthoritiesConfig(xdsServerCfg)
+
+	cfg := map[string]any{
+		"xds_servers": []any{xdsServerCfg},
+		"client_default_listener_resource_name_template": "%s",
+		"authorities": authoritiesCfg,
+		"node":        nodeCfg,
 	}
-	serverConfig := &bootstrap.ServerConfig{
-		ServerURI:    balancerName,
-		Creds:        grpc.WithCredentialsBundle(google.NewDefaultCredentials()),
-		TransportAPI: version.TransportV3,
-		NodeProto:    newNode(<-zoneCh, <-ipv6CapableCh),
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal bootstrap configuration: %v", err)
 	}
-	config := &bootstrap.Config{
-		XDSServer: serverConfig,
-		ClientDefaultListenerResourceNameTemplate: "%s",
-		Authorities: map[string]*bootstrap.Authority{
-			c2pAuthority: {
-				XDSServer: serverConfig,
-			},
+	if err := bootstrap.SetFallbackBootstrapConfig(cfgJSON); err != nil {
+		return nil, fmt.Errorf("failed to set fallback bootstrap configuration: %v", err)
+	}
+
+	t = resolver.Target{
+		URL: url.URL{
+			Scheme: xdsName,
+			Host:   c2pAuthority,
+			Path:   t.URL.Path,
 		},
 	}
-
-	// Create singleton xds client with this config. The xds client will be
-	// used by the xds resolver later.
-	_, close, err := newClientWithConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to start xDS client: %v", err)
-	}
-
-	// Create and return an xDS resolver.
-	t.Scheme = xdsName
-	t.URL.Scheme = xdsName
-	if envconfig.XDSFederation {
-		t = resolver.Target{
-			URL: url.URL{
-				Scheme: xdsName,
-				Host:   c2pAuthority,
-				Path:   t.URL.Path,
-			},
-		}
-	}
-	xdsR, err := resolver.Get(xdsName).Build(t, cc, opts)
-	if err != nil {
-		close()
-		return nil, err
-	}
-	return &c2pResolver{
-		Resolver:        xdsR,
-		clientCloseFunc: close,
-	}, nil
+	return resolver.Get(xdsName).Build(t, cc, opts)
 }
 
 func (b c2pResolverBuilder) Scheme() string {
-	return b.scheme
+	return c2pScheme
 }
 
-type c2pResolver struct {
-	resolver.Resolver
-	clientCloseFunc func()
-}
-
-func (r *c2pResolver) Close() {
-	r.Resolver.Close()
-	r.clientCloseFunc()
-}
-
-var ipv6EnabledMetadata = &structpb.Struct{
-	Fields: map[string]*structpb.Value{
-		ipv6CapableMetadataName: structpb.NewBoolValue(true),
-	},
-}
-
-var id = fmt.Sprintf("C2P-%d", grpcrand.Int())
-
-// newNode makes a copy of defaultNode, and populate it's Metadata and
-// Locality fields.
-func newNode(zone string, ipv6Capable bool) *v3corepb.Node {
-	ret := &v3corepb.Node{
-		// Not all required fields are set in defaultNote. Metadata will be set
-		// if ipv6 is enabled. Locality will be set to the value from metadata.
-		Id:                   id,
-		UserAgentName:        gRPCUserAgentName,
-		UserAgentVersionType: &v3corepb.Node_UserAgentVersion{UserAgentVersion: grpc.Version},
-		ClientFeatures:       []string{clientFeatureNoOverprovisioning},
+func newNodeConfig(zone string, ipv6Capable bool) map[string]any {
+	node := map[string]any{
+		"id":       fmt.Sprintf("C2P-%d", randInt()),
+		"locality": map[string]any{"zone": zone},
 	}
-	ret.Locality = &v3corepb.Locality{Zone: zone}
 	if ipv6Capable {
-		ret.Metadata = ipv6EnabledMetadata
+		node["metadata"] = map[string]any{ipv6CapableMetadataName: true}
 	}
-	return ret
+	return node
+}
+
+func newAuthoritiesConfig(serverCfg map[string]any) map[string]any {
+	return map[string]any{
+		c2pAuthority: map[string]any{"xds_servers": []any{serverCfg}},
+	}
+}
+
+func newXdsServerConfig(uri string) map[string]any {
+	return map[string]any{
+		"server_uri":      uri,
+		"channel_creds":   []map[string]any{{"type": "google_default"}},
+		"server_features": []any{"ignore_resource_deletion"},
+	}
 }
 
 // runDirectPath returns whether this resolver should use direct path.
 //
-// direct path is enabled if this client is running on GCE, and the normal xDS
-// is not used (bootstrap env vars are not set) or federation is enabled.
+// direct path is enabled if this client is running on GCE.
 func runDirectPath() bool {
-	if !onGCE() {
-		return false
-	}
-	return envconfig.XDSFederation || envconfig.XDSBootstrapFileName == "" && envconfig.XDSBootstrapFileContent == ""
+	return onGCE()
 }

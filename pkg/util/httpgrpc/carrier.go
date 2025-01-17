@@ -3,7 +3,14 @@ package httpgrpc
 import (
 	weaveworks_httpgrpc "github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 )
+
+type Request interface {
+	GetQueryRequest() *queryrange.QueryRequest
+	GetHttpRequest() *weaveworks_httpgrpc.HTTPRequest
+}
 
 // Used to transfer trace information from/to HTTP request.
 type HeadersCarrier weaveworks_httpgrpc.HTTPRequest
@@ -26,15 +33,32 @@ func (c *HeadersCarrier) ForeachKey(handler func(key, val string) error) error {
 	return nil
 }
 
-func GetParentSpanForRequest(tracer opentracing.Tracer, req *weaveworks_httpgrpc.HTTPRequest) (opentracing.SpanContext, error) {
+func GetParentSpanForHTTPRequest(tracer opentracing.Tracer, req *weaveworks_httpgrpc.HTTPRequest) (opentracing.SpanContext, error) {
 	if tracer == nil {
 		return nil, nil
 	}
 
 	carrier := (*HeadersCarrier)(req)
-	extracted, err := tracer.Extract(opentracing.HTTPHeaders, carrier)
-	if err == opentracing.ErrSpanContextNotFound {
-		err = nil
+	return tracer.Extract(opentracing.HTTPHeaders, carrier)
+}
+
+func GetParentSpanForQueryRequest(tracer opentracing.Tracer, req *queryrange.QueryRequest) (opentracing.SpanContext, error) {
+	if tracer == nil {
+		return nil, nil
 	}
-	return extracted, err
+
+	carrier := opentracing.TextMapCarrier(req.Metadata)
+	return tracer.Extract(opentracing.TextMap, carrier)
+}
+
+func GetParentSpanForRequest(tracer opentracing.Tracer, req Request) (opentracing.SpanContext, error) {
+	if r := req.GetQueryRequest(); r != nil {
+		return GetParentSpanForQueryRequest(tracer, r)
+	}
+
+	if r := req.GetHttpRequest(); r != nil {
+		return GetParentSpanForHTTPRequest(tracer, r)
+	}
+
+	return nil, nil
 }

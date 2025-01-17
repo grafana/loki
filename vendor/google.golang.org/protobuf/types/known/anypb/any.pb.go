@@ -210,10 +210,7 @@ import (
 //	  "value": "1.212s"
 //	}
 type Any struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// A URL/resource name that uniquely identifies the type of the serialized
 	// protocol buffer message. This string must contain at least
 	// one "/" character. The last segment of the URL's path must represent
@@ -237,13 +234,16 @@ type Any struct {
 	//
 	// Note: this functionality is not currently available in the official
 	// protobuf release, and it is not used for type URLs beginning with
-	// type.googleapis.com.
+	// type.googleapis.com. As of May 2023, there are no widely used type server
+	// implementations and no plans to implement one.
 	//
 	// Schemes other than `http`, `https` (or the empty scheme) might be
 	// used with implementation specific semantics.
 	TypeUrl string `protobuf:"bytes,1,opt,name=type_url,json=typeUrl,proto3" json:"type_url,omitempty"`
 	// Must be a valid serialized protocol buffer of the above specified type.
-	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	Value         []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 // New marshals src into a new Any instance.
@@ -367,11 +367,9 @@ func (x *Any) UnmarshalNew() (proto.Message, error) {
 
 func (x *Any) Reset() {
 	*x = Any{}
-	if protoimpl.UnsafeEnabled {
-		mi := &file_google_protobuf_any_proto_msgTypes[0]
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		ms.StoreMessageInfo(mi)
-	}
+	mi := &file_google_protobuf_any_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
 }
 
 func (x *Any) String() string {
@@ -382,7 +380,7 @@ func (*Any) ProtoMessage() {}
 
 func (x *Any) ProtoReflect() protoreflect.Message {
 	mi := &file_google_protobuf_any_proto_msgTypes[0]
-	if protoimpl.UnsafeEnabled && x != nil {
+	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
 			ms.StoreMessageInfo(mi)
@@ -444,7 +442,7 @@ func file_google_protobuf_any_proto_rawDescGZIP() []byte {
 }
 
 var file_google_protobuf_any_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
-var file_google_protobuf_any_proto_goTypes = []interface{}{
+var file_google_protobuf_any_proto_goTypes = []any{
 	(*Any)(nil), // 0: google.protobuf.Any
 }
 var file_google_protobuf_any_proto_depIdxs = []int32{
@@ -459,20 +457,6 @@ func init() { file_google_protobuf_any_proto_init() }
 func file_google_protobuf_any_proto_init() {
 	if File_google_protobuf_any_proto != nil {
 		return
-	}
-	if !protoimpl.UnsafeEnabled {
-		file_google_protobuf_any_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Any); i {
-			case 0:
-				return &v.state
-			case 1:
-				return &v.sizeCache
-			case 2:
-				return &v.unknownFields
-			default:
-				return nil
-			}
-		}
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

@@ -1,7 +1,6 @@
 package promtail
 
 import (
-	"crypto/md5"
 	"errors"
 	"fmt"
 	"os"
@@ -10,21 +9,23 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/sha3"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/config"
-	"github.com/grafana/loki/clients/pkg/promtail/server"
-	"github.com/grafana/loki/clients/pkg/promtail/targets"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
-	"github.com/grafana/loki/clients/pkg/promtail/utils"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/config"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/server"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/utils"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/wal"
 
-	util_log "github.com/grafana/loki/pkg/util/log"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const (
@@ -130,7 +131,8 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		return errConfigNotChange
 	}
 	newConf := cfg.String()
-	level.Info(p.logger).Log("msg", "Reloading configuration file", "md5sum", fmt.Sprintf("%x", md5.Sum([]byte(newConf))))
+	hash := sha3.Sum256([]byte(newConf))
+	level.Info(p.logger).Log("msg", "Reloading configuration file", "sha3sum", fmt.Sprintf("%x", hash))
 	if p.targetManagers != nil {
 		p.targetManagers.Stop()
 	}
@@ -184,7 +186,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	entryHandlers = append(entryHandlers, p.client)
 	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig, cfg.Global.FileWatch)
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig, cfg.Global.FileWatch, &cfg.LimitsConfig)
 	if err != nil {
 		return err
 	}
@@ -255,25 +257,29 @@ func (p *Promtail) watchConfig() {
 		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail newConfig func is Empty")
 		return
 	}
-	promtailServer, ok := p.server.(*server.PromtailServer)
-	if !ok {
-		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "promtailServer cast fail")
+	switch srv := p.server.(type) {
+	case *server.NoopServer:
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail server is disabled")
 		return
-	}
-	level.Warn(p.logger).Log("msg", "enable watchConfig")
-	hup := make(chan os.Signal, 1)
-	signal.Notify(hup, syscall.SIGHUP)
-	for {
-		select {
-		case <-hup:
-			_ = p.reload()
-		case rc := <-promtailServer.Reload():
-			if err := p.reload(); err != nil {
-				rc <- err
-			} else {
-				rc <- nil
+	case *server.PromtailServer:
+		level.Warn(p.logger).Log("msg", "enable watchConfig")
+		hup := make(chan os.Signal, 1)
+		signal.Notify(hup, syscall.SIGHUP)
+		for {
+			select {
+			case <-hup:
+				_ = p.reload()
+			case rc := <-srv.Reload():
+				if err := p.reload(); err != nil {
+					rc <- err
+				} else {
+					rc <- nil
+				}
 			}
 		}
+	default:
+		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Unknown Promtail server type")
+		return
 	}
 }
 

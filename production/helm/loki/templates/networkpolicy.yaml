@@ -1,4 +1,4 @@
-{{- if .Values.networkPolicy.enabled }}
+{{- if and (.Values.networkPolicy.enabled) (eq .Values.networkPolicy.flavor "kubernetes") }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -66,7 +66,7 @@ spec:
       {{- include "loki.selectorLabels" . | nindent 6 }}
   ingress:
     - ports:
-        - port: http
+        - port: http-metrics
           protocol: TCP
   {{- if .Values.networkPolicy.ingress.namespaceSelector }}
       from:
@@ -112,7 +112,6 @@ spec:
       {{- end }}
     {{- end }}
 
-{{- if .Values.ruler.enabled }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -126,7 +125,7 @@ spec:
     - Egress
   podSelector:
     matchLabels:
-      {{- include "loki.rulerSelectorLabels" . | nindent 6 }}
+      {{- include "loki.backendSelectorLabels" . | nindent 6 }}
   egress:
     - ports:
         - port: {{ .Values.networkPolicy.alertmanager.port }}
@@ -140,7 +139,6 @@ spec:
           {{- toYaml .Values.networkPolicy.alertmanager.podSelector | nindent 12 }}
           {{- end }}
   {{- end }}
-{{- end }}
 
 {{- if .Values.networkPolicy.externalStorage.ports }}
 ---
@@ -174,7 +172,7 @@ spec:
 
 {{- end }}
 
-{{- if .Values.networkPolicy.discovery.port }}
+{{- if and .Values.networkPolicy.discovery.port (eq .Values.networkPolicy.flavor "kubernetes") }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

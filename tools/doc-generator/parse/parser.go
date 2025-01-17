@@ -22,10 +22,10 @@ import (
 	prometheus_config "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/pkg/ruler/util"
-	storage_config "github.com/grafana/loki/pkg/storage/config"
-	util_validation "github.com/grafana/loki/pkg/util/validation"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/ruler/util"
+	storage_config "github.com/grafana/loki/v3/pkg/storage/config"
+	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -301,6 +301,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 				Required:     isFieldRequired(field),
 				FieldDesc:    getFieldDescription(cfg, field, ""),
 				FieldType:    fieldType,
+				FieldDefault: getFieldDefault(field, ""),
 				FieldExample: getFieldExample(fieldName, field.Type),
 				Element:      element,
 			})
@@ -461,6 +462,8 @@ func getCustomFieldType(t reflect.Type) (string, bool) {
 		return "remote_write_config...", true
 	case reflect.TypeOf(validation.OverwriteMarshalingStringMap{}).String():
 		return "headers", true
+	case reflect.TypeOf(relabel.Regexp{}).String():
+		return fieldString, true
 	default:
 		return "", false
 	}

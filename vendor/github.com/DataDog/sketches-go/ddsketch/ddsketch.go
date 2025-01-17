@@ -173,7 +173,13 @@ func (s *DDSketch) GetValueAtQuantile(quantile float64) (float64, error) {
 		return math.NaN(), errEmptySketch
 	}
 
-	rank := quantile * (count - 1)
+	// Use an explicit floating point conversion (as per Go specification) to make sure that no
+	// "fused multiply and add" (FMA) operation is used in the following code subtracting values
+	// from `rank`. Not doing so can lead to inconsistent rounding and return value for this
+	// function, depending on the architecture and whether FMA operations are used or not by the
+	// compiler.
+	rank := float64(quantile * (count - 1))
+
 	negativeValueCount := s.negativeValueStore.TotalCount()
 	if rank < negativeValueCount {
 		return -s.Value(s.negativeValueStore.KeyAtRank(negativeValueCount - 1 - rank)), nil
@@ -262,13 +268,13 @@ func (s *DDSketch) GetSum() (sum float64) {
 
 // GetPositiveValueStore returns the store.Store object that contains the positive
 // values of the sketch.
-func (s *DDSketch) GetPositiveValueStore() (store.Store) {
+func (s *DDSketch) GetPositiveValueStore() store.Store {
 	return s.positiveValueStore
 }
 
 // GetNegativeValueStore returns the store.Store object that contains the negative
 // values of the sketch.
-func (s *DDSketch) GetNegativeValueStore() (store.Store) {
+func (s *DDSketch) GetNegativeValueStore() store.Store {
 	return s.negativeValueStore
 }
 
@@ -320,9 +326,13 @@ func FromProto(pb *sketchpb.DDSketch) (*DDSketch, error) {
 
 func FromProtoWithStoreProvider(pb *sketchpb.DDSketch, storeProvider store.Provider) (*DDSketch, error) {
 	positiveValueStore := storeProvider()
-	store.MergeWithProto(positiveValueStore, pb.PositiveValues)
+	if pb.PositiveValues != nil {
+		store.MergeWithProto(positiveValueStore, pb.PositiveValues)
+	}
 	negativeValueStore := storeProvider()
-	store.MergeWithProto(negativeValueStore, pb.NegativeValues)
+	if pb.NegativeValues != nil {
+		store.MergeWithProto(negativeValueStore, pb.NegativeValues)
+	}
 	m, err := mapping.FromProto(pb.Mapping)
 	if err != nil {
 		return nil, err
@@ -559,13 +569,13 @@ func (s *DDSketchWithExactSummaryStatistics) GetSum() float64 {
 
 // GetPositiveValueStore returns the store.Store object that contains the positive
 // values of the sketch.
-func (s *DDSketchWithExactSummaryStatistics) GetPositiveValueStore() (store.Store) {
+func (s *DDSketchWithExactSummaryStatistics) GetPositiveValueStore() store.Store {
 	return s.DDSketch.positiveValueStore
 }
 
 // GetNegativeValueStore returns the store.Store object that contains the negative
 // values of the sketch.
-func (s *DDSketchWithExactSummaryStatistics) GetNegativeValueStore() (store.Store) {
+func (s *DDSketchWithExactSummaryStatistics) GetNegativeValueStore() store.Store {
 	return s.DDSketch.negativeValueStore
 }
 

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -16,54 +17,102 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/grafana/loki/pkg/ruler/rulespb"
+	"github.com/grafana/loki/v3/pkg/ruler/rulespb"
 )
 
-func TestRuler_rules(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+func TestRuler_PrometheusRules(t *testing.T) {
+	const (
+		userID   = "user1"
+		interval = time.Minute
+	)
 
-	r := newTestRuler(t, cfg)
-	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+	groupName := func(group int) string {
+		return fmt.Sprintf("group%d+", group)
+	}
 
-	a := NewAPI(r, r.store, log.NewNopLogger())
+	namespaceName := func(ns int) string {
+		return fmt.Sprintf("namespace%d+", ns)
+	}
 
-	req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
-	w := httptest.NewRecorder()
-	a.PrometheusRules(w, req)
+	makeFilterTestRules := func() rulespb.RuleGroupList {
+		result := rulespb.RuleGroupList{}
+		for ns := 1; ns <= 3; ns++ {
+			for group := 1; group <= 3; group++ {
+				g := &rulespb.RuleGroupDesc{
+					Name:      groupName(group),
+					Namespace: namespaceName(ns),
+					User:      userID,
+					Rules: []*rulespb.RuleDesc{
+						createRecordingRule("NonUniqueNamedRule", `count_over_time({foo="bar"}[5m])`),
+						createAlertingRule(fmt.Sprintf("UniqueNamedRuleN%dG%d", ns, group), `count_over_time({foo="bar"}[5m]) < 1`),
+					},
+					Interval: interval,
+				}
+				result = append(result, g)
+			}
+		}
+		return result
+	}
 
-	resp := w.Result()
-	body, _ := io.ReadAll(resp.Body)
+	filterTestExpectedRule := func(name string) *recordingRule {
+		return &recordingRule{
+			Name:   name,
+			Query:  `count_over_time({foo="bar"}[5m])`,
+			Health: "unknown",
+			Type:   "recording",
+		}
+	}
+	filterTestExpectedAlert := func(name string) *alertingRule {
+		return &alertingRule{
+			Name:   name,
+			Query:  `count_over_time({foo="bar"}[5m]) < 1`,
+			State:  "inactive",
+			Health: "unknown",
+			Type:   "alerting",
+			Alerts: []*Alert{},
+		}
+	}
 
-	// Check status code and status response
-	responseJSON := response{}
-	err := json.Unmarshal(body, &responseJSON)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, responseJSON.Status, "success")
-
-	// Testing the running rules for user1 in the mock store
-	expectedResponse, _ := json.Marshal(response{
-		Status: "success",
-		Data: &RuleDiscovery{
-			RuleGroups: []*RuleGroup{
+	testCases := map[string]struct {
+		configuredRules    rulespb.RuleGroupList
+		expectedConfigured int
+		expectedStatusCode int
+		expectedErrorType  v1.ErrorType
+		expectedRules      []*RuleGroup
+		queryParams        string
+	}{
+		"should load and evaluate the configured rules": {
+			configuredRules: rulespb.RuleGroupList{
+				&rulespb.RuleGroupDesc{
+					Name:      "group1",
+					Namespace: "namespace1",
+					User:      userID,
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Interval:  interval,
+				},
+			},
+			expectedConfigured: 1,
+			expectedRules: []*RuleGroup{
 				{
 					Name: "group1",
 					File: "namespace1",
 					Rules: []rule{
 						&recordingRule{
-							Name:   "UP_RULE",
-							Query:  "up",
+							Name:   "COUNT_RULE",
+							Query:  `count_over_time({foo="bar"}[5m])`,
 							Health: "unknown",
 							Type:   "recording",
 						},
 						&alertingRule{
-							Name:   "UP_ALERT",
-							Query:  "up < 1",
+							Name:   "COUNT_ALERT",
+							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
 							State:  "inactive",
 							Health: "unknown",
 							Type:   "alerting",
@@ -71,55 +120,34 @@ func TestRuler_rules(t *testing.T) {
 						},
 					},
 					Interval: 60,
-					Limit:    10,
 				},
 			},
 		},
-	})
-
-	require.Equal(t, string(expectedResponse), string(body))
-}
-
-func TestRuler_rules_special_characters(t *testing.T) {
-	cfg := defaultRulerConfig(t, newMockRuleStore(mockSpecialCharRules))
-
-	r := newTestRuler(t, cfg)
-	defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
-
-	a := NewAPI(r, r.store, log.NewNopLogger())
-
-	req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules", nil, "user1")
-	w := httptest.NewRecorder()
-	a.PrometheusRules(w, req)
-
-	resp := w.Result()
-	body, _ := io.ReadAll(resp.Body)
-
-	// Check status code and status response
-	responseJSON := response{}
-	err := json.Unmarshal(body, &responseJSON)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	require.Equal(t, responseJSON.Status, "success")
-
-	// Testing the running rules for user1 in the mock store
-	expectedResponse, _ := json.Marshal(response{
-		Status: "success",
-		Data: &RuleDiscovery{
-			RuleGroups: []*RuleGroup{
+		"should load and evaluate rule groups and namespaces with special characters": {
+			configuredRules: rulespb.RuleGroupList{
+				&rulespb.RuleGroupDesc{
+					Name:      ")(_+?/|group1+/?",
+					Namespace: ")(_+?/|namespace1+/?",
+					User:      userID,
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Interval:  interval,
+				},
+			},
+			expectedConfigured: 1,
+			expectedRules: []*RuleGroup{
 				{
 					Name: ")(_+?/|group1+/?",
 					File: ")(_+?/|namespace1+/?",
 					Rules: []rule{
 						&recordingRule{
-							Name:   "UP_RULE",
-							Query:  "up",
+							Name:   "COUNT_RULE",
+							Query:  `count_over_time({foo="bar"}[5m])`,
 							Health: "unknown",
 							Type:   "recording",
 						},
 						&alertingRule{
-							Name:   "UP_ALERT",
-							Query:  "up < 1",
+							Name:   "COUNT_ALERT",
+							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
 							State:  "inactive",
 							Health: "unknown",
 							Type:   "alerting",
@@ -127,16 +155,407 @@ func TestRuler_rules_special_characters(t *testing.T) {
 						},
 					},
 					Interval: 60,
-					Limit:    10,
 				},
 			},
 		},
-	})
+		"API returns only alerts": {
+			configuredRules: rulespb.RuleGroupList{
+				&rulespb.RuleGroupDesc{
+					Name:      "group1",
+					Namespace: "namespace1",
+					User:      userID,
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Interval:  interval,
+				},
+			},
+			expectedConfigured: 1,
+			queryParams:        "?type=alert",
+			expectedRules: []*RuleGroup{
+				{
+					Name: "group1",
+					File: "namespace1",
+					Rules: []rule{
+						&alertingRule{
+							Name:   "COUNT_ALERT",
+							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
+							State:  "inactive",
+							Health: "unknown",
+							Type:   "alerting",
+							Alerts: []*Alert{},
+						},
+					},
+					Interval: 60,
+				},
+			},
+		},
+		"API returns only rules": {
+			configuredRules: rulespb.RuleGroupList{
+				&rulespb.RuleGroupDesc{
+					Name:      "group1",
+					Namespace: "namespace1",
+					User:      userID,
+					Rules:     []*rulespb.RuleDesc{createRecordingRule("COUNT_RULE", `count_over_time({foo="bar"}[5m])`), createAlertingRule("COUNT_ALERT", `count_over_time({foo="bar"}[5m]) < 1`)},
+					Interval:  interval,
+				},
+			},
+			expectedConfigured: 1,
+			queryParams:        "?type=record",
+			expectedRules: []*RuleGroup{
+				{
+					Name: "group1",
+					File: "namespace1",
+					Rules: []rule{
+						&recordingRule{
+							Name:   "COUNT_RULE",
+							Query:  `count_over_time({foo="bar"}[5m])`,
+							Health: "unknown",
+							Type:   "recording",
+						},
+					},
+					Interval: 60,
+				},
+			},
+		},
+		"Invalid type param": {
+			configuredRules:    rulespb.RuleGroupList{},
+			expectedConfigured: 0,
+			queryParams:        "?type=foo",
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorType:  v1.ErrBadData,
+			expectedRules:      []*RuleGroup{},
+		},
+		"when filtering by an unknown namespace then the API returns nothing": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?file=unknown",
+			expectedRules:      []*RuleGroup{},
+		},
+		"when filtering by a single known namespace then the API returns only rules from that namespace": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?" + url.Values{"file": []string{namespaceName(1)}}.Encode(),
+			expectedRules: []*RuleGroup{
+				{
+					Name: groupName(1),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G1"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(2),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(3),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G3"),
+					},
+					Interval: 60,
+				},
+			},
+		},
+		"when filtering by a multiple known namespaces then the API returns rules from both namespaces": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?" + url.Values{"file": []string{namespaceName(1), namespaceName(2)}}.Encode(),
+			expectedRules: []*RuleGroup{
+				{
+					Name: groupName(1),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G1"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(2),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(3),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G3"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(1),
+					File: namespaceName(2),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN2G1"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(2),
+					File: namespaceName(2),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN2G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(3),
+					File: namespaceName(2),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN2G3"),
+					},
+					Interval: 60,
+				},
+			},
+		},
+		"when filtering by an unknown group then the API returns nothing": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?rule_group=unknown",
+			expectedRules:      []*RuleGroup{},
+		},
+		"when filtering by a known group then the API returns only rules from that group": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?" + url.Values{"rule_group": []string{groupName(2)}}.Encode(),
+			expectedRules: []*RuleGroup{
+				{
+					Name: groupName(2),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(2),
+					File: namespaceName(2),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN2G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(2),
+					File: namespaceName(3),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN3G2"),
+					},
+					Interval: 60,
+				},
+			},
+		},
+		"when filtering by multiple known groups then the API returns rules from both groups": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?" + url.Values{"rule_group": []string{groupName(2), groupName(3)}}.Encode(),
+			expectedRules: []*RuleGroup{
+				{
+					Name: groupName(2),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(3),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN1G3"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(2),
+					File: namespaceName(2),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN2G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(3),
+					File: namespaceName(2),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN2G3"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(2),
+					File: namespaceName(3),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN3G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(3),
+					File: namespaceName(3),
+					Rules: []rule{
+						filterTestExpectedRule("NonUniqueNamedRule"),
+						filterTestExpectedAlert("UniqueNamedRuleN3G3"),
+					},
+					Interval: 60,
+				},
+			},
+		},
 
-	require.Equal(t, string(expectedResponse), string(body))
+		"when filtering by an unknown rule name then the API returns all empty groups": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?rule_name=unknown",
+			expectedRules:      []*RuleGroup{},
+		},
+		"when filtering by a known rule name then the API returns only rules with that name": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?" + url.Values{"rule_name": []string{"UniqueNamedRuleN1G2"}}.Encode(),
+			expectedRules: []*RuleGroup{
+				{
+					Name: groupName(2),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedAlert("UniqueNamedRuleN1G2"),
+					},
+					Interval: 60,
+				},
+			},
+		},
+		"when filtering by multiple known rule names then the API returns both rules": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams:        "?" + url.Values{"rule_name": []string{"UniqueNamedRuleN1G2", "UniqueNamedRuleN2G3"}}.Encode(),
+			expectedRules: []*RuleGroup{
+				{
+					Name: groupName(2),
+					File: namespaceName(1),
+					Rules: []rule{
+						filterTestExpectedAlert("UniqueNamedRuleN1G2"),
+					},
+					Interval: 60,
+				},
+				{
+					Name: groupName(3),
+					File: namespaceName(2),
+					Rules: []rule{
+						filterTestExpectedAlert("UniqueNamedRuleN2G3"),
+					},
+					Interval: 60,
+				},
+			},
+		},
+		"when filtering by a known namespace and group then the API returns only rules from that namespace and group": {
+			configuredRules:    makeFilterTestRules(),
+			expectedConfigured: len(makeFilterTestRules()),
+			queryParams: "?" + url.Values{
+				"file":       []string{namespaceName(3)},
+				"rule_group": []string{groupName(2)},
+			}.Encode(),
+			expectedRules: []*RuleGroup{
+				{
+					Name: groupName(2),
+					File: namespaceName(3),
+					Rules: []rule{
+						&recordingRule{
+							Name:   "NonUniqueNamedRule",
+							Query:  `count_over_time({foo="bar"}[5m])`,
+							Health: "unknown",
+							Type:   "recording",
+						},
+						&alertingRule{
+							Name:   "UniqueNamedRuleN3G2",
+							Query:  `count_over_time({foo="bar"}[5m]) < 1`,
+							State:  "inactive",
+							Health: "unknown",
+							Type:   "alerting",
+							Alerts: []*Alert{},
+						},
+					},
+					Interval: 60,
+				},
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			storageRules := map[string]rulespb.RuleGroupList{
+				userID: tc.configuredRules,
+			}
+			cfg := defaultRulerConfig(t, newMockRuleStore(storageRules))
+
+			r := newTestRuler(t, cfg)
+			defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+			a := NewAPI(r, r.store, log.NewNopLogger())
+
+			req := requestFor(t, "GET", "https://localhost:8080/api/prom/api/v1/rules"+tc.queryParams, nil, "user1")
+			w := httptest.NewRecorder()
+			a.PrometheusRules(w, req)
+
+			resp := w.Result()
+			if tc.expectedStatusCode != 0 {
+				require.Equal(t, tc.expectedStatusCode, resp.StatusCode)
+			} else {
+				require.Equal(t, http.StatusOK, resp.StatusCode)
+			}
+
+			body, _ := io.ReadAll(resp.Body)
+
+			// Check status code and status response
+			responseJSON := response{}
+			err := json.Unmarshal(body, &responseJSON)
+			require.NoError(t, err)
+
+			if tc.expectedErrorType != "" {
+				assert.Equal(t, "error", responseJSON.Status)
+				assert.Equal(t, tc.expectedErrorType, responseJSON.ErrorType)
+				return
+			}
+			require.Equal(t, responseJSON.Status, "success")
+
+			// Testing the running rules
+			expectedResponse, err := json.Marshal(response{
+				Status: "success",
+				Data: &RuleDiscovery{
+					RuleGroups: tc.expectedRules,
+				},
+			})
+
+			require.NoError(t, err)
+			require.Equal(t, string(expectedResponse), string(body))
+		})
+	}
 }
 
-func TestRuler_alerts(t *testing.T) {
+func TestRuler_PrometheusAlerts(t *testing.T) {
 	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
 
 	r := newTestRuler(t, cfg)
@@ -592,4 +1011,18 @@ func requestFor(t *testing.T, method string, url string, body io.Reader, userID 
 	ctx := user.InjectOrgID(req.Context(), userID)
 
 	return req.WithContext(ctx)
+}
+
+func createRecordingRule(record, expr string) *rulespb.RuleDesc {
+	return &rulespb.RuleDesc{
+		Record: record,
+		Expr:   expr,
+	}
+}
+
+func createAlertingRule(alert, expr string) *rulespb.RuleDesc {
+	return &rulespb.RuleDesc{
+		Alert: alert,
+		Expr:  expr,
+	}
 }

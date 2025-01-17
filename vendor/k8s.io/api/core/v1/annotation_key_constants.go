@@ -54,21 +54,18 @@ const (
 	// SeccompLocalhostProfileNamePrefix is the prefix for specifying profiles loaded from the node's disk.
 	SeccompLocalhostProfileNamePrefix = "localhost/"
 
-	// AppArmorBetaContainerAnnotationKeyPrefix is the prefix to an annotation key specifying a container's apparmor profile.
-	AppArmorBetaContainerAnnotationKeyPrefix = "container.apparmor.security.beta.kubernetes.io/"
-	// AppArmorBetaDefaultProfileAnnotatoinKey is the annotation key specifying the default AppArmor profile.
-	AppArmorBetaDefaultProfileAnnotationKey = "apparmor.security.beta.kubernetes.io/defaultProfileName"
-	// AppArmorBetaAllowedProfileAnnotationKey is the annotation key specifying the allowed AppArmor profiles.
-	AppArmorBetaAllowedProfilesAnnotationKey = "apparmor.security.beta.kubernetes.io/allowedProfileNames"
+	// DeprecatedAppArmorBetaContainerAnnotationKeyPrefix is the prefix to an annotation key specifying a container's apparmor profile.
+	// Deprecated: use a pod or container security context `appArmorProfile` field instead.
+	DeprecatedAppArmorBetaContainerAnnotationKeyPrefix = "container.apparmor.security.beta.kubernetes.io/"
 
-	// AppArmorBetaProfileRuntimeDefault is the profile specifying the runtime default.
-	AppArmorBetaProfileRuntimeDefault = "runtime/default"
+	// DeprecatedAppArmorBetaProfileRuntimeDefault is the profile specifying the runtime default.
+	DeprecatedAppArmorBetaProfileRuntimeDefault = "runtime/default"
 
-	// AppArmorBetaProfileNamePrefix is the prefix for specifying profiles loaded on the node.
-	AppArmorBetaProfileNamePrefix = "localhost/"
+	// DeprecatedAppArmorBetaProfileNamePrefix is the prefix for specifying profiles loaded on the node.
+	DeprecatedAppArmorBetaProfileNamePrefix = "localhost/"
 
-	// AppArmorBetaProfileNameUnconfined is the Unconfined AppArmor profile
-	AppArmorBetaProfileNameUnconfined = "unconfined"
+	// DeprecatedAppArmorBetaProfileNameUnconfined is the Unconfined AppArmor profile
+	DeprecatedAppArmorBetaProfileNameUnconfined = "unconfined"
 
 	// DeprecatedSeccompProfileDockerDefault represents the default seccomp profile used by docker.
 	// Deprecated: set a pod or container security context `seccompProfile` of type "RuntimeDefault" instead.
@@ -78,7 +75,7 @@ const (
 	// in the Annotations of a Node.
 	PreferAvoidPodsAnnotationKey string = "scheduler.alpha.kubernetes.io/preferAvoidPods"
 
-	// ObjectTTLAnnotations represents a suggestion for kubelet for how long it can cache
+	// ObjectTTLAnnotationKey represents a suggestion for kubelet for how long it can cache
 	// an object (e.g. secret, config map) before fetching it again from apiserver.
 	// This annotation can be attached to node.
 	ObjectTTLAnnotationKey string = "node.alpha.kubernetes.io/ttl"

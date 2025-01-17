@@ -15,13 +15,14 @@ package encoding
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"math"
 	"unsafe"
 
 	"github.com/dennwc/varint"
-	"github.com/pkg/errors"
 )
 
 var (
@@ -153,7 +154,7 @@ func NewDecbufUvarintAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Dec
 
 	l, n := varint.Uvarint(b)
 	if n <= 0 || n > binary.MaxVarintLen32 {
-		return Decbuf{E: errors.Errorf("invalid uvarint %d", n)}
+		return Decbuf{E: fmt.Errorf("invalid uvarint %d", n)}
 	}
 
 	if bs.Len() < off+n+int(l)+4 {
@@ -200,8 +201,8 @@ func (d *Decbuf) UvarintStr() string {
 	return string(d.UvarintBytes())
 }
 
-// The return value becomes invalid if the byte slice goes away.
-// Compared to UvarintStr, this avoid allocations.
+// UvarintBytes returns invalid values if the byte slice goes away.
+// Compared to UvarintStr, it avoid allocations.
 func (d *Decbuf) UvarintBytes() []byte {
 	l := d.Uvarint64()
 	if d.E != nil {

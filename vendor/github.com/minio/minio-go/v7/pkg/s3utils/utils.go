@@ -121,49 +121,54 @@ func GetRegionFromURL(endpointURL url.URL) string {
 	if endpointURL.Host == "s3-external-1.amazonaws.com" {
 		return ""
 	}
-	if IsAmazonGovCloudEndpoint(endpointURL) {
-		return "us-gov-west-1"
-	}
+
 	// if elb's are used we cannot calculate which region it may be, just return empty.
 	if elbAmazonRegex.MatchString(endpointURL.Host) || elbAmazonCnRegex.MatchString(endpointURL.Host) {
 		return ""
 	}
-	parts := amazonS3HostDualStack.FindStringSubmatch(endpointURL.Host)
+
+	// We check for FIPS dualstack matching first to avoid the non-greedy
+	// regex for FIPS non-dualstack matching a dualstack URL
+	parts := amazonS3HostFIPSDualStack.FindStringSubmatch(endpointURL.Host)
 	if len(parts) > 1 {
 		return parts[1]
 	}
-	if IsAmazonFIPSUSEastWestEndpoint(endpointURL) {
-		// We check for FIPS dualstack matching first to avoid the non-greedy
-		// regex for FIPS non-dualstack matching a dualstack URL
-		parts = amazonS3HostFIPSDualStack.FindStringSubmatch(endpointURL.Host)
-		if len(parts) > 1 {
-			return parts[1]
-		}
-		parts = amazonS3HostFIPS.FindStringSubmatch(endpointURL.Host)
-		if len(parts) > 1 {
-			return parts[1]
-		}
+
+	parts = amazonS3HostFIPS.FindStringSubmatch(endpointURL.Host)
+	if len(parts) > 1 {
+		return parts[1]
 	}
+
+	parts = amazonS3HostDualStack.FindStringSubmatch(endpointURL.Host)
+	if len(parts) > 1 {
+		return parts[1]
+	}
+
 	parts = amazonS3HostHyphen.FindStringSubmatch(endpointURL.Host)
 	if len(parts) > 1 {
 		return parts[1]
 	}
+
 	parts = amazonS3ChinaHost.FindStringSubmatch(endpointURL.Host)
 	if len(parts) > 1 {
 		return parts[1]
 	}
+
 	parts = amazonS3ChinaHostDualStack.FindStringSubmatch(endpointURL.Host)
 	if len(parts) > 1 {
 		return parts[1]
 	}
+
 	parts = amazonS3HostDot.FindStringSubmatch(endpointURL.Host)
 	if len(parts) > 1 {
 		return parts[1]
 	}
+
 	parts = amazonS3HostPrivateLink.FindStringSubmatch(endpointURL.Host)
 	if len(parts) > 1 {
 		return parts[1]
 	}
+
 	return ""
 }
 
@@ -186,45 +191,25 @@ func IsAmazonGovCloudEndpoint(endpointURL url.URL) bool {
 		return false
 	}
 	return (endpointURL.Host == "s3-us-gov-west-1.amazonaws.com" ||
+		endpointURL.Host == "s3-us-gov-east-1.amazonaws.com" ||
 		IsAmazonFIPSGovCloudEndpoint(endpointURL))
 }
 
-// IsAmazonFIPSGovCloudEndpoint - Match if it is exactly Amazon S3 FIPS GovCloud endpoint.
-// See https://aws.amazon.com/compliance/fips.
+// IsAmazonFIPSGovCloudEndpoint - match if the endpoint is FIPS and GovCloud.
 func IsAmazonFIPSGovCloudEndpoint(endpointURL url.URL) bool {
 	if endpointURL == sentinelURL {
 		return false
 	}
-	return endpointURL.Host == "s3-fips-us-gov-west-1.amazonaws.com" ||
-		endpointURL.Host == "s3-fips.us-gov-west-1.amazonaws.com" ||
-		endpointURL.Host == "s3-fips.dualstack.us-gov-west-1.amazonaws.com"
-}
-
-// IsAmazonFIPSUSEastWestEndpoint - Match if it is exactly Amazon S3 FIPS US East/West endpoint.
-// See https://aws.amazon.com/compliance/fips.
-func IsAmazonFIPSUSEastWestEndpoint(endpointURL url.URL) bool {
-	if endpointURL == sentinelURL {
-		return false
-	}
-	switch endpointURL.Host {
-	case "s3-fips.us-east-2.amazonaws.com":
-	case "s3-fips.dualstack.us-west-1.amazonaws.com":
-	case "s3-fips.dualstack.us-west-2.amazonaws.com":
-	case "s3-fips.dualstack.us-east-2.amazonaws.com":
-	case "s3-fips.dualstack.us-east-1.amazonaws.com":
-	case "s3-fips.us-west-1.amazonaws.com":
-	case "s3-fips.us-west-2.amazonaws.com":
-	case "s3-fips.us-east-1.amazonaws.com":
-	default:
-		return false
-	}
-	return true
+	return IsAmazonFIPSEndpoint(endpointURL) && strings.Contains(endpointURL.Host, "us-gov-")
 }
 
 // IsAmazonFIPSEndpoint - Match if it is exactly Amazon S3 FIPS endpoint.
 // See https://aws.amazon.com/compliance/fips.
 func IsAmazonFIPSEndpoint(endpointURL url.URL) bool {
-	return IsAmazonFIPSUSEastWestEndpoint(endpointURL) || IsAmazonFIPSGovCloudEndpoint(endpointURL)
+	if endpointURL == sentinelURL {
+		return false
+	}
+	return strings.HasPrefix(endpointURL.Host, "s3-fips") && strings.HasSuffix(endpointURL.Host, ".amazonaws.com")
 }
 
 // IsAmazonPrivateLinkEndpoint - Match if it is exactly Amazon S3 PrivateLink interface endpoint
@@ -241,7 +226,7 @@ func IsGoogleEndpoint(endpointURL url.URL) bool {
 	if endpointURL == sentinelURL {
 		return false
 	}
-	return endpointURL.Host == "storage.googleapis.com"
+	return endpointURL.Hostname() == "storage.googleapis.com"
 }
 
 // Expects ascii encoded strings - from output of urlEncodePath

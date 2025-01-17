@@ -13,7 +13,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 var _ admission.CustomValidator = &AlertingRuleValidator{}
@@ -33,25 +33,25 @@ func (v *AlertingRuleValidator) SetupWebhookWithManager(mgr ctrl.Manager) error 
 }
 
 // ValidateCreate implements admission.CustomValidator.
-func (v *AlertingRuleValidator) ValidateCreate(ctx context.Context, obj runtime.Object) error {
+func (v *AlertingRuleValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	return v.validate(ctx, obj)
 }
 
 // ValidateUpdate implements admission.CustomValidator.
-func (v *AlertingRuleValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) error {
+func (v *AlertingRuleValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	return v.validate(ctx, newObj)
 }
 
 // ValidateDelete implements admission.CustomValidator.
-func (v *AlertingRuleValidator) ValidateDelete(_ context.Context, _ runtime.Object) error {
+func (v *AlertingRuleValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	// No validation on delete
-	return nil
+	return nil, nil
 }
 
-func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object) error {
+func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
 	alertingRule, ok := obj.(*lokiv1.AlertingRule)
 	if !ok {
-		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type AlertingRule: %t", obj))
+		return nil, apierrors.NewBadRequest(fmt.Sprintf("object is not of type AlertingRule: %t", obj))
 	}
 
 	var allErrs field.ErrorList
@@ -122,10 +122,10 @@ func (v *AlertingRuleValidator) validate(ctx context.Context, obj runtime.Object
 	}
 
 	if len(allErrs) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	return apierrors.NewInvalid(
+	return nil, apierrors.NewInvalid(
 		schema.GroupKind{Group: "loki.grafana.com", Kind: "AlertingRule"},
 		alertingRule.Name,
 		allErrs,

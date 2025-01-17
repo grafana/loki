@@ -6,18 +6,91 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/grafana/loki/pkg/util"
-
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"
 
 	"github.com/prometheus/prometheus/model/labels"
+
+	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
+	"github.com/grafana/loki/v3/pkg/util"
 )
+
+// LineMatchType is an enum for line matching types.
+type LineMatchType int
+
+// Possible LineMatchTypes.
+const (
+	LineMatchEqual LineMatchType = iota
+	LineMatchNotEqual
+	LineMatchRegexp
+	LineMatchNotRegexp
+	LineMatchPattern
+	LineMatchNotPattern
+)
+
+func (t LineMatchType) String() string {
+	switch t {
+	case LineMatchEqual:
+		return "|="
+	case LineMatchNotEqual:
+		return "!="
+	case LineMatchRegexp:
+		return "|~"
+	case LineMatchNotRegexp:
+		return "!~"
+	case LineMatchPattern:
+		return "|>"
+	case LineMatchNotPattern:
+		return "!>"
+	default:
+		return ""
+	}
+}
+
+// Checker is an interface that matches against the input line or regexp.
+type Checker interface {
+	Test(line []byte, caseInsensitive bool, equal bool) bool
+	TestRegex(reg *regexp.Regexp) bool
+}
+
+// Matcher is a interface to match log lines against a Checker.
+// This works in the opposite direction of Filterer. Whereas Filterer.Filter
+// checks if an input log line satisfies the filter, Matcher.Matches checks if
+// a filter satisfies an input log line (or regexp).
+type Matcher interface {
+	Matches(test Checker) bool
+}
 
 // Filterer is a interface to filter log lines.
 type Filterer interface {
 	Filter(line []byte) bool
 	ToStage() Stage
+}
+
+type MatcherFilterer interface {
+	Matcher
+	Filterer
+}
+
+type wrapper struct {
+	Filterer
+	Matcher
+}
+
+func (w wrapper) IsMatcher() bool {
+	return w.Matcher != nil
+}
+
+func (w wrapper) IsFilterer() bool {
+	return w.Filterer != nil
+}
+
+func WrapFilterer(f Filterer) MatcherFilterer {
+	return wrapper{Filterer: f}
+}
+
+func WrapMatcher(m Matcher) MatcherFilterer {
+	return wrapper{Matcher: m}
 }
 
 // LineFilterFunc is a syntax sugar for creating line filter from a function
@@ -32,8 +105,35 @@ type trueFilter struct{}
 func (trueFilter) Filter(_ []byte) bool { return true }
 func (trueFilter) ToStage() Stage       { return NoopStage }
 
+// Matches implements Matcher
+func (trueFilter) Matches(_ Checker) bool { return true }
+
 // TrueFilter is a filter that returns and matches all log lines whatever their content.
 var TrueFilter = trueFilter{}
+
+func isTrueFilter(f MatcherFilterer) bool {
+	if f == TrueFilter {
+		return true
+	}
+
+	if _, ok := f.(trueFilter); ok {
+		return true
+	}
+
+	if wrap, ok := f.(wrapper); ok {
+		if wrap.IsFilterer() {
+			if _, ok = wrap.Filterer.(trueFilter); ok {
+				return true
+			}
+		}
+		// Otherwise, it's a matcher
+		if _, ok = wrap.Matcher.(trueFilter); ok {
+			return true
+		}
+	}
+
+	return false
+}
 
 type existsFilter struct{}
 
@@ -49,15 +149,18 @@ func (e existsFilter) ToStage() Stage {
 	}
 }
 
+// Matches implements Matcher
+func (e existsFilter) Matches(_ Checker) bool { return true }
+
 // ExistsFilter is a filter that returns and matches when a line has any characters.
 var ExistsFilter = existsFilter{}
 
 type notFilter struct {
-	Filterer
+	MatcherFilterer
 }
 
 func (n notFilter) Filter(line []byte) bool {
-	return !n.Filterer.Filter(line)
+	return !n.MatcherFilterer.Filter(line)
 }
 
 func (n notFilter) ToStage() Stage {
@@ -68,29 +171,33 @@ func (n notFilter) ToStage() Stage {
 	}
 }
 
+func (n notFilter) Matches(test Checker) bool {
+	return !n.MatcherFilterer.Matches(test)
+}
+
 // NewNotFilter creates a new filter which matches only if the base filter doesn't match.
 // If the base filter is a `or` it will recursively simplify with `and` operations.
-func NewNotFilter(base Filterer) Filterer {
+func NewNotFilter(base MatcherFilterer) MatcherFilterer {
 	// not(a|b) = not(a) and not(b) , and operation can't benefit from this optimization because both legs always needs to be executed.
 	if or, ok := base.(orFilter); ok {
 		return NewAndFilter(NewNotFilter(or.left), NewNotFilter(or.right))
 	}
-	return notFilter{Filterer: base}
+	return notFilter{MatcherFilterer: base}
 }
 
 type andFilter struct {
-	left  Filterer
-	right Filterer
+	left  MatcherFilterer
+	right MatcherFilterer
 }
 
 // NewAndFilter creates a new filter which matches only if left and right matches.
-func NewAndFilter(left Filterer, right Filterer) Filterer {
+func NewAndFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
 	// Make sure we take care of panics in case a nil or noop filter is passed.
-	if right == nil || right == TrueFilter {
+	if right == nil || isTrueFilter(right) {
 		return left
 	}
 
-	if left == nil || left == TrueFilter {
+	if left == nil || isTrueFilter(left) {
 		return right
 	}
 
@@ -112,6 +219,10 @@ func (a andFilter) ToStage() Stage {
 	}
 }
 
+func (a andFilter) Matches(test Checker) bool {
+	return a.left.Matches(test) && a.right.Matches(test)
+}
+
 type andFilters struct {
 	filters []Filterer
 }
@@ -123,7 +234,7 @@ func NewAndFilters(filters []Filterer) Filterer {
 	n := 0
 	for _, filter := range filters {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
-		if !(filter == nil || filter == TrueFilter) {
+		if !(filter == nil || isTrueFilter(WrapFilterer(filter))) {
 			switch c := filter.(type) {
 			case *containsFilter:
 				// Start accumulating contains filters.
@@ -190,17 +301,17 @@ func (a andFilters) ToStage() Stage {
 }
 
 type orFilter struct {
-	left  Filterer
-	right Filterer
+	left  MatcherFilterer
+	right MatcherFilterer
 }
 
 // newOrFilter creates a new filter which matches only if left or right matches.
-func newOrFilter(left Filterer, right Filterer) Filterer {
-	if left == nil || left == TrueFilter {
+func newOrFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
+	if left == nil || isTrueFilter(left) {
 		return right
 	}
 
-	if right == nil || right == TrueFilter {
+	if right == nil || isTrueFilter(right) {
 		return left
 	}
 
@@ -210,12 +321,17 @@ func newOrFilter(left Filterer, right Filterer) Filterer {
 	}
 }
 
-// ChainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
-func ChainOrFilter(curr, new Filterer) Filterer {
+// ChainOrMatcherFilterer is a syntax sugar to chain multiple `or` filters. (1 or many)
+func ChainOrMatcherFilterer(curr, new MatcherFilterer) MatcherFilterer {
 	if curr == nil {
 		return new
 	}
 	return newOrFilter(curr, new)
+}
+
+// ChainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
+func ChainOrFilter(curr, new Filterer) Filterer {
+	return ChainOrMatcherFilterer(WrapFilterer(curr), WrapFilterer(new))
 }
 
 func (a orFilter) Filter(line []byte) bool {
@@ -230,6 +346,11 @@ func (a orFilter) ToStage() Stage {
 	}
 }
 
+// Matches implements Matcher
+func (a orFilter) Matches(test Checker) bool {
+	return a.left.Matches(test) || a.right.Matches(test)
+}
+
 type regexpFilter struct {
 	*regexp.Regexp
 
@@ -238,7 +359,7 @@ type regexpFilter struct {
 
 // newRegexpFilter creates a new line filter for a given regexp.
 // If match is false the filter is the negation of the regexp.
-func newRegexpFilter(re string, orig string, match bool) (Filterer, error) {
+func newRegexpFilter(re string, orig string, match bool) (MatcherFilterer, error) {
 	reg, err := regexp.Compile(re)
 	if err != nil {
 		return nil, err
@@ -260,6 +381,10 @@ func (r regexpFilter) ToStage() Stage {
 			return line, r.Filter(line)
 		},
 	}
+}
+
+func (r regexpFilter) Matches(test Checker) bool {
+	return test.TestRegex(r.Regexp)
 }
 
 func (r regexpFilter) String() string {
@@ -287,11 +412,18 @@ func (l equalFilter) ToStage() Stage {
 	}
 }
 
+func (l equalFilter) Matches(test Checker) bool {
+	return test.Test(l.match, l.caseInsensitive, true)
+}
+
 func (l equalFilter) String() string {
 	return string(l.match)
 }
 
-func newEqualFilter(match []byte, caseInsensitive bool) Filterer {
+func newEqualFilter(match []byte, caseInsensitive bool) MatcherFilterer {
+	if caseInsensitive {
+		match = bytes.ToLower(match)
+	}
 	return equalFilter{match, caseInsensitive}
 }
 
@@ -311,6 +443,8 @@ func contains(line, substr []byte, caseInsensitive bool) bool {
 	return containsLower(line, substr)
 }
 
+// containsLower verifies if substr is a substring of line, with case insensitive comparison.
+// substr MUST be in lowercase before calling this function.
 func containsLower(line, substr []byte) bool {
 	if len(substr) == 0 {
 		return true
@@ -318,35 +452,85 @@ func containsLower(line, substr []byte) bool {
 	if len(substr) > len(line) {
 		return false
 	}
-	j := 0
-	for len(line) > 0 {
-		// ascii fast case
-		if c := line[0]; c < utf8.RuneSelf && substr[j] < utf8.RuneSelf {
-			if c == substr[j] || c+'a'-'A' == substr[j] || c == substr[j]+'a'-'A' {
-				j++
-				if j == len(substr) {
-					return true
+
+	// Fast path - try to find first byte of substr
+	firstByte := substr[0]
+	maxIndex := len(line) - len(substr)
+
+	i := 0
+	for i <= maxIndex {
+		// Find potential first byte match
+		c := line[i]
+		// Fast path for ASCII - if c is uppercase letter, convert to lowercase
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != firstByte {
+			i++
+			continue
+		}
+
+		// Found potential match, check rest of substr
+		matched := true
+		linePos := i
+		substrPos := 0
+
+		for linePos < len(line) && substrPos < len(substr) {
+			c := line[linePos]
+			s := substr[substrPos]
+
+			// Fast path for ASCII
+			if c < utf8.RuneSelf && s < utf8.RuneSelf {
+				// Convert line char to lowercase if needed
+				if c >= 'A' && c <= 'Z' {
+					c += 'a' - 'A'
 				}
-				line = line[1:]
+				if c != s {
+					matched = false
+					break
+				}
+				linePos++
+				substrPos++
 				continue
 			}
-			line = line[1:]
-			j = 0
-			continue
-		}
-		// unicode slow case
-		lr, lwid := utf8.DecodeRune(line)
-		mr, mwid := utf8.DecodeRune(substr[j:])
-		if lr == mr || mr == unicode.To(unicode.LowerCase, lr) {
-			j += mwid
-			if j == len(substr) {
-				return true
+
+			// Slower Unicode path only when needed
+			lr, lineSize := utf8.DecodeRune(line[linePos:])
+			if lr == utf8.RuneError && lineSize == 1 {
+				// Invalid UTF-8, treat as raw bytes
+				if c >= 'A' && c <= 'Z' {
+					c += 'a' - 'A'
+				}
+				if c != s {
+					matched = false
+					break
+				}
+				linePos++
+				substrPos++
+				continue
 			}
-			line = line[lwid:]
-			continue
+
+			mr, substrSize := utf8.DecodeRune(substr[substrPos:])
+			if mr == utf8.RuneError && substrSize == 1 {
+				// Invalid UTF-8 in pattern (shouldn't happen as substr should be valid)
+				matched = false
+				break
+			}
+
+			// Compare line rune converted to lowercase with pattern (which is already lowercase)
+			if unicode.ToLower(lr) != mr {
+				matched = false
+				break
+			}
+
+			linePos += lineSize
+			substrPos += substrSize
 		}
-		line = line[lwid:]
-		j = 0
+
+		if matched && substrPos == len(substr) {
+			return true
+		}
+		i++
 	}
 	return false
 }
@@ -359,12 +543,17 @@ func (l containsFilter) ToStage() Stage {
 	}
 }
 
+// Matches implements Matcher
+func (l containsFilter) Matches(test Checker) bool {
+	return test.Test(l.match, l.caseInsensitive, false)
+}
+
 func (l containsFilter) String() string {
 	return string(l.match)
 }
 
 // newContainsFilter creates a contains filter that checks if a log line contains a match.
-func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
+func newContainsFilter(match []byte, caseInsensitive bool) MatcherFilterer {
 	if len(match) == 0 {
 		return TrueFilter
 	}
@@ -406,17 +595,30 @@ func (f containsAllFilter) ToStage() Stage {
 	}
 }
 
+func (f containsAllFilter) Matches(test Checker) bool {
+	for _, m := range f.matches {
+		if !test.Test(m.match, m.caseInsensitive, false) {
+			return false
+		}
+	}
+	return true
+}
+
 // NewFilter creates a new line filter from a match string and type.
-func NewFilter(match string, mt labels.MatchType) (Filterer, error) {
+func NewFilter(match string, mt LineMatchType) (Filterer, error) {
 	switch mt {
-	case labels.MatchRegexp:
+	case LineMatchRegexp:
 		return parseRegexpFilter(match, true, false)
-	case labels.MatchNotRegexp:
+	case LineMatchNotRegexp:
 		return parseRegexpFilter(match, false, false)
-	case labels.MatchEqual:
+	case LineMatchEqual:
 		return newContainsFilter([]byte(match), false), nil
-	case labels.MatchNotEqual:
+	case LineMatchNotEqual:
 		return NewNotFilter(newContainsFilter([]byte(match), false)), nil
+	case LineMatchPattern:
+		return newPatternFilterer([]byte(match), true)
+	case LineMatchNotPattern:
+		return newPatternFilterer([]byte(match), false)
 	default:
 		return nil, fmt.Errorf("unknown matcher: %v", match)
 	}
@@ -440,7 +642,7 @@ func NewLabelFilter(match string, mt labels.MatchType) (Filterer, error) {
 
 // parseRegexpFilter parses a regexp and attempt to simplify it with only literal filters.
 // If not possible it will returns the original regexp filter.
-func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
+func parseRegexpFilter(re string, match bool, isLabel bool) (MatcherFilterer, error) {
 	reg, err := syntax.Parse(re, syntax.Perl)
 	if err != nil {
 		return nil, err
@@ -448,7 +650,7 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 	reg = reg.Simplify()
 
 	// attempt to improve regex with tricks
-	f, ok := simplify(reg, isLabel)
+	filter, ok := defaultRegexSimplifier.Simplify(reg, isLabel)
 	if !ok {
 		util.AllNonGreedy(reg)
 		regex := reg.String()
@@ -459,28 +661,52 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 		}
 		return newRegexpFilter(regex, re, match)
 	}
+
 	if match {
-		return f, nil
+		return filter, nil
 	}
-	return NewNotFilter(f), nil
+	return NewNotFilter(filter), nil
 }
 
-// simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
+type Simplifier interface {
+	Simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool)
+}
+
+type NewMatcherFiltererFunc func(match []byte, caseInsensitive bool) MatcherFilterer
+
+type RegexSimplifier struct {
+	newContainsFilter NewMatcherFiltererFunc
+	newEqualFilter    NewMatcherFiltererFunc
+}
+
+var defaultRegexSimplifier = NewRegexSimplifier(newContainsFilter, newEqualFilter)
+
+func NewRegexSimplifier(
+	newContainsFilter NewMatcherFiltererFunc,
+	newEqualFilter NewMatcherFiltererFunc,
+) *RegexSimplifier {
+	return &RegexSimplifier{
+		newContainsFilter: newContainsFilter,
+		newEqualFilter:    newEqualFilter,
+	}
+}
+
+// Simplify a regexp expression by replacing it, when possible, with a succession of literal filters.
 // For example `(foo|bar)` will be replaced by  `containsFilter(foo) or containsFilter(bar)`
-func simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
+func (s *RegexSimplifier) Simplify(reg *syntax.Regexp, isLabel bool) (MatcherFilterer, bool) {
 	switch reg.Op {
 	case syntax.OpAlternate:
-		return simplifyAlternate(reg, isLabel)
+		return s.simplifyAlternate(reg, isLabel)
 	case syntax.OpConcat:
-		return simplifyConcat(reg, nil)
+		return s.simplifyConcat(reg, nil)
 	case syntax.OpCapture:
 		util.ClearCapture(reg)
-		return simplify(reg, isLabel)
+		return s.Simplify(reg, isLabel)
 	case syntax.OpLiteral:
 		if isLabel {
-			return newEqualFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+			return s.newEqualFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
 		}
-		return newContainsFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
+		return s.newContainsFilter([]byte(string(reg.Rune)), util.IsCaseInsensitive(reg)), true
 	case syntax.OpStar:
 		if reg.Sub[0].Op == syntax.OpAnyCharNotNL {
 			return TrueFilter, true
@@ -497,16 +723,16 @@ func simplify(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 
 // simplifyAlternate simplifies, when possible, alternate regexp expressions such as:
 // (foo|bar) or (foo|(bar|buzz)).
-func simplifyAlternate(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
+func (s *RegexSimplifier) simplifyAlternate(reg *syntax.Regexp, isLabel bool) (MatcherFilterer, bool) {
 	util.ClearCapture(reg.Sub...)
 	// attempt to simplify the first leg
-	f, ok := simplify(reg.Sub[0], isLabel)
+	f, ok := s.Simplify(reg.Sub[0], isLabel)
 	if !ok {
 		return nil, false
 	}
 	// merge the rest of the legs
 	for i := 1; i < len(reg.Sub); i++ {
-		f2, ok := simplify(reg.Sub[i], isLabel)
+		f2, ok := s.Simplify(reg.Sub[i], isLabel)
 		if !ok {
 			return nil, false
 		}
@@ -520,7 +746,7 @@ func simplifyAlternate(reg *syntax.Regexp, isLabel bool) (Filterer, bool) {
 // which is a literalFilter.
 // Or a literal and alternates operation (see simplifyConcatAlternate), which represent a multiplication of alternates.
 // Anything else is rejected.
-func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
+func (s *RegexSimplifier) simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (MatcherFilterer, bool) {
 	util.ClearCapture(reg.Sub...)
 	// remove empty match as we don't need them for filtering
 	i := 0
@@ -538,7 +764,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 		return nil, false
 	}
 
-	var curr Filterer
+	var curr MatcherFilterer
 	var ok bool
 	literals := 0
 	var baseLiteralIsCaseInsensitive bool
@@ -555,7 +781,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 		}
 		// if we have an alternate we must also have a base literal to apply the concatenation with.
 		if sub.Op == syntax.OpAlternate && baseLiteral != nil {
-			if curr, ok = simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive); !ok {
+			if curr, ok = s.simplifyConcatAlternate(sub, baseLiteral, curr, baseLiteralIsCaseInsensitive); !ok {
 				return nil, false
 			}
 			continue
@@ -573,7 +799,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 
 	// if we have only a concat with literals.
 	if baseLiteral != nil {
-		return newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
+		return s.newContainsFilter(baseLiteral, baseLiteralIsCaseInsensitive), true
 	}
 
 	return nil, false
@@ -583,7 +809,7 @@ func simplifyConcat(reg *syntax.Regexp, baseLiteral []byte) (Filterer, bool) {
 // A concat alternate is found when a concat operation has a sub alternate and is preceded by a literal.
 // For instance bar|b|buzz is expressed as b(ar|(?:)|uzz) => b concat alternate(ar,(?:),uzz).
 // (?:) being an OpEmptyMatch and b being the literal to concat all alternates (ar,(?:),uzz) with.
-func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, baseLiteralIsCaseInsensitive bool) (Filterer, bool) {
+func (s *RegexSimplifier) simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr MatcherFilterer, baseLiteralIsCaseInsensitive bool) (MatcherFilterer, bool) {
 	for _, alt := range reg.Sub {
 		// we should not consider the case where baseLiteral is not marked as case insensitive
 		// and alternate expression is marked as case insensitive. For example, for the original expression
@@ -595,25 +821,25 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, 
 		}
 		switch alt.Op {
 		case syntax.OpEmptyMatch:
-			curr = ChainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		case syntax.OpLiteral:
 			// concat the root literal with the alternate one.
 			altBytes := []byte(string(alt.Rune))
 			altLiteral := make([]byte, 0, len(literal)+len(altBytes))
 			altLiteral = append(altLiteral, literal...)
 			altLiteral = append(altLiteral, altBytes...)
-			curr = ChainOrFilter(curr, newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
+			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(altLiteral, baseLiteralIsCaseInsensitive))
 		case syntax.OpConcat:
-			f, ok := simplifyConcat(alt, literal)
+			f, ok := s.simplifyConcat(alt, literal)
 			if !ok {
 				return nil, false
 			}
-			curr = ChainOrFilter(curr, f)
+			curr = ChainOrMatcherFilterer(curr, f)
 		case syntax.OpStar:
 			if alt.Sub[0].Op != syntax.OpAnyCharNotNL {
 				return nil, false
 			}
-			curr = ChainOrFilter(curr, newContainsFilter(literal, baseLiteralIsCaseInsensitive))
+			curr = ChainOrMatcherFilterer(curr, s.newContainsFilter(literal, baseLiteralIsCaseInsensitive))
 		default:
 			return nil, false
 		}
@@ -622,4 +848,38 @@ func simplifyConcatAlternate(reg *syntax.Regexp, literal []byte, curr Filterer, 
 		return curr, true
 	}
 	return nil, false
+}
+
+type patternFilter struct {
+	matcher *pattern.Matcher
+	pattern []byte
+}
+
+func newPatternFilterer(p []byte, match bool) (MatcherFilterer, error) {
+	m, err := pattern.ParseLineFilter(p)
+	if err != nil {
+		return nil, err
+	}
+	filter := &patternFilter{
+		matcher: m,
+		pattern: p,
+	}
+	if !match {
+		return NewNotFilter(filter), nil
+	}
+	return filter, nil
+}
+
+func (f *patternFilter) Filter(line []byte) bool { return f.matcher.Test(line) }
+
+func (f *patternFilter) Matches(test Checker) bool {
+	return test.Test(f.pattern, false, false)
+}
+
+func (f *patternFilter) ToStage() Stage {
+	return StageFunc{
+		process: func(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+			return line, f.Filter(line)
+		},
+	}
 }

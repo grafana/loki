@@ -1,5 +1,148 @@
 # Change Log
 
+## [v1.122.0] - 2024-09-04
+
+- #717 - @danaelhe - DB: Fix Logsink Attribute Types
+- #716 - @bhardwajRahul - Databases: Add support for OpenSearch ACL
+
+## [v1.121.0] - 2024-08-20
+
+- #715 - @danaelhe - Databases: Bring back Logsink Support
+- #710 - @bhardwajRahul - Update GODO to include new Openseach index crud changes
+- #712 - @danaelhe - Database: Namespace logsink
+- #711 - @danaelhe - Databases: Add Logsinks CRUD support
+
+## [v1.120.0] - 2024-08-08
+
+- #708 - @markusthoemmes - APPS-9201 Add `UpdateAllSourceVersions` parameter to update app calls
+- #706 - @andrewsomething - database: Add Size to DatabaseReplica struct
+
+## [v1.119.0] - 2024-07-24
+
+- #704 - @ElanHasson - APPS-9133 - Add support for OPENSEARCH as a database engine option
+- #703 - @dependabot[bot] - Bump github.com/hashicorp/go-retryablehttp from 0.7.4 to 0.7.7
+- #699 - @ElanHasson - APPS-8790 Add support to App Platform Log Forwarding for an OpenSearch DBaaS cluster destination.
+
+## [v1.118.0] - 2024-06-04
+
+**Note**: This release contains features in closed beta (#700).
+
+- #701 - @llDrLove - Rename control plane permission to control plane firewall
+- #700 - @bbassingthwaite - Add ProxyProtocol to LoadBalancer HealthCheck
+
+## [v1.117.0] - 2024-06-04
+
+- #696 - @llDrLove - Support specifying control plane firewall rules when creating or updating DOKS clusters
+- #697 - @asaha2 - Add support for lb internal network type
+- #695 - @ElanHasson - APPS-8732 - Update documentation on App Platform OpenSearch endpoint structure.
+- #692 - @ElanHasson - APPS-8732 - Add OpenSearch as a Log Destination for App Platform.
+
+## [v1.116.0] - 2024-05-16
+
+- #693 - @guptado - Introduce VPC peering methods
+
+## [v1.115.0] - 2024-05-08
+
+- #688 - @asaha2 - load balancers: support glb active-passive fail-over settings, currently in closed beta
+
+## [v1.114.0] - 2024-04-12
+
+- #686 - @greeshmapill - APPS-8386: Add comments to mark deprecation of unused instance size fields
+- #685 - @jcodybaker - APPS-8711: container termination controls
+- #682 - @dependabot[bot] - Bump golang.org/x/net from 0.17.0 to 0.23.0
+
+## [v1.113.0] - 2024-04-12
+
+- #679 - @bhardwajRahul - Enable ui_connection parameter for Opensearch
+- #678 - @bhardwajRahul - Enable Opensearch option in Godo
+
+## [v1.112.0] - 2024-04-08
+
+- #672 - @dependabot[bot] - Bump google.golang.org/protobuf from 1.28.0 to 1.33.0
+- #675 - @bhardwajRahul - Add ListDatabaseEvents to Godo
+
+## [v1.111.0] - 2024-04-02
+
+- #674 - @asaha2 - load balancers: introduce glb settings in godo, currently in closed beta
+
+## [v1.110.0] - 2024-03-14
+
+- #667 - @dwilsondo - Include DBaaS metrics credential endpoint operations
+- #670 - @guptado - [NETPROD-3583] Added name param in ListOption to get resource by name
+- #671 - @greeshmapill - APPS-8383: Add deprecation intent and bandwidth allowance to app instance size spec
+
+## [v1.109.0] - 2024-02-09
+
+- #668 - @greeshmapill - APPS-8315: Update app instance size spec
+- #665 - @jcodybaker - APPS-8263: methods for managing App Platform dev DBs
+- #663 - @dwilsondo - Include replica connection info on DBaaS clusters & DBaaS PG pools
+- #662 - @ddatta-do - load balancer : add regional network as new LB type
+
+## [v1.108.0] - 2024-01-17
+
+- #660 - @dweinshenker - Enable CRUD operations for replicas with storage_size_mib
+
+## [v1.107.0] - 2023-12-07
+
+- #658 - @markusthoemmes - APPS-8033 Add the RUN_RESTARTED log type
+- #656 - @dweinshenker - Enhancement: add database user update
+- #657 - @markusthoemmes - apps: Add registry_credentials field, GHCR registry type and the egress spec
+
+## [v1.106.0] - 2023-11-14
+
+- #654 - @dweinshenker - Remove unclean_leader_election_enable for topic configuration
+
+## [v1.105.1] - 2023-11-07
+
+- #652 - @andrewsomething - Retry on HTTP/2 internal errors.
+- #648 - @alexandear - test: use fmt.Fprintf instead of fmt.Fprintf(fmt.Sprintf(...))
+- #651 - @alexandear - test: Replace deprecated io/ioutil with io
+- #647 - @alexandear - test: add missing error check
+
+## [v1.105.0] - 2023-10-16
+
+- #643 - @dweinshenker - Add support for scalable storage on database clusters
+- #641 - @dweinshenker - Fix Kafka Partition Count
+- #645 - @gregmankes - APPS-7325 - update app godo spec
+- #642 - @dependabot[bot] - Bump golang.org/x/net from 0.7.0 to 0.17.0
+
+## [v1.104.1] - 2023-10-10
+
+* #640 - @andrewsomething - Drop required Go version to 1.20 and document policy.
+* #640 - @andrewsomething - Fix library version.
+
+## [v1.104.0] - 2023-10-10
+
+- #637 - @mikesmithgh - chore: change uptime alert comparison type
+- #638 - @markusthoemmes - APPS-7700 Add ability to specify digest for an image
+
+## [v1.103.0] - 2023-10-03
+
+- #635 - @andrewsomething - Bump github.com/stretchr/testify to v1.8.4
+- #634 - @andrewsomething - Bump Go version to v1.21.0
+- #632 - @danaelhe - Make Retrys by Default for NewFromToken()
+- #633 - @dwilsondo - Add DBaaS engine Kafka
+- #621 - @testwill - chore:  use fmt.Fprintf instead of fmt.Fprint(fmt.Sprintf(...))
+
+## [v1.102.1] - 2023-08-17
+
+- #629 - @andrewsomething - Provide a custom retryablehttp.ErrorHandler for more consistent returns using retries.
+
+## [v1.102.0] - 2023-08-14
+
+- #624 - @danaelhe - Update README.md with Retryable Info
+- #626 - @andrewsomething - Allow configuring go-retryablehttp.Logger
+- #625 - @andrewsomething - Export the HTTP client
+
+## [v1.101.0] - 2023-08-09
+
+- #619 - @danaelhe - Add retryablehttp Client Option
+
+## [v1.100.0] - 2023-07-20
+
+- #618 - @asaha - load balancers: introduce new type field
+- #620 - @andrewsomething - account: add name field.
+
 ## [v1.99.0] - 2023-04-24
 
 - #616 - @bentranter - Bump CI version for Go 1.20

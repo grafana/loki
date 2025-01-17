@@ -7,13 +7,15 @@ import (
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
 func BuildAll(opts Options) ([]client.Object, error) {
 	res := make([]client.Object, 0)
+
+	sa := BuildServiceAccount(opts)
 
 	cm, sha1C, mapErr := LokiConfigMap(opts)
 	if mapErr != nil {
@@ -52,6 +54,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	}
 
 	res = append(res, cm)
+	res = append(res, sa)
 	res = append(res, distributorObjs...)
 	res = append(res, ingesterObjs...)
 	res = append(res, querierObjs...)

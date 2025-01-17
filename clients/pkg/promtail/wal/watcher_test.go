@@ -3,6 +3,7 @@ package wal
 import (
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,11 +14,11 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
 
-	"github.com/grafana/loki/pkg/ingester/wal"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/ingester/wal"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type testWriteTo struct {
@@ -25,6 +26,7 @@ type testWriteTo struct {
 	series              map[uint64]model.LabelSet
 	logger              log.Logger
 	ReceivedSeriesReset []int
+	mu                  sync.Mutex
 }
 
 func (t *testWriteTo) StoreSeries(series []record.RefSeries, _ int) {
@@ -42,10 +44,12 @@ func (t *testWriteTo) AppendEntries(entries wal.RefEntries) error {
 	var entry api.Entry
 	if l, ok := t.series[uint64(entries.Ref)]; ok {
 		entry.Labels = l
+		t.mu.Lock()
 		for _, e := range entries.Entries {
 			entry.Entry = e
 			t.ReadEntries = append(t.ReadEntries, entry)
 		}
+		t.mu.Unlock()
 	} else {
 		level.Debug(t.logger).Log("series for entry not found")
 	}
@@ -94,11 +98,15 @@ var cases = map[string]watcherTest{
 		res.notifyWrite()
 
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			return len(res.writeTo.ReadEntries) == 3
 		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
+		res.writeTo.mu.Lock()
 		for _, readEntry := range res.writeTo.ReadEntries {
 			require.Contains(t, lines, readEntry.Line, "not expected log line")
 		}
+		res.writeTo.mu.Unlock()
 	},
 
 	"read entries from WAL, just using backup timer to trigger reads": func(t *testing.T, res *watcherTestResources) {
@@ -127,11 +135,15 @@ var cases = map[string]watcherTest{
 		// do not notify, let the backup timer trigger the watcher reads
 
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			return len(res.writeTo.ReadEntries) == 3
 		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
+		res.writeTo.mu.Lock()
 		for _, readEntry := range res.writeTo.ReadEntries {
 			require.Contains(t, lines, readEntry.Line, "not expected log line")
 		}
+		res.writeTo.mu.Unlock()
 	},
 
 	"continue reading entries in next segment after initial segment is closed": func(t *testing.T, res *watcherTestResources) {
@@ -164,11 +176,15 @@ var cases = map[string]watcherTest{
 		res.notifyWrite()
 
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			return len(res.writeTo.ReadEntries) == 3
 		}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
+		res.writeTo.mu.Lock()
 		for _, readEntry := range res.writeTo.ReadEntries {
 			require.Contains(t, lines, readEntry.Line, "not expected log line")
 		}
+		res.writeTo.mu.Unlock()
 
 		err := res.nextWALSegment()
 		require.NoError(t, err, "expected no error when moving to next wal segment")
@@ -186,12 +202,16 @@ var cases = map[string]watcherTest{
 		res.notifyWrite()
 
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			return len(res.writeTo.ReadEntries) == 6
 		}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
 		// assert over second half of entries
+		res.writeTo.mu.Lock()
 		for _, readEntry := range res.writeTo.ReadEntries[3:] {
 			require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
 		}
+		res.writeTo.mu.Unlock()
 	},
 
 	"start reading from last segment": func(t *testing.T, res *watcherTestResources) {
@@ -234,12 +254,16 @@ var cases = map[string]watcherTest{
 		res.notifyWrite()
 
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			return len(res.writeTo.ReadEntries) == 3
 		}, time.Second*10, time.Second, "expected watcher to catch up after new wal segment is cut")
 		// assert over second half of entries
+		res.writeTo.mu.Lock()
 		for _, readEntry := range res.writeTo.ReadEntries[3:] {
 			require.Contains(t, linesAfter, readEntry.Line, "not expected log line")
 		}
+		res.writeTo.mu.Unlock()
 	},
 
 	"watcher receives segments reclaimed notifications correctly": func(t *testing.T, res *watcherTestResources) {
@@ -259,6 +283,8 @@ var cases = map[string]watcherTest{
 			require.NoError(t, res.syncWAL())
 			res.notifyWrite()
 			require.Eventually(t, func() bool {
+				res.writeTo.mu.Lock()
+				defer res.writeTo.mu.Unlock()
 				return len(res.writeTo.ReadEntries) == expectedReadEntries
 			}, time.Second*10, time.Second, "expected watcher to catch up with written entries")
 		}
@@ -275,6 +301,8 @@ var cases = map[string]watcherTest{
 		// collecting segment 0
 		res.notifySegmentReclaimed(0)
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			return len(res.writeTo.ReceivedSeriesReset) == 1 && res.writeTo.ReceivedSeriesReset[0] == 0
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")
 
@@ -290,6 +318,8 @@ var cases = map[string]watcherTest{
 		res.notifySegmentReclaimed(2)
 		// Expect second SeriesReset call to have the highest numbered deleted segment, 2
 		require.Eventually(t, func() bool {
+			res.writeTo.mu.Lock()
+			defer res.writeTo.mu.Unlock()
 			t.Logf("received series reset: %v", res.writeTo.ReceivedSeriesReset)
 			return len(res.writeTo.ReceivedSeriesReset) == 2 && res.writeTo.ReceivedSeriesReset[1] == 2
 		}, time.Second*10, time.Second, "timed out waiting to receive series reset")

@@ -1,7 +1,4 @@
-/*
-* CODE GENERATED AUTOMATICALLY WITH github.com/stretchr/testify/_codegen
-* THIS FILE MUST NOT BE EDITED BY HAND
- */
+// Code generated with github.com/stretchr/testify/_codegen; DO NOT EDIT.
 
 package assert
 
@@ -189,8 +186,8 @@ func (a *Assertions) EqualExportedValuesf(expected interface{}, actual interface
 	return EqualExportedValuesf(a.t, expected, actual, msg, args...)
 }
 
-// EqualValues asserts that two objects are equal or convertable to the same types
-// and equal.
+// EqualValues asserts that two objects are equal or convertible to the larger
+// type and equal.
 //
 //	a.EqualValues(uint32(123), int32(123))
 func (a *Assertions) EqualValues(expected interface{}, actual interface{}, msgAndArgs ...interface{}) bool {
@@ -200,8 +197,8 @@ func (a *Assertions) EqualValues(expected interface{}, actual interface{}, msgAn
 	return EqualValues(a.t, expected, actual, msgAndArgs...)
 }
 
-// EqualValuesf asserts that two objects are equal or convertable to the same types
-// and equal.
+// EqualValuesf asserts that two objects are equal or convertible to the larger
+// type and equal.
 //
 //	a.EqualValuesf(uint32(123), int32(123), "error message %s", "formatted")
 func (a *Assertions) EqualValuesf(expected interface{}, actual interface{}, msg string, args ...interface{}) bool {
@@ -339,7 +336,7 @@ func (a *Assertions) Eventually(condition func() bool, waitFor time.Duration, ti
 //	a.EventuallyWithT(func(c *assert.CollectT) {
 //		// add assertions as needed; any assertion failure will fail the current tick
 //		assert.True(c, externalValue, "expected 'externalValue' to be true")
-//	}, 1*time.Second, 10*time.Second, "external state has not changed to 'true'; still false")
+//	}, 10*time.Second, 1*time.Second, "external state has not changed to 'true'; still false")
 func (a *Assertions) EventuallyWithT(condition func(collect *CollectT), waitFor time.Duration, tick time.Duration, msgAndArgs ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
@@ -364,7 +361,7 @@ func (a *Assertions) EventuallyWithT(condition func(collect *CollectT), waitFor 
 //	a.EventuallyWithTf(func(c *assert.CollectT, "error message %s", "formatted") {
 //		// add assertions as needed; any assertion failure will fail the current tick
 //		assert.True(c, externalValue, "expected 'externalValue' to be true")
-//	}, 1*time.Second, 10*time.Second, "external state has not changed to 'true'; still false")
+//	}, 10*time.Second, 1*time.Second, "external state has not changed to 'true'; still false")
 func (a *Assertions) EventuallyWithTf(condition func(collect *CollectT), waitFor time.Duration, tick time.Duration, msg string, args ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
@@ -1131,6 +1128,40 @@ func (a *Assertions) NotContainsf(s interface{}, contains interface{}, msg strin
 	return NotContainsf(a.t, s, contains, msg, args...)
 }
 
+// NotElementsMatch asserts that the specified listA(array, slice...) is NOT equal to specified
+// listB(array, slice...) ignoring the order of the elements. If there are duplicate elements,
+// the number of appearances of each of them in both lists should not match.
+// This is an inverse of ElementsMatch.
+//
+// a.NotElementsMatch([1, 1, 2, 3], [1, 1, 2, 3]) -> false
+//
+// a.NotElementsMatch([1, 1, 2, 3], [1, 2, 3]) -> true
+//
+// a.NotElementsMatch([1, 2, 3], [1, 2, 4]) -> true
+func (a *Assertions) NotElementsMatch(listA interface{}, listB interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotElementsMatch(a.t, listA, listB, msgAndArgs...)
+}
+
+// NotElementsMatchf asserts that the specified listA(array, slice...) is NOT equal to specified
+// listB(array, slice...) ignoring the order of the elements. If there are duplicate elements,
+// the number of appearances of each of them in both lists should not match.
+// This is an inverse of ElementsMatch.
+//
+// a.NotElementsMatchf([1, 1, 2, 3], [1, 1, 2, 3], "error message %s", "formatted") -> false
+//
+// a.NotElementsMatchf([1, 1, 2, 3], [1, 2, 3], "error message %s", "formatted") -> true
+//
+// a.NotElementsMatchf([1, 2, 3], [1, 2, 4], "error message %s", "formatted") -> true
+func (a *Assertions) NotElementsMatchf(listA interface{}, listB interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotElementsMatchf(a.t, listA, listB, msg, args...)
+}
+
 // NotEmpty asserts that the specified object is NOT empty.  I.e. not nil, "", false, 0 or either
 // a slice or a channel with len == 0.
 //
@@ -1203,7 +1234,25 @@ func (a *Assertions) NotEqualf(expected interface{}, actual interface{}, msg str
 	return NotEqualf(a.t, expected, actual, msg, args...)
 }
 
-// NotErrorIs asserts that at none of the errors in err's chain matches target.
+// NotErrorAs asserts that none of the errors in err's chain matches target,
+// but if so, sets target to that error value.
+func (a *Assertions) NotErrorAs(err error, target interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotErrorAs(a.t, err, target, msgAndArgs...)
+}
+
+// NotErrorAsf asserts that none of the errors in err's chain matches target,
+// but if so, sets target to that error value.
+func (a *Assertions) NotErrorAsf(err error, target interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotErrorAsf(a.t, err, target, msg, args...)
+}
+
+// NotErrorIs asserts that none of the errors in err's chain matches target.
 // This is a wrapper for errors.Is.
 func (a *Assertions) NotErrorIs(err error, target error, msgAndArgs ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
@@ -1212,13 +1261,33 @@ func (a *Assertions) NotErrorIs(err error, target error, msgAndArgs ...interface
 	return NotErrorIs(a.t, err, target, msgAndArgs...)
 }
 
-// NotErrorIsf asserts that at none of the errors in err's chain matches target.
+// NotErrorIsf asserts that none of the errors in err's chain matches target.
 // This is a wrapper for errors.Is.
 func (a *Assertions) NotErrorIsf(err error, target error, msg string, args ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
 	}
 	return NotErrorIsf(a.t, err, target, msg, args...)
+}
+
+// NotImplements asserts that an object does not implement the specified interface.
+//
+//	a.NotImplements((*MyInterface)(nil), new(MyObject))
+func (a *Assertions) NotImplements(interfaceObject interface{}, object interface{}, msgAndArgs ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotImplements(a.t, interfaceObject, object, msgAndArgs...)
+}
+
+// NotImplementsf asserts that an object does not implement the specified interface.
+//
+//	a.NotImplementsf((*MyInterface)(nil), new(MyObject), "error message %s", "formatted")
+func (a *Assertions) NotImplementsf(interfaceObject interface{}, object interface{}, msg string, args ...interface{}) bool {
+	if h, ok := a.t.(tHelper); ok {
+		h.Helper()
+	}
+	return NotImplementsf(a.t, interfaceObject, object, msg, args...)
 }
 
 // NotNil asserts that the specified object is not nil.
@@ -1309,10 +1378,12 @@ func (a *Assertions) NotSamef(expected interface{}, actual interface{}, msg stri
 	return NotSamef(a.t, expected, actual, msg, args...)
 }
 
-// NotSubset asserts that the specified list(array, slice...) contains not all
-// elements given in the specified subset(array, slice...).
+// NotSubset asserts that the specified list(array, slice...) or map does NOT
+// contain all elements given in the specified subset list(array, slice...) or
+// map.
 //
-//	a.NotSubset([1, 3, 4], [1, 2], "But [1, 3, 4] does not contain [1, 2]")
+//	a.NotSubset([1, 3, 4], [1, 2])
+//	a.NotSubset({"x": 1, "y": 2}, {"z": 3})
 func (a *Assertions) NotSubset(list interface{}, subset interface{}, msgAndArgs ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
@@ -1320,10 +1391,12 @@ func (a *Assertions) NotSubset(list interface{}, subset interface{}, msgAndArgs 
 	return NotSubset(a.t, list, subset, msgAndArgs...)
 }
 
-// NotSubsetf asserts that the specified list(array, slice...) contains not all
-// elements given in the specified subset(array, slice...).
+// NotSubsetf asserts that the specified list(array, slice...) or map does NOT
+// contain all elements given in the specified subset list(array, slice...) or
+// map.
 //
-//	a.NotSubsetf([1, 3, 4], [1, 2], "But [1, 3, 4] does not contain [1, 2]", "error message %s", "formatted")
+//	a.NotSubsetf([1, 3, 4], [1, 2], "error message %s", "formatted")
+//	a.NotSubsetf({"x": 1, "y": 2}, {"z": 3}, "error message %s", "formatted")
 func (a *Assertions) NotSubsetf(list interface{}, subset interface{}, msg string, args ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
@@ -1483,10 +1556,11 @@ func (a *Assertions) Samef(expected interface{}, actual interface{}, msg string,
 	return Samef(a.t, expected, actual, msg, args...)
 }
 
-// Subset asserts that the specified list(array, slice...) contains all
-// elements given in the specified subset(array, slice...).
+// Subset asserts that the specified list(array, slice...) or map contains all
+// elements given in the specified subset list(array, slice...) or map.
 //
-//	a.Subset([1, 2, 3], [1, 2], "But [1, 2, 3] does contain [1, 2]")
+//	a.Subset([1, 2, 3], [1, 2])
+//	a.Subset({"x": 1, "y": 2}, {"x": 1})
 func (a *Assertions) Subset(list interface{}, subset interface{}, msgAndArgs ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()
@@ -1494,10 +1568,11 @@ func (a *Assertions) Subset(list interface{}, subset interface{}, msgAndArgs ...
 	return Subset(a.t, list, subset, msgAndArgs...)
 }
 
-// Subsetf asserts that the specified list(array, slice...) contains all
-// elements given in the specified subset(array, slice...).
+// Subsetf asserts that the specified list(array, slice...) or map contains all
+// elements given in the specified subset list(array, slice...) or map.
 //
-//	a.Subsetf([1, 2, 3], [1, 2], "But [1, 2, 3] does contain [1, 2]", "error message %s", "formatted")
+//	a.Subsetf([1, 2, 3], [1, 2], "error message %s", "formatted")
+//	a.Subsetf({"x": 1, "y": 2}, {"x": 1}, "error message %s", "formatted")
 func (a *Assertions) Subsetf(list interface{}, subset interface{}, msg string, args ...interface{}) bool {
 	if h, ok := a.t.(tHelper); ok {
 		h.Helper()

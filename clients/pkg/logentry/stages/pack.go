@@ -15,7 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var (
@@ -217,4 +217,9 @@ func (m *packStage) pack(e Entry) Entry {
 // Name implements Stage
 func (m *packStage) Name() string {
 	return StageTypePack
+}
+
+// Cleanup implements Stage.
+func (*packStage) Cleanup() {
+	// no-op
 }

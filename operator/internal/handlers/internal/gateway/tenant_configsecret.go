@@ -6,10 +6,10 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/json"
-	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 )
@@ -35,11 +35,11 @@ type openShiftSpec struct {
 	CookieSecret   string `json:"cookieSecret"`
 }
 
-// GetTenantConfigSecretData returns the tenantName, tenantId, cookieSecret
+// getTenantConfigFromSecret returns the tenantName, tenantId, cookieSecret
 // clusters to auto-create redirect URLs for OpenShift Auth or an error.
-func GetTenantConfigSecretData(ctx context.Context, k k8s.Client, req ctrl.Request) (map[string]manifests.TenantConfig, error) {
+func getTenantConfigFromSecret(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack) (map[string]manifests.TenantConfig, error) {
 	var tenantSecret corev1.Secret
-	key := client.ObjectKey{Name: manifests.GatewayName(req.Name), Namespace: req.Namespace}
+	key := client.ObjectKey{Name: manifests.GatewayName(stack.Name), Namespace: stack.Namespace}
 	if err := k.Get(ctx, key, &tenantSecret); err != nil {
 		return nil, kverrors.Wrap(err, "couldn't find tenant secret.")
 	}

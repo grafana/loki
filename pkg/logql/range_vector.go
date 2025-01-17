@@ -11,9 +11,9 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
-	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logql/vector"
+	"github.com/grafana/loki/v3/pkg/iter"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/vector"
 )
 
 // BatchRangeVectorAggregator aggregates samples for a given range of samples.
@@ -118,7 +118,7 @@ func (r *batchRangeVectorIterator) Close() error {
 }
 
 func (r *batchRangeVectorIterator) Error() error {
-	return r.iter.Error()
+	return r.iter.Err()
 }
 
 // popBack removes all entries out of the current window from the back.
@@ -536,7 +536,7 @@ func (r *streamRangeVectorIterator) Close() error {
 }
 
 func (r *streamRangeVectorIterator) Error() error {
-	return r.iter.Error()
+	return r.iter.Err()
 }
 
 // load the next sample range window.

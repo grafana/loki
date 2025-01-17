@@ -27,18 +27,20 @@ For the sake of simplicity we'll use a [GrafanaCloud][GrafanaCloud] Loki and Gra
 
 In this tutorial we'll use [eksctl][eksctl], a simple command line utility for creating and managing Kubernetes clusters on Amazon EKS. AWS requires creating many resources such as IAM roles, security groups and networks, by using `eksctl` all of this is simplified.
 
-> We're not going to use a Fargate cluster. Do note that if you want to use Fargate daemonset are not allowed, the only way to ship logs with EKS Fargate is to run a fluentd or fluentbit or Promtail as a sidecar and tee your logs into a file. For more information on how to do so, you can read this [blog post][blog ship log with fargate].
-
+{{< admonition type="note" >}}
+We're not going to use a Fargate cluster. Do note that if you want to use Fargate daemonset are not allowed, the only way to ship logs with EKS Fargate is to run a fluentd or fluentbit or Promtail as a sidecar and tee your logs into a file. For more information on how to do so, you can read this [blog post][blog ship log with fargate].
+{{< /admonition >}}
 
 ```bash
 eksctl create cluster --name loki-promtail --managed
 ```
 
-This usually takes about 15 minutes. When this is finished you should have `kubectl context` configured to communicate with your newly created cluster. To verify, run the following command: 
+This usually takes about 15 minutes. When this is finished you should have `kubectl context` configured to communicate with your newly created cluster. To verify, run the following command:
 
 ```bash
 kubectl version
 ```
+
 You should see output similar to the following:
 
 ```bash
@@ -55,18 +57,24 @@ What's nice about Promtail is that it uses the same [service discovery as Promet
 Let's add the Loki repository and list all available charts. To add the repo, run the following command:
 
 ```bash
-helm repo add loki https://grafana.github.io/loki/charts
+helm repo add grafana https://grafana.github.io/helm-charts
+helm upgrade -i promtail grafana/promtail
 ```
+
 You should see the following message.
+
 ```bash
 "loki" has been added to your repositories
 ```
+
 To list the available charts, run the following command:
 
 ```bash
 helm search repo
 ```
+
 You should see output similar to the following:
+
 ```bash
 NAME                   CHART VERSION   APP VERSION     DESCRIPTION
 loki/fluent-bit 0.3.0           v1.6.0          Uses fluent-bit Loki go plugin for gathering lo...
@@ -99,16 +107,19 @@ kubectl create namespace monitoring
 ```
 
 You should see the following message.
+
 ```bash
 namespace/monitoring created
 ```
 
 To add Promtail, run the following command:
+
 ```bash
 helm install promtail --namespace monitoring loki/promtail -f values.yaml
 ```
 
 You should see output similar to the following:
+
 ```bash
 NAME: promtail
 LAST DEPLOYED: Fri Jul 10 14:41:37 2020
@@ -129,6 +140,7 @@ kubectl get -n monitoring pods
 ```
 
 You should see output similar to the following:
+
 ```bash
 NAME             READY   STATUS    RESTARTS   AGE
 promtail-87t62   1/1     Running   0          35s
@@ -233,9 +245,11 @@ helm upgrade  promtail loki/promtail -n monitoring -f values.yaml
 And deploy the `eventrouter` using:
 
 ```bash
-kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/eks/eventrouter.yaml
+kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/send-data/promtail/cloud/eks/eventrouter.yaml
 ```
+
 You should see output similar to the following:
+
 ```bash
 serviceaccount/eventrouter created
 clusterrole.rbac.authorization.k8s.io/eventrouter created
@@ -266,11 +280,10 @@ If you want to push this further you can check out [Joe's blog post][blog annota
 [default value file]: https://github.com/grafana/helm-charts/blob/main/charts/promtail/values.yaml
 [grafana logs namespace]: namespace-grafana.png
 [relabel_configs]:https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config
-[syslog]: ../../../installation/helm#run-promtail-with-syslog-support
 [kubelet]: https://kubernetes.io/docs/reference/command-line-tools-reference/kubelet/#:~:text=The%20kubelet%20works%20in%20terms,PodSpecs%20are%20running%20and%20healthy.
 [blog events]: https://grafana.com/blog/2019/08/21/how-grafana-labs-effectively-pairs-loki-and-kubernetes-events/
 [labels post]: https://grafana.com/blog/2020/04/21/how-labels-in-loki-can-make-log-queries-faster-and-easier/
-[pipeline]: https://grafana.com/docs/loki/latest/send-data/promtail/pipelines/
+[pipeline]: https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/pipelines/
 [final config]: values.yaml
 [blog annotations]: https://grafana.com/blog/2019/12/09/how-to-do-automatic-annotations-with-grafana-and-loki/
 [kubectl]: https://kubernetes.io/docs/tasks/tools/install-kubectl/

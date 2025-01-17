@@ -3,8 +3,8 @@ package chunk
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,13 +12,16 @@ import (
 
 	errs "errors"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -27,6 +30,7 @@ var (
 	ErrMetadataLength  = errs.New("chunk metadata wrong length")
 	ErrDataLength      = errs.New("chunk data wrong length")
 	ErrSliceOutOfRange = errs.New("chunk can't be sliced out of its data range")
+	ErrChunkDecode     = errs.New("error decoding freshly created chunk")
 )
 
 var castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
@@ -210,15 +214,11 @@ func readOneHexPart(hex []byte) (part []byte, i int) {
 }
 
 func unsafeGetBytes(s string) []byte {
-	var buf []byte
-	p := unsafe.Pointer(&buf)
-	*(*string)(p) = s
-	(*reflect.SliceHeader)(p).Cap = len(s)
-	return buf
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
 }
 
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
 }
 
 var writerPool = sync.Pool{
@@ -227,11 +227,11 @@ var writerPool = sync.Pool{
 
 // Encode writes the chunk into a buffer, and calculates the checksum.
 func (c *Chunk) Encode() error {
-	return c.EncodeTo(nil)
+	return c.EncodeTo(nil, util_log.Logger)
 }
 
 // EncodeTo is like Encode but you can provide your own buffer to use.
-func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
+func (c *Chunk) EncodeTo(buf *bytes.Buffer, log log.Logger) error {
 	if buf == nil {
 		buf = bytes.NewBuffer(nil)
 	}
@@ -275,6 +275,32 @@ func (c *Chunk) EncodeTo(buf *bytes.Buffer) error {
 	// Now work out the checksum
 	c.encoded = buf.Bytes()
 	c.Checksum = crc32.Checksum(c.encoded, castagnoliTable)
+
+	newCh := Chunk{
+		ChunkRef: logproto.ChunkRef{
+			UserID:      c.UserID,
+			Fingerprint: c.Fingerprint,
+			From:        c.From,
+			Through:     c.Through,
+			Checksum:    c.Checksum,
+		},
+	}
+
+	if err := newCh.Decode(NewDecodeContext(), c.encoded); err != nil {
+		externalKey := fmt.Sprintf(
+			"%s/%x/%x:%x:%x",
+			c.UserID,
+			c.Fingerprint,
+			int64(c.From),
+			int64(c.Through),
+			c.Checksum,
+		)
+		level.Error(log).
+			Log("msg", "error decoding freshly created chunk", "err", err, "key", externalKey)
+
+		return ErrChunkDecode
+	}
+
 	return nil
 }
 

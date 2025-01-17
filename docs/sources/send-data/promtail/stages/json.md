@@ -134,5 +134,7 @@ The following key-value pairs would be created in the set of extracted data:
 - `stream`: `stderr`
 - `timestamp`: `2019-04-30T02:12:41.8443515`
 
-Note that referring to `grpc.stream` without the combination of double quotes
+{{< admonition type="note" >}}
+Referring to `grpc.stream` without the combination of double quotes
 wrapped in single quotes will not work properly.
+{{< /admonition >}}

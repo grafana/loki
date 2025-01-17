@@ -16,6 +16,18 @@ variable "bucket_names" {
   default     = []
 }
 
+variable "filter_prefix" {
+  type        = string
+  description = "Prefix for S3 bucket notification filter"
+  default     = "AWSLogs/"
+}
+
+variable "filter_suffix" {
+  type        = string
+  description = "Suffix for S3 bucket notification filter"
+  default     = ".gz"
+}
+
 variable "log_group_names" {
   type        = set(string)
   description = "List of CloudWatch Log Group names to create Subscription Filters for."
@@ -69,6 +81,12 @@ variable "print_log_line" {
 variable "extra_labels" {
   type        = string
   description = "Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail."
+  default     = ""
+}
+
+variable "drop_labels" {
+  type        = string
+  description = "Comma separated list of labels to be drop, in the format 'name1,name2,...,nameN' to be omitted to entries forwarded by lambda-promtail."
   default     = ""
 }
 

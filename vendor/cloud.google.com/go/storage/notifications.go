@@ -21,7 +21,6 @@ import (
 	"regexp"
 
 	"cloud.google.com/go/internal/trace"
-	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
 	raw "google.golang.org/api/storage/v1"
 )
 
@@ -92,31 +91,7 @@ func toNotification(rn *raw.Notification) *Notification {
 	return n
 }
 
-func toNotificationFromProto(pbn *storagepb.NotificationConfig) *Notification {
-	n := &Notification{
-		ID:               pbn.GetName(),
-		EventTypes:       pbn.GetEventTypes(),
-		ObjectNamePrefix: pbn.GetObjectNamePrefix(),
-		CustomAttributes: pbn.GetCustomAttributes(),
-		PayloadFormat:    pbn.GetPayloadFormat(),
-	}
-	n.TopicProjectID, n.TopicID = parseNotificationTopic(pbn.Topic)
-	return n
-}
-
-func toProtoNotification(n *Notification) *storagepb.NotificationConfig {
-	return &storagepb.NotificationConfig{
-		Name: n.ID,
-		Topic: fmt.Sprintf("//pubsub.googleapis.com/projects/%s/topics/%s",
-			n.TopicProjectID, n.TopicID),
-		EventTypes:       n.EventTypes,
-		ObjectNamePrefix: n.ObjectNamePrefix,
-		CustomAttributes: n.CustomAttributes,
-		PayloadFormat:    n.PayloadFormat,
-	}
-}
-
-var topicRE = regexp.MustCompile("^//pubsub.googleapis.com/projects/([^/]+)/topics/([^/]+)")
+var topicRE = regexp.MustCompile(`^//pubsub\.googleapis\.com/projects/([^/]+)/topics/([^/]+)`)
 
 // parseNotificationTopic extracts the project and topic IDs from from the full
 // resource name returned by the service. If the name is malformed, it returns
@@ -144,6 +119,7 @@ func toRawNotification(n *Notification) *raw.Notification {
 // AddNotification adds a notification to b. You must set n's TopicProjectID, TopicID
 // and PayloadFormat, and must not set its ID. The other fields are all optional. The
 // returned Notification's ID can be used to refer to it.
+// Note: gRPC is not supported.
 func (b *BucketHandle) AddNotification(ctx context.Context, n *Notification) (ret *Notification, err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.AddNotification")
 	defer func() { trace.EndSpan(ctx, err) }()
@@ -165,6 +141,7 @@ func (b *BucketHandle) AddNotification(ctx context.Context, n *Notification) (re
 
 // Notifications returns all the Notifications configured for this bucket, as a map
 // indexed by notification ID.
+// Note: gRPC is not supported.
 func (b *BucketHandle) Notifications(ctx context.Context) (n map[string]*Notification, err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Notifications")
 	defer func() { trace.EndSpan(ctx, err) }()
@@ -182,15 +159,8 @@ func notificationsToMap(rns []*raw.Notification) map[string]*Notification {
 	return m
 }
 
-func notificationsToMapFromProto(ns []*storagepb.NotificationConfig) map[string]*Notification {
-	m := map[string]*Notification{}
-	for _, n := range ns {
-		m[n.Name] = toNotificationFromProto(n)
-	}
-	return m
-}
-
 // DeleteNotification deletes the notification with the given ID.
+// Note: gRPC is not supported.
 func (b *BucketHandle) DeleteNotification(ctx context.Context, id string) (err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.DeleteNotification")
 	defer func() { trace.EndSpan(ctx, err) }()

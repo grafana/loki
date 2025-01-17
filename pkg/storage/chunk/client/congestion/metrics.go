@@ -1,6 +1,10 @@
 package congestion
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type Metrics struct {
 	currentLimit       prometheus.Gauge
@@ -13,6 +17,11 @@ type Metrics struct {
 
 func (m Metrics) Unregister() {
 	prometheus.Unregister(m.currentLimit)
+	prometheus.Unregister(m.backoffSec)
+	prometheus.Unregister(m.requests)
+	prometheus.Unregister(m.retries)
+	prometheus.Unregister(m.nonRetryableErrors)
+	prometheus.Unregister(m.retriesExceeded)
 }
 
 // NewMetrics creates metrics to be used for monitoring congestion control.
@@ -25,7 +34,7 @@ func NewMetrics(name string, cfg Config) *Metrics {
 		"name":     name,
 	}
 
-	const namespace = "loki"
+	const namespace = constants.Loki
 	const subsystem = "store_congestion_control"
 	m := Metrics{
 		currentLimit: prometheus.NewGauge(prometheus.GaugeOpts{

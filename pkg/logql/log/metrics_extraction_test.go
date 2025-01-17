@@ -163,6 +163,22 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantOk: true,
 		},
 		{
+			name: "convert bytes without spaces",
+			ex: mustSampleExtractor(LabelExtractorWithStages(
+				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,
+			)),
+			in: labels.FromStrings("foo", "13MiB",
+				"bar", "foo",
+				"buzz", "blip",
+				"namespace", "dev",
+			),
+			want: 13 * 1024 * 1024,
+			wantLbs: labels.FromStrings("bar", "foo",
+				"buzz", "blip",
+			),
+			wantOk: true,
+		},
+		{
 			name: "convert bytes with structured metadata",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,
@@ -346,7 +362,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.Equal(t, 1., f)
 	assertLabelResult(t, lbs, l)
 
-	stage := mustFilter(NewFilter("foo", labels.MatchEqual)).ToStage()
+	stage := mustFilter(NewFilter("foo", LineMatchEqual)).ToStage()
 	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{stage}, []string{"namespace"}, false, false)
 	require.NoError(t, err)
 
@@ -404,7 +420,7 @@ func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),
-		mustFilter(NewFilter("foo", labels.MatchEqual)).ToStage(),
+		mustFilter(NewFilter("foo", LineMatchEqual)).ToStage(),
 	}, []string{"foo"}, false, false)
 	require.NoError(t, err)
 
@@ -484,4 +500,8 @@ func (p *stubStreamExtractor) Process(_ int64, _ []byte, _ ...labels.Label) (flo
 
 func (p *stubStreamExtractor) ProcessString(_ int64, _ string, _ ...labels.Label) (float64, LabelsResult, bool) {
 	return 0, nil, true
+}
+
+func (p *stubStreamExtractor) ReferencedStructuredMetadata() bool {
+	return false
 }

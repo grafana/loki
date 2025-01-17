@@ -1,50 +1,21 @@
-name: "publish-technical-documentation-next"
+name: publish-technical-documentation-next
 
 on:
   push:
     branches:
-      - "main"
+      - main
     paths:
       - "docs/sources/**"
   workflow_dispatch:
 jobs:
-  test:
-    runs-on: "ubuntu-latest"
-    steps:
-      - name: "Check out code"
-        uses: "actions/checkout@v3"
-      - name: "Build website"
-        # -e HUGO_REFLINKSERRORLEVEL=ERROR prevents merging broken refs with the downside
-        # that no refs to external content can be used as these refs will not resolve in the
-        # docs-base image.
-        run: |
-          docker run -v ${PWD}/docs/sources:/hugo/content/docs/loki/next -e HUGO_REFLINKSERRORLEVEL=ERROR --rm grafana/docs-base:latest /bin/bash -c 'make hugo'
-
   sync:
-    runs-on: "ubuntu-latest"
-    needs: "test"
+    if: github.repository == 'grafana/loki'
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
     steps:
-      - name: "Check out code"
-        uses: "actions/checkout@v3"
-
-      - name: "Clone website-sync Action"
-        # WEBSITE_SYNC_TOKEN is a fine-grained GitHub Personal Access Token that expires.
-        # It must be regenerated in the grafanabot GitHub account and requires a Grafana organization
-        # GitHub administrator to update the organization secret.
-        # The IT helpdesk can update the organization secret.
-        run: "git clone --single-branch --no-tags --depth 1 -b master https://grafanabot:${{ secrets.WEBSITE_SYNC_TOKEN }}@github.com/grafana/website-sync ./.github/actions/website-sync"
-
-      - name: "Publish to website repository (next)"
-        uses: "./.github/actions/website-sync"
-        id: "publish-next"
+      - uses: actions/checkout@v4
+      - uses: grafana/writers-toolkit/publish-technical-documentation@publish-technical-documentation/v1
         with:
-          repository: "grafana/website"
-          branch: "master"
-          host: "github.com"
-          # PUBLISH_TO_WEBSITE_TOKEN is a fine-grained GitHub Personal Access Token that expires.
-          # It must be regenerated in the grafanabot GitHub account and requires a Grafana organization
-          # GitHub administrator to update the organization secret.
-          # The IT helpdesk can update the organization secret.
-          github_pat: "grafanabot:${{ secrets.PUBLISH_TO_WEBSITE_TOKEN }}"
-          source_folder: "docs/sources"
-          target_folder: "content/docs/loki/next"
+          website_directory: content/docs/loki/next

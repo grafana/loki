@@ -1,6 +1,6 @@
 package querier
 
-import "github.com/grafana/loki/pkg/logproto"
+import "github.com/grafana/loki/v3/pkg/logproto"
 
 func mockTailResponse(stream logproto.Stream) *logproto.TailResponse {
 	return &logproto.TailResponse{

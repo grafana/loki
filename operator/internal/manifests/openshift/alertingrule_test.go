@@ -3,9 +3,10 @@ package openshift
 import (
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 )
 
 func TestAlertingRuleTenantLabels(t *testing.T) {
@@ -45,7 +46,8 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 								{
 									Alert: "alert",
 									Labels: map[string]string{
-										opaDefaultLabelMatcher: "test-ns",
+										opaDefaultLabelMatcher:    "test-ns",
+										ocpMonitoringGroupByLabel: "test-ns",
 									},
 								},
 							},
@@ -56,6 +58,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: tenantInfrastructure,
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -71,6 +76,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: tenantInfrastructure,
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -79,6 +87,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Alert: "alert",
+									Labels: map[string]string{
+										ocpMonitoringGroupByLabel: "test-ns",
+									},
 								},
 							},
 						},
@@ -88,6 +99,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: tenantAudit,
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -103,6 +117,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: tenantAudit,
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -111,6 +128,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Alert: "alert",
+									Labels: map[string]string{
+										ocpMonitoringGroupByLabel: "test-ns",
+									},
 								},
 							},
 						},
@@ -120,6 +140,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: tenantNetwork,
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -135,6 +158,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: tenantNetwork,
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -143,6 +169,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 							Rules: []*lokiv1.AlertingRuleGroupSpec{
 								{
 									Alert: "alert",
+									Labels: map[string]string{
+										ocpMonitoringGroupByLabel: "test-ns",
+									},
 								},
 							},
 						},
@@ -152,6 +181,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 		},
 		{
 			rule: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: "unknown",
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -167,6 +199,9 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 				},
 			},
 			want: &lokiv1.AlertingRule{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
 				Spec: lokiv1.AlertingRuleSpec{
 					TenantID: "unknown",
 					Groups: []*lokiv1.AlertingRuleGroup{
@@ -184,7 +219,6 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 		},
 	}
 	for _, tc := range tt {
-		tc := tc
 		t.Run(tc.rule.Spec.TenantID, func(t *testing.T) {
 			t.Parallel()
 			AlertingRuleTenantLabels(tc.rule)

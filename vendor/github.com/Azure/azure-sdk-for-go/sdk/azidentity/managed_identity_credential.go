@@ -8,12 +8,12 @@ package azidentity
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential"
 )
 
@@ -64,16 +64,22 @@ type ManagedIdentityCredentialOptions struct {
 	// instead of the hosting environment's default. The value may be the identity's client ID or resource ID, but note that
 	// some platforms don't accept resource IDs.
 	ID ManagedIDKind
+
+	// dac indicates whether the credential is part of DefaultAzureCredential. When true, and the environment doesn't have
+	// configuration for a specific managed identity API, the credential tries to determine whether IMDS is available before
+	// sending its first token request. It does this by sending a malformed request with a short timeout. Any response to that
+	// request is taken to mean IMDS is available, in which case the credential will send ordinary token requests thereafter
+	// with no special timeout. The purpose of this behavior is to prevent a very long timeout when IMDS isn't available.
+	dac bool
 }
 
 // ManagedIdentityCredential authenticates an Azure managed identity in any hosting environment supporting managed identities.
 // This credential authenticates a system-assigned identity by default. Use ManagedIdentityCredentialOptions.ID to specify a
-// user-assigned identity. See Azure Active Directory documentation for more information about managed identities:
-// https://docs.microsoft.com/azure/active-directory/managed-identities-azure-resources/overview
+// user-assigned identity. See Microsoft Entra ID documentation for more information about managed identities:
+// https://learn.microsoft.com/entra/identity/managed-identities-azure-resources/overview
 type ManagedIdentityCredential struct {
-	client confidentialClient
+	client *confidentialClient
 	mic    *managedIdentityClient
-	s      *syncer
 }
 
 // NewManagedIdentityCredential creates a ManagedIdentityCredential. Pass nil to accept default options.
@@ -93,35 +99,30 @@ func NewManagedIdentityCredential(options *ManagedIdentityCredentialOptions) (*M
 	if options.ID != nil {
 		clientID = options.ID.String()
 	}
-	// similarly, it's okay to give MSAL an incorrect authority URL because that URL won't be used
-	c, err := confidential.New("https://login.microsoftonline.com/common", clientID, cred)
+	// similarly, it's okay to give MSAL an incorrect tenant because MSAL won't use the value
+	c, err := newConfidentialClient("common", clientID, credNameManagedIdentity, cred, confidentialClientOptions{
+		ClientOptions: options.ClientOptions,
+	})
 	if err != nil {
 		return nil, err
 	}
-	m := ManagedIdentityCredential{client: c, mic: mic}
-	m.s = newSyncer(credNameManagedIdentity, "", nil, m.requestToken, m.silentAuth)
-	return &m, nil
+	return &ManagedIdentityCredential{client: c, mic: mic}, nil
 }
 
 // GetToken requests an access token from the hosting environment. This method is called automatically by Azure SDK clients.
 func (c *ManagedIdentityCredential) GetToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
+	var err error
+	ctx, endSpan := runtime.StartSpan(ctx, credNameManagedIdentity+"."+traceOpGetToken, c.client.azClient.Tracer(), nil)
+	defer func() { endSpan(err) }()
+
 	if len(opts.Scopes) != 1 {
-		err := errors.New(credNameManagedIdentity + ": GetToken() requires exactly one scope")
+		err = fmt.Errorf("%s.GetToken() requires exactly one scope", credNameManagedIdentity)
 		return azcore.AccessToken{}, err
 	}
-	// managed identity endpoints require an AADv1 resource (i.e. token audience), not a v2 scope, so we remove "/.default" here
+	// managed identity endpoints require a Microsoft Entra ID v1 resource (i.e. token audience), not a v2 scope, so we remove "/.default" here
 	opts.Scopes = []string{strings.TrimSuffix(opts.Scopes[0], defaultSuffix)}
-	return c.s.GetToken(ctx, opts)
-}
-
-func (c *ManagedIdentityCredential) requestToken(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenByCredential(ctx, opts.Scopes)
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
-}
-
-func (c *ManagedIdentityCredential) silentAuth(ctx context.Context, opts policy.TokenRequestOptions) (azcore.AccessToken, error) {
-	ar, err := c.client.AcquireTokenSilent(ctx, opts.Scopes)
-	return azcore.AccessToken{Token: ar.AccessToken, ExpiresOn: ar.ExpiresOn.UTC()}, err
+	tk, err := c.client.GetToken(ctx, opts)
+	return tk, err
 }
 
 var _ azcore.TokenCredential = (*ManagedIdentityCredential)(nil)

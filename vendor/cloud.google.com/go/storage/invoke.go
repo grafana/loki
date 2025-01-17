@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"net/url"
 	"strings"
 
@@ -29,6 +28,7 @@ import (
 	sinternal "cloud.google.com/go/storage/internal"
 	"github.com/google/uuid"
 	gax "github.com/googleapis/gax-go/v2"
+	"github.com/googleapis/gax-go/v2/callctx"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -37,10 +37,15 @@ import (
 var defaultRetry *retryConfig = &retryConfig{}
 var xGoogDefaultHeader = fmt.Sprintf("gl-go/%s gccl/%s", version.Go(), sinternal.Version)
 
+const (
+	xGoogHeaderKey       = "x-goog-api-client"
+	idempotencyHeaderKey = "x-goog-gcs-idempotency-token"
+)
+
 // run determines whether a retry is necessary based on the config and
 // idempotency information. It then calls the function with or without retries
 // as appropriate, using the configured settings.
-func run(ctx context.Context, call func() error, retry *retryConfig, isIdempotent bool, setHeader func(string, int)) error {
+func run(ctx context.Context, call func(ctx context.Context) error, retry *retryConfig, isIdempotent bool) error {
 	attempts := 1
 	invocationID := uuid.New().String()
 
@@ -48,8 +53,8 @@ func run(ctx context.Context, call func() error, retry *retryConfig, isIdempoten
 		retry = defaultRetry
 	}
 	if (retry.policy == RetryIdempotent && !isIdempotent) || retry.policy == RetryNever {
-		setHeader(invocationID, attempts)
-		return call()
+		ctxWithHeaders := setInvocationHeaders(ctx, invocationID, attempts)
+		return call(ctxWithHeaders)
 	}
 	bo := gax.Backoff{}
 	if retry.backoff != nil {
@@ -63,30 +68,33 @@ func run(ctx context.Context, call func() error, retry *retryConfig, isIdempoten
 	}
 
 	return internal.Retry(ctx, bo, func() (stop bool, err error) {
-		setHeader(invocationID, attempts)
-		err = call()
+		ctxWithHeaders := setInvocationHeaders(ctx, invocationID, attempts)
+		err = call(ctxWithHeaders)
+		if err != nil && retry.maxAttempts != nil && attempts >= *retry.maxAttempts {
+			return true, fmt.Errorf("storage: retry failed after %v attempts; last error: %w", *retry.maxAttempts, err)
+		}
 		attempts++
-		return !errorFunc(err), err
+		retryable := errorFunc(err)
+		// Explicitly check context cancellation so that we can distinguish between a
+		// DEADLINE_EXCEEDED error from the server and a user-set context deadline.
+		// Unfortunately gRPC will codes.DeadlineExceeded (which may be retryable if it's
+		// sent by the server) in both cases.
+		if ctxErr := ctx.Err(); errors.Is(ctxErr, context.Canceled) || errors.Is(ctxErr, context.DeadlineExceeded) {
+			retryable = false
+		}
+		return !retryable, err
 	})
 }
 
-func setRetryHeaderHTTP(req interface{ Header() http.Header }) func(string, int) {
-	return func(invocationID string, attempts int) {
-		if req == nil {
-			return
-		}
-		header := req.Header()
-		invocationHeader := fmt.Sprintf("gccl-invocation-id/%v gccl-attempt-count/%v", invocationID, attempts)
-		xGoogHeader := strings.Join([]string{invocationHeader, xGoogDefaultHeader}, " ")
-		header.Set("x-goog-api-client", xGoogHeader)
-	}
-}
+// Sets invocation ID headers on the context which will be propagated as
+// headers in the call to the service (for both gRPC and HTTP).
+func setInvocationHeaders(ctx context.Context, invocationID string, attempts int) context.Context {
+	invocationHeader := fmt.Sprintf("gccl-invocation-id/%v gccl-attempt-count/%v", invocationID, attempts)
+	xGoogHeader := strings.Join([]string{invocationHeader, xGoogDefaultHeader}, " ")
 
-// TODO: Implement method setting header via context for gRPC
-func setRetryHeaderGRPC(_ context.Context) func(string, int) {
-	return func(_ string, _ int) {
-		return
-	}
+	ctx = callctx.SetHeaders(ctx, xGoogHeaderKey, xGoogHeader)
+	ctx = callctx.SetHeaders(ctx, idempotencyHeaderKey, invocationID)
+	return ctx
 }
 
 // ShouldRetry returns true if an error is retryable, based on best practice
@@ -105,38 +113,39 @@ func ShouldRetry(err error) bool {
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
 
 	switch e := err.(type) {
-	case *net.OpError:
-		if strings.Contains(e.Error(), "use of closed network connection") {
-			// TODO: check against net.ErrClosed (go 1.16+) instead of string
-			return true
-		}
 	case *googleapi.Error:
 		// Retry on 408, 429, and 5xx, according to
 		// https://cloud.google.com/storage/docs/exponential-backoff.
 		return e.Code == 408 || e.Code == 429 || (e.Code >= 500 && e.Code < 600)
-	case *url.Error:
+	case *net.OpError, *url.Error:
 		// Retry socket-level errors ECONNREFUSED and ECONNRESET (from syscall).
 		// Unfortunately the error type is unexported, so we resort to string
 		// matching.
-		retriable := []string{"connection refused", "connection reset"}
+		retriable := []string{"connection refused", "connection reset", "broken pipe"}
 		for _, s := range retriable {
 			if strings.Contains(e.Error(), s) {
 				return true
 			}
+		}
+	case *net.DNSError:
+		if e.IsTemporary {
+			return true
 		}
 	case interface{ Temporary() bool }:
 		if e.Temporary() {
 			return true
 		}
 	}
-	// HTTP 429, 502, 503, and 504 all map to gRPC UNAVAILABLE per
-	// https://grpc.github.io/grpc/core/md_doc_http-grpc-status-mapping.html.
-	//
-	// This is only necessary for the experimental gRPC-based media operations.
-	if st, ok := status.FromError(err); ok && st.Code() == codes.Unavailable {
-		return true
+	// UNAVAILABLE, RESOURCE_EXHAUSTED, INTERNAL, and DEADLINE_EXCEEDED codes are all retryable for gRPC.
+	if st, ok := status.FromError(err); ok {
+		if code := st.Code(); code == codes.Unavailable || code == codes.ResourceExhausted || code == codes.Internal || code == codes.DeadlineExceeded {
+			return true
+		}
 	}
 	// Unwrap is only supported in go1.13.x+
 	if e, ok := err.(interface{ Unwrap() error }); ok {

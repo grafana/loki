@@ -13,10 +13,10 @@ import (
 	"github.com/grafana/dskit/runutil"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/ruler/rulestore/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/ruler/rulestore/local"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // FSConfig is the config for a FSObjectClient.
@@ -46,6 +46,8 @@ type FSObjectClient struct {
 	pathSeparator string
 }
 
+var _ client.ObjectClient = (*FSObjectClient)(nil)
+
 // NewFSObjectClient makes a chunk.Client which stores chunks as files in the local filesystem.
 func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 	// filepath.Clean cleans up the path by removing unwanted duplicate slashes, dots etc.
@@ -65,13 +67,24 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 // Stop implements ObjectClient
 func (FSObjectClient) Stop() {}
 
-func (f *FSObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
-	_, err := os.Lstat(objectKey)
-	if err != nil {
+func (f *FSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	if _, err := f.GetAttributes(ctx, objectKey); err != nil {
+		if f.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
 		return false, err
 	}
-
 	return true, nil
+}
+
+func (f *FSObjectClient) GetAttributes(_ context.Context, objectKey string) (client.ObjectAttributes, error) {
+	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
+	fi, err := os.Lstat(fullPath)
+	if err != nil {
+		return client.ObjectAttributes{}, err
+	}
+
+	return client.ObjectAttributes{Size: fi.Size()}, nil
 }
 
 // GetObject from the store
@@ -87,8 +100,30 @@ func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.Read
 	return fl, stats.Size(), nil
 }
 
+type SectionReadCloser struct {
+	io.Reader
+	closeFn func() error
+}
+
+func (l SectionReadCloser) Close() error {
+	return l.closeFn()
+}
+
+// GetObject from the store
+func (f *FSObjectClient) GetObjectRange(_ context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))
+	if err != nil {
+		return nil, err
+	}
+	closer := SectionReadCloser{
+		Reader:  io.NewSectionReader(fl, offset, length),
+		closeFn: fl.Close,
+	}
+	return closer, nil
+}
+
 // PutObject into the store
-func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
+func (f *FSObjectClient) PutObject(_ context.Context, objectKey string, object io.Reader) error {
 	fullPath := filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey))
 	err := util.EnsureDirectory(filepath.Dir(fullPath))
 	if err != nil {
@@ -205,7 +240,7 @@ func (f *FSObjectClient) DeleteObject(_ context.Context, objectKey string) error
 
 // DeleteChunksBefore implements BucketClient
 func (f *FSObjectClient) DeleteChunksBefore(_ context.Context, ts time.Time) error {
-	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, err error) error {
+	return filepath.Walk(f.cfg.Directory, func(path string, info os.FileInfo, _ error) error {
 		if !info.IsDir() && info.ModTime().Before(ts) {
 			level.Info(util_log.Logger).Log("msg", "file has exceeded the retention period, removing it", "filepath", info.Name())
 			if err := os.Remove(path); err != nil {

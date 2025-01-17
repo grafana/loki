@@ -12,10 +12,10 @@ import (
 	"github.com/joncrlsn/dque"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type dqueConfig struct {
@@ -59,7 +59,7 @@ func newDque(cfg *config, logger log.Logger, metrics *client.Metrics) (client.Cl
 		logger: log.With(logger, "component", "queue", "name", cfg.bufferConfig.dqueConfig.queueName),
 	}
 
-	err = os.MkdirAll(cfg.bufferConfig.dqueConfig.queueDir, 0644)
+	err = os.MkdirAll(cfg.bufferConfig.dqueConfig.queueDir, 0640)
 	if err != nil {
 		return nil, fmt.Errorf("cannot create queue directory: %s", err)
 	}

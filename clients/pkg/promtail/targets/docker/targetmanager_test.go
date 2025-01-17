@@ -19,9 +19,9 @@ import (
 	"github.com/prometheus/prometheus/discovery/moby"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
 
 func Test_TargetManager(t *testing.T) {
@@ -50,7 +50,7 @@ func Test_TargetManager(t *testing.T) {
 		case strings.HasSuffix(path, "/networks"):
 			// Serve networks
 			w.Header().Set("Content-Type", "application/json")
-			err := json.NewEncoder(w).Encode([]types.NetworkResource{})
+			err := json.NewEncoder(w).Encode([]network.Inspect{})
 			require.NoError(t, err)
 		case strings.HasSuffix(path, "json"):
 			w.Header().Set("Content-Type", "application/json")
@@ -95,6 +95,7 @@ func Test_TargetManager(t *testing.T) {
 		ps,
 		entryHandler,
 		cfgs,
+		0,
 	)
 	require.NoError(t, err)
 	require.True(t, ta.Ready())

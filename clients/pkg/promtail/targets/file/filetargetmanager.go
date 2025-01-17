@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bmatcuk/doublestar"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -20,13 +20,13 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/logentry/stages"
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
+	"github.com/grafana/loki/v3/clients/pkg/logentry/stages"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/target"
 
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util"
 )
 
 const (
@@ -65,6 +65,12 @@ func NewFileTargetManager(
 		reg = prometheus.DefaultRegisterer
 	}
 
+	noopRegistry := util.NoopRegistry{}
+	noopSdMetrics, err := discovery.CreateAndRegisterSDMetrics(noopRegistry)
+	if err != nil {
+		return nil, err
+	}
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -76,7 +82,12 @@ func NewFileTargetManager(
 		watcher:            watcher,
 		targetEventHandler: make(chan fileTargetEvent),
 		syncers:            map[string]*targetSyncer{},
-		manager:            discovery.NewManager(ctx, log.With(logger, "component", "discovery")),
+		manager: discovery.NewManager(
+			ctx,
+			log.With(logger, "component", "discovery"),
+			noopRegistry,
+			noopSdMetrics,
+		),
 	}
 
 	hostname, err := hostname()
@@ -253,13 +264,13 @@ func (tm *FileTargetManager) fulfillKubePodSelector(selectors []kubernetes.Selec
 		return []kubernetes.SelectorConfig{{Role: kubernetes.RolePod, Field: nodeSelector}}
 	}
 
-	for _, selector := range selectors {
-		if selector.Field == "" {
-			selector.Field = nodeSelector
-		} else if !strings.Contains(selector.Field, nodeSelector) {
-			selector.Field += "," + nodeSelector
+	for i := range selectors {
+		if selectors[i].Field == "" {
+			selectors[i].Field = nodeSelector
+		} else if !strings.Contains(selectors[i].Field, nodeSelector) {
+			selectors[i].Field += "," + nodeSelector
 		}
-		selector.Role = kubernetes.RolePod
+		selectors[i].Role = kubernetes.RolePod
 	}
 
 	return selectors

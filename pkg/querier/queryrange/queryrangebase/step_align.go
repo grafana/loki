@@ -2,6 +2,7 @@ package queryrangebase
 
 import (
 	"context"
+	"time"
 )
 
 // StepAlignMiddleware aligns the start and end of request to the step to
@@ -17,7 +18,7 @@ type stepAlign struct {
 }
 
 func (s stepAlign) Do(ctx context.Context, r Request) (Response, error) {
-	start := (r.GetStart() / r.GetStep()) * r.GetStep()
-	end := (r.GetEnd() / r.GetStep()) * r.GetStep()
-	return s.next.Do(ctx, r.WithStartEnd(start, end))
+	start := (r.GetStart().UnixMilli() / r.GetStep()) * r.GetStep()
+	end := (r.GetEnd().UnixMilli() / r.GetStep()) * r.GetStep()
+	return s.next.Do(ctx, r.WithStartEnd(time.UnixMilli(start), time.UnixMilli(end)))
 }

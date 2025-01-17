@@ -14,12 +14,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
+	"github.com/prometheus/prometheus/discovery/kubernetes"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
-	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
 )
 
 func newTestLogDirectories(t *testing.T) string {
@@ -593,4 +594,71 @@ func TestLabelSetUpdate(t *testing.T) {
 	require.Equal(t, 0, len(syncer.targets))
 	require.Equal(t, 0, len(syncer.fileEventWatchers))
 
+}
+
+func TestFulfillKubePodSelector(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+	logDirName := newTestLogDirectories(t)
+
+	positionsFileName := filepath.Join(logDirName, "positions.yml")
+	ps, err := newTestPositions(logger, positionsFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*")
+	assert.NoError(t, err)
+
+	host := "test-host"
+
+	// empty selectors
+	selectors := []kubernetes.SelectorConfig{}
+	expected := []kubernetes.SelectorConfig{
+		{Role: kubernetes.RolePod, Field: fmt.Sprintf("%s=%s", kubernetesPodNodeField, host)},
+	}
+
+	result := ftm.fulfillKubePodSelector(selectors, host)
+	require.Equal(t, expected, result)
+
+	// non-empty selectors with empty field
+	selectors = []kubernetes.SelectorConfig{
+		{Role: kubernetes.RolePod, Field: ""},
+	}
+	expected = []kubernetes.SelectorConfig{
+		{Role: kubernetes.RolePod, Field: fmt.Sprintf("%s=%s", kubernetesPodNodeField, host)},
+	}
+
+	result = ftm.fulfillKubePodSelector(selectors, host)
+	require.Equal(t, expected, result)
+
+	// non-empty selectors with existing field without nodeSelector
+	selectors = []kubernetes.SelectorConfig{
+		{Role: kubernetes.RolePod, Field: "app=frontend"},
+	}
+	expectedField := "app=frontend," + fmt.Sprintf("%s=%s", kubernetesPodNodeField, host)
+	expected = []kubernetes.SelectorConfig{
+		{Role: kubernetes.RolePod, Field: expectedField},
+	}
+
+	result = ftm.fulfillKubePodSelector(selectors, host)
+	require.Equal(t, expected, result)
+
+	// non-empty selectors with existing Field containing nodeSelector
+	nodeSelector := fmt.Sprintf("%s=%s", kubernetesPodNodeField, host)
+	selectors = []kubernetes.SelectorConfig{
+		{Role: kubernetes.RolePod, Field: nodeSelector},
+	}
+	expected = []kubernetes.SelectorConfig{
+		{Role: kubernetes.RolePod, Field: nodeSelector},
+	}
+
+	result = ftm.fulfillKubePodSelector(selectors, host)
+	require.Equal(t, expected, result)
+
+	ftm.Stop()
+	ps.Stop()
 }

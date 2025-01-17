@@ -1,14 +1,15 @@
 package wal
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/encoding"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/encoding"
 )
 
 // RecordType represents the type of the WAL/Checkpoint record.
@@ -198,18 +199,18 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 		}
 
 		if dec.Err() != nil {
-			return errors.Wrapf(dec.Err(), "entry decode error after %d RefEntries", nEntries-rem)
+			return fmt.Errorf("entry decode error after %d RefEntries: %w", nEntries-rem, dec.Err())
 		}
 
 		rec.RefEntries = append(rec.RefEntries, refEntries)
 	}
 
 	if dec.Err() != nil {
-		return errors.Wrap(dec.Err(), "refEntry decode error")
+		return fmt.Errorf("refEntry decode error: %w", dec.Err())
 	}
 
 	if len(dec.B) > 0 {
-		return errors.Errorf("unexpected %d bytes left in entry", len(dec.B))
+		return fmt.Errorf("unexpected %d bytes left in entry", len(dec.B))
 	}
 	return nil
 }

@@ -7,16 +7,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/validation"
 
 	"github.com/stretchr/testify/require"
 
-	client2 "github.com/grafana/loki/pkg/ingester/client"
+	client2 "github.com/grafana/loki/v3/pkg/ingester/client"
 
 	"google.golang.org/grpc"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/ring/client"
@@ -341,15 +341,15 @@ type fakeOverrides struct {
 func (c *fakeOverrides) AllByUserID() map[string]*validation.Limits {
 	return map[string]*validation.Limits{
 		"ingester0": {
-			ShardStreams: &shardstreams.Config{
+			ShardStreams: shardstreams.Config{
 				Enabled: c.enabled,
 			},
 		},
 	}
 }
 
-func (c *fakeOverrides) ShardStreams(_ string) *shardstreams.Config {
-	return &shardstreams.Config{
+func (c *fakeOverrides) ShardStreams(_ string) shardstreams.Config {
+	return shardstreams.Config{
 		Enabled: c.enabled,
 	}
 }

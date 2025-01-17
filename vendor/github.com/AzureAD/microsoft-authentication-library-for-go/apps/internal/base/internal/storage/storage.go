@@ -82,6 +82,39 @@ func isMatchingScopes(scopesOne []string, scopesTwo string) bool {
 	return scopeCounter == len(scopesOne)
 }
 
+// needsUpgrade returns true if the given key follows the v1.0 schema i.e.,
+// it contains an uppercase character (v1.1+ keys are all lowercase)
+func needsUpgrade(key string) bool {
+	for _, r := range key {
+		if 'A' <= r && r <= 'Z' {
+			return true
+		}
+	}
+	return false
+}
+
+// upgrade a v1.0 cache item by adding a v1.1+ item having the same value and deleting
+// the v1.0 item. Callers must hold an exclusive lock on m.
+func upgrade[T any](m map[string]T, k string) T {
+	v1_1Key := strings.ToLower(k)
+	v, ok := m[k]
+	if !ok {
+		// another goroutine did the upgrade while this one was waiting for the write lock
+		return m[v1_1Key]
+	}
+	if v2, ok := m[v1_1Key]; ok {
+		// cache has an equivalent v1.1+ item, which we prefer because we know it was added
+		// by a newer version of the module and is therefore more likely to remain valid.
+		// The v1.0 item may have expired because only v1.0 or earlier would update it.
+		v = v2
+	} else {
+		// add an equivalent item according to the v1.1 schema
+		m[v1_1Key] = v
+	}
+	delete(m, k)
+	return v
+}
+
 // Read reads a storage token from the cache if it exists.
 func (m *Manager) Read(ctx context.Context, authParameters authority.AuthParams) (TokenResponse, error) {
 	tr := TokenResponse{}
@@ -89,6 +122,8 @@ func (m *Manager) Read(ctx context.Context, authParameters authority.AuthParams)
 	realm := authParameters.AuthorityInfo.Tenant
 	clientID := authParameters.ClientID
 	scopes := authParameters.Scopes
+	authnSchemeKeyID := authParameters.AuthnScheme.KeyID()
+	tokenType := authParameters.AuthnScheme.AccessTokenType()
 
 	// fetch metadata if instanceDiscovery is enabled
 	aliases := []string{authParameters.AuthorityInfo.Host}
@@ -100,7 +135,7 @@ func (m *Manager) Read(ctx context.Context, authParameters authority.AuthParams)
 		aliases = metadata.Aliases
 	}
 
-	accessToken := m.readAccessToken(homeAccountID, aliases, realm, clientID, scopes)
+	accessToken := m.readAccessToken(homeAccountID, aliases, realm, clientID, scopes, tokenType, authnSchemeKeyID)
 	tr.AccessToken = accessToken
 
 	if homeAccountID == "" {
@@ -134,13 +169,13 @@ const scopeSeparator = " "
 
 // Write writes a token response to the cache and returns the account information the token is stored with.
 func (m *Manager) Write(authParameters authority.AuthParams, tokenResponse accesstokens.TokenResponse) (shared.Account, error) {
-	authParameters.HomeAccountID = tokenResponse.ClientInfo.HomeAccountID()
-	homeAccountID := authParameters.HomeAccountID
+	homeAccountID := tokenResponse.HomeAccountID()
 	environment := authParameters.AuthorityInfo.Host
 	realm := authParameters.AuthorityInfo.Tenant
 	clientID := authParameters.ClientID
 	target := strings.Join(tokenResponse.GrantedScopes.Slice, scopeSeparator)
 	cachedAt := time.Now()
+	authnSchemeKeyID := authParameters.AuthnScheme.KeyID()
 
 	var account shared.Account
 
@@ -162,6 +197,8 @@ func (m *Manager) Write(authParameters authority.AuthParams, tokenResponse acces
 			tokenResponse.ExtExpiresOn.T,
 			target,
 			tokenResponse.AccessToken,
+			tokenResponse.TokenType,
+			authnSchemeKeyID,
 		)
 
 		// Since we have a valid access token, cache it before moving on.
@@ -249,21 +286,27 @@ func (m *Manager) aadMetadata(ctx context.Context, authorityInfo authority.Info)
 	return m.aadCache[authorityInfo.Host], nil
 }
 
-func (m *Manager) readAccessToken(homeID string, envAliases []string, realm, clientID string, scopes []string) AccessToken {
+func (m *Manager) readAccessToken(homeID string, envAliases []string, realm, clientID string, scopes []string, tokenType, authnSchemeKeyID string) AccessToken {
 	m.contractMu.RLock()
-	defer m.contractMu.RUnlock()
 	// TODO: linear search (over a map no less) is slow for a large number (thousands) of tokens.
 	// this shows up as the dominating node in a profile. for real-world scenarios this likely isn't
 	// an issue, however if it does become a problem then we know where to look.
-	for _, at := range m.contract.AccessTokens {
+	for k, at := range m.contract.AccessTokens {
 		if at.HomeAccountID == homeID && at.Realm == realm && at.ClientID == clientID {
-			if checkAlias(at.Environment, envAliases) {
-				if isMatchingScopes(scopes, at.Scopes) {
+			if (strings.EqualFold(at.TokenType, tokenType) && at.AuthnSchemeKeyID == authnSchemeKeyID) || (at.TokenType == "" && (tokenType == "" || tokenType == "Bearer")) {
+				if checkAlias(at.Environment, envAliases) && isMatchingScopes(scopes, at.Scopes) {
+					m.contractMu.RUnlock()
+					if needsUpgrade(k) {
+						m.contractMu.Lock()
+						defer m.contractMu.Unlock()
+						at = upgrade(m.contract.AccessTokens, k)
+					}
 					return at
 				}
 			}
 		}
 	}
+	m.contractMu.RUnlock()
 	return AccessToken{}
 }
 
@@ -304,15 +347,21 @@ func (m *Manager) readRefreshToken(homeID string, envAliases []string, familyID,
 	// If app is part of the family or if we DO NOT KNOW if it's part of the family, search by family ID, then by client_id (we will know if an app is part of the family after the first token response).
 	// https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/blob/311fe8b16e7c293462806f397e189a6aa1159769/src/client/Microsoft.Identity.Client/Internal/Requests/Silent/CacheSilentStrategy.cs#L95
 	m.contractMu.RLock()
-	defer m.contractMu.RUnlock()
 	for _, matcher := range matchers {
-		for _, rt := range m.contract.RefreshTokens {
+		for k, rt := range m.contract.RefreshTokens {
 			if matcher(rt) {
+				m.contractMu.RUnlock()
+				if needsUpgrade(k) {
+					m.contractMu.Lock()
+					defer m.contractMu.Unlock()
+					rt = upgrade(m.contract.RefreshTokens, k)
+				}
 				return rt, nil
 			}
 		}
 	}
 
+	m.contractMu.RUnlock()
 	return accesstokens.RefreshToken{}, fmt.Errorf("refresh token not found")
 }
 
@@ -334,14 +383,20 @@ func (m *Manager) writeRefreshToken(refreshToken accesstokens.RefreshToken) erro
 
 func (m *Manager) readIDToken(homeID string, envAliases []string, realm, clientID string) (IDToken, error) {
 	m.contractMu.RLock()
-	defer m.contractMu.RUnlock()
-	for _, idt := range m.contract.IDTokens {
+	for k, idt := range m.contract.IDTokens {
 		if idt.HomeAccountID == homeID && idt.Realm == realm && idt.ClientID == clientID {
 			if checkAlias(idt.Environment, envAliases) {
+				m.contractMu.RUnlock()
+				if needsUpgrade(k) {
+					m.contractMu.Lock()
+					defer m.contractMu.Unlock()
+					idt = upgrade(m.contract.IDTokens, k)
+				}
 				return idt, nil
 			}
 		}
 	}
+	m.contractMu.RUnlock()
 	return IDToken{}, fmt.Errorf("token not found")
 }
 
@@ -380,7 +435,6 @@ func (m *Manager) Account(homeAccountID string) shared.Account {
 
 func (m *Manager) readAccount(homeAccountID string, envAliases []string, realm string) (shared.Account, error) {
 	m.contractMu.RLock()
-	defer m.contractMu.RUnlock()
 
 	// You might ask why, if cache.Accounts is a map, we would loop through all of these instead of using a key.
 	// We only use a map because the storage contract shared between all language implementations says use a map.
@@ -388,11 +442,18 @@ func (m *Manager) readAccount(homeAccountID string, envAliases []string, realm s
 	// a match in multiple envs (envAlias). That means we either need to hash each possible keyand do the lookup
 	// or just statically check.  Since the design is to have a storage.Manager per user, the amount of keys stored
 	// is really low (say 2).  Each hash is more expensive than the entire iteration.
-	for _, acc := range m.contract.Accounts {
+	for k, acc := range m.contract.Accounts {
 		if acc.HomeAccountID == homeAccountID && checkAlias(acc.Environment, envAliases) && acc.Realm == realm {
+			m.contractMu.RUnlock()
+			if needsUpgrade(k) {
+				m.contractMu.Lock()
+				defer m.contractMu.Unlock()
+				acc = upgrade(m.contract.Accounts, k)
+			}
 			return acc, nil
 		}
 	}
+	m.contractMu.RUnlock()
 	return shared.Account{}, fmt.Errorf("account not found")
 }
 
@@ -406,13 +467,18 @@ func (m *Manager) writeAccount(account shared.Account) error {
 
 func (m *Manager) readAppMetaData(envAliases []string, clientID string) (AppMetaData, error) {
 	m.contractMu.RLock()
-	defer m.contractMu.RUnlock()
-
-	for _, app := range m.contract.AppMetaData {
+	for k, app := range m.contract.AppMetaData {
 		if checkAlias(app.Environment, envAliases) && app.ClientID == clientID {
+			m.contractMu.RUnlock()
+			if needsUpgrade(k) {
+				m.contractMu.Lock()
+				defer m.contractMu.Unlock()
+				app = upgrade(m.contract.AppMetaData, k)
+			}
 			return app, nil
 		}
 	}
+	m.contractMu.RUnlock()
 	return AppMetaData{}, fmt.Errorf("not found")
 }
 

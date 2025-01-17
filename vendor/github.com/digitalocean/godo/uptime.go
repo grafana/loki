@@ -7,7 +7,13 @@ import (
 	"path"
 )
 
-const uptimeChecksBasePath = "/v2/uptime/checks"
+const (
+	uptimeChecksBasePath = "/v2/uptime/checks"
+	// UptimeAlertGreaterThan is the comparison >
+	UptimeAlertGreaterThan UptimeAlertComp = "greater_than"
+	// UptimeAlertLessThan is the comparison <
+	UptimeAlertLessThan UptimeAlertComp = "less_than"
+)
 
 // UptimeChecksService is an interface for creating and managing Uptime checks with the DigitalOcean API.
 // See: https://docs.digitalocean.com/reference/api/api-reference/#tag/Uptime
@@ -42,13 +48,13 @@ type UptimeCheck struct {
 
 // UptimeAlert represents a DigitalOcean Uptime Alert configuration.
 type UptimeAlert struct {
-	ID            string         `json:"id"`
-	Name          string         `json:"name"`
-	Type          string         `json:"type"`
-	Threshold     int            `json:"threshold"`
-	Comparison    string         `json:"comparison"`
-	Notifications *Notifications `json:"notifications"`
-	Period        string         `json:"period"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Type          string          `json:"type"`
+	Threshold     int             `json:"threshold"`
+	Comparison    UptimeAlertComp `json:"comparison"`
+	Notifications *Notifications  `json:"notifications"`
+	Period        string          `json:"period"`
 }
 
 // Notifications represents a DigitalOcean Notifications configuration.
@@ -97,23 +103,26 @@ type UpdateUptimeCheckRequest struct {
 
 // CreateUptimeUptimeAlertRequest represents the request to create a new Uptime Alert.
 type CreateUptimeAlertRequest struct {
-	Name          string         `json:"name"`
-	Type          string         `json:"type"`
-	Threshold     int            `json:"threshold"`
-	Comparison    string         `json:"comparison"`
-	Notifications *Notifications `json:"notifications"`
-	Period        string         `json:"period"`
+	Name          string          `json:"name"`
+	Type          string          `json:"type"`
+	Threshold     int             `json:"threshold"`
+	Comparison    UptimeAlertComp `json:"comparison"`
+	Notifications *Notifications  `json:"notifications"`
+	Period        string          `json:"period"`
 }
 
-// UpdateUptimeAlertRequest represents the request to create a new alert.
+// UpdateUptimeAlertRequest represents the request to update an alert.
 type UpdateUptimeAlertRequest struct {
-	Name          string         `json:"name"`
-	Type          string         `json:"type"`
-	Threshold     int            `json:"threshold"`
-	Comparison    string         `json:"comparison"`
-	Notifications *Notifications `json:"notifications"`
-	Period        string         `json:"period"`
+	Name          string          `json:"name"`
+	Type          string          `json:"type"`
+	Threshold     int             `json:"threshold"`
+	Comparison    UptimeAlertComp `json:"comparison"`
+	Notifications *Notifications  `json:"notifications"`
+	Period        string          `json:"period"`
 }
+
+// UptimeAlertComp represents an uptime alert comparison operation
+type UptimeAlertComp string
 
 type uptimeChecksRoot struct {
 	UptimeChecks []UptimeCheck `json:"checks"`

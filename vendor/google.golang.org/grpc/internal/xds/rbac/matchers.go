@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"regexp"
 
 	v3corepb "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -244,7 +245,7 @@ func (am *andMatcher) match(data *rpcData) bool {
 type alwaysMatcher struct {
 }
 
-func (am *alwaysMatcher) match(data *rpcData) bool {
+func (am *alwaysMatcher) match(*rpcData) bool {
 	return true
 }
 
@@ -285,6 +286,12 @@ func newHeaderMatcher(headerMatcherConfig *v3route_componentspb.HeaderMatcher) (
 		m = internalmatcher.NewHeaderSuffixMatcher(headerMatcherConfig.Name, headerMatcherConfig.GetSuffixMatch(), headerMatcherConfig.InvertMatch)
 	case *v3route_componentspb.HeaderMatcher_ContainsMatch:
 		m = internalmatcher.NewHeaderContainsMatcher(headerMatcherConfig.Name, headerMatcherConfig.GetContainsMatch(), headerMatcherConfig.InvertMatch)
+	case *v3route_componentspb.HeaderMatcher_StringMatch:
+		sm, err := internalmatcher.StringMatcherFromProto(headerMatcherConfig.GetStringMatch())
+		if err != nil {
+			return nil, fmt.Errorf("invalid string matcher %+v: %v", headerMatcherConfig.GetStringMatch(), err)
+		}
+		m = internalmatcher.NewHeaderStringMatcher(headerMatcherConfig.Name, sm, headerMatcherConfig.InvertMatch)
 	default:
 		return nil, errors.New("unknown header matcher type")
 	}
@@ -338,7 +345,8 @@ func newRemoteIPMatcher(cidrRange *v3corepb.CidrRange) (*remoteIPMatcher, error)
 }
 
 func (sim *remoteIPMatcher) match(data *rpcData) bool {
-	return sim.ipNet.Contains(net.IP(net.ParseIP(data.peerInfo.Addr.String())))
+	ip, _ := netip.ParseAddr(data.peerInfo.Addr.String())
+	return sim.ipNet.Contains(net.IP(ip.AsSlice()))
 }
 
 type localIPMatcher struct {
@@ -355,7 +363,8 @@ func newLocalIPMatcher(cidrRange *v3corepb.CidrRange) (*localIPMatcher, error) {
 }
 
 func (dim *localIPMatcher) match(data *rpcData) bool {
-	return dim.ipNet.Contains(net.IP(net.ParseIP(data.localAddr.String())))
+	ip, _ := netip.ParseAddr(data.localAddr.String())
+	return dim.ipNet.Contains(net.IP(ip.AsSlice()))
 }
 
 // portMatcher matches on whether the destination port of the RPC matches the

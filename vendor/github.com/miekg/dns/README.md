@@ -81,6 +81,10 @@ A not-so-up-to-date-list-that-may-be-actually-current:
 * https://addr.tools/
 * https://dnscheck.tools/
 * https://github.com/egbakou/domainverifier
+* https://github.com/semihalev/sdns
+* https://github.com/wintbiit/NineDNS
+* https://linuxcontainers.org/incus/
+* https://ifconfig.es
 
 
 Send pull request if you want to be listed here.
@@ -124,6 +128,7 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 *all of them*
 
 * 103{4,5} - DNS standard
+* 1183 - ISDN, X25 and other deprecated records
 * 1348 - NSAP record (removed the record)
 * 1982 - Serial Arithmetic
 * 1876 - LOC record
@@ -143,6 +148,7 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 * 3225 - DO bit (DNSSEC OK)
 * 340{1,2,3} - NAPTR record
 * 3445 - Limiting the scope of (DNS)KEY
+* 3596 - AAAA record
 * 3597 - Unknown RRs
 * 4025 - A Method for Storing IPsec Keying Material in DNS
 * 403{3,4,5} - DNSSEC + validation functions
@@ -183,6 +189,9 @@ Example programs can be found in the `github.com/miekg/exdns` repository.
 * 8777 - DNS Reverse IP Automatic Multicast Tunneling (AMT) Discovery
 * 8914 - Extended DNS Errors
 * 8976 - Message Digest for DNS Zones (ZONEMD RR)
+* 9460 - Service Binding and Parameter Specification via the DNS
+* 9461 - Service Binding Mapping for DNS Servers
+* 9462 - Discovery of Designated Resolvers
 
 ## Loosely Based Upon
 

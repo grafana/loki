@@ -16,14 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.20']
+        go: ['1.22']
     steps:
     - name: Set up Go 1.x
-      uses: actions/setup-go@v4
+      uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install make
       run: sudo apt-get install make
     - name: make bundle

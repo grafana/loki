@@ -14,7 +14,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/api/option"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 func Test_Hedging(t *testing.T) {
@@ -55,7 +55,6 @@ func Test_Hedging(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			count := atomic.NewInt32(0)
 			server := fakeServer(t, 200*time.Millisecond, count)
@@ -80,7 +79,7 @@ func Test_Hedging(t *testing.T) {
 }
 
 func fakeServer(t *testing.T, returnIn time.Duration, counter *atomic.Int32) *httptest.Server {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		counter.Inc()
 		time.Sleep(returnIn)
 		_, _ = w.Write([]byte(`{}`))
@@ -148,8 +147,8 @@ func TestUpstreamRetryableErrs(t *testing.T) {
 			require.NoError(t, err)
 
 			_, _, err = cli.GetObject(ctx, "foo")
-			require.Equal(t, tc.isThrottledErr, cli.IsStorageThrottledErr(err))
-			require.Equal(t, tc.isTimeoutErr, cli.IsStorageTimeoutErr(err))
+			require.Equal(t, tc.isThrottledErr, IsStorageThrottledErr(err))
+			require.Equal(t, tc.isTimeoutErr, IsStorageTimeoutErr(err))
 		})
 	}
 }
@@ -230,13 +229,13 @@ func TestTCPErrs(t *testing.T) {
 
 			_, _, err = cli.GetObject(ctx, "foo")
 			require.Error(t, err)
-			require.Equal(t, tc.retryable, cli.IsStorageTimeoutErr(err))
+			require.Equal(t, tc.retryable, IsStorageTimeoutErr(err))
 		})
 	}
 }
 
 func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(code)
 	}))
 	server.StartTLS()
@@ -246,7 +245,7 @@ func fakeHTTPRespondingServer(t *testing.T, code int) *httptest.Server {
 }
 
 func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration, closeOnNew, closeOnActive bool) *httptest.Server {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		// sleep on response to mimic server overload
 		time.Sleep(responseSleep)
 	}))
@@ -264,6 +263,6 @@ func fakeSleepingServer(t *testing.T, responseSleep, connectSleep time.Duration,
 		}
 	}
 	t.Cleanup(server.Close)
-
+	server.Start()
 	return server
 }

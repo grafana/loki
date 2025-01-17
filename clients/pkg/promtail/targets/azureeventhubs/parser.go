@@ -7,14 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 
-	"github.com/grafana/loki/clients/pkg/promtail/api"
-
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/api"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type azureMonitorResourceLogs struct {
@@ -33,7 +32,9 @@ func (l azureMonitorResourceLogs) validate() error {
 // azureMonitorResourceLog used to unmarshal common schema for Azure resource logs
 // https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema
 type azureMonitorResourceLog struct {
-	Time          string `json:"time"`
+	Time string `json:"time"`
+	// Some logs have `time` field, some have `timeStamp` field : https://github.com/grafana/loki/issues/14176
+	TimeStamp     string `json:"timeStamp"`
 	Category      string `json:"category"`
 	ResourceID    string `json:"resourceId"`
 	OperationName string `json:"operationName"`
@@ -41,7 +42,7 @@ type azureMonitorResourceLog struct {
 
 // validate check if fields marked as required by schema for Azure resource log are not empty
 func (l azureMonitorResourceLog) validate() error {
-	valid := len(l.Time) != 0 &&
+	valid := l.isTimeOrTimeStampFieldSet() &&
 		len(l.Category) != 0 &&
 		len(l.ResourceID) != 0 &&
 		len(l.OperationName) != 0
@@ -51,6 +52,34 @@ func (l azureMonitorResourceLog) validate() error {
 	}
 
 	return nil
+}
+
+func (l azureMonitorResourceLog) isTimeOrTimeStampFieldSet() bool {
+	return len(l.Time) != 0 || len(l.TimeStamp) != 0
+}
+
+// getTime returns time from `time` or `timeStamp` field. If both fields are set, `time` is used. If both fields are empty, error is returned.
+func (l azureMonitorResourceLog) getTime() (time.Time, error) {
+	if len(l.Time) == 0 && len(l.TimeStamp) == 0 {
+		var t time.Time
+		return t, errors.New("time and timeStamp fields are empty")
+	}
+
+	if len(l.Time) != 0 {
+		t, err := time.Parse(time.RFC3339, l.Time)
+		if err != nil {
+			return t, err
+		}
+
+		return t.UTC(), nil
+	}
+
+	t, err := time.Parse(time.RFC3339, l.TimeStamp)
+	if err != nil {
+		return t, err
+	}
+
+	return t.UTC(), nil
 }
 
 type messageParser struct {
@@ -153,11 +182,11 @@ func (e *messageParser) parseRecord(record []byte, labelSet model.LabelSet, rela
 }
 
 func (e *messageParser) getTime(messageTime time.Time, useIncomingTimestamp bool, logRecord *azureMonitorResourceLog) time.Time {
-	if !useIncomingTimestamp || logRecord.Time == "" {
+	if !useIncomingTimestamp || !logRecord.isTimeOrTimeStampFieldSet() {
 		return messageTime
 	}
 
-	recordTime, err := time.Parse(time.RFC3339, logRecord.Time)
+	recordTime, err := logRecord.getTime()
 	if err != nil {
 		return messageTime
 	}

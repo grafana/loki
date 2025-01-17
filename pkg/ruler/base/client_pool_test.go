@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 func Test_newRulerClientFactory(t *testing.T) {
@@ -36,7 +38,7 @@ func Test_newRulerClientFactory(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 
 	reg := prometheus.NewPedanticRegistry()
-	factory := newRulerClientFactory(cfg, reg)
+	factory := newRulerPoolClient(cfg, reg, constants.Loki)
 
 	for i := 0; i < 2; i++ {
 		client, err := factory(listener.Addr().String())
@@ -54,7 +56,7 @@ func Test_newRulerClientFactory(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Len(t, metrics, 1)
-	assert.Equal(t, "cortex_ruler_client_request_duration_seconds", metrics[0].GetName())
+	assert.Equal(t, "loki_ruler_client_request_duration_seconds", metrics[0].GetName())
 	assert.Equal(t, dto.MetricType_HISTOGRAM, metrics[0].GetType())
 	assert.Len(t, metrics[0].GetMetric(), 1)
 	assert.Equal(t, uint64(2), metrics[0].GetMetric()[0].GetHistogram().GetSampleCount())

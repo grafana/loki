@@ -1,9 +1,9 @@
 # Build the calculator binary
-FROM golang:1.20.6 as builder
+FROM golang:1.22.8 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests
-COPY apis/ apis/
+COPY api/ api/
 COPY go.mod go.mod
 COPY go.sum go.sum
 # cache deps before building and copying source so that we don't need to re-download as much

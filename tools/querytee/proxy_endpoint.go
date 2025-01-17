@@ -12,8 +12,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type ResponsesComparator interface {
@@ -111,9 +109,6 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 
 	wg.Add(len(p.backends))
 	for i, b := range p.backends {
-		i := i
-		b := b
-
 		go func() {
 			defer wg.Done()
 			var (
@@ -182,7 +177,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			result := comparisonSuccess
 			summary, err := p.compareResponses(expectedResponse, actualResponse)
 			if err != nil {
-				level.Error(util_log.Logger).Log("msg", "response comparison failed",
+				level.Error(p.logger).Log("msg", "response comparison failed",
 					"backend-name", p.backends[i].name,
 					"route-name", p.routeName,
 					"query", r.URL.RawQuery, "err", err)

@@ -48,7 +48,6 @@ local template = import 'grafonnet/template.libsonnet';
                         local cfg = self,
 
                         showMultiCluster:: true,
-                        clusterLabel:: $._config.per_cluster_label,
 
                       } + lokiLogs +
                       $.dashboard('Loki / Logs', uid='logs')
@@ -61,8 +60,9 @@ local template = import 'grafonnet/template.libsonnet';
                           p {
                             targets: [
                               e {
-                                expr: if dashboards['loki-logs.json'].showMultiCluster then super.expr
-                                else std.strReplace(super.expr, $._config.per_cluster_label + '="$cluster", ', ''),
+                                expr: if dashboards['loki-logs.json'].showMultiCluster
+                                then std.strReplace(super.expr, 'cluster="$cluster"', $._config.per_cluster_label + '="$cluster"')
+                                else std.strReplace(super.expr, 'cluster="$cluster", ', ''),
                               }
                               for e in p.targets
                             ],

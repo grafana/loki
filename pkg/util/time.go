@@ -10,7 +10,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
 
-	utilsMath "github.com/grafana/loki/pkg/util/math"
+	utilsMath "github.com/grafana/loki/v3/pkg/util/math"
 )
 
 const (
@@ -58,7 +58,7 @@ func DurationWithJitter(input time.Duration, variancePerc float64) time.Duration
 	}
 
 	variance := int64(float64(input) * variancePerc)
-	jitter := rand.Int63n(variance*2) - variance
+	jitter := rand.Int63n(variance*2) - variance //#nosec G404 -- Jitter does not require CSPRNG
 
 	return input + time.Duration(jitter)
 }
@@ -71,7 +71,7 @@ func DurationWithPositiveJitter(input time.Duration, variancePerc float64) time.
 	}
 
 	variance := int64(float64(input) * variancePerc)
-	jitter := rand.Int63n(variance)
+	jitter := rand.Int63n(variance) //#nosec G404 -- Jitter does not require CSPRNG
 
 	return input + time.Duration(jitter)
 }
@@ -86,6 +86,8 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 	tick := time.NewTicker(interval)
 	return func() { tick.Stop() }, tick.C
 }
+
+const SplitGap = time.Millisecond
 
 // ForInterval splits the given start and end time into given interval.
 // The start and end time in splits would be aligned to the interval
@@ -107,7 +109,7 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 		if !newEnd.Before(end) {
 			newEnd = end
 		} else if endTimeInclusive {
-			newEnd = newEnd.Add(-time.Millisecond)
+			newEnd = newEnd.Add(-SplitGap)
 		}
 		if firstInterval {
 			callback(ogStart, newEnd)

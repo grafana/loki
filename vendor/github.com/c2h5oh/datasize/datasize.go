@@ -215,3 +215,25 @@ BitsError:
 	*b = 0
 	return &strconv.NumError{fnUnmarshalText, string(t0), ErrBits}
 }
+
+func Parse(t []byte) (ByteSize, error) {
+	var v ByteSize
+	err := v.UnmarshalText(t)
+	return v, err
+}
+
+func MustParse(t []byte) ByteSize {
+	v, err := Parse(t)
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+func ParseString(s string) (ByteSize, error) {
+	return Parse([]byte(s))
+}
+
+func MustParseString(s string) ByteSize {
+	return MustParse([]byte(s))
+}

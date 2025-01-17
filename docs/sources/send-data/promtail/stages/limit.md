@@ -14,7 +14,7 @@ The `limit` stage is a rate-limiting stage that throttles logs based on several 
 ## Limit stage schema
 
 This pipeline stage places limits on the rate or burst quantity of log lines that Promtail pushes to Loki.
-The concept of having distinct burst and rate limits mirrors the approach to limits that can be set for Loki's distributor component:  `ingestion_rate_mb` and `ingestion_burst_size_mb`, as defined in [limits_config]({{< relref "../../../configure#limits_config" >}}).
+The concept of having distinct burst and rate limits mirrors the approach to limits that can be set for the Loki distributor component:  `ingestion_rate_mb` and `ingestion_burst_size_mb`, as defined in [limits_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config).
 
 ```yaml
 limit:

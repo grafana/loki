@@ -8,8 +8,8 @@ import (
 	"github.com/prometheus/common/model"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 type queryLimiterCtxKey struct{}
@@ -97,7 +97,7 @@ func (ql *QueryLimiter) AddChunks(count int) error {
 	}
 
 	if ql.chunkCount.Add(int64(count)) > int64(ql.maxChunksPerQuery) {
-		return fmt.Errorf(fmt.Sprintf(ErrMaxChunksPerQueryLimit, ql.maxChunksPerQuery))
+		return fmt.Errorf("%s %d", ErrMaxChunksPerQueryLimit, ql.maxChunksPerQuery)
 	}
 	return nil
 }

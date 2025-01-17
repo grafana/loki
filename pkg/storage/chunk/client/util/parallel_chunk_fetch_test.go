@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 )
 
 func BenchmarkGetParallelChunks(b *testing.B) {
@@ -13,7 +13,7 @@ func BenchmarkGetParallelChunks(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		res, err := GetParallelChunks(ctx, 150, in,
-			func(_ context.Context, d *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
+			func(_ context.Context, _ *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 				return c, nil
 			})
 		if err != nil {

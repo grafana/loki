@@ -21,6 +21,8 @@ const (
 	AppLogTypeDeploy AppLogType = "DEPLOY"
 	// AppLogTypeRun represents run logs.
 	AppLogTypeRun AppLogType = "RUN"
+	// AppLogTypeRunRestarted represents logs of crashed/restarted instances during runtime.
+	AppLogTypeRunRestarted AppLogType = "RUN_RESTARTED"
 )
 
 // AppsService is an interface for interfacing with the App Platform endpoints
@@ -54,6 +56,19 @@ type AppsService interface {
 
 	ListBuildpacks(ctx context.Context) ([]*Buildpack, *Response, error)
 	UpgradeBuildpack(ctx context.Context, appID string, opts UpgradeBuildpackOptions) (*UpgradeBuildpackResponse, *Response, error)
+
+	GetAppDatabaseConnectionDetails(ctx context.Context, appID string) ([]*GetDatabaseConnectionDetailsResponse, *Response, error)
+	ResetDatabasePassword(ctx context.Context, appID string, component string) (*Deployment, *Response, error)
+	ToggleDatabaseTrustedSource(
+		ctx context.Context,
+		appID string,
+		component string,
+		opts ToggleDatabaseTrustedSourceOptions,
+	) (
+		*ToggleDatabaseTrustedSourceResponse,
+		*Response,
+		error,
+	)
 }
 
 // AppLogs represent app logs.
@@ -65,6 +80,8 @@ type AppLogs struct {
 // AppUpdateRequest represents a request to update an app.
 type AppUpdateRequest struct {
 	Spec *AppSpec `json:"spec"`
+	// Whether or not to update the source versions (for example fetching a new commit or image digest) of all components. By default (when this is false) only newly added sources will be updated to avoid changes like updating the scale of a component from also updating the respective code.
+	UpdateAllSourceVersions bool `json:"update_all_source_versions"`
 }
 
 // DeploymentCreateRequest represents a request to create a deployment.
@@ -86,6 +103,12 @@ type UpgradeBuildpackOptions struct {
 	MajorVersion int32 `json:"major_version,omitempty"`
 	// Whether or not to trigger a deployment for the app after upgrading the buildpack.
 	TriggerDeployment bool `json:"trigger_deployment,omitempty"`
+}
+
+// ToggleDatabaseTrustedSourceOptions provides optional parameters for ToggleDatabaseTrustedSource.
+type ToggleDatabaseTrustedSourceOptions struct {
+	// Enable, if true, indicates the database should enable the trusted sources firewall.
+	Enable bool
 }
 
 type appRoot struct {
@@ -489,6 +512,60 @@ func (s *AppsServiceOp) UpgradeBuildpack(ctx context.Context, appID string, opts
 		return nil, nil, err
 	}
 	root := new(UpgradeBuildpackResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root, resp, nil
+}
+
+// GetAppDatabaseConnectionDetails retrieves credentials for databases associated with the app.
+func (s *AppsServiceOp) GetAppDatabaseConnectionDetails(ctx context.Context, appID string) ([]*GetDatabaseConnectionDetailsResponse, *Response, error) {
+	path := fmt.Sprintf("%s/%s/database_connection_details", appsBasePath, appID)
+	req, err := s.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(GetAppDatabaseConnectionDetailsResponse)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.ConnectionDetails, resp, nil
+}
+
+// ResetDatabasePassword resets credentials for a database component associated with the app.
+func (s *AppsServiceOp) ResetDatabasePassword(ctx context.Context, appID string, component string) (*Deployment, *Response, error) {
+	path := fmt.Sprintf("%s/%s/components/%s/reset_password", appsBasePath, appID, component)
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(deploymentRoot)
+	resp, err := s.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Deployment, resp, nil
+}
+
+// ToggleDatabaseTrustedSource enables/disables trusted sources on the specified dev database component.
+func (s *AppsServiceOp) ToggleDatabaseTrustedSource(
+	ctx context.Context,
+	appID string,
+	component string,
+	opts ToggleDatabaseTrustedSourceOptions,
+) (
+	*ToggleDatabaseTrustedSourceResponse,
+	*Response,
+	error,
+) {
+	path := fmt.Sprintf("%s/%s/components/%s/trusted_sources", appsBasePath, appID, component)
+	req, err := s.client.NewRequest(ctx, http.MethodPost, path, opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(ToggleDatabaseTrustedSourceResponse)
 	resp, err := s.client.Do(ctx, req, root)
 	if err != nil {
 		return nil, resp, err

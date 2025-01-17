@@ -30,6 +30,9 @@ func ShuffleShardSeed(identifier, zone string) int64 {
 // zone when zone-aware replication is enabled. The algorithm expects the shard size to be divisible
 // by the number of zones, in order to have nodes balanced across zones. If it's not, we do round up.
 func ShuffleShardExpectedInstancesPerZone(shardSize, numZones int) int {
+	if shardSize == math.MaxInt {
+		return math.MaxInt
+	}
 	return int(math.Ceil(float64(shardSize) / float64(numZones)))
 }
 
@@ -41,5 +44,5 @@ func ShuffleShardExpectedInstances(shardSize, numZones int) int {
 
 // yoloBuf will return an unsafe pointer to a string, as the name yolo.yoloBuf implies use at your own risk.
 func yoloBuf(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s)))
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

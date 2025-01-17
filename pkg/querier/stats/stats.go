@@ -5,6 +5,7 @@ import (
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 	"time"
 
+	"github.com/gogo/googleapis/google/rpc"
 	"github.com/grafana/dskit/httpgrpc"
 )
 
@@ -100,4 +101,14 @@ func (s *Stats) Merge(other *Stats) {
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {
 	// Do no track statistics for requests failed because of a server error.
 	return r.Code < 500
+}
+
+func ShouldTrackQueryResponse(s *rpc.Status) bool {
+	// Do no track statistics for requests failed because of a server error.
+	// See HTTP mappings in
+	// https://github.com/gogo/googleapis/blob/master/google/rpc/code.proto.
+	return s.Code == int32(rpc.UNKNOWN) || s.Code == int32(rpc.DEADLINE_EXCEEDED) ||
+		s.Code == int32(rpc.UNIMPLEMENTED) || s.Code == int32(rpc.INTERNAL) ||
+		s.Code == int32(rpc.UNAVAILABLE) || s.Code == int32(rpc.DATA_LOSS) ||
+		(s.Code > 200 && s.Code < 500)
 }

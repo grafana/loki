@@ -63,26 +63,6 @@ const (
 )
 
 var (
-	rpcFailuresCount = prometheus.NewCounter(
-		prometheus.CounterOpts{
-			Namespace: namespace,
-			Name:      "sd_consulagent_rpc_failures_total",
-			Help:      "The number of Consul Agent RPC call failures.",
-		})
-	rpcDuration = prometheus.NewSummaryVec(
-		prometheus.SummaryOpts{
-			Namespace:  namespace,
-			Name:       "sd_consulagent_rpc_duration_seconds",
-			Help:       "The duration of a Consul Agent RPC call in seconds.",
-			Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
-		},
-		[]string{"endpoint", "call"},
-	)
-
-	// Initialize metric vectors.
-	servicesRPCDuration = rpcDuration.WithLabelValues("agent", "services")
-	serviceRPCDuration  = rpcDuration.WithLabelValues("agent", "service")
-
 	// DefaultSDConfig is the default Consul SD configuration.
 	DefaultSDConfig = SDConfig{
 		TagSeparator:    ",",
@@ -95,8 +75,6 @@ var (
 
 func init() {
 	discovery.RegisterConfig(&SDConfig{})
-	prometheus.MustRegister(rpcFailuresCount)
-	prometheus.MustRegister(rpcDuration)
 }
 
 // SDConfig is the configuration for Consul service discovery.
@@ -130,12 +108,17 @@ type SDConfig struct {
 	TLSConfig config.TLSConfig `yaml:"tls_config,omitempty"`
 }
 
+// NewDiscovererMetrics implements discovery.Config.
+func (c *SDConfig) NewDiscovererMetrics(reg prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
+	return newDiscovererMetrics(reg, rmi)
+}
+
 // Name returns the name of the Config.
 func (*SDConfig) Name() string { return "consulagent" }
 
 // NewDiscoverer returns a Discoverer for the Config.
 func (c *SDConfig) NewDiscoverer(opts discovery.DiscovererOptions) (discovery.Discoverer, error) {
-	return NewDiscovery(c, opts.Logger)
+	return NewDiscovery(c, opts.Logger, opts.Metrics)
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -170,10 +153,16 @@ type Discovery struct {
 	refreshInterval  time.Duration
 	finalizer        func()
 	logger           log.Logger
+	metrics          *consulMetrics
 }
 
 // NewDiscovery returns a new Discovery for the given config.
-func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
+func NewDiscovery(conf *SDConfig, logger log.Logger, metrics discovery.DiscovererMetrics) (*Discovery, error) {
+	m, ok := metrics.(*consulMetrics)
+	if !ok {
+		return nil, fmt.Errorf("invalid discovery metrics type")
+	}
+
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
@@ -221,6 +210,7 @@ func NewDiscovery(conf *SDConfig, logger log.Logger) (*Discovery, error) {
 		clientDatacenter: conf.Datacenter,
 		finalizer:        transport.CloseIdleConnections,
 		logger:           logger,
+		metrics:          m,
 	}
 	return cd, nil
 }
@@ -276,7 +266,7 @@ func (d *Discovery) getDatacenter() error {
 	info, err := d.client.Agent().Self()
 	if err != nil {
 		level.Error(d.logger).Log("msg", "Error retrieving datacenter name", "err", err)
-		rpcFailuresCount.Inc()
+		d.metrics.rpcFailuresCount.Inc()
 		return err
 	}
 
@@ -326,7 +316,7 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 		ticker := time.NewTicker(d.refreshInterval)
 
 		// Watched services and their cancellation functions.
-		services := make(map[string]func())
+		services := make(map[string]func(error))
 
 		for {
 			select {
@@ -350,14 +340,14 @@ func (d *Discovery) Run(ctx context.Context, ch chan<- []*targetgroup.Group) {
 // Watch the catalog for new services we would like to watch. This is called only
 // when we don't know yet the names of the services and need to ask Consul the
 // entire list of services.
-func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func()) {
+func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.Group, services map[string]func(error)) {
 	agent := d.client.Agent()
 	level.Debug(d.logger).Log("msg", "Watching services", "tags", strings.Join(d.watchedTags, ","))
 
 	t0 := time.Now()
 	srvs, err := agent.Services()
 	elapsed := time.Since(t0)
-	servicesRPCDuration.Observe(elapsed.Seconds())
+	d.metrics.servicesRPCDuration.Observe(elapsed.Seconds())
 
 	// Check the context before in order to exit early.
 	select {
@@ -368,7 +358,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 
 	if err != nil {
 		level.Error(d.logger).Log("msg", "Error refreshing service list", "err", err)
-		rpcFailuresCount.Inc()
+		d.metrics.rpcFailuresCount.Inc()
 		time.Sleep(retryInterval)
 		return
 	}
@@ -388,7 +378,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 			continue // We are already watching the service.
 		}
 
-		wctx, cancel := context.WithCancel(ctx)
+		wctx, cancel := context.WithCancelCause(ctx)
 		d.watchService(wctx, ch, name)
 		services[name] = cancel
 	}
@@ -400,7 +390,7 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 				"msg", "removing service since consul no longer has a record of it",
 				"name", name)
 			// Call the watch cancellation function.
-			cancel()
+			cancel(errors.New("canceling service since consul no longer has a record of it"))
 			delete(services, name)
 
 			// Send clearing target group.
@@ -424,13 +414,15 @@ func (d *Discovery) watchServices(ctx context.Context, ch chan<- []*targetgroup.
 
 // consulService contains data belonging to the same service.
 type consulService struct {
-	name         string
-	tags         []string
-	labels       model.LabelSet
-	discovery    *Discovery
-	client       *consul.Client
-	tagSeparator string
-	logger       log.Logger
+	name               string
+	tags               []string
+	labels             model.LabelSet
+	discovery          *Discovery
+	client             *consul.Client
+	tagSeparator       string
+	logger             log.Logger
+	rpcFailuresCount   prometheus.Counter
+	serviceRPCDuration prometheus.Observer
 }
 
 // Start watching a service.
@@ -444,8 +436,10 @@ func (d *Discovery) watchService(ctx context.Context, ch chan<- []*targetgroup.G
 			serviceLabel:    model.LabelValue(name),
 			datacenterLabel: model.LabelValue(d.clientDatacenter),
 		},
-		tagSeparator: d.tagSeparator,
-		logger:       d.logger,
+		tagSeparator:       d.tagSeparator,
+		logger:             d.logger,
+		rpcFailuresCount:   d.metrics.rpcFailuresCount,
+		serviceRPCDuration: d.metrics.serviceRPCDuration,
 	}
 
 	go func() {
@@ -475,7 +469,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 	t0 := time.Now()
 	aggregatedStatus, serviceChecks, err := agent.AgentHealthServiceByName(srv.name)
 	elapsed := time.Since(t0)
-	serviceRPCDuration.Observe(elapsed.Seconds())
+	srv.serviceRPCDuration.Observe(elapsed.Seconds())
 
 	// Check the context before in order to exit early.
 	select {
@@ -487,7 +481,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 
 	if err != nil {
 		level.Error(srv.logger).Log("msg", "Error refreshing service", "service", srv.name, "tags", strings.Join(srv.tags, ","), "err", err)
-		rpcFailuresCount.Inc()
+		srv.rpcFailuresCount.Inc()
 		time.Sleep(retryInterval)
 		return
 	}
@@ -527,9 +521,9 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 		// since the service may be registered remotely through a different node.
 		var addr string
 		if srvCheck.Service.Address != "" {
-			addr = net.JoinHostPort(srvCheck.Service.Address, fmt.Sprintf("%d", srvCheck.Service.Port))
+			addr = net.JoinHostPort(srvCheck.Service.Address, strconv.Itoa(srvCheck.Service.Port))
 		} else {
-			addr = net.JoinHostPort(member.Addr, fmt.Sprintf("%d", srvCheck.Service.Port))
+			addr = net.JoinHostPort(member.Addr, strconv.Itoa(srvCheck.Service.Port))
 		}
 
 		labels := model.LabelSet{
@@ -560,7 +554,7 @@ func (srv *consulService) watch(ctx context.Context, ch chan<- []*targetgroup.Gr
 		// Add all key/value pairs from the service's tagged addresses as their own labels.
 		for k, v := range srvCheck.Service.TaggedAddresses {
 			name := strutil.SanitizeLabelName(k)
-			address := fmt.Sprintf("%s:%d", v.Address, v.Port)
+			address := net.JoinHostPort(v.Address, strconv.Itoa(v.Port))
 			labels[taggedAddressesLabel+model.LabelName(name)] = model.LabelValue(address)
 		}
 

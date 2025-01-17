@@ -17,17 +17,19 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/ingester/client"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/storage"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/testutils"
+	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type configFactory func() config.ChunkStoreConfig
@@ -54,9 +56,7 @@ var (
 			configFn: func() config.ChunkStoreConfig {
 				var storeCfg config.ChunkStoreConfig
 				flagext.DefaultValues(&storeCfg)
-				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
-					MaxSizeItems: 500,
-				}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
+				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 500}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
 				return storeCfg
 			},
 		},
@@ -91,9 +91,9 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 	}, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
+	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
-	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
+	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil, log.NewNopLogger())
 	require.NoError(t, err)
 	_ = tm.SyncTables(context.Background())
 	return store
@@ -247,14 +247,24 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 	for _, tc := range []struct {
 		metricName string
 		expect     []string
+		matchers   []*labels.Matcher
 	}{
 		{
 			`foo`,
 			[]string{"bar", "flip", "toms"},
+			nil,
 		},
 		{
 			`bar`,
 			[]string{"bar", "toms"},
+			nil,
+		},
+		{
+			`foo`,
+			[]string{"bar", "toms"},
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "bar", "beep"),
+			},
 		},
 	} {
 		for _, schema := range schemas {
@@ -287,7 +297,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					labelNames1, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName)
+					labelNames1, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelNames1) {
@@ -295,7 +305,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					labelNames2, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName)
+					labelNames2, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelNames2) {
@@ -303,7 +313,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					labelNames3, err := store.LabelNamesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName)
+					labelNames3, err := store.LabelNamesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.matchers...)
 					require.NoError(t, err)
 					if len(labelNames3) != 0 {
 						t.Fatalf("%s: future query should yield empty resultset ... actually got %v label names: %#v",
@@ -389,13 +399,12 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, chunk.NewPredicate(matchers, nil), nil)
 					require.NoError(t, err)
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
@@ -519,7 +528,6 @@ func Test_GetSeries(t *testing.T) {
 
 			for _, tc := range testCases {
 				t.Run(fmt.Sprintf("%s / %s / %s", tc.query, schema, storeCase.name), func(t *testing.T) {
-					t.Log("========= Running query", tc.query, "with schema", schema)
 					matchers, err := parser.ParseMetricSelector(tc.query)
 					if err != nil {
 						t.Fatal(err)
@@ -655,7 +663,7 @@ func TestChunkStoreError(t *testing.T) {
 				require.NoError(t, err)
 
 				// Query with ordinary time-range
-				_, _, err = store.GetChunks(ctx, userID, tc.from, tc.through, matchers...)
+				_, _, err = store.GetChunks(ctx, userID, tc.from, tc.through, chunk.NewPredicate(matchers, nil), nil)
 				require.EqualError(t, err, tc.err)
 			})
 		}
@@ -745,10 +753,11 @@ func dummyChunkWithFormat(t testing.TB, now model.Time, metric labels.Labels, fo
 	samples := 1
 	chunkStart := now.Add(-time.Hour)
 
-	chk := chunkenc.NewMemChunk(format, chunkenc.EncGZIP, headfmt, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(format, compression.GZIP, headfmt, 256*1024, 0)
 	for i := 0; i < samples; i++ {
 		ts := time.Duration(i) * 15 * time.Second
-		err := chk.Append(&logproto.Entry{Timestamp: chunkStart.Time().Add(ts), Line: fmt.Sprintf("line %d", i)})
+		dup, err := chk.Append(&logproto.Entry{Timestamp: chunkStart.Time().Add(ts), Line: fmt.Sprintf("line %d", i)})
+		require.False(t, dup)
 		require.NoError(t, err)
 	}
 

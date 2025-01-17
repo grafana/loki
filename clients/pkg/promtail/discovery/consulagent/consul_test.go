@@ -22,10 +22,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
+	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
 )
 
@@ -34,10 +36,24 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
 }
 
+// TODO: Add ability to unregister metrics?
+func NewTestMetrics(t *testing.T, conf discovery.Config, reg prometheus.Registerer) discovery.DiscovererMetrics {
+	refreshMetrics := discovery.NewRefreshMetrics(reg)
+	require.NoError(t, refreshMetrics.Register())
+
+	metrics := conf.NewDiscovererMetrics(prometheus.NewRegistry(), refreshMetrics)
+	require.NoError(t, metrics.Register())
+
+	return metrics
+}
+
 func TestConfiguredService(t *testing.T) {
 	conf := &SDConfig{
 		Services: []string{"configuredServiceName"}}
-	consulDiscovery, err := NewDiscovery(conf, nil)
+
+	metrics := NewTestMetrics(t, conf, prometheus.NewRegistry())
+
+	consulDiscovery, err := NewDiscovery(conf, nil, metrics)
 
 	if err != nil {
 		t.Errorf("Unexpected error when initializing discovery %v", err)
@@ -55,7 +71,10 @@ func TestConfiguredServiceWithTag(t *testing.T) {
 		Services:    []string{"configuredServiceName"},
 		ServiceTags: []string{"http"},
 	}
-	consulDiscovery, err := NewDiscovery(conf, nil)
+
+	metrics := NewTestMetrics(t, conf, prometheus.NewRegistry())
+
+	consulDiscovery, err := NewDiscovery(conf, nil, metrics)
 
 	if err != nil {
 		t.Errorf("Unexpected error when initializing discovery %v", err)
@@ -151,7 +170,9 @@ func TestConfiguredServiceWithTags(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		consulDiscovery, err := NewDiscovery(tc.conf, nil)
+		metrics := NewTestMetrics(t, tc.conf, prometheus.NewRegistry())
+
+		consulDiscovery, err := NewDiscovery(tc.conf, nil, metrics)
 
 		if err != nil {
 			t.Errorf("Unexpected error when initializing discovery %v", err)
@@ -166,7 +187,10 @@ func TestConfiguredServiceWithTags(t *testing.T) {
 
 func TestNonConfiguredService(t *testing.T) {
 	conf := &SDConfig{}
-	consulDiscovery, err := NewDiscovery(conf, nil)
+
+	metrics := NewTestMetrics(t, conf, prometheus.NewRegistry())
+
+	consulDiscovery, err := NewDiscovery(conf, nil, metrics)
 
 	if err != nil {
 		t.Errorf("Unexpected error when initializing discovery %v", err)
@@ -341,7 +365,8 @@ func newServer(t *testing.T) (*httptest.Server, *SDConfig) {
 
 func newDiscovery(t *testing.T, config *SDConfig) *Discovery {
 	logger := log.NewNopLogger()
-	d, err := NewDiscovery(config, logger)
+	metrics := NewTestMetrics(t, config, prometheus.NewRegistry())
+	d, err := NewDiscovery(config, logger, metrics)
 	require.NoError(t, err)
 	return d
 }
@@ -376,7 +401,7 @@ func TestAllServices(t *testing.T) {
 	<-ch
 }
 
-// targetgroup with no targets is emitted if no services were discovered.
+// TestNoTargets with no targets is emitted if no services were discovered.
 func TestNoTargets(t *testing.T) {
 	stub, config := newServer(t)
 	defer stub.Close()
@@ -439,14 +464,14 @@ func TestGetDatacenterShouldReturnError(t *testing.T) {
 	}{
 		{
 			// Define a handler that will return status 500.
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(500)
 			},
 			errMessage: "Unexpected response code: 500 ()",
 		},
 		{
 			// Define a handler that will return incorrect response.
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				_, err := w.Write([]byte(`{"Config": {"Not-Datacenter": "test-dc"}}`))
 				require.NoError(t, err)
 			},

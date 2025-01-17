@@ -1,0 +1,32 @@
+---
+name: lint-jsonnet
+on: [pull_request]
+  # pull_request:
+  #   paths: "production/**"
+
+jobs:
+  check-mixin:
+    name: Check mixin jsonnet files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.1'
+      - name: setup jsonnet
+        run: |
+          go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0
+          go install github.com/google/go-jsonnet/cmd/jsonnetfmt@v0.20.0
+          go install github.com/google/go-jsonnet/cmd/jsonnet-lint@v0.20.0
+          go install github.com/monitoring-mixins/mixtool/cmd/mixtool@16dc166166d91e93475b86b9355a4faed2400c18
+          go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.5.1
+      - name: run linting
+        run: make BUILD_IN_CONTAINER=false lint-jsonnet
+      - name: check compiled mixin has been updated
+        run: |
+          make BUILD_IN_CONTAINER=false loki-mixin-check
+      
+
+

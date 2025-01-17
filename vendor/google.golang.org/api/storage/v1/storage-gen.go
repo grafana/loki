@@ -1,4 +1,4 @@
-// Copyright 2023 Google LLC.
+// Copyright 2025 Google LLC.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -10,6 +10,17 @@
 //
 // For product documentation, see: https://developers.google.com/storage/docs/json_api/
 //
+// # Library status
+//
+// These client libraries are officially supported by Google. However, this
+// library is considered complete and is in maintenance mode. This means
+// that we will address critical bugs and security issues but will not add
+// any new features.
+//
+// When possible, we recommend using our newer
+// [Cloud Client Libraries for Go](https://pkg.go.dev/cloud.google.com/go)
+// that are still actively being worked and iterated on.
+//
 // # Creating a client
 //
 // Usage example:
@@ -19,28 +30,31 @@
 //	ctx := context.Background()
 //	storageService, err := storage.NewService(ctx)
 //
-// In this example, Google Application Default Credentials are used for authentication.
-//
-// For information on how to create and obtain Application Default Credentials, see https://developers.google.com/identity/protocols/application-default-credentials.
+// In this example, Google Application Default Credentials are used for
+// authentication. For information on how to create and obtain Application
+// Default Credentials, see https://developers.google.com/identity/protocols/application-default-credentials.
 //
 // # Other authentication options
 //
-// By default, all available scopes (see "Constants") are used to authenticate. To restrict scopes, use option.WithScopes:
+// By default, all available scopes (see "Constants") are used to authenticate.
+// To restrict scopes, use [google.golang.org/api/option.WithScopes]:
 //
 //	storageService, err := storage.NewService(ctx, option.WithScopes(storage.DevstorageReadWriteScope))
 //
-// To use an API key for authentication (note: some APIs do not support API keys), use option.WithAPIKey:
+// To use an API key for authentication (note: some APIs do not support API
+// keys), use [google.golang.org/api/option.WithAPIKey]:
 //
 //	storageService, err := storage.NewService(ctx, option.WithAPIKey("AIza..."))
 //
-// To use an OAuth token (e.g., a user token obtained via a three-legged OAuth flow), use option.WithTokenSource:
+// To use an OAuth token (e.g., a user token obtained via a three-legged OAuth
+// flow, use [google.golang.org/api/option.WithTokenSource]:
 //
 //	config := &oauth2.Config{...}
 //	// ...
 //	token, err := config.Exchange(ctx, ...)
 //	storageService, err := storage.NewService(ctx, option.WithTokenSource(config.TokenSource(ctx, token)))
 //
-// See https://godoc.org/google.golang.org/api/option/ for details on options.
+// See [google.golang.org/api/option.ClientOption] for details on options.
 package storage // import "google.golang.org/api/storage/v1"
 
 import (
@@ -50,12 +64,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/googleapis/gax-go/v2"
+	"github.com/googleapis/gax-go/v2/internallog"
 	googleapi "google.golang.org/api/googleapi"
 	internal "google.golang.org/api/internal"
 	gensupport "google.golang.org/api/internal/gensupport"
@@ -79,11 +95,14 @@ var _ = strings.Replace
 var _ = context.Canceled
 var _ = internaloption.WithDefaultEndpoint
 var _ = internal.Version
+var _ = internallog.New
+var _ = gax.Version
 
 const apiId = "storage:v1"
 const apiName = "storage"
 const apiVersion = "v1"
 const basePath = "https://storage.googleapis.com/storage/v1/"
+const basePathTemplate = "https://storage.UNIVERSE_DOMAIN/storage/v1/"
 const mtlsBasePath = "https://storage.mtls.googleapis.com/storage/v1/"
 
 // OAuth2 scopes used by this API.
@@ -116,12 +135,26 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	// NOTE: prepend, so we don't override user-specified scopes.
 	opts = append([]option.ClientOption{scopesOption}, opts...)
 	opts = append(opts, internaloption.WithDefaultEndpoint(basePath))
+	opts = append(opts, internaloption.WithDefaultEndpointTemplate(basePathTemplate))
 	opts = append(opts, internaloption.WithDefaultMTLSEndpoint(mtlsBasePath))
+	opts = append(opts, internaloption.EnableNewAuthLibrary())
 	client, endpoint, err := htransport.NewClient(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
-	s, err := New(client)
+	s := &Service{client: client, BasePath: basePath, logger: internaloption.GetLogger(opts)}
+	s.AnywhereCaches = NewAnywhereCachesService(s)
+	s.BucketAccessControls = NewBucketAccessControlsService(s)
+	s.Buckets = NewBucketsService(s)
+	s.Channels = NewChannelsService(s)
+	s.DefaultObjectAccessControls = NewDefaultObjectAccessControlsService(s)
+	s.Folders = NewFoldersService(s)
+	s.ManagedFolders = NewManagedFoldersService(s)
+	s.Notifications = NewNotificationsService(s)
+	s.ObjectAccessControls = NewObjectAccessControlsService(s)
+	s.Objects = NewObjectsService(s)
+	s.Operations = NewOperationsService(s)
+	s.Projects = NewProjectsService(s)
 	if err != nil {
 		return nil, err
 	}
@@ -140,22 +173,16 @@ func New(client *http.Client) (*Service, error) {
 	if client == nil {
 		return nil, errors.New("client is nil")
 	}
-	s := &Service{client: client, BasePath: basePath}
-	s.BucketAccessControls = NewBucketAccessControlsService(s)
-	s.Buckets = NewBucketsService(s)
-	s.Channels = NewChannelsService(s)
-	s.DefaultObjectAccessControls = NewDefaultObjectAccessControlsService(s)
-	s.Notifications = NewNotificationsService(s)
-	s.ObjectAccessControls = NewObjectAccessControlsService(s)
-	s.Objects = NewObjectsService(s)
-	s.Projects = NewProjectsService(s)
-	return s, nil
+	return NewService(context.Background(), option.WithHTTPClient(client))
 }
 
 type Service struct {
 	client    *http.Client
+	logger    *slog.Logger
 	BasePath  string // API endpoint base URL
 	UserAgent string // optional additional User-Agent fragment
+
+	AnywhereCaches *AnywhereCachesService
 
 	BucketAccessControls *BucketAccessControlsService
 
@@ -165,11 +192,17 @@ type Service struct {
 
 	DefaultObjectAccessControls *DefaultObjectAccessControlsService
 
+	Folders *FoldersService
+
+	ManagedFolders *ManagedFoldersService
+
 	Notifications *NotificationsService
 
 	ObjectAccessControls *ObjectAccessControlsService
 
 	Objects *ObjectsService
+
+	Operations *OperationsService
 
 	Projects *ProjectsService
 }
@@ -179,6 +212,15 @@ func (s *Service) userAgent() string {
 		return googleapi.UserAgent
 	}
 	return googleapi.UserAgent + " " + s.UserAgent
+}
+
+func NewAnywhereCachesService(s *Service) *AnywhereCachesService {
+	rs := &AnywhereCachesService{s: s}
+	return rs
+}
+
+type AnywhereCachesService struct {
+	s *Service
 }
 
 func NewBucketAccessControlsService(s *Service) *BucketAccessControlsService {
@@ -217,6 +259,24 @@ type DefaultObjectAccessControlsService struct {
 	s *Service
 }
 
+func NewFoldersService(s *Service) *FoldersService {
+	rs := &FoldersService{s: s}
+	return rs
+}
+
+type FoldersService struct {
+	s *Service
+}
+
+func NewManagedFoldersService(s *Service) *ManagedFoldersService {
+	rs := &ManagedFoldersService{s: s}
+	return rs
+}
+
+type ManagedFoldersService struct {
+	s *Service
+}
+
 func NewNotificationsService(s *Service) *NotificationsService {
 	rs := &NotificationsService{s: s}
 	return rs
@@ -241,6 +301,15 @@ func NewObjectsService(s *Service) *ObjectsService {
 }
 
 type ObjectsService struct {
+	s *Service
+}
+
+func NewOperationsService(s *Service) *OperationsService {
+	rs := &OperationsService{s: s}
+	return rs
+}
+
+type OperationsService struct {
 	s *Service
 }
 
@@ -277,838 +346,942 @@ type ProjectsServiceAccountService struct {
 	s *Service
 }
 
+// AdvanceRelocateBucketOperationRequest: An AdvanceRelocateBucketOperation
+// request.
+type AdvanceRelocateBucketOperationRequest struct {
+	// ExpireTime: Specifies the time when the relocation will revert to the sync
+	// stage if the relocation hasn't succeeded.
+	ExpireTime string `json:"expireTime,omitempty"`
+	// Ttl: Specifies the duration after which the relocation will revert to the
+	// sync stage if the relocation hasn't succeeded. Optional, if not supplied, a
+	// default value of 12h will be used.
+	Ttl string `json:"ttl,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "ExpireTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "ExpireTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AdvanceRelocateBucketOperationRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod AdvanceRelocateBucketOperationRequest
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AnywhereCache: An Anywhere Cache instance.
+type AnywhereCache struct {
+	// AdmissionPolicy: The cache-level entry admission policy.
+	AdmissionPolicy string `json:"admissionPolicy,omitempty"`
+	// AnywhereCacheId: The ID of the Anywhere cache instance.
+	AnywhereCacheId string `json:"anywhereCacheId,omitempty"`
+	// Bucket: The name of the bucket containing this cache instance.
+	Bucket string `json:"bucket,omitempty"`
+	// CreateTime: The creation time of the cache instance in RFC 3339 format.
+	CreateTime string `json:"createTime,omitempty"`
+	// Id: The ID of the resource, including the project number, bucket name and
+	// anywhere cache ID.
+	Id string `json:"id,omitempty"`
+	// Kind: The kind of item this is. For Anywhere Cache, this is always
+	// storage#anywhereCache.
+	Kind string `json:"kind,omitempty"`
+	// PendingUpdate: True if the cache instance has an active Update long-running
+	// operation.
+	PendingUpdate bool `json:"pendingUpdate,omitempty"`
+	// SelfLink: The link to this cache instance.
+	SelfLink string `json:"selfLink,omitempty"`
+	// State: The current state of the cache instance.
+	State string `json:"state,omitempty"`
+	// Ttl: The TTL of all cache entries in whole seconds. e.g., "7200s".
+	Ttl string `json:"ttl,omitempty"`
+	// UpdateTime: The modification time of the cache instance metadata in RFC 3339
+	// format.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// Zone: The zone in which the cache instance is running. For example,
+	// us-central1-a.
+	Zone string `json:"zone,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "AdmissionPolicy") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AdmissionPolicy") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AnywhereCache) MarshalJSON() ([]byte, error) {
+	type NoMethod AnywhereCache
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// AnywhereCaches: A list of Anywhere Caches.
+type AnywhereCaches struct {
+	// Items: The list of items.
+	Items []*AnywhereCache `json:"items,omitempty"`
+	// Kind: The kind of item this is. For lists of Anywhere Caches, this is always
+	// storage#anywhereCaches.
+	Kind string `json:"kind,omitempty"`
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Items") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s AnywhereCaches) MarshalJSON() ([]byte, error) {
+	type NoMethod AnywhereCaches
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // Bucket: A bucket.
 type Bucket struct {
 	// Acl: Access controls on the bucket.
 	Acl []*BucketAccessControl `json:"acl,omitempty"`
-
 	// Autoclass: The bucket's Autoclass configuration.
 	Autoclass *BucketAutoclass `json:"autoclass,omitempty"`
-
 	// Billing: The bucket's billing configuration.
 	Billing *BucketBilling `json:"billing,omitempty"`
-
-	// Cors: The bucket's Cross-Origin Resource Sharing (CORS)
-	// configuration.
+	// Cors: The bucket's Cross-Origin Resource Sharing (CORS) configuration.
 	Cors []*BucketCors `json:"cors,omitempty"`
-
-	// CustomPlacementConfig: The bucket's custom placement configuration
-	// for Custom Dual Regions.
+	// CustomPlacementConfig: The bucket's custom placement configuration for
+	// Custom Dual Regions.
 	CustomPlacementConfig *BucketCustomPlacementConfig `json:"customPlacementConfig,omitempty"`
-
-	// DefaultEventBasedHold: The default value for event-based hold on
-	// newly created objects in this bucket. Event-based hold is a way to
-	// retain objects indefinitely until an event occurs, signified by the
-	// hold's release. After being released, such objects will be subject to
-	// bucket-level retention (if any). One sample use case of this flag is
-	// for banks to hold loan documents for at least 3 years after loan is
-	// paid in full. Here, bucket-level retention is 3 years and the event
-	// is loan being paid in full. In this example, these objects will be
-	// held intact for any number of years until the event has occurred
-	// (event-based hold on the object is released) and then 3 more years
-	// after that. That means retention duration of the objects begins from
-	// the moment event-based hold transitioned from true to false. Objects
-	// under event-based hold cannot be deleted, overwritten or archived
-	// until the hold is removed.
+	// DefaultEventBasedHold: The default value for event-based hold on newly
+	// created objects in this bucket. Event-based hold is a way to retain objects
+	// indefinitely until an event occurs, signified by the hold's release. After
+	// being released, such objects will be subject to bucket-level retention (if
+	// any). One sample use case of this flag is for banks to hold loan documents
+	// for at least 3 years after loan is paid in full. Here, bucket-level
+	// retention is 3 years and the event is loan being paid in full. In this
+	// example, these objects will be held intact for any number of years until the
+	// event has occurred (event-based hold on the object is released) and then 3
+	// more years after that. That means retention duration of the objects begins
+	// from the moment event-based hold transitioned from true to false. Objects
+	// under event-based hold cannot be deleted, overwritten or archived until the
+	// hold is removed.
 	DefaultEventBasedHold bool `json:"defaultEventBasedHold,omitempty"`
-
-	// DefaultObjectAcl: Default access controls to apply to new objects
-	// when no ACL is provided.
+	// DefaultObjectAcl: Default access controls to apply to new objects when no
+	// ACL is provided.
 	DefaultObjectAcl []*ObjectAccessControl `json:"defaultObjectAcl,omitempty"`
-
 	// Encryption: Encryption configuration for a bucket.
 	Encryption *BucketEncryption `json:"encryption,omitempty"`
-
 	// Etag: HTTP 1.1 Entity tag for the bucket.
 	Etag string `json:"etag,omitempty"`
-
+	// Generation: The generation of this bucket.
+	Generation int64 `json:"generation,omitempty,string"`
+	// HardDeleteTime: The hard delete time of the bucket in RFC 3339 format.
+	HardDeleteTime string `json:"hardDeleteTime,omitempty"`
+	// HierarchicalNamespace: The bucket's hierarchical namespace configuration.
+	HierarchicalNamespace *BucketHierarchicalNamespace `json:"hierarchicalNamespace,omitempty"`
 	// IamConfiguration: The bucket's IAM configuration.
 	IamConfiguration *BucketIamConfiguration `json:"iamConfiguration,omitempty"`
-
-	// Id: The ID of the bucket. For buckets, the id and name properties are
-	// the same.
+	// Id: The ID of the bucket. For buckets, the id and name properties are the
+	// same.
 	Id string `json:"id,omitempty"`
-
-	// Kind: The kind of item this is. For buckets, this is always
-	// storage#bucket.
+	// IpFilter: The bucket's IP filter configuration. Specifies the network
+	// sources that are allowed to access the operations on the bucket, as well as
+	// its underlying objects. Only enforced when the mode is set to 'Enabled'.
+	IpFilter *BucketIpFilter `json:"ipFilter,omitempty"`
+	// Kind: The kind of item this is. For buckets, this is always storage#bucket.
 	Kind string `json:"kind,omitempty"`
-
 	// Labels: User-provided labels, in key/value pairs.
 	Labels map[string]string `json:"labels,omitempty"`
-
-	// Lifecycle: The bucket's lifecycle configuration. See lifecycle
-	// management for more information.
+	// Lifecycle: The bucket's lifecycle configuration. See Lifecycle Management
+	// (https://cloud.google.com/storage/docs/lifecycle) for more information.
 	Lifecycle *BucketLifecycle `json:"lifecycle,omitempty"`
-
-	// Location: The location of the bucket. Object data for objects in the
-	// bucket resides in physical storage within this region. Defaults to
-	// US. See the developer's guide for the authoritative list.
+	// Location: The location of the bucket. Object data for objects in the bucket
+	// resides in physical storage within this region. Defaults to US. See the
+	// Developer's Guide (https://cloud.google.com/storage/docs/locations) for the
+	// authoritative list.
 	Location string `json:"location,omitempty"`
-
 	// LocationType: The type of the bucket location.
 	LocationType string `json:"locationType,omitempty"`
-
-	// Logging: The bucket's logging configuration, which defines the
-	// destination bucket and optional name prefix for the current bucket's
-	// logs.
+	// Logging: The bucket's logging configuration, which defines the destination
+	// bucket and optional name prefix for the current bucket's logs.
 	Logging *BucketLogging `json:"logging,omitempty"`
-
 	// Metageneration: The metadata generation of this bucket.
 	Metageneration int64 `json:"metageneration,omitempty,string"`
-
 	// Name: The name of the bucket.
 	Name string `json:"name,omitempty"`
-
-	// Owner: The owner of the bucket. This is always the project team's
-	// owner group.
+	// ObjectRetention: The bucket's object retention config.
+	ObjectRetention *BucketObjectRetention `json:"objectRetention,omitempty"`
+	// Owner: The owner of the bucket. This is always the project team's owner
+	// group.
 	Owner *BucketOwner `json:"owner,omitempty"`
-
-	// ProjectNumber: The project number of the project the bucket belongs
-	// to.
+	// ProjectNumber: The project number of the project the bucket belongs to.
 	ProjectNumber uint64 `json:"projectNumber,omitempty,string"`
-
 	// RetentionPolicy: The bucket's retention policy. The retention policy
-	// enforces a minimum retention time for all objects contained in the
-	// bucket, based on their creation time. Any attempt to overwrite or
-	// delete objects younger than the retention period will result in a
-	// PERMISSION_DENIED error. An unlocked retention policy can be modified
-	// or removed from the bucket via a storage.buckets.update operation. A
-	// locked retention policy cannot be removed or shortened in duration
-	// for the lifetime of the bucket. Attempting to remove or decrease
-	// period of a locked retention policy will result in a
+	// enforces a minimum retention time for all objects contained in the bucket,
+	// based on their creation time. Any attempt to overwrite or delete objects
+	// younger than the retention period will result in a PERMISSION_DENIED error.
+	// An unlocked retention policy can be modified or removed from the bucket via
+	// a storage.buckets.update operation. A locked retention policy cannot be
+	// removed or shortened in duration for the lifetime of the bucket. Attempting
+	// to remove or decrease period of a locked retention policy will result in a
 	// PERMISSION_DENIED error.
 	RetentionPolicy *BucketRetentionPolicy `json:"retentionPolicy,omitempty"`
-
-	// Rpo: The Recovery Point Objective (RPO) of this bucket. Set to
-	// ASYNC_TURBO to turn on Turbo Replication on a bucket.
+	// Rpo: The Recovery Point Objective (RPO) of this bucket. Set to ASYNC_TURBO
+	// to turn on Turbo Replication on a bucket.
 	Rpo string `json:"rpo,omitempty"`
-
+	// SatisfiesPZI: Reserved for future use.
+	SatisfiesPZI bool `json:"satisfiesPZI,omitempty"`
 	// SatisfiesPZS: Reserved for future use.
 	SatisfiesPZS bool `json:"satisfiesPZS,omitempty"`
-
 	// SelfLink: The URI of this bucket.
 	SelfLink string `json:"selfLink,omitempty"`
-
+	// SoftDeletePolicy: The bucket's soft delete policy, which defines the period
+	// of time that soft-deleted objects will be retained, and cannot be
+	// permanently deleted.
+	SoftDeletePolicy *BucketSoftDeletePolicy `json:"softDeletePolicy,omitempty"`
+	// SoftDeleteTime: The soft delete time of the bucket in RFC 3339 format.
+	SoftDeleteTime string `json:"softDeleteTime,omitempty"`
 	// StorageClass: The bucket's default storage class, used whenever no
-	// storageClass is specified for a newly-created object. This defines
-	// how objects in the bucket are stored and determines the SLA and the
-	// cost of storage. Values include MULTI_REGIONAL, REGIONAL, STANDARD,
-	// NEARLINE, COLDLINE, ARCHIVE, and DURABLE_REDUCED_AVAILABILITY. If
-	// this value is not specified when the bucket is created, it will
-	// default to STANDARD. For more information, see storage classes.
+	// storageClass is specified for a newly-created object. This defines how
+	// objects in the bucket are stored and determines the SLA and the cost of
+	// storage. Values include MULTI_REGIONAL, REGIONAL, STANDARD, NEARLINE,
+	// COLDLINE, ARCHIVE, and DURABLE_REDUCED_AVAILABILITY. If this value is not
+	// specified when the bucket is created, it will default to STANDARD. For more
+	// information, see Storage Classes
+	// (https://cloud.google.com/storage/docs/storage-classes).
 	StorageClass string `json:"storageClass,omitempty"`
-
 	// TimeCreated: The creation time of the bucket in RFC 3339 format.
 	TimeCreated string `json:"timeCreated,omitempty"`
-
 	// Updated: The modification time of the bucket in RFC 3339 format.
 	Updated string `json:"updated,omitempty"`
-
 	// Versioning: The bucket's versioning configuration.
 	Versioning *BucketVersioning `json:"versioning,omitempty"`
-
-	// Website: The bucket's website configuration, controlling how the
-	// service behaves when accessing bucket contents as a web site. See the
-	// Static Website Examples for more information.
+	// Website: The bucket's website configuration, controlling how the service
+	// behaves when accessing bucket contents as a web site. See the Static Website
+	// Examples (https://cloud.google.com/storage/docs/static-website) for more
+	// information.
 	Website *BucketWebsite `json:"website,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Acl") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Acl") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Acl") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Acl") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Bucket) MarshalJSON() ([]byte, error) {
+func (s Bucket) MarshalJSON() ([]byte, error) {
 	type NoMethod Bucket
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketAutoclass: The bucket's Autoclass configuration.
 type BucketAutoclass struct {
 	// Enabled: Whether or not Autoclass is enabled on this bucket
 	Enabled bool `json:"enabled,omitempty"`
-
-	// ToggleTime: A date and time in RFC 3339 format representing the
-	// instant at which "enabled" was last toggled.
+	// TerminalStorageClass: The storage class that objects in the bucket
+	// eventually transition to if they are not read for a certain length of time.
+	// Valid values are NEARLINE and ARCHIVE.
+	TerminalStorageClass string `json:"terminalStorageClass,omitempty"`
+	// TerminalStorageClassUpdateTime: A date and time in RFC 3339 format
+	// representing the time of the most recent update to "terminalStorageClass".
+	TerminalStorageClassUpdateTime string `json:"terminalStorageClassUpdateTime,omitempty"`
+	// ToggleTime: A date and time in RFC 3339 format representing the instant at
+	// which "enabled" was last toggled.
 	ToggleTime string `json:"toggleTime,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Enabled") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Enabled") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketAutoclass) MarshalJSON() ([]byte, error) {
+func (s BucketAutoclass) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketAutoclass
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketBilling: The bucket's billing configuration.
 type BucketBilling struct {
-	// RequesterPays: When set to true, Requester Pays is enabled for this
-	// bucket.
+	// RequesterPays: When set to true, Requester Pays is enabled for this bucket.
 	RequesterPays bool `json:"requesterPays,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "RequesterPays") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "RequesterPays") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "RequesterPays") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketBilling) MarshalJSON() ([]byte, error) {
+func (s BucketBilling) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketBilling
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type BucketCors struct {
 	// MaxAgeSeconds: The value, in seconds, to return in the
 	// Access-Control-Max-Age header used in preflight responses.
 	MaxAgeSeconds int64 `json:"maxAgeSeconds,omitempty"`
-
-	// Method: The list of HTTP methods on which to include CORS response
-	// headers, (GET, OPTIONS, POST, etc) Note: "*" is permitted in the list
-	// of methods, and means "any method".
+	// Method: The list of HTTP methods on which to include CORS response headers,
+	// (GET, OPTIONS, POST, etc) Note: "*" is permitted in the list of methods, and
+	// means "any method".
 	Method []string `json:"method,omitempty"`
-
-	// Origin: The list of Origins eligible to receive CORS response
-	// headers. Note: "*" is permitted in the list of origins, and means
-	// "any Origin".
+	// Origin: The list of Origins eligible to receive CORS response headers. Note:
+	// "*" is permitted in the list of origins, and means "any Origin".
 	Origin []string `json:"origin,omitempty"`
-
-	// ResponseHeader: The list of HTTP headers other than the simple
-	// response headers to give permission for the user-agent to share
-	// across domains.
+	// ResponseHeader: The list of HTTP headers other than the simple response
+	// headers to give permission for the user-agent to share across domains.
 	ResponseHeader []string `json:"responseHeader,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "MaxAgeSeconds") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "MaxAgeSeconds") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "MaxAgeSeconds") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketCors) MarshalJSON() ([]byte, error) {
+func (s BucketCors) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketCors
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketCustomPlacementConfig: The bucket's custom placement
-// configuration for Custom Dual Regions.
+// BucketCustomPlacementConfig: The bucket's custom placement configuration for
+// Custom Dual Regions.
 type BucketCustomPlacementConfig struct {
-	// DataLocations: The list of regional locations in which data is
-	// placed.
+	// DataLocations: The list of regional locations in which data is placed.
 	DataLocations []string `json:"dataLocations,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "DataLocations") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "DataLocations") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "DataLocations") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketCustomPlacementConfig) MarshalJSON() ([]byte, error) {
+func (s BucketCustomPlacementConfig) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketCustomPlacementConfig
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketEncryption: Encryption configuration for a bucket.
 type BucketEncryption struct {
-	// DefaultKmsKeyName: A Cloud KMS key that will be used to encrypt
-	// objects inserted into this bucket, if no encryption method is
-	// specified.
+	// DefaultKmsKeyName: A Cloud KMS key that will be used to encrypt objects
+	// inserted into this bucket, if no encryption method is specified.
 	DefaultKmsKeyName string `json:"defaultKmsKeyName,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "DefaultKmsKeyName")
-	// to unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "DefaultKmsKeyName") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "DefaultKmsKeyName") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "DefaultKmsKeyName") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketEncryption) MarshalJSON() ([]byte, error) {
+func (s BucketEncryption) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketEncryption
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketHierarchicalNamespace: The bucket's hierarchical namespace
+// configuration.
+type BucketHierarchicalNamespace struct {
+	// Enabled: When set to true, hierarchical namespace is enabled for this
+	// bucket.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketHierarchicalNamespace) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketHierarchicalNamespace
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketIamConfiguration: The bucket's IAM configuration.
 type BucketIamConfiguration struct {
-	// BucketPolicyOnly: The bucket's uniform bucket-level access
-	// configuration. The feature was formerly known as Bucket Policy Only.
-	// For backward compatibility, this field will be populated with
-	// identical information as the uniformBucketLevelAccess field. We
-	// recommend using the uniformBucketLevelAccess field to enable and
-	// disable the feature.
+	// BucketPolicyOnly: The bucket's uniform bucket-level access configuration.
+	// The feature was formerly known as Bucket Policy Only. For backward
+	// compatibility, this field will be populated with identical information as
+	// the uniformBucketLevelAccess field. We recommend using the
+	// uniformBucketLevelAccess field to enable and disable the feature.
 	BucketPolicyOnly *BucketIamConfigurationBucketPolicyOnly `json:"bucketPolicyOnly,omitempty"`
-
-	// PublicAccessPrevention: The bucket's Public Access Prevention
-	// configuration. Currently, 'inherited' and 'enforced' are supported.
+	// PublicAccessPrevention: The bucket's Public Access Prevention configuration.
+	// Currently, 'inherited' and 'enforced' are supported.
 	PublicAccessPrevention string `json:"publicAccessPrevention,omitempty"`
-
 	// UniformBucketLevelAccess: The bucket's uniform bucket-level access
 	// configuration.
 	UniformBucketLevelAccess *BucketIamConfigurationUniformBucketLevelAccess `json:"uniformBucketLevelAccess,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "BucketPolicyOnly") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "BucketPolicyOnly") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "BucketPolicyOnly") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketIamConfiguration) MarshalJSON() ([]byte, error) {
+func (s BucketIamConfiguration) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketIamConfiguration
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketIamConfigurationBucketPolicyOnly: The bucket's uniform
-// bucket-level access configuration. The feature was formerly known as
-// Bucket Policy Only. For backward compatibility, this field will be
-// populated with identical information as the uniformBucketLevelAccess
-// field. We recommend using the uniformBucketLevelAccess field to
-// enable and disable the feature.
+// BucketIamConfigurationBucketPolicyOnly: The bucket's uniform bucket-level
+// access configuration. The feature was formerly known as Bucket Policy Only.
+// For backward compatibility, this field will be populated with identical
+// information as the uniformBucketLevelAccess field. We recommend using the
+// uniformBucketLevelAccess field to enable and disable the feature.
 type BucketIamConfigurationBucketPolicyOnly struct {
-	// Enabled: If set, access is controlled only by bucket-level or above
-	// IAM policies.
+	// Enabled: If set, access is controlled only by bucket-level or above IAM
+	// policies.
 	Enabled bool `json:"enabled,omitempty"`
-
 	// LockedTime: The deadline for changing
-	// iamConfiguration.bucketPolicyOnly.enabled from true to false in RFC
-	// 3339 format. iamConfiguration.bucketPolicyOnly.enabled may be changed
-	// from true to false until the locked time, after which the field is
-	// immutable.
+	// iamConfiguration.bucketPolicyOnly.enabled from true to false in RFC 3339
+	// format. iamConfiguration.bucketPolicyOnly.enabled may be changed from true
+	// to false until the locked time, after which the field is immutable.
 	LockedTime string `json:"lockedTime,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Enabled") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Enabled") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketIamConfigurationBucketPolicyOnly) MarshalJSON() ([]byte, error) {
+func (s BucketIamConfigurationBucketPolicyOnly) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketIamConfigurationBucketPolicyOnly
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketIamConfigurationUniformBucketLevelAccess: The bucket's uniform
 // bucket-level access configuration.
 type BucketIamConfigurationUniformBucketLevelAccess struct {
-	// Enabled: If set, access is controlled only by bucket-level or above
-	// IAM policies.
+	// Enabled: If set, access is controlled only by bucket-level or above IAM
+	// policies.
 	Enabled bool `json:"enabled,omitempty"`
-
 	// LockedTime: The deadline for changing
-	// iamConfiguration.uniformBucketLevelAccess.enabled from true to false
-	// in RFC 3339  format.
-	// iamConfiguration.uniformBucketLevelAccess.enabled may be changed from
-	// true to false until the locked time, after which the field is
+	// iamConfiguration.uniformBucketLevelAccess.enabled from true to false in RFC
+	// 3339  format. iamConfiguration.uniformBucketLevelAccess.enabled may be
+	// changed from true to false until the locked time, after which the field is
 	// immutable.
 	LockedTime string `json:"lockedTime,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Enabled") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Enabled") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketIamConfigurationUniformBucketLevelAccess) MarshalJSON() ([]byte, error) {
+func (s BucketIamConfigurationUniformBucketLevelAccess) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketIamConfigurationUniformBucketLevelAccess
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketLifecycle: The bucket's lifecycle configuration. See lifecycle
-// management for more information.
-type BucketLifecycle struct {
-	// Rule: A lifecycle management rule, which is made of an action to take
-	// and the condition(s) under which the action will be taken.
-	Rule []*BucketLifecycleRule `json:"rule,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Rule") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+// BucketIpFilter: The bucket's IP filter configuration. Specifies the network
+// sources that are allowed to access the operations on the bucket, as well as
+// its underlying objects. Only enforced when the mode is set to 'Enabled'.
+type BucketIpFilter struct {
+	// Mode: The mode of the IP filter. Valid values are 'Enabled' and 'Disabled'.
+	Mode string `json:"mode,omitempty"`
+	// PublicNetworkSource: The public network source of the bucket's IP filter.
+	PublicNetworkSource *BucketIpFilterPublicNetworkSource `json:"publicNetworkSource,omitempty"`
+	// VpcNetworkSources: The list of VPC network
+	// (https://cloud.google.com/vpc/docs/vpc) sources of the bucket's IP filter.
+	VpcNetworkSources []*BucketIpFilterVpcNetworkSources `json:"vpcNetworkSources,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Mode") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Rule") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Mode") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketLifecycle) MarshalJSON() ([]byte, error) {
+func (s BucketIpFilter) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketIpFilter
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketIpFilterPublicNetworkSource: The public network source of the bucket's
+// IP filter.
+type BucketIpFilterPublicNetworkSource struct {
+	// AllowedIpCidrRanges: The list of public IPv4, IPv6 cidr ranges that are
+	// allowed to access the bucket.
+	AllowedIpCidrRanges []string `json:"allowedIpCidrRanges,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AllowedIpCidrRanges") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AllowedIpCidrRanges") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketIpFilterPublicNetworkSource) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketIpFilterPublicNetworkSource
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+type BucketIpFilterVpcNetworkSources struct {
+	// AllowedIpCidrRanges: The list of IPv4, IPv6 cidr ranges subnetworks that are
+	// allowed to access the bucket.
+	AllowedIpCidrRanges []string `json:"allowedIpCidrRanges,omitempty"`
+	// Network: Name of the network. Format:
+	// projects/{PROJECT_ID}/global/networks/{NETWORK_NAME}
+	Network string `json:"network,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AllowedIpCidrRanges") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AllowedIpCidrRanges") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketIpFilterVpcNetworkSources) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketIpFilterVpcNetworkSources
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketLifecycle: The bucket's lifecycle configuration. See Lifecycle
+// Management (https://cloud.google.com/storage/docs/lifecycle) for more
+// information.
+type BucketLifecycle struct {
+	// Rule: A lifecycle management rule, which is made of an action to take and
+	// the condition(s) under which the action will be taken.
+	Rule []*BucketLifecycleRule `json:"rule,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Rule") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Rule") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketLifecycle) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketLifecycle
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type BucketLifecycleRule struct {
 	// Action: The action to take.
 	Action *BucketLifecycleRuleAction `json:"action,omitempty"`
-
 	// Condition: The condition(s) under which the action will be taken.
 	Condition *BucketLifecycleRuleCondition `json:"condition,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Action") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Action") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Action") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketLifecycleRule) MarshalJSON() ([]byte, error) {
+func (s BucketLifecycleRule) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketLifecycleRule
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketLifecycleRuleAction: The action to take.
 type BucketLifecycleRuleAction struct {
-	// StorageClass: Target storage class. Required iff the type of the
-	// action is SetStorageClass.
+	// StorageClass: Target storage class. Required iff the type of the action is
+	// SetStorageClass.
 	StorageClass string `json:"storageClass,omitempty"`
-
-	// Type: Type of the action. Currently, only Delete, SetStorageClass,
-	// and AbortIncompleteMultipartUpload are supported.
+	// Type: Type of the action. Currently, only Delete, SetStorageClass, and
+	// AbortIncompleteMultipartUpload are supported.
 	Type string `json:"type,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "StorageClass") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "StorageClass") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "StorageClass") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketLifecycleRuleAction) MarshalJSON() ([]byte, error) {
+func (s BucketLifecycleRuleAction) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketLifecycleRuleAction
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketLifecycleRuleCondition: The condition(s) under which the action
-// will be taken.
+// BucketLifecycleRuleCondition: The condition(s) under which the action will
+// be taken.
 type BucketLifecycleRuleCondition struct {
-	// Age: Age of an object (in days). This condition is satisfied when an
-	// object reaches the specified age.
+	// Age: Age of an object (in days). This condition is satisfied when an object
+	// reaches the specified age.
 	Age *int64 `json:"age,omitempty"`
-
 	// CreatedBefore: A date in RFC 3339 format with only the date part (for
-	// instance, "2013-01-15"). This condition is satisfied when an object
-	// is created before midnight of the specified date in UTC.
+	// instance, "2013-01-15"). This condition is satisfied when an object is
+	// created before midnight of the specified date in UTC.
 	CreatedBefore string `json:"createdBefore,omitempty"`
-
-	// CustomTimeBefore: A date in RFC 3339 format with only the date part
-	// (for instance, "2013-01-15"). This condition is satisfied when the
-	// custom time on an object is before this date in UTC.
+	// CustomTimeBefore: A date in RFC 3339 format with only the date part (for
+	// instance, "2013-01-15"). This condition is satisfied when the custom time on
+	// an object is before this date in UTC.
 	CustomTimeBefore string `json:"customTimeBefore,omitempty"`
-
 	// DaysSinceCustomTime: Number of days elapsed since the user-specified
-	// timestamp set on an object. The condition is satisfied if the days
-	// elapsed is at least this number. If no custom timestamp is specified
-	// on an object, the condition does not apply.
+	// timestamp set on an object. The condition is satisfied if the days elapsed
+	// is at least this number. If no custom timestamp is specified on an object,
+	// the condition does not apply.
 	DaysSinceCustomTime int64 `json:"daysSinceCustomTime,omitempty"`
-
 	// DaysSinceNoncurrentTime: Number of days elapsed since the noncurrent
-	// timestamp of an object. The condition is satisfied if the days
-	// elapsed is at least this number. This condition is relevant only for
-	// versioned objects. The value of the field must be a nonnegative
-	// integer. If it's zero, the object version will become eligible for
-	// Lifecycle action as soon as it becomes noncurrent.
+	// timestamp of an object. The condition is satisfied if the days elapsed is at
+	// least this number. This condition is relevant only for versioned objects.
+	// The value of the field must be a nonnegative integer. If it's zero, the
+	// object version will become eligible for Lifecycle action as soon as it
+	// becomes noncurrent.
 	DaysSinceNoncurrentTime int64 `json:"daysSinceNoncurrentTime,omitempty"`
-
-	// IsLive: Relevant only for versioned objects. If the value is true,
-	// this condition matches live objects; if the value is false, it
-	// matches archived objects.
+	// IsLive: Relevant only for versioned objects. If the value is true, this
+	// condition matches live objects; if the value is false, it matches archived
+	// objects.
 	IsLive *bool `json:"isLive,omitempty"`
-
-	// MatchesPattern: A regular expression that satisfies the RE2 syntax.
-	// This condition is satisfied when the name of the object matches the
-	// RE2 pattern. Note: This feature is currently in the "Early Access"
-	// launch stage and is only available to a whitelisted set of users;
-	// that means that this feature may be changed in backward-incompatible
-	// ways and that it is not guaranteed to be released.
+	// MatchesPattern: A regular expression that satisfies the RE2 syntax. This
+	// condition is satisfied when the name of the object matches the RE2 pattern.
+	// Note: This feature is currently in the "Early Access" launch stage and is
+	// only available to a whitelisted set of users; that means that this feature
+	// may be changed in backward-incompatible ways and that it is not guaranteed
+	// to be released.
 	MatchesPattern string `json:"matchesPattern,omitempty"`
-
 	// MatchesPrefix: List of object name prefixes. This condition will be
-	// satisfied when at least one of the prefixes exactly matches the
-	// beginning of the object name.
+	// satisfied when at least one of the prefixes exactly matches the beginning of
+	// the object name.
 	MatchesPrefix []string `json:"matchesPrefix,omitempty"`
-
-	// MatchesStorageClass: Objects having any of the storage classes
-	// specified by this condition will be matched. Values include
-	// MULTI_REGIONAL, REGIONAL, NEARLINE, COLDLINE, ARCHIVE, STANDARD, and
-	// DURABLE_REDUCED_AVAILABILITY.
+	// MatchesStorageClass: Objects having any of the storage classes specified by
+	// this condition will be matched. Values include MULTI_REGIONAL, REGIONAL,
+	// NEARLINE, COLDLINE, ARCHIVE, STANDARD, and DURABLE_REDUCED_AVAILABILITY.
 	MatchesStorageClass []string `json:"matchesStorageClass,omitempty"`
-
 	// MatchesSuffix: List of object name suffixes. This condition will be
-	// satisfied when at least one of the suffixes exactly matches the end
-	// of the object name.
+	// satisfied when at least one of the suffixes exactly matches the end of the
+	// object name.
 	MatchesSuffix []string `json:"matchesSuffix,omitempty"`
-
-	// NoncurrentTimeBefore: A date in RFC 3339 format with only the date
-	// part (for instance, "2013-01-15"). This condition is satisfied when
-	// the noncurrent time on an object is before this date in UTC. This
-	// condition is relevant only for versioned objects.
+	// NoncurrentTimeBefore: A date in RFC 3339 format with only the date part (for
+	// instance, "2013-01-15"). This condition is satisfied when the noncurrent
+	// time on an object is before this date in UTC. This condition is relevant
+	// only for versioned objects.
 	NoncurrentTimeBefore string `json:"noncurrentTimeBefore,omitempty"`
-
-	// NumNewerVersions: Relevant only for versioned objects. If the value
-	// is N, this condition is satisfied when there are at least N versions
-	// (including the live version) newer than this version of the object.
+	// NumNewerVersions: Relevant only for versioned objects. If the value is N,
+	// this condition is satisfied when there are at least N versions (including
+	// the live version) newer than this version of the object.
 	NumNewerVersions int64 `json:"numNewerVersions,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Age") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Age") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Age") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Age") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketLifecycleRuleCondition) MarshalJSON() ([]byte, error) {
+func (s BucketLifecycleRuleCondition) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketLifecycleRuleCondition
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketLogging: The bucket's logging configuration, which defines the
-// destination bucket and optional name prefix for the current bucket's
-// logs.
+// destination bucket and optional name prefix for the current bucket's logs.
 type BucketLogging struct {
-	// LogBucket: The destination bucket where the current bucket's logs
-	// should be placed.
+	// LogBucket: The destination bucket where the current bucket's logs should be
+	// placed.
 	LogBucket string `json:"logBucket,omitempty"`
-
 	// LogObjectPrefix: A prefix for log object names.
 	LogObjectPrefix string `json:"logObjectPrefix,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "LogBucket") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "LogBucket") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "LogBucket") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketLogging) MarshalJSON() ([]byte, error) {
+func (s BucketLogging) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketLogging
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketOwner: The owner of the bucket. This is always the project
-// team's owner group.
+// BucketObjectRetention: The bucket's object retention config.
+type BucketObjectRetention struct {
+	// Mode: The bucket's object retention mode. Can be Enabled.
+	Mode string `json:"mode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Mode") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Mode") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketObjectRetention) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketObjectRetention
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketOwner: The owner of the bucket. This is always the project team's
+// owner group.
 type BucketOwner struct {
 	// Entity: The entity, in the form project-owner-projectId.
 	Entity string `json:"entity,omitempty"`
-
 	// EntityId: The ID for the entity.
 	EntityId string `json:"entityId,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Entity") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Entity") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Entity") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketOwner) MarshalJSON() ([]byte, error) {
+func (s BucketOwner) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketOwner
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketRetentionPolicy: The bucket's retention policy. The retention
-// policy enforces a minimum retention time for all objects contained in
-// the bucket, based on their creation time. Any attempt to overwrite or
-// delete objects younger than the retention period will result in a
-// PERMISSION_DENIED error. An unlocked retention policy can be modified
-// or removed from the bucket via a storage.buckets.update operation. A
-// locked retention policy cannot be removed or shortened in duration
-// for the lifetime of the bucket. Attempting to remove or decrease
-// period of a locked retention policy will result in a
+// BucketRetentionPolicy: The bucket's retention policy. The retention policy
+// enforces a minimum retention time for all objects contained in the bucket,
+// based on their creation time. Any attempt to overwrite or delete objects
+// younger than the retention period will result in a PERMISSION_DENIED error.
+// An unlocked retention policy can be modified or removed from the bucket via
+// a storage.buckets.update operation. A locked retention policy cannot be
+// removed or shortened in duration for the lifetime of the bucket. Attempting
+// to remove or decrease period of a locked retention policy will result in a
 // PERMISSION_DENIED error.
 type BucketRetentionPolicy struct {
-	// EffectiveTime: Server-determined value that indicates the time from
-	// which policy was enforced and effective. This value is in RFC 3339
-	// format.
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// policy was enforced and effective. This value is in RFC 3339 format.
 	EffectiveTime string `json:"effectiveTime,omitempty"`
-
 	// IsLocked: Once locked, an object retention policy cannot be modified.
 	IsLocked bool `json:"isLocked,omitempty"`
-
-	// RetentionPeriod: The duration in seconds that objects need to be
-	// retained. Retention duration must be greater than zero and less than
-	// 100 years. Note that enforcement of retention periods less than a day
-	// is not guaranteed. Such periods should only be used for testing
-	// purposes.
+	// RetentionPeriod: The duration in seconds that objects need to be retained.
+	// Retention duration must be greater than zero and less than 100 years. Note
+	// that enforcement of retention periods less than a day is not guaranteed.
+	// Such periods should only be used for testing purposes.
 	RetentionPeriod int64 `json:"retentionPeriod,omitempty,string"`
-
 	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "EffectiveTime") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketRetentionPolicy) MarshalJSON() ([]byte, error) {
+func (s BucketRetentionPolicy) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketRetentionPolicy
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketSoftDeletePolicy: The bucket's soft delete policy, which defines the
+// period of time that soft-deleted objects will be retained, and cannot be
+// permanently deleted.
+type BucketSoftDeletePolicy struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// the policy, or one with a greater retention, was effective. This value is in
+	// RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// RetentionDurationSeconds: The duration in seconds that soft-deleted objects
+	// in the bucket will be retained and cannot be permanently deleted.
+	RetentionDurationSeconds int64 `json:"retentionDurationSeconds,omitempty,string"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketSoftDeletePolicy) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketSoftDeletePolicy
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketVersioning: The bucket's versioning configuration.
 type BucketVersioning struct {
-	// Enabled: While set to true, versioning is fully enabled for this
-	// bucket.
+	// Enabled: While set to true, versioning is fully enabled for this bucket.
 	Enabled bool `json:"enabled,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Enabled") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Enabled") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketVersioning) MarshalJSON() ([]byte, error) {
+func (s BucketVersioning) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketVersioning
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketWebsite: The bucket's website configuration, controlling how
-// the service behaves when accessing bucket contents as a web site. See
-// the Static Website Examples for more information.
+// BucketWebsite: The bucket's website configuration, controlling how the
+// service behaves when accessing bucket contents as a web site. See the Static
+// Website Examples (https://cloud.google.com/storage/docs/static-website) for
+// more information.
 type BucketWebsite struct {
-	// MainPageSuffix: If the requested object path is missing, the service
-	// will ensure the path has a trailing '/', append this suffix, and
-	// attempt to retrieve the resulting object. This allows the creation of
-	// index.html objects to represent directory pages.
+	// MainPageSuffix: If the requested object path is missing, the service will
+	// ensure the path has a trailing '/', append this suffix, and attempt to
+	// retrieve the resulting object. This allows the creation of index.html
+	// objects to represent directory pages.
 	MainPageSuffix string `json:"mainPageSuffix,omitempty"`
-
 	// NotFoundPage: If the requested object path is missing, and any
-	// mainPageSuffix object is missing, if applicable, the service will
-	// return the named object from this bucket as the content for a 404 Not
-	// Found result.
+	// mainPageSuffix object is missing, if applicable, the service will return the
+	// named object from this bucket as the content for a 404 Not Found result.
 	NotFoundPage string `json:"notFoundPage,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "MainPageSuffix") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "MainPageSuffix") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "MainPageSuffix") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketWebsite) MarshalJSON() ([]byte, error) {
+func (s BucketWebsite) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketWebsite
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketAccessControl: An access-control entry.
 type BucketAccessControl struct {
 	// Bucket: The name of the bucket.
 	Bucket string `json:"bucket,omitempty"`
-
 	// Domain: The domain associated with the entity, if any.
 	Domain string `json:"domain,omitempty"`
-
 	// Email: The email address associated with the entity, if any.
 	Email string `json:"email,omitempty"`
-
-	// Entity: The entity holding the permission, in one of the following
-	// forms:
+	// Entity: The entity holding the permission, in one of the following forms:
 	// - user-userId
 	// - user-email
 	// - group-groupId
@@ -1123,886 +1296,1131 @@ type BucketAccessControl struct {
 	// - To refer to all members of the Google Apps for Business domain
 	// example.com, the entity would be domain-example.com.
 	Entity string `json:"entity,omitempty"`
-
 	// EntityId: The ID for the entity, if any.
 	EntityId string `json:"entityId,omitempty"`
-
 	// Etag: HTTP 1.1 Entity tag for the access-control entry.
 	Etag string `json:"etag,omitempty"`
-
 	// Id: The ID of the access-control entry.
 	Id string `json:"id,omitempty"`
-
-	// Kind: The kind of item this is. For bucket access control entries,
-	// this is always storage#bucketAccessControl.
+	// Kind: The kind of item this is. For bucket access control entries, this is
+	// always storage#bucketAccessControl.
 	Kind string `json:"kind,omitempty"`
-
 	// ProjectTeam: The project team associated with the entity, if any.
 	ProjectTeam *BucketAccessControlProjectTeam `json:"projectTeam,omitempty"`
-
 	// Role: The access permission for the entity.
 	Role string `json:"role,omitempty"`
-
 	// SelfLink: The link to this access-control entry.
 	SelfLink string `json:"selfLink,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Bucket") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Bucket") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Bucket") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketAccessControl) MarshalJSON() ([]byte, error) {
+func (s BucketAccessControl) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketAccessControl
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// BucketAccessControlProjectTeam: The project team associated with the
-// entity, if any.
+// BucketAccessControlProjectTeam: The project team associated with the entity,
+// if any.
 type BucketAccessControlProjectTeam struct {
 	// ProjectNumber: The project number.
 	ProjectNumber string `json:"projectNumber,omitempty"`
-
 	// Team: The team.
 	Team string `json:"team,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "ProjectNumber") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "ProjectNumber") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "ProjectNumber") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketAccessControlProjectTeam) MarshalJSON() ([]byte, error) {
+func (s BucketAccessControlProjectTeam) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketAccessControlProjectTeam
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // BucketAccessControls: An access-control list.
 type BucketAccessControls struct {
 	// Items: The list of items.
 	Items []*BucketAccessControl `json:"items,omitempty"`
-
-	// Kind: The kind of item this is. For lists of bucket access control
-	// entries, this is always storage#bucketAccessControls.
+	// Kind: The kind of item this is. For lists of bucket access control entries,
+	// this is always storage#bucketAccessControls.
 	Kind string `json:"kind,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Items") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Items") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *BucketAccessControls) MarshalJSON() ([]byte, error) {
+func (s BucketAccessControls) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketAccessControls
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketStorageLayout: The storage layout configuration of a bucket.
+type BucketStorageLayout struct {
+	// Bucket: The name of the bucket.
+	Bucket string `json:"bucket,omitempty"`
+	// CustomPlacementConfig: The bucket's custom placement configuration for
+	// Custom Dual Regions.
+	CustomPlacementConfig *BucketStorageLayoutCustomPlacementConfig `json:"customPlacementConfig,omitempty"`
+	// HierarchicalNamespace: The bucket's hierarchical namespace configuration.
+	HierarchicalNamespace *BucketStorageLayoutHierarchicalNamespace `json:"hierarchicalNamespace,omitempty"`
+	// Kind: The kind of item this is. For storage layout, this is always
+	// storage#storageLayout.
+	Kind string `json:"kind,omitempty"`
+	// Location: The location of the bucket.
+	Location string `json:"location,omitempty"`
+	// LocationType: The type of the bucket location.
+	LocationType string `json:"locationType,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Bucket") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Bucket") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketStorageLayout) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketStorageLayout
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketStorageLayoutCustomPlacementConfig: The bucket's custom placement
+// configuration for Custom Dual Regions.
+type BucketStorageLayoutCustomPlacementConfig struct {
+	// DataLocations: The list of regional locations in which data is placed.
+	DataLocations []string `json:"dataLocations,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DataLocations") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DataLocations") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketStorageLayoutCustomPlacementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketStorageLayoutCustomPlacementConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketStorageLayoutHierarchicalNamespace: The bucket's hierarchical
+// namespace configuration.
+type BucketStorageLayoutHierarchicalNamespace struct {
+	// Enabled: When set to true, hierarchical namespace is enabled for this
+	// bucket.
+	Enabled bool `json:"enabled,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Enabled") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Enabled") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketStorageLayoutHierarchicalNamespace) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketStorageLayoutHierarchicalNamespace
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // Buckets: A list of buckets.
 type Buckets struct {
 	// Items: The list of items.
 	Items []*Bucket `json:"items,omitempty"`
-
 	// Kind: The kind of item this is. For lists of buckets, this is always
 	// storage#buckets.
 	Kind string `json:"kind,omitempty"`
-
-	// NextPageToken: The continuation token, used to page through large
-	// result sets. Provide this value in a subsequent request to return the
-	// next page of results.
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
 	NextPageToken string `json:"nextPageToken,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Items") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Items") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Buckets) MarshalJSON() ([]byte, error) {
+func (s Buckets) MarshalJSON() ([]byte, error) {
 	type NoMethod Buckets
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BulkRestoreObjectsRequest: A bulk restore objects request.
+type BulkRestoreObjectsRequest struct {
+	// AllowOverwrite: If false (default), the restore will not overwrite live
+	// objects with the same name at the destination. This means some deleted
+	// objects may be skipped. If true, live objects will be overwritten resulting
+	// in a noncurrent object (if versioning is enabled). If versioning is not
+	// enabled, overwriting the object will result in a soft-deleted object. In
+	// either case, if a noncurrent object already exists with the same name, a
+	// live version can be written without issue.
+	AllowOverwrite bool `json:"allowOverwrite,omitempty"`
+	// CopySourceAcl: If true, copies the source object's ACL; otherwise, uses the
+	// bucket's default object ACL. The default is false.
+	CopySourceAcl bool `json:"copySourceAcl,omitempty"`
+	// MatchGlobs: Restores only the objects matching any of the specified glob(s).
+	// If this parameter is not specified, all objects will be restored within the
+	// specified time range.
+	MatchGlobs []string `json:"matchGlobs,omitempty"`
+	// SoftDeletedAfterTime: Restores only the objects that were soft-deleted after
+	// this time.
+	SoftDeletedAfterTime string `json:"softDeletedAfterTime,omitempty"`
+	// SoftDeletedBeforeTime: Restores only the objects that were soft-deleted
+	// before this time.
+	SoftDeletedBeforeTime string `json:"softDeletedBeforeTime,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "AllowOverwrite") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "AllowOverwrite") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BulkRestoreObjectsRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod BulkRestoreObjectsRequest
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // Channel: An notification channel used to watch for resource changes.
 type Channel struct {
-	// Address: The address where notifications are delivered for this
-	// channel.
+	// Address: The address where notifications are delivered for this channel.
 	Address string `json:"address,omitempty"`
-
-	// Expiration: Date and time of notification channel expiration,
-	// expressed as a Unix timestamp, in milliseconds. Optional.
+	// Expiration: Date and time of notification channel expiration, expressed as a
+	// Unix timestamp, in milliseconds. Optional.
 	Expiration int64 `json:"expiration,omitempty,string"`
-
 	// Id: A UUID or similar unique string that identifies this channel.
 	Id string `json:"id,omitempty"`
-
-	// Kind: Identifies this as a notification channel used to watch for
-	// changes to a resource, which is "api#channel".
+	// Kind: Identifies this as a notification channel used to watch for changes to
+	// a resource, which is "api#channel".
 	Kind string `json:"kind,omitempty"`
-
 	// Params: Additional parameters controlling delivery channel behavior.
 	// Optional.
 	Params map[string]string `json:"params,omitempty"`
-
-	// Payload: A Boolean value to indicate whether payload is wanted.
-	// Optional.
+	// Payload: A Boolean value to indicate whether payload is wanted. Optional.
 	Payload bool `json:"payload,omitempty"`
-
-	// ResourceId: An opaque ID that identifies the resource being watched
-	// on this channel. Stable across different API versions.
+	// ResourceId: An opaque ID that identifies the resource being watched on this
+	// channel. Stable across different API versions.
 	ResourceId string `json:"resourceId,omitempty"`
-
 	// ResourceUri: A version-specific identifier for the watched resource.
 	ResourceUri string `json:"resourceUri,omitempty"`
-
 	// Token: An arbitrary string delivered to the target address with each
 	// notification delivered over this channel. Optional.
 	Token string `json:"token,omitempty"`
-
 	// Type: The type of delivery mechanism used for this channel.
 	Type string `json:"type,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Address") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Address") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Address") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Address") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Channel) MarshalJSON() ([]byte, error) {
+func (s Channel) MarshalJSON() ([]byte, error) {
 	type NoMethod Channel
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // ComposeRequest: A Compose request.
 type ComposeRequest struct {
 	// Destination: Properties of the resulting object.
 	Destination *Object `json:"destination,omitempty"`
-
 	// Kind: The kind of item this is.
 	Kind string `json:"kind,omitempty"`
-
-	// SourceObjects: The list of source objects that will be concatenated
-	// into a single object.
+	// SourceObjects: The list of source objects that will be concatenated into a
+	// single object.
 	SourceObjects []*ComposeRequestSourceObjects `json:"sourceObjects,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "Destination") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Destination") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Destination") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ComposeRequest) MarshalJSON() ([]byte, error) {
+func (s ComposeRequest) MarshalJSON() ([]byte, error) {
 	type NoMethod ComposeRequest
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type ComposeRequestSourceObjects struct {
 	// Generation: The generation of this object to use as the source.
 	Generation int64 `json:"generation,omitempty,string"`
-
-	// Name: The source object's name. All source objects must reside in the
-	// same bucket.
+	// Name: The source object's name. All source objects must reside in the same
+	// bucket.
 	Name string `json:"name,omitempty"`
-
-	// ObjectPreconditions: Conditions that must be met for this operation
-	// to execute.
+	// ObjectPreconditions: Conditions that must be met for this operation to
+	// execute.
 	ObjectPreconditions *ComposeRequestSourceObjectsObjectPreconditions `json:"objectPreconditions,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "Generation") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Generation") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Generation") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ComposeRequestSourceObjects) MarshalJSON() ([]byte, error) {
+func (s ComposeRequestSourceObjects) MarshalJSON() ([]byte, error) {
 	type NoMethod ComposeRequestSourceObjects
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// ComposeRequestSourceObjectsObjectPreconditions: Conditions that must
-// be met for this operation to execute.
+// ComposeRequestSourceObjectsObjectPreconditions: Conditions that must be met
+// for this operation to execute.
 type ComposeRequestSourceObjectsObjectPreconditions struct {
-	// IfGenerationMatch: Only perform the composition if the generation of
-	// the source object that would be used matches this value. If this
-	// value and a generation are both specified, they must be the same
-	// value or the call will fail.
+	// IfGenerationMatch: Only perform the composition if the generation of the
+	// source object that would be used matches this value. If this value and a
+	// generation are both specified, they must be the same value or the call will
+	// fail.
 	IfGenerationMatch int64 `json:"ifGenerationMatch,omitempty,string"`
-
-	// ForceSendFields is a list of field names (e.g. "IfGenerationMatch")
-	// to unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "IfGenerationMatch") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "IfGenerationMatch") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "IfGenerationMatch") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ComposeRequestSourceObjectsObjectPreconditions) MarshalJSON() ([]byte, error) {
+func (s ComposeRequestSourceObjectsObjectPreconditions) MarshalJSON() ([]byte, error) {
 	type NoMethod ComposeRequestSourceObjectsObjectPreconditions
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// Expr: Represents an expression text. Example: title: "User account
-// presence" description: "Determines whether the request has a user
-// account" expression: "size(request.user) > 0"
+// Expr: Represents an expression text. Example: title: "User account presence"
+// description: "Determines whether the request has a user account" expression:
+// "size(request.user) > 0"
 type Expr struct {
-	// Description: An optional description of the expression. This is a
-	// longer text which describes the expression, e.g. when hovered over it
-	// in a UI.
+	// Description: An optional description of the expression. This is a longer
+	// text which describes the expression, e.g. when hovered over it in a UI.
 	Description string `json:"description,omitempty"`
-
-	// Expression: Textual representation of an expression in Common
-	// Expression Language syntax. The application context of the containing
-	// message determines which well-known feature set of CEL is supported.
+	// Expression: Textual representation of an expression in Common Expression
+	// Language syntax. The application context of the containing message
+	// determines which well-known feature set of CEL is supported.
 	Expression string `json:"expression,omitempty"`
-
-	// Location: An optional string indicating the location of the
-	// expression for error reporting, e.g. a file name and a position in
-	// the file.
+	// Location: An optional string indicating the location of the expression for
+	// error reporting, e.g. a file name and a position in the file.
 	Location string `json:"location,omitempty"`
-
-	// Title: An optional title for the expression, i.e. a short string
-	// describing its purpose. This can be used e.g. in UIs which allow to
-	// enter the expression.
+	// Title: An optional title for the expression, i.e. a short string describing
+	// its purpose. This can be used e.g. in UIs which allow to enter the
+	// expression.
 	Title string `json:"title,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "Description") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Description") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Description") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Expr) MarshalJSON() ([]byte, error) {
+func (s Expr) MarshalJSON() ([]byte, error) {
 	type NoMethod Expr
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// HmacKey: JSON template to produce a JSON-style HMAC Key resource for
-// Create responses.
+// Folder: A folder. Only available in buckets with hierarchical namespace
+// enabled.
+type Folder struct {
+	// Bucket: The name of the bucket containing this folder.
+	Bucket string `json:"bucket,omitempty"`
+	// CreateTime: The creation time of the folder in RFC 3339 format.
+	CreateTime string `json:"createTime,omitempty"`
+	// Id: The ID of the folder, including the bucket name, folder name.
+	Id string `json:"id,omitempty"`
+	// Kind: The kind of item this is. For folders, this is always storage#folder.
+	Kind string `json:"kind,omitempty"`
+	// Metageneration: The version of the metadata for this folder. Used for
+	// preconditions and for detecting changes in metadata.
+	Metageneration int64 `json:"metageneration,omitempty,string"`
+	// Name: The name of the folder. Required if not specified by URL parameter.
+	Name string `json:"name,omitempty"`
+	// PendingRenameInfo: Only present if the folder is part of an ongoing rename
+	// folder operation. Contains information which can be used to query the
+	// operation status.
+	PendingRenameInfo *FolderPendingRenameInfo `json:"pendingRenameInfo,omitempty"`
+	// SelfLink: The link to this folder.
+	SelfLink string `json:"selfLink,omitempty"`
+	// UpdateTime: The modification time of the folder metadata in RFC 3339 format.
+	UpdateTime string `json:"updateTime,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Bucket") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Bucket") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s Folder) MarshalJSON() ([]byte, error) {
+	type NoMethod Folder
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// FolderPendingRenameInfo: Only present if the folder is part of an ongoing
+// rename folder operation. Contains information which can be used to query the
+// operation status.
+type FolderPendingRenameInfo struct {
+	// OperationId: The ID of the rename folder operation.
+	OperationId string `json:"operationId,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "OperationId") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "OperationId") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s FolderPendingRenameInfo) MarshalJSON() ([]byte, error) {
+	type NoMethod FolderPendingRenameInfo
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// Folders: A list of folders.
+type Folders struct {
+	// Items: The list of items.
+	Items []*Folder `json:"items,omitempty"`
+	// Kind: The kind of item this is. For lists of folders, this is always
+	// storage#folders.
+	Kind string `json:"kind,omitempty"`
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Items") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s Folders) MarshalJSON() ([]byte, error) {
+	type NoMethod Folders
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// GoogleLongrunningListOperationsResponse: The response message for
+// storage.buckets.operations.list.
+type GoogleLongrunningListOperationsResponse struct {
+	// Kind: The kind of item this is. For lists of operations, this is always
+	// storage#operations.
+	Kind string `json:"kind,omitempty"`
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Operations: A list of operations that matches the specified filter in the
+	// request.
+	Operations []*GoogleLongrunningOperation `json:"operations,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Kind") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Kind") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s GoogleLongrunningListOperationsResponse) MarshalJSON() ([]byte, error) {
+	type NoMethod GoogleLongrunningListOperationsResponse
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// GoogleLongrunningOperation: This resource represents a long-running
+// operation that is the result of a network API call.
+type GoogleLongrunningOperation struct {
+	// Done: If the value is "false", it means the operation is still in progress.
+	// If "true", the operation is completed, and either "error" or "response" is
+	// available.
+	Done bool `json:"done,omitempty"`
+	// Error: The error result of the operation in case of failure or cancellation.
+	Error *GoogleRpcStatus `json:"error,omitempty"`
+	// Kind: The kind of item this is. For operations, this is always
+	// storage#operation.
+	Kind string `json:"kind,omitempty"`
+	// Metadata: Service-specific metadata associated with the operation. It
+	// typically contains progress information and common metadata such as create
+	// time. Some services might not provide such metadata. Any method that returns
+	// a long-running operation should document the metadata type, if any.
+	Metadata googleapi.RawMessage `json:"metadata,omitempty"`
+	// Name: The server-assigned name, which is only unique within the same service
+	// that originally returns it. If you use the default HTTP mapping, the "name"
+	// should be a resource name ending with "operations/{operationId}".
+	Name string `json:"name,omitempty"`
+	// Response: The normal response of the operation in case of success. If the
+	// original method returns no data on success, such as "Delete", the response
+	// is google.protobuf.Empty. If the original method is standard
+	// Get/Create/Update, the response should be the resource. For other methods,
+	// the response should have the type "XxxResponse", where "Xxx" is the original
+	// method name. For example, if the original method name is "TakeSnapshot()",
+	// the inferred response type is "TakeSnapshotResponse".
+	Response googleapi.RawMessage `json:"response,omitempty"`
+	// SelfLink: The link to this long running operation.
+	SelfLink string `json:"selfLink,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Done") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Done") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s GoogleLongrunningOperation) MarshalJSON() ([]byte, error) {
+	type NoMethod GoogleLongrunningOperation
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// GoogleRpcStatus: The "Status" type defines a logical error model that is
+// suitable for different programming environments, including REST APIs and RPC
+// APIs. It is used by gRPC (https://github.com/grpc). Each "Status" message
+// contains three pieces of data: error code, error message, and error details.
+// You can find out more about this error model and how to work with it in the
+// API Design Guide (https://cloud.google.com/apis/design/errors).
+type GoogleRpcStatus struct {
+	// Code: The status code, which should be an enum value of google.rpc.Code.
+	Code int64 `json:"code,omitempty"`
+	// Details: A list of messages that carry the error details. There is a common
+	// set of message types for APIs to use.
+	Details []googleapi.RawMessage `json:"details,omitempty"`
+	// Message: A developer-facing error message, which should be in English.
+	Message string `json:"message,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Code") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Code") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s GoogleRpcStatus) MarshalJSON() ([]byte, error) {
+	type NoMethod GoogleRpcStatus
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// HmacKey: JSON template to produce a JSON-style HMAC Key resource for Create
+// responses.
 type HmacKey struct {
 	// Kind: The kind of item this is. For HMAC keys, this is always
 	// storage#hmacKey.
 	Kind string `json:"kind,omitempty"`
-
 	// Metadata: Key metadata.
 	Metadata *HmacKeyMetadata `json:"metadata,omitempty"`
-
 	// Secret: HMAC secret key material.
 	Secret string `json:"secret,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Kind") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Kind") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Kind") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Kind") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *HmacKey) MarshalJSON() ([]byte, error) {
+func (s HmacKey) MarshalJSON() ([]byte, error) {
 	type NoMethod HmacKey
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// HmacKeyMetadata: JSON template to produce a JSON-style HMAC Key
-// metadata resource.
+// HmacKeyMetadata: JSON template to produce a JSON-style HMAC Key metadata
+// resource.
 type HmacKeyMetadata struct {
 	// AccessId: The ID of the HMAC Key.
 	AccessId string `json:"accessId,omitempty"`
-
 	// Etag: HTTP 1.1 Entity tag for the HMAC key.
 	Etag string `json:"etag,omitempty"`
-
-	// Id: The ID of the HMAC key, including the Project ID and the Access
-	// ID.
+	// Id: The ID of the HMAC key, including the Project ID and the Access ID.
 	Id string `json:"id,omitempty"`
-
 	// Kind: The kind of item this is. For HMAC Key metadata, this is always
 	// storage#hmacKeyMetadata.
 	Kind string `json:"kind,omitempty"`
-
 	// ProjectId: Project ID owning the service account to which the key
 	// authenticates.
 	ProjectId string `json:"projectId,omitempty"`
-
 	// SelfLink: The link to this resource.
 	SelfLink string `json:"selfLink,omitempty"`
-
-	// ServiceAccountEmail: The email address of the key's associated
-	// service account.
+	// ServiceAccountEmail: The email address of the key's associated service
+	// account.
 	ServiceAccountEmail string `json:"serviceAccountEmail,omitempty"`
-
-	// State: The state of the key. Can be one of ACTIVE, INACTIVE, or
-	// DELETED.
+	// State: The state of the key. Can be one of ACTIVE, INACTIVE, or DELETED.
 	State string `json:"state,omitempty"`
-
 	// TimeCreated: The creation time of the HMAC key in RFC 3339 format.
 	TimeCreated string `json:"timeCreated,omitempty"`
-
-	// Updated: The last modification time of the HMAC key metadata in RFC
-	// 3339 format.
+	// Updated: The last modification time of the HMAC key metadata in RFC 3339
+	// format.
 	Updated string `json:"updated,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
 	// ForceSendFields is a list of field names (e.g. "AccessId") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "AccessId") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "AccessId") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *HmacKeyMetadata) MarshalJSON() ([]byte, error) {
+func (s HmacKeyMetadata) MarshalJSON() ([]byte, error) {
 	type NoMethod HmacKeyMetadata
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // HmacKeysMetadata: A list of hmacKeys.
 type HmacKeysMetadata struct {
 	// Items: The list of items.
 	Items []*HmacKeyMetadata `json:"items,omitempty"`
-
 	// Kind: The kind of item this is. For lists of hmacKeys, this is always
 	// storage#hmacKeysMetadata.
 	Kind string `json:"kind,omitempty"`
-
-	// NextPageToken: The continuation token, used to page through large
-	// result sets. Provide this value in a subsequent request to return the
-	// next page of results.
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
 	NextPageToken string `json:"nextPageToken,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Items") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Items") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *HmacKeysMetadata) MarshalJSON() ([]byte, error) {
+func (s HmacKeysMetadata) MarshalJSON() ([]byte, error) {
 	type NoMethod HmacKeysMetadata
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ManagedFolder: A managed folder.
+type ManagedFolder struct {
+	// Bucket: The name of the bucket containing this managed folder.
+	Bucket string `json:"bucket,omitempty"`
+	// CreateTime: The creation time of the managed folder in RFC 3339 format.
+	CreateTime string `json:"createTime,omitempty"`
+	// Id: The ID of the managed folder, including the bucket name and managed
+	// folder name.
+	Id string `json:"id,omitempty"`
+	// Kind: The kind of item this is. For managed folders, this is always
+	// storage#managedFolder.
+	Kind string `json:"kind,omitempty"`
+	// Metageneration: The version of the metadata for this managed folder. Used
+	// for preconditions and for detecting changes in metadata.
+	Metageneration int64 `json:"metageneration,omitempty,string"`
+	// Name: The name of the managed folder. Required if not specified by URL
+	// parameter.
+	Name string `json:"name,omitempty"`
+	// SelfLink: The link to this managed folder.
+	SelfLink string `json:"selfLink,omitempty"`
+	// UpdateTime: The last update time of the managed folder metadata in RFC 3339
+	// format.
+	UpdateTime string `json:"updateTime,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Bucket") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Bucket") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ManagedFolder) MarshalJSON() ([]byte, error) {
+	type NoMethod ManagedFolder
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ManagedFolders: A list of managed folders.
+type ManagedFolders struct {
+	// Items: The list of items.
+	Items []*ManagedFolder `json:"items,omitempty"`
+	// Kind: The kind of item this is. For lists of managed folders, this is always
+	// storage#managedFolders.
+	Kind string `json:"kind,omitempty"`
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
+	NextPageToken string `json:"nextPageToken,omitempty"`
+
+	// ServerResponse contains the HTTP response code and headers from the server.
+	googleapi.ServerResponse `json:"-"`
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Items") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ManagedFolders) MarshalJSON() ([]byte, error) {
+	type NoMethod ManagedFolders
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // Notification: A subscription to receive Google PubSub notifications.
 type Notification struct {
-	// CustomAttributes: An optional list of additional attributes to attach
-	// to each Cloud PubSub message published for this notification
-	// subscription.
+	// CustomAttributes: An optional list of additional attributes to attach to
+	// each Cloud PubSub message published for this notification subscription.
 	CustomAttributes map[string]string `json:"custom_attributes,omitempty"`
-
 	// Etag: HTTP 1.1 Entity tag for this subscription notification.
 	Etag string `json:"etag,omitempty"`
-
-	// EventTypes: If present, only send notifications about listed event
-	// types. If empty, sent notifications for all event types.
+	// EventTypes: If present, only send notifications about listed event types. If
+	// empty, sent notifications for all event types.
 	EventTypes []string `json:"event_types,omitempty"`
-
 	// Id: The ID of the notification.
 	Id string `json:"id,omitempty"`
-
 	// Kind: The kind of item this is. For notifications, this is always
 	// storage#notification.
 	Kind string `json:"kind,omitempty"`
-
-	// ObjectNamePrefix: If present, only apply this notification
-	// configuration to object names that begin with this prefix.
+	// ObjectNamePrefix: If present, only apply this notification configuration to
+	// object names that begin with this prefix.
 	ObjectNamePrefix string `json:"object_name_prefix,omitempty"`
-
 	// PayloadFormat: The desired content of the Payload.
 	PayloadFormat string `json:"payload_format,omitempty"`
-
 	// SelfLink: The canonical URL of this notification.
 	SelfLink string `json:"selfLink,omitempty"`
-
 	// Topic: The Cloud PubSub topic to which this subscription publishes.
 	// Formatted as:
-	// '//pubsub.googleapis.com/projects/{project-identifier}/topics/{my-topi
-	// c}'
+	// '//pubsub.googleapis.com/projects/{project-identifier}/topics/{my-topic}'
 	Topic string `json:"topic,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
 	// ForceSendFields is a list of field names (e.g. "CustomAttributes") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "CustomAttributes") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "CustomAttributes") to include in
+	// API requests with the JSON null value. By default, fields with empty values
+	// are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Notification) MarshalJSON() ([]byte, error) {
+func (s Notification) MarshalJSON() ([]byte, error) {
 	type NoMethod Notification
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // Notifications: A list of notification subscriptions.
 type Notifications struct {
 	// Items: The list of items.
 	Items []*Notification `json:"items,omitempty"`
-
-	// Kind: The kind of item this is. For lists of notifications, this is
-	// always storage#notifications.
+	// Kind: The kind of item this is. For lists of notifications, this is always
+	// storage#notifications.
 	Kind string `json:"kind,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Items") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Items") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Notifications) MarshalJSON() ([]byte, error) {
+func (s Notifications) MarshalJSON() ([]byte, error) {
 	type NoMethod Notifications
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // Object: An object.
 type Object struct {
 	// Acl: Access controls on the object.
 	Acl []*ObjectAccessControl `json:"acl,omitempty"`
-
 	// Bucket: The name of the bucket containing this object.
 	Bucket string `json:"bucket,omitempty"`
-
-	// CacheControl: Cache-Control directive for the object data. If
-	// omitted, and the object is accessible to all anonymous users, the
-	// default will be public, max-age=3600.
+	// CacheControl: Cache-Control directive for the object data. If omitted, and
+	// the object is accessible to all anonymous users, the default will be public,
+	// max-age=3600.
 	CacheControl string `json:"cacheControl,omitempty"`
-
-	// ComponentCount: Number of underlying components that make up this
-	// object. Components are accumulated by compose operations.
+	// ComponentCount: Number of underlying components that make up this object.
+	// Components are accumulated by compose operations.
 	ComponentCount int64 `json:"componentCount,omitempty"`
-
 	// ContentDisposition: Content-Disposition of the object data.
 	ContentDisposition string `json:"contentDisposition,omitempty"`
-
 	// ContentEncoding: Content-Encoding of the object data.
 	ContentEncoding string `json:"contentEncoding,omitempty"`
-
 	// ContentLanguage: Content-Language of the object data.
 	ContentLanguage string `json:"contentLanguage,omitempty"`
-
-	// ContentType: Content-Type of the object data. If an object is stored
-	// without a Content-Type, it is served as application/octet-stream.
+	// ContentType: Content-Type of the object data. If an object is stored without
+	// a Content-Type, it is served as application/octet-stream.
 	ContentType string `json:"contentType,omitempty"`
-
-	// Crc32c: CRC32c checksum, as described in RFC 4960, Appendix B;
-	// encoded using base64 in big-endian byte order. For more information
-	// about using the CRC32c checksum, see Hashes and ETags: Best
-	// Practices.
+	// Crc32c: CRC32c checksum, as described in RFC 4960, Appendix B; encoded using
+	// base64 in big-endian byte order. For more information about using the CRC32c
+	// checksum, see Data Validation and Change Detection
+	// (https://cloud.google.com/storage/docs/data-validation).
 	Crc32c string `json:"crc32c,omitempty"`
-
-	// CustomTime: A timestamp in RFC 3339 format specified by the user for
-	// an object.
+	// CustomTime: A timestamp in RFC 3339 format specified by the user for an
+	// object.
 	CustomTime string `json:"customTime,omitempty"`
-
-	// CustomerEncryption: Metadata of customer-supplied encryption key, if
-	// the object is encrypted by such a key.
+	// CustomerEncryption: Metadata of customer-supplied encryption key, if the
+	// object is encrypted by such a key.
 	CustomerEncryption *ObjectCustomerEncryption `json:"customerEncryption,omitempty"`
-
 	// Etag: HTTP 1.1 Entity tag for the object.
 	Etag string `json:"etag,omitempty"`
-
-	// EventBasedHold: Whether an object is under event-based hold.
-	// Event-based hold is a way to retain objects until an event occurs,
-	// which is signified by the hold's release (i.e. this value is set to
-	// false). After being released (set to false), such objects will be
-	// subject to bucket-level retention (if any). One sample use case of
-	// this flag is for banks to hold loan documents for at least 3 years
-	// after loan is paid in full. Here, bucket-level retention is 3 years
-	// and the event is the loan being paid in full. In this example, these
-	// objects will be held intact for any number of years until the event
-	// has occurred (event-based hold on the object is released) and then 3
-	// more years after that. That means retention duration of the objects
-	// begins from the moment event-based hold transitioned from true to
-	// false.
+	// EventBasedHold: Whether an object is under event-based hold. Event-based
+	// hold is a way to retain objects until an event occurs, which is signified by
+	// the hold's release (i.e. this value is set to false). After being released
+	// (set to false), such objects will be subject to bucket-level retention (if
+	// any). One sample use case of this flag is for banks to hold loan documents
+	// for at least 3 years after loan is paid in full. Here, bucket-level
+	// retention is 3 years and the event is the loan being paid in full. In this
+	// example, these objects will be held intact for any number of years until the
+	// event has occurred (event-based hold on the object is released) and then 3
+	// more years after that. That means retention duration of the objects begins
+	// from the moment event-based hold transitioned from true to false.
 	EventBasedHold bool `json:"eventBasedHold,omitempty"`
-
 	// Generation: The content generation of this object. Used for object
 	// versioning.
 	Generation int64 `json:"generation,omitempty,string"`
-
+	// HardDeleteTime: This is the time (in the future) when the soft-deleted
+	// object will no longer be restorable. It is equal to the soft delete time
+	// plus the current soft delete retention duration of the bucket.
+	HardDeleteTime string `json:"hardDeleteTime,omitempty"`
 	// Id: The ID of the object, including the bucket name, object name, and
 	// generation number.
 	Id string `json:"id,omitempty"`
-
-	// Kind: The kind of item this is. For objects, this is always
-	// storage#object.
+	// Kind: The kind of item this is. For objects, this is always storage#object.
 	Kind string `json:"kind,omitempty"`
-
-	// KmsKeyName: Not currently supported. Specifying the parameter causes
-	// the request to fail with status code 400 - Bad Request.
+	// KmsKeyName: Not currently supported. Specifying the parameter causes the
+	// request to fail with status code 400 - Bad Request.
 	KmsKeyName string `json:"kmsKeyName,omitempty"`
-
-	// Md5Hash: MD5 hash of the data; encoded using base64. For more
-	// information about using the MD5 hash, see Hashes and ETags: Best
-	// Practices.
+	// Md5Hash: MD5 hash of the data; encoded using base64. For more information
+	// about using the MD5 hash, see Data Validation and Change Detection
+	// (https://cloud.google.com/storage/docs/data-validation).
 	Md5Hash string `json:"md5Hash,omitempty"`
-
 	// MediaLink: Media download link.
 	MediaLink string `json:"mediaLink,omitempty"`
-
 	// Metadata: User-provided metadata, in key/value pairs.
 	Metadata map[string]string `json:"metadata,omitempty"`
-
 	// Metageneration: The version of the metadata for this object at this
-	// generation. Used for preconditions and for detecting changes in
-	// metadata. A metageneration number is only meaningful in the context
-	// of a particular generation of a particular object.
+	// generation. Used for preconditions and for detecting changes in metadata. A
+	// metageneration number is only meaningful in the context of a particular
+	// generation of a particular object.
 	Metageneration int64 `json:"metageneration,omitempty,string"`
-
-	// Name: The name of the object. Required if not specified by URL
-	// parameter.
+	// Name: The name of the object. Required if not specified by URL parameter.
 	Name string `json:"name,omitempty"`
-
-	// Owner: The owner of the object. This will always be the uploader of
-	// the object.
+	// Owner: The owner of the object. This will always be the uploader of the
+	// object.
 	Owner *ObjectOwner `json:"owner,omitempty"`
-
+	// RestoreToken: Restore token used to differentiate deleted objects with the
+	// same name and generation. This field is only returned for deleted objects in
+	// hierarchical namespace buckets.
+	RestoreToken string `json:"restoreToken,omitempty"`
+	// Retention: A collection of object level retention parameters.
+	Retention *ObjectRetention `json:"retention,omitempty"`
 	// RetentionExpirationTime: A server-determined value that specifies the
-	// earliest time that the object's retention period expires. This value
-	// is in RFC 3339 format. Note 1: This field is not provided for objects
-	// with an active event-based hold, since retention expiration is
-	// unknown until the hold is removed. Note 2: This value can be provided
-	// even when temporary hold is set (so that the user can reason about
-	// policy without having to first unset the temporary hold).
+	// earliest time that the object's retention period expires. This value is in
+	// RFC 3339 format. Note 1: This field is not provided for objects with an
+	// active event-based hold, since retention expiration is unknown until the
+	// hold is removed. Note 2: This value can be provided even when temporary hold
+	// is set (so that the user can reason about policy without having to first
+	// unset the temporary hold).
 	RetentionExpirationTime string `json:"retentionExpirationTime,omitempty"`
-
 	// SelfLink: The link to this object.
 	SelfLink string `json:"selfLink,omitempty"`
-
 	// Size: Content-Length of the data in bytes.
 	Size uint64 `json:"size,omitempty,string"`
-
+	// SoftDeleteTime: The time at which the object became soft-deleted in RFC 3339
+	// format.
+	SoftDeleteTime string `json:"softDeleteTime,omitempty"`
 	// StorageClass: Storage class of the object.
 	StorageClass string `json:"storageClass,omitempty"`
-
-	// TemporaryHold: Whether an object is under temporary hold. While this
-	// flag is set to true, the object is protected against deletion and
-	// overwrites. A common use case of this flag is regulatory
-	// investigations where objects need to be retained while the
-	// investigation is ongoing. Note that unlike event-based hold,
-	// temporary hold does not impact retention expiration time of an
-	// object.
+	// TemporaryHold: Whether an object is under temporary hold. While this flag is
+	// set to true, the object is protected against deletion and overwrites. A
+	// common use case of this flag is regulatory investigations where objects need
+	// to be retained while the investigation is ongoing. Note that unlike
+	// event-based hold, temporary hold does not impact retention expiration time
+	// of an object.
 	TemporaryHold bool `json:"temporaryHold,omitempty"`
-
 	// TimeCreated: The creation time of the object in RFC 3339 format.
 	TimeCreated string `json:"timeCreated,omitempty"`
-
-	// TimeDeleted: The deletion time of the object in RFC 3339 format. Will
-	// be returned if and only if this version of the object has been
+	// TimeDeleted: The time at which the object became noncurrent in RFC 3339
+	// format. Will be returned if and only if this version of the object has been
 	// deleted.
 	TimeDeleted string `json:"timeDeleted,omitempty"`
-
-	// TimeStorageClassUpdated: The time at which the object's storage class
-	// was last changed. When the object is initially created, it will be
-	// set to timeCreated.
+	// TimeFinalized: The time when the object was finalized.
+	TimeFinalized string `json:"timeFinalized,omitempty"`
+	// TimeStorageClassUpdated: The time at which the object's storage class was
+	// last changed. When the object is initially created, it will be set to
+	// timeCreated.
 	TimeStorageClassUpdated string `json:"timeStorageClassUpdated,omitempty"`
-
-	// Updated: The modification time of the object metadata in RFC 3339
-	// format. Set initially to object creation time and then updated
-	// whenever any metadata of the object changes. This includes changes
-	// made by a requester, such as modifying custom metadata, as well as
-	// changes made by Cloud Storage on behalf of a requester, such as
-	// changing the storage class based on an Object Lifecycle
-	// Configuration.
+	// Updated: The modification time of the object metadata in RFC 3339 format.
+	// Set initially to object creation time and then updated whenever any metadata
+	// of the object changes. This includes changes made by a requester, such as
+	// modifying custom metadata, as well as changes made by Cloud Storage on
+	// behalf of a requester, such as changing the storage class based on an Object
+	// Lifecycle Configuration.
 	Updated string `json:"updated,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Acl") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Acl") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Acl") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Acl") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Object) MarshalJSON() ([]byte, error) {
+func (s Object) MarshalJSON() ([]byte, error) {
 	type NoMethod Object
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// ObjectCustomerEncryption: Metadata of customer-supplied encryption
-// key, if the object is encrypted by such a key.
+// ObjectCustomerEncryption: Metadata of customer-supplied encryption key, if
+// the object is encrypted by such a key.
 type ObjectCustomerEncryption struct {
 	// EncryptionAlgorithm: The encryption algorithm.
 	EncryptionAlgorithm string `json:"encryptionAlgorithm,omitempty"`
-
 	// KeySha256: SHA256 hash value of the encryption key.
 	KeySha256 string `json:"keySha256,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "EncryptionAlgorithm")
-	// to unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "EncryptionAlgorithm") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "EncryptionAlgorithm") to
-	// include in API requests with the JSON null value. By default, fields
-	// with empty values are omitted from API requests. However, any field
-	// with an empty value appearing in NullFields will be sent to the
-	// server as null. It is an error if a field in this list has a
-	// non-empty value. This may be used to include null fields in Patch
-	// requests.
+	// NullFields is a list of field names (e.g. "EncryptionAlgorithm") to include
+	// in API requests with the JSON null value. By default, fields with empty
+	// values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ObjectCustomerEncryption) MarshalJSON() ([]byte, error) {
+func (s ObjectCustomerEncryption) MarshalJSON() ([]byte, error) {
 	type NoMethod ObjectCustomerEncryption
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// ObjectOwner: The owner of the object. This will always be the
-// uploader of the object.
+// ObjectOwner: The owner of the object. This will always be the uploader of
+// the object.
 type ObjectOwner struct {
 	// Entity: The entity, in the form user-userId.
 	Entity string `json:"entity,omitempty"`
-
 	// EntityId: The ID for the entity.
 	EntityId string `json:"entityId,omitempty"`
-
-	// ForceSendFields is a list of field names (e.g. "Entity") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Entity") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Entity") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ObjectOwner) MarshalJSON() ([]byte, error) {
+func (s ObjectOwner) MarshalJSON() ([]byte, error) {
 	type NoMethod ObjectOwner
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ObjectRetention: A collection of object level retention parameters.
+type ObjectRetention struct {
+	// Mode: The bucket's object retention mode, can only be Unlocked or Locked.
+	Mode string `json:"mode,omitempty"`
+	// RetainUntilTime: A time in RFC 3339 format until which object retention
+	// protects this object.
+	RetainUntilTime string `json:"retainUntilTime,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Mode") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Mode") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ObjectRetention) MarshalJSON() ([]byte, error) {
+	type NoMethod ObjectRetention
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // ObjectAccessControl: An access-control entry.
 type ObjectAccessControl struct {
 	// Bucket: The name of the bucket.
 	Bucket string `json:"bucket,omitempty"`
-
 	// Domain: The domain associated with the entity, if any.
 	Domain string `json:"domain,omitempty"`
-
 	// Email: The email address associated with the entity, if any.
 	Email string `json:"email,omitempty"`
-
-	// Entity: The entity holding the permission, in one of the following
-	// forms:
+	// Entity: The entity holding the permission, in one of the following forms:
 	// - user-userId
 	// - user-email
 	// - group-groupId
@@ -2017,417 +2435,378 @@ type ObjectAccessControl struct {
 	// - To refer to all members of the Google Apps for Business domain
 	// example.com, the entity would be domain-example.com.
 	Entity string `json:"entity,omitempty"`
-
 	// EntityId: The ID for the entity, if any.
 	EntityId string `json:"entityId,omitempty"`
-
 	// Etag: HTTP 1.1 Entity tag for the access-control entry.
 	Etag string `json:"etag,omitempty"`
-
-	// Generation: The content generation of the object, if applied to an
-	// object.
+	// Generation: The content generation of the object, if applied to an object.
 	Generation int64 `json:"generation,omitempty,string"`
-
 	// Id: The ID of the access-control entry.
 	Id string `json:"id,omitempty"`
-
-	// Kind: The kind of item this is. For object access control entries,
-	// this is always storage#objectAccessControl.
+	// Kind: The kind of item this is. For object access control entries, this is
+	// always storage#objectAccessControl.
 	Kind string `json:"kind,omitempty"`
-
 	// Object: The name of the object, if applied to an object.
 	Object string `json:"object,omitempty"`
-
 	// ProjectTeam: The project team associated with the entity, if any.
 	ProjectTeam *ObjectAccessControlProjectTeam `json:"projectTeam,omitempty"`
-
 	// Role: The access permission for the entity.
 	Role string `json:"role,omitempty"`
-
 	// SelfLink: The link to this access-control entry.
 	SelfLink string `json:"selfLink,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Bucket") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Bucket") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Bucket") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ObjectAccessControl) MarshalJSON() ([]byte, error) {
+func (s ObjectAccessControl) MarshalJSON() ([]byte, error) {
 	type NoMethod ObjectAccessControl
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// ObjectAccessControlProjectTeam: The project team associated with the
-// entity, if any.
+// ObjectAccessControlProjectTeam: The project team associated with the entity,
+// if any.
 type ObjectAccessControlProjectTeam struct {
 	// ProjectNumber: The project number.
 	ProjectNumber string `json:"projectNumber,omitempty"`
-
 	// Team: The team.
 	Team string `json:"team,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "ProjectNumber") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "ProjectNumber") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "ProjectNumber") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ObjectAccessControlProjectTeam) MarshalJSON() ([]byte, error) {
+func (s ObjectAccessControlProjectTeam) MarshalJSON() ([]byte, error) {
 	type NoMethod ObjectAccessControlProjectTeam
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // ObjectAccessControls: An access-control list.
 type ObjectAccessControls struct {
 	// Items: The list of items.
 	Items []*ObjectAccessControl `json:"items,omitempty"`
-
-	// Kind: The kind of item this is. For lists of object access control
-	// entries, this is always storage#objectAccessControls.
+	// Kind: The kind of item this is. For lists of object access control entries,
+	// this is always storage#objectAccessControls.
 	Kind string `json:"kind,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Items") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Items") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ObjectAccessControls) MarshalJSON() ([]byte, error) {
+func (s ObjectAccessControls) MarshalJSON() ([]byte, error) {
 	type NoMethod ObjectAccessControls
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // Objects: A list of objects.
 type Objects struct {
 	// Items: The list of items.
 	Items []*Object `json:"items,omitempty"`
-
 	// Kind: The kind of item this is. For lists of objects, this is always
 	// storage#objects.
 	Kind string `json:"kind,omitempty"`
-
-	// NextPageToken: The continuation token, used to page through large
-	// result sets. Provide this value in a subsequent request to return the
-	// next page of results.
+	// NextPageToken: The continuation token, used to page through large result
+	// sets. Provide this value in a subsequent request to return the next page of
+	// results.
 	NextPageToken string `json:"nextPageToken,omitempty"`
-
-	// Prefixes: The list of prefixes of objects matching-but-not-listed up
-	// to and including the requested delimiter.
+	// Prefixes: The list of prefixes of objects matching-but-not-listed up to and
+	// including the requested delimiter.
 	Prefixes []string `json:"prefixes,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Items") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Items") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
 	// NullFields is a list of field names (e.g. "Items") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Objects) MarshalJSON() ([]byte, error) {
+func (s Objects) MarshalJSON() ([]byte, error) {
 	type NoMethod Objects
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// Policy: A bucket/object IAM policy.
+// Policy: A bucket/object/managedFolder IAM policy.
 type Policy struct {
 	// Bindings: An association between a role, which comes with a set of
 	// permissions, and members who may assume that role.
 	Bindings []*PolicyBindings `json:"bindings,omitempty"`
-
 	// Etag: HTTP 1.1  Entity tag for the policy.
 	Etag string `json:"etag,omitempty"`
-
-	// Kind: The kind of item this is. For policies, this is always
-	// storage#policy. This field is ignored on input.
+	// Kind: The kind of item this is. For policies, this is always storage#policy.
+	// This field is ignored on input.
 	Kind string `json:"kind,omitempty"`
-
-	// ResourceId: The ID of the resource to which this policy belongs. Will
-	// be of the form projects/_/buckets/bucket for buckets, and
-	// projects/_/buckets/bucket/objects/object for objects. A specific
-	// generation may be specified by appending #generationNumber to the end
-	// of the object name, e.g.
-	// projects/_/buckets/my-bucket/objects/data.txt#17. The current
-	// generation can be denoted with #0. This field is ignored on input.
+	// ResourceId: The ID of the resource to which this policy belongs. Will be of
+	// the form projects/_/buckets/bucket for buckets,
+	// projects/_/buckets/bucket/objects/object for objects, and
+	// projects/_/buckets/bucket/managedFolders/managedFolder. A specific
+	// generation may be specified by appending #generationNumber to the end of the
+	// object name, e.g. projects/_/buckets/my-bucket/objects/data.txt#17. The
+	// current generation can be denoted with #0. This field is ignored on input.
 	ResourceId string `json:"resourceId,omitempty"`
-
 	// Version: The IAM policy format version.
 	Version int64 `json:"version,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
 	// ForceSendFields is a list of field names (e.g. "Bindings") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Bindings") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Bindings") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *Policy) MarshalJSON() ([]byte, error) {
+func (s Policy) MarshalJSON() ([]byte, error) {
 	type NoMethod Policy
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 type PolicyBindings struct {
-	// Condition: The condition that is associated with this binding. NOTE:
-	// an unsatisfied condition will not allow user access via current
-	// binding. Different bindings, including their conditions, are examined
-	// independently.
+	// Condition: The condition that is associated with this binding. NOTE: an
+	// unsatisfied condition will not allow user access via current binding.
+	// Different bindings, including their conditions, are examined independently.
 	Condition *Expr `json:"condition,omitempty"`
-
-	// Members: A collection of identifiers for members who may assume the
-	// provided role. Recognized identifiers are as follows:
-	// - allUsers — A special identifier that represents anyone on the
-	// internet; with or without a Google account.
-	// - allAuthenticatedUsers — A special identifier that represents
-	// anyone who is authenticated with a Google account or a service
-	// account.
-	// - user:emailid — An email address that represents a specific
-	// account. For example, user:alice@gmail.com or user:joe@example.com.
-	//
-	// - serviceAccount:emailid — An email address that represents a
-	// service account. For example,
+	// Members: A collection of identifiers for members who may assume the provided
+	// role. Recognized identifiers are as follows:
+	// - allUsers — A special identifier that represents anyone on the internet;
+	// with or without a Google account.
+	// - allAuthenticatedUsers — A special identifier that represents anyone who
+	// is authenticated with a Google account or a service account.
+	// - user:emailid — An email address that represents a specific account. For
+	// example, user:alice@gmail.com or user:joe@example.com.
+	// - serviceAccount:emailid — An email address that represents a service
+	// account. For example,
 	// serviceAccount:my-other-app@appspot.gserviceaccount.com .
-	// - group:emailid — An email address that represents a Google group.
-	// For example, group:admins@example.com.
-	// - domain:domain — A Google Apps domain name that represents all the
-	// users of that domain. For example, domain:google.com or
-	// domain:example.com.
-	// - projectOwner:projectid — Owners of the given project. For
-	// example, projectOwner:my-example-project
-	// - projectEditor:projectid — Editors of the given project. For
-	// example, projectEditor:my-example-project
-	// - projectViewer:projectid — Viewers of the given project. For
-	// example, projectViewer:my-example-project
+	// - group:emailid — An email address that represents a Google group. For
+	// example, group:admins@example.com.
+	// - domain:domain — A Google Apps domain name that represents all the users
+	// of that domain. For example, domain:google.com or domain:example.com.
+	// - projectOwner:projectid — Owners of the given project. For example,
+	// projectOwner:my-example-project
+	// - projectEditor:projectid — Editors of the given project. For example,
+	// projectEditor:my-example-project
+	// - projectViewer:projectid — Viewers of the given project. For example,
+	// projectViewer:my-example-project
 	Members []string `json:"members,omitempty"`
-
-	// Role: The role to which members belong. Two types of roles are
-	// supported: new IAM roles, which grant permissions that do not map
-	// directly to those provided by ACLs, and legacy IAM roles, which do
-	// map directly to ACL permissions. All roles are of the format
-	// roles/storage.specificRole.
+	// Role: The role to which members belong. Two types of roles are supported:
+	// new IAM roles, which grant permissions that do not map directly to those
+	// provided by ACLs, and legacy IAM roles, which do map directly to ACL
+	// permissions. All roles are of the format roles/storage.specificRole.
 	// The new IAM roles are:
-	// - roles/storage.admin — Full control of Google Cloud Storage
-	// resources.
-	// - roles/storage.objectViewer — Read-Only access to Google Cloud
-	// Storage objects.
-	// - roles/storage.objectCreator — Access to create objects in Google
-	// Cloud Storage.
+	// - roles/storage.admin — Full control of Google Cloud Storage resources.
+	//
+	// - roles/storage.objectViewer — Read-Only access to Google Cloud Storage
+	// objects.
+	// - roles/storage.objectCreator — Access to create objects in Google Cloud
+	// Storage.
 	// - roles/storage.objectAdmin — Full control of Google Cloud Storage
 	// objects.   The legacy IAM roles are:
-	// - roles/storage.legacyObjectReader — Read-only access to objects
-	// without listing. Equivalent to an ACL entry on an object with the
-	// READER role.
-	// - roles/storage.legacyObjectOwner — Read/write access to existing
-	// objects without listing. Equivalent to an ACL entry on an object with
-	// the OWNER role.
-	// - roles/storage.legacyBucketReader — Read access to buckets with
-	// object listing. Equivalent to an ACL entry on a bucket with the
-	// READER role.
-	// - roles/storage.legacyBucketWriter — Read access to buckets with
-	// object listing/creation/deletion. Equivalent to an ACL entry on a
-	// bucket with the WRITER role.
-	// - roles/storage.legacyBucketOwner — Read and write access to
-	// existing buckets with object listing/creation/deletion. Equivalent to
-	// an ACL entry on a bucket with the OWNER role.
+	// - roles/storage.legacyObjectReader — Read-only access to objects without
+	// listing. Equivalent to an ACL entry on an object with the READER role.
+	// - roles/storage.legacyObjectOwner — Read/write access to existing objects
+	// without listing. Equivalent to an ACL entry on an object with the OWNER
+	// role.
+	// - roles/storage.legacyBucketReader — Read access to buckets with object
+	// listing. Equivalent to an ACL entry on a bucket with the READER role.
+	// - roles/storage.legacyBucketWriter — Read access to buckets with object
+	// listing/creation/deletion. Equivalent to an ACL entry on a bucket with the
+	// WRITER role.
+	// - roles/storage.legacyBucketOwner — Read and write access to existing
+	// buckets with object listing/creation/deletion. Equivalent to an ACL entry on
+	// a bucket with the OWNER role.
 	Role string `json:"role,omitempty"`
-
 	// ForceSendFields is a list of field names (e.g. "Condition") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Condition") to include in
-	// API requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Condition") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *PolicyBindings) MarshalJSON() ([]byte, error) {
+func (s PolicyBindings) MarshalJSON() ([]byte, error) {
 	type NoMethod PolicyBindings
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RelocateBucketRequest: A Relocate Bucket request.
+type RelocateBucketRequest struct {
+	// DestinationCustomPlacementConfig: The bucket's new custom placement
+	// configuration if relocating to a Custom Dual Region.
+	DestinationCustomPlacementConfig *RelocateBucketRequestDestinationCustomPlacementConfig `json:"destinationCustomPlacementConfig,omitempty"`
+	// DestinationLocation: The new location the bucket will be relocated to.
+	DestinationLocation string `json:"destinationLocation,omitempty"`
+	// ValidateOnly: If true, validate the operation, but do not actually relocate
+	// the bucket.
+	ValidateOnly bool `json:"validateOnly,omitempty"`
+	// ForceSendFields is a list of field names (e.g.
+	// "DestinationCustomPlacementConfig") to unconditionally include in API
+	// requests. By default, fields with empty or default values are omitted from
+	// API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g.
+	// "DestinationCustomPlacementConfig") to include in API requests with the JSON
+	// null value. By default, fields with empty values are omitted from API
+	// requests. See https://pkg.go.dev/google.golang.org/api#hdr-NullFields for
+	// more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RelocateBucketRequest) MarshalJSON() ([]byte, error) {
+	type NoMethod RelocateBucketRequest
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// RelocateBucketRequestDestinationCustomPlacementConfig: The bucket's new
+// custom placement configuration if relocating to a Custom Dual Region.
+type RelocateBucketRequestDestinationCustomPlacementConfig struct {
+	// DataLocations: The list of regional locations in which data is placed.
+	DataLocations []string `json:"dataLocations,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "DataLocations") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "DataLocations") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s RelocateBucketRequestDestinationCustomPlacementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod RelocateBucketRequestDestinationCustomPlacementConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // RewriteResponse: A rewrite response.
 type RewriteResponse struct {
-	// Done: true if the copy is finished; otherwise, false if the copy is
-	// in progress. This property is always present in the response.
+	// Done: true if the copy is finished; otherwise, false if the copy is in
+	// progress. This property is always present in the response.
 	Done bool `json:"done,omitempty"`
-
 	// Kind: The kind of item this is.
 	Kind string `json:"kind,omitempty"`
-
 	// ObjectSize: The total size of the object being copied in bytes. This
 	// property is always present in the response.
 	ObjectSize int64 `json:"objectSize,omitempty,string"`
-
-	// Resource: A resource containing the metadata for the copied-to
-	// object. This property is present in the response only when copying
-	// completes.
+	// Resource: A resource containing the metadata for the copied-to object. This
+	// property is present in the response only when copying completes.
 	Resource *Object `json:"resource,omitempty"`
-
-	// RewriteToken: A token to use in subsequent requests to continue
-	// copying data. This token is present in the response only when there
-	// is more data to copy.
+	// RewriteToken: A token to use in subsequent requests to continue copying
+	// data. This token is present in the response only when there is more data to
+	// copy.
 	RewriteToken string `json:"rewriteToken,omitempty"`
-
-	// TotalBytesRewritten: The total bytes written so far, which can be
-	// used to provide a waiting user with a progress indicator. This
-	// property is always present in the response.
+	// TotalBytesRewritten: The total bytes written so far, which can be used to
+	// provide a waiting user with a progress indicator. This property is always
+	// present in the response.
 	TotalBytesRewritten int64 `json:"totalBytesRewritten,omitempty,string"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Done") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Done") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Done") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Done") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *RewriteResponse) MarshalJSON() ([]byte, error) {
+func (s RewriteResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod RewriteResponse
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// ServiceAccount: A subscription to receive Google PubSub
-// notifications.
+// ServiceAccount: A subscription to receive Google PubSub notifications.
 type ServiceAccount struct {
 	// EmailAddress: The ID of the notification.
 	EmailAddress string `json:"email_address,omitempty"`
-
 	// Kind: The kind of item this is. For notifications, this is always
 	// storage#notification.
 	Kind string `json:"kind,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
 	// ForceSendFields is a list of field names (e.g. "EmailAddress") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "EmailAddress") to include
-	// in API requests with the JSON null value. By default, fields with
-	// empty values are omitted from API requests. However, any field with
-	// an empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "EmailAddress") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *ServiceAccount) MarshalJSON() ([]byte, error) {
+func (s ServiceAccount) MarshalJSON() ([]byte, error) {
 	type NoMethod ServiceAccount
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
 // TestIamPermissionsResponse: A
-// storage.(buckets|objects).testIamPermissions response.
+// storage.(buckets|objects|managedFolders).testIamPermissions response.
 type TestIamPermissionsResponse struct {
 	// Kind: The kind of item this is.
 	Kind string `json:"kind,omitempty"`
-
-	// Permissions: The permissions held by the caller. Permissions are
-	// always of the format storage.resource.capability, where resource is
-	// one of buckets or objects. The supported permissions are as follows:
-	//
+	// Permissions: The permissions held by the caller. Permissions are always of
+	// the format storage.resource.capability, where resource is one of buckets,
+	// objects, or managedFolders. The supported permissions are as follows:
 	// - storage.buckets.delete — Delete bucket.
 	// - storage.buckets.get — Read bucket metadata.
 	// - storage.buckets.getIamPolicy — Read bucket IAM policy.
@@ -2442,36 +2821,808 @@ type TestIamPermissionsResponse struct {
 	// - storage.objects.list — List objects.
 	// - storage.objects.setIamPolicy — Update object IAM policy.
 	// - storage.objects.update — Update object metadata.
+	// - storage.managedFolders.delete — Delete managed folder.
+	// - storage.managedFolders.get — Read managed folder metadata.
+	// - storage.managedFolders.getIamPolicy — Read managed folder IAM policy.
+	//
+	// - storage.managedFolders.create — Create managed folder.
+	// - storage.managedFolders.list — List managed folders.
+	// - storage.managedFolders.setIamPolicy — Update managed folder IAM policy.
 	Permissions []string `json:"permissions,omitempty"`
 
-	// ServerResponse contains the HTTP response code and headers from the
-	// server.
+	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
-
-	// ForceSendFields is a list of field names (e.g. "Kind") to
-	// unconditionally include in API requests. By default, fields with
-	// empty or default values are omitted from API requests. However, any
-	// non-pointer, non-interface field appearing in ForceSendFields will be
-	// sent to the server regardless of whether the field is empty or not.
-	// This may be used to include empty fields in Patch requests.
+	// ForceSendFields is a list of field names (e.g. "Kind") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
 	ForceSendFields []string `json:"-"`
-
-	// NullFields is a list of field names (e.g. "Kind") to include in API
-	// requests with the JSON null value. By default, fields with empty
-	// values are omitted from API requests. However, any field with an
-	// empty value appearing in NullFields will be sent to the server as
-	// null. It is an error if a field in this list has a non-empty value.
-	// This may be used to include null fields in Patch requests.
+	// NullFields is a list of field names (e.g. "Kind") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
-func (s *TestIamPermissionsResponse) MarshalJSON() ([]byte, error) {
+func (s TestIamPermissionsResponse) MarshalJSON() ([]byte, error) {
 	type NoMethod TestIamPermissionsResponse
-	raw := NoMethod(*s)
-	return gensupport.MarshalJSON(raw, s.ForceSendFields, s.NullFields)
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
-// method id "storage.bucketAccessControls.delete":
+type AnywhereCachesDisableCall struct {
+	s               *Service
+	bucket          string
+	anywhereCacheId string
+	urlParams_      gensupport.URLParams
+	ctx_            context.Context
+	header_         http.Header
+}
+
+// Disable: Disables an Anywhere Cache instance.
+//
+// - anywhereCacheId: The ID of requested Anywhere Cache instance.
+// - bucket: Name of the parent bucket.
+func (r *AnywhereCachesService) Disable(bucket string, anywhereCacheId string) *AnywhereCachesDisableCall {
+	c := &AnywhereCachesDisableCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.anywhereCacheId = anywhereCacheId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AnywhereCachesDisableCall) Fields(s ...googleapi.Field) *AnywhereCachesDisableCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AnywhereCachesDisableCall) Context(ctx context.Context) *AnywhereCachesDisableCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AnywhereCachesDisableCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AnywhereCachesDisableCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches/{anywhereCacheId}/disable")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":          c.bucket,
+		"anywhereCacheId": c.anywhereCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.disable", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.anywhereCaches.disable" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *AnywhereCache.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *AnywhereCachesDisableCall) Do(opts ...googleapi.CallOption) (*AnywhereCache, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &AnywhereCache{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.disable", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type AnywhereCachesGetCall struct {
+	s               *Service
+	bucket          string
+	anywhereCacheId string
+	urlParams_      gensupport.URLParams
+	ifNoneMatch_    string
+	ctx_            context.Context
+	header_         http.Header
+}
+
+// Get: Returns the metadata of an Anywhere Cache instance.
+//
+// - anywhereCacheId: The ID of requested Anywhere Cache instance.
+// - bucket: Name of the parent bucket.
+func (r *AnywhereCachesService) Get(bucket string, anywhereCacheId string) *AnywhereCachesGetCall {
+	c := &AnywhereCachesGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.anywhereCacheId = anywhereCacheId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AnywhereCachesGetCall) Fields(s ...googleapi.Field) *AnywhereCachesGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *AnywhereCachesGetCall) IfNoneMatch(entityTag string) *AnywhereCachesGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AnywhereCachesGetCall) Context(ctx context.Context) *AnywhereCachesGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AnywhereCachesGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AnywhereCachesGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches/{anywhereCacheId}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":          c.bucket,
+		"anywhereCacheId": c.anywhereCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.anywhereCaches.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *AnywhereCache.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *AnywhereCachesGetCall) Do(opts ...googleapi.CallOption) (*AnywhereCache, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &AnywhereCache{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type AnywhereCachesInsertCall struct {
+	s             *Service
+	bucket        string
+	anywherecache *AnywhereCache
+	urlParams_    gensupport.URLParams
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// Insert: Creates an Anywhere Cache instance.
+//
+// - bucket: Name of the parent bucket.
+func (r *AnywhereCachesService) Insert(bucket string, anywherecache *AnywhereCache) *AnywhereCachesInsertCall {
+	c := &AnywhereCachesInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.anywherecache = anywherecache
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AnywhereCachesInsertCall) Fields(s ...googleapi.Field) *AnywhereCachesInsertCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AnywhereCachesInsertCall) Context(ctx context.Context) *AnywhereCachesInsertCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AnywhereCachesInsertCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AnywhereCachesInsertCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.anywherecache)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.anywhereCaches.insert" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *AnywhereCachesInsertCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.insert", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type AnywhereCachesListCall struct {
+	s            *Service
+	bucket       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Returns a list of Anywhere Cache instances of the bucket matching the
+// criteria.
+//
+// - bucket: Name of the parent bucket.
+func (r *AnywhereCachesService) List(bucket string) *AnywhereCachesListCall {
+	c := &AnywhereCachesListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of items to
+// return in a single page of responses. Maximum 1000.
+func (c *AnywhereCachesListCall) PageSize(pageSize int64) *AnywhereCachesListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
+func (c *AnywhereCachesListCall) PageToken(pageToken string) *AnywhereCachesListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AnywhereCachesListCall) Fields(s ...googleapi.Field) *AnywhereCachesListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *AnywhereCachesListCall) IfNoneMatch(entityTag string) *AnywhereCachesListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AnywhereCachesListCall) Context(ctx context.Context) *AnywhereCachesListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AnywhereCachesListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AnywhereCachesListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.anywhereCaches.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *AnywhereCaches.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *AnywhereCachesListCall) Do(opts ...googleapi.CallOption) (*AnywhereCaches, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &AnywhereCaches{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *AnywhereCachesListCall) Pages(ctx context.Context, f func(*AnywhereCaches) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type AnywhereCachesPauseCall struct {
+	s               *Service
+	bucket          string
+	anywhereCacheId string
+	urlParams_      gensupport.URLParams
+	ctx_            context.Context
+	header_         http.Header
+}
+
+// Pause: Pauses an Anywhere Cache instance.
+//
+// - anywhereCacheId: The ID of requested Anywhere Cache instance.
+// - bucket: Name of the parent bucket.
+func (r *AnywhereCachesService) Pause(bucket string, anywhereCacheId string) *AnywhereCachesPauseCall {
+	c := &AnywhereCachesPauseCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.anywhereCacheId = anywhereCacheId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AnywhereCachesPauseCall) Fields(s ...googleapi.Field) *AnywhereCachesPauseCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AnywhereCachesPauseCall) Context(ctx context.Context) *AnywhereCachesPauseCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AnywhereCachesPauseCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AnywhereCachesPauseCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches/{anywhereCacheId}/pause")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":          c.bucket,
+		"anywhereCacheId": c.anywhereCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.pause", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.anywhereCaches.pause" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *AnywhereCache.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *AnywhereCachesPauseCall) Do(opts ...googleapi.CallOption) (*AnywhereCache, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &AnywhereCache{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.pause", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type AnywhereCachesResumeCall struct {
+	s               *Service
+	bucket          string
+	anywhereCacheId string
+	urlParams_      gensupport.URLParams
+	ctx_            context.Context
+	header_         http.Header
+}
+
+// Resume: Resumes a paused or disabled Anywhere Cache instance.
+//
+// - anywhereCacheId: The ID of requested Anywhere Cache instance.
+// - bucket: Name of the parent bucket.
+func (r *AnywhereCachesService) Resume(bucket string, anywhereCacheId string) *AnywhereCachesResumeCall {
+	c := &AnywhereCachesResumeCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.anywhereCacheId = anywhereCacheId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AnywhereCachesResumeCall) Fields(s ...googleapi.Field) *AnywhereCachesResumeCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AnywhereCachesResumeCall) Context(ctx context.Context) *AnywhereCachesResumeCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AnywhereCachesResumeCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AnywhereCachesResumeCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches/{anywhereCacheId}/resume")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":          c.bucket,
+		"anywhereCacheId": c.anywhereCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.resume", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.anywhereCaches.resume" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *AnywhereCache.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *AnywhereCachesResumeCall) Do(opts ...googleapi.CallOption) (*AnywhereCache, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &AnywhereCache{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.resume", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type AnywhereCachesUpdateCall struct {
+	s               *Service
+	bucket          string
+	anywhereCacheId string
+	anywherecache   *AnywhereCache
+	urlParams_      gensupport.URLParams
+	ctx_            context.Context
+	header_         http.Header
+}
+
+// Update: Updates the config(ttl and admissionPolicy) of an Anywhere Cache
+// instance.
+//
+// - anywhereCacheId: The ID of requested Anywhere Cache instance.
+// - bucket: Name of the parent bucket.
+func (r *AnywhereCachesService) Update(bucket string, anywhereCacheId string, anywherecache *AnywhereCache) *AnywhereCachesUpdateCall {
+	c := &AnywhereCachesUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.anywhereCacheId = anywhereCacheId
+	c.anywherecache = anywherecache
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *AnywhereCachesUpdateCall) Fields(s ...googleapi.Field) *AnywhereCachesUpdateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *AnywhereCachesUpdateCall) Context(ctx context.Context) *AnywhereCachesUpdateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *AnywhereCachesUpdateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *AnywhereCachesUpdateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.anywherecache)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/anywhereCaches/{anywhereCacheId}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PATCH", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":          c.bucket,
+		"anywhereCacheId": c.anywhereCacheId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.anywhereCaches.update", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.anywhereCaches.update" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *AnywhereCachesUpdateCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.anywhereCaches.update", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type BucketAccessControlsDeleteCall struct {
 	s          *Service
@@ -2482,8 +3633,8 @@ type BucketAccessControlsDeleteCall struct {
 	header_    http.Header
 }
 
-// Delete: Permanently deletes the ACL entry for the specified entity on
-// the specified bucket.
+// Delete: Permanently deletes the ACL entry for the specified entity on the
+// specified bucket.
 //
 //   - bucket: Name of a bucket.
 //   - entity: The entity holding the permission. Can be user-userId,
@@ -2496,31 +3647,29 @@ func (r *BucketAccessControlsService) Delete(bucket string, entity string) *Buck
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketAccessControlsDeleteCall) UserProject(userProject string) *BucketAccessControlsDeleteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketAccessControlsDeleteCall) Fields(s ...googleapi.Field) *BucketAccessControlsDeleteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketAccessControlsDeleteCall) Context(ctx context.Context) *BucketAccessControlsDeleteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketAccessControlsDeleteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -2529,18 +3678,12 @@ func (c *BucketAccessControlsDeleteCall) Header() http.Header {
 }
 
 func (c *BucketAccessControlsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/acl/{entity}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2549,6 +3692,7 @@ func (c *BucketAccessControlsDeleteCall) doRequest(alt string) (*http.Response, 
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -2563,44 +3707,9 @@ func (c *BucketAccessControlsDeleteCall) Do(opts ...googleapi.CallOption) error 
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.delete", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Permanently deletes the ACL entry for the specified entity on the specified bucket.",
-	//   "httpMethod": "DELETE",
-	//   "id": "storage.bucketAccessControls.delete",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/acl/{entity}",
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.bucketAccessControls.get":
 
 type BucketAccessControlsGetCall struct {
 	s            *Service
@@ -2612,8 +3721,7 @@ type BucketAccessControlsGetCall struct {
 	header_      http.Header
 }
 
-// Get: Returns the ACL entry for the specified entity on the specified
-// bucket.
+// Get: Returns the ACL entry for the specified entity on the specified bucket.
 //
 //   - bucket: Name of a bucket.
 //   - entity: The entity holding the permission. Can be user-userId,
@@ -2626,41 +3734,37 @@ func (r *BucketAccessControlsService) Get(bucket string, entity string) *BucketA
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketAccessControlsGetCall) UserProject(userProject string) *BucketAccessControlsGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketAccessControlsGetCall) Fields(s ...googleapi.Field) *BucketAccessControlsGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *BucketAccessControlsGetCall) IfNoneMatch(entityTag string) *BucketAccessControlsGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketAccessControlsGetCall) Context(ctx context.Context) *BucketAccessControlsGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketAccessControlsGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -2669,21 +3773,15 @@ func (c *BucketAccessControlsGetCall) Header() http.Header {
 }
 
 func (c *BucketAccessControlsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/acl/{entity}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2692,16 +3790,16 @@ func (c *BucketAccessControlsGetCall) doRequest(alt string) (*http.Response, err
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.bucketAccessControls.get" call.
-// Exactly one of *BucketAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *BucketAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *BucketAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *BucketAccessControlsGetCall) Do(opts ...googleapi.CallOption) (*BucketAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -2728,50 +3826,13 @@ func (c *BucketAccessControlsGetCall) Do(opts ...googleapi.CallOption) (*BucketA
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Returns the ACL entry for the specified entity on the specified bucket.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.bucketAccessControls.get",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/acl/{entity}",
-	//   "response": {
-	//     "$ref": "BucketAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.bucketAccessControls.insert":
 
 type BucketAccessControlsInsertCall struct {
 	s                   *Service
@@ -2792,31 +3853,29 @@ func (r *BucketAccessControlsService) Insert(bucket string, bucketaccesscontrol 
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketAccessControlsInsertCall) UserProject(userProject string) *BucketAccessControlsInsertCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketAccessControlsInsertCall) Fields(s ...googleapi.Field) *BucketAccessControlsInsertCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketAccessControlsInsertCall) Context(ctx context.Context) *BucketAccessControlsInsertCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketAccessControlsInsertCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -2825,18 +3884,11 @@ func (c *BucketAccessControlsInsertCall) Header() http.Header {
 }
 
 func (c *BucketAccessControlsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.bucketaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bucketaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/acl")
@@ -2849,16 +3901,16 @@ func (c *BucketAccessControlsInsertCall) doRequest(alt string) (*http.Response, 
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.bucketAccessControls.insert" call.
-// Exactly one of *BucketAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *BucketAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *BucketAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *BucketAccessControlsInsertCall) Do(opts ...googleapi.CallOption) (*BucketAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -2885,46 +3937,13 @@ func (c *BucketAccessControlsInsertCall) Do(opts ...googleapi.CallOption) (*Buck
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.insert", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Creates a new ACL entry on the specified bucket.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.bucketAccessControls.insert",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/acl",
-	//   "request": {
-	//     "$ref": "BucketAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "BucketAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.bucketAccessControls.list":
 
 type BucketAccessControlsListCall struct {
 	s            *Service
@@ -2944,41 +3963,37 @@ func (r *BucketAccessControlsService) List(bucket string) *BucketAccessControlsL
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketAccessControlsListCall) UserProject(userProject string) *BucketAccessControlsListCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketAccessControlsListCall) Fields(s ...googleapi.Field) *BucketAccessControlsListCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *BucketAccessControlsListCall) IfNoneMatch(entityTag string) *BucketAccessControlsListCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketAccessControlsListCall) Context(ctx context.Context) *BucketAccessControlsListCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketAccessControlsListCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -2987,21 +4002,15 @@ func (c *BucketAccessControlsListCall) Header() http.Header {
 }
 
 func (c *BucketAccessControlsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/acl")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3009,16 +4018,16 @@ func (c *BucketAccessControlsListCall) doRequest(alt string) (*http.Response, er
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.bucketAccessControls.list" call.
-// Exactly one of *BucketAccessControls or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *BucketAccessControls.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *BucketAccessControls.ServerResponse.Header or (if a response was returned
+// at all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *BucketAccessControlsListCall) Do(opts ...googleapi.CallOption) (*BucketAccessControls, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -3045,43 +4054,13 @@ func (c *BucketAccessControlsListCall) Do(opts ...googleapi.CallOption) (*Bucket
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves ACL entries on the specified bucket.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.bucketAccessControls.list",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/acl",
-	//   "response": {
-	//     "$ref": "BucketAccessControls"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.bucketAccessControls.patch":
 
 type BucketAccessControlsPatchCall struct {
 	s                   *Service
@@ -3107,31 +4086,29 @@ func (r *BucketAccessControlsService) Patch(bucket string, entity string, bucket
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketAccessControlsPatchCall) UserProject(userProject string) *BucketAccessControlsPatchCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketAccessControlsPatchCall) Fields(s ...googleapi.Field) *BucketAccessControlsPatchCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketAccessControlsPatchCall) Context(ctx context.Context) *BucketAccessControlsPatchCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketAccessControlsPatchCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -3140,18 +4117,11 @@ func (c *BucketAccessControlsPatchCall) Header() http.Header {
 }
 
 func (c *BucketAccessControlsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.bucketaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bucketaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/acl/{entity}")
@@ -3165,16 +4135,16 @@ func (c *BucketAccessControlsPatchCall) doRequest(alt string) (*http.Response, e
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.bucketAccessControls.patch" call.
-// Exactly one of *BucketAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *BucketAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *BucketAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *BucketAccessControlsPatchCall) Do(opts ...googleapi.CallOption) (*BucketAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -3201,53 +4171,13 @@ func (c *BucketAccessControlsPatchCall) Do(opts ...googleapi.CallOption) (*Bucke
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Patches an ACL entry on the specified bucket.",
-	//   "httpMethod": "PATCH",
-	//   "id": "storage.bucketAccessControls.patch",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/acl/{entity}",
-	//   "request": {
-	//     "$ref": "BucketAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "BucketAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.bucketAccessControls.update":
 
 type BucketAccessControlsUpdateCall struct {
 	s                   *Service
@@ -3273,31 +4203,29 @@ func (r *BucketAccessControlsService) Update(bucket string, entity string, bucke
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketAccessControlsUpdateCall) UserProject(userProject string) *BucketAccessControlsUpdateCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketAccessControlsUpdateCall) Fields(s ...googleapi.Field) *BucketAccessControlsUpdateCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketAccessControlsUpdateCall) Context(ctx context.Context) *BucketAccessControlsUpdateCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketAccessControlsUpdateCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -3306,18 +4234,11 @@ func (c *BucketAccessControlsUpdateCall) Header() http.Header {
 }
 
 func (c *BucketAccessControlsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.bucketaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bucketaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/acl/{entity}")
@@ -3331,16 +4252,16 @@ func (c *BucketAccessControlsUpdateCall) doRequest(alt string) (*http.Response, 
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.bucketAccessControls.update" call.
-// Exactly one of *BucketAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *BucketAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *BucketAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *BucketAccessControlsUpdateCall) Do(opts ...googleapi.CallOption) (*BucketAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -3367,53 +4288,13 @@ func (c *BucketAccessControlsUpdateCall) Do(opts ...googleapi.CallOption) (*Buck
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.bucketAccessControls.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates an ACL entry on the specified bucket.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.bucketAccessControls.update",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/acl/{entity}",
-	//   "request": {
-	//     "$ref": "BucketAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "BucketAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.buckets.delete":
 
 type BucketsDeleteCall struct {
 	s          *Service
@@ -3423,7 +4304,8 @@ type BucketsDeleteCall struct {
 	header_    http.Header
 }
 
-// Delete: Permanently deletes an empty bucket.
+// Delete: Deletes an empty bucket. Deletions are permanent unless soft delete
+// is enabled on the bucket.
 //
 // - bucket: Name of a bucket.
 func (r *BucketsService) Delete(bucket string) *BucketsDeleteCall {
@@ -3432,9 +4314,8 @@ func (r *BucketsService) Delete(bucket string) *BucketsDeleteCall {
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": If set, only deletes the bucket if its
-// metageneration matches this value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// If set, only deletes the bucket if its metageneration matches this value.
 func (c *BucketsDeleteCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *BucketsDeleteCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
@@ -3448,31 +4329,29 @@ func (c *BucketsDeleteCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch in
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsDeleteCall) UserProject(userProject string) *BucketsDeleteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsDeleteCall) Fields(s ...googleapi.Field) *BucketsDeleteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsDeleteCall) Context(ctx context.Context) *BucketsDeleteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsDeleteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -3481,18 +4360,12 @@ func (c *BucketsDeleteCall) Header() http.Header {
 }
 
 func (c *BucketsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3500,6 +4373,7 @@ func (c *BucketsDeleteCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -3514,50 +4388,9 @@ func (c *BucketsDeleteCall) Do(opts ...googleapi.CallOption) error {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.delete", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Permanently deletes an empty bucket.",
-	//   "httpMethod": "DELETE",
-	//   "id": "storage.buckets.delete",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "If set, only deletes the bucket if its metageneration matches this value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "If set, only deletes the bucket if its metageneration does not match this value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}",
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.buckets.get":
 
 type BucketsGetCall struct {
 	s            *Service
@@ -3577,10 +4410,16 @@ func (r *BucketsService) Get(bucket string) *BucketsGetCall {
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the return of the bucket metadata
-// conditional on whether the bucket's current metageneration matches
-// the given value.
+// Generation sets the optional parameter "generation": If present, specifies
+// the generation of the bucket. This is required if softDeleted is true.
+func (c *BucketsGetCall) Generation(generation int64) *BucketsGetCall {
+	c.urlParams_.Set("generation", fmt.Sprint(generation))
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the return of the bucket metadata conditional on whether the bucket's
+// current metageneration matches the given value.
 func (c *BucketsGetCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *BucketsGetCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
@@ -3588,15 +4427,15 @@ func (c *BucketsGetCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *Buc
 
 // IfMetagenerationNotMatch sets the optional parameter
 // "ifMetagenerationNotMatch": Makes the return of the bucket metadata
-// conditional on whether the bucket's current metageneration does not
-// match the given value.
+// conditional on whether the bucket's current metageneration does not match
+// the given value.
 func (c *BucketsGetCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *BucketsGetCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl.
 //
 // Possible values:
 //
@@ -3607,41 +4446,46 @@ func (c *BucketsGetCall) Projection(projection string) *BucketsGetCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// SoftDeleted sets the optional parameter "softDeleted": If true, return the
+// soft-deleted version of this bucket. The default is false. For more
+// information, see Soft Delete
+// (https://cloud.google.com/storage/docs/soft-delete).
+func (c *BucketsGetCall) SoftDeleted(softDeleted bool) *BucketsGetCall {
+	c.urlParams_.Set("softDeleted", fmt.Sprint(softDeleted))
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsGetCall) UserProject(userProject string) *BucketsGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsGetCall) Fields(s ...googleapi.Field) *BucketsGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *BucketsGetCall) IfNoneMatch(entityTag string) *BucketsGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsGetCall) Context(ctx context.Context) *BucketsGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -3650,21 +4494,15 @@ func (c *BucketsGetCall) Header() http.Header {
 }
 
 func (c *BucketsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3672,16 +4510,15 @@ func (c *BucketsGetCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.get" call.
-// Exactly one of *Bucket or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Bucket.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Bucket.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsGetCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -3708,71 +4545,13 @@ func (c *BucketsGetCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Returns metadata for the specified bucket.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.buckets.get",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the return of the bucket metadata conditional on whether the bucket's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the return of the bucket metadata conditional on whether the bucket's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit owner, acl and defaultObjectAcl properties."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}",
-	//   "response": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.buckets.getIamPolicy":
 
 type BucketsGetIamPolicyCall struct {
 	s            *Service
@@ -3794,49 +4573,44 @@ func (r *BucketsService) GetIamPolicy(bucket string) *BucketsGetIamPolicyCall {
 
 // OptionsRequestedPolicyVersion sets the optional parameter
 // "optionsRequestedPolicyVersion": The IAM policy format version to be
-// returned. If the optionsRequestedPolicyVersion is for an older
-// version that doesn't support part of the requested IAM policy, the
-// request fails.
+// returned. If the optionsRequestedPolicyVersion is for an older version that
+// doesn't support part of the requested IAM policy, the request fails.
 func (c *BucketsGetIamPolicyCall) OptionsRequestedPolicyVersion(optionsRequestedPolicyVersion int64) *BucketsGetIamPolicyCall {
 	c.urlParams_.Set("optionsRequestedPolicyVersion", fmt.Sprint(optionsRequestedPolicyVersion))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsGetIamPolicyCall) UserProject(userProject string) *BucketsGetIamPolicyCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsGetIamPolicyCall) Fields(s ...googleapi.Field) *BucketsGetIamPolicyCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *BucketsGetIamPolicyCall) IfNoneMatch(entityTag string) *BucketsGetIamPolicyCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsGetIamPolicyCall) Context(ctx context.Context) *BucketsGetIamPolicyCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsGetIamPolicyCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -3845,21 +4619,15 @@ func (c *BucketsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *BucketsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/iam")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -3867,16 +4635,15 @@ func (c *BucketsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) 
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.getIamPolicy" call.
-// Exactly one of *Policy or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Policy.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -3903,50 +4670,132 @@ func (c *BucketsGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, err
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.getIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Returns an IAM policy for the specified bucket.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.buckets.getIamPolicy",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "optionsRequestedPolicyVersion": {
-	//       "description": "The IAM policy format version to be returned. If the optionsRequestedPolicyVersion is for an older version that doesn't support part of the requested IAM policy, the request fails.",
-	//       "format": "int32",
-	//       "location": "query",
-	//       "minimum": "1",
-	//       "type": "integer"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/iam",
-	//   "response": {
-	//     "$ref": "Policy"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
 
-// method id "storage.buckets.insert":
+type BucketsGetStorageLayoutCall struct {
+	s            *Service
+	bucket       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// GetStorageLayout: Returns the storage layout configuration for the specified
+// bucket. Note that this operation requires storage.objects.list permission.
+//
+// - bucket: Name of a bucket.
+func (r *BucketsService) GetStorageLayout(bucket string) *BucketsGetStorageLayoutCall {
+	c := &BucketsGetStorageLayoutCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	return c
+}
+
+// Prefix sets the optional parameter "prefix": An optional prefix used for
+// permission check. It is useful when the caller only has storage.objects.list
+// permission under a specific prefix.
+func (c *BucketsGetStorageLayoutCall) Prefix(prefix string) *BucketsGetStorageLayoutCall {
+	c.urlParams_.Set("prefix", prefix)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *BucketsGetStorageLayoutCall) Fields(s ...googleapi.Field) *BucketsGetStorageLayoutCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *BucketsGetStorageLayoutCall) IfNoneMatch(entityTag string) *BucketsGetStorageLayoutCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *BucketsGetStorageLayoutCall) Context(ctx context.Context) *BucketsGetStorageLayoutCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *BucketsGetStorageLayoutCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *BucketsGetStorageLayoutCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/storageLayout")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.getStorageLayout", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.getStorageLayout" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *BucketStorageLayout.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
+func (c *BucketsGetStorageLayoutCall) Do(opts ...googleapi.CallOption) (*BucketStorageLayout, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &BucketStorageLayout{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.getStorageLayout", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type BucketsInsertCall struct {
 	s          *Service
@@ -3966,6 +4815,13 @@ func (r *BucketsService) Insert(projectid string, bucket *Bucket) *BucketsInsert
 	return c
 }
 
+// EnableObjectRetention sets the optional parameter "enableObjectRetention":
+// When set to true, object retention is enabled for this bucket.
+func (c *BucketsInsertCall) EnableObjectRetention(enableObjectRetention bool) *BucketsInsertCall {
+	c.urlParams_.Set("enableObjectRetention", fmt.Sprint(enableObjectRetention))
+	return c
+}
+
 // PredefinedAcl sets the optional parameter "predefinedAcl": Apply a
 // predefined set of access controls to this bucket.
 //
@@ -3976,25 +4832,25 @@ func (r *BucketsService) Insert(projectid string, bucket *Bucket) *BucketsInsert
 // allAuthenticatedUsers get READER access.
 //
 //	"private" - Project team owners get OWNER access.
-//	"projectPrivate" - Project team members get access according to
+//	"projectPrivate" - Project team members get access according to their
 //
-// their roles.
+// roles.
 //
-//	"publicRead" - Project team owners get OWNER access, and allUsers
+//	"publicRead" - Project team owners get OWNER access, and allUsers get
 //
-// get READER access.
+// READER access.
 //
-//	"publicReadWrite" - Project team owners get OWNER access, and
+//	"publicReadWrite" - Project team owners get OWNER access, and allUsers get
 //
-// allUsers get WRITER access.
+// WRITER access.
 func (c *BucketsInsertCall) PredefinedAcl(predefinedAcl string) *BucketsInsertCall {
 	c.urlParams_.Set("predefinedAcl", predefinedAcl)
 	return c
 }
 
 // PredefinedDefaultObjectAcl sets the optional parameter
-// "predefinedDefaultObjectAcl": Apply a predefined set of default
-// object access controls to this bucket.
+// "predefinedDefaultObjectAcl": Apply a predefined set of default object
+// access controls to this bucket.
 //
 // Possible values:
 //
@@ -4002,31 +4858,30 @@ func (c *BucketsInsertCall) PredefinedAcl(predefinedAcl string) *BucketsInsertCa
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *BucketsInsertCall) PredefinedDefaultObjectAcl(predefinedDefaultObjectAcl string) *BucketsInsertCall {
 	c.urlParams_.Set("predefinedDefaultObjectAcl", predefinedDefaultObjectAcl)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl, unless the bucket resource
-// specifies acl or defaultObjectAcl properties, when it defaults to
-// full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl, unless the bucket resource specifies acl or
+// defaultObjectAcl properties, when it defaults to full.
 //
 // Possible values:
 //
@@ -4037,31 +4892,29 @@ func (c *BucketsInsertCall) Projection(projection string) *BucketsInsertCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *BucketsInsertCall) UserProject(userProject string) *BucketsInsertCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsInsertCall) Fields(s ...googleapi.Field) *BucketsInsertCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsInsertCall) Context(ctx context.Context) *BucketsInsertCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsInsertCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -4070,18 +4923,11 @@ func (c *BucketsInsertCall) Header() http.Header {
 }
 
 func (c *BucketsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.bucket)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bucket)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b")
@@ -4091,16 +4937,15 @@ func (c *BucketsInsertCall) doRequest(alt string) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header = reqHeaders
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.insert" call.
-// Exactly one of *Bucket or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Bucket.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Bucket.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsInsertCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -4127,100 +4972,13 @@ func (c *BucketsInsertCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.insert", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Creates a new bucket.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.buckets.insert",
-	//   "parameterOrder": [
-	//     "project"
-	//   ],
-	//   "parameters": {
-	//     "predefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to this bucket.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead",
-	//         "publicReadWrite"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Project team owners get OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Project team owners get OWNER access.",
-	//         "Project team members get access according to their roles.",
-	//         "Project team owners get OWNER access, and allUsers get READER access.",
-	//         "Project team owners get OWNER access, and allUsers get WRITER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "predefinedDefaultObjectAcl": {
-	//       "description": "Apply a predefined set of default object access controls to this bucket.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "project": {
-	//       "description": "A valid API project identifier.",
-	//       "location": "query",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl, unless the bucket resource specifies acl or defaultObjectAcl properties, when it defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit owner, acl and defaultObjectAcl properties."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b",
-	//   "request": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "response": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.buckets.list":
 
 type BucketsListCall struct {
 	s            *Service
@@ -4239,31 +4997,30 @@ func (r *BucketsService) List(projectid string) *BucketsListCall {
 	return c
 }
 
-// MaxResults sets the optional parameter "maxResults": Maximum number
-// of buckets to return in a single response. The service will use this
-// parameter or 1,000 items, whichever is smaller.
+// MaxResults sets the optional parameter "maxResults": Maximum number of
+// buckets to return in a single response. The service will use this parameter
+// or 1,000 items, whichever is smaller.
 func (c *BucketsListCall) MaxResults(maxResults int64) *BucketsListCall {
 	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
 	return c
 }
 
-// PageToken sets the optional parameter "pageToken": A
-// previously-returned page token representing part of the larger set of
-// results to view.
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
 func (c *BucketsListCall) PageToken(pageToken string) *BucketsListCall {
 	c.urlParams_.Set("pageToken", pageToken)
 	return c
 }
 
-// Prefix sets the optional parameter "prefix": Filter results to
-// buckets whose names begin with this prefix.
+// Prefix sets the optional parameter "prefix": Filter results to buckets whose
+// names begin with this prefix.
 func (c *BucketsListCall) Prefix(prefix string) *BucketsListCall {
 	c.urlParams_.Set("prefix", prefix)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl.
 //
 // Possible values:
 //
@@ -4274,41 +5031,46 @@ func (c *BucketsListCall) Projection(projection string) *BucketsListCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// SoftDeleted sets the optional parameter "softDeleted": If true, only
+// soft-deleted bucket versions will be returned. The default is false. For
+// more information, see Soft Delete
+// (https://cloud.google.com/storage/docs/soft-delete).
+func (c *BucketsListCall) SoftDeleted(softDeleted bool) *BucketsListCall {
+	c.urlParams_.Set("softDeleted", fmt.Sprint(softDeleted))
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *BucketsListCall) UserProject(userProject string) *BucketsListCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsListCall) Fields(s ...googleapi.Field) *BucketsListCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *BucketsListCall) IfNoneMatch(entityTag string) *BucketsListCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsListCall) Context(ctx context.Context) *BucketsListCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsListCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -4317,35 +5079,28 @@ func (c *BucketsListCall) Header() http.Header {
 }
 
 func (c *BucketsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header = reqHeaders
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.list" call.
-// Exactly one of *Buckets or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Buckets.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Buckets.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsListCall) Do(opts ...googleapi.CallOption) (*Buckets, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -4372,74 +5127,12 @@ func (c *BucketsListCall) Do(opts ...googleapi.CallOption) (*Buckets, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves a list of buckets for a given project.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.buckets.list",
-	//   "parameterOrder": [
-	//     "project"
-	//   ],
-	//   "parameters": {
-	//     "maxResults": {
-	//       "default": "1000",
-	//       "description": "Maximum number of buckets to return in a single response. The service will use this parameter or 1,000 items, whichever is smaller.",
-	//       "format": "uint32",
-	//       "location": "query",
-	//       "minimum": "0",
-	//       "type": "integer"
-	//     },
-	//     "pageToken": {
-	//       "description": "A previously-returned page token representing part of the larger set of results to view.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "prefix": {
-	//       "description": "Filter results to buckets whose names begin with this prefix.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "project": {
-	//       "description": "A valid API project identifier.",
-	//       "location": "query",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit owner, acl and defaultObjectAcl properties."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b",
-	//   "response": {
-	//     "$ref": "Buckets"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
 
 // Pages invokes f for each page of results.
@@ -4447,7 +5140,7 @@ func (c *BucketsListCall) Do(opts ...googleapi.CallOption) (*Buckets, error) {
 // The provided context supersedes any context provided to the Context method.
 func (c *BucketsListCall) Pages(ctx context.Context, f func(*Buckets) error) error {
 	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken")) // reset paging to original point
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
 	for {
 		x, err := c.Do()
 		if err != nil {
@@ -4463,8 +5156,6 @@ func (c *BucketsListCall) Pages(ctx context.Context, f func(*Buckets) error) err
 	}
 }
 
-// method id "storage.buckets.lockRetentionPolicy":
-
 type BucketsLockRetentionPolicyCall struct {
 	s          *Service
 	bucket     string
@@ -4476,8 +5167,8 @@ type BucketsLockRetentionPolicyCall struct {
 // LockRetentionPolicy: Locks retention policy on a bucket.
 //
 //   - bucket: Name of a bucket.
-//   - ifMetagenerationMatch: Makes the operation conditional on whether
-//     bucket's current metageneration matches the given value.
+//   - ifMetagenerationMatch: Makes the operation conditional on whether bucket's
+//     current metageneration matches the given value.
 func (r *BucketsService) LockRetentionPolicy(bucket string, ifMetagenerationMatch int64) *BucketsLockRetentionPolicyCall {
 	c := &BucketsLockRetentionPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -4485,31 +5176,29 @@ func (r *BucketsService) LockRetentionPolicy(bucket string, ifMetagenerationMatc
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsLockRetentionPolicyCall) UserProject(userProject string) *BucketsLockRetentionPolicyCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsLockRetentionPolicyCall) Fields(s ...googleapi.Field) *BucketsLockRetentionPolicyCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsLockRetentionPolicyCall) Context(ctx context.Context) *BucketsLockRetentionPolicyCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsLockRetentionPolicyCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -4518,18 +5207,12 @@ func (c *BucketsLockRetentionPolicyCall) Header() http.Header {
 }
 
 func (c *BucketsLockRetentionPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/lockRetentionPolicy")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
+	req, err := http.NewRequest("POST", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -4537,16 +5220,15 @@ func (c *BucketsLockRetentionPolicyCall) doRequest(alt string) (*http.Response, 
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.lockRetentionPolicy", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.lockRetentionPolicy" call.
-// Exactly one of *Bucket or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Bucket.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Bucket.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsLockRetentionPolicyCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -4573,52 +5255,13 @@ func (c *BucketsLockRetentionPolicyCall) Do(opts ...googleapi.CallOption) (*Buck
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.lockRetentionPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Locks retention policy on a bucket.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.buckets.lockRetentionPolicy",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "ifMetagenerationMatch"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether bucket's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/lockRetentionPolicy",
-	//   "response": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.buckets.patch":
 
 type BucketsPatchCall struct {
 	s          *Service
@@ -4629,9 +5272,8 @@ type BucketsPatchCall struct {
 	header_    http.Header
 }
 
-// Patch: Patches a bucket. Changes to the bucket will be readable
-// immediately after writing, but configuration changes may take time to
-// propagate.
+// Patch: Patches a bucket. Changes to the bucket will be readable immediately
+// after writing, but configuration changes may take time to propagate.
 //
 // - bucket: Name of a bucket.
 func (r *BucketsService) Patch(bucket string, bucket2 *Bucket) *BucketsPatchCall {
@@ -4641,10 +5283,9 @@ func (r *BucketsService) Patch(bucket string, bucket2 *Bucket) *BucketsPatchCall
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the return of the bucket metadata
-// conditional on whether the bucket's current metageneration matches
-// the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the return of the bucket metadata conditional on whether the bucket's
+// current metageneration matches the given value.
 func (c *BucketsPatchCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *BucketsPatchCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
@@ -4652,8 +5293,8 @@ func (c *BucketsPatchCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *B
 
 // IfMetagenerationNotMatch sets the optional parameter
 // "ifMetagenerationNotMatch": Makes the return of the bucket metadata
-// conditional on whether the bucket's current metageneration does not
-// match the given value.
+// conditional on whether the bucket's current metageneration does not match
+// the given value.
 func (c *BucketsPatchCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *BucketsPatchCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
@@ -4669,25 +5310,25 @@ func (c *BucketsPatchCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int
 // allAuthenticatedUsers get READER access.
 //
 //	"private" - Project team owners get OWNER access.
-//	"projectPrivate" - Project team members get access according to
+//	"projectPrivate" - Project team members get access according to their
 //
-// their roles.
+// roles.
 //
-//	"publicRead" - Project team owners get OWNER access, and allUsers
+//	"publicRead" - Project team owners get OWNER access, and allUsers get
 //
-// get READER access.
+// READER access.
 //
-//	"publicReadWrite" - Project team owners get OWNER access, and
+//	"publicReadWrite" - Project team owners get OWNER access, and allUsers get
 //
-// allUsers get WRITER access.
+// WRITER access.
 func (c *BucketsPatchCall) PredefinedAcl(predefinedAcl string) *BucketsPatchCall {
 	c.urlParams_.Set("predefinedAcl", predefinedAcl)
 	return c
 }
 
 // PredefinedDefaultObjectAcl sets the optional parameter
-// "predefinedDefaultObjectAcl": Apply a predefined set of default
-// object access controls to this bucket.
+// "predefinedDefaultObjectAcl": Apply a predefined set of default object
+// access controls to this bucket.
 //
 // Possible values:
 //
@@ -4695,29 +5336,29 @@ func (c *BucketsPatchCall) PredefinedAcl(predefinedAcl string) *BucketsPatchCall
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *BucketsPatchCall) PredefinedDefaultObjectAcl(predefinedDefaultObjectAcl string) *BucketsPatchCall {
 	c.urlParams_.Set("predefinedDefaultObjectAcl", predefinedDefaultObjectAcl)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to full.
 //
 // Possible values:
 //
@@ -4728,31 +5369,29 @@ func (c *BucketsPatchCall) Projection(projection string) *BucketsPatchCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsPatchCall) UserProject(userProject string) *BucketsPatchCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsPatchCall) Fields(s ...googleapi.Field) *BucketsPatchCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsPatchCall) Context(ctx context.Context) *BucketsPatchCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsPatchCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -4761,18 +5400,11 @@ func (c *BucketsPatchCall) Header() http.Header {
 }
 
 func (c *BucketsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.bucket2)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bucket2)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}")
@@ -4785,16 +5417,15 @@ func (c *BucketsPatchCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.patch" call.
-// Exactly one of *Bucket or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Bucket.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Bucket.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsPatchCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -4821,111 +5452,236 @@ func (c *BucketsPatchCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Patches a bucket. Changes to the bucket will be readable immediately after writing, but configuration changes may take time to propagate.",
-	//   "httpMethod": "PATCH",
-	//   "id": "storage.buckets.patch",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the return of the bucket metadata conditional on whether the bucket's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the return of the bucket metadata conditional on whether the bucket's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "predefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to this bucket.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead",
-	//         "publicReadWrite"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Project team owners get OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Project team owners get OWNER access.",
-	//         "Project team members get access according to their roles.",
-	//         "Project team owners get OWNER access, and allUsers get READER access.",
-	//         "Project team owners get OWNER access, and allUsers get WRITER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "predefinedDefaultObjectAcl": {
-	//       "description": "Apply a predefined set of default object access controls to this bucket.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit owner, acl and defaultObjectAcl properties."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}",
-	//   "request": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "response": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
 
-// method id "storage.buckets.setIamPolicy":
+type BucketsRelocateCall struct {
+	s                     *Service
+	bucket                string
+	relocatebucketrequest *RelocateBucketRequest
+	urlParams_            gensupport.URLParams
+	ctx_                  context.Context
+	header_               http.Header
+}
+
+// Relocate: Initiates a long-running Relocate Bucket operation on the
+// specified bucket.
+//
+// - bucket: Name of the bucket to be moved.
+func (r *BucketsService) Relocate(bucket string, relocatebucketrequest *RelocateBucketRequest) *BucketsRelocateCall {
+	c := &BucketsRelocateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.relocatebucketrequest = relocatebucketrequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *BucketsRelocateCall) Fields(s ...googleapi.Field) *BucketsRelocateCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *BucketsRelocateCall) Context(ctx context.Context) *BucketsRelocateCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *BucketsRelocateCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *BucketsRelocateCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.relocatebucketrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/relocate")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.relocate", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.relocate" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *BucketsRelocateCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.relocate", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type BucketsRestoreCall struct {
+	s          *Service
+	bucket     string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Restore: Restores a soft-deleted bucket.
+//
+// - bucket: Name of a bucket.
+// - generation: Generation of a bucket.
+func (r *BucketsService) Restore(bucket string, generation int64) *BucketsRestoreCall {
+	c := &BucketsRestoreCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.urlParams_.Set("generation", fmt.Sprint(generation))
+	return c
+}
+
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to full.
+//
+// Possible values:
+//
+//	"full" - Include all properties.
+//	"noAcl" - Omit owner, acl and defaultObjectAcl properties.
+func (c *BucketsRestoreCall) Projection(projection string) *BucketsRestoreCall {
+	c.urlParams_.Set("projection", projection)
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
+func (c *BucketsRestoreCall) UserProject(userProject string) *BucketsRestoreCall {
+	c.urlParams_.Set("userProject", userProject)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *BucketsRestoreCall) Fields(s ...googleapi.Field) *BucketsRestoreCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *BucketsRestoreCall) Context(ctx context.Context) *BucketsRestoreCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *BucketsRestoreCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *BucketsRestoreCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/restore")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.restore", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.restore" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Bucket.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *BucketsRestoreCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Bucket{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.restore", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type BucketsSetIamPolicyCall struct {
 	s          *Service
@@ -4946,31 +5702,29 @@ func (r *BucketsService) SetIamPolicy(bucket string, policy *Policy) *BucketsSet
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsSetIamPolicyCall) UserProject(userProject string) *BucketsSetIamPolicyCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsSetIamPolicyCall) Fields(s ...googleapi.Field) *BucketsSetIamPolicyCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsSetIamPolicyCall) Context(ctx context.Context) *BucketsSetIamPolicyCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsSetIamPolicyCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -4979,18 +5733,11 @@ func (c *BucketsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *BucketsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.policy)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.policy)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/iam")
@@ -5003,16 +5750,15 @@ func (c *BucketsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) 
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.setIamPolicy" call.
-// Exactly one of *Policy or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Policy.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -5039,46 +5785,13 @@ func (c *BucketsSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, err
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.setIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates an IAM policy for the specified bucket.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.buckets.setIamPolicy",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/iam",
-	//   "request": {
-	//     "$ref": "Policy"
-	//   },
-	//   "response": {
-	//     "$ref": "Policy"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.buckets.testIamPermissions":
 
 type BucketsTestIamPermissionsCall struct {
 	s            *Service
@@ -5089,8 +5802,8 @@ type BucketsTestIamPermissionsCall struct {
 	header_      http.Header
 }
 
-// TestIamPermissions: Tests a set of permissions on the given bucket to
-// see which, if any, are held by the caller.
+// TestIamPermissions: Tests a set of permissions on the given bucket to see
+// which, if any, are held by the caller.
 //
 // - bucket: Name of a bucket.
 // - permissions: Permissions to test.
@@ -5101,41 +5814,37 @@ func (r *BucketsService) TestIamPermissions(bucket string, permissions []string)
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsTestIamPermissionsCall) UserProject(userProject string) *BucketsTestIamPermissionsCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsTestIamPermissionsCall) Fields(s ...googleapi.Field) *BucketsTestIamPermissionsCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *BucketsTestIamPermissionsCall) IfNoneMatch(entityTag string) *BucketsTestIamPermissionsCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsTestIamPermissionsCall) Context(ctx context.Context) *BucketsTestIamPermissionsCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsTestIamPermissionsCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -5144,21 +5853,15 @@ func (c *BucketsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *BucketsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/iam/testPermissions")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5166,16 +5869,16 @@ func (c *BucketsTestIamPermissionsCall) doRequest(alt string) (*http.Response, e
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.testIamPermissions", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.testIamPermissions" call.
-// Exactly one of *TestIamPermissionsResponse or error will be non-nil.
 // Any non-2xx status code is an error. Response headers are in either
-// *TestIamPermissionsResponse.ServerResponse.Header or (if a response
-// was returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// *TestIamPermissionsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
 func (c *BucketsTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestIamPermissionsResponse, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -5202,54 +5905,13 @@ func (c *BucketsTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestI
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.testIamPermissions", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Tests a set of permissions on the given bucket to see which, if any, are held by the caller.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.buckets.testIamPermissions",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "permissions"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "permissions": {
-	//       "description": "Permissions to test.",
-	//       "location": "query",
-	//       "repeated": true,
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/iam/testPermissions",
-	//   "response": {
-	//     "$ref": "TestIamPermissionsResponse"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.buckets.update":
 
 type BucketsUpdateCall struct {
 	s          *Service
@@ -5260,9 +5922,8 @@ type BucketsUpdateCall struct {
 	header_    http.Header
 }
 
-// Update: Updates a bucket. Changes to the bucket will be readable
-// immediately after writing, but configuration changes may take time to
-// propagate.
+// Update: Updates a bucket. Changes to the bucket will be readable immediately
+// after writing, but configuration changes may take time to propagate.
 //
 // - bucket: Name of a bucket.
 func (r *BucketsService) Update(bucket string, bucket2 *Bucket) *BucketsUpdateCall {
@@ -5272,10 +5933,9 @@ func (r *BucketsService) Update(bucket string, bucket2 *Bucket) *BucketsUpdateCa
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the return of the bucket metadata
-// conditional on whether the bucket's current metageneration matches
-// the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the return of the bucket metadata conditional on whether the bucket's
+// current metageneration matches the given value.
 func (c *BucketsUpdateCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *BucketsUpdateCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
@@ -5283,8 +5943,8 @@ func (c *BucketsUpdateCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *
 
 // IfMetagenerationNotMatch sets the optional parameter
 // "ifMetagenerationNotMatch": Makes the return of the bucket metadata
-// conditional on whether the bucket's current metageneration does not
-// match the given value.
+// conditional on whether the bucket's current metageneration does not match
+// the given value.
 func (c *BucketsUpdateCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *BucketsUpdateCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
@@ -5300,25 +5960,25 @@ func (c *BucketsUpdateCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch in
 // allAuthenticatedUsers get READER access.
 //
 //	"private" - Project team owners get OWNER access.
-//	"projectPrivate" - Project team members get access according to
+//	"projectPrivate" - Project team members get access according to their
 //
-// their roles.
+// roles.
 //
-//	"publicRead" - Project team owners get OWNER access, and allUsers
+//	"publicRead" - Project team owners get OWNER access, and allUsers get
 //
-// get READER access.
+// READER access.
 //
-//	"publicReadWrite" - Project team owners get OWNER access, and
+//	"publicReadWrite" - Project team owners get OWNER access, and allUsers get
 //
-// allUsers get WRITER access.
+// WRITER access.
 func (c *BucketsUpdateCall) PredefinedAcl(predefinedAcl string) *BucketsUpdateCall {
 	c.urlParams_.Set("predefinedAcl", predefinedAcl)
 	return c
 }
 
 // PredefinedDefaultObjectAcl sets the optional parameter
-// "predefinedDefaultObjectAcl": Apply a predefined set of default
-// object access controls to this bucket.
+// "predefinedDefaultObjectAcl": Apply a predefined set of default object
+// access controls to this bucket.
 //
 // Possible values:
 //
@@ -5326,29 +5986,29 @@ func (c *BucketsUpdateCall) PredefinedAcl(predefinedAcl string) *BucketsUpdateCa
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *BucketsUpdateCall) PredefinedDefaultObjectAcl(predefinedDefaultObjectAcl string) *BucketsUpdateCall {
 	c.urlParams_.Set("predefinedDefaultObjectAcl", predefinedDefaultObjectAcl)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to full.
 //
 // Possible values:
 //
@@ -5359,31 +6019,29 @@ func (c *BucketsUpdateCall) Projection(projection string) *BucketsUpdateCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *BucketsUpdateCall) UserProject(userProject string) *BucketsUpdateCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *BucketsUpdateCall) Fields(s ...googleapi.Field) *BucketsUpdateCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *BucketsUpdateCall) Context(ctx context.Context) *BucketsUpdateCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *BucketsUpdateCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -5392,18 +6050,11 @@ func (c *BucketsUpdateCall) Header() http.Header {
 }
 
 func (c *BucketsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.bucket2)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bucket2)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}")
@@ -5416,16 +6067,15 @@ func (c *BucketsUpdateCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.buckets.update" call.
-// Exactly one of *Bucket or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Bucket.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Bucket.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *BucketsUpdateCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -5452,111 +6102,13 @@ func (c *BucketsUpdateCall) Do(opts ...googleapi.CallOption) (*Bucket, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates a bucket. Changes to the bucket will be readable immediately after writing, but configuration changes may take time to propagate.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.buckets.update",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the return of the bucket metadata conditional on whether the bucket's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the return of the bucket metadata conditional on whether the bucket's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "predefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to this bucket.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead",
-	//         "publicReadWrite"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Project team owners get OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Project team owners get OWNER access.",
-	//         "Project team members get access according to their roles.",
-	//         "Project team owners get OWNER access, and allUsers get READER access.",
-	//         "Project team owners get OWNER access, and allUsers get WRITER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "predefinedDefaultObjectAcl": {
-	//       "description": "Apply a predefined set of default object access controls to this bucket.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit owner, acl and defaultObjectAcl properties."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}",
-	//   "request": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "response": {
-	//     "$ref": "Bucket"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.channels.stop":
 
 type ChannelsStopCall struct {
 	s          *Service
@@ -5574,23 +6126,21 @@ func (r *ChannelsService) Stop(channel *Channel) *ChannelsStopCall {
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ChannelsStopCall) Fields(s ...googleapi.Field) *ChannelsStopCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ChannelsStopCall) Context(ctx context.Context) *ChannelsStopCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ChannelsStopCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -5599,18 +6149,11 @@ func (c *ChannelsStopCall) Header() http.Header {
 }
 
 func (c *ChannelsStopCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.channel)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.channel)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "channels/stop")
@@ -5620,6 +6163,7 @@ func (c *ChannelsStopCall) doRequest(alt string) (*http.Response, error) {
 		return nil, err
 	}
 	req.Header = reqHeaders
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.channels.stop", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5634,28 +6178,9 @@ func (c *ChannelsStopCall) Do(opts ...googleapi.CallOption) error {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.channels.stop", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Stop watching resources through this channel",
-	//   "httpMethod": "POST",
-	//   "id": "storage.channels.stop",
-	//   "path": "channels/stop",
-	//   "request": {
-	//     "$ref": "Channel",
-	//     "parameterName": "resource"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.defaultObjectAccessControls.delete":
 
 type DefaultObjectAccessControlsDeleteCall struct {
 	s          *Service
@@ -5666,8 +6191,8 @@ type DefaultObjectAccessControlsDeleteCall struct {
 	header_    http.Header
 }
 
-// Delete: Permanently deletes the default object ACL entry for the
-// specified entity on the specified bucket.
+// Delete: Permanently deletes the default object ACL entry for the specified
+// entity on the specified bucket.
 //
 //   - bucket: Name of a bucket.
 //   - entity: The entity holding the permission. Can be user-userId,
@@ -5680,31 +6205,29 @@ func (r *DefaultObjectAccessControlsService) Delete(bucket string, entity string
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *DefaultObjectAccessControlsDeleteCall) UserProject(userProject string) *DefaultObjectAccessControlsDeleteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *DefaultObjectAccessControlsDeleteCall) Fields(s ...googleapi.Field) *DefaultObjectAccessControlsDeleteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *DefaultObjectAccessControlsDeleteCall) Context(ctx context.Context) *DefaultObjectAccessControlsDeleteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *DefaultObjectAccessControlsDeleteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -5713,18 +6236,12 @@ func (c *DefaultObjectAccessControlsDeleteCall) Header() http.Header {
 }
 
 func (c *DefaultObjectAccessControlsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/defaultObjectAcl/{entity}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5733,6 +6250,7 @@ func (c *DefaultObjectAccessControlsDeleteCall) doRequest(alt string) (*http.Res
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -5747,44 +6265,9 @@ func (c *DefaultObjectAccessControlsDeleteCall) Do(opts ...googleapi.CallOption)
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.delete", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Permanently deletes the default object ACL entry for the specified entity on the specified bucket.",
-	//   "httpMethod": "DELETE",
-	//   "id": "storage.defaultObjectAccessControls.delete",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/defaultObjectAcl/{entity}",
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.defaultObjectAccessControls.get":
 
 type DefaultObjectAccessControlsGetCall struct {
 	s            *Service
@@ -5796,8 +6279,8 @@ type DefaultObjectAccessControlsGetCall struct {
 	header_      http.Header
 }
 
-// Get: Returns the default object ACL entry for the specified entity on
-// the specified bucket.
+// Get: Returns the default object ACL entry for the specified entity on the
+// specified bucket.
 //
 //   - bucket: Name of a bucket.
 //   - entity: The entity holding the permission. Can be user-userId,
@@ -5810,41 +6293,37 @@ func (r *DefaultObjectAccessControlsService) Get(bucket string, entity string) *
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *DefaultObjectAccessControlsGetCall) UserProject(userProject string) *DefaultObjectAccessControlsGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *DefaultObjectAccessControlsGetCall) Fields(s ...googleapi.Field) *DefaultObjectAccessControlsGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *DefaultObjectAccessControlsGetCall) IfNoneMatch(entityTag string) *DefaultObjectAccessControlsGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *DefaultObjectAccessControlsGetCall) Context(ctx context.Context) *DefaultObjectAccessControlsGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *DefaultObjectAccessControlsGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -5853,21 +6332,15 @@ func (c *DefaultObjectAccessControlsGetCall) Header() http.Header {
 }
 
 func (c *DefaultObjectAccessControlsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/defaultObjectAcl/{entity}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -5876,16 +6349,16 @@ func (c *DefaultObjectAccessControlsGetCall) doRequest(alt string) (*http.Respon
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.defaultObjectAccessControls.get" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *DefaultObjectAccessControlsGetCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -5912,50 +6385,13 @@ func (c *DefaultObjectAccessControlsGetCall) Do(opts ...googleapi.CallOption) (*
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Returns the default object ACL entry for the specified entity on the specified bucket.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.defaultObjectAccessControls.get",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/defaultObjectAcl/{entity}",
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.defaultObjectAccessControls.insert":
 
 type DefaultObjectAccessControlsInsertCall struct {
 	s                   *Service
@@ -5966,8 +6402,7 @@ type DefaultObjectAccessControlsInsertCall struct {
 	header_             http.Header
 }
 
-// Insert: Creates a new default object ACL entry on the specified
-// bucket.
+// Insert: Creates a new default object ACL entry on the specified bucket.
 //
 // - bucket: Name of a bucket.
 func (r *DefaultObjectAccessControlsService) Insert(bucket string, objectaccesscontrol *ObjectAccessControl) *DefaultObjectAccessControlsInsertCall {
@@ -5977,31 +6412,29 @@ func (r *DefaultObjectAccessControlsService) Insert(bucket string, objectaccessc
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *DefaultObjectAccessControlsInsertCall) UserProject(userProject string) *DefaultObjectAccessControlsInsertCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *DefaultObjectAccessControlsInsertCall) Fields(s ...googleapi.Field) *DefaultObjectAccessControlsInsertCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *DefaultObjectAccessControlsInsertCall) Context(ctx context.Context) *DefaultObjectAccessControlsInsertCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *DefaultObjectAccessControlsInsertCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -6010,18 +6443,11 @@ func (c *DefaultObjectAccessControlsInsertCall) Header() http.Header {
 }
 
 func (c *DefaultObjectAccessControlsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.objectaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.objectaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/defaultObjectAcl")
@@ -6034,16 +6460,16 @@ func (c *DefaultObjectAccessControlsInsertCall) doRequest(alt string) (*http.Res
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.defaultObjectAccessControls.insert" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *DefaultObjectAccessControlsInsertCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -6070,46 +6496,13 @@ func (c *DefaultObjectAccessControlsInsertCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.insert", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Creates a new default object ACL entry on the specified bucket.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.defaultObjectAccessControls.insert",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/defaultObjectAcl",
-	//   "request": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.defaultObjectAccessControls.list":
 
 type DefaultObjectAccessControlsListCall struct {
 	s            *Service
@@ -6129,58 +6522,53 @@ func (r *DefaultObjectAccessControlsService) List(bucket string) *DefaultObjectA
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": If present, only return default ACL listing
-// if the bucket's current metageneration matches this value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// If present, only return default ACL listing if the bucket's current
+// metageneration matches this value.
 func (c *DefaultObjectAccessControlsListCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *DefaultObjectAccessControlsListCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": If present, only return default ACL
-// listing if the bucket's current metageneration does not match the
-// given value.
+// "ifMetagenerationNotMatch": If present, only return default ACL listing if
+// the bucket's current metageneration does not match the given value.
 func (c *DefaultObjectAccessControlsListCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *DefaultObjectAccessControlsListCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *DefaultObjectAccessControlsListCall) UserProject(userProject string) *DefaultObjectAccessControlsListCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *DefaultObjectAccessControlsListCall) Fields(s ...googleapi.Field) *DefaultObjectAccessControlsListCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *DefaultObjectAccessControlsListCall) IfNoneMatch(entityTag string) *DefaultObjectAccessControlsListCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *DefaultObjectAccessControlsListCall) Context(ctx context.Context) *DefaultObjectAccessControlsListCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *DefaultObjectAccessControlsListCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -6189,21 +6577,15 @@ func (c *DefaultObjectAccessControlsListCall) Header() http.Header {
 }
 
 func (c *DefaultObjectAccessControlsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/defaultObjectAcl")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6211,16 +6593,16 @@ func (c *DefaultObjectAccessControlsListCall) doRequest(alt string) (*http.Respo
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.defaultObjectAccessControls.list" call.
-// Exactly one of *ObjectAccessControls or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControls.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControls.ServerResponse.Header or (if a response was returned
+// at all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *DefaultObjectAccessControlsListCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControls, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -6247,55 +6629,13 @@ func (c *DefaultObjectAccessControlsListCall) Do(opts ...googleapi.CallOption) (
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves default object ACL entries on the specified bucket.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.defaultObjectAccessControls.list",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "If present, only return default ACL listing if the bucket's current metageneration matches this value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "If present, only return default ACL listing if the bucket's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/defaultObjectAcl",
-	//   "response": {
-	//     "$ref": "ObjectAccessControls"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.defaultObjectAccessControls.patch":
 
 type DefaultObjectAccessControlsPatchCall struct {
 	s                   *Service
@@ -6321,31 +6661,29 @@ func (r *DefaultObjectAccessControlsService) Patch(bucket string, entity string,
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *DefaultObjectAccessControlsPatchCall) UserProject(userProject string) *DefaultObjectAccessControlsPatchCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *DefaultObjectAccessControlsPatchCall) Fields(s ...googleapi.Field) *DefaultObjectAccessControlsPatchCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *DefaultObjectAccessControlsPatchCall) Context(ctx context.Context) *DefaultObjectAccessControlsPatchCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *DefaultObjectAccessControlsPatchCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -6354,18 +6692,11 @@ func (c *DefaultObjectAccessControlsPatchCall) Header() http.Header {
 }
 
 func (c *DefaultObjectAccessControlsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.objectaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.objectaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/defaultObjectAcl/{entity}")
@@ -6379,16 +6710,16 @@ func (c *DefaultObjectAccessControlsPatchCall) doRequest(alt string) (*http.Resp
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.defaultObjectAccessControls.patch" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *DefaultObjectAccessControlsPatchCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -6415,53 +6746,13 @@ func (c *DefaultObjectAccessControlsPatchCall) Do(opts ...googleapi.CallOption) 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Patches a default object ACL entry on the specified bucket.",
-	//   "httpMethod": "PATCH",
-	//   "id": "storage.defaultObjectAccessControls.patch",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/defaultObjectAcl/{entity}",
-	//   "request": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.defaultObjectAccessControls.update":
 
 type DefaultObjectAccessControlsUpdateCall struct {
 	s                   *Service
@@ -6487,31 +6778,29 @@ func (r *DefaultObjectAccessControlsService) Update(bucket string, entity string
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *DefaultObjectAccessControlsUpdateCall) UserProject(userProject string) *DefaultObjectAccessControlsUpdateCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *DefaultObjectAccessControlsUpdateCall) Fields(s ...googleapi.Field) *DefaultObjectAccessControlsUpdateCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *DefaultObjectAccessControlsUpdateCall) Context(ctx context.Context) *DefaultObjectAccessControlsUpdateCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *DefaultObjectAccessControlsUpdateCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -6520,18 +6809,11 @@ func (c *DefaultObjectAccessControlsUpdateCall) Header() http.Header {
 }
 
 func (c *DefaultObjectAccessControlsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.objectaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.objectaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/defaultObjectAcl/{entity}")
@@ -6545,16 +6827,16 @@ func (c *DefaultObjectAccessControlsUpdateCall) doRequest(alt string) (*http.Res
 		"bucket": c.bucket,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.defaultObjectAccessControls.update" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *DefaultObjectAccessControlsUpdateCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -6581,53 +6863,1504 @@ func (c *DefaultObjectAccessControlsUpdateCall) Do(opts ...googleapi.CallOption)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.defaultObjectAccessControls.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates a default object ACL entry on the specified bucket.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.defaultObjectAccessControls.update",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/defaultObjectAcl/{entity}",
-	//   "request": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
 
-// method id "storage.notifications.delete":
+type FoldersDeleteCall struct {
+	s          *Service
+	bucket     string
+	folder     string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Delete: Permanently deletes a folder. Only applicable to buckets with
+// hierarchical namespace enabled.
+//
+// - bucket: Name of the bucket in which the folder resides.
+// - folder: Name of a folder.
+func (r *FoldersService) Delete(bucket string, folder string) *FoldersDeleteCall {
+	c := &FoldersDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.folder = folder
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// If set, only deletes the folder if its metageneration matches this value.
+func (c *FoldersDeleteCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *FoldersDeleteCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": If set, only deletes the folder if its
+// metageneration does not match this value.
+func (c *FoldersDeleteCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *FoldersDeleteCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *FoldersDeleteCall) Fields(s ...googleapi.Field) *FoldersDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *FoldersDeleteCall) Context(ctx context.Context) *FoldersDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *FoldersDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *FoldersDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/folders/{folder}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+		"folder": c.folder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.folders.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.folders.delete" call.
+func (c *FoldersDeleteCall) Do(opts ...googleapi.CallOption) error {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if err != nil {
+		return err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return gensupport.WrapError(err)
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.folders.delete", "response", internallog.HTTPResponse(res, nil))
+	return nil
+}
+
+type FoldersGetCall struct {
+	s            *Service
+	bucket       string
+	folder       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Returns metadata for the specified folder. Only applicable to buckets
+// with hierarchical namespace enabled.
+//
+// - bucket: Name of the bucket in which the folder resides.
+// - folder: Name of a folder.
+func (r *FoldersService) Get(bucket string, folder string) *FoldersGetCall {
+	c := &FoldersGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.folder = folder
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the return of the folder metadata conditional on whether the folder's
+// current metageneration matches the given value.
+func (c *FoldersGetCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *FoldersGetCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": Makes the return of the folder metadata
+// conditional on whether the folder's current metageneration does not match
+// the given value.
+func (c *FoldersGetCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *FoldersGetCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *FoldersGetCall) Fields(s ...googleapi.Field) *FoldersGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *FoldersGetCall) IfNoneMatch(entityTag string) *FoldersGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *FoldersGetCall) Context(ctx context.Context) *FoldersGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *FoldersGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *FoldersGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/folders/{folder}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+		"folder": c.folder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.folders.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.folders.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Folder.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *FoldersGetCall) Do(opts ...googleapi.CallOption) (*Folder, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Folder{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.folders.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type FoldersInsertCall struct {
+	s          *Service
+	bucket     string
+	folder     *Folder
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Insert: Creates a new folder. Only applicable to buckets with hierarchical
+// namespace enabled.
+//
+// - bucket: Name of the bucket in which the folder resides.
+func (r *FoldersService) Insert(bucket string, folder *Folder) *FoldersInsertCall {
+	c := &FoldersInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.folder = folder
+	return c
+}
+
+// Recursive sets the optional parameter "recursive": If true, any parent
+// folder which doesn’t exist will be created automatically.
+func (c *FoldersInsertCall) Recursive(recursive bool) *FoldersInsertCall {
+	c.urlParams_.Set("recursive", fmt.Sprint(recursive))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *FoldersInsertCall) Fields(s ...googleapi.Field) *FoldersInsertCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *FoldersInsertCall) Context(ctx context.Context) *FoldersInsertCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *FoldersInsertCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *FoldersInsertCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.folder)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/folders")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.folders.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.folders.insert" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Folder.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *FoldersInsertCall) Do(opts ...googleapi.CallOption) (*Folder, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Folder{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.folders.insert", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type FoldersListCall struct {
+	s            *Service
+	bucket       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Retrieves a list of folders matching the criteria. Only applicable to
+// buckets with hierarchical namespace enabled.
+//
+// - bucket: Name of the bucket in which to look for folders.
+func (r *FoldersService) List(bucket string) *FoldersListCall {
+	c := &FoldersListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	return c
+}
+
+// Delimiter sets the optional parameter "delimiter": Returns results in a
+// directory-like mode. The only supported value is '/'. If set, items will
+// only contain folders that either exactly match the prefix, or are one level
+// below the prefix.
+func (c *FoldersListCall) Delimiter(delimiter string) *FoldersListCall {
+	c.urlParams_.Set("delimiter", delimiter)
+	return c
+}
+
+// EndOffset sets the optional parameter "endOffset": Filter results to folders
+// whose names are lexicographically before endOffset. If startOffset is also
+// set, the folders listed will have names between startOffset (inclusive) and
+// endOffset (exclusive).
+func (c *FoldersListCall) EndOffset(endOffset string) *FoldersListCall {
+	c.urlParams_.Set("endOffset", endOffset)
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of items to
+// return in a single page of responses.
+func (c *FoldersListCall) PageSize(pageSize int64) *FoldersListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
+func (c *FoldersListCall) PageToken(pageToken string) *FoldersListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Prefix sets the optional parameter "prefix": Filter results to folders whose
+// paths begin with this prefix. If set, the value must either be an empty
+// string or end with a '/'.
+func (c *FoldersListCall) Prefix(prefix string) *FoldersListCall {
+	c.urlParams_.Set("prefix", prefix)
+	return c
+}
+
+// StartOffset sets the optional parameter "startOffset": Filter results to
+// folders whose names are lexicographically equal to or after startOffset. If
+// endOffset is also set, the folders listed will have names between
+// startOffset (inclusive) and endOffset (exclusive).
+func (c *FoldersListCall) StartOffset(startOffset string) *FoldersListCall {
+	c.urlParams_.Set("startOffset", startOffset)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *FoldersListCall) Fields(s ...googleapi.Field) *FoldersListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *FoldersListCall) IfNoneMatch(entityTag string) *FoldersListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *FoldersListCall) Context(ctx context.Context) *FoldersListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *FoldersListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *FoldersListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/folders")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.folders.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.folders.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Folders.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *FoldersListCall) Do(opts ...googleapi.CallOption) (*Folders, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Folders{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.folders.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *FoldersListCall) Pages(ctx context.Context, f func(*Folders) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type FoldersRenameCall struct {
+	s                 *Service
+	bucket            string
+	sourceFolder      string
+	destinationFolder string
+	urlParams_        gensupport.URLParams
+	ctx_              context.Context
+	header_           http.Header
+}
+
+// Rename: Renames a source folder to a destination folder. Only applicable to
+// buckets with hierarchical namespace enabled.
+//
+// - bucket: Name of the bucket in which the folders are in.
+// - destinationFolder: Name of the destination folder.
+// - sourceFolder: Name of the source folder.
+func (r *FoldersService) Rename(bucket string, sourceFolder string, destinationFolder string) *FoldersRenameCall {
+	c := &FoldersRenameCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.sourceFolder = sourceFolder
+	c.destinationFolder = destinationFolder
+	return c
+}
+
+// IfSourceMetagenerationMatch sets the optional parameter
+// "ifSourceMetagenerationMatch": Makes the operation conditional on whether
+// the source object's current metageneration matches the given value.
+func (c *FoldersRenameCall) IfSourceMetagenerationMatch(ifSourceMetagenerationMatch int64) *FoldersRenameCall {
+	c.urlParams_.Set("ifSourceMetagenerationMatch", fmt.Sprint(ifSourceMetagenerationMatch))
+	return c
+}
+
+// IfSourceMetagenerationNotMatch sets the optional parameter
+// "ifSourceMetagenerationNotMatch": Makes the operation conditional on whether
+// the source object's current metageneration does not match the given value.
+func (c *FoldersRenameCall) IfSourceMetagenerationNotMatch(ifSourceMetagenerationNotMatch int64) *FoldersRenameCall {
+	c.urlParams_.Set("ifSourceMetagenerationNotMatch", fmt.Sprint(ifSourceMetagenerationNotMatch))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *FoldersRenameCall) Fields(s ...googleapi.Field) *FoldersRenameCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *FoldersRenameCall) Context(ctx context.Context) *FoldersRenameCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *FoldersRenameCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *FoldersRenameCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/folders/{sourceFolder}/renameTo/folders/{destinationFolder}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":            c.bucket,
+		"sourceFolder":      c.sourceFolder,
+		"destinationFolder": c.destinationFolder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.folders.rename", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.folders.rename" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *FoldersRenameCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.folders.rename", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ManagedFoldersDeleteCall struct {
+	s             *Service
+	bucket        string
+	managedFolder string
+	urlParams_    gensupport.URLParams
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// Delete: Permanently deletes a managed folder.
+//
+// - bucket: Name of the bucket containing the managed folder.
+// - managedFolder: The managed folder name/path.
+func (r *ManagedFoldersService) Delete(bucket string, managedFolder string) *ManagedFoldersDeleteCall {
+	c := &ManagedFoldersDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.managedFolder = managedFolder
+	return c
+}
+
+// AllowNonEmpty sets the optional parameter "allowNonEmpty": Allows the
+// deletion of a managed folder even if it is not empty. A managed folder is
+// empty if there are no objects or managed folders that it applies to. Callers
+// must have storage.managedFolders.setIamPolicy permission.
+func (c *ManagedFoldersDeleteCall) AllowNonEmpty(allowNonEmpty bool) *ManagedFoldersDeleteCall {
+	c.urlParams_.Set("allowNonEmpty", fmt.Sprint(allowNonEmpty))
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// If set, only deletes the managed folder if its metageneration matches this
+// value.
+func (c *ManagedFoldersDeleteCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ManagedFoldersDeleteCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": If set, only deletes the managed folder if its
+// metageneration does not match this value.
+func (c *ManagedFoldersDeleteCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ManagedFoldersDeleteCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersDeleteCall) Fields(s ...googleapi.Field) *ManagedFoldersDeleteCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersDeleteCall) Context(ctx context.Context) *ManagedFoldersDeleteCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersDeleteCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersDeleteCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders/{managedFolder}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("DELETE", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":        c.bucket,
+		"managedFolder": c.managedFolder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.delete", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.delete" call.
+func (c *ManagedFoldersDeleteCall) Do(opts ...googleapi.CallOption) error {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if err != nil {
+		return err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return gensupport.WrapError(err)
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.delete", "response", internallog.HTTPResponse(res, nil))
+	return nil
+}
+
+type ManagedFoldersGetCall struct {
+	s             *Service
+	bucket        string
+	managedFolder string
+	urlParams_    gensupport.URLParams
+	ifNoneMatch_  string
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// Get: Returns metadata of the specified managed folder.
+//
+// - bucket: Name of the bucket containing the managed folder.
+// - managedFolder: The managed folder name/path.
+func (r *ManagedFoldersService) Get(bucket string, managedFolder string) *ManagedFoldersGetCall {
+	c := &ManagedFoldersGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.managedFolder = managedFolder
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the return of the managed folder metadata conditional on whether the
+// managed folder's current metageneration matches the given value.
+func (c *ManagedFoldersGetCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ManagedFoldersGetCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": Makes the return of the managed folder metadata
+// conditional on whether the managed folder's current metageneration does not
+// match the given value.
+func (c *ManagedFoldersGetCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ManagedFoldersGetCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersGetCall) Fields(s ...googleapi.Field) *ManagedFoldersGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ManagedFoldersGetCall) IfNoneMatch(entityTag string) *ManagedFoldersGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersGetCall) Context(ctx context.Context) *ManagedFoldersGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders/{managedFolder}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":        c.bucket,
+		"managedFolder": c.managedFolder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ManagedFolder.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ManagedFoldersGetCall) Do(opts ...googleapi.CallOption) (*ManagedFolder, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ManagedFolder{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ManagedFoldersGetIamPolicyCall struct {
+	s             *Service
+	bucket        string
+	managedFolder string
+	urlParams_    gensupport.URLParams
+	ifNoneMatch_  string
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// GetIamPolicy: Returns an IAM policy for the specified managed folder.
+//
+// - bucket: Name of the bucket containing the managed folder.
+// - managedFolder: The managed folder name/path.
+func (r *ManagedFoldersService) GetIamPolicy(bucket string, managedFolder string) *ManagedFoldersGetIamPolicyCall {
+	c := &ManagedFoldersGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.managedFolder = managedFolder
+	return c
+}
+
+// OptionsRequestedPolicyVersion sets the optional parameter
+// "optionsRequestedPolicyVersion": The IAM policy format version to be
+// returned. If the optionsRequestedPolicyVersion is for an older version that
+// doesn't support part of the requested IAM policy, the request fails.
+func (c *ManagedFoldersGetIamPolicyCall) OptionsRequestedPolicyVersion(optionsRequestedPolicyVersion int64) *ManagedFoldersGetIamPolicyCall {
+	c.urlParams_.Set("optionsRequestedPolicyVersion", fmt.Sprint(optionsRequestedPolicyVersion))
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
+func (c *ManagedFoldersGetIamPolicyCall) UserProject(userProject string) *ManagedFoldersGetIamPolicyCall {
+	c.urlParams_.Set("userProject", userProject)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersGetIamPolicyCall) Fields(s ...googleapi.Field) *ManagedFoldersGetIamPolicyCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ManagedFoldersGetIamPolicyCall) IfNoneMatch(entityTag string) *ManagedFoldersGetIamPolicyCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersGetIamPolicyCall) Context(ctx context.Context) *ManagedFoldersGetIamPolicyCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersGetIamPolicyCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders/{managedFolder}/iam")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":        c.bucket,
+		"managedFolder": c.managedFolder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.getIamPolicy" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Policy.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ManagedFoldersGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Policy{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.getIamPolicy", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ManagedFoldersInsertCall struct {
+	s             *Service
+	bucket        string
+	managedfolder *ManagedFolder
+	urlParams_    gensupport.URLParams
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// Insert: Creates a new managed folder.
+//
+// - bucket: Name of the bucket containing the managed folder.
+func (r *ManagedFoldersService) Insert(bucket string, managedfolder *ManagedFolder) *ManagedFoldersInsertCall {
+	c := &ManagedFoldersInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.managedfolder = managedfolder
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersInsertCall) Fields(s ...googleapi.Field) *ManagedFoldersInsertCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersInsertCall) Context(ctx context.Context) *ManagedFoldersInsertCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersInsertCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersInsertCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.managedfolder)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.insert" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ManagedFolder.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ManagedFoldersInsertCall) Do(opts ...googleapi.CallOption) (*ManagedFolder, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ManagedFolder{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.insert", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ManagedFoldersListCall struct {
+	s            *Service
+	bucket       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists managed folders in the given bucket.
+//
+// - bucket: Name of the bucket containing the managed folder.
+func (r *ManagedFoldersService) List(bucket string) *ManagedFoldersListCall {
+	c := &ManagedFoldersListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of items to
+// return in a single page of responses.
+func (c *ManagedFoldersListCall) PageSize(pageSize int64) *ManagedFoldersListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
+func (c *ManagedFoldersListCall) PageToken(pageToken string) *ManagedFoldersListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Prefix sets the optional parameter "prefix": The managed folder name/path
+// prefix to filter the output list of results.
+func (c *ManagedFoldersListCall) Prefix(prefix string) *ManagedFoldersListCall {
+	c.urlParams_.Set("prefix", prefix)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersListCall) Fields(s ...googleapi.Field) *ManagedFoldersListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ManagedFoldersListCall) IfNoneMatch(entityTag string) *ManagedFoldersListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersListCall) Context(ctx context.Context) *ManagedFoldersListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *ManagedFolders.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ManagedFoldersListCall) Do(opts ...googleapi.CallOption) (*ManagedFolders, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &ManagedFolders{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *ManagedFoldersListCall) Pages(ctx context.Context, f func(*ManagedFolders) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
+
+type ManagedFoldersSetIamPolicyCall struct {
+	s             *Service
+	bucket        string
+	managedFolder string
+	policy        *Policy
+	urlParams_    gensupport.URLParams
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// SetIamPolicy: Updates an IAM policy for the specified managed folder.
+//
+// - bucket: Name of the bucket containing the managed folder.
+// - managedFolder: The managed folder name/path.
+func (r *ManagedFoldersService) SetIamPolicy(bucket string, managedFolder string, policy *Policy) *ManagedFoldersSetIamPolicyCall {
+	c := &ManagedFoldersSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.managedFolder = managedFolder
+	c.policy = policy
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
+func (c *ManagedFoldersSetIamPolicyCall) UserProject(userProject string) *ManagedFoldersSetIamPolicyCall {
+	c.urlParams_.Set("userProject", userProject)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersSetIamPolicyCall) Fields(s ...googleapi.Field) *ManagedFoldersSetIamPolicyCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersSetIamPolicyCall) Context(ctx context.Context) *ManagedFoldersSetIamPolicyCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersSetIamPolicyCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.policy)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders/{managedFolder}/iam")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("PUT", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":        c.bucket,
+		"managedFolder": c.managedFolder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.setIamPolicy" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Policy.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ManagedFoldersSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Policy{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.setIamPolicy", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type ManagedFoldersTestIamPermissionsCall struct {
+	s             *Service
+	bucket        string
+	managedFolder string
+	urlParams_    gensupport.URLParams
+	ifNoneMatch_  string
+	ctx_          context.Context
+	header_       http.Header
+}
+
+// TestIamPermissions: Tests a set of permissions on the given managed folder
+// to see which, if any, are held by the caller.
+//
+// - bucket: Name of the bucket containing the managed folder.
+// - managedFolder: The managed folder name/path.
+// - permissions: Permissions to test.
+func (r *ManagedFoldersService) TestIamPermissions(bucket string, managedFolder string, permissions []string) *ManagedFoldersTestIamPermissionsCall {
+	c := &ManagedFoldersTestIamPermissionsCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.managedFolder = managedFolder
+	c.urlParams_.SetMulti("permissions", append([]string{}, permissions...))
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
+func (c *ManagedFoldersTestIamPermissionsCall) UserProject(userProject string) *ManagedFoldersTestIamPermissionsCall {
+	c.urlParams_.Set("userProject", userProject)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ManagedFoldersTestIamPermissionsCall) Fields(s ...googleapi.Field) *ManagedFoldersTestIamPermissionsCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *ManagedFoldersTestIamPermissionsCall) IfNoneMatch(entityTag string) *ManagedFoldersTestIamPermissionsCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ManagedFoldersTestIamPermissionsCall) Context(ctx context.Context) *ManagedFoldersTestIamPermissionsCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ManagedFoldersTestIamPermissionsCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ManagedFoldersTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/managedFolders/{managedFolder}/iam/testPermissions")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":        c.bucket,
+		"managedFolder": c.managedFolder,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.managedFolders.testIamPermissions", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.managedFolders.testIamPermissions" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *TestIamPermissionsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ManagedFoldersTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestIamPermissionsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &TestIamPermissionsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.managedFolders.testIamPermissions", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type NotificationsDeleteCall struct {
 	s            *Service
@@ -6649,31 +8382,29 @@ func (r *NotificationsService) Delete(bucket string, notification string) *Notif
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *NotificationsDeleteCall) UserProject(userProject string) *NotificationsDeleteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *NotificationsDeleteCall) Fields(s ...googleapi.Field) *NotificationsDeleteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *NotificationsDeleteCall) Context(ctx context.Context) *NotificationsDeleteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *NotificationsDeleteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -6682,18 +8413,12 @@ func (c *NotificationsDeleteCall) Header() http.Header {
 }
 
 func (c *NotificationsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/notificationConfigs/{notification}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6702,6 +8427,7 @@ func (c *NotificationsDeleteCall) doRequest(alt string) (*http.Response, error) 
 		"bucket":       c.bucket,
 		"notification": c.notification,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.notifications.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -6716,45 +8442,9 @@ func (c *NotificationsDeleteCall) Do(opts ...googleapi.CallOption) error {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.notifications.delete", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Permanently deletes a notification subscription.",
-	//   "httpMethod": "DELETE",
-	//   "id": "storage.notifications.delete",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "notification"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "The parent bucket of the notification.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "notification": {
-	//       "description": "ID of the notification to delete.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/notificationConfigs/{notification}",
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.notifications.get":
 
 type NotificationsGetCall struct {
 	s            *Service
@@ -6777,41 +8467,37 @@ func (r *NotificationsService) Get(bucket string, notification string) *Notifica
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *NotificationsGetCall) UserProject(userProject string) *NotificationsGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *NotificationsGetCall) Fields(s ...googleapi.Field) *NotificationsGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *NotificationsGetCall) IfNoneMatch(entityTag string) *NotificationsGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *NotificationsGetCall) Context(ctx context.Context) *NotificationsGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *NotificationsGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -6820,21 +8506,15 @@ func (c *NotificationsGetCall) Header() http.Header {
 }
 
 func (c *NotificationsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/notificationConfigs/{notification}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -6843,16 +8523,15 @@ func (c *NotificationsGetCall) doRequest(alt string) (*http.Response, error) {
 		"bucket":       c.bucket,
 		"notification": c.notification,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.notifications.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.notifications.get" call.
-// Exactly one of *Notification or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *Notification.ServerResponse.Header or (if a response was returned at
-// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified
-// to check whether the returned error was because
-// http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Notification.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *NotificationsGetCall) Do(opts ...googleapi.CallOption) (*Notification, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -6879,53 +8558,13 @@ func (c *NotificationsGetCall) Do(opts ...googleapi.CallOption) (*Notification, 
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.notifications.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "View a notification configuration.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.notifications.get",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "notification"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "The parent bucket of the notification.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "notification": {
-	//       "description": "Notification ID",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/notificationConfigs/{notification}",
-	//   "response": {
-	//     "$ref": "Notification"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.notifications.insert":
 
 type NotificationsInsertCall struct {
 	s            *Service
@@ -6946,31 +8585,29 @@ func (r *NotificationsService) Insert(bucket string, notification *Notification)
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *NotificationsInsertCall) UserProject(userProject string) *NotificationsInsertCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *NotificationsInsertCall) Fields(s ...googleapi.Field) *NotificationsInsertCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *NotificationsInsertCall) Context(ctx context.Context) *NotificationsInsertCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *NotificationsInsertCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -6979,18 +8616,11 @@ func (c *NotificationsInsertCall) Header() http.Header {
 }
 
 func (c *NotificationsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.notification)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.notification)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/notificationConfigs")
@@ -7003,16 +8633,15 @@ func (c *NotificationsInsertCall) doRequest(alt string) (*http.Response, error) 
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.notifications.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.notifications.insert" call.
-// Exactly one of *Notification or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *Notification.ServerResponse.Header or (if a response was returned at
-// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified
-// to check whether the returned error was because
-// http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Notification.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *NotificationsInsertCall) Do(opts ...googleapi.CallOption) (*Notification, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -7039,47 +8668,13 @@ func (c *NotificationsInsertCall) Do(opts ...googleapi.CallOption) (*Notificatio
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.notifications.insert", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Creates a notification subscription for a given bucket.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.notifications.insert",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "The parent bucket of the notification.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/notificationConfigs",
-	//   "request": {
-	//     "$ref": "Notification"
-	//   },
-	//   "response": {
-	//     "$ref": "Notification"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.notifications.list":
 
 type NotificationsListCall struct {
 	s            *Service
@@ -7090,8 +8685,7 @@ type NotificationsListCall struct {
 	header_      http.Header
 }
 
-// List: Retrieves a list of notification subscriptions for a given
-// bucket.
+// List: Retrieves a list of notification subscriptions for a given bucket.
 //
 // - bucket: Name of a Google Cloud Storage bucket.
 func (r *NotificationsService) List(bucket string) *NotificationsListCall {
@@ -7100,41 +8694,37 @@ func (r *NotificationsService) List(bucket string) *NotificationsListCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *NotificationsListCall) UserProject(userProject string) *NotificationsListCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *NotificationsListCall) Fields(s ...googleapi.Field) *NotificationsListCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *NotificationsListCall) IfNoneMatch(entityTag string) *NotificationsListCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *NotificationsListCall) Context(ctx context.Context) *NotificationsListCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *NotificationsListCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -7143,21 +8733,15 @@ func (c *NotificationsListCall) Header() http.Header {
 }
 
 func (c *NotificationsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/notificationConfigs")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7165,16 +8749,15 @@ func (c *NotificationsListCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.notifications.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.notifications.list" call.
-// Exactly one of *Notifications or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *Notifications.ServerResponse.Header or (if a response was returned
-// at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Notifications.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *NotificationsListCall) Do(opts ...googleapi.CallOption) (*Notifications, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -7201,46 +8784,13 @@ func (c *NotificationsListCall) Do(opts ...googleapi.CallOption) (*Notifications
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.notifications.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves a list of notification subscriptions for a given bucket.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.notifications.list",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a Google Cloud Storage bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/notificationConfigs",
-	//   "response": {
-	//     "$ref": "Notifications"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objectAccessControls.delete":
 
 type ObjectAccessControlsDeleteCall struct {
 	s          *Service
@@ -7252,15 +8802,15 @@ type ObjectAccessControlsDeleteCall struct {
 	header_    http.Header
 }
 
-// Delete: Permanently deletes the ACL entry for the specified entity on
-// the specified object.
+// Delete: Permanently deletes the ACL entry for the specified entity on the
+// specified object.
 //
 //   - bucket: Name of a bucket.
 //   - entity: The entity holding the permission. Can be user-userId,
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectAccessControlsService) Delete(bucket string, object string, entity string) *ObjectAccessControlsDeleteCall {
 	c := &ObjectAccessControlsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -7270,39 +8820,37 @@ func (r *ObjectAccessControlsService) Delete(bucket string, object string, entit
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectAccessControlsDeleteCall) Generation(generation int64) *ObjectAccessControlsDeleteCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectAccessControlsDeleteCall) UserProject(userProject string) *ObjectAccessControlsDeleteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectAccessControlsDeleteCall) Fields(s ...googleapi.Field) *ObjectAccessControlsDeleteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectAccessControlsDeleteCall) Context(ctx context.Context) *ObjectAccessControlsDeleteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectAccessControlsDeleteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -7311,18 +8859,12 @@ func (c *ObjectAccessControlsDeleteCall) Header() http.Header {
 }
 
 func (c *ObjectAccessControlsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/acl/{entity}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7332,6 +8874,7 @@ func (c *ObjectAccessControlsDeleteCall) doRequest(alt string) (*http.Response, 
 		"object": c.object,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objectAccessControls.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -7346,57 +8889,9 @@ func (c *ObjectAccessControlsDeleteCall) Do(opts ...googleapi.CallOption) error 
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objectAccessControls.delete", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Permanently deletes the ACL entry for the specified entity on the specified object.",
-	//   "httpMethod": "DELETE",
-	//   "id": "storage.objectAccessControls.delete",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/acl/{entity}",
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objectAccessControls.get":
 
 type ObjectAccessControlsGetCall struct {
 	s            *Service
@@ -7409,15 +8904,14 @@ type ObjectAccessControlsGetCall struct {
 	header_      http.Header
 }
 
-// Get: Returns the ACL entry for the specified entity on the specified
-// object.
+// Get: Returns the ACL entry for the specified entity on the specified object.
 //
 //   - bucket: Name of a bucket.
 //   - entity: The entity holding the permission. Can be user-userId,
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectAccessControlsService) Get(bucket string, object string, entity string) *ObjectAccessControlsGetCall {
 	c := &ObjectAccessControlsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -7427,49 +8921,45 @@ func (r *ObjectAccessControlsService) Get(bucket string, object string, entity s
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectAccessControlsGetCall) Generation(generation int64) *ObjectAccessControlsGetCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectAccessControlsGetCall) UserProject(userProject string) *ObjectAccessControlsGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectAccessControlsGetCall) Fields(s ...googleapi.Field) *ObjectAccessControlsGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ObjectAccessControlsGetCall) IfNoneMatch(entityTag string) *ObjectAccessControlsGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectAccessControlsGetCall) Context(ctx context.Context) *ObjectAccessControlsGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectAccessControlsGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -7478,21 +8968,15 @@ func (c *ObjectAccessControlsGetCall) Header() http.Header {
 }
 
 func (c *ObjectAccessControlsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/acl/{entity}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7502,16 +8986,16 @@ func (c *ObjectAccessControlsGetCall) doRequest(alt string) (*http.Response, err
 		"object": c.object,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objectAccessControls.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objectAccessControls.get" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ObjectAccessControlsGetCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -7538,63 +9022,13 @@ func (c *ObjectAccessControlsGetCall) Do(opts ...googleapi.CallOption) (*ObjectA
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objectAccessControls.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Returns the ACL entry for the specified entity on the specified object.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.objectAccessControls.get",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/acl/{entity}",
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objectAccessControls.insert":
 
 type ObjectAccessControlsInsertCall struct {
 	s                   *Service
@@ -7609,8 +9043,8 @@ type ObjectAccessControlsInsertCall struct {
 // Insert: Creates a new ACL entry on the specified object.
 //
 //   - bucket: Name of a bucket.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectAccessControlsService) Insert(bucket string, object string, objectaccesscontrol *ObjectAccessControl) *ObjectAccessControlsInsertCall {
 	c := &ObjectAccessControlsInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -7620,39 +9054,37 @@ func (r *ObjectAccessControlsService) Insert(bucket string, object string, objec
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectAccessControlsInsertCall) Generation(generation int64) *ObjectAccessControlsInsertCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectAccessControlsInsertCall) UserProject(userProject string) *ObjectAccessControlsInsertCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectAccessControlsInsertCall) Fields(s ...googleapi.Field) *ObjectAccessControlsInsertCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectAccessControlsInsertCall) Context(ctx context.Context) *ObjectAccessControlsInsertCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectAccessControlsInsertCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -7661,18 +9093,11 @@ func (c *ObjectAccessControlsInsertCall) Header() http.Header {
 }
 
 func (c *ObjectAccessControlsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.objectaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.objectaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/acl")
@@ -7686,16 +9111,16 @@ func (c *ObjectAccessControlsInsertCall) doRequest(alt string) (*http.Response, 
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objectAccessControls.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objectAccessControls.insert" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ObjectAccessControlsInsertCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -7722,59 +9147,13 @@ func (c *ObjectAccessControlsInsertCall) Do(opts ...googleapi.CallOption) (*Obje
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objectAccessControls.insert", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Creates a new ACL entry on the specified object.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.objectAccessControls.insert",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/acl",
-	//   "request": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objectAccessControls.list":
 
 type ObjectAccessControlsListCall struct {
 	s            *Service
@@ -7789,8 +9168,8 @@ type ObjectAccessControlsListCall struct {
 // List: Retrieves ACL entries on the specified object.
 //
 //   - bucket: Name of a bucket.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectAccessControlsService) List(bucket string, object string) *ObjectAccessControlsListCall {
 	c := &ObjectAccessControlsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -7799,49 +9178,45 @@ func (r *ObjectAccessControlsService) List(bucket string, object string) *Object
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectAccessControlsListCall) Generation(generation int64) *ObjectAccessControlsListCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectAccessControlsListCall) UserProject(userProject string) *ObjectAccessControlsListCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectAccessControlsListCall) Fields(s ...googleapi.Field) *ObjectAccessControlsListCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ObjectAccessControlsListCall) IfNoneMatch(entityTag string) *ObjectAccessControlsListCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectAccessControlsListCall) Context(ctx context.Context) *ObjectAccessControlsListCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectAccessControlsListCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -7850,21 +9225,15 @@ func (c *ObjectAccessControlsListCall) Header() http.Header {
 }
 
 func (c *ObjectAccessControlsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/acl")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -7873,16 +9242,16 @@ func (c *ObjectAccessControlsListCall) doRequest(alt string) (*http.Response, er
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objectAccessControls.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objectAccessControls.list" call.
-// Exactly one of *ObjectAccessControls or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControls.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControls.ServerResponse.Header or (if a response was returned
+// at all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ObjectAccessControlsListCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControls, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -7909,56 +9278,13 @@ func (c *ObjectAccessControlsListCall) Do(opts ...googleapi.CallOption) (*Object
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objectAccessControls.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves ACL entries on the specified object.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.objectAccessControls.list",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/acl",
-	//   "response": {
-	//     "$ref": "ObjectAccessControls"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objectAccessControls.patch":
 
 type ObjectAccessControlsPatchCall struct {
 	s                   *Service
@@ -7977,8 +9303,8 @@ type ObjectAccessControlsPatchCall struct {
 //   - entity: The entity holding the permission. Can be user-userId,
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectAccessControlsService) Patch(bucket string, object string, entity string, objectaccesscontrol *ObjectAccessControl) *ObjectAccessControlsPatchCall {
 	c := &ObjectAccessControlsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -7989,39 +9315,37 @@ func (r *ObjectAccessControlsService) Patch(bucket string, object string, entity
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectAccessControlsPatchCall) Generation(generation int64) *ObjectAccessControlsPatchCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectAccessControlsPatchCall) UserProject(userProject string) *ObjectAccessControlsPatchCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectAccessControlsPatchCall) Fields(s ...googleapi.Field) *ObjectAccessControlsPatchCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectAccessControlsPatchCall) Context(ctx context.Context) *ObjectAccessControlsPatchCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectAccessControlsPatchCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -8030,18 +9354,11 @@ func (c *ObjectAccessControlsPatchCall) Header() http.Header {
 }
 
 func (c *ObjectAccessControlsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.objectaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.objectaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/acl/{entity}")
@@ -8056,16 +9373,16 @@ func (c *ObjectAccessControlsPatchCall) doRequest(alt string) (*http.Response, e
 		"object": c.object,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objectAccessControls.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objectAccessControls.patch" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ObjectAccessControlsPatchCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -8092,66 +9409,13 @@ func (c *ObjectAccessControlsPatchCall) Do(opts ...googleapi.CallOption) (*Objec
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objectAccessControls.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Patches an ACL entry on the specified object.",
-	//   "httpMethod": "PATCH",
-	//   "id": "storage.objectAccessControls.patch",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/acl/{entity}",
-	//   "request": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objectAccessControls.update":
 
 type ObjectAccessControlsUpdateCall struct {
 	s                   *Service
@@ -8170,8 +9434,8 @@ type ObjectAccessControlsUpdateCall struct {
 //   - entity: The entity holding the permission. Can be user-userId,
 //     user-emailAddress, group-groupId, group-emailAddress, allUsers, or
 //     allAuthenticatedUsers.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectAccessControlsService) Update(bucket string, object string, entity string, objectaccesscontrol *ObjectAccessControl) *ObjectAccessControlsUpdateCall {
 	c := &ObjectAccessControlsUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -8182,39 +9446,37 @@ func (r *ObjectAccessControlsService) Update(bucket string, object string, entit
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectAccessControlsUpdateCall) Generation(generation int64) *ObjectAccessControlsUpdateCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectAccessControlsUpdateCall) UserProject(userProject string) *ObjectAccessControlsUpdateCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectAccessControlsUpdateCall) Fields(s ...googleapi.Field) *ObjectAccessControlsUpdateCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectAccessControlsUpdateCall) Context(ctx context.Context) *ObjectAccessControlsUpdateCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectAccessControlsUpdateCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -8223,18 +9485,11 @@ func (c *ObjectAccessControlsUpdateCall) Header() http.Header {
 }
 
 func (c *ObjectAccessControlsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.objectaccesscontrol)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.objectaccesscontrol)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/acl/{entity}")
@@ -8249,16 +9504,16 @@ func (c *ObjectAccessControlsUpdateCall) doRequest(alt string) (*http.Response, 
 		"object": c.object,
 		"entity": c.entity,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objectAccessControls.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objectAccessControls.update" call.
-// Exactly one of *ObjectAccessControl or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *ObjectAccessControl.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ObjectAccessControl.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ObjectAccessControlsUpdateCall) Do(opts ...googleapi.CallOption) (*ObjectAccessControl, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -8285,66 +9540,118 @@ func (c *ObjectAccessControlsUpdateCall) Do(opts ...googleapi.CallOption) (*Obje
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objectAccessControls.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates an ACL entry on the specified object.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.objectAccessControls.update",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object",
-	//     "entity"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of a bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "entity": {
-	//       "description": "The entity holding the permission. Can be user-userId, user-emailAddress, group-groupId, group-emailAddress, allUsers, or allAuthenticatedUsers.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/acl/{entity}",
-	//   "request": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "response": {
-	//     "$ref": "ObjectAccessControl"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
 
-// method id "storage.objects.compose":
+type ObjectsBulkRestoreCall struct {
+	s                         *Service
+	bucket                    string
+	bulkrestoreobjectsrequest *BulkRestoreObjectsRequest
+	urlParams_                gensupport.URLParams
+	ctx_                      context.Context
+	header_                   http.Header
+}
+
+// BulkRestore: Initiates a long-running bulk restore operation on the
+// specified bucket.
+//
+// - bucket: Name of the bucket in which the object resides.
+func (r *ObjectsService) BulkRestore(bucket string, bulkrestoreobjectsrequest *BulkRestoreObjectsRequest) *ObjectsBulkRestoreCall {
+	c := &ObjectsBulkRestoreCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.bulkrestoreobjectsrequest = bulkrestoreobjectsrequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ObjectsBulkRestoreCall) Fields(s ...googleapi.Field) *ObjectsBulkRestoreCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ObjectsBulkRestoreCall) Context(ctx context.Context) *ObjectsBulkRestoreCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ObjectsBulkRestoreCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ObjectsBulkRestoreCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.bulkrestoreobjectsrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/bulkRestore")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.bulkRestore", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.objects.bulkRestore" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *ObjectsBulkRestoreCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.bulkRestore", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type ObjectsComposeCall struct {
 	s                 *Service
@@ -8356,14 +9663,13 @@ type ObjectsComposeCall struct {
 	header_           http.Header
 }
 
-// Compose: Concatenates a list of existing objects into a new object in
-// the same bucket.
+// Compose: Concatenates a list of existing objects into a new object in the
+// same bucket.
 //
-//   - destinationBucket: Name of the bucket containing the source
-//     objects. The destination object is stored in this bucket.
-//   - destinationObject: Name of the new object. For information about
-//     how to URL encode object names to be path safe, see Encoding URI
-//     Path Parts
+//   - destinationBucket: Name of the bucket containing the source objects. The
+//     destination object is stored in this bucket.
+//   - destinationObject: Name of the new object. For information about how to
+//     URL encode object names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) Compose(destinationBucket string, destinationObject string, composerequest *ComposeRequest) *ObjectsComposeCall {
 	c := &ObjectsComposeCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -8374,8 +9680,8 @@ func (r *ObjectsService) Compose(destinationBucket string, destinationObject str
 }
 
 // DestinationPredefinedAcl sets the optional parameter
-// "destinationPredefinedAcl": Apply a predefined set of access controls
-// to the destination object.
+// "destinationPredefinedAcl": Apply a predefined set of access controls to the
+// destination object.
 //
 // Possible values:
 //
@@ -8383,81 +9689,77 @@ func (r *ObjectsService) Compose(destinationBucket string, destinationObject str
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *ObjectsComposeCall) DestinationPredefinedAcl(destinationPredefinedAcl string) *ObjectsComposeCall {
 	c.urlParams_.Set("destinationPredefinedAcl", destinationPredefinedAcl)
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the object's current
-// generation matches the given value. Setting to 0 makes the operation
-// succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's current generation matches the
+// given value. Setting to 0 makes the operation succeed only if there are no
+// live versions of the object.
 func (c *ObjectsComposeCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsComposeCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the object's current metageneration matches the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the object's current
+// metageneration matches the given value.
 func (c *ObjectsComposeCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsComposeCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
-// KmsKeyName sets the optional parameter "kmsKeyName": Resource name of
-// the Cloud KMS key, of the form
-// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key,
-//
-//	that will be used to encrypt the object. Overrides the object
-//
-// metadata's kms_key_name value, if any.
+// KmsKeyName sets the optional parameter "kmsKeyName": Resource name of the
+// Cloud KMS key, of the form
+// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that
+// will be used to encrypt the object. Overrides the object metadata's
+// kms_key_name value, if any.
 func (c *ObjectsComposeCall) KmsKeyName(kmsKeyName string) *ObjectsComposeCall {
 	c.urlParams_.Set("kmsKeyName", kmsKeyName)
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsComposeCall) UserProject(userProject string) *ObjectsComposeCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsComposeCall) Fields(s ...googleapi.Field) *ObjectsComposeCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsComposeCall) Context(ctx context.Context) *ObjectsComposeCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsComposeCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -8466,18 +9768,11 @@ func (c *ObjectsComposeCall) Header() http.Header {
 }
 
 func (c *ObjectsComposeCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.composerequest)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.composerequest)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{destinationBucket}/o/{destinationObject}/compose")
@@ -8491,16 +9786,15 @@ func (c *ObjectsComposeCall) doRequest(alt string) (*http.Response, error) {
 		"destinationBucket": c.destinationBucket,
 		"destinationObject": c.destinationObject,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.compose", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.compose" call.
-// Exactly one of *Object or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Object.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsComposeCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -8527,92 +9821,13 @@ func (c *ObjectsComposeCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.compose", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Concatenates a list of existing objects into a new object in the same bucket.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.objects.compose",
-	//   "parameterOrder": [
-	//     "destinationBucket",
-	//     "destinationObject"
-	//   ],
-	//   "parameters": {
-	//     "destinationBucket": {
-	//       "description": "Name of the bucket containing the source objects. The destination object is stored in this bucket.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "destinationObject": {
-	//       "description": "Name of the new object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "destinationPredefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to the destination object.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "kmsKeyName": {
-	//       "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{destinationBucket}/o/{destinationObject}/compose",
-	//   "request": {
-	//     "$ref": "ComposeRequest"
-	//   },
-	//   "response": {
-	//     "$ref": "Object"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.copy":
 
 type ObjectsCopyCall struct {
 	s                 *Service
@@ -8626,22 +9841,20 @@ type ObjectsCopyCall struct {
 	header_           http.Header
 }
 
-// Copy: Copies a source object to a destination object. Optionally
-// overrides metadata.
+// Copy: Copies a source object to a destination object. Optionally overrides
+// metadata.
 //
-//   - destinationBucket: Name of the bucket in which to store the new
-//     object. Overrides the provided object metadata's bucket value, if
-//     any.For information about how to URL encode object names to be path
-//     safe, see Encoding URI Path Parts
+//   - destinationBucket: Name of the bucket in which to store the new object.
+//     Overrides the provided object metadata's bucket value, if any.For
+//     information about how to URL encode object names to be path safe, see
+//     Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 //   - destinationObject: Name of the new object. Required when the object
-//     metadata is not otherwise provided. Overrides the object metadata's
-//     name value, if any.
-//   - sourceBucket: Name of the bucket in which to find the source
-//     object.
-//   - sourceObject: Name of the source object. For information about how
-//     to URL encode object names to be path safe, see Encoding URI Path
-//     Parts
+//     metadata is not otherwise provided. Overrides the object metadata's name
+//     value, if any.
+//   - sourceBucket: Name of the bucket in which to find the source object.
+//   - sourceObject: Name of the source object. For information about how to URL
+//     encode object names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) Copy(sourceBucket string, sourceObject string, destinationBucket string, destinationObject string, object *Object) *ObjectsCopyCall {
 	c := &ObjectsCopyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -8653,22 +9866,19 @@ func (r *ObjectsService) Copy(sourceBucket string, sourceObject string, destinat
 	return c
 }
 
-// DestinationKmsKeyName sets the optional parameter
-// "destinationKmsKeyName": Resource name of the Cloud KMS key, of the
-// form
-// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key,
-//
-//	that will be used to encrypt the object. Overrides the object
-//
-// metadata's kms_key_name value, if any.
+// DestinationKmsKeyName sets the optional parameter "destinationKmsKeyName":
+// Resource name of the Cloud KMS key, of the form
+// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that
+// will be used to encrypt the object. Overrides the object metadata's
+// kms_key_name value, if any.
 func (c *ObjectsCopyCall) DestinationKmsKeyName(destinationKmsKeyName string) *ObjectsCopyCall {
 	c.urlParams_.Set("destinationKmsKeyName", destinationKmsKeyName)
 	return c
 }
 
 // DestinationPredefinedAcl sets the optional parameter
-// "destinationPredefinedAcl": Apply a predefined set of access controls
-// to the destination object.
+// "destinationPredefinedAcl": Apply a predefined set of access controls to the
+// destination object.
 //
 // Possible values:
 //
@@ -8676,103 +9886,97 @@ func (c *ObjectsCopyCall) DestinationKmsKeyName(destinationKmsKeyName string) *O
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *ObjectsCopyCall) DestinationPredefinedAcl(destinationPredefinedAcl string) *ObjectsCopyCall {
 	c.urlParams_.Set("destinationPredefinedAcl", destinationPredefinedAcl)
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the destination object's
-// current generation matches the given value. Setting to 0 makes the
-// operation succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the destination object's current generation
+// matches the given value. Setting to 0 makes the operation succeed only if
+// there are no live versions of the object.
 func (c *ObjectsCopyCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfGenerationNotMatch sets the optional parameter
-// "ifGenerationNotMatch": Makes the operation conditional on whether
-// the destination object's current generation does not match the given
-// value. If no live object exists, the precondition fails. Setting to 0
-// makes the operation succeed only if there is a live version of the
-// object.
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the destination object's current
+// generation does not match the given value. If no live object exists, the
+// precondition fails. Setting to 0 makes the operation succeed only if there
+// is a live version of the object.
 func (c *ObjectsCopyCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the destination object's current metageneration matches the given
-// value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the destination object's current
+// metageneration matches the given value.
 func (c *ObjectsCopyCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": Makes the operation conditional on
-// whether the destination object's current metageneration does not
-// match the given value.
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// destination object's current metageneration does not match the given value.
 func (c *ObjectsCopyCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
 }
 
 // IfSourceGenerationMatch sets the optional parameter
-// "ifSourceGenerationMatch": Makes the operation conditional on whether
-// the source object's current generation matches the given value.
+// "ifSourceGenerationMatch": Makes the operation conditional on whether the
+// source object's current generation matches the given value.
 func (c *ObjectsCopyCall) IfSourceGenerationMatch(ifSourceGenerationMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifSourceGenerationMatch", fmt.Sprint(ifSourceGenerationMatch))
 	return c
 }
 
 // IfSourceGenerationNotMatch sets the optional parameter
-// "ifSourceGenerationNotMatch": Makes the operation conditional on
-// whether the source object's current generation does not match the
-// given value.
+// "ifSourceGenerationNotMatch": Makes the operation conditional on whether the
+// source object's current generation does not match the given value.
 func (c *ObjectsCopyCall) IfSourceGenerationNotMatch(ifSourceGenerationNotMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifSourceGenerationNotMatch", fmt.Sprint(ifSourceGenerationNotMatch))
 	return c
 }
 
 // IfSourceMetagenerationMatch sets the optional parameter
-// "ifSourceMetagenerationMatch": Makes the operation conditional on
-// whether the source object's current metageneration matches the given
-// value.
+// "ifSourceMetagenerationMatch": Makes the operation conditional on whether
+// the source object's current metageneration matches the given value.
 func (c *ObjectsCopyCall) IfSourceMetagenerationMatch(ifSourceMetagenerationMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifSourceMetagenerationMatch", fmt.Sprint(ifSourceMetagenerationMatch))
 	return c
 }
 
 // IfSourceMetagenerationNotMatch sets the optional parameter
-// "ifSourceMetagenerationNotMatch": Makes the operation conditional on
-// whether the source object's current metageneration does not match the
-// given value.
+// "ifSourceMetagenerationNotMatch": Makes the operation conditional on whether
+// the source object's current metageneration does not match the given value.
 func (c *ObjectsCopyCall) IfSourceMetagenerationNotMatch(ifSourceMetagenerationNotMatch int64) *ObjectsCopyCall {
 	c.urlParams_.Set("ifSourceMetagenerationNotMatch", fmt.Sprint(ifSourceMetagenerationNotMatch))
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl, unless the object resource
-// specifies the acl property, when it defaults to full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl, unless the object resource specifies the acl
+// property, when it defaults to full.
 //
 // Possible values:
 //
@@ -8783,39 +9987,37 @@ func (c *ObjectsCopyCall) Projection(projection string) *ObjectsCopyCall {
 	return c
 }
 
-// SourceGeneration sets the optional parameter "sourceGeneration": If
-// present, selects a specific revision of the source object (as opposed
-// to the latest version, the default).
+// SourceGeneration sets the optional parameter "sourceGeneration": If present,
+// selects a specific revision of the source object (as opposed to the latest
+// version, the default).
 func (c *ObjectsCopyCall) SourceGeneration(sourceGeneration int64) *ObjectsCopyCall {
 	c.urlParams_.Set("sourceGeneration", fmt.Sprint(sourceGeneration))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsCopyCall) UserProject(userProject string) *ObjectsCopyCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsCopyCall) Fields(s ...googleapi.Field) *ObjectsCopyCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsCopyCall) Context(ctx context.Context) *ObjectsCopyCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsCopyCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -8824,18 +10026,11 @@ func (c *ObjectsCopyCall) Header() http.Header {
 }
 
 func (c *ObjectsCopyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.object)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.object)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{sourceBucket}/o/{sourceObject}/copyTo/b/{destinationBucket}/o/{destinationObject}")
@@ -8851,16 +10046,15 @@ func (c *ObjectsCopyCall) doRequest(alt string) (*http.Response, error) {
 		"destinationBucket": c.destinationBucket,
 		"destinationObject": c.destinationObject,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.copy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.copy" call.
-// Exactly one of *Object or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Object.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsCopyCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -8887,161 +10081,13 @@ func (c *ObjectsCopyCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.copy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Copies a source object to a destination object. Optionally overrides metadata.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.objects.copy",
-	//   "parameterOrder": [
-	//     "sourceBucket",
-	//     "sourceObject",
-	//     "destinationBucket",
-	//     "destinationObject"
-	//   ],
-	//   "parameters": {
-	//     "destinationBucket": {
-	//       "description": "Name of the bucket in which to store the new object. Overrides the provided object metadata's bucket value, if any.For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "destinationKmsKeyName": {
-	//       "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "destinationObject": {
-	//       "description": "Name of the new object. Required when the object metadata is not otherwise provided. Overrides the object metadata's name value, if any.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "destinationPredefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to the destination object.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the destination object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the destination object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the destination object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the destination object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current generation matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current generation does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl, unless the object resource specifies the acl property, when it defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "sourceBucket": {
-	//       "description": "Name of the bucket in which to find the source object.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "sourceGeneration": {
-	//       "description": "If present, selects a specific revision of the source object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "sourceObject": {
-	//       "description": "Name of the source object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{sourceBucket}/o/{sourceObject}/copyTo/b/{destinationBucket}/o/{destinationObject}",
-	//   "request": {
-	//     "$ref": "Object"
-	//   },
-	//   "response": {
-	//     "$ref": "Object"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.delete":
 
 type ObjectsDeleteCall struct {
 	s          *Service
@@ -9052,13 +10098,13 @@ type ObjectsDeleteCall struct {
 	header_    http.Header
 }
 
-// Delete: Deletes an object and its metadata. Deletions are permanent
-// if versioning is not enabled for the bucket, or if the generation
-// parameter is used.
+// Delete: Deletes an object and its metadata. Deletions are permanent if
+// versioning is not enabled for the bucket, or if the generation parameter is
+// used.
 //
 //   - bucket: Name of the bucket in which the object resides.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) Delete(bucket string, object string) *ObjectsDeleteCall {
 	c := &ObjectsDeleteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -9067,75 +10113,72 @@ func (r *ObjectsService) Delete(bucket string, object string) *ObjectsDeleteCall
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// permanently deletes a specific revision of this object (as opposed to
-// the latest version, the default).
+// Generation sets the optional parameter "generation": If present, permanently
+// deletes a specific revision of this object (as opposed to the latest
+// version, the default).
 func (c *ObjectsDeleteCall) Generation(generation int64) *ObjectsDeleteCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the object's current
-// generation matches the given value. Setting to 0 makes the operation
-// succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's current generation matches the
+// given value. Setting to 0 makes the operation succeed only if there are no
+// live versions of the object.
 func (c *ObjectsDeleteCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsDeleteCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfGenerationNotMatch sets the optional parameter
-// "ifGenerationNotMatch": Makes the operation conditional on whether
-// the object's current generation does not match the given value. If no
-// live object exists, the precondition fails. Setting to 0 makes the
-// operation succeed only if there is a live version of the object.
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the object's current generation
+// does not match the given value. If no live object exists, the precondition
+// fails. Setting to 0 makes the operation succeed only if there is a live
+// version of the object.
 func (c *ObjectsDeleteCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsDeleteCall {
 	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the object's current metageneration matches the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the object's current
+// metageneration matches the given value.
 func (c *ObjectsDeleteCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsDeleteCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": Makes the operation conditional on
-// whether the object's current metageneration does not match the given
-// value.
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// object's current metageneration does not match the given value.
 func (c *ObjectsDeleteCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsDeleteCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsDeleteCall) UserProject(userProject string) *ObjectsDeleteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsDeleteCall) Fields(s ...googleapi.Field) *ObjectsDeleteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsDeleteCall) Context(ctx context.Context) *ObjectsDeleteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsDeleteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -9144,18 +10187,12 @@ func (c *ObjectsDeleteCall) Header() http.Header {
 }
 
 func (c *ObjectsDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9164,6 +10201,7 @@ func (c *ObjectsDeleteCall) doRequest(alt string) (*http.Response, error) {
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9178,75 +10216,9 @@ func (c *ObjectsDeleteCall) Do(opts ...googleapi.CallOption) error {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.delete", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Deletes an object and its metadata. Deletions are permanent if versioning is not enabled for the bucket, or if the generation parameter is used.",
-	//   "httpMethod": "DELETE",
-	//   "id": "storage.objects.delete",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which the object resides.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, permanently deletes a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}",
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.get":
 
 type ObjectsGetCall struct {
 	s            *Service
@@ -9261,8 +10233,8 @@ type ObjectsGetCall struct {
 // Get: Retrieves an object or its metadata.
 //
 //   - bucket: Name of the bucket in which the object resides.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) Get(bucket string, object string) *ObjectsGetCall {
 	c := &ObjectsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -9271,52 +10243,51 @@ func (r *ObjectsService) Get(bucket string, object string) *ObjectsGetCall {
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectsGetCall) Generation(generation int64) *ObjectsGetCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the object's current
-// generation matches the given value. Setting to 0 makes the operation
-// succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's current generation matches the
+// given value. Setting to 0 makes the operation succeed only if there are no
+// live versions of the object.
 func (c *ObjectsGetCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsGetCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfGenerationNotMatch sets the optional parameter
-// "ifGenerationNotMatch": Makes the operation conditional on whether
-// the object's current generation does not match the given value. If no
-// live object exists, the precondition fails. Setting to 0 makes the
-// operation succeed only if there is a live version of the object.
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the object's current generation
+// does not match the given value. If no live object exists, the precondition
+// fails. Setting to 0 makes the operation succeed only if there is a live
+// version of the object.
 func (c *ObjectsGetCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsGetCall {
 	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the object's current metageneration matches the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the object's current
+// metageneration matches the given value.
 func (c *ObjectsGetCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsGetCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": Makes the operation conditional on
-// whether the object's current metageneration does not match the given
-// value.
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// object's current metageneration does not match the given value.
 func (c *ObjectsGetCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsGetCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl.
 //
 // Possible values:
 //
@@ -9327,41 +10298,57 @@ func (c *ObjectsGetCall) Projection(projection string) *ObjectsGetCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// RestoreToken sets the optional parameter "restoreToken": Restore token used
+// to differentiate soft-deleted objects with the same name and generation.
+// Only applicable for hierarchical namespace buckets and if softDeleted is set
+// to true. This parameter is optional, and is only required in the rare case
+// when there are multiple soft-deleted objects with the same name and
+// generation.
+func (c *ObjectsGetCall) RestoreToken(restoreToken string) *ObjectsGetCall {
+	c.urlParams_.Set("restoreToken", restoreToken)
+	return c
+}
+
+// SoftDeleted sets the optional parameter "softDeleted": If true, only
+// soft-deleted object versions will be listed. The default is false. For more
+// information, see Soft Delete
+// (https://cloud.google.com/storage/docs/soft-delete).
+func (c *ObjectsGetCall) SoftDeleted(softDeleted bool) *ObjectsGetCall {
+	c.urlParams_.Set("softDeleted", fmt.Sprint(softDeleted))
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsGetCall) UserProject(userProject string) *ObjectsGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsGetCall) Fields(s ...googleapi.Field) *ObjectsGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ObjectsGetCall) IfNoneMatch(entityTag string) *ObjectsGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do and Download
-// methods. Any pending HTTP request will be aborted if the provided
-// context is canceled.
+// Context sets the context to be used in this call's Do and Download methods.
 func (c *ObjectsGetCall) Context(ctx context.Context) *ObjectsGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -9370,21 +10357,15 @@ func (c *ObjectsGetCall) Header() http.Header {
 }
 
 func (c *ObjectsGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9393,6 +10374,7 @@ func (c *ObjectsGetCall) doRequest(alt string) (*http.Response, error) {
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -9413,12 +10395,10 @@ func (c *ObjectsGetCall) Download(opts ...googleapi.CallOption) (*http.Response,
 }
 
 // Do executes the "storage.objects.get" call.
-// Exactly one of *Object or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Object.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsGetCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -9445,98 +10425,13 @@ func (c *ObjectsGetCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves an object or its metadata.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.objects.get",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which the object resides.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}",
-	//   "response": {
-	//     "$ref": "Object"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ],
-	//   "supportsMediaDownload": true,
-	//   "useMediaDownloadService": true
-	// }
-
 }
-
-// method id "storage.objects.getIamPolicy":
 
 type ObjectsGetIamPolicyCall struct {
 	s            *Service
@@ -9551,8 +10446,8 @@ type ObjectsGetIamPolicyCall struct {
 // GetIamPolicy: Returns an IAM policy for the specified object.
 //
 //   - bucket: Name of the bucket in which the object resides.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) GetIamPolicy(bucket string, object string) *ObjectsGetIamPolicyCall {
 	c := &ObjectsGetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -9561,49 +10456,45 @@ func (r *ObjectsService) GetIamPolicy(bucket string, object string) *ObjectsGetI
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectsGetIamPolicyCall) Generation(generation int64) *ObjectsGetIamPolicyCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsGetIamPolicyCall) UserProject(userProject string) *ObjectsGetIamPolicyCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsGetIamPolicyCall) Fields(s ...googleapi.Field) *ObjectsGetIamPolicyCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ObjectsGetIamPolicyCall) IfNoneMatch(entityTag string) *ObjectsGetIamPolicyCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsGetIamPolicyCall) Context(ctx context.Context) *ObjectsGetIamPolicyCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsGetIamPolicyCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -9612,21 +10503,15 @@ func (c *ObjectsGetIamPolicyCall) Header() http.Header {
 }
 
 func (c *ObjectsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/iam")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -9635,16 +10520,15 @@ func (c *ObjectsGetIamPolicyCall) doRequest(alt string) (*http.Response, error) 
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.getIamPolicy", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.getIamPolicy" call.
-// Exactly one of *Policy or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Policy.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -9671,59 +10555,13 @@ func (c *ObjectsGetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, err
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.getIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Returns an IAM policy for the specified object.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.objects.getIamPolicy",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which the object resides.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/iam",
-	//   "response": {
-	//     "$ref": "Policy"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.insert":
 
 type ObjectsInsertCall struct {
 	s          *Service
@@ -9738,8 +10576,8 @@ type ObjectsInsertCall struct {
 
 // Insert: Stores a new object and metadata.
 //
-//   - bucket: Name of the bucket in which to store the new object.
-//     Overrides the provided object metadata's bucket value, if any.
+//   - bucket: Name of the bucket in which to store the new object. Overrides the
+//     provided object metadata's bucket value, if any.
 func (r *ObjectsService) Insert(bucket string, object *Object) *ObjectsInsertCall {
 	c := &ObjectsInsertCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.bucket = bucket
@@ -9747,69 +10585,65 @@ func (r *ObjectsService) Insert(bucket string, object *Object) *ObjectsInsertCal
 	return c
 }
 
-// ContentEncoding sets the optional parameter "contentEncoding": If
-// set, sets the contentEncoding property of the final object to this
-// value. Setting this parameter is equivalent to setting the
-// contentEncoding metadata property. This can be useful when uploading
-// an object with uploadType=media to indicate the encoding of the
-// content being uploaded.
+// ContentEncoding sets the optional parameter "contentEncoding": If set, sets
+// the contentEncoding property of the final object to this value. Setting this
+// parameter is equivalent to setting the contentEncoding metadata property.
+// This can be useful when uploading an object with uploadType=media to
+// indicate the encoding of the content being uploaded.
 func (c *ObjectsInsertCall) ContentEncoding(contentEncoding string) *ObjectsInsertCall {
 	c.urlParams_.Set("contentEncoding", contentEncoding)
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the object's current
-// generation matches the given value. Setting to 0 makes the operation
-// succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's current generation matches the
+// given value. Setting to 0 makes the operation succeed only if there are no
+// live versions of the object.
 func (c *ObjectsInsertCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsInsertCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfGenerationNotMatch sets the optional parameter
-// "ifGenerationNotMatch": Makes the operation conditional on whether
-// the object's current generation does not match the given value. If no
-// live object exists, the precondition fails. Setting to 0 makes the
-// operation succeed only if there is a live version of the object.
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the object's current generation
+// does not match the given value. If no live object exists, the precondition
+// fails. Setting to 0 makes the operation succeed only if there is a live
+// version of the object.
 func (c *ObjectsInsertCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsInsertCall {
 	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the object's current metageneration matches the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the object's current
+// metageneration matches the given value.
 func (c *ObjectsInsertCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsInsertCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": Makes the operation conditional on
-// whether the object's current metageneration does not match the given
-// value.
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// object's current metageneration does not match the given value.
 func (c *ObjectsInsertCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsInsertCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
 }
 
-// KmsKeyName sets the optional parameter "kmsKeyName": Resource name of
-// the Cloud KMS key, of the form
-// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key,
-//
-//	that will be used to encrypt the object. Overrides the object
-//
-// metadata's kms_key_name value, if any.
+// KmsKeyName sets the optional parameter "kmsKeyName": Resource name of the
+// Cloud KMS key, of the form
+// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that
+// will be used to encrypt the object. Overrides the object metadata's
+// kms_key_name value, if any.
 func (c *ObjectsInsertCall) KmsKeyName(kmsKeyName string) *ObjectsInsertCall {
 	c.urlParams_.Set("kmsKeyName", kmsKeyName)
 	return c
 }
 
-// Name sets the optional parameter "name": Name of the object. Required
-// when the object metadata is not otherwise provided. Overrides the
-// object metadata's name value, if any. For information about how to
-// URL encode object names to be path safe, see Encoding URI Path Parts
+// Name sets the optional parameter "name": Name of the object. Required when
+// the object metadata is not otherwise provided. Overrides the object
+// metadata's name value, if any. For information about how to URL encode
+// object names to be path safe, see Encoding URI Path Parts
 // (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (c *ObjectsInsertCall) Name(name string) *ObjectsInsertCall {
 	c.urlParams_.Set("name", name)
@@ -9825,30 +10659,30 @@ func (c *ObjectsInsertCall) Name(name string) *ObjectsInsertCall {
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *ObjectsInsertCall) PredefinedAcl(predefinedAcl string) *ObjectsInsertCall {
 	c.urlParams_.Set("predefinedAcl", predefinedAcl)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl, unless the object resource
-// specifies the acl property, when it defaults to full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl, unless the object resource specifies the acl
+// property, when it defaults to full.
 //
 // Possible values:
 //
@@ -9859,20 +10693,19 @@ func (c *ObjectsInsertCall) Projection(projection string) *ObjectsInsertCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsInsertCall) UserProject(userProject string) *ObjectsInsertCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
-// Media specifies the media to upload in one or more chunks. The chunk
-// size may be controlled by supplying a MediaOption generated by
+// Media specifies the media to upload in one or more chunks. The chunk size
+// may be controlled by supplying a MediaOption generated by
 // googleapi.ChunkSize. The chunk size defaults to
-// googleapi.DefaultUploadChunkSize.The Content-Type header used in the
-// upload request will be determined by sniffing the contents of r,
-// unless a MediaOption generated by googleapi.ContentType is
-// supplied.
+// googleapi.DefaultUploadChunkSize.The Content-Type header used in the upload
+// request will be determined by sniffing the contents of r, unless a
+// MediaOption generated by googleapi.ContentType is supplied.
 // At most one of Media and ResumableMedia may be set.
 func (c *ObjectsInsertCall) Media(r io.Reader, options ...googleapi.MediaOption) *ObjectsInsertCall {
 	if ct := c.object.ContentType; ct != "" {
@@ -9882,46 +10715,45 @@ func (c *ObjectsInsertCall) Media(r io.Reader, options ...googleapi.MediaOption)
 	return c
 }
 
-// ResumableMedia specifies the media to upload in chunks and can be
-// canceled with ctx.
+// ResumableMedia specifies the media to upload in chunks and can be canceled
+// with ctx.
 //
 // Deprecated: use Media instead.
 //
-// At most one of Media and ResumableMedia may be set. mediaType
-// identifies the MIME media type of the upload, such as "image/png". If
-// mediaType is "", it will be auto-detected. The provided ctx will
-// supersede any context previously provided to the Context method.
+// At most one of Media and ResumableMedia may be set. mediaType identifies the
+// MIME media type of the upload, such as "image/png". If mediaType is "", it
+// will be auto-detected. The provided ctx will supersede any context
+// previously provided to the Context method.
 func (c *ObjectsInsertCall) ResumableMedia(ctx context.Context, r io.ReaderAt, size int64, mediaType string) *ObjectsInsertCall {
 	c.ctx_ = ctx
 	c.mediaInfo_ = gensupport.NewInfoFromResumableMedia(r, size, mediaType)
 	return c
 }
 
-// ProgressUpdater provides a callback function that will be called
-// after every chunk. It should be a low-latency function in order to
-// not slow down the upload operation. This should only be called when
-// using ResumableMedia (as opposed to Media).
+// ProgressUpdater provides a callback function that will be called after every
+// chunk. It should be a low-latency function in order to not slow down the
+// upload operation. This should only be called when using ResumableMedia (as
+// opposed to Media).
 func (c *ObjectsInsertCall) ProgressUpdater(pu googleapi.ProgressUpdater) *ObjectsInsertCall {
 	c.mediaInfo_.SetProgressUpdater(pu)
 	return c
 }
 
-// WithRetry causes the library to retry the initial request of the
-// upload(for resumable uploads) or the entire upload (for multipart
-// uploads) ifa transient error occurs. This is contingent on ChunkSize
-// being > 0 (sothat the input data may be buffered). The backoff
-// argument will be used todetermine exponential backoff timing, and the
-// errorFunc is used to determinewhich errors are considered retryable.
-// By default, exponetial backoff will beapplied using gax defaults, and
-// the following errors are retried:
+// WithRetry causes the library to retry the initial request of the upload(for
+// resumable uploads) or the entire upload (for multipart uploads) ifa
+// transient error occurs. This is contingent on ChunkSize being > 0 (sothat
+// the input data may be buffered). The backoff argument will be used
+// todetermine exponential backoff timing, and the errorFunc is used to
+// determinewhich errors are considered retryable. By default, exponetial
+// backoff will beapplied using gax defaults, and the following errors are
+// retried:
 //
 // - HTTP responses with codes 408, 429, 502, 503, and 504.
 //
 // - Transient network errors such as connection reset and
 // io.ErrUnexpectedEOF.
 //
-// - Errors which are considered transient using the Temporary()
-// interface.
+// - Errors which are considered transient using the Temporary() interface.
 //
 // - Wrapped versions of these errors.
 func (c *ObjectsInsertCall) WithRetry(bo *gax.Backoff, errorFunc func(err error) bool) *ObjectsInsertCall {
@@ -9933,16 +10765,14 @@ func (c *ObjectsInsertCall) WithRetry(bo *gax.Backoff, errorFunc func(err error)
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsInsertCall) Fields(s ...googleapi.Field) *ObjectsInsertCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 // This context will supersede any context previously provided to the
 // ResumableMedia method.
 func (c *ObjectsInsertCall) Context(ctx context.Context) *ObjectsInsertCall {
@@ -9950,8 +10780,8 @@ func (c *ObjectsInsertCall) Context(ctx context.Context) *ObjectsInsertCall {
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsInsertCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -9960,18 +10790,11 @@ func (c *ObjectsInsertCall) Header() http.Header {
 }
 
 func (c *ObjectsInsertCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.object)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.object)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o")
@@ -9979,14 +10802,10 @@ func (c *ObjectsInsertCall) doRequest(alt string) (*http.Response, error) {
 		urls = googleapi.ResolveRelative(c.s.BasePath, "/upload/storage/v1/b/{bucket}/o")
 		c.urlParams_.Set("uploadType", c.mediaInfo_.UploadType())
 	}
-	if body == nil {
-		body = new(bytes.Buffer)
-		reqHeaders.Set("Content-Type", "application/json")
-	}
-	body, getBody, cleanup := c.mediaInfo_.UploadRequest(reqHeaders, body)
+	newBody, getBody, cleanup := c.mediaInfo_.UploadRequest(reqHeaders, body)
 	defer cleanup()
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
+	req, err := http.NewRequest("POST", urls, newBody)
 	if err != nil {
 		return nil, err
 	}
@@ -9995,6 +10814,7 @@ func (c *ObjectsInsertCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.insert", "request", internallog.HTTPRequest(req, body.Bytes()))
 	if c.retry != nil {
 		return gensupport.SendRequestWithRetry(c.ctx_, c.s.client, req, c.retry)
 	}
@@ -10002,12 +10822,10 @@ func (c *ObjectsInsertCall) doRequest(alt string) (*http.Response, error) {
 }
 
 // Do executes the "storage.objects.insert" call.
-// Exactly one of *Object or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Object.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsInsertCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -10052,136 +10870,13 @@ func (c *ObjectsInsertCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.insert", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Stores a new object and metadata.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.objects.insert",
-	//   "mediaUpload": {
-	//     "accept": [
-	//       "*/*"
-	//     ],
-	//     "protocols": {
-	//       "resumable": {
-	//         "multipart": true,
-	//         "path": "/resumable/upload/storage/v1/b/{bucket}/o"
-	//       },
-	//       "simple": {
-	//         "multipart": true,
-	//         "path": "/upload/storage/v1/b/{bucket}/o"
-	//       }
-	//     }
-	//   },
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which to store the new object. Overrides the provided object metadata's bucket value, if any.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "contentEncoding": {
-	//       "description": "If set, sets the contentEncoding property of the final object to this value. Setting this parameter is equivalent to setting the contentEncoding metadata property. This can be useful when uploading an object with uploadType=media to indicate the encoding of the content being uploaded.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "kmsKeyName": {
-	//       "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "name": {
-	//       "description": "Name of the object. Required when the object metadata is not otherwise provided. Overrides the object metadata's name value, if any. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "predefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to this object.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl, unless the object resource specifies the acl property, when it defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o",
-	//   "request": {
-	//     "$ref": "Object"
-	//   },
-	//   "response": {
-	//     "$ref": "Object"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ],
-	//   "supportsMediaUpload": true
-	// }
-
 }
-
-// method id "storage.objects.list":
 
 type ObjectsListCall struct {
 	s            *Service
@@ -10201,69 +10896,75 @@ func (r *ObjectsService) List(bucket string) *ObjectsListCall {
 	return c
 }
 
-// Delimiter sets the optional parameter "delimiter": Returns results in
-// a directory-like mode. items will contain only objects whose names,
-// aside from the prefix, do not contain delimiter. Objects whose names,
-// aside from the prefix, contain delimiter will have their name,
-// truncated after the delimiter, returned in prefixes. Duplicate
-// prefixes are omitted.
+// Delimiter sets the optional parameter "delimiter": Returns results in a
+// directory-like mode. items will contain only objects whose names, aside from
+// the prefix, do not contain delimiter. Objects whose names, aside from the
+// prefix, contain delimiter will have their name, truncated after the
+// delimiter, returned in prefixes. Duplicate prefixes are omitted.
 func (c *ObjectsListCall) Delimiter(delimiter string) *ObjectsListCall {
 	c.urlParams_.Set("delimiter", delimiter)
 	return c
 }
 
-// EndOffset sets the optional parameter "endOffset": Filter results to
-// objects whose names are lexicographically before endOffset. If
-// startOffset is also set, the objects listed will have names between
-// startOffset (inclusive) and endOffset (exclusive).
+// EndOffset sets the optional parameter "endOffset": Filter results to objects
+// whose names are lexicographically before endOffset. If startOffset is also
+// set, the objects listed will have names between startOffset (inclusive) and
+// endOffset (exclusive).
 func (c *ObjectsListCall) EndOffset(endOffset string) *ObjectsListCall {
 	c.urlParams_.Set("endOffset", endOffset)
 	return c
 }
 
+// IncludeFoldersAsPrefixes sets the optional parameter
+// "includeFoldersAsPrefixes": Only applicable if delimiter is set to '/'. If
+// true, will also include folders and managed folders (besides objects) in the
+// returned prefixes.
+func (c *ObjectsListCall) IncludeFoldersAsPrefixes(includeFoldersAsPrefixes bool) *ObjectsListCall {
+	c.urlParams_.Set("includeFoldersAsPrefixes", fmt.Sprint(includeFoldersAsPrefixes))
+	return c
+}
+
 // IncludeTrailingDelimiter sets the optional parameter
 // "includeTrailingDelimiter": If true, objects that end in exactly one
-// instance of delimiter will have their metadata included in items in
-// addition to prefixes.
+// instance of delimiter will have their metadata included in items in addition
+// to prefixes.
 func (c *ObjectsListCall) IncludeTrailingDelimiter(includeTrailingDelimiter bool) *ObjectsListCall {
 	c.urlParams_.Set("includeTrailingDelimiter", fmt.Sprint(includeTrailingDelimiter))
 	return c
 }
 
-// MatchGlob sets the optional parameter "matchGlob": Filter results to
-// objects and prefixes that match this glob pattern.
+// MatchGlob sets the optional parameter "matchGlob": Filter results to objects
+// and prefixes that match this glob pattern.
 func (c *ObjectsListCall) MatchGlob(matchGlob string) *ObjectsListCall {
 	c.urlParams_.Set("matchGlob", matchGlob)
 	return c
 }
 
-// MaxResults sets the optional parameter "maxResults": Maximum number
-// of items plus prefixes to return in a single page of responses. As
-// duplicate prefixes are omitted, fewer total results may be returned
-// than requested. The service will use this parameter or 1,000 items,
-// whichever is smaller.
+// MaxResults sets the optional parameter "maxResults": Maximum number of items
+// plus prefixes to return in a single page of responses. As duplicate prefixes
+// are omitted, fewer total results may be returned than requested. The service
+// will use this parameter or 1,000 items, whichever is smaller.
 func (c *ObjectsListCall) MaxResults(maxResults int64) *ObjectsListCall {
 	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
 	return c
 }
 
-// PageToken sets the optional parameter "pageToken": A
-// previously-returned page token representing part of the larger set of
-// results to view.
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
 func (c *ObjectsListCall) PageToken(pageToken string) *ObjectsListCall {
 	c.urlParams_.Set("pageToken", pageToken)
 	return c
 }
 
-// Prefix sets the optional parameter "prefix": Filter results to
-// objects whose names begin with this prefix.
+// Prefix sets the optional parameter "prefix": Filter results to objects whose
+// names begin with this prefix.
 func (c *ObjectsListCall) Prefix(prefix string) *ObjectsListCall {
 	c.urlParams_.Set("prefix", prefix)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl.
 //
 // Possible values:
 //
@@ -10274,58 +10975,64 @@ func (c *ObjectsListCall) Projection(projection string) *ObjectsListCall {
 	return c
 }
 
-// StartOffset sets the optional parameter "startOffset": Filter results
-// to objects whose names are lexicographically equal to or after
-// startOffset. If endOffset is also set, the objects listed will have
-// names between startOffset (inclusive) and endOffset (exclusive).
+// SoftDeleted sets the optional parameter "softDeleted": If true, only
+// soft-deleted object versions will be listed. The default is false. For more
+// information, see Soft Delete
+// (https://cloud.google.com/storage/docs/soft-delete).
+func (c *ObjectsListCall) SoftDeleted(softDeleted bool) *ObjectsListCall {
+	c.urlParams_.Set("softDeleted", fmt.Sprint(softDeleted))
+	return c
+}
+
+// StartOffset sets the optional parameter "startOffset": Filter results to
+// objects whose names are lexicographically equal to or after startOffset. If
+// endOffset is also set, the objects listed will have names between
+// startOffset (inclusive) and endOffset (exclusive).
 func (c *ObjectsListCall) StartOffset(startOffset string) *ObjectsListCall {
 	c.urlParams_.Set("startOffset", startOffset)
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsListCall) UserProject(userProject string) *ObjectsListCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
-// Versions sets the optional parameter "versions": If true, lists all
-// versions of an object as distinct results. The default is false. For
-// more information, see Object Versioning.
+// Versions sets the optional parameter "versions": If true, lists all versions
+// of an object as distinct results. The default is false. For more
+// information, see Object Versioning
+// (https://cloud.google.com/storage/docs/object-versioning).
 func (c *ObjectsListCall) Versions(versions bool) *ObjectsListCall {
 	c.urlParams_.Set("versions", fmt.Sprint(versions))
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsListCall) Fields(s ...googleapi.Field) *ObjectsListCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ObjectsListCall) IfNoneMatch(entityTag string) *ObjectsListCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsListCall) Context(ctx context.Context) *ObjectsListCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsListCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -10334,21 +11041,15 @@ func (c *ObjectsListCall) Header() http.Header {
 }
 
 func (c *ObjectsListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -10356,16 +11057,15 @@ func (c *ObjectsListCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.list" call.
-// Exactly one of *Objects or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Objects.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Objects.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsListCall) Do(opts ...googleapi.CallOption) (*Objects, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -10392,105 +11092,12 @@ func (c *ObjectsListCall) Do(opts ...googleapi.CallOption) (*Objects, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves a list of objects matching the criteria.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.objects.list",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which to look for objects.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "delimiter": {
-	//       "description": "Returns results in a directory-like mode. items will contain only objects whose names, aside from the prefix, do not contain delimiter. Objects whose names, aside from the prefix, contain delimiter will have their name, truncated after the delimiter, returned in prefixes. Duplicate prefixes are omitted.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "endOffset": {
-	//       "description": "Filter results to objects whose names are lexicographically before endOffset. If startOffset is also set, the objects listed will have names between startOffset (inclusive) and endOffset (exclusive).",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "includeTrailingDelimiter": {
-	//       "description": "If true, objects that end in exactly one instance of delimiter will have their metadata included in items in addition to prefixes.",
-	//       "location": "query",
-	//       "type": "boolean"
-	//     },
-	//     "matchGlob": {
-	//       "description": "Filter results to objects and prefixes that match this glob pattern.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "maxResults": {
-	//       "default": "1000",
-	//       "description": "Maximum number of items plus prefixes to return in a single page of responses. As duplicate prefixes are omitted, fewer total results may be returned than requested. The service will use this parameter or 1,000 items, whichever is smaller.",
-	//       "format": "uint32",
-	//       "location": "query",
-	//       "minimum": "0",
-	//       "type": "integer"
-	//     },
-	//     "pageToken": {
-	//       "description": "A previously-returned page token representing part of the larger set of results to view.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "prefix": {
-	//       "description": "Filter results to objects whose names begin with this prefix.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "startOffset": {
-	//       "description": "Filter results to objects whose names are lexicographically equal to or after startOffset. If endOffset is also set, the objects listed will have names between startOffset (inclusive) and endOffset (exclusive).",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "versions": {
-	//       "description": "If true, lists all versions of an object as distinct results. The default is false. For more information, see Object Versioning.",
-	//       "location": "query",
-	//       "type": "boolean"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o",
-	//   "response": {
-	//     "$ref": "Objects"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ],
-	//   "supportsSubscription": true
-	// }
-
 }
 
 // Pages invokes f for each page of results.
@@ -10498,7 +11105,7 @@ func (c *ObjectsListCall) Do(opts ...googleapi.CallOption) (*Objects, error) {
 // The provided context supersedes any context provided to the Context method.
 func (c *ObjectsListCall) Pages(ctx context.Context, f func(*Objects) error) error {
 	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken")) // reset paging to original point
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
 	for {
 		x, err := c.Do()
 		if err != nil {
@@ -10514,7 +11121,206 @@ func (c *ObjectsListCall) Pages(ctx context.Context, f func(*Objects) error) err
 	}
 }
 
-// method id "storage.objects.patch":
+type ObjectsMoveCall struct {
+	s                 *Service
+	bucket            string
+	sourceObject      string
+	destinationObject string
+	urlParams_        gensupport.URLParams
+	ctx_              context.Context
+	header_           http.Header
+}
+
+// Move: Moves the source object to the destination object in the same bucket.
+//
+//   - bucket: Name of the bucket in which the object resides.
+//   - destinationObject: Name of the destination object. For information about
+//     how to URL encode object names to be path safe, see Encoding URI Path
+//     Parts (https://cloud.google.com/storage/docs/request-endpoints#encoding).
+//   - sourceObject: Name of the source object. For information about how to URL
+//     encode object names to be path safe, see Encoding URI Path Parts
+//     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
+func (r *ObjectsService) Move(bucket string, sourceObject string, destinationObject string) *ObjectsMoveCall {
+	c := &ObjectsMoveCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.sourceObject = sourceObject
+	c.destinationObject = destinationObject
+	return c
+}
+
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the destination object's current generation
+// matches the given value. Setting to 0 makes the operation succeed only if
+// there are no live versions of the object. `ifGenerationMatch` and
+// `ifGenerationNotMatch` conditions are mutually exclusive: it's an error for
+// both of them to be set in the request.
+func (c *ObjectsMoveCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
+	return c
+}
+
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the destination object's current
+// generation does not match the given value. If no live object exists, the
+// precondition fails. Setting to 0 makes the operation succeed only if there
+// is a live version of the object.`ifGenerationMatch` and
+// `ifGenerationNotMatch` conditions are mutually exclusive: it's an error for
+// both of them to be set in the request.
+func (c *ObjectsMoveCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the destination object's current
+// metageneration matches the given value. `ifMetagenerationMatch` and
+// `ifMetagenerationNotMatch` conditions are mutually exclusive: it's an error
+// for both of them to be set in the request.
+func (c *ObjectsMoveCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// destination object's current metageneration does not match the given value.
+// `ifMetagenerationMatch` and `ifMetagenerationNotMatch` conditions are
+// mutually exclusive: it's an error for both of them to be set in the request.
+func (c *ObjectsMoveCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// IfSourceGenerationMatch sets the optional parameter
+// "ifSourceGenerationMatch": Makes the operation conditional on whether the
+// source object's current generation matches the given value.
+// `ifSourceGenerationMatch` and `ifSourceGenerationNotMatch` conditions are
+// mutually exclusive: it's an error for both of them to be set in the request.
+func (c *ObjectsMoveCall) IfSourceGenerationMatch(ifSourceGenerationMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifSourceGenerationMatch", fmt.Sprint(ifSourceGenerationMatch))
+	return c
+}
+
+// IfSourceGenerationNotMatch sets the optional parameter
+// "ifSourceGenerationNotMatch": Makes the operation conditional on whether the
+// source object's current generation does not match the given value.
+// `ifSourceGenerationMatch` and `ifSourceGenerationNotMatch` conditions are
+// mutually exclusive: it's an error for both of them to be set in the request.
+func (c *ObjectsMoveCall) IfSourceGenerationNotMatch(ifSourceGenerationNotMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifSourceGenerationNotMatch", fmt.Sprint(ifSourceGenerationNotMatch))
+	return c
+}
+
+// IfSourceMetagenerationMatch sets the optional parameter
+// "ifSourceMetagenerationMatch": Makes the operation conditional on whether
+// the source object's current metageneration matches the given value.
+// `ifSourceMetagenerationMatch` and `ifSourceMetagenerationNotMatch`
+// conditions are mutually exclusive: it's an error for both of them to be set
+// in the request.
+func (c *ObjectsMoveCall) IfSourceMetagenerationMatch(ifSourceMetagenerationMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifSourceMetagenerationMatch", fmt.Sprint(ifSourceMetagenerationMatch))
+	return c
+}
+
+// IfSourceMetagenerationNotMatch sets the optional parameter
+// "ifSourceMetagenerationNotMatch": Makes the operation conditional on whether
+// the source object's current metageneration does not match the given value.
+// `ifSourceMetagenerationMatch` and `ifSourceMetagenerationNotMatch`
+// conditions are mutually exclusive: it's an error for both of them to be set
+// in the request.
+func (c *ObjectsMoveCall) IfSourceMetagenerationNotMatch(ifSourceMetagenerationNotMatch int64) *ObjectsMoveCall {
+	c.urlParams_.Set("ifSourceMetagenerationNotMatch", fmt.Sprint(ifSourceMetagenerationNotMatch))
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
+func (c *ObjectsMoveCall) UserProject(userProject string) *ObjectsMoveCall {
+	c.urlParams_.Set("userProject", userProject)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ObjectsMoveCall) Fields(s ...googleapi.Field) *ObjectsMoveCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ObjectsMoveCall) Context(ctx context.Context) *ObjectsMoveCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ObjectsMoveCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ObjectsMoveCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{sourceObject}/moveTo/o/{destinationObject}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":            c.bucket,
+		"sourceObject":      c.sourceObject,
+		"destinationObject": c.destinationObject,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.move", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.objects.move" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ObjectsMoveCall) Do(opts ...googleapi.CallOption) (*Object, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Object{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.move", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type ObjectsPatchCall struct {
 	s          *Service
@@ -10529,8 +11335,8 @@ type ObjectsPatchCall struct {
 // Patch: Patches an object's metadata.
 //
 //   - bucket: Name of the bucket in which the object resides.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) Patch(bucket string, object string, object2 *Object) *ObjectsPatchCall {
 	c := &ObjectsPatchCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -10540,47 +11346,55 @@ func (r *ObjectsService) Patch(bucket string, object string, object2 *Object) *O
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectsPatchCall) Generation(generation int64) *ObjectsPatchCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the object's current
-// generation matches the given value. Setting to 0 makes the operation
-// succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's current generation matches the
+// given value. Setting to 0 makes the operation succeed only if there are no
+// live versions of the object.
 func (c *ObjectsPatchCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsPatchCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfGenerationNotMatch sets the optional parameter
-// "ifGenerationNotMatch": Makes the operation conditional on whether
-// the object's current generation does not match the given value. If no
-// live object exists, the precondition fails. Setting to 0 makes the
-// operation succeed only if there is a live version of the object.
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the object's current generation
+// does not match the given value. If no live object exists, the precondition
+// fails. Setting to 0 makes the operation succeed only if there is a live
+// version of the object.
 func (c *ObjectsPatchCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsPatchCall {
 	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the object's current metageneration matches the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the object's current
+// metageneration matches the given value.
 func (c *ObjectsPatchCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsPatchCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": Makes the operation conditional on
-// whether the object's current metageneration does not match the given
-// value.
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// object's current metageneration does not match the given value.
 func (c *ObjectsPatchCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsPatchCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// OverrideUnlockedRetention sets the optional parameter
+// "overrideUnlockedRetention": Must be true to remove the retention
+// configuration, reduce its unlocked retention period, or change its mode from
+// unlocked to locked.
+func (c *ObjectsPatchCall) OverrideUnlockedRetention(overrideUnlockedRetention bool) *ObjectsPatchCall {
+	c.urlParams_.Set("overrideUnlockedRetention", fmt.Sprint(overrideUnlockedRetention))
 	return c
 }
 
@@ -10593,29 +11407,29 @@ func (c *ObjectsPatchCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *ObjectsPatchCall) PredefinedAcl(predefinedAcl string) *ObjectsPatchCall {
 	c.urlParams_.Set("predefinedAcl", predefinedAcl)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to full.
 //
 // Possible values:
 //
@@ -10626,31 +11440,29 @@ func (c *ObjectsPatchCall) Projection(projection string) *ObjectsPatchCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request, for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request, for Requester Pays buckets.
 func (c *ObjectsPatchCall) UserProject(userProject string) *ObjectsPatchCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsPatchCall) Fields(s ...googleapi.Field) *ObjectsPatchCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsPatchCall) Context(ctx context.Context) *ObjectsPatchCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsPatchCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -10659,18 +11471,11 @@ func (c *ObjectsPatchCall) Header() http.Header {
 }
 
 func (c *ObjectsPatchCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.object2)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.object2)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}")
@@ -10684,16 +11489,15 @@ func (c *ObjectsPatchCall) doRequest(alt string) (*http.Response, error) {
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.patch", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.patch" call.
-// Exactly one of *Object or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Object.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsPatchCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -10720,117 +11524,190 @@ func (c *ObjectsPatchCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.patch", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Patches an object's metadata.",
-	//   "httpMethod": "PATCH",
-	//   "id": "storage.objects.patch",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which the object resides.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "predefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to this object.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request, for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}",
-	//   "request": {
-	//     "$ref": "Object"
-	//   },
-	//   "response": {
-	//     "$ref": "Object"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
 
-// method id "storage.objects.rewrite":
+type ObjectsRestoreCall struct {
+	s          *Service
+	bucket     string
+	object     string
+	urlParams_ gensupport.URLParams
+	ctx_       context.Context
+	header_    http.Header
+}
+
+// Restore: Restores a soft-deleted object.
+//
+//   - bucket: Name of the bucket in which the object resides.
+//   - generation: Selects a specific revision of this object.
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
+//     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
+func (r *ObjectsService) Restore(bucket string, object string, generation int64) *ObjectsRestoreCall {
+	c := &ObjectsRestoreCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.object = object
+	c.urlParams_.Set("generation", fmt.Sprint(generation))
+	return c
+}
+
+// CopySourceAcl sets the optional parameter "copySourceAcl": If true, copies
+// the source object's ACL; otherwise, uses the bucket's default object ACL.
+// The default is false.
+func (c *ObjectsRestoreCall) CopySourceAcl(copySourceAcl bool) *ObjectsRestoreCall {
+	c.urlParams_.Set("copySourceAcl", fmt.Sprint(copySourceAcl))
+	return c
+}
+
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's one live generation matches
+// the given value. Setting to 0 makes the operation succeed only if there are
+// no live versions of the object.
+func (c *ObjectsRestoreCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsRestoreCall {
+	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
+	return c
+}
+
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether none of the object's live
+// generations match the given value. If no live object exists, the
+// precondition fails. Setting to 0 makes the operation succeed only if there
+// is a live version of the object.
+func (c *ObjectsRestoreCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsRestoreCall {
+	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
+	return c
+}
+
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the object's one live
+// metageneration matches the given value.
+func (c *ObjectsRestoreCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsRestoreCall {
+	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
+	return c
+}
+
+// IfMetagenerationNotMatch sets the optional parameter
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether none
+// of the object's live metagenerations match the given value.
+func (c *ObjectsRestoreCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsRestoreCall {
+	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to full.
+//
+// Possible values:
+//
+//	"full" - Include all properties.
+//	"noAcl" - Omit the owner, acl property.
+func (c *ObjectsRestoreCall) Projection(projection string) *ObjectsRestoreCall {
+	c.urlParams_.Set("projection", projection)
+	return c
+}
+
+// RestoreToken sets the optional parameter "restoreToken": Restore token used
+// to differentiate sof-deleted objects with the same name and generation. Only
+// applicable for hierarchical namespace buckets. This parameter is optional,
+// and is only required in the rare case when there are multiple soft-deleted
+// objects with the same name and generation.
+func (c *ObjectsRestoreCall) RestoreToken(restoreToken string) *ObjectsRestoreCall {
+	c.urlParams_.Set("restoreToken", restoreToken)
+	return c
+}
+
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
+func (c *ObjectsRestoreCall) UserProject(userProject string) *ObjectsRestoreCall {
+	c.urlParams_.Set("userProject", userProject)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *ObjectsRestoreCall) Fields(s ...googleapi.Field) *ObjectsRestoreCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *ObjectsRestoreCall) Context(ctx context.Context) *ObjectsRestoreCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *ObjectsRestoreCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *ObjectsRestoreCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/restore")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+		"object": c.object,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.restore", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.objects.restore" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
+func (c *ObjectsRestoreCall) Do(opts ...googleapi.CallOption) (*Object, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &Object{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.restore", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
 
 type ObjectsRewriteCall struct {
 	s                 *Service
@@ -10847,19 +11724,16 @@ type ObjectsRewriteCall struct {
 // Rewrite: Rewrites a source object to a destination object. Optionally
 // overrides metadata.
 //
-//   - destinationBucket: Name of the bucket in which to store the new
-//     object. Overrides the provided object metadata's bucket value, if
-//     any.
+//   - destinationBucket: Name of the bucket in which to store the new object.
+//     Overrides the provided object metadata's bucket value, if any.
 //   - destinationObject: Name of the new object. Required when the object
-//     metadata is not otherwise provided. Overrides the object metadata's
-//     name value, if any. For information about how to URL encode object
-//     names to be path safe, see Encoding URI Path Parts
+//     metadata is not otherwise provided. Overrides the object metadata's name
+//     value, if any. For information about how to URL encode object names to be
+//     path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
-//   - sourceBucket: Name of the bucket in which to find the source
-//     object.
-//   - sourceObject: Name of the source object. For information about how
-//     to URL encode object names to be path safe, see Encoding URI Path
-//     Parts
+//   - sourceBucket: Name of the bucket in which to find the source object.
+//   - sourceObject: Name of the source object. For information about how to URL
+//     encode object names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) Rewrite(sourceBucket string, sourceObject string, destinationBucket string, destinationObject string, object *Object) *ObjectsRewriteCall {
 	c := &ObjectsRewriteCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -10871,22 +11745,19 @@ func (r *ObjectsService) Rewrite(sourceBucket string, sourceObject string, desti
 	return c
 }
 
-// DestinationKmsKeyName sets the optional parameter
-// "destinationKmsKeyName": Resource name of the Cloud KMS key, of the
-// form
-// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key,
-//
-//	that will be used to encrypt the object. Overrides the object
-//
-// metadata's kms_key_name value, if any.
+// DestinationKmsKeyName sets the optional parameter "destinationKmsKeyName":
+// Resource name of the Cloud KMS key, of the form
+// projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that
+// will be used to encrypt the object. Overrides the object metadata's
+// kms_key_name value, if any.
 func (c *ObjectsRewriteCall) DestinationKmsKeyName(destinationKmsKeyName string) *ObjectsRewriteCall {
 	c.urlParams_.Set("destinationKmsKeyName", destinationKmsKeyName)
 	return c
 }
 
 // DestinationPredefinedAcl sets the optional parameter
-// "destinationPredefinedAcl": Apply a predefined set of access controls
-// to the destination object.
+// "destinationPredefinedAcl": Apply a predefined set of access controls to the
+// destination object.
 //
 // Possible values:
 //
@@ -10894,94 +11765,89 @@ func (c *ObjectsRewriteCall) DestinationKmsKeyName(destinationKmsKeyName string)
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *ObjectsRewriteCall) DestinationPredefinedAcl(destinationPredefinedAcl string) *ObjectsRewriteCall {
 	c.urlParams_.Set("destinationPredefinedAcl", destinationPredefinedAcl)
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the object's current
-// generation matches the given value. Setting to 0 makes the operation
-// succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's current generation matches the
+// given value. Setting to 0 makes the operation succeed only if there are no
+// live versions of the object.
 func (c *ObjectsRewriteCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfGenerationNotMatch sets the optional parameter
-// "ifGenerationNotMatch": Makes the operation conditional on whether
-// the object's current generation does not match the given value. If no
-// live object exists, the precondition fails. Setting to 0 makes the
-// operation succeed only if there is a live version of the object.
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the object's current generation
+// does not match the given value. If no live object exists, the precondition
+// fails. Setting to 0 makes the operation succeed only if there is a live
+// version of the object.
 func (c *ObjectsRewriteCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the destination object's current metageneration matches the given
-// value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the destination object's current
+// metageneration matches the given value.
 func (c *ObjectsRewriteCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": Makes the operation conditional on
-// whether the destination object's current metageneration does not
-// match the given value.
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// destination object's current metageneration does not match the given value.
 func (c *ObjectsRewriteCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
 	return c
 }
 
 // IfSourceGenerationMatch sets the optional parameter
-// "ifSourceGenerationMatch": Makes the operation conditional on whether
-// the source object's current generation matches the given value.
+// "ifSourceGenerationMatch": Makes the operation conditional on whether the
+// source object's current generation matches the given value.
 func (c *ObjectsRewriteCall) IfSourceGenerationMatch(ifSourceGenerationMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifSourceGenerationMatch", fmt.Sprint(ifSourceGenerationMatch))
 	return c
 }
 
 // IfSourceGenerationNotMatch sets the optional parameter
-// "ifSourceGenerationNotMatch": Makes the operation conditional on
-// whether the source object's current generation does not match the
-// given value.
+// "ifSourceGenerationNotMatch": Makes the operation conditional on whether the
+// source object's current generation does not match the given value.
 func (c *ObjectsRewriteCall) IfSourceGenerationNotMatch(ifSourceGenerationNotMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifSourceGenerationNotMatch", fmt.Sprint(ifSourceGenerationNotMatch))
 	return c
 }
 
 // IfSourceMetagenerationMatch sets the optional parameter
-// "ifSourceMetagenerationMatch": Makes the operation conditional on
-// whether the source object's current metageneration matches the given
-// value.
+// "ifSourceMetagenerationMatch": Makes the operation conditional on whether
+// the source object's current metageneration matches the given value.
 func (c *ObjectsRewriteCall) IfSourceMetagenerationMatch(ifSourceMetagenerationMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifSourceMetagenerationMatch", fmt.Sprint(ifSourceMetagenerationMatch))
 	return c
 }
 
 // IfSourceMetagenerationNotMatch sets the optional parameter
-// "ifSourceMetagenerationNotMatch": Makes the operation conditional on
-// whether the source object's current metageneration does not match the
-// given value.
+// "ifSourceMetagenerationNotMatch": Makes the operation conditional on whether
+// the source object's current metageneration does not match the given value.
 func (c *ObjectsRewriteCall) IfSourceMetagenerationNotMatch(ifSourceMetagenerationNotMatch int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("ifSourceMetagenerationNotMatch", fmt.Sprint(ifSourceMetagenerationNotMatch))
 	return c
@@ -10989,21 +11855,20 @@ func (c *ObjectsRewriteCall) IfSourceMetagenerationNotMatch(ifSourceMetagenerati
 
 // MaxBytesRewrittenPerCall sets the optional parameter
 // "maxBytesRewrittenPerCall": The maximum number of bytes that will be
-// rewritten per rewrite request. Most callers shouldn't need to specify
-// this parameter - it is primarily in place to support testing. If
-// specified the value must be an integral multiple of 1 MiB (1048576).
-// Also, this only applies to requests where the source and destination
-// span locations and/or storage classes. Finally, this value must not
-// change across rewrite calls else you'll get an error that the
-// rewriteToken is invalid.
+// rewritten per rewrite request. Most callers shouldn't need to specify this
+// parameter - it is primarily in place to support testing. If specified the
+// value must be an integral multiple of 1 MiB (1048576). Also, this only
+// applies to requests where the source and destination span locations and/or
+// storage classes. Finally, this value must not change across rewrite calls
+// else you'll get an error that the rewriteToken is invalid.
 func (c *ObjectsRewriteCall) MaxBytesRewrittenPerCall(maxBytesRewrittenPerCall int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("maxBytesRewrittenPerCall", fmt.Sprint(maxBytesRewrittenPerCall))
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl, unless the object resource
-// specifies the acl property, when it defaults to full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl, unless the object resource specifies the acl
+// property, when it defaults to full.
 //
 // Possible values:
 //
@@ -11014,50 +11879,47 @@ func (c *ObjectsRewriteCall) Projection(projection string) *ObjectsRewriteCall {
 	return c
 }
 
-// RewriteToken sets the optional parameter "rewriteToken": Include this
-// field (from the previous rewrite response) on each rewrite request
-// after the first one, until the rewrite response 'done' flag is true.
-// Calls that provide a rewriteToken can omit all other request fields,
-// but if included those fields must match the values provided in the
-// first rewrite request.
+// RewriteToken sets the optional parameter "rewriteToken": Include this field
+// (from the previous rewrite response) on each rewrite request after the first
+// one, until the rewrite response 'done' flag is true. Calls that provide a
+// rewriteToken can omit all other request fields, but if included those fields
+// must match the values provided in the first rewrite request.
 func (c *ObjectsRewriteCall) RewriteToken(rewriteToken string) *ObjectsRewriteCall {
 	c.urlParams_.Set("rewriteToken", rewriteToken)
 	return c
 }
 
-// SourceGeneration sets the optional parameter "sourceGeneration": If
-// present, selects a specific revision of the source object (as opposed
-// to the latest version, the default).
+// SourceGeneration sets the optional parameter "sourceGeneration": If present,
+// selects a specific revision of the source object (as opposed to the latest
+// version, the default).
 func (c *ObjectsRewriteCall) SourceGeneration(sourceGeneration int64) *ObjectsRewriteCall {
 	c.urlParams_.Set("sourceGeneration", fmt.Sprint(sourceGeneration))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsRewriteCall) UserProject(userProject string) *ObjectsRewriteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsRewriteCall) Fields(s ...googleapi.Field) *ObjectsRewriteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsRewriteCall) Context(ctx context.Context) *ObjectsRewriteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsRewriteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -11066,18 +11928,11 @@ func (c *ObjectsRewriteCall) Header() http.Header {
 }
 
 func (c *ObjectsRewriteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.object)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.object)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{sourceBucket}/o/{sourceObject}/rewriteTo/b/{destinationBucket}/o/{destinationObject}")
@@ -11093,16 +11948,16 @@ func (c *ObjectsRewriteCall) doRequest(alt string) (*http.Response, error) {
 		"destinationBucket": c.destinationBucket,
 		"destinationObject": c.destinationObject,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.rewrite", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.rewrite" call.
-// Exactly one of *RewriteResponse or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *RewriteResponse.ServerResponse.Header or (if a response was returned
-// at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *RewriteResponse.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ObjectsRewriteCall) Do(opts ...googleapi.CallOption) (*RewriteResponse, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -11129,172 +11984,13 @@ func (c *ObjectsRewriteCall) Do(opts ...googleapi.CallOption) (*RewriteResponse,
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.rewrite", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Rewrites a source object to a destination object. Optionally overrides metadata.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.objects.rewrite",
-	//   "parameterOrder": [
-	//     "sourceBucket",
-	//     "sourceObject",
-	//     "destinationBucket",
-	//     "destinationObject"
-	//   ],
-	//   "parameters": {
-	//     "destinationBucket": {
-	//       "description": "Name of the bucket in which to store the new object. Overrides the provided object metadata's bucket value, if any.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "destinationKmsKeyName": {
-	//       "description": "Resource name of the Cloud KMS key, of the form projects/my-project/locations/global/keyRings/my-kr/cryptoKeys/my-key, that will be used to encrypt the object. Overrides the object metadata's kms_key_name value, if any.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "destinationObject": {
-	//       "description": "Name of the new object. Required when the object metadata is not otherwise provided. Overrides the object metadata's name value, if any. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "destinationPredefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to the destination object.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the destination object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the destination object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current generation matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current generation does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifSourceMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the source object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "maxBytesRewrittenPerCall": {
-	//       "description": "The maximum number of bytes that will be rewritten per rewrite request. Most callers shouldn't need to specify this parameter - it is primarily in place to support testing. If specified the value must be an integral multiple of 1 MiB (1048576). Also, this only applies to requests where the source and destination span locations and/or storage classes. Finally, this value must not change across rewrite calls else you'll get an error that the rewriteToken is invalid.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl, unless the object resource specifies the acl property, when it defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "rewriteToken": {
-	//       "description": "Include this field (from the previous rewrite response) on each rewrite request after the first one, until the rewrite response 'done' flag is true. Calls that provide a rewriteToken can omit all other request fields, but if included those fields must match the values provided in the first rewrite request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "sourceBucket": {
-	//       "description": "Name of the bucket in which to find the source object.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "sourceGeneration": {
-	//       "description": "If present, selects a specific revision of the source object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "sourceObject": {
-	//       "description": "Name of the source object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{sourceBucket}/o/{sourceObject}/rewriteTo/b/{destinationBucket}/o/{destinationObject}",
-	//   "request": {
-	//     "$ref": "Object"
-	//   },
-	//   "response": {
-	//     "$ref": "RewriteResponse"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.setIamPolicy":
 
 type ObjectsSetIamPolicyCall struct {
 	s          *Service
@@ -11309,8 +12005,8 @@ type ObjectsSetIamPolicyCall struct {
 // SetIamPolicy: Updates an IAM policy for the specified object.
 //
 //   - bucket: Name of the bucket in which the object resides.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) SetIamPolicy(bucket string, object string, policy *Policy) *ObjectsSetIamPolicyCall {
 	c := &ObjectsSetIamPolicyCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -11320,39 +12016,37 @@ func (r *ObjectsService) SetIamPolicy(bucket string, object string, policy *Poli
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectsSetIamPolicyCall) Generation(generation int64) *ObjectsSetIamPolicyCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsSetIamPolicyCall) UserProject(userProject string) *ObjectsSetIamPolicyCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsSetIamPolicyCall) Fields(s ...googleapi.Field) *ObjectsSetIamPolicyCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsSetIamPolicyCall) Context(ctx context.Context) *ObjectsSetIamPolicyCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsSetIamPolicyCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -11361,18 +12055,11 @@ func (c *ObjectsSetIamPolicyCall) Header() http.Header {
 }
 
 func (c *ObjectsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.policy)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.policy)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/iam")
@@ -11386,16 +12073,15 @@ func (c *ObjectsSetIamPolicyCall) doRequest(alt string) (*http.Response, error) 
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.setIamPolicy", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.setIamPolicy" call.
-// Exactly one of *Policy or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Policy.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Policy.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -11422,60 +12108,13 @@ func (c *ObjectsSetIamPolicyCall) Do(opts ...googleapi.CallOption) (*Policy, err
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.setIamPolicy", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates an IAM policy for the specified object.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.objects.setIamPolicy",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which the object resides.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/iam",
-	//   "request": {
-	//     "$ref": "Policy"
-	//   },
-	//   "response": {
-	//     "$ref": "Policy"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.testIamPermissions":
 
 type ObjectsTestIamPermissionsCall struct {
 	s            *Service
@@ -11487,12 +12126,12 @@ type ObjectsTestIamPermissionsCall struct {
 	header_      http.Header
 }
 
-// TestIamPermissions: Tests a set of permissions on the given object to
-// see which, if any, are held by the caller.
+// TestIamPermissions: Tests a set of permissions on the given object to see
+// which, if any, are held by the caller.
 //
 //   - bucket: Name of the bucket in which the object resides.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 //   - permissions: Permissions to test.
 func (r *ObjectsService) TestIamPermissions(bucket string, object string, permissions []string) *ObjectsTestIamPermissionsCall {
@@ -11503,49 +12142,45 @@ func (r *ObjectsService) TestIamPermissions(bucket string, object string, permis
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectsTestIamPermissionsCall) Generation(generation int64) *ObjectsTestIamPermissionsCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsTestIamPermissionsCall) UserProject(userProject string) *ObjectsTestIamPermissionsCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsTestIamPermissionsCall) Fields(s ...googleapi.Field) *ObjectsTestIamPermissionsCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ObjectsTestIamPermissionsCall) IfNoneMatch(entityTag string) *ObjectsTestIamPermissionsCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsTestIamPermissionsCall) Context(ctx context.Context) *ObjectsTestIamPermissionsCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsTestIamPermissionsCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -11554,21 +12189,15 @@ func (c *ObjectsTestIamPermissionsCall) Header() http.Header {
 }
 
 func (c *ObjectsTestIamPermissionsCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}/iam/testPermissions")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -11577,16 +12206,16 @@ func (c *ObjectsTestIamPermissionsCall) doRequest(alt string) (*http.Response, e
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.testIamPermissions", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.testIamPermissions" call.
-// Exactly one of *TestIamPermissionsResponse or error will be non-nil.
 // Any non-2xx status code is an error. Response headers are in either
-// *TestIamPermissionsResponse.ServerResponse.Header or (if a response
-// was returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// *TestIamPermissionsResponse.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
 func (c *ObjectsTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestIamPermissionsResponse, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -11613,67 +12242,13 @@ func (c *ObjectsTestIamPermissionsCall) Do(opts ...googleapi.CallOption) (*TestI
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.testIamPermissions", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Tests a set of permissions on the given object to see which, if any, are held by the caller.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.objects.testIamPermissions",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object",
-	//     "permissions"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which the object resides.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "permissions": {
-	//       "description": "Permissions to test.",
-	//       "location": "query",
-	//       "repeated": true,
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}/iam/testPermissions",
-	//   "response": {
-	//     "$ref": "TestIamPermissionsResponse"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.update":
 
 type ObjectsUpdateCall struct {
 	s          *Service
@@ -11688,8 +12263,8 @@ type ObjectsUpdateCall struct {
 // Update: Updates an object's metadata.
 //
 //   - bucket: Name of the bucket in which the object resides.
-//   - object: Name of the object. For information about how to URL encode
-//     object names to be path safe, see Encoding URI Path Parts
+//   - object: Name of the object. For information about how to URL encode object
+//     names to be path safe, see Encoding URI Path Parts
 //     (https://cloud.google.com/storage/docs/request-endpoints#encoding).
 func (r *ObjectsService) Update(bucket string, object string, object2 *Object) *ObjectsUpdateCall {
 	c := &ObjectsUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
@@ -11699,47 +12274,55 @@ func (r *ObjectsService) Update(bucket string, object string, object2 *Object) *
 	return c
 }
 
-// Generation sets the optional parameter "generation": If present,
-// selects a specific revision of this object (as opposed to the latest
-// version, the default).
+// Generation sets the optional parameter "generation": If present, selects a
+// specific revision of this object (as opposed to the latest version, the
+// default).
 func (c *ObjectsUpdateCall) Generation(generation int64) *ObjectsUpdateCall {
 	c.urlParams_.Set("generation", fmt.Sprint(generation))
 	return c
 }
 
-// IfGenerationMatch sets the optional parameter "ifGenerationMatch":
-// Makes the operation conditional on whether the object's current
-// generation matches the given value. Setting to 0 makes the operation
-// succeed only if there are no live versions of the object.
+// IfGenerationMatch sets the optional parameter "ifGenerationMatch": Makes the
+// operation conditional on whether the object's current generation matches the
+// given value. Setting to 0 makes the operation succeed only if there are no
+// live versions of the object.
 func (c *ObjectsUpdateCall) IfGenerationMatch(ifGenerationMatch int64) *ObjectsUpdateCall {
 	c.urlParams_.Set("ifGenerationMatch", fmt.Sprint(ifGenerationMatch))
 	return c
 }
 
-// IfGenerationNotMatch sets the optional parameter
-// "ifGenerationNotMatch": Makes the operation conditional on whether
-// the object's current generation does not match the given value. If no
-// live object exists, the precondition fails. Setting to 0 makes the
-// operation succeed only if there is a live version of the object.
+// IfGenerationNotMatch sets the optional parameter "ifGenerationNotMatch":
+// Makes the operation conditional on whether the object's current generation
+// does not match the given value. If no live object exists, the precondition
+// fails. Setting to 0 makes the operation succeed only if there is a live
+// version of the object.
 func (c *ObjectsUpdateCall) IfGenerationNotMatch(ifGenerationNotMatch int64) *ObjectsUpdateCall {
 	c.urlParams_.Set("ifGenerationNotMatch", fmt.Sprint(ifGenerationNotMatch))
 	return c
 }
 
-// IfMetagenerationMatch sets the optional parameter
-// "ifMetagenerationMatch": Makes the operation conditional on whether
-// the object's current metageneration matches the given value.
+// IfMetagenerationMatch sets the optional parameter "ifMetagenerationMatch":
+// Makes the operation conditional on whether the object's current
+// metageneration matches the given value.
 func (c *ObjectsUpdateCall) IfMetagenerationMatch(ifMetagenerationMatch int64) *ObjectsUpdateCall {
 	c.urlParams_.Set("ifMetagenerationMatch", fmt.Sprint(ifMetagenerationMatch))
 	return c
 }
 
 // IfMetagenerationNotMatch sets the optional parameter
-// "ifMetagenerationNotMatch": Makes the operation conditional on
-// whether the object's current metageneration does not match the given
-// value.
+// "ifMetagenerationNotMatch": Makes the operation conditional on whether the
+// object's current metageneration does not match the given value.
 func (c *ObjectsUpdateCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch int64) *ObjectsUpdateCall {
 	c.urlParams_.Set("ifMetagenerationNotMatch", fmt.Sprint(ifMetagenerationNotMatch))
+	return c
+}
+
+// OverrideUnlockedRetention sets the optional parameter
+// "overrideUnlockedRetention": Must be true to remove the retention
+// configuration, reduce its unlocked retention period, or change its mode from
+// unlocked to locked.
+func (c *ObjectsUpdateCall) OverrideUnlockedRetention(overrideUnlockedRetention bool) *ObjectsUpdateCall {
+	c.urlParams_.Set("overrideUnlockedRetention", fmt.Sprint(overrideUnlockedRetention))
 	return c
 }
 
@@ -11752,29 +12335,29 @@ func (c *ObjectsUpdateCall) IfMetagenerationNotMatch(ifMetagenerationNotMatch in
 //
 // allAuthenticatedUsers get READER access.
 //
-//	"bucketOwnerFullControl" - Object owner gets OWNER access, and
+//	"bucketOwnerFullControl" - Object owner gets OWNER access, and project
 //
-// project team owners get OWNER access.
+// team owners get OWNER access.
 //
-//	"bucketOwnerRead" - Object owner gets OWNER access, and project
+//	"bucketOwnerRead" - Object owner gets OWNER access, and project team
 //
-// team owners get READER access.
+// owners get READER access.
 //
 //	"private" - Object owner gets OWNER access.
 //	"projectPrivate" - Object owner gets OWNER access, and project team
 //
 // members get access according to their roles.
 //
-//	"publicRead" - Object owner gets OWNER access, and allUsers get
+//	"publicRead" - Object owner gets OWNER access, and allUsers get READER
 //
-// READER access.
+// access.
 func (c *ObjectsUpdateCall) PredefinedAcl(predefinedAcl string) *ObjectsUpdateCall {
 	c.urlParams_.Set("predefinedAcl", predefinedAcl)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to full.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to full.
 //
 // Possible values:
 //
@@ -11785,31 +12368,29 @@ func (c *ObjectsUpdateCall) Projection(projection string) *ObjectsUpdateCall {
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsUpdateCall) UserProject(userProject string) *ObjectsUpdateCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsUpdateCall) Fields(s ...googleapi.Field) *ObjectsUpdateCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsUpdateCall) Context(ctx context.Context) *ObjectsUpdateCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsUpdateCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -11818,18 +12399,11 @@ func (c *ObjectsUpdateCall) Header() http.Header {
 }
 
 func (c *ObjectsUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.object2)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.object2)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/{object}")
@@ -11843,16 +12417,15 @@ func (c *ObjectsUpdateCall) doRequest(alt string) (*http.Response, error) {
 		"bucket": c.bucket,
 		"object": c.object,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.update" call.
-// Exactly one of *Object or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Object.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Object.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsUpdateCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -11879,117 +12452,13 @@ func (c *ObjectsUpdateCall) Do(opts ...googleapi.CallOption) (*Object, error) {
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates an object's metadata.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.objects.update",
-	//   "parameterOrder": [
-	//     "bucket",
-	//     "object"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which the object resides.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "generation": {
-	//       "description": "If present, selects a specific revision of this object (as opposed to the latest version, the default).",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation matches the given value. Setting to 0 makes the operation succeed only if there are no live versions of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifGenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current generation does not match the given value. If no live object exists, the precondition fails. Setting to 0 makes the operation succeed only if there is a live version of the object.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration matches the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "ifMetagenerationNotMatch": {
-	//       "description": "Makes the operation conditional on whether the object's current metageneration does not match the given value.",
-	//       "format": "int64",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "object": {
-	//       "description": "Name of the object. For information about how to URL encode object names to be path safe, see [Encoding URI Path Parts](https://cloud.google.com/storage/docs/request-endpoints#encoding).",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "predefinedAcl": {
-	//       "description": "Apply a predefined set of access controls to this object.",
-	//       "enum": [
-	//         "authenticatedRead",
-	//         "bucketOwnerFullControl",
-	//         "bucketOwnerRead",
-	//         "private",
-	//         "projectPrivate",
-	//         "publicRead"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Object owner gets OWNER access, and allAuthenticatedUsers get READER access.",
-	//         "Object owner gets OWNER access, and project team owners get OWNER access.",
-	//         "Object owner gets OWNER access, and project team owners get READER access.",
-	//         "Object owner gets OWNER access.",
-	//         "Object owner gets OWNER access, and project team members get access according to their roles.",
-	//         "Object owner gets OWNER access, and allUsers get READER access."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to full.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/{object}",
-	//   "request": {
-	//     "$ref": "Object"
-	//   },
-	//   "response": {
-	//     "$ref": "Object"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.objects.watchAll":
 
 type ObjectsWatchAllCall struct {
 	s          *Service
@@ -12010,21 +12479,20 @@ func (r *ObjectsService) WatchAll(bucket string, channel *Channel) *ObjectsWatch
 	return c
 }
 
-// Delimiter sets the optional parameter "delimiter": Returns results in
-// a directory-like mode. items will contain only objects whose names,
-// aside from the prefix, do not contain delimiter. Objects whose names,
-// aside from the prefix, contain delimiter will have their name,
-// truncated after the delimiter, returned in prefixes. Duplicate
-// prefixes are omitted.
+// Delimiter sets the optional parameter "delimiter": Returns results in a
+// directory-like mode. items will contain only objects whose names, aside from
+// the prefix, do not contain delimiter. Objects whose names, aside from the
+// prefix, contain delimiter will have their name, truncated after the
+// delimiter, returned in prefixes. Duplicate prefixes are omitted.
 func (c *ObjectsWatchAllCall) Delimiter(delimiter string) *ObjectsWatchAllCall {
 	c.urlParams_.Set("delimiter", delimiter)
 	return c
 }
 
-// EndOffset sets the optional parameter "endOffset": Filter results to
-// objects whose names are lexicographically before endOffset. If
-// startOffset is also set, the objects listed will have names between
-// startOffset (inclusive) and endOffset (exclusive).
+// EndOffset sets the optional parameter "endOffset": Filter results to objects
+// whose names are lexicographically before endOffset. If startOffset is also
+// set, the objects listed will have names between startOffset (inclusive) and
+// endOffset (exclusive).
 func (c *ObjectsWatchAllCall) EndOffset(endOffset string) *ObjectsWatchAllCall {
 	c.urlParams_.Set("endOffset", endOffset)
 	return c
@@ -12032,40 +12500,38 @@ func (c *ObjectsWatchAllCall) EndOffset(endOffset string) *ObjectsWatchAllCall {
 
 // IncludeTrailingDelimiter sets the optional parameter
 // "includeTrailingDelimiter": If true, objects that end in exactly one
-// instance of delimiter will have their metadata included in items in
-// addition to prefixes.
+// instance of delimiter will have their metadata included in items in addition
+// to prefixes.
 func (c *ObjectsWatchAllCall) IncludeTrailingDelimiter(includeTrailingDelimiter bool) *ObjectsWatchAllCall {
 	c.urlParams_.Set("includeTrailingDelimiter", fmt.Sprint(includeTrailingDelimiter))
 	return c
 }
 
-// MaxResults sets the optional parameter "maxResults": Maximum number
-// of items plus prefixes to return in a single page of responses. As
-// duplicate prefixes are omitted, fewer total results may be returned
-// than requested. The service will use this parameter or 1,000 items,
-// whichever is smaller.
+// MaxResults sets the optional parameter "maxResults": Maximum number of items
+// plus prefixes to return in a single page of responses. As duplicate prefixes
+// are omitted, fewer total results may be returned than requested. The service
+// will use this parameter or 1,000 items, whichever is smaller.
 func (c *ObjectsWatchAllCall) MaxResults(maxResults int64) *ObjectsWatchAllCall {
 	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
 	return c
 }
 
-// PageToken sets the optional parameter "pageToken": A
-// previously-returned page token representing part of the larger set of
-// results to view.
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
 func (c *ObjectsWatchAllCall) PageToken(pageToken string) *ObjectsWatchAllCall {
 	c.urlParams_.Set("pageToken", pageToken)
 	return c
 }
 
-// Prefix sets the optional parameter "prefix": Filter results to
-// objects whose names begin with this prefix.
+// Prefix sets the optional parameter "prefix": Filter results to objects whose
+// names begin with this prefix.
 func (c *ObjectsWatchAllCall) Prefix(prefix string) *ObjectsWatchAllCall {
 	c.urlParams_.Set("prefix", prefix)
 	return c
 }
 
-// Projection sets the optional parameter "projection": Set of
-// properties to return. Defaults to noAcl.
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl.
 //
 // Possible values:
 //
@@ -12076,48 +12542,47 @@ func (c *ObjectsWatchAllCall) Projection(projection string) *ObjectsWatchAllCall
 	return c
 }
 
-// StartOffset sets the optional parameter "startOffset": Filter results
-// to objects whose names are lexicographically equal to or after
-// startOffset. If endOffset is also set, the objects listed will have
-// names between startOffset (inclusive) and endOffset (exclusive).
+// StartOffset sets the optional parameter "startOffset": Filter results to
+// objects whose names are lexicographically equal to or after startOffset. If
+// endOffset is also set, the objects listed will have names between
+// startOffset (inclusive) and endOffset (exclusive).
 func (c *ObjectsWatchAllCall) StartOffset(startOffset string) *ObjectsWatchAllCall {
 	c.urlParams_.Set("startOffset", startOffset)
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request. Required for Requester Pays buckets.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request. Required for Requester Pays buckets.
 func (c *ObjectsWatchAllCall) UserProject(userProject string) *ObjectsWatchAllCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
-// Versions sets the optional parameter "versions": If true, lists all
-// versions of an object as distinct results. The default is false. For
-// more information, see Object Versioning.
+// Versions sets the optional parameter "versions": If true, lists all versions
+// of an object as distinct results. The default is false. For more
+// information, see Object Versioning
+// (https://cloud.google.com/storage/docs/object-versioning).
 func (c *ObjectsWatchAllCall) Versions(versions bool) *ObjectsWatchAllCall {
 	c.urlParams_.Set("versions", fmt.Sprint(versions))
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ObjectsWatchAllCall) Fields(s ...googleapi.Field) *ObjectsWatchAllCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ObjectsWatchAllCall) Context(ctx context.Context) *ObjectsWatchAllCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ObjectsWatchAllCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -12126,18 +12591,11 @@ func (c *ObjectsWatchAllCall) Header() http.Header {
 }
 
 func (c *ObjectsWatchAllCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.channel)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.channel)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/o/watch")
@@ -12150,16 +12608,15 @@ func (c *ObjectsWatchAllCall) doRequest(alt string) (*http.Response, error) {
 	googleapi.Expand(req.URL, map[string]string{
 		"bucket": c.bucket,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.objects.watchAll", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.objects.watchAll" call.
-// Exactly one of *Channel or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *Channel.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *Channel.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ObjectsWatchAllCall) Do(opts ...googleapi.CallOption) (*Channel, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -12186,107 +12643,448 @@ func (c *ObjectsWatchAllCall) Do(opts ...googleapi.CallOption) (*Channel, error)
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.objects.watchAll", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Watch for changes on all objects in a bucket.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.objects.watchAll",
-	//   "parameterOrder": [
-	//     "bucket"
-	//   ],
-	//   "parameters": {
-	//     "bucket": {
-	//       "description": "Name of the bucket in which to look for objects.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "delimiter": {
-	//       "description": "Returns results in a directory-like mode. items will contain only objects whose names, aside from the prefix, do not contain delimiter. Objects whose names, aside from the prefix, contain delimiter will have their name, truncated after the delimiter, returned in prefixes. Duplicate prefixes are omitted.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "endOffset": {
-	//       "description": "Filter results to objects whose names are lexicographically before endOffset. If startOffset is also set, the objects listed will have names between startOffset (inclusive) and endOffset (exclusive).",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "includeTrailingDelimiter": {
-	//       "description": "If true, objects that end in exactly one instance of delimiter will have their metadata included in items in addition to prefixes.",
-	//       "location": "query",
-	//       "type": "boolean"
-	//     },
-	//     "maxResults": {
-	//       "default": "1000",
-	//       "description": "Maximum number of items plus prefixes to return in a single page of responses. As duplicate prefixes are omitted, fewer total results may be returned than requested. The service will use this parameter or 1,000 items, whichever is smaller.",
-	//       "format": "uint32",
-	//       "location": "query",
-	//       "minimum": "0",
-	//       "type": "integer"
-	//     },
-	//     "pageToken": {
-	//       "description": "A previously-returned page token representing part of the larger set of results to view.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "prefix": {
-	//       "description": "Filter results to objects whose names begin with this prefix.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projection": {
-	//       "description": "Set of properties to return. Defaults to noAcl.",
-	//       "enum": [
-	//         "full",
-	//         "noAcl"
-	//       ],
-	//       "enumDescriptions": [
-	//         "Include all properties.",
-	//         "Omit the owner, acl property."
-	//       ],
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "startOffset": {
-	//       "description": "Filter results to objects whose names are lexicographically equal to or after startOffset. If endOffset is also set, the objects listed will have names between startOffset (inclusive) and endOffset (exclusive).",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request. Required for Requester Pays buckets.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "versions": {
-	//       "description": "If true, lists all versions of an object as distinct results. The default is false. For more information, see Object Versioning.",
-	//       "location": "query",
-	//       "type": "boolean"
-	//     }
-	//   },
-	//   "path": "b/{bucket}/o/watch",
-	//   "request": {
-	//     "$ref": "Channel",
-	//     "parameterName": "resource"
-	//   },
-	//   "response": {
-	//     "$ref": "Channel"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ],
-	//   "supportsSubscription": true
-	// }
-
 }
 
-// method id "storage.projects.hmacKeys.create":
+type OperationsAdvanceRelocateBucketCall struct {
+	s                                     *Service
+	bucket                                string
+	operationId                           string
+	advancerelocatebucketoperationrequest *AdvanceRelocateBucketOperationRequest
+	urlParams_                            gensupport.URLParams
+	ctx_                                  context.Context
+	header_                               http.Header
+}
+
+// AdvanceRelocateBucket: Starts asynchronous advancement of the relocate
+// bucket operation in the case of required write downtime, to allow it to lock
+// the bucket at the source location, and proceed with the bucket location
+// swap. The server makes a best effort to advance the relocate bucket
+// operation, but success is not guaranteed.
+//
+// - bucket: Name of the bucket to advance the relocate for.
+// - operationId: ID of the operation resource.
+func (r *OperationsService) AdvanceRelocateBucket(bucket string, operationId string, advancerelocatebucketoperationrequest *AdvanceRelocateBucketOperationRequest) *OperationsAdvanceRelocateBucketCall {
+	c := &OperationsAdvanceRelocateBucketCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.operationId = operationId
+	c.advancerelocatebucketoperationrequest = advancerelocatebucketoperationrequest
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *OperationsAdvanceRelocateBucketCall) Fields(s ...googleapi.Field) *OperationsAdvanceRelocateBucketCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *OperationsAdvanceRelocateBucketCall) Context(ctx context.Context) *OperationsAdvanceRelocateBucketCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *OperationsAdvanceRelocateBucketCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *OperationsAdvanceRelocateBucketCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.advancerelocatebucketoperationrequest)
+	if err != nil {
+		return nil, err
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/operations/{operationId}/advanceRelocateBucket")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":      c.bucket,
+		"operationId": c.operationId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.operations.advanceRelocateBucket", "request", internallog.HTTPRequest(req, body.Bytes()))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.operations.advanceRelocateBucket" call.
+func (c *OperationsAdvanceRelocateBucketCall) Do(opts ...googleapi.CallOption) error {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if err != nil {
+		return err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return gensupport.WrapError(err)
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.operations.advanceRelocateBucket", "response", internallog.HTTPResponse(res, nil))
+	return nil
+}
+
+type OperationsCancelCall struct {
+	s           *Service
+	bucket      string
+	operationId string
+	urlParams_  gensupport.URLParams
+	ctx_        context.Context
+	header_     http.Header
+}
+
+// Cancel: Starts asynchronous cancellation on a long-running operation. The
+// server makes a best effort to cancel the operation, but success is not
+// guaranteed.
+//
+// - bucket: The parent bucket of the operation resource.
+// - operationId: The ID of the operation resource.
+func (r *OperationsService) Cancel(bucket string, operationId string) *OperationsCancelCall {
+	c := &OperationsCancelCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.operationId = operationId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *OperationsCancelCall) Fields(s ...googleapi.Field) *OperationsCancelCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *OperationsCancelCall) Context(ctx context.Context) *OperationsCancelCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *OperationsCancelCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *OperationsCancelCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/operations/{operationId}/cancel")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("POST", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":      c.bucket,
+		"operationId": c.operationId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.operations.cancel", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.operations.cancel" call.
+func (c *OperationsCancelCall) Do(opts ...googleapi.CallOption) error {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if err != nil {
+		return err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return gensupport.WrapError(err)
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.operations.cancel", "response", internallog.HTTPResponse(res, nil))
+	return nil
+}
+
+type OperationsGetCall struct {
+	s            *Service
+	bucket       string
+	operationId  string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// Get: Gets the latest state of a long-running operation.
+//
+// - bucket: The parent bucket of the operation resource.
+// - operationId: The ID of the operation resource.
+func (r *OperationsService) Get(bucket string, operationId string) *OperationsGetCall {
+	c := &OperationsGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	c.operationId = operationId
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *OperationsGetCall) Fields(s ...googleapi.Field) *OperationsGetCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *OperationsGetCall) IfNoneMatch(entityTag string) *OperationsGetCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *OperationsGetCall) Context(ctx context.Context) *OperationsGetCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *OperationsGetCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *OperationsGetCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/operations/{operationId}")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket":      c.bucket,
+		"operationId": c.operationId,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.operations.get", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.operations.get" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningOperation.ServerResponse.Header or (if a response was
+// returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *OperationsGetCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningOperation, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningOperation{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.operations.get", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+type OperationsListCall struct {
+	s            *Service
+	bucket       string
+	urlParams_   gensupport.URLParams
+	ifNoneMatch_ string
+	ctx_         context.Context
+	header_      http.Header
+}
+
+// List: Lists operations that match the specified filter in the request.
+//
+// - bucket: Name of the bucket in which to look for operations.
+func (r *OperationsService) List(bucket string) *OperationsListCall {
+	c := &OperationsListCall{s: r.s, urlParams_: make(gensupport.URLParams)}
+	c.bucket = bucket
+	return c
+}
+
+// Filter sets the optional parameter "filter": A filter to narrow down results
+// to a preferred subset. The filtering language is documented in more detail
+// in AIP-160 (https://google.aip.dev/160).
+func (c *OperationsListCall) Filter(filter string) *OperationsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
+// PageSize sets the optional parameter "pageSize": Maximum number of items to
+// return in a single page of responses. Fewer total results may be returned
+// than requested. The service uses this parameter or 100 items, whichever is
+// smaller.
+func (c *OperationsListCall) PageSize(pageSize int64) *OperationsListCall {
+	c.urlParams_.Set("pageSize", fmt.Sprint(pageSize))
+	return c
+}
+
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
+func (c *OperationsListCall) PageToken(pageToken string) *OperationsListCall {
+	c.urlParams_.Set("pageToken", pageToken)
+	return c
+}
+
+// Fields allows partial responses to be retrieved. See
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
+func (c *OperationsListCall) Fields(s ...googleapi.Field) *OperationsListCall {
+	c.urlParams_.Set("fields", googleapi.CombineFields(s))
+	return c
+}
+
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
+func (c *OperationsListCall) IfNoneMatch(entityTag string) *OperationsListCall {
+	c.ifNoneMatch_ = entityTag
+	return c
+}
+
+// Context sets the context to be used in this call's Do method.
+func (c *OperationsListCall) Context(ctx context.Context) *OperationsListCall {
+	c.ctx_ = ctx
+	return c
+}
+
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
+func (c *OperationsListCall) Header() http.Header {
+	if c.header_ == nil {
+		c.header_ = make(http.Header)
+	}
+	return c.header_
+}
+
+func (c *OperationsListCall) doRequest(alt string) (*http.Response, error) {
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
+	if c.ifNoneMatch_ != "" {
+		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
+	}
+	c.urlParams_.Set("alt", alt)
+	c.urlParams_.Set("prettyPrint", "false")
+	urls := googleapi.ResolveRelative(c.s.BasePath, "b/{bucket}/operations")
+	urls += "?" + c.urlParams_.Encode()
+	req, err := http.NewRequest("GET", urls, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header = reqHeaders
+	googleapi.Expand(req.URL, map[string]string{
+		"bucket": c.bucket,
+	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.buckets.operations.list", "request", internallog.HTTPRequest(req, nil))
+	return gensupport.SendRequest(c.ctx_, c.s.client, req)
+}
+
+// Do executes the "storage.buckets.operations.list" call.
+// Any non-2xx status code is an error. Response headers are in either
+// *GoogleLongrunningListOperationsResponse.ServerResponse.Header or (if a
+// response was returned at all) in error.(*googleapi.Error).Header. Use
+// googleapi.IsNotModified to check whether the returned error was because
+// http.StatusNotModified was returned.
+func (c *OperationsListCall) Do(opts ...googleapi.CallOption) (*GoogleLongrunningListOperationsResponse, error) {
+	gensupport.SetOptions(c.urlParams_, opts...)
+	res, err := c.doRequest("json")
+	if res != nil && res.StatusCode == http.StatusNotModified {
+		if res.Body != nil {
+			res.Body.Close()
+		}
+		return nil, gensupport.WrapError(&googleapi.Error{
+			Code:   res.StatusCode,
+			Header: res.Header,
+		})
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer googleapi.CloseBody(res)
+	if err := googleapi.CheckResponse(res); err != nil {
+		return nil, gensupport.WrapError(err)
+	}
+	ret := &GoogleLongrunningListOperationsResponse{
+		ServerResponse: googleapi.ServerResponse{
+			Header:         res.Header,
+			HTTPStatusCode: res.StatusCode,
+		},
+	}
+	target := &ret
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
+		return nil, err
+	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.buckets.operations.list", "response", internallog.HTTPResponse(res, b))
+	return ret, nil
+}
+
+// Pages invokes f for each page of results.
+// A non-nil error returned from f will halt the iteration.
+// The provided context supersedes any context provided to the Context method.
+func (c *OperationsListCall) Pages(ctx context.Context, f func(*GoogleLongrunningListOperationsResponse) error) error {
+	c.ctx_ = ctx
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
+	for {
+		x, err := c.Do()
+		if err != nil {
+			return err
+		}
+		if err := f(x); err != nil {
+			return err
+		}
+		if x.NextPageToken == "" {
+			return nil
+		}
+		c.PageToken(x.NextPageToken)
+	}
+}
 
 type ProjectsHmacKeysCreateCall struct {
 	s          *Service
@@ -12307,31 +13105,29 @@ func (r *ProjectsHmacKeysService) Create(projectId string, serviceAccountEmail s
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *ProjectsHmacKeysCreateCall) UserProject(userProject string) *ProjectsHmacKeysCreateCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsHmacKeysCreateCall) Fields(s ...googleapi.Field) *ProjectsHmacKeysCreateCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsHmacKeysCreateCall) Context(ctx context.Context) *ProjectsHmacKeysCreateCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsHmacKeysCreateCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -12340,18 +13136,12 @@ func (c *ProjectsHmacKeysCreateCall) Header() http.Header {
 }
 
 func (c *ProjectsHmacKeysCreateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/hmacKeys")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("POST", urls, body)
+	req, err := http.NewRequest("POST", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -12359,16 +13149,15 @@ func (c *ProjectsHmacKeysCreateCall) doRequest(alt string) (*http.Response, erro
 	googleapi.Expand(req.URL, map[string]string{
 		"projectId": c.projectId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.create", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.projects.hmacKeys.create" call.
-// Exactly one of *HmacKey or error will be non-nil. Any non-2xx status
-// code is an error. Response headers are in either
-// *HmacKey.ServerResponse.Header or (if a response was returned at all)
-// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
-// check whether the returned error was because http.StatusNotModified
-// was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *HmacKey.ServerResponse.Header or (if a response was returned at all) in
+// error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ProjectsHmacKeysCreateCall) Do(opts ...googleapi.CallOption) (*HmacKey, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -12395,50 +13184,13 @@ func (c *ProjectsHmacKeysCreateCall) Do(opts ...googleapi.CallOption) (*HmacKey,
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.create", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Creates a new HMAC key for the specified service account.",
-	//   "httpMethod": "POST",
-	//   "id": "storage.projects.hmacKeys.create",
-	//   "parameterOrder": [
-	//     "projectId",
-	//     "serviceAccountEmail"
-	//   ],
-	//   "parameters": {
-	//     "projectId": {
-	//       "description": "Project ID owning the service account.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "serviceAccountEmail": {
-	//       "description": "Email address of the service account.",
-	//       "location": "query",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "projects/{projectId}/hmacKeys",
-	//   "response": {
-	//     "$ref": "HmacKey"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.projects.hmacKeys.delete":
 
 type ProjectsHmacKeysDeleteCall struct {
 	s          *Service
@@ -12460,31 +13212,29 @@ func (r *ProjectsHmacKeysService) Delete(projectId string, accessId string) *Pro
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *ProjectsHmacKeysDeleteCall) UserProject(userProject string) *ProjectsHmacKeysDeleteCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsHmacKeysDeleteCall) Fields(s ...googleapi.Field) *ProjectsHmacKeysDeleteCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsHmacKeysDeleteCall) Context(ctx context.Context) *ProjectsHmacKeysDeleteCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsHmacKeysDeleteCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -12493,18 +13243,12 @@ func (c *ProjectsHmacKeysDeleteCall) Header() http.Header {
 }
 
 func (c *ProjectsHmacKeysDeleteCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/hmacKeys/{accessId}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("DELETE", urls, body)
+	req, err := http.NewRequest("DELETE", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -12513,6 +13257,7 @@ func (c *ProjectsHmacKeysDeleteCall) doRequest(alt string) (*http.Response, erro
 		"projectId": c.projectId,
 		"accessId":  c.accessId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.delete", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
@@ -12527,45 +13272,9 @@ func (c *ProjectsHmacKeysDeleteCall) Do(opts ...googleapi.CallOption) error {
 	if err := googleapi.CheckResponse(res); err != nil {
 		return gensupport.WrapError(err)
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.delete", "response", internallog.HTTPResponse(res, nil))
 	return nil
-	// {
-	//   "description": "Deletes an HMAC key.",
-	//   "httpMethod": "DELETE",
-	//   "id": "storage.projects.hmacKeys.delete",
-	//   "parameterOrder": [
-	//     "projectId",
-	//     "accessId"
-	//   ],
-	//   "parameters": {
-	//     "accessId": {
-	//       "description": "Name of the HMAC key to be deleted.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "projectId": {
-	//       "description": "Project ID owning the requested key",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "projects/{projectId}/hmacKeys/{accessId}",
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }
-
-// method id "storage.projects.hmacKeys.get":
 
 type ProjectsHmacKeysGetCall struct {
 	s            *Service
@@ -12579,9 +13288,8 @@ type ProjectsHmacKeysGetCall struct {
 
 // Get: Retrieves an HMAC key's metadata
 //
-//   - accessId: Name of the HMAC key.
-//   - projectId: Project ID owning the service account of the requested
-//     key.
+// - accessId: Name of the HMAC key.
+// - projectId: Project ID owning the service account of the requested key.
 func (r *ProjectsHmacKeysService) Get(projectId string, accessId string) *ProjectsHmacKeysGetCall {
 	c := &ProjectsHmacKeysGetCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -12589,41 +13297,37 @@ func (r *ProjectsHmacKeysService) Get(projectId string, accessId string) *Projec
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *ProjectsHmacKeysGetCall) UserProject(userProject string) *ProjectsHmacKeysGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsHmacKeysGetCall) Fields(s ...googleapi.Field) *ProjectsHmacKeysGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ProjectsHmacKeysGetCall) IfNoneMatch(entityTag string) *ProjectsHmacKeysGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsHmacKeysGetCall) Context(ctx context.Context) *ProjectsHmacKeysGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsHmacKeysGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -12632,21 +13336,15 @@ func (c *ProjectsHmacKeysGetCall) Header() http.Header {
 }
 
 func (c *ProjectsHmacKeysGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/hmacKeys/{accessId}")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -12655,16 +13353,16 @@ func (c *ProjectsHmacKeysGetCall) doRequest(alt string) (*http.Response, error) 
 		"projectId": c.projectId,
 		"accessId":  c.accessId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.projects.hmacKeys.get" call.
-// Exactly one of *HmacKeyMetadata or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *HmacKeyMetadata.ServerResponse.Header or (if a response was returned
-// at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *HmacKeyMetadata.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ProjectsHmacKeysGetCall) Do(opts ...googleapi.CallOption) (*HmacKeyMetadata, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -12691,52 +13389,13 @@ func (c *ProjectsHmacKeysGetCall) Do(opts ...googleapi.CallOption) (*HmacKeyMeta
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves an HMAC key's metadata",
-	//   "httpMethod": "GET",
-	//   "id": "storage.projects.hmacKeys.get",
-	//   "parameterOrder": [
-	//     "projectId",
-	//     "accessId"
-	//   ],
-	//   "parameters": {
-	//     "accessId": {
-	//       "description": "Name of the HMAC key.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "projectId": {
-	//       "description": "Project ID owning the service account of the requested key.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "projects/{projectId}/hmacKeys/{accessId}",
-	//   "response": {
-	//     "$ref": "HmacKeyMetadata"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only"
-	//   ]
-	// }
-
 }
-
-// method id "storage.projects.hmacKeys.list":
 
 type ProjectsHmacKeysListCall struct {
 	s            *Service
@@ -12756,76 +13415,69 @@ func (r *ProjectsHmacKeysService) List(projectId string) *ProjectsHmacKeysListCa
 	return c
 }
 
-// MaxResults sets the optional parameter "maxResults": Maximum number
-// of items to return in a single page of responses. The service uses
-// this parameter or 250 items, whichever is smaller. The max number of
-// items per page will also be limited by the number of distinct service
-// accounts in the response. If the number of service accounts in a
-// single response is too high, the page will truncated and a next page
-// token will be returned.
+// MaxResults sets the optional parameter "maxResults": Maximum number of items
+// to return in a single page of responses. The service uses this parameter or
+// 250 items, whichever is smaller. The max number of items per page will also
+// be limited by the number of distinct service accounts in the response. If
+// the number of service accounts in a single response is too high, the page
+// will truncated and a next page token will be returned.
 func (c *ProjectsHmacKeysListCall) MaxResults(maxResults int64) *ProjectsHmacKeysListCall {
 	c.urlParams_.Set("maxResults", fmt.Sprint(maxResults))
 	return c
 }
 
-// PageToken sets the optional parameter "pageToken": A
-// previously-returned page token representing part of the larger set of
-// results to view.
+// PageToken sets the optional parameter "pageToken": A previously-returned
+// page token representing part of the larger set of results to view.
 func (c *ProjectsHmacKeysListCall) PageToken(pageToken string) *ProjectsHmacKeysListCall {
 	c.urlParams_.Set("pageToken", pageToken)
 	return c
 }
 
-// ServiceAccountEmail sets the optional parameter
-// "serviceAccountEmail": If present, only keys for the given service
-// account are returned.
+// ServiceAccountEmail sets the optional parameter "serviceAccountEmail": If
+// present, only keys for the given service account are returned.
 func (c *ProjectsHmacKeysListCall) ServiceAccountEmail(serviceAccountEmail string) *ProjectsHmacKeysListCall {
 	c.urlParams_.Set("serviceAccountEmail", serviceAccountEmail)
 	return c
 }
 
-// ShowDeletedKeys sets the optional parameter "showDeletedKeys":
-// Whether or not to show keys in the DELETED state.
+// ShowDeletedKeys sets the optional parameter "showDeletedKeys": Whether or
+// not to show keys in the DELETED state.
 func (c *ProjectsHmacKeysListCall) ShowDeletedKeys(showDeletedKeys bool) *ProjectsHmacKeysListCall {
 	c.urlParams_.Set("showDeletedKeys", fmt.Sprint(showDeletedKeys))
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *ProjectsHmacKeysListCall) UserProject(userProject string) *ProjectsHmacKeysListCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsHmacKeysListCall) Fields(s ...googleapi.Field) *ProjectsHmacKeysListCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ProjectsHmacKeysListCall) IfNoneMatch(entityTag string) *ProjectsHmacKeysListCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsHmacKeysListCall) Context(ctx context.Context) *ProjectsHmacKeysListCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsHmacKeysListCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -12834,21 +13486,15 @@ func (c *ProjectsHmacKeysListCall) Header() http.Header {
 }
 
 func (c *ProjectsHmacKeysListCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/hmacKeys")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -12856,16 +13502,16 @@ func (c *ProjectsHmacKeysListCall) doRequest(alt string) (*http.Response, error)
 	googleapi.Expand(req.URL, map[string]string{
 		"projectId": c.projectId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.list", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.projects.hmacKeys.list" call.
-// Exactly one of *HmacKeysMetadata or error will be non-nil. Any
-// non-2xx status code is an error. Response headers are in either
-// *HmacKeysMetadata.ServerResponse.Header or (if a response was
-// returned at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *HmacKeysMetadata.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ProjectsHmacKeysListCall) Do(opts ...googleapi.CallOption) (*HmacKeysMetadata, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -12892,65 +13538,12 @@ func (c *ProjectsHmacKeysListCall) Do(opts ...googleapi.CallOption) (*HmacKeysMe
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.list", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Retrieves a list of HMAC keys matching the criteria.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.projects.hmacKeys.list",
-	//   "parameterOrder": [
-	//     "projectId"
-	//   ],
-	//   "parameters": {
-	//     "maxResults": {
-	//       "default": "250",
-	//       "description": "Maximum number of items to return in a single page of responses. The service uses this parameter or 250 items, whichever is smaller. The max number of items per page will also be limited by the number of distinct service accounts in the response. If the number of service accounts in a single response is too high, the page will truncated and a next page token will be returned.",
-	//       "format": "uint32",
-	//       "location": "query",
-	//       "minimum": "0",
-	//       "type": "integer"
-	//     },
-	//     "pageToken": {
-	//       "description": "A previously-returned page token representing part of the larger set of results to view.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "projectId": {
-	//       "description": "Name of the project in which to look for HMAC keys.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "serviceAccountEmail": {
-	//       "description": "If present, only keys for the given service account are returned.",
-	//       "location": "query",
-	//       "type": "string"
-	//     },
-	//     "showDeletedKeys": {
-	//       "description": "Whether or not to show keys in the DELETED state.",
-	//       "location": "query",
-	//       "type": "boolean"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "projects/{projectId}/hmacKeys",
-	//   "response": {
-	//     "$ref": "HmacKeysMetadata"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only"
-	//   ]
-	// }
-
 }
 
 // Pages invokes f for each page of results.
@@ -12958,7 +13551,7 @@ func (c *ProjectsHmacKeysListCall) Do(opts ...googleapi.CallOption) (*HmacKeysMe
 // The provided context supersedes any context provided to the Context method.
 func (c *ProjectsHmacKeysListCall) Pages(ctx context.Context, f func(*HmacKeysMetadata) error) error {
 	c.ctx_ = ctx
-	defer c.PageToken(c.urlParams_.Get("pageToken")) // reset paging to original point
+	defer c.PageToken(c.urlParams_.Get("pageToken"))
 	for {
 		x, err := c.Do()
 		if err != nil {
@@ -12974,8 +13567,6 @@ func (c *ProjectsHmacKeysListCall) Pages(ctx context.Context, f func(*HmacKeysMe
 	}
 }
 
-// method id "storage.projects.hmacKeys.update":
-
 type ProjectsHmacKeysUpdateCall struct {
 	s               *Service
 	projectId       string
@@ -12987,11 +13578,12 @@ type ProjectsHmacKeysUpdateCall struct {
 }
 
 // Update: Updates the state of an HMAC key. See the HMAC Key resource
-// descriptor for valid states.
+// descriptor
+// (https://cloud.google.com/storage/docs/json_api/v1/projects/hmacKeys/update#request-body)
+// for valid states.
 //
-//   - accessId: Name of the HMAC key being updated.
-//   - projectId: Project ID owning the service account of the updated
-//     key.
+// - accessId: Name of the HMAC key being updated.
+// - projectId: Project ID owning the service account of the updated key.
 func (r *ProjectsHmacKeysService) Update(projectId string, accessId string, hmackeymetadata *HmacKeyMetadata) *ProjectsHmacKeysUpdateCall {
 	c := &ProjectsHmacKeysUpdateCall{s: r.s, urlParams_: make(gensupport.URLParams)}
 	c.projectId = projectId
@@ -13000,31 +13592,29 @@ func (r *ProjectsHmacKeysService) Update(projectId string, accessId string, hmac
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *ProjectsHmacKeysUpdateCall) UserProject(userProject string) *ProjectsHmacKeysUpdateCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsHmacKeysUpdateCall) Fields(s ...googleapi.Field) *ProjectsHmacKeysUpdateCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsHmacKeysUpdateCall) Context(ctx context.Context) *ProjectsHmacKeysUpdateCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsHmacKeysUpdateCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -13033,18 +13623,11 @@ func (c *ProjectsHmacKeysUpdateCall) Header() http.Header {
 }
 
 func (c *ProjectsHmacKeysUpdateCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
-	var body io.Reader = nil
-	body, err := googleapi.WithoutDataWrapper.JSONReader(c.hmackeymetadata)
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "application/json", c.header_)
+	body, err := googleapi.WithoutDataWrapper.JSONBuffer(c.hmackeymetadata)
 	if err != nil {
 		return nil, err
 	}
-	reqHeaders.Set("Content-Type", "application/json")
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/hmacKeys/{accessId}")
@@ -13058,16 +13641,16 @@ func (c *ProjectsHmacKeysUpdateCall) doRequest(alt string) (*http.Response, erro
 		"projectId": c.projectId,
 		"accessId":  c.accessId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.update", "request", internallog.HTTPRequest(req, body.Bytes()))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.projects.hmacKeys.update" call.
-// Exactly one of *HmacKeyMetadata or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *HmacKeyMetadata.ServerResponse.Header or (if a response was returned
-// at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *HmacKeyMetadata.ServerResponse.Header or (if a response was returned at
+// all) in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to
+// check whether the returned error was because http.StatusNotModified was
+// returned.
 func (c *ProjectsHmacKeysUpdateCall) Do(opts ...googleapi.CallOption) (*HmacKeyMetadata, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -13094,53 +13677,13 @@ func (c *ProjectsHmacKeysUpdateCall) Do(opts ...googleapi.CallOption) (*HmacKeyM
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.projects.hmacKeys.update", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Updates the state of an HMAC key. See the HMAC Key resource descriptor for valid states.",
-	//   "httpMethod": "PUT",
-	//   "id": "storage.projects.hmacKeys.update",
-	//   "parameterOrder": [
-	//     "projectId",
-	//     "accessId"
-	//   ],
-	//   "parameters": {
-	//     "accessId": {
-	//       "description": "Name of the HMAC key being updated.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "projectId": {
-	//       "description": "Project ID owning the service account of the updated key.",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "projects/{projectId}/hmacKeys/{accessId}",
-	//   "request": {
-	//     "$ref": "HmacKeyMetadata"
-	//   },
-	//   "response": {
-	//     "$ref": "HmacKeyMetadata"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/devstorage.full_control"
-	//   ]
-	// }
-
 }
-
-// method id "storage.projects.serviceAccount.get":
 
 type ProjectsServiceAccountGetCall struct {
 	s            *Service
@@ -13151,8 +13694,8 @@ type ProjectsServiceAccountGetCall struct {
 	header_      http.Header
 }
 
-// Get: Get the email address of this project's Google Cloud Storage
-// service account.
+// Get: Get the email address of this project's Google Cloud Storage service
+// account.
 //
 // - projectId: Project ID.
 func (r *ProjectsServiceAccountService) Get(projectId string) *ProjectsServiceAccountGetCall {
@@ -13161,41 +13704,37 @@ func (r *ProjectsServiceAccountService) Get(projectId string) *ProjectsServiceAc
 	return c
 }
 
-// UserProject sets the optional parameter "userProject": The project to
-// be billed for this request.
+// UserProject sets the optional parameter "userProject": The project to be
+// billed for this request.
 func (c *ProjectsServiceAccountGetCall) UserProject(userProject string) *ProjectsServiceAccountGetCall {
 	c.urlParams_.Set("userProject", userProject)
 	return c
 }
 
 // Fields allows partial responses to be retrieved. See
-// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse
-// for more information.
+// https://developers.google.com/gdata/docs/2.0/basics#PartialResponse for more
+// details.
 func (c *ProjectsServiceAccountGetCall) Fields(s ...googleapi.Field) *ProjectsServiceAccountGetCall {
 	c.urlParams_.Set("fields", googleapi.CombineFields(s))
 	return c
 }
 
-// IfNoneMatch sets the optional parameter which makes the operation
-// fail if the object's ETag matches the given value. This is useful for
-// getting updates only after the object has changed since the last
-// request. Use googleapi.IsNotModified to check whether the response
-// error from Do is the result of In-None-Match.
+// IfNoneMatch sets an optional parameter which makes the operation fail if the
+// object's ETag matches the given value. This is useful for getting updates
+// only after the object has changed since the last request.
 func (c *ProjectsServiceAccountGetCall) IfNoneMatch(entityTag string) *ProjectsServiceAccountGetCall {
 	c.ifNoneMatch_ = entityTag
 	return c
 }
 
-// Context sets the context to be used in this call's Do method. Any
-// pending HTTP request will be aborted if the provided context is
-// canceled.
+// Context sets the context to be used in this call's Do method.
 func (c *ProjectsServiceAccountGetCall) Context(ctx context.Context) *ProjectsServiceAccountGetCall {
 	c.ctx_ = ctx
 	return c
 }
 
-// Header returns an http.Header that can be modified by the caller to
-// add HTTP headers to the request.
+// Header returns a http.Header that can be modified by the caller to add
+// headers to the request.
 func (c *ProjectsServiceAccountGetCall) Header() http.Header {
 	if c.header_ == nil {
 		c.header_ = make(http.Header)
@@ -13204,21 +13743,15 @@ func (c *ProjectsServiceAccountGetCall) Header() http.Header {
 }
 
 func (c *ProjectsServiceAccountGetCall) doRequest(alt string) (*http.Response, error) {
-	reqHeaders := make(http.Header)
-	reqHeaders.Set("x-goog-api-client", "gl-go/"+gensupport.GoVersion()+" gdcl/"+internal.Version)
-	for k, v := range c.header_ {
-		reqHeaders[k] = v
-	}
-	reqHeaders.Set("User-Agent", c.s.userAgent())
+	reqHeaders := gensupport.SetHeaders(c.s.userAgent(), "", c.header_)
 	if c.ifNoneMatch_ != "" {
 		reqHeaders.Set("If-None-Match", c.ifNoneMatch_)
 	}
-	var body io.Reader = nil
 	c.urlParams_.Set("alt", alt)
 	c.urlParams_.Set("prettyPrint", "false")
 	urls := googleapi.ResolveRelative(c.s.BasePath, "projects/{projectId}/serviceAccount")
 	urls += "?" + c.urlParams_.Encode()
-	req, err := http.NewRequest("GET", urls, body)
+	req, err := http.NewRequest("GET", urls, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -13226,16 +13759,15 @@ func (c *ProjectsServiceAccountGetCall) doRequest(alt string) (*http.Response, e
 	googleapi.Expand(req.URL, map[string]string{
 		"projectId": c.projectId,
 	})
+	c.s.logger.DebugContext(c.ctx_, "api request", "serviceName", apiName, "rpcName", "storage.projects.serviceAccount.get", "request", internallog.HTTPRequest(req, nil))
 	return gensupport.SendRequest(c.ctx_, c.s.client, req)
 }
 
 // Do executes the "storage.projects.serviceAccount.get" call.
-// Exactly one of *ServiceAccount or error will be non-nil. Any non-2xx
-// status code is an error. Response headers are in either
-// *ServiceAccount.ServerResponse.Header or (if a response was returned
-// at all) in error.(*googleapi.Error).Header. Use
-// googleapi.IsNotModified to check whether the returned error was
-// because http.StatusNotModified was returned.
+// Any non-2xx status code is an error. Response headers are in either
+// *ServiceAccount.ServerResponse.Header or (if a response was returned at all)
+// in error.(*googleapi.Error).Header. Use googleapi.IsNotModified to check
+// whether the returned error was because http.StatusNotModified was returned.
 func (c *ProjectsServiceAccountGetCall) Do(opts ...googleapi.CallOption) (*ServiceAccount, error) {
 	gensupport.SetOptions(c.urlParams_, opts...)
 	res, err := c.doRequest("json")
@@ -13262,41 +13794,10 @@ func (c *ProjectsServiceAccountGetCall) Do(opts ...googleapi.CallOption) (*Servi
 		},
 	}
 	target := &ret
-	if err := gensupport.DecodeResponse(target, res); err != nil {
+	b, err := gensupport.DecodeResponseBytes(target, res)
+	if err != nil {
 		return nil, err
 	}
+	c.s.logger.DebugContext(c.ctx_, "api response", "serviceName", apiName, "rpcName", "storage.projects.serviceAccount.get", "response", internallog.HTTPResponse(res, b))
 	return ret, nil
-	// {
-	//   "description": "Get the email address of this project's Google Cloud Storage service account.",
-	//   "httpMethod": "GET",
-	//   "id": "storage.projects.serviceAccount.get",
-	//   "parameterOrder": [
-	//     "projectId"
-	//   ],
-	//   "parameters": {
-	//     "projectId": {
-	//       "description": "Project ID",
-	//       "location": "path",
-	//       "required": true,
-	//       "type": "string"
-	//     },
-	//     "userProject": {
-	//       "description": "The project to be billed for this request.",
-	//       "location": "query",
-	//       "type": "string"
-	//     }
-	//   },
-	//   "path": "projects/{projectId}/serviceAccount",
-	//   "response": {
-	//     "$ref": "ServiceAccount"
-	//   },
-	//   "scopes": [
-	//     "https://www.googleapis.com/auth/cloud-platform",
-	//     "https://www.googleapis.com/auth/cloud-platform.read-only",
-	//     "https://www.googleapis.com/auth/devstorage.full_control",
-	//     "https://www.googleapis.com/auth/devstorage.read_only",
-	//     "https://www.googleapis.com/auth/devstorage.read_write"
-	//   ]
-	// }
-
 }

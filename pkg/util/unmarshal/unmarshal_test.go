@@ -10,10 +10,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	legacy_loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	legacy_loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/marshal"
 )
 
 func Test_DecodePushRequest(t *testing.T) {
@@ -224,6 +224,7 @@ func (ws *websocket) ReadMessage() (int, []byte, error) {
 
 func Test_ReadTailResponse(t *testing.T) {
 	ws := &websocket{}
+	wsJSON := marshal.NewWebsocketJSONWriter(ws)
 	require.NoError(t, marshal.WriteTailResponseJSON(legacy_loghttp.TailResponse{
 		Streams: []logproto.Stream{
 			{Labels: `{app="bar"}`, Entries: []logproto.Entry{{Timestamp: time.Unix(0, 2), Line: "2"}}},
@@ -231,7 +232,7 @@ func Test_ReadTailResponse(t *testing.T) {
 		DroppedEntries: []legacy_loghttp.DroppedEntry{
 			{Timestamp: time.Unix(0, 1), Labels: `{app="foo"}`},
 		},
-	}, ws))
+	}, wsJSON, nil))
 	res := &loghttp.TailResponse{}
 	require.NoError(t, ReadTailResponseJSON(res, ws))
 

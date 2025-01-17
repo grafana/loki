@@ -22,14 +22,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
-// EphemeralContainerApplyConfiguration represents an declarative configuration of the EphemeralContainer type for use
+// EphemeralContainerApplyConfiguration represents a declarative configuration of the EphemeralContainer type for use
 // with apply.
 type EphemeralContainerApplyConfiguration struct {
 	EphemeralContainerCommonApplyConfiguration `json:",inline"`
 	TargetContainerName                        *string `json:"targetContainerName,omitempty"`
 }
 
-// EphemeralContainerApplyConfiguration constructs an declarative configuration of the EphemeralContainer type for use with
+// EphemeralContainerApplyConfiguration constructs a declarative configuration of the EphemeralContainer type for use with
 // apply.
 func EphemeralContainer() *EphemeralContainerApplyConfiguration {
 	return &EphemeralContainerApplyConfiguration{}
@@ -136,6 +136,14 @@ func (b *EphemeralContainerApplyConfiguration) WithResizePolicy(values ...*Conta
 		}
 		b.ResizePolicy = append(b.ResizePolicy, *values[i])
 	}
+	return b
+}
+
+// WithRestartPolicy sets the RestartPolicy field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the RestartPolicy field is set to the value of the last call.
+func (b *EphemeralContainerApplyConfiguration) WithRestartPolicy(value corev1.ContainerRestartPolicy) *EphemeralContainerApplyConfiguration {
+	b.RestartPolicy = &value
 	return b
 }
 

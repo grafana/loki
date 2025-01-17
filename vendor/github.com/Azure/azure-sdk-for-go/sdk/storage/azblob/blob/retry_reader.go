@@ -58,7 +58,7 @@ type RetryReaderOptions struct {
 	injectedError      error
 }
 
-// RetryReader attempts to read from response, and if there is retriable network error
+// RetryReader attempts to read from response, and if there is a retry-able network error
 // returned during reading, it will retry according to retry reader option through executing
 // user defined action with provided data to get a new response, and continue the overall reading process
 // through reading from the new response.
@@ -167,7 +167,7 @@ func (s *RetryReader) Read(p []byte) (n int, err error) {
 // net.Conn.Close, and that is documented as "Any blocked Read or Write operations will be unblocked and return errors"
 // which is exactly the behaviour we want.
 // NOTE: that if caller has forced an early Close from a separate goroutine (separate from the Read)
-// then there are two different types of error that may happen - either the one one we check for here,
+// then there are two different types of error that may happen - either the one we check for here,
 // or a net.Error (due to closure of connection). Which one happens depends on timing. We only need this routine
 // to check for one, since the other is a net.Error, which our main Read retry loop is already handing.
 func (s *RetryReader) wasRetryableEarlyClose(err error) bool {

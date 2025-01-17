@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/goccy/go-json"
 )
 
 // A FileMinioClient retrieves credentials from the current user's home
@@ -39,7 +39,7 @@ type FileMinioClient struct {
 	Filename string
 
 	// MinIO Alias to extract credentials from the shared credentials file. If empty
-	// will default to environment variable "MINIO_ALIAS" or "default" if
+	// will default to environment variable "MINIO_ALIAS" or "s3" if
 	// environment variable is also not set.
 	Alias string
 
@@ -56,9 +56,7 @@ func NewFileMinioClient(filename, alias string) *Credentials {
 	})
 }
 
-// Retrieve reads and extracts the shared credentials from the current
-// users home directory.
-func (p *FileMinioClient) Retrieve() (Value, error) {
+func (p *FileMinioClient) retrieve() (Value, error) {
 	if p.Filename == "" {
 		if value, ok := os.LookupEnv("MINIO_SHARED_CREDENTIALS_FILE"); ok {
 			p.Filename = value
@@ -96,6 +94,17 @@ func (p *FileMinioClient) Retrieve() (Value, error) {
 	}, nil
 }
 
+// Retrieve reads and extracts the shared credentials from the current
+// users home directory.
+func (p *FileMinioClient) Retrieve() (Value, error) {
+	return p.retrieve()
+}
+
+// RetrieveWithCredContext - is like Retrieve()
+func (p *FileMinioClient) RetrieveWithCredContext(_ *CredContext) (Value, error) {
+	return p.retrieve()
+}
+
 // IsExpired returns if the shared credentials have expired.
 func (p *FileMinioClient) IsExpired() bool {
 	return !p.retrieved
@@ -121,8 +130,6 @@ type config struct {
 // returned if it fails to read from the file.
 func loadAlias(filename, alias string) (hostConfig, error) {
 	cfg := &config{}
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-
 	configBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return hostConfig{}, err

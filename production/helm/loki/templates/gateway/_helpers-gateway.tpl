@@ -2,7 +2,7 @@
 gateway fullname
 */}}
 {{- define "loki.gatewayFullname" -}}
-{{ include "loki.name" . }}-gateway
+{{ include "loki.fullname" . }}-gateway
 {{- end }}
 
 {{/*

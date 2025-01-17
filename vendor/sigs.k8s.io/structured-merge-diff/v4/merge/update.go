@@ -15,7 +15,6 @@ package merge
 
 import (
 	"fmt"
-
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 	"sigs.k8s.io/structured-merge-diff/v4/typed"
 	"sigs.k8s.io/structured-merge-diff/v4/value"
@@ -31,10 +30,8 @@ type Converter interface {
 // UpdateBuilder allows you to create a new Updater by exposing all of
 // the options and setting them once.
 type UpdaterBuilder struct {
-	Converter     Converter
-	IgnoredFields map[fieldpath.APIVersion]*fieldpath.Set
-
-	EnableUnions bool
+	Converter    Converter
+	IgnoreFilter map[fieldpath.APIVersion]fieldpath.Filter
 
 	// Stop comparing the new object with old object after applying.
 	// This was initially used to avoid spurious etcd update, but
@@ -48,8 +45,7 @@ type UpdaterBuilder struct {
 func (u *UpdaterBuilder) BuildUpdater() *Updater {
 	return &Updater{
 		Converter:         u.Converter,
-		IgnoredFields:     u.IgnoredFields,
-		enableUnions:      u.EnableUnions,
+		IgnoreFilter:      u.IgnoreFilter,
 		returnInputOnNoop: u.ReturnInputOnNoop,
 	}
 }
@@ -61,19 +57,9 @@ type Updater struct {
 	Converter Converter
 
 	// Deprecated: This will eventually become private.
-	IgnoredFields map[fieldpath.APIVersion]*fieldpath.Set
-
-	enableUnions bool
+	IgnoreFilter map[fieldpath.APIVersion]fieldpath.Filter
 
 	returnInputOnNoop bool
-}
-
-// EnableUnionFeature turns on union handling. It is disabled by default until the
-// feature is complete.
-//
-// Deprecated: Use the builder instead.
-func (s *Updater) EnableUnionFeature() {
-	s.enableUnions = true
 }
 
 func (s *Updater) update(oldObject, newObject *typed.TypedValue, version fieldpath.APIVersion, managers fieldpath.ManagedFields, workflow string, force bool) (fieldpath.ManagedFields, *typed.Comparison, error) {
@@ -85,7 +71,7 @@ func (s *Updater) update(oldObject, newObject *typed.TypedValue, version fieldpa
 	}
 
 	versions := map[fieldpath.APIVersion]*typed.Comparison{
-		version: compare.ExcludeFields(s.IgnoredFields[version]),
+		version: compare.FilterFields(s.IgnoreFilter[version]),
 	}
 
 	for manager, managerSet := range managers {
@@ -115,7 +101,7 @@ func (s *Updater) update(oldObject, newObject *typed.TypedValue, version fieldpa
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to compare objects: %v", err)
 			}
-			versions[managerSet.APIVersion()] = compare.ExcludeFields(s.IgnoredFields[managerSet.APIVersion()])
+			versions[managerSet.APIVersion()] = compare.FilterFields(s.IgnoreFilter[managerSet.APIVersion()])
 		}
 
 		conflictSet := managerSet.Set().Intersection(compare.Modified.Union(compare.Added))
@@ -160,12 +146,6 @@ func (s *Updater) Update(liveObject, newObject *typed.TypedValue, version fieldp
 	if err != nil {
 		return nil, fieldpath.ManagedFields{}, err
 	}
-	if s.enableUnions {
-		newObject, err = liveObject.NormalizeUnions(newObject)
-		if err != nil {
-			return nil, fieldpath.ManagedFields{}, err
-		}
-	}
 	managers, compare, err := s.update(liveObject, newObject, version, managers, manager, true)
 	if err != nil {
 		return nil, fieldpath.ManagedFields{}, err
@@ -173,13 +153,14 @@ func (s *Updater) Update(liveObject, newObject *typed.TypedValue, version fieldp
 	if _, ok := managers[manager]; !ok {
 		managers[manager] = fieldpath.NewVersionedSet(fieldpath.NewSet(), version, false)
 	}
-
-	ignored := s.IgnoredFields[version]
-	if ignored == nil {
-		ignored = fieldpath.NewSet()
+	set := managers[manager].Set().Difference(compare.Removed).Union(compare.Modified).Union(compare.Added)
+	ignoreFilter := s.IgnoreFilter[version]
+	if ignoreFilter != nil {
+		set = ignoreFilter.Filter(set)
 	}
+
 	managers[manager] = fieldpath.NewVersionedSet(
-		managers[manager].Set().Union(compare.Modified).Union(compare.Added).Difference(compare.Removed).RecursiveDifference(ignored),
+		set,
 		version,
 		false,
 	)
@@ -198,21 +179,9 @@ func (s *Updater) Apply(liveObject, configObject *typed.TypedValue, version fiel
 	if err != nil {
 		return nil, fieldpath.ManagedFields{}, err
 	}
-	if s.enableUnions {
-		configObject, err = configObject.NormalizeUnionsApply(configObject)
-		if err != nil {
-			return nil, fieldpath.ManagedFields{}, err
-		}
-	}
 	newObject, err := liveObject.Merge(configObject)
 	if err != nil {
 		return nil, fieldpath.ManagedFields{}, fmt.Errorf("failed to merge config: %v", err)
-	}
-	if s.enableUnions {
-		newObject, err = configObject.NormalizeUnionsApply(newObject)
-		if err != nil {
-			return nil, fieldpath.ManagedFields{}, err
-		}
 	}
 	lastSet := managers[manager]
 	set, err := configObject.ToFieldSet()
@@ -220,13 +189,9 @@ func (s *Updater) Apply(liveObject, configObject *typed.TypedValue, version fiel
 		return nil, fieldpath.ManagedFields{}, fmt.Errorf("failed to get field set: %v", err)
 	}
 
-	ignored := s.IgnoredFields[version]
-	if ignored != nil {
-		set = set.RecursiveDifference(ignored)
-		// TODO: is this correct. If we don't remove from lastSet pruning might remove the fields?
-		if lastSet != nil {
-			lastSet.Set().RecursiveDifference(ignored)
-		}
+	ignoreFilter := s.IgnoreFilter[version]
+	if ignoreFilter != nil {
+		set = ignoreFilter.Filter(set)
 	}
 	managers[manager] = fieldpath.NewVersionedSet(set, version, true)
 	newObject, err = s.prune(newObject, managers, manager, lastSet)

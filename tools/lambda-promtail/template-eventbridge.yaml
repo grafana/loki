@@ -88,7 +88,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: arn:aws:s3:::thepalbi-lambda-lb-access-logs/*
+                Resource: !Sub 'arn:aws:s3:::${EventSourceS3Bucket}/*'
       RoleName: iam_for_lambda
   LambdaPromtailFunction:
     Type: AWS::Lambda::Function

@@ -26,6 +26,36 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/advisorynotifications/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/ai/generativelanguage/apiv1": {
+    "api_shortname": "generativelanguage",
+    "distribution_name": "cloud.google.com/go/ai/generativelanguage/apiv1",
+    "description": "Generative Language API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/ai/latest/generativelanguage/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/ai/generativelanguage/apiv1beta": {
+    "api_shortname": "generativelanguage",
+    "distribution_name": "cloud.google.com/go/ai/generativelanguage/apiv1beta",
+    "description": "Generative Language API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/ai/latest/generativelanguage/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/ai/generativelanguage/apiv1beta2": {
+    "api_shortname": "generativelanguage",
+    "distribution_name": "cloud.google.com/go/ai/generativelanguage/apiv1beta2",
+    "description": "Generative Language API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/ai/latest/generativelanguage/apiv1beta2",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -79,6 +109,36 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/alloydb/connectors/apiv1": {
+    "api_shortname": "connectors",
+    "distribution_name": "cloud.google.com/go/alloydb/connectors/apiv1",
+    "description": "AlloyDB connectors",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/alloydb/latest/connectors/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/alloydb/connectors/apiv1alpha": {
+    "api_shortname": "connectors",
+    "distribution_name": "cloud.google.com/go/alloydb/connectors/apiv1alpha",
+    "description": "AlloyDB connectors",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/alloydb/latest/connectors/apiv1alpha",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/alloydb/connectors/apiv1beta": {
+    "api_shortname": "connectors",
+    "distribution_name": "cloud.google.com/go/alloydb/connectors/apiv1beta",
+    "description": "AlloyDB connectors",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/alloydb/latest/connectors/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/analytics/admin/apiv1alpha": {
     "api_shortname": "analyticsadmin",
     "distribution_name": "cloud.google.com/go/analytics/admin/apiv1alpha",
@@ -116,6 +176,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/apigeeregistry/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/apihub/apiv1": {
+    "api_shortname": "apihub",
+    "distribution_name": "cloud.google.com/go/apihub/apiv1",
+    "description": "API hub API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/apihub/latest/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -137,6 +207,46 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/appengine/latest/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/apphub/apiv1": {
+    "api_shortname": "apphub",
+    "distribution_name": "cloud.google.com/go/apphub/apiv1",
+    "description": "App Hub API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/apphub/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/apps/events/subscriptions/apiv1": {
+    "api_shortname": "workspaceevents",
+    "distribution_name": "cloud.google.com/go/apps/events/subscriptions/apiv1",
+    "description": "Google Workspace Events API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/apps/latest/events/subscriptions/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/apps/meet/apiv2": {
+    "api_shortname": "meet",
+    "distribution_name": "cloud.google.com/go/apps/meet/apiv2",
+    "description": "Google Meet API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/apps/latest/meet/apiv2",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/apps/meet/apiv2beta": {
+    "api_shortname": "meet",
+    "distribution_name": "cloud.google.com/go/apps/meet/apiv2beta",
+    "description": "Google Meet API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/apps/latest/meet/apiv2beta",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/area120/tables/apiv1alpha1": {
@@ -239,6 +349,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/backupdr/apiv1": {
+    "api_shortname": "backupdr",
+    "distribution_name": "cloud.google.com/go/backupdr/apiv1",
+    "description": "Backup and DR Service API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/backupdr/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/baremetalsolution/apiv2": {
     "api_shortname": "baremetalsolution",
     "distribution_name": "cloud.google.com/go/baremetalsolution/apiv2",
@@ -266,7 +386,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/beyondcorp/latest/appconnections/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/beyondcorp/appconnectors/apiv1": {
@@ -276,7 +396,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/beyondcorp/latest/appconnectors/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/beyondcorp/appgateways/apiv1": {
@@ -286,7 +406,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/beyondcorp/latest/appgateways/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/beyondcorp/clientconnectorservices/apiv1": {
@@ -296,7 +416,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/beyondcorp/latest/clientconnectorservices/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/beyondcorp/clientgateways/apiv1": {
@@ -306,7 +426,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/beyondcorp/latest/clientgateways/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/bigquery": {
@@ -326,6 +446,26 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/analyticshub/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/bigquery/biglake/apiv1": {
+    "api_shortname": "biglake",
+    "distribution_name": "cloud.google.com/go/bigquery/biglake/apiv1",
+    "description": "BigLake API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/biglake/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/bigquery/biglake/apiv1alpha1": {
+    "api_shortname": "biglake",
+    "distribution_name": "cloud.google.com/go/bigquery/biglake/apiv1alpha1",
+    "description": "BigLake API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/biglake/apiv1alpha1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -366,7 +506,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/datapolicies/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/bigquery/datapolicies/apiv1beta1": {
@@ -396,7 +536,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/migration/apiv2",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/bigquery/migration/apiv2alpha": {
@@ -429,6 +569,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/bigquery/storage/apiv1alpha": {
+    "api_shortname": "bigquerystorage",
+    "distribution_name": "cloud.google.com/go/bigquery/storage/apiv1alpha",
+    "description": "BigQuery Storage API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/storage/apiv1alpha",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/bigquery/storage/apiv1beta1": {
     "api_shortname": "bigquerystorage",
     "distribution_name": "cloud.google.com/go/bigquery/storage/apiv1beta1",
@@ -458,6 +608,26 @@
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigtable/latest",
     "release_level": "stable",
     "library_type": "GAPIC_MANUAL"
+  },
+  "cloud.google.com/go/bigtable/admin/apiv2": {
+    "api_shortname": "bigtableadmin",
+    "distribution_name": "cloud.google.com/go/bigtable/admin/apiv2",
+    "description": "Cloud Bigtable Admin API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigtable/latest/admin/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/bigtable/apiv2": {
+    "api_shortname": "bigtable",
+    "distribution_name": "cloud.google.com/go/bigtable/apiv2",
+    "description": "Cloud Bigtable API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigtable/latest/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/billing/apiv1": {
     "api_shortname": "cloudbilling",
@@ -529,13 +699,23 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/chat/apiv1": {
+    "api_shortname": "chat",
+    "distribution_name": "cloud.google.com/go/chat/apiv1",
+    "description": "Google Chat API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/chat/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/cloudbuild/apiv1/v2": {
     "api_shortname": "cloudbuild",
     "distribution_name": "cloud.google.com/go/cloudbuild/apiv1/v2",
     "description": "Cloud Build API",
     "language": "go",
     "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/cloudbuild/apiv1/v2",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/cloudbuild/latest/apiv1/v2",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -549,6 +729,26 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/cloudcontrolspartner/apiv1": {
+    "api_shortname": "cloudcontrolspartner",
+    "distribution_name": "cloud.google.com/go/cloudcontrolspartner/apiv1",
+    "description": "Cloud Controls Partner API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/cloudcontrolspartner/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/cloudcontrolspartner/apiv1beta": {
+    "api_shortname": "cloudcontrolspartner",
+    "distribution_name": "cloud.google.com/go/cloudcontrolspartner/apiv1beta",
+    "description": "Cloud Controls Partner API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/cloudcontrolspartner/latest/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/clouddms/apiv1": {
     "api_shortname": "datamigration",
     "distribution_name": "cloud.google.com/go/clouddms/apiv1",
@@ -556,6 +756,26 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/clouddms/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/cloudprofiler/apiv2": {
+    "api_shortname": "cloudprofiler",
+    "distribution_name": "cloud.google.com/go/cloudprofiler/apiv2",
+    "description": "Cloud Profiler API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/cloudprofiler/latest/apiv2",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/cloudquotas/apiv1": {
+    "api_shortname": "cloudquotas",
+    "distribution_name": "cloud.google.com/go/cloudquotas/apiv1",
+    "description": "Cloud Quotas API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/cloudquotas/latest/apiv1",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -589,6 +809,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/commerce/consumer/procurement/apiv1": {
+    "api_shortname": "cloudcommerceconsumerprocurement",
+    "distribution_name": "cloud.google.com/go/commerce/consumer/procurement/apiv1",
+    "description": "Cloud Commerce Consumer Procurement API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/commerce/latest/consumer/procurement/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/compute/apiv1": {
     "api_shortname": "compute",
     "distribution_name": "cloud.google.com/go/compute/apiv1",
@@ -616,7 +846,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/confidentialcomputing/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/confidentialcomputing/apiv1alpha1": {
@@ -627,6 +857,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/confidentialcomputing/latest/apiv1alpha1",
     "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/config/apiv1": {
+    "api_shortname": "config",
+    "distribution_name": "cloud.google.com/go/config/apiv1",
+    "description": "Infrastructure Manager API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/config/latest/apiv1",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/contactcenterinsights/apiv1": {
@@ -655,7 +895,7 @@
     "description": "Container Analysis API",
     "language": "go",
     "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/containeranalysis/apiv1beta1",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/containeranalysis/latest/apiv1beta1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -686,7 +926,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/datacatalog/latest/lineage/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/dataflow/apiv1beta3": {
@@ -789,6 +1029,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/datastore/apiv1": {
+    "api_shortname": "datastore",
+    "distribution_name": "cloud.google.com/go/datastore/apiv1",
+    "description": "Cloud Datastore API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/datastore/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/datastream/apiv1": {
     "api_shortname": "datastream",
     "distribution_name": "cloud.google.com/go/datastream/apiv1",
@@ -816,17 +1066,27 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/debugger/apiv2",
-    "release_level": "stable",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/deploy/apiv1": {
     "api_shortname": "clouddeploy",
     "distribution_name": "cloud.google.com/go/deploy/apiv1",
-    "description": "Google Cloud Deploy API",
+    "description": "Cloud Deploy API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/deploy/latest/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/developerconnect/apiv1": {
+    "api_shortname": "developerconnect",
+    "distribution_name": "cloud.google.com/go/developerconnect/apiv1",
+    "description": "Developer Connect API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/developerconnect/latest/apiv1",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/dialogflow/apiv2": {
@@ -876,6 +1136,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/discoveryengine/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/discoveryengine/apiv1alpha": {
+    "api_shortname": "discoveryengine",
+    "distribution_name": "cloud.google.com/go/discoveryengine/apiv1alpha",
+    "description": "Discovery Engine API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/discoveryengine/latest/apiv1alpha",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -892,7 +1162,7 @@
   "cloud.google.com/go/dlp/apiv2": {
     "api_shortname": "dlp",
     "distribution_name": "cloud.google.com/go/dlp/apiv2",
-    "description": "Cloud Data Loss Prevention (DLP) API",
+    "description": "Sensitive Data Protection (DLP)",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/dlp/latest/apiv2",
@@ -936,6 +1206,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/edgecontainer/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/edgenetwork/apiv1": {
+    "api_shortname": "edgenetwork",
+    "distribution_name": "cloud.google.com/go/edgenetwork/apiv1",
+    "description": "Distributed Cloud Edge Network API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/edgenetwork/latest/apiv1",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -986,7 +1266,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/eventarc/latest/publishing/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/filestore/apiv1": {
@@ -1016,6 +1296,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/firestore/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/firestore/apiv1/admin": {
+    "api_shortname": "firestore",
+    "distribution_name": "cloud.google.com/go/firestore/apiv1/admin",
+    "description": "Cloud Firestore API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/firestore/latest/apiv1/admin",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -1059,26 +1349,6 @@
     "release_level": "preview",
     "library_type": "CORE"
   },
-  "cloud.google.com/go/gaming/apiv1": {
-    "api_shortname": "gameservices",
-    "distribution_name": "cloud.google.com/go/gaming/apiv1",
-    "description": "Game Services API",
-    "language": "go",
-    "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/gaming/latest/apiv1",
-    "release_level": "stable",
-    "library_type": "GAPIC_AUTO"
-  },
-  "cloud.google.com/go/gaming/apiv1beta": {
-    "api_shortname": "gameservices",
-    "distribution_name": "cloud.google.com/go/gaming/apiv1beta",
-    "description": "Game Services API",
-    "language": "go",
-    "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/gaming/latest/apiv1beta",
-    "release_level": "preview",
-    "library_type": "GAPIC_AUTO"
-  },
   "cloud.google.com/go/gkebackup/apiv1": {
     "api_shortname": "gkebackup",
     "distribution_name": "cloud.google.com/go/gkebackup/apiv1",
@@ -1087,6 +1357,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/gkebackup/latest/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/gkeconnect/gateway/apiv1": {
+    "api_shortname": "connectgateway",
+    "distribution_name": "cloud.google.com/go/gkeconnect/gateway/apiv1",
+    "description": "Connect Gateway API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/gkeconnect/latest/gateway/apiv1",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/gkeconnect/gateway/apiv1beta1": {
@@ -1112,11 +1392,11 @@
   "cloud.google.com/go/gkemulticloud/apiv1": {
     "api_shortname": "gkemulticloud",
     "distribution_name": "cloud.google.com/go/gkemulticloud/apiv1",
-    "description": "Anthos Multi-Cloud API",
+    "description": "GKE Multi-Cloud API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/gkemulticloud/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/gsuiteaddons/apiv1": {
@@ -1176,6 +1456,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/iap/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/identitytoolkit/apiv2": {
+    "api_shortname": "identitytoolkit",
+    "distribution_name": "cloud.google.com/go/identitytoolkit/apiv2",
+    "description": "Identity Toolkit API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/identitytoolkit/latest/apiv2",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -1239,6 +1529,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/language/apiv2": {
+    "api_shortname": "language",
+    "distribution_name": "cloud.google.com/go/language/apiv2",
+    "description": "Cloud Natural Language API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/language/latest/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/lifesciences/apiv2beta": {
     "api_shortname": "lifesciences",
     "distribution_name": "cloud.google.com/go/lifesciences/apiv2beta",
@@ -1289,6 +1589,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/managedkafka/apiv1": {
+    "api_shortname": "managedkafka",
+    "distribution_name": "cloud.google.com/go/managedkafka/apiv1",
+    "description": "Managed Service for Apache Kafka API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/managedkafka/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/maps/addressvalidation/apiv1": {
     "api_shortname": "addressvalidation",
     "distribution_name": "cloud.google.com/go/maps/addressvalidation/apiv1",
@@ -1299,14 +1609,34 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
-  "cloud.google.com/go/maps/mapsplatformdatasets/apiv1alpha": {
-    "api_shortname": "mapsplatformdatasets",
-    "distribution_name": "cloud.google.com/go/maps/mapsplatformdatasets/apiv1alpha",
-    "description": "Maps Platform Datasets API",
+  "cloud.google.com/go/maps/areainsights/apiv1": {
+    "api_shortname": "areainsights",
+    "distribution_name": "cloud.google.com/go/maps/areainsights/apiv1",
+    "description": "Places Insights API",
     "language": "go",
     "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/mapsplatformdatasets/apiv1alpha",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/areainsights/apiv1",
     "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/fleetengine/apiv1": {
+    "api_shortname": "fleetengine",
+    "distribution_name": "cloud.google.com/go/maps/fleetengine/apiv1",
+    "description": "Local Rides and Deliveries API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/fleetengine/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/fleetengine/delivery/apiv1": {
+    "api_shortname": "fleetengine",
+    "distribution_name": "cloud.google.com/go/maps/fleetengine/delivery/apiv1",
+    "description": "Last Mile Fleet Solution Delivery API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/fleetengine/delivery/apiv1",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/maps/places/apiv1": {
@@ -1319,6 +1649,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/maps/routeoptimization/apiv1": {
+    "api_shortname": "routeoptimization",
+    "distribution_name": "cloud.google.com/go/maps/routeoptimization/apiv1",
+    "description": "Route Optimization API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/routeoptimization/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/maps/routing/apiv2": {
     "api_shortname": "routes",
     "distribution_name": "cloud.google.com/go/maps/routing/apiv2",
@@ -1326,6 +1666,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/routing/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/solar/apiv1": {
+    "api_shortname": "solar",
+    "distribution_name": "cloud.google.com/go/maps/solar/apiv1",
+    "description": "Solar API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/solar/apiv1",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -1396,7 +1746,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/migrationcenter/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/monitoring/apiv3/v2": {
@@ -1426,6 +1776,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/monitoring/latest/metricsscope/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/netapp/apiv1": {
+    "api_shortname": "netapp",
+    "distribution_name": "cloud.google.com/go/netapp/apiv1",
+    "description": "NetApp API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/netapp/latest/apiv1",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -1469,6 +1829,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/networkservices/apiv1": {
+    "api_shortname": "networkservices",
+    "distribution_name": "cloud.google.com/go/networkservices/apiv1",
+    "description": "Network Services API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/networkservices/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/notebooks/apiv1": {
     "api_shortname": "notebooks",
     "distribution_name": "cloud.google.com/go/notebooks/apiv1",
@@ -1489,6 +1859,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/notebooks/apiv2": {
+    "api_shortname": "notebooks",
+    "distribution_name": "cloud.google.com/go/notebooks/apiv2",
+    "description": "Notebooks API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/notebooks/latest/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/optimization/apiv1": {
     "api_shortname": "cloudoptimization",
     "distribution_name": "cloud.google.com/go/optimization/apiv1",
@@ -1497,6 +1877,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/optimization/latest/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/oracledatabase/apiv1": {
+    "api_shortname": "oracledatabase",
+    "distribution_name": "cloud.google.com/go/oracledatabase/apiv1",
+    "description": "Oracle Database@Google Cloud API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/oracledatabase/latest/apiv1",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/orchestration/airflow/service/apiv1": {
@@ -1589,6 +1979,26 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/parallelstore/apiv1": {
+    "api_shortname": "parallelstore",
+    "distribution_name": "cloud.google.com/go/parallelstore/apiv1",
+    "description": "Parallelstore API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/parallelstore/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/parallelstore/apiv1beta": {
+    "api_shortname": "parallelstore",
+    "distribution_name": "cloud.google.com/go/parallelstore/apiv1beta",
+    "description": "Parallelstore API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/parallelstore/latest/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/phishingprotection/apiv1beta1": {
     "api_shortname": "phishingprotection",
     "distribution_name": "cloud.google.com/go/phishingprotection/apiv1beta1",
@@ -1597,6 +2007,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/phishingprotection/latest/apiv1beta1",
     "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/policysimulator/apiv1": {
+    "api_shortname": "policysimulator",
+    "distribution_name": "cloud.google.com/go/policysimulator/apiv1",
+    "description": "Policy Simulator API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/policysimulator/latest/apiv1",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/policytroubleshooter/apiv1": {
@@ -1609,6 +2029,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/policytroubleshooter/iam/apiv3": {
+    "api_shortname": "policytroubleshooter",
+    "distribution_name": "cloud.google.com/go/policytroubleshooter/iam/apiv3",
+    "description": "Policy Troubleshooter API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/policytroubleshooter/latest/iam/apiv3",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/privatecatalog/apiv1beta1": {
     "api_shortname": "cloudprivatecatalog",
     "distribution_name": "cloud.google.com/go/privatecatalog/apiv1beta1",
@@ -1616,6 +2046,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/privatecatalog/latest/apiv1beta1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/privilegedaccessmanager/apiv1": {
+    "api_shortname": "privilegedaccessmanager",
+    "distribution_name": "cloud.google.com/go/privilegedaccessmanager/apiv1",
+    "description": "Privileged Access Manager API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/privilegedaccessmanager/latest/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -1676,7 +2116,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/rapidmigrationassessment/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/recaptchaenterprise/v2/apiv1": {
@@ -1749,6 +2189,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/redis/cluster/apiv1": {
+    "api_shortname": "redis",
+    "distribution_name": "cloud.google.com/go/redis/cluster/apiv1",
+    "description": "Google Cloud Memorystore for Redis API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/redis/latest/cluster/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/resourcemanager/apiv2": {
     "api_shortname": "cloudresourcemanager",
     "distribution_name": "cloud.google.com/go/resourcemanager/apiv2",
@@ -1782,7 +2232,7 @@
   "cloud.google.com/go/retail/apiv2": {
     "api_shortname": "retail",
     "distribution_name": "cloud.google.com/go/retail/apiv2",
-    "description": "Retail API",
+    "description": "Vertex AI Search for Retail API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/retail/latest/apiv2",
@@ -1792,7 +2242,7 @@
   "cloud.google.com/go/retail/apiv2alpha": {
     "api_shortname": "retail",
     "distribution_name": "cloud.google.com/go/retail/apiv2alpha",
-    "description": "Retail API",
+    "description": "Vertex AI Search for Retail API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/retail/latest/apiv2alpha",
@@ -1802,7 +2252,7 @@
   "cloud.google.com/go/retail/apiv2beta": {
     "api_shortname": "retail",
     "distribution_name": "cloud.google.com/go/retail/apiv2beta",
-    "description": "Retail API",
+    "description": "Vertex AI Search for Retail API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/retail/latest/apiv2beta",
@@ -1859,6 +2309,26 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/secretmanager/apiv1beta2": {
+    "api_shortname": "secretmanager",
+    "distribution_name": "cloud.google.com/go/secretmanager/apiv1beta2",
+    "description": "Secret Manager API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/secretmanager/latest/apiv1beta2",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/securesourcemanager/apiv1": {
+    "api_shortname": "securesourcemanager",
+    "distribution_name": "cloud.google.com/go/securesourcemanager/apiv1",
+    "description": "Secure Source Manager API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securesourcemanager/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/security/privateca/apiv1": {
     "api_shortname": "privateca",
     "distribution_name": "cloud.google.com/go/security/privateca/apiv1",
@@ -1867,6 +2337,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/security/latest/privateca/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/security/publicca/apiv1": {
+    "api_shortname": "publicca",
+    "distribution_name": "cloud.google.com/go/security/publicca/apiv1",
+    "description": "Public Certificate Authority API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/security/latest/publicca/apiv1",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/security/publicca/apiv1beta1": {
@@ -1909,6 +2389,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/securitycenter/apiv2": {
+    "api_shortname": "securitycenter",
+    "distribution_name": "cloud.google.com/go/securitycenter/apiv2",
+    "description": "Security Command Center API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securitycenter/latest/apiv2",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/securitycenter/settings/apiv1beta1": {
     "api_shortname": "securitycenter",
     "distribution_name": "cloud.google.com/go/securitycenter/settings/apiv1beta1",
@@ -1916,6 +2406,26 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securitycenter/latest/settings/apiv1beta1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/securitycentermanagement/apiv1": {
+    "api_shortname": "securitycentermanagement",
+    "distribution_name": "cloud.google.com/go/securitycentermanagement/apiv1",
+    "description": "Security Command Center Management API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securitycentermanagement/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/securityposture/apiv1": {
+    "api_shortname": "securityposture",
+    "distribution_name": "cloud.google.com/go/securityposture/apiv1",
+    "description": "Security Posture API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securityposture/latest/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -1949,6 +2459,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/servicehealth/apiv1": {
+    "api_shortname": "servicehealth",
+    "distribution_name": "cloud.google.com/go/servicehealth/apiv1",
+    "description": "Service Health API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/servicehealth/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/servicemanagement/apiv1": {
     "api_shortname": "servicemanagement",
     "distribution_name": "cloud.google.com/go/servicemanagement/apiv1",
@@ -1977,6 +2497,116 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shell/latest/apiv1",
     "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/css/apiv1": {
+    "api_shortname": "css",
+    "distribution_name": "cloud.google.com/go/shopping/css/apiv1",
+    "description": "CSS API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/css/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/accounts/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/accounts/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/accounts/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/conversions/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/conversions/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/conversions/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/datasources/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/datasources/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/datasources/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/inventories/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/inventories/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/inventories/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/lfp/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/lfp/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/lfp/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/notifications/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/notifications/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/notifications/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/products/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/products/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/products/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/promotions/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/promotions/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/promotions/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/quota/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/quota/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/quota/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/shopping/merchant/reports/apiv1beta": {
+    "api_shortname": "merchantapi",
+    "distribution_name": "cloud.google.com/go/shopping/merchant/reports/apiv1beta",
+    "description": "Merchant API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/shopping/latest/merchant/reports/apiv1beta",
+    "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/spanner": {
@@ -2019,6 +2649,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/spanner/executor/apiv1": {
+    "api_shortname": "spanner-cloud-executor",
+    "distribution_name": "cloud.google.com/go/spanner/executor/apiv1",
+    "description": "Cloud Spanner Executor test API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/spanner/latest/executor/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/speech/apiv1": {
     "api_shortname": "speech",
     "distribution_name": "cloud.google.com/go/speech/apiv1",
@@ -2046,7 +2686,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/speech/latest/apiv2",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/storage": {
@@ -2058,6 +2698,16 @@
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/storage/latest",
     "release_level": "stable",
     "library_type": "GAPIC_MANUAL"
+  },
+  "cloud.google.com/go/storage/control/apiv2": {
+    "api_shortname": "storage",
+    "distribution_name": "cloud.google.com/go/storage/control/apiv2",
+    "description": "Storage Control API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/storage/latest/control/apiv2",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/storage/internal/apiv2": {
     "api_shortname": "storage",
@@ -2089,6 +2739,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/streetview/publish/apiv1": {
+    "api_shortname": "streetviewpublish",
+    "distribution_name": "cloud.google.com/go/streetview/publish/apiv1",
+    "description": "Street View Publish API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/streetview/latest/publish/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/support/apiv2": {
     "api_shortname": "cloudsupport",
     "distribution_name": "cloud.google.com/go/support/apiv2",
@@ -2096,7 +2756,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/support/latest/apiv2",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/talent/apiv4": {
@@ -2117,6 +2777,16 @@
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/talent/latest/apiv4beta1",
     "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/telcoautomation/apiv1": {
+    "api_shortname": "telcoautomation",
+    "distribution_name": "cloud.google.com/go/telcoautomation/apiv1",
+    "description": "Telco Automation API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/telcoautomation/latest/apiv1",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/texttospeech/apiv1": {
@@ -2185,7 +2855,7 @@
     "description": "Video Stitcher API",
     "language": "go",
     "client_library_type": "generated",
-    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/video/stitcher/apiv1",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/video/latest/stitcher/apiv1",
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
@@ -2249,6 +2919,16 @@
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/visionai/apiv1": {
+    "api_shortname": "visionai",
+    "distribution_name": "cloud.google.com/go/visionai/apiv1",
+    "description": "Vision AI API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/visionai/latest/apiv1",
+    "release_level": "stable",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/vmmigration/apiv1": {
     "api_shortname": "vmmigration",
     "distribution_name": "cloud.google.com/go/vmmigration/apiv1",
@@ -2266,7 +2946,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/vmwareengine/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/vpcaccess/apiv1": {
@@ -2356,7 +3036,7 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/workstations/latest/apiv1",
-    "release_level": "preview",
+    "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/workstations/apiv1beta": {

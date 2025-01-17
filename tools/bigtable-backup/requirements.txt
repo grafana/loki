@@ -1,2 +1,2 @@
 -e git://github.com/prometheus/client_python.git@a8f5c80f651ea570577c364203e0edbef67db727#egg=prometheus_client
-pytz==2019.1
+pytz==2024.2

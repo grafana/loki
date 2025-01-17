@@ -32,6 +32,10 @@ functional-test:
 	@GO111MODULE=on go build -race functional_tests.go
 	@SERVER_ENDPOINT=localhost:9000 ACCESS_KEY=minioadmin SECRET_KEY=minioadmin ENABLE_HTTPS=1 MINT_MODE=full ./functional_tests
 
+functional-test-notls:
+	@GO111MODULE=on go build -race functional_tests.go
+	@SERVER_ENDPOINT=localhost:9000 ACCESS_KEY=minioadmin SECRET_KEY=minioadmin ENABLE_HTTPS=0 MINT_MODE=full ./functional_tests
+
 clean:
 	@echo "Cleaning up all the generated files"
 	@find . -name '*.test' | xargs rm -fv

@@ -56,6 +56,15 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         ],
       },
 
+    // replaceType updates the type of a panel. Used to
+    // transform "stat" graphs in "singlestat" to ensure OCP Console compatibility
+    local replaceType = function(type, replacement)
+      function(p) p + (
+        if p.type == type then {
+          type: replacement,
+        } else {}
+      ),
+
     // dropPanels removes unnecessary panels from the loki dashboards
     // that are of obsolete usage on our AWS-based deployment environment.
     local dropPanels = function(panels, dropList, fn)
@@ -135,7 +144,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
 
     grafanaDashboards+: {
       'loki-retention.json'+: {
-        local dropList = ['Logs', 'Per Table Marker', 'Sweeper', ''],
+        // TODO (JoaoBraveCoding) Once we upgrade to 3.x we should be able to lift the drops on
+        // 'Number of times Tables were skipped during Compaction' and 'Retention' since Loki will then have the
+        // updated metrics
+        local dropList = ['Logs', 'Number of times Tables were skipped during Compaction', 'Retention'],
         local replacements = [
           { from: 'cluster=~"$cluster",', to: '' },
           { from: 'container="compactor"', to: 'container=~".+-compactor"' },
@@ -146,7 +158,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         tags: defaultLokiTags(super.tags),
         rows: [
           r {
-            panels: mapPanels([replaceMatchers(replacements)], r.panels),
+            panels: mapPanels([replaceMatchers(replacements), replaceType('stat', 'singlestat'), replaceType('timeseries', 'graph')], dropPanels(r.panels, dropList, function(p) true)),
           }
           for r in dropPanels(super.rows, dropList, function(p) true)
         ],
@@ -164,7 +176,9 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         namespaceType:: 'query',
         labelsSelector:: 'namespace="$namespace", job=~".+-ingester-http"',
         rows: [
-          r
+          r {
+            panels: mapPanels([replaceType('timeseries', 'graph')], r.panels),
+          }
           for r in dropPanels(super.rows, dropList, dropHeatMaps)
         ],
         templating+: {
@@ -172,7 +186,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         },
       },
       'loki-reads.json'+: {
-        local dropList = ['BigTable', 'Ingester - Zone Aware'],
+        // We drop both BigTable and BlotDB dashboards as they have been
+        // replaced by the Index dashboards
+        local dropList = ['BigTable', 'Ingester - Zone Aware', 'BoltDB Index', 'Bloom Gateway'],
+
 
         uid: '62q5jjYwhVSaz4Mcrm8tV3My3gcKED',
         title: 'OpenShift Logging / LokiStack / Reads',
@@ -182,6 +199,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         namespaceType:: 'query',
         matchers:: {
           cortexgateway:: [],
+          bloomGateway:: [],
           queryFrontend:: [
             utils.selector.eq('namespace', '$namespace'),
             utils.selector.re('job', '.+-query-frontend-http'),
@@ -195,6 +213,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
             utils.selector.re('job', '.+-ingester-http'),
           ],
           ingesterZoneAware:: [],
+          indexGateway:: [
+            utils.selector.eq('namespace', '$namespace'),
+            utils.selector.re('job', '.+-index-gateway-http'),
+          ],
           querierOrIndexGateway:: [
             utils.selector.eq('namespace', '$namespace'),
             utils.selector.re('job', '.+-index-gateway-http'),
@@ -202,7 +224,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         },
         rows: [
           r {
-            panels: mapPanels([replaceLabelFormat('Per Pod Latency (p99)', '__auto', '{{pod}}')], r.panels),
+            panels: mapPanels([replaceLabelFormat('Per Pod Latency (p99)', '__auto', '{{pod}}'), replaceType('timeseries', 'graph')], r.panels),
           }
           for r in dropPanels(super.rows, dropList, function(p) true)
         ],
@@ -211,7 +233,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         },
       },
       'loki-writes.json'+: {
-        local dropList = ['Ingester - Zone Aware'],
+        local dropList = ['Ingester - Zone Aware', 'BoltDB Index'],
         uid: 'F6nRYKuXmFVpVSFQmXr7cgXy5j7UNr',
         title: 'OpenShift Logging / LokiStack / Writes',
         tags: defaultLokiTags(super.tags),
@@ -223,15 +245,23 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
           distributor:: [
             utils.selector.eq('namespace', '$namespace'),
             utils.selector.re('job', '.+-distributor-http'),
-            utils.selector.eq('route', 'loki_api_v1_push'),
           ],
           ingester:: [
             utils.selector.eq('namespace', '$namespace'),
             utils.selector.re('job', '.+-ingester-http'),
           ],
           ingester_zone:: [],
+          any_ingester:: [
+            utils.selector.eq('namespace', '$namespace'),
+            utils.selector.re('job', '.+-ingester-http'),
+          ],
         },
-        rows: dropPanels(super.rows, dropList, function(p) true),
+        rows: [
+          r {
+            panels: mapPanels([replaceType('timeseries', 'graph')], r.panels),
+          }
+          for r in dropPanels(super.rows, dropList, function(p) true)
+        ],
         templating+: {
           list: mapTemplateParameters(super.list),
         },

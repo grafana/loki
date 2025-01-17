@@ -20,8 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/clients/pkg/promtail/client/fake"
-	"github.com/grafana/loki/clients/pkg/promtail/positions"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/client/fake"
+	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 )
 
 func TestFileTargetSync(t *testing.T) {
@@ -76,10 +76,10 @@ func TestFileTargetSync(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -90,10 +90,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -106,10 +106,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.readers),
+	assert.Equal(t, 1, target.getReadersLen(),
 		"Expected tails to be 1 at this point in the test...",
 	)
 
@@ -124,10 +124,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 2, len(target.readers),
+	assert.Equal(t, 2, target.getReadersLen(),
 		"Expected tails to be 2 at this point in the test...",
 	)
 
@@ -138,10 +138,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.readers),
+	assert.Equal(t, 1, target.getReadersLen(),
 		"Expected tails to be 1 at this point in the test...",
 	)
 
@@ -152,10 +152,10 @@ func TestFileTargetSync(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 0, len(target.watches),
+	assert.Equal(t, 0, target.getWatchesLen(),
 		"Expected watches to be 0 at this point in the test...",
 	)
-	assert.Equal(t, 0, len(target.readers),
+	assert.Equal(t, 0, target.getReadersLen(),
 		"Expected tails to be 0 at this point in the test...",
 	)
 	requireEventually(t, func() bool {
@@ -198,7 +198,7 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 	assert.NoError(t, err)
 
 	requireEventually(t, func() bool {
-		return len(target.readers) == 1
+		return target.getReadersLen() == 1
 	}, "expected 1 tailer to be created")
 
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
@@ -208,12 +208,19 @@ func TestFileTarget_StopsTailersCleanly(t *testing.T) {
 	`), "promtail_files_active_total"))
 
 	// Inject an error to tailer
-	initailTailer := target.readers[logFile].(*tailer)
+
+	initialReader, _ := target.getReader(logFile)
+	initailTailer := initialReader.(*tailer)
 	_ = initailTailer.tail.Tomb.Killf("test: network file systems can be unreliable")
 
 	// Tailer will be replaced by a new one
 	requireEventually(t, func() bool {
-		return len(target.readers) == 1 && target.readers[logFile].(*tailer) != initailTailer
+		currentReader, _ := target.getReader(logFile)
+		var currentTailer *tailer
+		if currentReader != nil {
+			currentTailer = currentReader.(*tailer)
+		}
+		return target.getReadersLen() == 1 && currentTailer != initailTailer
 	}, "expected dead tailer to be replaced by a new one")
 
 	// The old tailer should be stopped:
@@ -329,6 +336,93 @@ func TestFileTarget_StopsTailersCleanly_Parallel(t *testing.T) {
 	ps.Stop()
 }
 
+// Make sure that Stop() doesn't hang if FileTarget is waiting on a channel send.
+func TestFileTarget_StopAbruptly(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	dirName := newTestLogDirectories(t)
+	positionsFileName := filepath.Join(dirName, "positions.yml")
+	logDir1 := filepath.Join(dirName, "log1")
+	logDir2 := filepath.Join(dirName, "log2")
+	logDir3 := filepath.Join(dirName, "log3")
+
+	logfile1 := filepath.Join(logDir1, "test1.log")
+	logfile2 := filepath.Join(logDir2, "test1.log")
+	logfile3 := filepath.Join(logDir3, "test1.log")
+
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Millisecond,
+		PositionsFile: positionsFileName,
+	})
+	require.NoError(t, err)
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	// fakeHandler has to be a buffered channel so that we can call the len() function on it.
+	// We need to call len() to check if the channel is full.
+	fakeHandler := make(chan fileTargetEvent, 1)
+	pathToWatch := filepath.Join(dirName, "**", "*.log")
+	registry := prometheus.NewRegistry()
+	target, err := NewFileTarget(NewMetrics(registry), logger, client, ps, pathToWatch, "", nil, nil, &Config{
+		SyncPeriod: 10 * time.Millisecond,
+	}, DefaultWatchConig, nil, fakeHandler, "", nil)
+	assert.NoError(t, err)
+
+	// Create a directory, still nothing is watched.
+	err = os.MkdirAll(logDir1, 0750)
+	assert.NoError(t, err)
+	_, err = os.Create(logfile1)
+	assert.NoError(t, err)
+
+	// There should be only one WatchStart event in the channel so far.
+	ftEvent := <-fakeHandler
+	require.Equal(t, fileTargetEventWatchStart, ftEvent.eventType)
+
+	requireEventually(t, func() bool {
+		return target.getReadersLen() == 1
+	}, "expected 1 tailer to be created")
+
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP promtail_files_active_total Number of active files.
+		# TYPE promtail_files_active_total gauge
+		promtail_files_active_total 1
+	`), "promtail_files_active_total"))
+
+	// Create two directories - one more than the buffer of fakeHandler,
+	// so that the file target hands until we call Stop().
+	err = os.MkdirAll(logDir2, 0750)
+	assert.NoError(t, err)
+	_, err = os.Create(logfile2)
+	assert.NoError(t, err)
+
+	err = os.MkdirAll(logDir3, 0750)
+	assert.NoError(t, err)
+	_, err = os.Create(logfile3)
+	assert.NoError(t, err)
+
+	// Wait until the file target is waiting on a channel send due to a full channel buffer.
+	requireEventually(t, func() bool {
+		return len(fakeHandler) == 1
+	}, "expected an event in the fakeHandler channel")
+
+	// If FileHandler works well, then it will stop waiting for
+	// the blocked fakeHandler and stop cleanly.
+	// This is why this time we don't drain fakeHandler.
+	requireEventually(t, func() bool {
+		target.Stop()
+		ps.Stop()
+		return true
+	}, "expected FileTarget not to hang")
+
+	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP promtail_files_active_total Number of active files.
+		# TYPE promtail_files_active_total gauge
+		promtail_files_active_total 0
+	`), "promtail_files_active_total"))
+}
+
 func TestFileTargetPathExclusion(t *testing.T) {
 	w := log.NewSyncWriter(os.Stderr)
 	logger := log.NewLogfmtLogger(w)
@@ -389,10 +483,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -407,10 +501,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	if len(target.watches) != 0 {
+	if target.getWatchesLen() != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.readers) != 0 {
+	if target.getReadersLen() != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -425,10 +519,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 2, len(target.watches),
+	assert.Equal(t, 2, target.getWatchesLen(),
 		"Expected watches to be 2 at this point in the test...",
 	)
-	assert.Equal(t, 3, len(target.readers),
+	assert.Equal(t, 3, target.getReadersLen(),
 		"Expected tails to be 3 at this point in the test...",
 	)
 	requireEventually(t, func() bool {
@@ -446,10 +540,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	err = target.sync()
 	assert.NoError(t, err)
 
-	assert.Equal(t, 1, len(target.watches),
+	assert.Equal(t, 1, target.getWatchesLen(),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.readers),
+	assert.Equal(t, 1, target.getReadersLen(),
 		"Expected tails to be 1 at this point in the test...",
 	)
 	requireEventually(t, func() bool {
@@ -475,6 +569,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	positionsFileName := filepath.Join(dirName, "positions.yml")
 	logDir := filepath.Join(dirName, "log")
 	logFile := filepath.Join(logDir, "test1.log")
+	logFileIgnored := filepath.Join(logDir, "test.donot.log")
 
 	if err := os.MkdirAll(logDir, 0750); err != nil {
 		t.Fatal(err)
@@ -511,7 +606,8 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		}
 	}()
 
-	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
+	pathExclude := "**/*.donot.log"
+	target, err := NewFileTarget(metrics, logger, client, ps, path, pathExclude, nil, nil, &Config{
 		// To handle file creation event from channel, set enough long time as sync period
 		SyncPeriod: 10 * time.Minute,
 	}, DefaultWatchConig, fakeFileHandler, fakeTargetHandler, "", nil)
@@ -523,12 +619,20 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	_, err = os.Create(logFileIgnored)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fakeFileHandler <- fsnotify.Event{
 		Name: logFile,
 		Op:   fsnotify.Create,
 	}
+	fakeFileHandler <- fsnotify.Event{
+		Name: logFileIgnored,
+		Op:   fsnotify.Create,
+	}
 	requireEventually(t, func() bool {
-		return len(target.readers) == 1
+		return target.getReadersLen() == 1
 	}, "Expected tails to be 1 at this point in the test...")
 }
 

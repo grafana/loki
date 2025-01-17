@@ -24,7 +24,7 @@ import (
 
 var (
 	defaultValueDecoders DefaultValueDecoders
-	errCannotTruncate    = errors.New("float64 can only be truncated to an integer type when truncation is enabled")
+	errCannotTruncate    = errors.New("float64 can only be truncated to a lower precision type when truncation is enabled")
 )
 
 type decodeBinaryError struct {
@@ -41,7 +41,7 @@ func newDefaultStructCodec() *StructCodec {
 	if err != nil {
 		// This function is called from the codec registration path, so errors can't be propagated. If there's an error
 		// constructing the StructCodec, we panic to avoid losing it.
-		panic(fmt.Errorf("error creating default StructCodec: %v", err))
+		panic(fmt.Errorf("error creating default StructCodec: %w", err))
 	}
 	return codec
 }
@@ -178,7 +178,7 @@ func (dvd DefaultValueDecoders) DDecodeValue(dc DecodeContext, vr bsonrw.ValueRe
 
 	for {
 		key, elemVr, err := dr.ReadElement()
-		if err == bsonrw.ErrEOD {
+		if errors.Is(err, bsonrw.ErrEOD) {
 			break
 		} else if err != nil {
 			return err
@@ -330,7 +330,7 @@ func (DefaultValueDecoders) intDecodeType(dc DecodeContext, vr bsonrw.ValueReade
 	case reflect.Int64:
 		return reflect.ValueOf(i64), nil
 	case reflect.Int:
-		if int64(int(i64)) != i64 { // Can we fit this inside of an int
+		if i64 > math.MaxInt { // Can we fit this inside of an int
 			return emptyValue, fmt.Errorf("%d overflows int", i64)
 		}
 
@@ -434,7 +434,7 @@ func (dvd DefaultValueDecoders) UintDecodeValue(dc DecodeContext, vr bsonrw.Valu
 			return fmt.Errorf("%d overflows uint64", i64)
 		}
 	case reflect.Uint:
-		if i64 < 0 || int64(uint(i64)) != i64 { // Can we fit this inside of an uint
+		if i64 < 0 || uint64(i64) > uint64(math.MaxUint) { // Can we fit this inside of an uint
 			return fmt.Errorf("%d overflows uint", i64)
 		}
 	default:
@@ -1379,7 +1379,7 @@ func (dvd DefaultValueDecoders) MapDecodeValue(dc DecodeContext, vr bsonrw.Value
 	keyType := val.Type().Key()
 	for {
 		key, vr, err := dr.ReadElement()
-		if err == bsonrw.ErrEOD {
+		if errors.Is(err, bsonrw.ErrEOD) {
 			break
 		}
 		if err != nil {
@@ -1540,12 +1540,12 @@ func (dvd DefaultValueDecoders) ValueUnmarshalerDecodeValue(_ DecodeContext, vr 
 		return err
 	}
 
-	fn := val.Convert(tValueUnmarshaler).MethodByName("UnmarshalBSONValue")
-	errVal := fn.Call([]reflect.Value{reflect.ValueOf(t), reflect.ValueOf(src)})[0]
-	if !errVal.IsNil() {
-		return errVal.Interface().(error)
+	m, ok := val.Interface().(ValueUnmarshaler)
+	if !ok {
+		// NB: this error should be unreachable due to the above checks
+		return ValueDecoderError{Name: "ValueUnmarshalerDecodeValue", Types: []reflect.Type{tValueUnmarshaler}, Received: val}
 	}
-	return nil
+	return m.UnmarshalBSONValue(t, src)
 }
 
 // UnmarshalerDecodeValue is the ValueDecoderFunc for Unmarshaler implementations.
@@ -1588,12 +1588,12 @@ func (dvd DefaultValueDecoders) UnmarshalerDecodeValue(_ DecodeContext, vr bsonr
 		val = val.Addr() // If the type doesn't implement the interface, a pointer to it must.
 	}
 
-	fn := val.Convert(tUnmarshaler).MethodByName("UnmarshalBSON")
-	errVal := fn.Call([]reflect.Value{reflect.ValueOf(src)})[0]
-	if !errVal.IsNil() {
-		return errVal.Interface().(error)
+	m, ok := val.Interface().(Unmarshaler)
+	if !ok {
+		// NB: this error should be unreachable due to the above checks
+		return ValueDecoderError{Name: "UnmarshalerDecodeValue", Types: []reflect.Type{tUnmarshaler}, Received: val}
 	}
-	return nil
+	return m.UnmarshalBSON(src)
 }
 
 // EmptyInterfaceDecodeValue is the ValueDecoderFunc for interface{}.
@@ -1675,7 +1675,7 @@ func (dvd DefaultValueDecoders) decodeDefault(dc DecodeContext, vr bsonrw.ValueR
 	idx := 0
 	for {
 		vr, err := ar.ReadValue()
-		if err == bsonrw.ErrEOA {
+		if errors.Is(err, bsonrw.ErrEOA) {
 			break
 		}
 		if err != nil {
@@ -1787,7 +1787,7 @@ func (DefaultValueDecoders) decodeElemsFromDocumentReader(dc DecodeContext, dr b
 	elems := make([]reflect.Value, 0)
 	for {
 		key, vr, err := dr.ReadElement()
-		if err == bsonrw.ErrEOD {
+		if errors.Is(err, bsonrw.ErrEOD) {
 			break
 		}
 		if err != nil {

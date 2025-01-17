@@ -1,0 +1,46 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.queryFrontendFullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.queryFrontendLabels" . | nindent 4 }}
+    {{- with .Values.queryFrontend.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    prometheus.io/service-monitor: "false"
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.queryFrontend.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  clusterIP: None
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.queryFrontend.appProtocol.grpc }}
+      appProtocol: {{ .Values.queryFrontend.appProtocol.grpc }}
+      {{- end }}
+    - name: grpclb
+      port: 9096
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.queryFrontend.appProtocol.grpc }}
+      appProtocol: {{ .Values.queryFrontend.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.queryFrontendSelectorLabels" . | nindent 4 }}
+{{- end -}}

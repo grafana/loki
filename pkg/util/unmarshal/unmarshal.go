@@ -6,8 +6,8 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
 // DecodePushRequest directly decodes json to a logproto.PushRequest
@@ -19,7 +19,7 @@ func DecodePushRequest(b io.Reader, r *logproto.PushRequest) error {
 	}
 
 	*r = logproto.PushRequest{
-		Streams: *(*[]logproto.Stream)(unsafe.Pointer(&request.Streams)),
+		Streams: *(*[]logproto.Stream)(unsafe.Pointer(&request.Streams)), //#nosec G103 -- Just preventing an allocation, safe, there's no chance of an incorrect type cast here.
 	}
 
 	return nil

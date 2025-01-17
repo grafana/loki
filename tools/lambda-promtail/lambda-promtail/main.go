@@ -13,6 +13,8 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
+	prommodel "github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/relabel"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -25,18 +27,20 @@ const (
 
 	maxErrMsgLen = 1024
 
-	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
+	invalidExtraLabelsError = "invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
 )
 
 var (
-	writeAddress                                              *url.URL
-	username, password, extraLabelsRaw, tenantID, bearerToken string
-	keepStream                                                bool
-	batchSize                                                 int
-	s3Clients                                                 map[string]*s3.Client
-	extraLabels                                               model.LabelSet
-	skipTlsVerify                                             bool
-	printLogLine                                              bool
+	writeAddress                                                             *url.URL
+	username, password, extraLabelsRaw, dropLabelsRaw, tenantID, bearerToken string
+	keepStream                                                               bool
+	batchSize                                                                int
+	s3Clients                                                                map[string]*s3.Client
+	extraLabels                                                              model.LabelSet
+	dropLabels                                                               []model.LabelName
+	skipTlsVerify                                                            bool
+	printLogLine                                                             bool
+	relabelConfigs                                                           []*relabel.Config
 )
 
 func setupArguments() {
@@ -56,6 +60,11 @@ func setupArguments() {
 	omitExtraLabelsPrefix := os.Getenv("OMIT_EXTRA_LABELS_PREFIX")
 	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
 	extraLabels, err = parseExtraLabels(extraLabelsRaw, strings.EqualFold(omitExtraLabelsPrefix, "true"))
+	if err != nil {
+		panic(err)
+	}
+
+	dropLabels, err = getDropLabels()
 	if err != nil {
 		panic(err)
 	}
@@ -100,6 +109,13 @@ func setupArguments() {
 		printLogLine = false
 	}
 	s3Clients = make(map[string]*s3.Client)
+
+	// Parse relabel configs from environment variable
+	if relabelConfigsRaw := os.Getenv("RELABEL_CONFIGS"); relabelConfigsRaw != "" {
+		if err := json.Unmarshal([]byte(relabelConfigsRaw), &relabelConfigs); err != nil {
+			panic(fmt.Errorf("failed to parse RELABEL_CONFIGS: %v", err))
+		}
+	}
 }
 
 func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, error) {
@@ -107,7 +123,7 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 	if omitPrefix {
 		prefix = ""
 	}
-	var extractedLabels = model.LabelSet{}
+	extractedLabels := model.LabelSet{}
 	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
 
 	if len(extraLabelsRaw) < 1 {
@@ -128,8 +144,71 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 	return extractedLabels, nil
 }
 
-func applyExtraLabels(labels model.LabelSet) model.LabelSet {
-	return labels.Merge(extraLabels)
+func getDropLabels() ([]model.LabelName, error) {
+	var result []model.LabelName
+
+	if dropLabelsRaw = os.Getenv("DROP_LABELS"); dropLabelsRaw != "" {
+		dropLabelsRawSplit := strings.Split(dropLabelsRaw, ",")
+		for _, dropLabelRaw := range dropLabelsRawSplit {
+			dropLabel := model.LabelName(dropLabelRaw)
+			if !dropLabel.IsValid() {
+				return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
+			}
+			result = append(result, dropLabel)
+		}
+	}
+
+	return result, nil
+}
+
+func applyRelabelConfigs(labels model.LabelSet) model.LabelSet {
+	if len(relabelConfigs) == 0 {
+		return labels
+	}
+
+	// Convert model.LabelSet to prommodel.Labels
+	promLabels := make([]prommodel.Label, 0, len(labels))
+	for name, value := range labels {
+		promLabels = append(promLabels, prommodel.Label{
+			Name:  string(name),
+			Value: string(value),
+		})
+	}
+
+	// Sort labels as required by Process
+	promLabels = prommodel.New(promLabels...)
+
+	// Apply relabeling
+	processedLabels, keep := relabel.Process(promLabels, relabelConfigs...)
+	if !keep {
+		return model.LabelSet{}
+	}
+
+	// Convert back to model.LabelSet
+	result := make(model.LabelSet)
+	for _, l := range processedLabels {
+		result[model.LabelName(l.Name)] = model.LabelValue(l.Value)
+	}
+
+	return result
+}
+
+func applyLabels(labels model.LabelSet) model.LabelSet {
+	finalLabels := labels.Merge(extraLabels)
+
+	for _, dropLabel := range dropLabels {
+		delete(finalLabels, dropLabel)
+	}
+
+	// Apply relabeling after merging extra labels and dropping labels
+	finalLabels = applyRelabelConfigs(finalLabels)
+
+	// Skip entries with no labels after relabeling
+	if len(finalLabels) == 0 {
+		return nil
+	}
+
+	return finalLabels
 }
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
@@ -158,7 +237,7 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 		reader.Seek(0, 0)
 	}
 
-	return nil, fmt.Errorf("unknown event type!")
+	return nil, fmt.Errorf("unknown event type")
 }
 
 func handler(ctx context.Context, ev map[string]interface{}) error {
@@ -181,7 +260,7 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 
 	event, err := checkEventType(ev)
 	if err != nil {
-		level.Error(*pClient.log).Log("err", fmt.Errorf("invalid event: %s\n", ev))
+		level.Error(*pClient.log).Log("err", fmt.Errorf("invalid event: %s", ev))
 		return err
 	}
 

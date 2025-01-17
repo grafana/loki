@@ -3,11 +3,11 @@ package index
 import (
 	"log"
 
-	"github.com/grafana/loki/pkg/logcli/client"
-	"github.com/grafana/loki/pkg/logcli/output"
-	"github.com/grafana/loki/pkg/logcli/print"
-	"github.com/grafana/loki/pkg/logcli/volume"
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v3/pkg/logcli/output"
+	"github.com/grafana/loki/v3/pkg/logcli/print"
+	"github.com/grafana/loki/v3/pkg/logcli/volume"
+	"github.com/grafana/loki/v3/pkg/loghttp"
 )
 
 // GetVolume executes a volume query and prints the results
@@ -24,7 +24,7 @@ func GetVolumeRange(q *volume.Query, c client.Client, out output.LogOutput, stat
 func do(q *volume.Query, rangeQuery bool, c client.Client, out output.LogOutput, statistics bool) {
 	resp := getVolume(q, rangeQuery, c)
 
-	resultsPrinter := print.NewQueryResultPrinter(nil, nil, q.Quiet, 0, false)
+	resultsPrinter := print.NewQueryResultPrinter(nil, nil, q.Quiet, 0, false, false)
 
 	if statistics {
 		resultsPrinter.PrintStats(resp.Data.Statistics)

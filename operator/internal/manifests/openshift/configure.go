@@ -8,9 +8,9 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
@@ -139,15 +139,15 @@ func ConfigureGatewayServiceMonitor(sm *monitoringv1.ServiceMonitor, withTLS boo
 	var opaEndpoint monitoringv1.Endpoint
 
 	if withTLS {
-		bearerTokenSecret := sm.Spec.Endpoints[0].BearerTokenSecret
+		authn := sm.Spec.Endpoints[0].Authorization
 		tlsConfig := sm.Spec.Endpoints[0].TLSConfig
 
 		opaEndpoint = monitoringv1.Endpoint{
-			Port:              opaMetricsPortName,
-			Path:              "/metrics",
-			Scheme:            "https",
-			BearerTokenSecret: bearerTokenSecret,
-			TLSConfig:         tlsConfig,
+			Port:          opaMetricsPortName,
+			Path:          "/metrics",
+			Scheme:        "https",
+			Authorization: authn,
+			TLSConfig:     tlsConfig,
 		}
 	} else {
 		opaEndpoint = monitoringv1.Endpoint{
@@ -289,12 +289,12 @@ func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorSe
 		RefreshInterval: "1m",
 		Notifier: &config.NotifierConfig{
 			TLS: config.TLSConfig{
-				ServerName: pointer.String(monitorServerName),
+				ServerName: ptr.To(monitorServerName),
 				CAPath:     &caPath,
 			},
 			HeaderAuth: config.HeaderAuth{
 				CredentialsFile: &token,
-				Type:            pointer.String("Bearer"),
+				Type:            ptr.To("Bearer"),
 			},
 		},
 	}

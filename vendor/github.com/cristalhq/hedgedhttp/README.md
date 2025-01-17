@@ -10,7 +10,7 @@ Hedged HTTP client which helps to reduce tail latency at scale.
 
 ## Rationale
 
-See paper [Tail at Scale](https://cacm.acm.org/magazines/2013/2/160173-the-tail-at-scale/fulltext) by Jeffrey Dean, Luiz André Barroso. In short: the client first sends one request, but then sends an additional request after a timeout if the previous hasn't returned an answer in the expected time. The client cancels remaining requests once the first result is received.
+See paper [Tail at Scale](https://www.barroso.org/publications/TheTailAtScale.pdf) by Jeffrey Dean, Luiz André Barroso. In short: the client first sends one request, but then sends an additional request after a timeout if the previous hasn't returned an answer in the expected time. The client cancels remaining requests once the first result is received.
 
 ## Acknowledge
 

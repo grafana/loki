@@ -2,45 +2,22 @@ package queryrange
 
 import (
 	"context"
-	"net/http"
 	"sort"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/loghttp"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/v3/pkg/loghttp"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/util"
 )
-
-func VolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-		request, err := codec.EncodeRequest(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		resp, err := nextRT.RoundTrip(request)
-		if err != nil {
-			return nil, err
-		}
-
-		return codec.DecodeResponse(ctx, resp, req)
-	})
-}
 
 func NewVolumeMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -57,14 +34,10 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 			interval := time.Duration(volReq.Step * 1e6)
 
 			util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
-				// Range query buckets are aligned to the starting timestamp
-				// Instant queries are for "this instant", which aligns to the end of the requested range
-				bucket := start
-				if interval == 0 {
-					bucket = end
-				}
-
-				reqs[bucket] = &logproto.VolumeRequest{
+				// Always align to the end of the requested range
+				// For range queries, this aligns to the end of the period we're returning a bytes aggregation for
+				// For instant queries, which are for "this instant", this aligns to the end of the requested range
+				reqs[end] = &logproto.VolumeRequest{
 					From:         model.TimeFromUnix(start.Unix()),
 					Through:      model.TimeFromUnix(end.Unix()),
 					Matchers:     volReq.Matchers,

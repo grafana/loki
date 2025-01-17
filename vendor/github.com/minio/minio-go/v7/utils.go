@@ -20,7 +20,8 @@ package minio
 import (
 	"context"
 	"crypto/md5"
-	fipssha256 "crypto/sha256"
+	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -39,9 +40,7 @@ import (
 	"time"
 
 	md5simd "github.com/minio/md5-simd"
-	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
-	"github.com/minio/sha256-simd"
 )
 
 func trimEtag(etag string) string {
@@ -379,10 +378,11 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		Restore:      restore,
 
 		// Checksum values
-		ChecksumCRC32:  h.Get("x-amz-checksum-crc32"),
-		ChecksumCRC32C: h.Get("x-amz-checksum-crc32c"),
-		ChecksumSHA1:   h.Get("x-amz-checksum-sha1"),
-		ChecksumSHA256: h.Get("x-amz-checksum-sha256"),
+		ChecksumCRC32:     h.Get(ChecksumCRC32.Key()),
+		ChecksumCRC32C:    h.Get(ChecksumCRC32C.Key()),
+		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
+		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
+		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
 	}, nil
 }
 
@@ -511,8 +511,14 @@ func isAmzHeader(headerKey string) bool {
 	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey) || strings.HasPrefix(key, "x-amz-checksum-")
 }
 
+// isMinioHeader returns true if header is x-minio- header.
+func isMinioHeader(headerKey string) bool {
+	return strings.HasPrefix(strings.ToLower(headerKey), "x-minio-")
+}
+
 // supportedQueryValues is a list of query strings that can be passed in when using GetObject.
 var supportedQueryValues = map[string]bool{
+	"attributes":                   true,
 	"partNumber":                   true,
 	"versionId":                    true,
 	"response-cache-control":       true,
@@ -528,6 +534,14 @@ func isStandardQueryValue(qsKey string) bool {
 	return supportedQueryValues[qsKey]
 }
 
+// Per documentation at https://docs.aws.amazon.com/AmazonS3/latest/userguide/LogFormat.html#LogFormatCustom, the
+// set of query params starting with "x-" are ignored by S3.
+const allowedCustomQueryPrefix = "x-"
+
+func isCustomQueryValue(qsKey string) bool {
+	return strings.HasPrefix(qsKey, allowedCustomQueryPrefix)
+}
+
 var (
 	md5Pool    = sync.Pool{New: func() interface{} { return md5.New() }}
 	sha256Pool = sync.Pool{New: func() interface{} { return sha256.New() }}
@@ -538,9 +552,6 @@ func newMd5Hasher() md5simd.Hasher {
 }
 
 func newSHA256Hasher() md5simd.Hasher {
-	if encrypt.FIPS {
-		return &hashWrapper{Hash: fipssha256.New(), isSHA256: true}
-	}
 	return &hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
 }
 
@@ -614,7 +625,7 @@ func IsNetworkOrHostDown(err error, expectTimeouts bool) bool {
 	urlErr := &url.Error{}
 	if errors.As(err, &urlErr) {
 		switch urlErr.Err.(type) {
-		case *net.DNSError, *net.OpError, net.UnknownNetworkError:
+		case *net.DNSError, *net.OpError, net.UnknownNetworkError, *tls.CertificateVerificationError:
 			return true
 		}
 	}
@@ -641,7 +652,12 @@ func IsNetworkOrHostDown(err error, expectTimeouts bool) bool {
 	case strings.Contains(err.Error(), "connection refused"):
 		// If err is connection refused
 		return true
-
+	case strings.Contains(err.Error(), "server gave HTTP response to HTTPS client"):
+		// If err is TLS client is used with HTTP server
+		return true
+	case strings.Contains(err.Error(), "Client sent an HTTP request to an HTTPS server"):
+		// If err is plain-text Client is used with a HTTPS server
+		return true
 	case strings.Contains(strings.ToLower(err.Error()), "503 service unavailable"):
 		// Denial errors
 		return true
@@ -682,4 +698,147 @@ func (h *hashReaderWrapper) Read(p []byte) (n int, err error) {
 		h.done(h.h.Sum(nil))
 	}
 	return n, err
+}
+
+// Following is ported from C to Go in 2016 by Justin Ruggles, with minimal alteration.
+// Used uint for unsigned long. Used uint32 for input arguments in order to match
+// the Go hash/crc32 package. zlib CRC32 combine (https://github.com/madler/zlib)
+// Modified for hash/crc64 by Klaus Post, 2024.
+func gf2MatrixTimes(mat []uint64, vec uint64) uint64 {
+	var sum uint64
+
+	for vec != 0 {
+		if vec&1 != 0 {
+			sum ^= mat[0]
+		}
+		vec >>= 1
+		mat = mat[1:]
+	}
+	return sum
+}
+
+func gf2MatrixSquare(square, mat []uint64) {
+	if len(square) != len(mat) {
+		panic("square matrix size mismatch")
+	}
+	for n := range mat {
+		square[n] = gf2MatrixTimes(mat, mat[n])
+	}
+}
+
+// crc32Combine returns the combined CRC-32 hash value of the two passed CRC-32
+// hash values crc1 and crc2. poly represents the generator polynomial
+// and len2 specifies the byte length that the crc2 hash covers.
+func crc32Combine(poly uint32, crc1, crc2 uint32, len2 int64) uint32 {
+	// degenerate case (also disallow negative lengths)
+	if len2 <= 0 {
+		return crc1
+	}
+
+	even := make([]uint64, 32) // even-power-of-two zeros operator
+	odd := make([]uint64, 32)  // odd-power-of-two zeros operator
+
+	// put operator for one zero bit in odd
+	odd[0] = uint64(poly) // CRC-32 polynomial
+	row := uint64(1)
+	for n := 1; n < 32; n++ {
+		odd[n] = row
+		row <<= 1
+	}
+
+	// put operator for two zero bits in even
+	gf2MatrixSquare(even, odd)
+
+	// put operator for four zero bits in odd
+	gf2MatrixSquare(odd, even)
+
+	// apply len2 zeros to crc1 (first square will put the operator for one
+	// zero byte, eight zero bits, in even)
+	crc1n := uint64(crc1)
+	for {
+		// apply zeros operator for this bit of len2
+		gf2MatrixSquare(even, odd)
+		if len2&1 != 0 {
+			crc1n = gf2MatrixTimes(even, crc1n)
+		}
+		len2 >>= 1
+
+		// if no more bits set, then done
+		if len2 == 0 {
+			break
+		}
+
+		// another iteration of the loop with odd and even swapped
+		gf2MatrixSquare(odd, even)
+		if len2&1 != 0 {
+			crc1n = gf2MatrixTimes(odd, crc1n)
+		}
+		len2 >>= 1
+
+		// if no more bits set, then done
+		if len2 == 0 {
+			break
+		}
+	}
+
+	// return combined crc
+	crc1n ^= uint64(crc2)
+	return uint32(crc1n)
+}
+
+func crc64Combine(poly uint64, crc1, crc2 uint64, len2 int64) uint64 {
+	// degenerate case (also disallow negative lengths)
+	if len2 <= 0 {
+		return crc1
+	}
+
+	even := make([]uint64, 64) // even-power-of-two zeros operator
+	odd := make([]uint64, 64)  // odd-power-of-two zeros operator
+
+	// put operator for one zero bit in odd
+	odd[0] = poly // CRC-64 polynomial
+	row := uint64(1)
+	for n := 1; n < 64; n++ {
+		odd[n] = row
+		row <<= 1
+	}
+
+	// put operator for two zero bits in even
+	gf2MatrixSquare(even, odd)
+
+	// put operator for four zero bits in odd
+	gf2MatrixSquare(odd, even)
+
+	// apply len2 zeros to crc1 (first square will put the operator for one
+	// zero byte, eight zero bits, in even)
+	crc1n := crc1
+	for {
+		// apply zeros operator for this bit of len2
+		gf2MatrixSquare(even, odd)
+		if len2&1 != 0 {
+			crc1n = gf2MatrixTimes(even, crc1n)
+		}
+		len2 >>= 1
+
+		// if no more bits set, then done
+		if len2 == 0 {
+			break
+		}
+
+		// another iteration of the loop with odd and even swapped
+		gf2MatrixSquare(odd, even)
+		if len2&1 != 0 {
+			crc1n = gf2MatrixTimes(odd, crc1n)
+		}
+		len2 >>= 1
+
+		// if no more bits set, then done
+		if len2 == 0 {
+			break
+		}
+	}
+
+	// return combined crc
+	crc1n ^= crc2
+	return crc1n
 }

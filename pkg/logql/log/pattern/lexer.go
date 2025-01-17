@@ -1,5 +1,7 @@
 package pattern
 
+import "unicode/utf8"
+
 type lexer struct {
 	data        []byte
 	p, pe, cs   int
@@ -57,6 +59,7 @@ func (lex *lexer) identifier(out *exprSymType) (int, error) {
 
 // nolint
 func (lex *lexer) literal(out *exprSymType) (int, error) {
-	out.literal = rune(lex.data[lex.ts])
+	decoded, _ := utf8.DecodeRune(lex.data[lex.ts:lex.te])
+	out.literal = decoded
 	return LITERAL, nil
 }
