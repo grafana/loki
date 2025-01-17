@@ -684,6 +684,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(IngestLimits, t.initIngestLimits, modules.UserInvisibleModule)
+	mm.RegisterModule(IngestLimitsFrontend, t.initIngestLimitsFrontend, modules.UserInvisibleModule)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -728,6 +729,7 @@ func (t *Loki) setupModuleManager() error {
 		TenantConfigs:            {RuntimeConfig},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
 		IngestLimits:             {Server},
+		IngestLimitsFrontend:     {Server},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
@@ -762,7 +764,7 @@ func (t *Loki) setupModuleManager() error {
 	}
 
 	if t.Cfg.Distributor.KafkaEnabled {
-		deps[All] = append(deps[All], IngestLimits)
+		deps[All] = append(deps[All], IngestLimits, IngestLimitsFrontend)
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {
