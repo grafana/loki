@@ -4,19 +4,18 @@ description: Setup a K3D cluster
 runs:
   using: "composite"
   steps:
+    - name: Install k3d
+      shell: bash
+      run: |
+        curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.7.5 bash
 
-  - name: Install k3d
-    shell: bash
-    run: |
-      curl -s https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
+    - name: Create k3d cluster with local registry
+      shell: bash
+      run: |
+        k3d registry create registry.local --port 5000
+        k3d cluster create k3d-cluster --registry-use k3d-registry.local:5000
 
-  - name: Create k3d cluster with local registry
-    shell: bash
-    run: |
-      k3d registry create registry.local --port 5000
-      k3d cluster create k3d-cluster --registry-use k3d-registry.local:5000
-
-  - name: Set kubectl context to k3d cluster
-    shell: bash
-    run: |
-      k3d kubeconfig merge k3d-cluster --kubeconfig-switch-context
+    - name: Set kubectl context to k3d cluster
+      shell: bash
+      run: |
+        k3d kubeconfig merge k3d-cluster --kubeconfig-switch-context
