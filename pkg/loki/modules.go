@@ -392,12 +392,14 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 		return nil, nil
 	}
 
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
 	t.ingestLimitsRing, err = ring.New(
 		t.Cfg.IngestLimits.LifecyclerConfig.RingConfig,
 		limits.RingKey,
 		limits.RingName,
 		util_log.Logger,
-		prometheus.DefaultRegisterer,
+		reg,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s ring: %w", limits.RingName, err)
