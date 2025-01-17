@@ -6,8 +6,10 @@ runs:
   steps:
     - name: Install k3d
       shell: bash
+      env:
+        TAG: v5.7.5
       run: |
-        curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.7.5 bash
+        curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
     - name: Create k3d cluster with local registry
       shell: bash
