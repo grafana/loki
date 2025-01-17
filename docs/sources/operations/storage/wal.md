@@ -127,4 +127,4 @@ By following the above steps, you can ensure a smooth scaling down process for t
 
 * When the ingester restarts for any reason (upgrade, crash, etc), it should be able to attach to the same volume in order to recover back the WAL and tokens.
 * 2 ingesters should not be working with the same volume/directory for the WAL.
-* A Rollout should bring down an ingester completely and then start the new ingester, not the other way around.
+* A rollout should bring down an ingester completely and then start the new ingester, not the other way around.
