@@ -3,11 +3,12 @@ name: Helm Loki Diff CI
 on:
   pull_request:
     paths:
-      - 'production/helm/loki/**'
+      - "production/helm/loki/**"
 
+# These permissions are needed to assume roles from Github's OIDC.
 permissions:
   contents: read
-  pull-requests: write
+  id-token: write
 
 jobs:
   single-binary-diff:
@@ -284,32 +285,57 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - uses: actions/download-artifact@v4
+      - id: get-secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@main
+        if: github.event.pull_request.head.repo.fork == false
+        with:
+          repo_secrets: |
+            GRAFANA_APP_ID=github_actions:grafana-loki-app-id
+            GRAFANA_APP_INSTALATION_ID=github_actions:grafana-loki-app-installation-id
+            GRAFANA_APP_PEM=github_actions:grafana-loki-app-pem
+
+      - name: Generate a token
+        id: generate-token
+        if: github.event.pull_request.head.repo.fork == false
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ env.GRAFANA_APP_ID }}
+          private-key: ${{ env.GRAFANA_APP_PEM }}
+          owner: grafana
+          repositories: loki
+
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: single-binary-diff-output
           path: single-binary-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: default-values-diff-output
           path: default-values-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: ingress-diff-output
           path: ingress-values-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: legacy-monitoring-diff-output
           path: legacy-monitoring-values-diff
 
-      - uses: actions/download-artifact@v4
+      - if: github.event.pull_request.head.repo.fork == false
+        uses: actions/download-artifact@v4
         with:
           name: simple-scalable-aws-kube-irsa-diff-output
           path: simple-scalable-aws-kube-irsa-values-diff
 
       - name: Combine diff outputs
+        if: github.event.pull_request.head.repo.fork == false
         run: |
           echo "## Helm Diff Output - Summary" > formatted_diff_output.md
 
@@ -364,6 +390,7 @@ jobs:
           echo "" >> formatted_diff_output.md
 
       - name: Post diff as PR comment
+        if: github.event.pull_request.head.repo.fork == false
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: "Helm Diff Output - Summary"
@@ -372,3 +399,8 @@ jobs:
           append: true
           hide_classify: "OUTDATED"
           path: formatted_diff_output.md
+          github_token: ${{ steps.generate-token.outputs.token }}
+
+      - if: github.event.pull_request.head.repo.fork
+        run: |
+          echo "Changing coming from a fork, check the artifacts for the diff output"
