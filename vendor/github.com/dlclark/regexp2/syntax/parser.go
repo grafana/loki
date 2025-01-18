@@ -553,10 +553,10 @@ func (p *parser) scanRegex() (*regexNode, error) {
 			}
 
 		case '.':
-			if p.useOptionE() {
-				p.addUnitSet(ECMAAnyClass())
-			} else if p.useOptionS() {
+			if p.useOptionS() {
 				p.addUnitSet(AnyClass())
+			} else if p.useOptionE() {
+				p.addUnitSet(ECMAAnyClass())
 			} else {
 				p.addUnitNotone('\n')
 			}

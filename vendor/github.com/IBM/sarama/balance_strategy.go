@@ -989,6 +989,7 @@ func (p *partitionMovements) getTheActualPartitionToBeMoved(partition topicParti
 	return reversePairPartition
 }
 
+//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) isLinked(src, dst string, pairs []consumerPair, currentPath []string) ([]string, bool) {
 	if src == dst {
 		return currentPath, false
@@ -1023,6 +1024,7 @@ func (p *partitionMovements) isLinked(src, dst string, pairs []consumerPair, cur
 	return currentPath, false
 }
 
+//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) in(cycle []string, cycles [][]string) bool {
 	superCycle := make([]string, len(cycle)-1)
 	for i := 0; i < len(cycle)-1; i++ {
@@ -1037,6 +1039,7 @@ func (p *partitionMovements) in(cycle []string, cycles [][]string) bool {
 	return false
 }
 
+//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) hasCycles(pairs []consumerPair) bool {
 	cycles := make([][]string, 0)
 	for _, pair := range pairs {
@@ -1068,6 +1071,7 @@ func (p *partitionMovements) hasCycles(pairs []consumerPair) bool {
 	return false
 }
 
+//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) isSticky() bool {
 	for topic, movements := range p.PartitionMovementsByTopic {
 		movementPairs := make([]consumerPair, len(movements))
@@ -1085,6 +1089,7 @@ func (p *partitionMovements) isSticky() bool {
 	return true
 }
 
+//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func indexOfSubList(source []string, target []string) int {
 	targetSize := len(target)
 	maxCandidate := len(source) - targetSize

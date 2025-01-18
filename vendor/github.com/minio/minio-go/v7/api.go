@@ -133,7 +133,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.82"
+	libraryVersion = "v7.0.83"
 )
 
 // User Agent should always following the below style.
@@ -600,9 +600,9 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		return nil, errors.New(c.endpointURL.String() + " is offline.")
 	}
 
-	var retryable bool          // Indicates if request can be retried.
-	var bodySeeker io.Seeker    // Extracted seeker from io.Reader.
-	var reqRetry = c.maxRetries // Indicates how many times we can retry the request
+	var retryable bool       // Indicates if request can be retried.
+	var bodySeeker io.Seeker // Extracted seeker from io.Reader.
+	reqRetry := c.maxRetries // Indicates how many times we can retry the request
 
 	if metadata.contentBody != nil {
 		// Check if body is seekable then it is retryable.
@@ -808,7 +808,7 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 	}
 
 	// Get credentials from the configured credentials provider.
-	value, err := c.credsProvider.Get()
+	value, err := c.credsProvider.GetWithContext(c.CredContext())
 	if err != nil {
 		return nil, err
 	}
@@ -1017,4 +1017,16 @@ func (c *Client) isVirtualHostStyleRequest(url url.URL, bucketName string) bool 
 	// default to virtual only for Amazon/Google  storage. In all other cases use
 	// path style requests
 	return s3utils.IsVirtualHostSupported(url, bucketName)
+}
+
+// CredContext returns the context for fetching credentials
+func (c *Client) CredContext() *credentials.CredContext {
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	return &credentials.CredContext{
+		Client:   httpClient,
+		Endpoint: c.endpointURL.String(),
+	}
 }

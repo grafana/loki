@@ -1,12 +1,12 @@
 ---
-title: Troubleshooting Loki
-menuTitle:  Troubleshooting
-description: Describes how to troubleshoot Grafana Loki.
+title: Manage and debug errors
+menuTitle: Troubleshooting
+description: Describes how to troubleshoot and debug specific errors in Grafana Loki.
 weight: 
 aliases:
     - /docs/loki/latest/getting-started/troubleshooting/
 ---
-# Troubleshooting Loki
+# Manage and debug errors
 
 ## "Loki: Bad Gateway. 502"
 

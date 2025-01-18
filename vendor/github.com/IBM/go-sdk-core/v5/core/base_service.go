@@ -627,7 +627,11 @@ func getErrorMessage(responseMap map[string]interface{}, statusCode int) string 
 		var errors Errors
 		responseBuffer, _ := json.Marshal(responseMap)
 		if err := json.Unmarshal(responseBuffer, &errors); err == nil {
-			return errors.Errors[0].Message
+			if len(errors.Errors) > 0 {
+				return errors.Errors[0].Message
+			}
+
+			return ""
 		}
 	}
 

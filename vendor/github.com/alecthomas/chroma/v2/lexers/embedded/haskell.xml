@@ -95,19 +95,22 @@
       <rule pattern="[:!#$%&amp;*+.\\/&lt;=&gt;?@^|~-]+">
         <token type="Operator"/>
       </rule>
-      <rule pattern="\d+[eE][+-]?\d+">
+      <rule pattern="\d+_*[eE][+-]?\d+">
         <token type="LiteralNumberFloat"/>
       </rule>
-      <rule pattern="\d+\.\d+([eE][+-]?\d+)?">
+      <rule pattern="\d+(_+[\d]+)*\.\d+(_+[\d]+)*([eE][+-]?\d+)?">
         <token type="LiteralNumberFloat"/>
       </rule>
-      <rule pattern="0[oO][0-7]+">
+      <rule pattern="0[oO](_*[0-7])+">
         <token type="LiteralNumberOct"/>
       </rule>
-      <rule pattern="0[xX][\da-fA-F]+">
+      <rule pattern="0[xX](_*[\da-fA-F])+">
         <token type="LiteralNumberHex"/>
       </rule>
-      <rule pattern="\d+">
+      <rule pattern="0[bB](_*[01])+">
+        <token type="LiteralNumberBin"/>
+      </rule>
+      <rule pattern="\d+(_*[\d])*">
         <token type="LiteralNumberInteger"/>
       </rule>
       <rule pattern="&#39;">

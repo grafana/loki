@@ -1,0 +1,39 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and $isDistributed .Values.overridesExporter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.overridesExporterFullname" . }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "loki.overridesExporterLabels" . | nindent 4 }}
+    {{- with .Values.overridesExporter.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    prometheus.io/service-monitor: "false"
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.overridesExporter.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+spec:
+  clusterIP: None
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+      {{- if .Values.overridesExporter.appProtocol.grpc }}
+      appProtocol: {{ .Values.overridesExporter.appProtocol.grpc }}
+      {{- end }}
+  selector:
+    {{- include "loki.overridesExporterSelectorLabels" . | nindent 4 }}
+{{- end -}}

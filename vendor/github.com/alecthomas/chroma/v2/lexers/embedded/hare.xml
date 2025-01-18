@@ -84,7 +84,7 @@
           <token type="Punctuation" />
         </bygroups>
       </rule>
-      <rule pattern="(str|size|rune|bool|int|uint|uintptr|u8|u16|u32|u64|i8|i16|i32|i64|f32|f64|null|void|nullable|valist|opaque|never)\b">
+      <rule pattern="(str|size|rune|bool|int|uint|uintptr|u8|u16|u32|u64|i8|i16|i32|i64|f32|f64|null|void|done|nullable|valist|opaque|never)\b">
         <token type="KeywordType"/>
       </rule>
       <rule pattern="(true|false)\b">

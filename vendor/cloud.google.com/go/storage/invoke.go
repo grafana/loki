@@ -58,9 +58,9 @@ func run(ctx context.Context, call func(ctx context.Context) error, retry *retry
 	}
 	bo := gax.Backoff{}
 	if retry.backoff != nil {
-		bo.Multiplier = retry.backoff.GetMultiplier()
-		bo.Initial = retry.backoff.GetInitial()
-		bo.Max = retry.backoff.GetMax()
+		bo.Multiplier = retry.backoff.Multiplier
+		bo.Initial = retry.backoff.Initial
+		bo.Max = retry.backoff.Max
 	}
 	var errorFunc func(err error) bool = ShouldRetry
 	if retry.shouldRetry != nil {

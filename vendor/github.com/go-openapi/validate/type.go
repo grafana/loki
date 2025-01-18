@@ -40,7 +40,7 @@ func newTypeValidator(path, in string, typ spec.StringOrArray, nullable bool, fo
 
 	var t *typeValidator
 	if opts.recycleValidators {
-		t = poolOfTypeValidators.BorrowValidator()
+		t = pools.poolOfTypeValidators.BorrowValidator()
 	} else {
 		t = new(typeValidator)
 	}
@@ -209,5 +209,5 @@ func (t *typeValidator) Validate(data interface{}) *Result {
 }
 
 func (t *typeValidator) redeem() {
-	poolOfTypeValidators.RedeemValidator(t)
+	pools.poolOfTypeValidators.RedeemValidator(t)
 }

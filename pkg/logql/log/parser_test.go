@@ -241,25 +241,32 @@ func (p *fakeParseHints) ShouldExtract(key string) bool {
 	p.checkCount++
 	return key == p.label || p.extractAll
 }
+
 func (p *fakeParseHints) ShouldExtractPrefix(prefix string) bool {
 	return prefix == p.label || p.extractAll
 }
+
 func (p *fakeParseHints) NoLabels() bool {
 	return false
 }
+
 func (p *fakeParseHints) RecordExtracted(_ string) {
 	p.count++
 }
+
 func (p *fakeParseHints) AllRequiredExtracted() bool {
 	return !p.extractAll && p.count == 1
 }
+
 func (p *fakeParseHints) Reset() {
 	p.checkCount = 0
 	p.count = 0
 }
+
 func (p *fakeParseHints) PreserveError() bool {
 	return false
 }
+
 func (p *fakeParseHints) ShouldContinueParsingLine(_ string, _ *LabelsBuilder) bool {
 	return p.keepGoing
 }
@@ -656,30 +663,36 @@ func Benchmark_Parser(b *testing.B) {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)
 			b.Run("no labels hints", func(b *testing.B) {
+				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
 				}
 			})
 
 			b.Run("labels hints", func(b *testing.B) {
+				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
 
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
 				}
 			})
 
 			b.Run("inline stages", func(b *testing.B) {
+				b.ReportAllocs()
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
 				for n := 0; n < b.N; n++ {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
+					builder.LabelsResult()
 				}
 			})
 		})
@@ -1251,7 +1264,6 @@ func TestXExpressionParserFailures(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false)
 

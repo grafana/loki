@@ -53,7 +53,7 @@
         <bygroups>
           <token type="Punctuation"/>
           <token type="LiteralStringDoc"/>
-          <token type="TextWhitespace"/>
+          <token type="Ignore"/>
         </bygroups>
       </rule>
       <rule pattern="(false|False|FALSE|true|True|TRUE|null|Off|off|yes|Yes|YES|OFF|On|ON|no|No|on|NO|n|N|Y|y)\b">

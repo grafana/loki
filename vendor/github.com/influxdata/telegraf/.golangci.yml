@@ -335,7 +335,9 @@ linters-settings:
       - blank-import
       - bool-compare
       - compares
+      - contains
       - empty
+      - encoded-compare
       - error-is-as
       - error-nil
       - expected-actual
@@ -345,6 +347,7 @@ linters-settings:
       - len
       - negative-positive
       - nil-compare
+      - regexp
       - require-error
       - suite-broken-parallel
       - suite-dont-use-pkg

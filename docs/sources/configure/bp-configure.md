@@ -23,14 +23,14 @@ One issue many people have with Loki is their client receiving errors for out of
 
 There are a few things to dissect from that statement. The first is this restriction is per stream.  Let’s look at an example:
 
-```
+```bash
 {job="syslog"} 00:00:00 i'm a syslog!
 {job="syslog"} 00:00:01 i'm a syslog!
 ```
 
 If Loki received these two lines which are for the same stream, everything would be fine. But what about this case:
 
-```
+```bash
 {job="syslog"} 00:00:00 i'm a syslog!
 {job="syslog"} 00:00:02 i'm a syslog!
 {job="syslog"} 00:00:01 i'm a syslog!  <- Rejected out of order!
@@ -38,7 +38,7 @@ If Loki received these two lines which are for the same stream, everything would
 
 What can you do about this? What if this was because the sources of these logs were different systems? You can solve this with an additional label which is unique per system:
 
-```
+```bash
 {job="syslog", instance="host1"} 00:00:00 i'm a syslog!
 {job="syslog", instance="host1"} 00:00:02 i'm a syslog!
 {job="syslog", instance="host2"} 00:00:01 i'm a syslog!  <- Accepted, this is a new stream!
@@ -49,6 +49,14 @@ What can you do about this? What if this was because the sources of these logs w
 But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the Promtail pipeline stage](/docs/loki/<LOKI_VERSION>/send-data/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
 
 It's also worth noting that the batching nature of the Loki push API can lead to some instances of out of order errors being received which are really false positives. (Perhaps a batch partially succeeded and was present; or anything that previously succeeded would return an out of order entry; or anything new would be accepted.)
+
+## Use `snappy` compression algorithm
+
+`Snappy` is currently the Loki compression algorithm of choice. It performs much better than `gzip` for speed, but it is not as efficient in storage. This was an acceptable tradeoff for us.
+
+Grafana Labs has found that `gzip` was very good for compression but was very slow, and this was causing slow query responses.
+
+`LZ4` is a good compromise of speed and compression performance. While compression is slightly slower than `snappy`, the compression ratio is higher, resulting in smaller chunks in object storage.
 
 ## Use `chunk_target_size`
 

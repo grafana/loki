@@ -1,11 +1,11 @@
 ---
-title: Monitor Loki
+title: Collect metrics and logs of your Loki cluster
+menuTitle: Monitor Loki
 description: Describes the various options for monitoring your Loki environment, and the metrics available.
 aliases: 
  - ../operations/observability
 ---
-
-# Monitor Loki
+# Collect metrics and logs of your Loki cluster
 
 As part of your Loki implementation, you will also want to monitor your Loki cluster.
 

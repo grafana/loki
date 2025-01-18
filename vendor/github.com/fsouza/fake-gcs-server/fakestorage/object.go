@@ -32,9 +32,11 @@ type ObjectAttrs struct {
 	BucketName         string
 	Name               string
 	Size               int64
+	StorageClass       string
 	ContentType        string
 	ContentEncoding    string
 	ContentDisposition string
+	ContentLanguage    string
 	CacheControl       string
 	// Crc32c checksum of Content. calculated by server when it's upload methods are used.
 	Crc32c  string
@@ -59,9 +61,11 @@ type jsonObject struct {
 	BucketName         string            `json:"bucket"`
 	Name               string            `json:"name"`
 	Size               int64             `json:"size,string"`
+	StorageClass       string            `json:"storageClass"`
 	ContentType        string            `json:"contentType"`
 	ContentEncoding    string            `json:"contentEncoding"`
 	ContentDisposition string            `json:"contentDisposition"`
+	ContentLanguage    string            `json:"contentLanguage"`
 	Crc32c             string            `json:"crc32c,omitempty"`
 	Md5Hash            string            `json:"md5Hash,omitempty"`
 	Etag               string            `json:"etag,omitempty"`
@@ -79,9 +83,11 @@ func (o ObjectAttrs) MarshalJSON() ([]byte, error) {
 	temp := jsonObject{
 		BucketName:         o.BucketName,
 		Name:               o.Name,
+		StorageClass:       o.StorageClass,
 		ContentType:        o.ContentType,
 		ContentEncoding:    o.ContentEncoding,
 		ContentDisposition: o.ContentDisposition,
+		ContentLanguage:    o.ContentLanguage,
 		Size:               o.Size,
 		Crc32c:             o.Crc32c,
 		Md5Hash:            o.Md5Hash,
@@ -108,9 +114,11 @@ func (o *ObjectAttrs) UnmarshalJSON(data []byte) error {
 	}
 	o.BucketName = temp.BucketName
 	o.Name = temp.Name
+	o.StorageClass = temp.StorageClass
 	o.ContentType = temp.ContentType
 	o.ContentEncoding = temp.ContentEncoding
 	o.ContentDisposition = temp.ContentDisposition
+	o.ContentLanguage = temp.ContentLanguage
 	o.Size = temp.Size
 	o.Crc32c = temp.Crc32c
 	o.Md5Hash = temp.Md5Hash
@@ -315,6 +323,7 @@ type ListOptions struct {
 	StartOffset              string
 	EndOffset                string
 	IncludeTrailingDelimiter bool
+	MaxResults               int
 }
 
 // ListObjects returns a sorted list of objects that match the given criteria,
@@ -365,6 +374,9 @@ func (s *Server) ListObjectsWithOptions(bucketName string, options ListOptions) 
 		respPrefixes = append(respPrefixes, p)
 	}
 	sort.Strings(respPrefixes)
+	if options.MaxResults != 0 && len(respObjects) > options.MaxResults {
+		respObjects = respObjects[:options.MaxResults]
+	}
 	return respObjects, respPrefixes, nil
 }
 
@@ -394,9 +406,11 @@ func toBackendObjects(objects []StreamingObject) []backend.StreamingObject {
 			ObjectAttrs: backend.ObjectAttrs{
 				BucketName:         o.BucketName,
 				Name:               o.Name,
+				StorageClass:       o.StorageClass,
 				ContentType:        o.ContentType,
 				ContentEncoding:    o.ContentEncoding,
 				ContentDisposition: o.ContentDisposition,
+				ContentLanguage:    o.ContentLanguage,
 				CacheControl:       o.CacheControl,
 				ACL:                o.ACL,
 				Created:            getCurrentIfZero(o.Created).Format(timestampFormat),
@@ -420,9 +434,11 @@ func bufferedObjectsToBackendObjects(objects []Object) []backend.StreamingObject
 			ObjectAttrs: backend.ObjectAttrs{
 				BucketName:         o.BucketName,
 				Name:               o.Name,
+				StorageClass:       o.StorageClass,
 				ContentType:        o.ContentType,
 				ContentEncoding:    o.ContentEncoding,
 				ContentDisposition: o.ContentDisposition,
+				ContentLanguage:    o.ContentLanguage,
 				ACL:                o.ACL,
 				Created:            getCurrentIfZero(o.Created).Format(timestampFormat),
 				Deleted:            o.Deleted.Format(timestampFormat),
@@ -449,9 +465,11 @@ func fromBackendObjects(objects []backend.StreamingObject) []StreamingObject {
 				BucketName:         o.BucketName,
 				Name:               o.Name,
 				Size:               o.Size,
+				StorageClass:       o.StorageClass,
 				ContentType:        o.ContentType,
 				ContentEncoding:    o.ContentEncoding,
 				ContentDisposition: o.ContentDisposition,
+				ContentLanguage:    o.ContentLanguage,
 				CacheControl:       o.CacheControl,
 				Crc32c:             o.Crc32c,
 				Md5Hash:            o.Md5Hash,
@@ -477,9 +495,11 @@ func fromBackendObjectsAttrs(objectAttrs []backend.ObjectAttrs) []ObjectAttrs {
 			BucketName:         o.BucketName,
 			Name:               o.Name,
 			Size:               o.Size,
+			StorageClass:       o.StorageClass,
 			ContentType:        o.ContentType,
 			ContentEncoding:    o.ContentEncoding,
 			ContentDisposition: o.ContentDisposition,
+			ContentLanguage:    o.ContentLanguage,
 			CacheControl:       o.CacheControl,
 			Crc32c:             o.Crc32c,
 			Md5Hash:            o.Md5Hash,
@@ -557,6 +577,14 @@ func (s *Server) objectWithGenerationOnValidGeneration(bucketName, objectName, g
 
 func (s *Server) listObjects(r *http.Request) jsonResponse {
 	bucketName := unescapeMuxVars(mux.Vars(r))["bucketName"]
+	var maxResults int
+	var err error
+	if maxResultsStr := r.URL.Query().Get("maxResults"); maxResultsStr != "" {
+		maxResults, err = strconv.Atoi(maxResultsStr)
+		if err != nil {
+			return jsonResponse{status: http.StatusBadRequest}
+		}
+	}
 	objs, prefixes, err := s.ListObjectsWithOptions(bucketName, ListOptions{
 		Prefix:                   r.URL.Query().Get("prefix"),
 		Delimiter:                r.URL.Query().Get("delimiter"),
@@ -564,6 +592,7 @@ func (s *Server) listObjects(r *http.Request) jsonResponse {
 		StartOffset:              r.URL.Query().Get("startOffset"),
 		EndOffset:                r.URL.Query().Get("endOffset"),
 		IncludeTrailingDelimiter: r.URL.Query().Get("includeTrailingDelimiter") == "true",
+		MaxResults:               maxResults,
 	})
 	if err != nil {
 		return jsonResponse{status: http.StatusNotFound}
@@ -710,6 +739,59 @@ func (s *Server) listObjectACL(r *http.Request) jsonResponse {
 	return jsonResponse{data: newACLListResponse(obj.ObjectAttrs)}
 }
 
+func (s *Server) deleteObjectACL(r *http.Request) jsonResponse {
+	vars := unescapeMuxVars(mux.Vars(r))
+
+	obj, err := s.GetObjectStreaming(vars["bucketName"], vars["objectName"])
+	if err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+	defer obj.Close()
+	entity := vars["entity"]
+
+	var newAcls []storage.ACLRule
+	for _, aclRule := range obj.ObjectAttrs.ACL {
+		if entity != string(aclRule.Entity) {
+			newAcls = append(newAcls, aclRule)
+		}
+	}
+
+	obj.ACL = newAcls
+	obj, err = s.createObject(obj, backend.NoConditions{})
+	if err != nil {
+		return errToJsonResponse(err)
+	}
+	defer obj.Close()
+
+	return jsonResponse{status: http.StatusOK}
+}
+
+func (s *Server) getObjectACL(r *http.Request) jsonResponse {
+	vars := unescapeMuxVars(mux.Vars(r))
+
+	obj, err := s.backend.GetObject(vars["bucketName"], vars["objectName"])
+	if err != nil {
+		return jsonResponse{status: http.StatusNotFound}
+	}
+	defer obj.Close()
+	entity := vars["entity"]
+
+	for _, aclRule := range obj.ObjectAttrs.ACL {
+		if entity == string(aclRule.Entity) {
+			oac := &objectAccessControl{
+				Bucket: obj.BucketName,
+				Entity: string(aclRule.Entity),
+				Object: obj.Name,
+				Role:   string(aclRule.Role),
+				Etag:   "RVRhZw==",
+				Kind:   "storage#objectAccessControl",
+			}
+			return jsonResponse{data: oac}
+		}
+	}
+	return jsonResponse{status: http.StatusNotFound}
+}
+
 func (s *Server) setObjectACL(r *http.Request) jsonResponse {
 	vars := unescapeMuxVars(mux.Vars(r))
 
@@ -783,6 +865,9 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 	if metadata.ContentDisposition == "" {
 		metadata.ContentDisposition = obj.ContentDisposition
 	}
+	if metadata.ContentLanguage == "" {
+		metadata.ContentLanguage = obj.ContentLanguage
+	}
 
 	dstBucket := vars["destinationBucket"]
 	newObject := StreamingObject{
@@ -793,6 +878,7 @@ func (s *Server) rewriteObject(r *http.Request) jsonResponse {
 			ContentType:        metadata.ContentType,
 			ContentEncoding:    metadata.ContentEncoding,
 			ContentDisposition: metadata.ContentDisposition,
+			ContentLanguage:    metadata.ContentLanguage,
 			Metadata:           metadata.Metadata,
 		},
 		Content: obj.Content,
@@ -912,6 +998,9 @@ func (s *Server) downloadObject(w http.ResponseWriter, r *http.Request) {
 		if obj.ContentDisposition != "" {
 			w.Header().Set("Content-Disposition", obj.ContentDisposition)
 		}
+		if obj.ContentLanguage != "" {
+			w.Header().Set("Content-Language", obj.ContentLanguage)
+		}
 		// X-Goog-Stored-Content-Encoding must be set to the original encoding,
 		// defaulting to "identity" if no encoding was set.
 		storedContentEncoding := "identity"
@@ -943,7 +1032,7 @@ func (s *Server) handleRange(obj StreamingObject, r *http.Request) (ranged bool,
 	//   Length: 40, Range: bytes=50-
 	case start >= obj.Size:
 		// This IS a ranged request, but it ISN'T satisfiable.
-		return true, 0, 0, false
+		return true, 0, -1, false
 	// Negative range, ignore range and return all content.
 	// Examples:
 	//   Length: 40, Range: bytes=30-20
@@ -1037,6 +1126,7 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 		ContentType        string
 		ContentEncoding    string
 		ContentDisposition string
+		ContentLanguage    string
 		Metadata           map[string]string `json:"metadata"`
 		CustomTime         string
 		Acl                []acls
@@ -1054,6 +1144,7 @@ func (s *Server) patchObject(r *http.Request) jsonResponse {
 	attrsToUpdate.ContentType = payload.ContentType
 	attrsToUpdate.ContentEncoding = payload.ContentEncoding
 	attrsToUpdate.ContentDisposition = payload.ContentDisposition
+	attrsToUpdate.ContentLanguage = payload.ContentLanguage
 	attrsToUpdate.Metadata = payload.Metadata
 	attrsToUpdate.CustomTime = payload.CustomTime
 
@@ -1092,6 +1183,7 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 		Metadata           map[string]string `json:"metadata"`
 		ContentType        string            `json:"contentType"`
 		ContentDisposition string            `json:"contentDisposition"`
+		ContentLanguage    string            `json:"contentLanguage"`
 		CustomTime         string
 		Acl                []acls
 	}
@@ -1109,6 +1201,7 @@ func (s *Server) updateObject(r *http.Request) jsonResponse {
 	attrsToUpdate.CustomTime = payload.CustomTime
 	attrsToUpdate.ContentType = payload.ContentType
 	attrsToUpdate.ContentDisposition = payload.ContentDisposition
+	attrsToUpdate.ContentLanguage = payload.ContentLanguage
 	if len(payload.Acl) > 0 {
 		attrsToUpdate.ACL = []storage.ACLRule{}
 		for _, aclData := range payload.Acl {
@@ -1142,6 +1235,7 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 			Bucket             string
 			ContentType        string
 			ContentDisposition string
+			ContentLanguage    string
 			Metadata           map[string]string
 		}
 	}
@@ -1168,7 +1262,7 @@ func (s *Server) composeObject(r *http.Request) jsonResponse {
 		sourceNames = append(sourceNames, n.Name)
 	}
 
-	backendObj, err := s.backend.ComposeObject(bucketName, sourceNames, destinationObject, composeRequest.Destination.Metadata, composeRequest.Destination.ContentType)
+	backendObj, err := s.backend.ComposeObject(bucketName, sourceNames, destinationObject, composeRequest.Destination.Metadata, composeRequest.Destination.ContentType, composeRequest.Destination.ContentDisposition, composeRequest.Destination.ContentLanguage)
 	if err != nil {
 		return jsonResponse{
 			status:       http.StatusInternalServerError,

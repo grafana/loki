@@ -1879,6 +1879,16 @@
     "release_level": "stable",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/oracledatabase/apiv1": {
+    "api_shortname": "oracledatabase",
+    "distribution_name": "cloud.google.com/go/oracledatabase/apiv1",
+    "description": "Oracle Database@Google Cloud API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/oracledatabase/latest/apiv1",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/orchestration/airflow/service/apiv1": {
     "api_shortname": "composer",
     "distribution_name": "cloud.google.com/go/orchestration/airflow/service/apiv1",
@@ -1966,6 +1976,16 @@
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/oslogin/latest/apiv1beta",
+    "release_level": "preview",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/parallelstore/apiv1": {
+    "api_shortname": "parallelstore",
+    "distribution_name": "cloud.google.com/go/parallelstore/apiv1",
+    "description": "Parallelstore API",
+    "language": "go",
+    "client_library_type": "generated",
+    "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/parallelstore/latest/apiv1",
     "release_level": "preview",
     "library_type": "GAPIC_AUTO"
   },
@@ -2392,7 +2412,7 @@
   "cloud.google.com/go/securitycentermanagement/apiv1": {
     "api_shortname": "securitycentermanagement",
     "distribution_name": "cloud.google.com/go/securitycentermanagement/apiv1",
-    "description": "Security Center Management API",
+    "description": "Security Command Center Management API",
     "language": "go",
     "client_library_type": "generated",
     "client_documentation": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/securitycentermanagement/latest/apiv1",

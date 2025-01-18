@@ -92,11 +92,32 @@ This quickstart assumes you are running Linux.
 
 2. Download `loki-config.yaml`, `alloy-local-config.yaml`, and `docker-compose.yaml`:
 
+   <!-- INTERACTIVE ignore START -->
+   {{< tabs >}}
+   {{< tab-content name="wget" >}}
    ```bash
    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
    wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
    ```
+   {{< /tab-content >}}
+   {{< tab-content name="curl" >}}
+   ```bash
+   curl https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml --output loki-config.yaml
+   curl https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml --output alloy-local-config.yaml
+   curl https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml --output docker-compose.yaml
+   ```
+   {{< /tab-content >}}
+   {{< /tabs >}}
+   <!-- INTERACTIVE ignore END -->
+
+   {{< docs/ignore >}}
+   ```bash
+   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/loki-config.yaml -O loki-config.yaml
+   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
+   wget https://raw.githubusercontent.com/grafana/loki/main/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
+   ```
+   {{< /docs/ignore >}}
 
 3. Deploy the sample Docker image.
 
@@ -328,7 +349,6 @@ You have completed the Loki Quickstart demo. So where to go next?
 Head back to where you started from to continue with the Loki documentation: [Loki documentation](https://grafana.com/docs/loki/latest/get-started/quick-start/).
 {{< /docs/ignore >}}
 
-## Complete metrics, logs, traces, and profiling example
 If you would like to run a demonstration environment that includes Mimir, Loki, Tempo, and Grafana, you can use [Introduction to Metrics, Logs, Traces, and Profiling in Grafana](https://github.com/grafana/intro-to-mlt).
 It's a self-contained environment for learning about Mimir, Loki, Tempo, and Grafana.
 

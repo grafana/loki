@@ -39,20 +39,20 @@ translators for Pygments lexers and styles.
 |   D    | D, Dart, Dax, Desktop Entry, Diff, Django/Jinja, dns, Docker, DTD, Dylan                                                                                                                                                                            |
 |   E    | EBNF, Elixir, Elm, EmacsLisp, Erlang                                                                                                                                                                                                                |
 |   F    | Factor, Fennel, Fish, Forth, Fortran, FortranFixed, FSharp                                                                                                                                                                                          |
-|   G    | GAS, GDScript, Genshi, Genshi HTML, Genshi Text, Gherkin, GLSL, Gnuplot, Go, Go HTML Template, Go Text Template, GraphQL, Groff, Groovy                                                                                                             |
+|   G    | GAS, GDScript, Genshi, Genshi HTML, Genshi Text, Gherkin, Gleam, GLSL, Gnuplot, Go, Go HTML Template, Go Text Template, GraphQL, Groff, Groovy                                                                                                      |
 |   H    | Handlebars, Hare, Haskell, Haxe, HCL, Hexdump, HLB, HLSL, HolyC, HTML, HTTP, Hy                                                                                                                                                                     |
 |   I    | Idris, Igor, INI, Io, ISCdhcpd                                                                                                                                                                                                                      |
-|   J    | J, Java, JavaScript, JSON, Julia, Jungle                                                                                                                                                                                                            |
+|   J    | J, Java, JavaScript, JSON, Jsonnet, Julia, Jungle                                                                                                                                                                                                   |
 |   K    | Kotlin                                                                                                                                                                                                                                              |
 |   L    | Lighttpd configuration file, LLVM, Lua                                                                                                                                                                                                              |
-|   M    | Makefile, Mako, markdown, Mason, Materialize SQL dialect, Mathematica, Matlab, mcfunction, Meson, Metal, MiniZinc, MLIR, Modula-2, MonkeyC, MorrowindScript, Myghty, MySQL                                                                          |
-|   N    | NASM, Natural, Newspeak, Nginx configuration file, Nim, Nix                                                                                                                                                                                         |
+|   M    | Makefile, Mako, markdown, Mason, Materialize SQL dialect, Mathematica, Matlab, MCFunction, Meson, Metal, MiniZinc, MLIR, Modula-2, MonkeyC, MorrowindScript, Myghty, MySQL                                                                          |
+|   N    | NASM, Natural, Newspeak, Nginx configuration file, Nim, Nix, NSIS                                                                                                                                                                                   |
 |   O    | Objective-C, OCaml, Octave, Odin, OnesEnterprise, OpenEdge ABL, OpenSCAD, Org Mode                                                                                                                                                                  |
 |   P    | PacmanConf, Perl, PHP, PHTML, Pig, PkgConfig, PL/pgSQL, plaintext, Plutus Core, Pony, PostgreSQL SQL dialect, PostScript, POVRay, PowerQuery, PowerShell, Prolog, PromQL, Promela, properties, Protocol Buffer, PRQL, PSL, Puppet, Python, Python 2 |
 |   Q    | QBasic, QML                                                                                                                                                                                                                                         |
 |   R    | R, Racket, Ragel, Raku, react, ReasonML, reg, Rego, reStructuredText, Rexx, RPMSpec, Ruby, Rust                                                                                                                                                     |
-|   S    | SAS, Sass, Scala, Scheme, Scilab, SCSS, Sed, Sieve, Smali, Smalltalk, Smarty, Snobol, Solidity, SourcePawn, SPARQL, SQL, SquidConf, Standard ML, stas, Stylus, Svelte, Swift, SYSTEMD, systemverilog                                                |
-|   T    | TableGen, Tal, TASM, Tcl, Tcsh, Termcap, Terminfo, Terraform, TeX, Thrift, TOML, TradingView, Transact-SQL, Turing, Turtle, Twig, TypeScript, TypoScript, TypoScriptCssData, TypoScriptHtmlData                                                     |
+|   S    | SAS, Sass, Scala, Scheme, Scilab, SCSS, Sed, Sieve, Smali, Smalltalk, Smarty, SNBT, Snobol, Solidity, SourcePawn, SPARQL, SQL, SquidConf, Standard ML, stas, Stylus, Svelte, Swift, SYSTEMD, systemverilog                                                |
+|   T    | TableGen, Tal, TASM, Tcl, Tcsh, Termcap, Terminfo, Terraform, TeX, Thrift, TOML, TradingView, Transact-SQL, Turing, Turtle, Twig, TypeScript, TypoScript, TypoScriptCssData, TypoScriptHtmlData, Typst                                              |
 |   V    | V, V shell, Vala, VB.net, verilog, VHDL, VHS, VimL, vue                                                                                                                                                                                             |
 |   W    | WDTE, WebGPU Shading Language, Whiley                                                                                                                                                                                                               |
 |   X    | XML, Xorg                                                                                                                                                                                                                                           |
@@ -272,7 +272,7 @@ for that setup the `chroma` executable can be just symlinked to `~/.lessfilter`.
 If you edit some lexers and want to try it, open a shell in `cmd/chromad` and run:
 
 ```shell
-go run .
+go run . --csrf-key=securekey
 ```
 
 A Link will be printed. Open it in your Browser. Now you can test on the Playground with your local changes.

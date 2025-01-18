@@ -57,7 +57,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 	if !options.SkipSchemas {
 		for key, definition := range spec.Definitions {
 			parentRefs := make([]string, 0, 10)
-			parentRefs = append(parentRefs, fmt.Sprintf("#/definitions/%s", key))
+			parentRefs = append(parentRefs, "#/definitions/"+key)
 
 			def, err := expandSchema(definition, parentRefs, resolver, specBasePath)
 			if resolver.shouldStopOnError(err) {

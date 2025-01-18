@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"testing"
+
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
-	"os"
-	"testing"
 )
 
 type testPromtailClient struct{}

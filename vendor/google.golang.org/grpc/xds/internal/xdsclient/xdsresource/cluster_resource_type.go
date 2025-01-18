@@ -86,8 +86,8 @@ type ClusterResourceData struct {
 	Resource ClusterUpdate
 }
 
-// Equal returns true if other is equal to r.
-func (c *ClusterResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to r.
+func (c *ClusterResourceData) RawEqual(other ResourceData) bool {
 	if c == nil && other == nil {
 		return true
 	}

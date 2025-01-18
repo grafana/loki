@@ -34,7 +34,3 @@ func prefixLogger(p *clientImpl) *internalgrpclog.PrefixLogger {
 func clientPrefix(p *clientImpl) string {
 	return fmt.Sprintf("[xds-client %p] ", p)
 }
-
-func authorityPrefix(p *clientImpl, serverURI string) string {
-	return fmt.Sprintf("%s[%s] ", clientPrefix(p), serverURI)
-}

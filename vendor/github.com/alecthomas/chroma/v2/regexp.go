@@ -194,6 +194,9 @@ func (l *LexerState) Iterator() Token { // nolint: gocognit
 		for len(l.iteratorStack) > 0 {
 			n := len(l.iteratorStack) - 1
 			t := l.iteratorStack[n]()
+			if t.Type == Ignore {
+				continue
+			}
 			if t == EOF {
 				l.iteratorStack = l.iteratorStack[:n]
 				continue
@@ -243,6 +246,9 @@ func (l *LexerState) Iterator() Token { // nolint: gocognit
 	for len(l.iteratorStack) > 0 {
 		n := len(l.iteratorStack) - 1
 		t := l.iteratorStack[n]()
+		if t.Type == Ignore {
+			continue
+		}
 		if t == EOF {
 			l.iteratorStack = l.iteratorStack[:n]
 			continue

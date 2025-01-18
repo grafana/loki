@@ -44,11 +44,10 @@ func withRecover(fn func()) {
 }
 
 func safeAsyncClose(b *Broker) {
-	tmp := b // local var prevents clobbering in goroutine
 	go withRecover(func() {
-		if connected, _ := tmp.Connected(); connected {
-			if err := tmp.Close(); err != nil {
-				Logger.Println("Error closing broker", tmp.ID(), ":", err)
+		if connected, _ := b.Connected(); connected {
+			if err := b.Close(); err != nil {
+				Logger.Println("Error closing broker", b.ID(), ":", err)
 			}
 		}
 	})
@@ -198,7 +197,16 @@ var (
 	V3_4_1_0  = newKafkaVersion(3, 4, 1, 0)
 	V3_5_0_0  = newKafkaVersion(3, 5, 0, 0)
 	V3_5_1_0  = newKafkaVersion(3, 5, 1, 0)
+	V3_5_2_0  = newKafkaVersion(3, 5, 2, 0)
 	V3_6_0_0  = newKafkaVersion(3, 6, 0, 0)
+	V3_6_1_0  = newKafkaVersion(3, 6, 1, 0)
+	V3_6_2_0  = newKafkaVersion(3, 6, 2, 0)
+	V3_7_0_0  = newKafkaVersion(3, 7, 0, 0)
+	V3_7_1_0  = newKafkaVersion(3, 7, 1, 0)
+	V3_8_0_0  = newKafkaVersion(3, 8, 0, 0)
+	V3_8_1_0  = newKafkaVersion(3, 8, 1, 0)
+	V3_9_0_0  = newKafkaVersion(3, 9, 0, 0)
+	V4_0_0_0  = newKafkaVersion(4, 0, 0, 0)
 
 	SupportedVersions = []KafkaVersion{
 		V0_8_2_0,
@@ -237,8 +245,10 @@ var (
 		V2_6_0_0,
 		V2_6_1_0,
 		V2_6_2_0,
+		V2_6_3_0,
 		V2_7_0_0,
 		V2_7_1_0,
+		V2_7_2_0,
 		V2_8_0_0,
 		V2_8_1_0,
 		V2_8_2_0,
@@ -259,10 +269,19 @@ var (
 		V3_4_1_0,
 		V3_5_0_0,
 		V3_5_1_0,
+		V3_5_2_0,
 		V3_6_0_0,
+		V3_6_1_0,
+		V3_6_2_0,
+		V3_7_0_0,
+		V3_7_1_0,
+		V3_8_0_0,
+		V3_8_1_0,
+		V3_9_0_0,
+		V4_0_0_0,
 	}
 	MinVersion     = V0_8_2_0
-	MaxVersion     = V3_6_0_0
+	MaxVersion     = V4_0_0_0
 	DefaultVersion = V2_1_0_0
 
 	// reduced set of protocol versions to matrix test
@@ -274,11 +293,11 @@ var (
 		V2_0_1_0,
 		V2_2_2_0,
 		V2_4_1_0,
-		V2_6_2_0,
+		V2_6_3_0,
 		V2_8_2_0,
 		V3_1_2_0,
 		V3_3_2_0,
-		V3_6_0_0,
+		V3_6_2_0,
 	}
 )
 

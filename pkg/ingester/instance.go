@@ -326,8 +326,14 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 }
 
 func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels) (*stream, error) {
-	if i.configs.LogStreamCreation(i.instanceID) {
-		level.Debug(util_log.Logger).Log(
+	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
+		l := level.Debug(util_log.Logger)
+
+		if i.cfg.KafkaIngestion.Enabled {
+			l = level.Warn(util_log.Logger)
+		}
+
+		l.Log(
 			"msg", "failed to create stream, exceeded limit",
 			"org_id", i.instanceID,
 			"err", err,

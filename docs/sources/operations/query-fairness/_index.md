@@ -1,11 +1,10 @@
 ---
-title: Query fairness within tenants
+title: Ensure query fairness within tenants using actors
 menuTitle: Query fairness
 description: Describes methods for guaranteeing query fairness across multiple actors within a single tenant using the scheduler.
 weight:
 ---
-
-# Query fairness within tenants
+# Ensure query fairness within tenants using actors
 
 Loki uses [shuffle sharding]({{< relref "../shuffle-sharding/_index.md" >}})
 to minimize impact across tenants in case of querier failures or misbehaving

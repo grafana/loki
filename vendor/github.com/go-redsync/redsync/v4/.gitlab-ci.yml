@@ -1,0 +1,50 @@
+variables:
+  GOCACHE: $CI_PROJECT_DIR/.go-build
+
+cache:
+  key: "$CI_PROJECT_PATH $CI_BUILD_REF_NAME"
+  paths:
+    - .go-build
+
+image: registry.furqansoftware.net/cardboard/golang:1.21.5-bullseye-0
+
+stages:
+  - lint
+  - build
+  - test
+
+lint:
+  stage: lint
+  script:
+    - go install honnef.co/go/tools/cmd/staticcheck@2023.1.5
+    - staticcheck ./...
+
+build:
+  stage: build
+  script:
+    - go build ./...
+
+test:build:
+  stage: test
+  needs:
+    - build
+  script:
+    - make test.build
+  artifacts:
+    expire_in: 3 hours
+    paths:
+      - test.out/*
+
+test:run:
+  image: redis:7.2.3
+  stage: test
+  needs:
+    - test:build
+  dependencies:
+    - test:build
+  script:
+    - |
+      for f in test.out/*; do
+        chmod +x $f
+        ./$f -test.v
+      done

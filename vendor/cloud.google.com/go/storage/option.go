@@ -40,6 +40,7 @@ func init() {
 	storageinternal.WithMetricExporter = withMetricExporter
 	storageinternal.WithMetricInterval = withMetricInterval
 	storageinternal.WithReadStallTimeout = withReadStallTimeout
+	storageinternal.WithGRPCBidiReads = withGRPCBidiReads
 }
 
 // getDynamicReadReqIncreaseRateFromEnv returns the value set in the env variable.
@@ -79,7 +80,9 @@ type storageConfig struct {
 	disableClientMetrics   bool
 	metricExporter         *metric.Exporter
 	metricInterval         time.Duration
+	manualReader           *metric.ManualReader
 	readStallTimeoutConfig *experimental.ReadStallTimeoutConfig
+	grpcBidiReads          bool
 }
 
 // newStorageConfig generates a new storageConfig with all the given
@@ -192,6 +195,20 @@ func (w *withMetricExporterConfig) ApplyStorageOpt(c *storageConfig) {
 	c.metricExporter = w.metricExporter
 }
 
+type withTestMetricReaderConfig struct {
+	internaloption.EmbeddableAdapter
+	// reader override
+	metricReader *metric.ManualReader
+}
+
+func withTestMetricReader(ex *metric.ManualReader) option.ClientOption {
+	return &withTestMetricReaderConfig{metricReader: ex}
+}
+
+func (w *withTestMetricReaderConfig) ApplyStorageOpt(c *storageConfig) {
+	c.manualReader = w.metricReader
+}
+
 // WithReadStallTimeout is an option that may be passed to [NewClient].
 // It enables the client to retry the stalled read request, happens as part of
 // storage.Reader creation. As the name suggest, timeout is adjusted dynamically
@@ -224,4 +241,16 @@ type withReadStallTimeoutConfig struct {
 
 func (wrstc *withReadStallTimeoutConfig) ApplyStorageOpt(config *storageConfig) {
 	config.readStallTimeoutConfig = wrstc.readStallTimeoutConfig
+}
+
+func withGRPCBidiReads() option.ClientOption {
+	return &withGRPCBidiReadsConfig{}
+}
+
+type withGRPCBidiReadsConfig struct {
+	internaloption.EmbeddableAdapter
+}
+
+func (w *withGRPCBidiReadsConfig) ApplyStorageOpt(config *storageConfig) {
+	config.grpcBidiReads = true
 }

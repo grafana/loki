@@ -1,10 +1,10 @@
 ---
-title: Authentication
-menuTitle:  
-description: Describes Loki authentication.
+title: Manage authentication
+menuTitle: Authentication
+description: Describes how to add authentication to Grafana Loki.
 weight: 
 ---
-# Authentication
+# Manage authentication
 
 Grafana Loki does not come with any included authentication layer. Operators are
 expected to run an authenticating reverse proxy in front of your services.

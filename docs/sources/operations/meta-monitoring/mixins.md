@@ -1,11 +1,10 @@
 ---
-title: Install Loki mixins
-menuTitle: Install mixins
-description:  Describes the Loki mixins, how to configure and install the dashboards, alerts, and recording rules.
+title: Install dashboards, alerts, and recording rules
+menuTitle: Mixins
+description: Describes the Loki mixins, how to configure and install the dashboards, alerts, and recording rules.
 weight: 100
 ---
-
-# Install Loki mixins
+# Install dashboards, alerts, and recording rules
 
 Loki is instrumented to expose metrics about itself via the `/metrics` endpoint, designed to be scraped by Prometheus. Each Loki release includes a mixin. The Loki mixin provides a set of Grafana dashboards, Prometheus recording rules and alerts for monitoring Loki.
 

@@ -50,27 +50,6 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.adminApi.podSecurityContext | nindent 8 }}
-      initContainers:
-        # Taken from
-        # https://github.com/minio/charts/blob/a5c84bcbad884728bff5c9c23541f936d57a13b3/minio/templates/post-install-create-bucket-job.yaml
-      {{- if .Values.minio.enabled }}
-        - name: minio-mc
-          image: "{{ .Values.minio.mcImage.repository }}:{{ .Values.minio.mcImage.tag }}"
-          imagePullPolicy: {{ .Values.minio.mcImage.pullPolicy }}
-          command: ["/bin/sh", "/config/initialize"]
-          env:
-            - name: MINIO_ENDPOINT
-              value: {{ .Release.Name }}-minio
-            - name: MINIO_PORT
-              value: {{ .Values.minio.service.port | quote }}
-          volumeMounts:
-            - name: minio-configuration
-              mountPath: /config
-          {{- if .Values.minio.tls.enabled }}
-            - name: cert-secret-volume-mc
-              mountPath: {{ .Values.minio.configPathmc }}certs
-          {{ end }}
-        {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -89,10 +68,10 @@ spec:
             {{- if .Values.minio.enabled }}
             - -admin.client.backend-type=s3
             - -admin.client.s3.endpoint={{ template "loki.minio" . }}
-            - -admin.client.s3.bucket-name=enterprise-logs-admin
-            - -admin.client.s3.access-key-id={{ .Values.minio.accessKey }}
-            - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
-            - -admin.client.s3.insecure=true
+            - -admin.client.s3.bucket-name={{ .Values.loki.storage.bucketNames.admin }}
+            - -admin.client.s3.access-key-id={{ (index .Values.minio.users 0).accessKey }}
+            - -admin.client.s3.secret-access-key={{ (index .Values.minio.users 0).secretKey }}
+            - -admin.client.s3.insecure={{ .Values.loki.storage.s3.insecure }}
             {{- end }}
             {{- range $key, $value := .Values.adminApi.extraArgs }}
             - "-{{ $key }}={{ $value }}"

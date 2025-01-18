@@ -22,7 +22,7 @@ package resolver
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	rand "math/rand/v2"
 	"sync/atomic"
 
 	"google.golang.org/grpc/internal"
@@ -44,10 +44,10 @@ import (
 // xdsresolver.Scheme
 const Scheme = "xds"
 
-// newBuilderForTesting creates a new xds resolver builder using a specific xds
-// bootstrap config, so tests can use multiple xds clients in different
-// ClientConns at the same time.
-func newBuilderForTesting(config []byte) (resolver.Builder, error) {
+// newBuilderWithConfigForTesting creates a new xds resolver builder using a
+// specific xds bootstrap config, so tests can use multiple xds clients in
+// different ClientConns at the same time.
+func newBuilderWithConfigForTesting(config []byte) (resolver.Builder, error) {
 	return &xdsResolverBuilder{
 		newXDSClient: func(name string) (xdsclient.XDSClient, func(), error) {
 			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{Name: name, Contents: config})
@@ -55,9 +55,23 @@ func newBuilderForTesting(config []byte) (resolver.Builder, error) {
 	}, nil
 }
 
+// newBuilderWithClientForTesting creates a new xds resolver builder using the
+// specific xDS client, so that tests have complete control over the exact
+// specific xDS client being used.
+func newBuilderWithClientForTesting(client xdsclient.XDSClient) (resolver.Builder, error) {
+	return &xdsResolverBuilder{
+		newXDSClient: func(string) (xdsclient.XDSClient, func(), error) {
+			// Returning an empty close func here means that the responsibility
+			// of closing the client lies with the caller.
+			return client, func() {}, nil
+		},
+	}, nil
+}
+
 func init() {
 	resolver.Register(&xdsResolverBuilder{})
-	internal.NewXDSResolverWithConfigForTesting = newBuilderForTesting
+	internal.NewXDSResolverWithConfigForTesting = newBuilderWithConfigForTesting
+	internal.NewXDSResolverWithClientForTesting = newBuilderWithClientForTesting
 
 	rinternal.NewWRR = wrr.NewRandom
 	rinternal.NewXDSClient = xdsclient.New

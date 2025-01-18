@@ -106,7 +106,7 @@
         </bygroups>
         <push state="interpol"/>
       </rule>
-      <rule pattern="(&amp;&amp;|&gt;=|&lt;=|\+\+|-&gt;|!=|\|\||//|==|@|!|\+|\?|&lt;|\.|&gt;|\*)">
+      <rule pattern="(&amp;&amp;|&gt;=|&lt;=|\+\+|-&gt;|!=|=|\|\||//|==|@|!|\+|\?|&lt;|\.|&gt;|\*)">
         <token type="Operator"/>
       </rule>
       <rule pattern="[;:]">

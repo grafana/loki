@@ -2,10 +2,13 @@ package progressbar
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
+	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -859,6 +862,37 @@ func (p *ProgressBar) ChangeMax64(newMax int64) {
 	p.Add(0) // re-render
 }
 
+// AddMax takes in a int
+// and adds it to the max
+// value of the progress bar
+func (p *ProgressBar) AddMax(added int) {
+	p.AddMax64(int64(added))
+}
+
+// AddMax64 is basically
+// the same as AddMax,
+// but takes in a int64
+// to avoid casting
+func (p *ProgressBar) AddMax64(added int64) {
+	p.lock.Lock()
+
+	p.config.max += added
+
+	if p.config.showBytes {
+		p.config.maxHumanized, p.config.maxHumanizedSuffix = humanizeBytes(float64(p.config.max),
+			p.config.useIECUnits)
+	}
+
+	if p.config.max == -1 {
+		p.lengthUnknown()
+	} else {
+		p.lengthKnown(p.config.max)
+	}
+	p.lock.Unlock() // so p.Add can lock
+
+	p.Add(0) // re-render
+}
+
 // IsFinished returns true if progress bar is completed
 func (p *ProgressBar) IsFinished() bool {
 	p.lock.Lock()
@@ -976,6 +1010,31 @@ func (p *ProgressBar) State() State {
 	s.KBsPerSecond = float64(p.state.currentBytes) / 1024.0 / s.SecondsSince
 	s.Description = p.config.description
 	return s
+}
+
+// StartHTTPServer starts an HTTP server dedicated to serving progress bar updates. This allows you to
+// display the status in various UI elements, such as an OS status bar with an `xbar` extension.
+// It is recommended to run this function in a separate goroutine to avoid blocking the main thread.
+//
+// hostPort specifies the address and port to bind the server to, for example, "0.0.0.0:19999".
+func (p *ProgressBar) StartHTTPServer(hostPort string) {
+	// for advanced users, we can return the data as json
+	http.HandleFunc("/state", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/json")
+		// since the state is a simple struct, we can just ignore the error
+		bs, _ := json.Marshal(p.State())
+		w.Write(bs)
+	})
+	// for others, we just return the description in a plain text format
+	http.HandleFunc("/desc", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprintf(w,
+			"%d/%d, %.2f%%, %s left",
+			p.State().CurrentNum, p.State().Max, p.State().CurrentPercent*100,
+			(time.Second * time.Duration(p.State().SecondsLeft)).String(),
+		)
+	})
+	log.Fatal(http.ListenAndServe(hostPort, nil))
 }
 
 // regex matching ansi escape codes

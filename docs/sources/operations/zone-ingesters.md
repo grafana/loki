@@ -1,11 +1,10 @@
 ---
-title: Zone aware ingesters
-menuTitle:  
-description: Describes how to migrate from a single ingester StatefulSet to three zone aware ingester StatefulSets
+title: Speed up ingester rollout using zone awareness
+menuTitle: Zone aware ingesters
+description: Describes how to migrate from a single ingester StatefulSet to three zone aware ingester StatefulSets.
 weight:
 ---
-
-# Zone aware ingesters
+# Speed up ingester rollout using zone awareness
 
 The Loki zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them as three logical zones, however with some extra Kubernetes configuration you could deploy them in separate zones.
 

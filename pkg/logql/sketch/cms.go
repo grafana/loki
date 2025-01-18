@@ -19,7 +19,7 @@ func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 		Depth:       d,
 		Width:       w,
 		Counters:    make2dslice(w, d),
-		HyperLogLog: hyperloglog.New16(),
+		HyperLogLog: hyperloglog.New16NoSparse(),
 	}, nil
 }
 

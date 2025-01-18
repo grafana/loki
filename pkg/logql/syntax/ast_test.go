@@ -586,6 +586,20 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"counter=1", false}, {"counter=0", false}, {"counter=-1", true}, {"counter=-2", true}},
 		},
+		{
+			`{app="foo"} |~ "\\|"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\\", false}, {"|", true}},
+		},
+		{
+			`{app="foo"} |~ "(?i)\\|"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"\\", false}, {"|", true}},
+		},
 	} {
 		t.Run(tt.q, func(t *testing.T) {
 			t.Parallel()

@@ -36,7 +36,7 @@ func newFormatValidator(path, in, format string, formats strfmt.Registry, opts *
 
 	var f *formatValidator
 	if opts.recycleValidators {
-		f = poolOfFormatValidators.BorrowValidator()
+		f = pools.poolOfFormatValidators.BorrowValidator()
 	} else {
 		f = new(formatValidator)
 	}
@@ -82,7 +82,7 @@ func (f *formatValidator) Validate(val interface{}) *Result {
 
 	var result *Result
 	if f.Options.recycleResult {
-		result = poolOfResults.BorrowResult()
+		result = pools.poolOfResults.BorrowResult()
 	} else {
 		result = new(Result)
 	}
@@ -95,5 +95,5 @@ func (f *formatValidator) Validate(val interface{}) *Result {
 }
 
 func (f *formatValidator) redeem() {
-	poolOfFormatValidators.RedeemValidator(f)
+	pools.poolOfFormatValidators.RedeemValidator(f)
 }

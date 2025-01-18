@@ -9,7 +9,7 @@ FILES    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name 
 TESTS    := $(shell find . -name '*.go' -type f -not -name '*.pb.go' -not -name '*_generated.go' -name '*_test.go')
 
 $(GOBIN)/tparse:
-	GOBIN=$(GOBIN) go install github.com/mfridman/tparse@v0.11.1
+	GOBIN=$(GOBIN) go install github.com/mfridman/tparse@v0.16.0
 get:
 	$(GO) get ./...
 	$(GO) mod verify

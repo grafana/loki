@@ -597,6 +597,7 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 	cmd.Flag("no-labels", "Do not print any labels").Default("false").BoolVar(&q.NoLabels)
 	cmd.Flag("exclude-label", "Exclude labels given the provided key during output.").StringsVar(&q.IgnoreLabelsKey)
 	cmd.Flag("include-label", "Include labels given the provided key during output.").StringsVar(&q.ShowLabelsKey)
+	cmd.Flag("include-common-labels", "Include common labels in output for each log line.").Default("false").BoolVar(&q.IncludeCommonLabels)
 	cmd.Flag("labels-length", "Set a fixed padding to labels").Default("0").IntVar(&q.FixedLabelsLen)
 	cmd.Flag("store-config", "Execute the current query using a configured storage from a given Loki configuration file.").Default("").StringVar(&q.LocalConfig)
 	cmd.Flag("remote-schema", "Execute the current query using a remote schema retrieved from the configured -schema-store.").Default("false").BoolVar(&q.FetchSchemaFromStorage)

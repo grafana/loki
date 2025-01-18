@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 )
 
@@ -203,8 +204,16 @@ func (sk *Sketch) mergeSparse() {
 }
 
 // MarshalBinary implements the encoding.BinaryMarshaler interface.
+//
+// When the result will be appended to another buffer, consider using
+// AppendBinary to avoid additional allocations and copying.
 func (sk *Sketch) MarshalBinary() (data []byte, err error) {
-	data = make([]byte, 0, 8+len(sk.regs))
+	return sk.AppendBinary(nil)
+}
+
+// AppendBinary implements the encoding.BinaryAppender interface.
+func (sk *Sketch) AppendBinary(data []byte) ([]byte, error) {
+	data = slices.Grow(data, 8+len(sk.regs))
 	// Marshal a version marker.
 	data = append(data, version)
 	// Marshal p.
@@ -217,18 +226,13 @@ func (sk *Sketch) MarshalBinary() (data []byte, err error) {
 		data = append(data, byte(1))
 
 		// Add the tmp_set
-		tsdata, err := sk.tmpSet.MarshalBinary()
+		data, err := sk.tmpSet.AppendBinary(data)
 		if err != nil {
 			return nil, err
 		}
-		data = append(data, tsdata...)
 
 		// Add the sparse Sketch
-		sdata, err := sk.sparseList.MarshalBinary()
-		if err != nil {
-			return nil, err
-		}
-		return append(data, sdata...), nil
+		return sk.sparseList.AppendBinary(data)
 	}
 
 	// It's using the dense Sketch.
@@ -236,12 +240,12 @@ func (sk *Sketch) MarshalBinary() (data []byte, err error) {
 
 	// Add the dense sketch Sketch.
 	sz := len(sk.regs)
-	data = append(data, []byte{
-		byte(sz >> 24),
-		byte(sz >> 16),
-		byte(sz >> 8),
+	data = append(data,
+		byte(sz>>24),
+		byte(sz>>16),
+		byte(sz>>8),
 		byte(sz),
-	}...)
+	)
 
 	// Marshal each element in the list.
 	for _, v := range sk.regs {

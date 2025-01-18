@@ -1,14 +1,13 @@
 ---
-title: Caching 
+title: Configure caches to speed up queries
 menuTitle: Caching 
-description: Describes how to enable and configure memcached to speed query performance. 
+description: Describes how to enable and configure memcached to improve query performance. 
 weight: 
 keywords:
   - memcached
   - caching
 ---
-
-# Caching
+# Configure caches to speed up queries
 
 Loki supports caching of index writes and lookups, chunks and query results to
 speed up query performance. This sections describes the recommended Memcached

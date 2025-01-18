@@ -25,7 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
+	rand "math/rand/v2"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -824,7 +824,7 @@ func (b *outlierDetectionBalancer) successRateAlgorithm() {
 		requiredSuccessRate := mean - stddev*(float64(ejectionCfg.StdevFactor)/1000)
 		if successRate < requiredSuccessRate {
 			channelz.Infof(logger, b.channelzParent, "SuccessRate algorithm detected outlier: %s. Parameters: successRate=%f, mean=%f, stddev=%f, requiredSuccessRate=%f", addrInfo, successRate, mean, stddev, requiredSuccessRate)
-			if uint32(rand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
+			if uint32(rand.Int32N(100)) < ejectionCfg.EnforcementPercentage {
 				b.ejectAddress(addrInfo)
 			}
 		}
@@ -851,7 +851,7 @@ func (b *outlierDetectionBalancer) failurePercentageAlgorithm() {
 		failurePercentage := (float64(bucket.numFailures) / float64(bucket.numSuccesses+bucket.numFailures)) * 100
 		if failurePercentage > float64(b.cfg.FailurePercentageEjection.Threshold) {
 			channelz.Infof(logger, b.channelzParent, "FailurePercentage algorithm detected outlier: %s, failurePercentage=%f", addrInfo, failurePercentage)
-			if uint32(rand.Int31n(100)) < ejectionCfg.EnforcementPercentage {
+			if uint32(rand.Int32N(100)) < ejectionCfg.EnforcementPercentage {
 				b.ejectAddress(addrInfo)
 			}
 		}

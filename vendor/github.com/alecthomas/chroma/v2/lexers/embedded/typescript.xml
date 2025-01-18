@@ -52,6 +52,22 @@
     </state>
     <state name="tag">
       <rule>
+        <include state="jsx"/>
+      </rule>
+      <rule pattern=",">
+        <token type="Punctuation"/>
+      </rule>
+      <rule pattern="&#34;(\\\\|\\&#34;|[^&#34;])*&#34;">
+        <token type="LiteralStringDouble"/>
+      </rule>
+      <rule pattern="&#39;(\\\\|\\&#39;|[^&#39;])*&#39;">
+        <token type="LiteralStringSingle"/>
+      </rule>
+      <rule pattern="`">
+        <token type="LiteralStringBacktick"/>
+        <push state="interp"/>
+      </rule>
+      <rule>
         <include state="commentsandwhitespace"/>
       </rule>
       <rule pattern="\s+">
@@ -171,7 +187,7 @@
       </rule>
       <rule pattern="(?=/)">
         <token type="Text"/>
-        <push state="#pop" state="badregex"/>
+        <push state="badregex"/>
       </rule>
       <rule>
         <pop depth="1"/>

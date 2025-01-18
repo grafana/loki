@@ -37,7 +37,7 @@ type Config struct {
 	// URL. This is a constant specific to each server.
 	TokenURL string
 
-	// Scope specifies optional requested permissions.
+	// Scopes specifies optional requested permissions.
 	Scopes []string
 
 	// EndpointParams specifies additional parameters for requests to the token endpoint.

@@ -61,6 +61,7 @@ func TestRemoteEvalQueryTimeout(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.Error(t, err)
@@ -98,6 +99,7 @@ func TestRemoteEvalMaxResponseSize(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.Error(t, err)
@@ -146,6 +148,7 @@ func TestRemoteEvalScalar(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	res, err := ev.Eval(ctx, "19", now)
 	require.NoError(t, err)
@@ -189,6 +192,7 @@ func TestRemoteEvalEmptyScalarResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	res, err := ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.NoError(t, err)
@@ -247,6 +251,7 @@ func TestRemoteEvalVectorResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	res, err := ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", now)
 	require.NoError(t, err)
@@ -294,6 +299,7 @@ func TestRemoteEvalEmptyVectorResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.NoError(t, err)
@@ -317,6 +323,7 @@ func TestRemoteEvalErrorResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, "rule evaluation failed")
@@ -343,6 +350,7 @@ func TestRemoteEvalNon2xxResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, fmt.Sprintf("unsuccessful/unexpected response - status code %d", httpErr))
@@ -367,6 +375,7 @@ func TestRemoteEvalNonJSONResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, "unexpected body encoding, not valid JSON")
@@ -406,6 +415,7 @@ func TestRemoteEvalUnsupportedResultResponse(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = user.InjectOrgID(ctx, "test")
+	ctx = AddRuleDetailsToContext(ctx, "test_rule_name", "test_rule_type")
 
 	_, err = ev.Eval(ctx, "sum(rate({foo=\"bar\"}[5m]))", time.Now())
 	require.ErrorContains(t, err, fmt.Sprintf("unsupported result type: %q", loghttp.ResultTypeStream))

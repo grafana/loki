@@ -25,16 +25,17 @@ import (
 func Test(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
-		name            string
-		handoff         time.Duration
-		storeStart      []chunk.Chunk
-		l1Start         []chunk.Chunk
-		l2Start         []chunk.Chunk
-		fetch           []chunk.Chunk
-		l1KeysRequested int
-		l1End           []chunk.Chunk
-		l2KeysRequested int
-		l2End           []chunk.Chunk
+		name               string
+		handoff            time.Duration
+		skipQueryWriteback time.Duration
+		storeStart         []chunk.Chunk
+		l1Start            []chunk.Chunk
+		l2Start            []chunk.Chunk
+		fetch              []chunk.Chunk
+		l1KeysRequested    int
+		l1End              []chunk.Chunk
+		l2KeysRequested    int
+		l2End              []chunk.Chunk
 	}{
 		{
 			name:            "all found in L1 cache",
@@ -81,6 +82,19 @@ func Test(t *testing.T) {
 			l1End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
 			l2KeysRequested: 3,
 			l2End:           makeChunks(now, c{7 * time.Hour, 8 * time.Hour}, c{8 * time.Hour, 9 * time.Hour}, c{9 * time.Hour, 10 * time.Hour}),
+		},
+		{
+			name:               "skipQueryWriteback",
+			handoff:            24 * time.Hour,
+			skipQueryWriteback: 3 * 24 * time.Hour,
+			storeStart:         makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{5 * 24 * time.Hour, 6 * 24 * time.Hour}, c{5 * 24 * time.Hour, 6 * 24 * time.Hour}),
+			l1Start:            []chunk.Chunk{},
+			l2Start:            []chunk.Chunk{},
+			fetch:              makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{5 * 24 * time.Hour, 6 * 24 * time.Hour}, c{5 * 24 * time.Hour, 6 * 24 * time.Hour}),
+			l1KeysRequested:    3,
+			l1End:              makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2KeysRequested:    0,
+			l2End:              []chunk.Chunk{},
 		},
 		{
 			name:            "writeback l1",
@@ -194,7 +208,7 @@ func Test(t *testing.T) {
 			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, chunkClient, test.handoff)
+			f, err := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -235,16 +249,17 @@ func BenchmarkFetch(b *testing.B) {
 	fetch = append(fetch, storeStart...)
 
 	test := struct {
-		name            string
-		handoff         time.Duration
-		storeStart      []chunk.Chunk
-		l1Start         []chunk.Chunk
-		l2Start         []chunk.Chunk
-		fetch           []chunk.Chunk
-		l1KeysRequested int
-		l1End           []chunk.Chunk
-		l2KeysRequested int
-		l2End           []chunk.Chunk
+		name               string
+		handoff            time.Duration
+		skipQueryWriteback time.Duration
+		storeStart         []chunk.Chunk
+		l1Start            []chunk.Chunk
+		l2Start            []chunk.Chunk
+		fetch              []chunk.Chunk
+		l1KeysRequested    int
+		l1End              []chunk.Chunk
+		l2KeysRequested    int
+		l2End              []chunk.Chunk
 	}{
 		name:       "some in L1, some in L2",
 		handoff:    time.Duration(numchunks/3+100) * time.Hour,
@@ -291,7 +306,7 @@ func BenchmarkFetch(b *testing.B) {
 	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff)
+	f, _ := New(c1, c2, false, sc, chunkClient, test.handoff, test.skipQueryWriteback)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)

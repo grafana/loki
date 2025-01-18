@@ -41,6 +41,8 @@ const (
 	Other
 	// No highlighting.
 	None
+	// Don't emit this token to the output.
+	Ignore
 	// Used as an EOF marker / nil token
 	EOFType TokenType = 0
 )
@@ -122,6 +124,7 @@ const (
 	LiteralNumberInteger
 	LiteralNumberIntegerLong
 	LiteralNumberOct
+	LiteralNumberByte
 )
 
 // Operators.

@@ -24,10 +24,7 @@ import (
 
 // dumpResources returns the status and contents of all xDS resources.
 func (c *clientImpl) dumpResources() *v3statuspb.ClientConfig {
-	c.authorityMu.Lock()
-	defer c.authorityMu.Unlock()
-
-	var retCfg []*v3statuspb.ClientConfig_GenericXdsConfig
+	retCfg := c.topLevelAuthority.dumpResources()
 	for _, a := range c.authorities {
 		retCfg = append(retCfg, a.dumpResources()...)
 	}

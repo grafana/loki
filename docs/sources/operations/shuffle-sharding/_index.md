@@ -1,11 +1,10 @@
 ---
-title: Shuffle sharding
+title: Isolate tenant workflows using shuffle sharding
 menuTitle: Shuffle sharding
 description: Describes how to isolate tenant workloads from other tenant workloads using shuffle sharding to provide a better sharing of resources.
 weight: 
 ---
-
-# Shuffle sharding
+# Isolate tenant workflows using shuffle sharding
 
 Shuffle sharding is a resource-management technique used to isolate tenant workloads from other tenant workloads, to give each tenant more of a single-tenant experience when running in a shared cluster.
 This technique is explained by AWS in their article [Workload isolation using shuffle-sharding](https://aws.amazon.com/builders-library/workload-isolation-using-shuffle-sharding/).
