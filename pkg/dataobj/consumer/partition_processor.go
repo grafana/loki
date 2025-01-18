@@ -55,7 +55,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		"partition": strconv.Itoa(int(partition)),
 	}, reg)
 
-	metrics := newPartitionOffsetMetrics(ctx, client, topic, partition, logger)
+	metrics := newPartitionOffsetMetrics(ctx, logger)
 	if err := metrics.register(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
