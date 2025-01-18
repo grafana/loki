@@ -3,7 +3,10 @@ package consumer
 import (
 	"context"
 	"sync/atomic"
+	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -22,9 +25,14 @@ type partitionOffsetMetrics struct {
 	flushFailures  prometheus.Counter
 	commitFailures prometheus.Counter
 	appendFailures prometheus.Counter
+
+	// Processing delay histogram
+	processingDelay prometheus.Histogram
+
+	logger log.Logger
 }
 
-func newPartitionOffsetMetrics(ctx context.Context, client *kgo.Client, topic string, partition int32) *partitionOffsetMetrics {
+func newPartitionOffsetMetrics(ctx context.Context, client *kgo.Client, topic string, partition int32, logger log.Logger) *partitionOffsetMetrics {
 	p := &partitionOffsetMetrics{
 		partition: partition,
 		topic:     topic,
@@ -42,6 +50,15 @@ func newPartitionOffsetMetrics(ctx context.Context, client *kgo.Client, topic st
 			Name: "loki_dataobj_consumer_append_failures_total",
 			Help: "Total number of append failures",
 		}),
+		processingDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_dataobj_consumer_processing_delay_seconds",
+			Help:                            "Time difference between record timestamp and processing time in seconds",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
+		logger: logger,
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
@@ -69,12 +86,16 @@ func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
 
 func (p *partitionOffsetMetrics) getLatestOffset() float64 {
 	adm := kadm.NewClient(p.client)
-	resp, err := adm.ListEndOffsets(p.ctx, p.topic)
+	ctx, cancel := context.WithTimeout(p.ctx, 5*time.Second)
+	defer cancel()
+	resp, err := adm.ListEndOffsets(ctx, p.topic)
 	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to list end offsets", "topic", p.topic, "partition", p.partition, "err", err)
 		return 0
 	}
 	offset, ok := resp.Lookup(p.topic, p.partition)
 	if !ok {
+		level.Debug(p.logger).Log("msg", "partition not found in response", "topic", p.topic, "partition", p.partition)
 		return 0
 	}
 	return float64(offset.Offset)
@@ -87,6 +108,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.flushFailures,
 		p.commitFailures,
 		p.appendFailures,
+		p.processingDelay,
 	}
 
 	for _, collector := range collectors {
@@ -106,6 +128,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.flushFailures,
 		p.commitFailures,
 		p.appendFailures,
+		p.processingDelay,
 	}
 
 	for _, collector := range collectors {
@@ -127,4 +150,11 @@ func (p *partitionOffsetMetrics) incCommitFailures() {
 
 func (p *partitionOffsetMetrics) incAppendFailures() {
 	p.appendFailures.Inc()
+}
+
+func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {
+	// Convert milliseconds to seconds and calculate delay
+	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
+		p.processingDelay.Observe(time.Since(recordTimestamp).Seconds())
+	}
 }
