@@ -1,17 +1,14 @@
 package consumer
 
 import (
-	"context"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type partitionOffsetMetrics struct {
 	currentOffset prometheus.GaugeFunc
-	ctx           context.Context
 	lastOffset    int64
 
 	// Error counters
@@ -21,13 +18,10 @@ type partitionOffsetMetrics struct {
 
 	// Processing delay histogram
 	processingDelay prometheus.Histogram
-
-	logger log.Logger
 }
 
-func newPartitionOffsetMetrics(ctx context.Context, logger log.Logger) *partitionOffsetMetrics {
+func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 	p := &partitionOffsetMetrics{
-		ctx: ctx,
 		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_flush_failures_total",
 			Help: "Total number of flush failures",
@@ -48,7 +42,6 @@ func newPartitionOffsetMetrics(ctx context.Context, logger log.Logger) *partitio
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		logger: logger,
 	}
 
 	p.currentOffset = prometheus.NewGaugeFunc(
