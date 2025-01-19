@@ -230,9 +230,10 @@ type Limits struct {
 
 	BlockIngestionUntil            dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
 	BlockIngestionStatusCode       int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	BlockPolicyIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_policy_ingestion_until" json:"block_policy_ingestion_until" category:"experimental" doc:"description=Block ingestion until the given time for the given policy. The policy is the value of the policy label in the log line. Experimental."`
+	BlockPolicyIngestionUntil      map[string]dskit_flagext.Time `yaml:"block_policy_ingestion_until" json:"block_policy_ingestion_until" category:"experimental" doc:"description=Block ingestion until the given time for the given policy. Pushes will be assigned to a policy based on the stream matcher configuration. Experimental."`
 	BlockPolicyIngestionStatusCode map[string]int                `yaml:"block_policy_ingestion_status_code" json:"block_policy_ingestion_status_code" category:"experimental" doc:"description=HTTP status code to return when ingestion is blocked for the given policy. Experimental."`
-	PolicyStreamMapping            map[string]string             `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors. Push streams that matches a policy selector will be considered as belonging to that policy. Experimental."`
+	PolicyStreamMapping            map[string]string             `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors. Push streams that matches a policy selector will be considered as belonging to that policy. If that policy is blocked, the push will be rejected with the status code specified in block_policy_ingestion_status_code. Experimental."`
+	PolicyEnforcedLabels           map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. Push streams that matches a policy selector will be considered as belonging to that policy. Experimental."`
 	EnforcedLabels                 []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
@@ -450,7 +451,6 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.BlockIngestionUntil, "limits.block-ingestion-until", "Block ingestion until the configured date. The time should be in RFC3339 format.")
 	f.IntVar(&l.BlockIngestionStatusCode, "limits.block-ingestion-status-code", defaultBlockedIngestionStatusCode, "HTTP status code to return when ingestion is blocked. If 200, the ingestion will be blocked without returning an error to the client. By Default, a custom status code (260) is returned to the client along with an error message.")
 	f.Var((*dskit_flagext.StringSlice)(&l.EnforcedLabels), "validation.enforced-labels", "List of labels that must be present in the stream. If any of the labels are missing, the stream will be discarded. This flag configures it globally for all tenants. Experimental.")
-
 	f.IntVar(&l.IngestionPartitionsTenantShardSize, "limits.ingestion-partition-tenant-shard-size", 0, "The number of partitions a tenant's data should be sharded to when using kafka ingestion. Tenants are sharded across partitions using shuffle-sharding. 0 disables shuffle sharding and tenant is sharded across all partitions.")
 
 	_ = l.PatternIngesterTokenizableJSONFieldsDefault.Set("log,message,msg,msg_,_msg,content")
@@ -628,6 +628,10 @@ func (o *Overrides) PolicyStreamMapping(userID string) map[string]string {
 
 func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
+}
+
+func (o *Overrides) PolicyEnforcedLabels(userID string) map[string][]string {
+	return o.getOverridesForUser(userID).PolicyEnforcedLabels
 }
 
 // MaxLabelNameLength returns maximum length a label name can be.

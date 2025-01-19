@@ -59,6 +59,7 @@ type validationContext struct {
 	blockPolicyIngestionUntil      map[string]flagext.Time
 	blockPolicyIngestionStatusCode map[string]int
 	policyStreamMapping            map[string]string
+	policyEnforcedLabels           map[string][]string
 	enforcedLabels                 []string
 
 	userID string
@@ -87,6 +88,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		blockPolicyIngestionUntil:      v.BlockPolicyIngestionUntil(userID),
 		blockPolicyIngestionStatusCode: v.BlockPolicyIngestionStatusCode(userID),
 		policyStreamMapping:            v.PolicyStreamMapping(userID),
+		policyEnforcedLabels:           v.PolicyEnforcedLabels(userID),
 		enforcedLabels:                 v.EnforcedLabels(userID),
 	}
 }
@@ -207,13 +209,34 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 	return nil
 }
 
-// ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
-func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (bool, time.Time, int) {
+func (v Validator) ShouldBlockIngestionForTenant(ctx validationContext, now time.Time) (bool, time.Time, int) {
 	if ctx.blockIngestionUntil.IsZero() {
 		return false, time.Time{}, 0
 	}
 
 	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
+}
+
+func (v Validator) ShouldBlockIngestionForPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
+	if policy == "" {
+		return false, time.Time{}, 0
+	}
+
+	if ctx.blockPolicyIngestionUntil == nil {
+		return false, time.Time{}, 0
+	}
+
+	until, ok := ctx.blockPolicyIngestionUntil[policy]
+	if !ok {
+		return false, time.Time{}, 0
+	}
+	parsedUntil := time.Time(until)
+
+	if parsedUntil.IsZero() {
+		return false, time.Time{}, 0
+	}
+
+	return now.Before(parsedUntil), parsedUntil, ctx.blockPolicyIngestionStatusCode[policy]
 }
 
 func (v Validator) ShouldBlockPolicyIngestion(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {

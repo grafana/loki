@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
@@ -42,8 +43,10 @@ type Limits interface {
 	BlockIngestionStatusCode(userID string) int
 	BlockPolicyIngestionUntil(userID string) map[string]flagext.Time
 	BlockPolicyIngestionStatusCode(userID string) map[string]int
-	PolicyStreamMapping(userID string) map[string]string // map of policy name to stream matching regex.
+	PolicyStreamMapping(userID string) map[string]string    // map of policy name to stream matching regex.
+	PolicyEnforcedLabels(userID string) map[string][]string // map of policy name to enforced labels.
 	EnforcedLabels(userID string) []string
+	RetentionPeriodForStream(userID string, lbs labels.Labels) time.Duration
 
 	IngestionPartitionsTenantShardSize(userID string) int
 }

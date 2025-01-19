@@ -75,6 +75,8 @@ const (
 	BlockedPolicyIngestionErrorMsg       = "ingestion blocked for user %s until '%s' with status code '%d' for policy '%s'"
 	MissingEnforcedLabels                = "missing_enforced_labels"
 	MissingEnforcedLabelsErrorMsg        = "missing required labels %s for user %s"
+	MissingPolicyEnforcedLabels          = "missing_policy_enforced_labels"
+	MissingPolicyEnforcedLabelsErrorMsg  = "missing required labels %s for policy %s for user %s"
 )
 
 type ErrStreamRateLimit struct {
@@ -117,7 +119,16 @@ var DiscardedBytes = promauto.NewCounterVec(
 		Name:      "discarded_bytes_total",
 		Help:      "The total number of bytes that were discarded.",
 	},
-	[]string{ReasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant", "retention_hours"},
+)
+
+var DiscardedBytesByPolicy = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "discarded_bytes_by_policy_total",
+		Help:      "The total number of bytes that were discarded by policy.",
+	},
+	[]string{ReasonLabel, "policy", "tenant", "retention_hours"},
 )
 
 // DiscardedSamples is a metric of the number of discarded samples, by reason.
@@ -127,7 +138,16 @@ var DiscardedSamples = promauto.NewCounterVec(
 		Name:      "discarded_samples_total",
 		Help:      "The total number of samples that were discarded.",
 	},
-	[]string{ReasonLabel, "tenant"},
+	[]string{ReasonLabel, "tenant", "retention_hours"},
+)
+
+var DiscardedSamplesByPolicy = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Namespace: constants.Loki,
+		Name:      "discarded_samples_by_policy_total",
+		Help:      "The total number of samples that were discarded by policy.",
+	},
+	[]string{ReasonLabel, "policy", "tenant", "retention_hours"},
 )
 
 var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{

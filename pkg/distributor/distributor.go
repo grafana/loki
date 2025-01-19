@@ -453,8 +453,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
-	validatedLineSize := 0
-	validatedLineCount := 0
+	totalLineSize := 0
+	validatedLineSize := make(map[string]int)  // map of retention period to validated line size
+	validatedLineCount := make(map[string]int) // map of retention period to validated line count
 
 	var validationErrors util.GroupedErrors
 
@@ -523,25 +524,12 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
-				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+			if err, errorLbValue := d.missingEnforcedLabels(lbs, tenantID); err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(errorLbValue, tenantID).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(discardedBytes))
-				continue
-			}
-
-			// if the given stream is blocked due to its scope ingestion, we skip it.
-			blocked, statusCode, policy, until := d.streamIsBlocked(lbs, validationContext, tenantID, now)
-			if blocked {
-				err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), statusCode, policy)
-				d.writeFailuresManager.Log(tenantID, err)
-				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(len(stream.Entries)))
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(errorLbValue, tenantID).Add(float64(discardedBytes))
 				continue
 			}
 
@@ -605,10 +593,18 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				n++
-				validatedLineSize += util.EntryTotalSize(&entry)
-				validatedLineCount++
+
+				retention := d.validator.RetentionPeriodForStream(tenantID, lbs)
+				validatedLineSize[retention.String()] += util.EntryTotalSize(&entry)
+				validatedLineCount[retention.String()]++
+				totalLineSize += len(entry.Line)
 				pushSize += len(entry.Line)
+
+				if yes, _, _ := d.validator.ShouldBlockIngestionForPolicy(validationContext, d.policyForStream(lbs, tenantID), now); yes {
+					d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
+				}
 			}
+
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
 				// Empty stream after validating all the entries
@@ -629,7 +625,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return &logproto.PushResponse{}, validationErr
 	}
 
-	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
+	if block, until, retStatusCode := d.validator.ShouldBlockIngestionForTenant(validationContext, now); block {
 		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
 
 		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
@@ -644,8 +640,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalLineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited, 0)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -755,14 +751,26 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
-// missingEnforcedLabels returns true if the stream is missing any of the required labels.
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (error, string) {
+	if err := d.missingTenantEnforcedLabels(lbs, tenantID); err != nil {
+		return err, validation.MissingEnforcedLabels
+	}
+
+	if err := d.missingPolicyEnforcedLabels(lbs, tenantID); err != nil {
+		return err, validation.MissingPolicyEnforcedLabels
+	}
+
+	return nil, ""
+}
+
+// missingTenantEnforcedLabels returns true if the stream is missing any of the required labels for the tenant.
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
-func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
+func (d *Distributor) missingTenantEnforcedLabels(lbs labels.Labels, tenantID string) error {
 	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
 	if len(requiredLbs) == 0 {
 		// no enforced labels configured.
-		return false, []string{}
+		return nil
 	}
 
 	missingLbs := []string{}
@@ -773,7 +781,71 @@ func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) 
 		}
 	}
 
-	return len(missingLbs) > 0, missingLbs
+	if len(missingLbs) > 0 {
+		return fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(missingLbs, ","), tenantID)
+	}
+
+	return nil
+}
+
+func (d *Distributor) lbsMatchesMatchers(lbs labels.Labels, matchers []*labels.Matcher) bool {
+	for _, matcher := range matchers {
+		if !matcher.Matches(lbs.Get(matcher.Name)) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (d *Distributor) policyForStream(lbs labels.Labels, tenantID string) string {
+	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
+	if len(policyStreamMapping) == 0 {
+		// not configured.
+		return ""
+	}
+
+	for policy, streamSelector := range policyStreamMapping {
+		matchers, err := syntax.ParseMatchers(streamSelector, true)
+		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to parse stream selector", "error", err, "stream_selector", streamSelector, "tenant_id", tenantID)
+			continue
+		}
+
+		if d.lbsMatchesMatchers(lbs, matchers) {
+			return policy
+		}
+	}
+
+	return ""
+}
+
+func (d *Distributor) missingPolicyEnforcedLabels(lbs labels.Labels, tenantID string) error {
+	policyEnforcedLabels := d.validator.Limits.PolicyEnforcedLabels(tenantID)
+	if len(policyEnforcedLabels) == 0 {
+		// not configured.
+		return nil
+	}
+
+	policy := d.policyForStream(lbs, tenantID)
+	if policy == "" {
+		// no policy found for stream.
+		return nil
+	}
+
+	missingLbs := []string{}
+
+	for _, lb := range policyEnforcedLabels[policy] {
+		if !lbs.Has(lb) {
+			missingLbs = append(missingLbs, lb)
+		}
+	}
+
+	if len(missingLbs) > 0 {
+		return fmt.Errorf(validation.MissingPolicyEnforcedLabelsErrorMsg, strings.Join(missingLbs, ","), policy, tenantID)
+	}
+
+	return nil
 }
 
 // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
@@ -804,7 +876,7 @@ func (d *Distributor) streamIsBlocked(streamLbs labels.Labels, validationCtx val
 	return false, 0, "", time.Time{}
 }
 
-func (d *Distributor) applyPolicy(policy string, validationCtx validationContext, now time.Time) (bool, int, string, time.Time) {
+func (d *Distributor) applyPolicy(policy string, validationCtx validationContext, now time.Time, retention time.Duration) (bool, int, string, time.Time) {
 	blockIngestion, until, statusCode := d.validator.ShouldBlockPolicyIngestion(validationCtx, policy, now)
 	if blockIngestion {
 		return true, statusCode, policy, until
@@ -813,17 +885,41 @@ func (d *Distributor) applyPolicy(policy string, validationCtx validationContext
 	return false, 0, "", time.Time{}
 }
 
+func (d *Distributor) trackDiscardedDataFromPolicy(policy string, validationCtx validationContext, tenantID string, now time.Time, reason string, validatedLineCount map[string]int, validatedLineSize map[string]int) {
+	for retention, count := range validatedLineCount {
+		validation.DiscardedSamplesByPolicy.WithLabelValues(reason, policy, tenantID, retention).Add(float64(count))
+		validation.DiscardedBytesByPolicy.WithLabelValues(reason, policy, tenantID, retention).Add(float64(validatedLineSize[retention]))
+	}
+
+	if d.usageTracker != nil {
+		for _, stream := range req.Streams {
+			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			if err != nil {
+				continue
+			}
+
+			discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
+
+			if d.usageTracker != nil {
+				d.usageTracker.DiscardedBytesAddByPolicy(ctx, tenantID, policy, reason, retention, lbs, float64(discardedStreamBytes))
+			}
+		}
+	}
+}
+
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
 	req *logproto.PushRequest,
 	validationContext validationContext,
 	tenantID string,
-	validatedLineCount int,
-	validatedLineSize int,
+	validatedLineCount map[string]int,
+	validatedLineSize map[string]int,
 	reason string,
 ) {
-	validation.DiscardedSamples.WithLabelValues(reason, tenantID).Add(float64(validatedLineCount))
-	validation.DiscardedBytes.WithLabelValues(reason, tenantID).Add(float64(validatedLineSize))
+	for retention, count := range validatedLineCount {
+		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retention).Add(float64(count))
+		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retention).Add(float64(validatedLineSize[retention]))
+	}
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
