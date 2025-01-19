@@ -492,3 +492,7 @@ func (t *MockCustomTracker) DiscardedBytesAdd(_ context.Context, _, _ string, la
 func (t *MockCustomTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, labels labels.Labels, value float64) {
 	t.receivedBytes[labels.String()] += value
 }
+
+// DiscardedBytesAddByPolicy implements CustomTracker.
+func (t *MockCustomTracker) DiscardedBytesAddByPolicy(_ context.Context, _ string, _ string, _ string, _ time.Duration, _ labels.Labels, _ float64) {
+}

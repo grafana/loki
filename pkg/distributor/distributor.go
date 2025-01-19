@@ -536,6 +536,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
+			retention := d.retentionPeriodForStream(lbs, tenantID)
 
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
@@ -594,21 +595,33 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 				n++
 
-				retention := d.validator.RetentionPeriodForStream(tenantID, lbs)
-				validatedLineSize[retention.String()] += util.EntryTotalSize(&entry)
+				entrySize := util.EntryTotalSize(&entry)
+				validatedLineSize[retention.String()] += entrySize
 				validatedLineCount[retention.String()]++
-				totalLineSize += len(entry.Line)
-				pushSize += len(entry.Line)
-
-				if yes, _, _ := d.validator.ShouldBlockIngestionForPolicy(validationContext, d.policyForStream(lbs, tenantID), now); yes {
-					d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
-				}
+				totalLineSize += entrySize
+				pushSize += entrySize
 			}
 
 			stream.Entries = stream.Entries[:n]
 			if len(stream.Entries) == 0 {
 				// Empty stream after validating all the entries
 				continue
+			}
+
+			policy := d.policyForStream(lbs, tenantID)
+			if policy != "" {
+				streamSize := util.EntriesTotalSize(stream.Entries)
+				if yes, until, retStatusCode := d.validator.ShouldBlockIngestionForPolicy(validationContext, policy, now); yes {
+					d.trackDiscardedDataFromPolicy(ctx, policy, validationContext, tenantID, now, validation.BlockedPolicyIngestion, retention, streamSize, lbs)
+
+					err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode, policy)
+					d.writeFailuresManager.Log(tenantID, err)
+
+					validationErrors.Add(err)
+					validation.DiscardedSamples.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(len(stream.Entries)))
+					validation.DiscardedBytes.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(streamSize))
+					continue
+				}
 			}
 
 			maybeShardStreams(stream, lbs, pushSize)
@@ -641,7 +654,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalLineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited, 0)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -751,6 +764,19 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+func (d *Distributor) retentionPeriodForStream(lbs labels.Labels, tenantID string) time.Duration {
+	retentions := d.validator.Limits.StreamRetention(tenantID)
+
+	for _, retention := range retentions {
+		if d.lbsMatchesMatchers(lbs, retention.Matchers) {
+			return time.Duration(retention.Period)
+		}
+	}
+
+	// No retention for this specific stream, use the default retention period.
+	return d.validator.Limits.RetentionPeriod(tenantID)
+}
+
 func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (error, string) {
 	if err := d.missingTenantEnforcedLabels(lbs, tenantID); err != nil {
 		return err, validation.MissingEnforcedLabels
@@ -848,33 +874,33 @@ func (d *Distributor) missingPolicyEnforcedLabels(lbs labels.Labels, tenantID st
 	return nil
 }
 
-// streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
-func (d *Distributor) streamIsBlocked(streamLbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string, time.Time) {
-	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
-	if len(policyStreamMapping) == 0 {
-		// not configured.
-		return false, 0, "", time.Time{}
-	}
+// // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
+// func (d *Distributor) streamIsBlocked(streamLbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string, time.Time) {
+// 	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
+// 	if len(policyStreamMapping) == 0 {
+// 		// not configured.
+// 		return false, 0, "", time.Time{}
+// 	}
 
-	for policy, streamSelector := range policyStreamMapping {
-		matchers, err := syntax.ParseMatchers(streamSelector, true)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to parse stream selector", "error", err, "stream_selector", streamSelector, "tenant_id", tenantID)
-			continue
-		}
+// 	for policy, streamSelector := range policyStreamMapping {
+// 		matchers, err := syntax.ParseMatchers(streamSelector, true)
+// 		if err != nil {
+// 			level.Error(d.logger).Log("msg", "failed to parse stream selector", "error", err, "stream_selector", streamSelector, "tenant_id", tenantID)
+// 			continue
+// 		}
 
-		for _, matcher := range matchers {
-			if !matcher.Matches(streamLbs.Get(matcher.Name)) {
-				continue
-			}
-		}
+// 		for _, matcher := range matchers {
+// 			if !matcher.Matches(streamLbs.Get(matcher.Name)) {
+// 				continue
+// 			}
+// 		}
 
-		return d.applyPolicy(policy, validationCtx, now)
-	}
+// 		return d.applyPolicy(policy, validationCtx, now)
+// 	}
 
-	// didn't match any existing policy.
-	return false, 0, "", time.Time{}
-}
+// 	// didn't match any existing policy.
+// 	return false, 0, "", time.Time{}
+// }
 
 func (d *Distributor) applyPolicy(policy string, validationCtx validationContext, now time.Time, retention time.Duration) (bool, int, string, time.Time) {
 	blockIngestion, until, statusCode := d.validator.ShouldBlockPolicyIngestion(validationCtx, policy, now)
@@ -885,25 +911,12 @@ func (d *Distributor) applyPolicy(policy string, validationCtx validationContext
 	return false, 0, "", time.Time{}
 }
 
-func (d *Distributor) trackDiscardedDataFromPolicy(policy string, validationCtx validationContext, tenantID string, now time.Time, reason string, validatedLineCount map[string]int, validatedLineSize map[string]int) {
-	for retention, count := range validatedLineCount {
-		validation.DiscardedSamplesByPolicy.WithLabelValues(reason, policy, tenantID, retention).Add(float64(count))
-		validation.DiscardedBytesByPolicy.WithLabelValues(reason, policy, tenantID, retention).Add(float64(validatedLineSize[retention]))
-	}
+func (d *Distributor) trackDiscardedDataFromPolicy(ctx context.Context, policy string, validationCtx validationContext, tenantID string, now time.Time, reason string, retention time.Duration, discardedStreamBytes int, lbs labels.Labels) {
+	validation.DiscardedSamplesByPolicy.WithLabelValues(reason, policy, tenantID, retention.String()).Add(float64(1))
+	validation.DiscardedBytesByPolicy.WithLabelValues(reason, policy, tenantID, retention.String()).Add(float64(discardedStreamBytes))
 
 	if d.usageTracker != nil {
-		for _, stream := range req.Streams {
-			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
-			if err != nil {
-				continue
-			}
-
-			discardedStreamBytes := util.EntriesTotalSize(stream.Entries)
-
-			if d.usageTracker != nil {
-				d.usageTracker.DiscardedBytesAddByPolicy(ctx, tenantID, policy, reason, retention, lbs, float64(discardedStreamBytes))
-			}
-		}
+		d.usageTracker.DiscardedBytesAddByPolicy(ctx, tenantID, policy, reason, retention, lbs, float64(discardedStreamBytes))
 	}
 }
 

@@ -1564,3 +1564,6 @@ func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ stri
 // ReceivedBytesAdd implements push.UsageTracker.
 func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64) {
 }
+
+func (m *mockUsageTracker) DiscardedBytesAddByPolicy(_ context.Context, _ string, _ string, _ string, _ time.Duration, _ labels.Labels, _ float64) {
+}
