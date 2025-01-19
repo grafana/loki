@@ -524,7 +524,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if err, errorLbValue := d.missingEnforcedLabels(lbs, tenantID); err != nil {
+			if errorLbValue, err := d.missingEnforcedLabels(lbs, tenantID); err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(errorLbValue, tenantID).Add(float64(len(stream.Entries)))
@@ -612,7 +612,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if policy != "" {
 				streamSize := util.EntriesTotalSize(stream.Entries)
 				if yes, until, retStatusCode := d.validator.ShouldBlockIngestionForPolicy(validationContext, policy, now); yes {
-					d.trackDiscardedDataFromPolicy(ctx, policy, validationContext, tenantID, now, validation.BlockedPolicyIngestion, retention, streamSize, lbs)
+					d.trackDiscardedDataFromPolicy(ctx, policy, tenantID, now, validation.BlockedPolicyIngestion, retention, streamSize, lbs)
 
 					err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode, policy)
 					d.writeFailuresManager.Log(tenantID, err)
@@ -777,16 +777,16 @@ func (d *Distributor) retentionPeriodForStream(lbs labels.Labels, tenantID strin
 	return d.validator.Limits.RetentionPeriod(tenantID)
 }
 
-func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (error, string) {
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (string, error) {
 	if err := d.missingTenantEnforcedLabels(lbs, tenantID); err != nil {
-		return err, validation.MissingEnforcedLabels
+		return validation.MissingEnforcedLabels, err
 	}
 
 	if err := d.missingPolicyEnforcedLabels(lbs, tenantID); err != nil {
-		return err, validation.MissingPolicyEnforcedLabels
+		return validation.MissingPolicyEnforcedLabels, err
 	}
 
-	return nil, ""
+	return "", nil
 }
 
 // missingTenantEnforcedLabels returns true if the stream is missing any of the required labels for the tenant.
@@ -874,44 +874,7 @@ func (d *Distributor) missingPolicyEnforcedLabels(lbs labels.Labels, tenantID st
 	return nil
 }
 
-// // streamIsBlocked checks if the given stream is blocked by looking at its scope ingestion when configured for the tenant.
-// func (d *Distributor) streamIsBlocked(streamLbs labels.Labels, validationCtx validationContext, tenantID string, now time.Time) (bool, int, string, time.Time) {
-// 	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
-// 	if len(policyStreamMapping) == 0 {
-// 		// not configured.
-// 		return false, 0, "", time.Time{}
-// 	}
-
-// 	for policy, streamSelector := range policyStreamMapping {
-// 		matchers, err := syntax.ParseMatchers(streamSelector, true)
-// 		if err != nil {
-// 			level.Error(d.logger).Log("msg", "failed to parse stream selector", "error", err, "stream_selector", streamSelector, "tenant_id", tenantID)
-// 			continue
-// 		}
-
-// 		for _, matcher := range matchers {
-// 			if !matcher.Matches(streamLbs.Get(matcher.Name)) {
-// 				continue
-// 			}
-// 		}
-
-// 		return d.applyPolicy(policy, validationCtx, now)
-// 	}
-
-// 	// didn't match any existing policy.
-// 	return false, 0, "", time.Time{}
-// }
-
-func (d *Distributor) applyPolicy(policy string, validationCtx validationContext, now time.Time, retention time.Duration) (bool, int, string, time.Time) {
-	blockIngestion, until, statusCode := d.validator.ShouldBlockPolicyIngestion(validationCtx, policy, now)
-	if blockIngestion {
-		return true, statusCode, policy, until
-	}
-
-	return false, 0, "", time.Time{}
-}
-
-func (d *Distributor) trackDiscardedDataFromPolicy(ctx context.Context, policy string, validationCtx validationContext, tenantID string, now time.Time, reason string, retention time.Duration, discardedStreamBytes int, lbs labels.Labels) {
+func (d *Distributor) trackDiscardedDataFromPolicy(ctx context.Context, policy string, tenantID string, now time.Time, reason string, retention time.Duration, discardedStreamBytes int, lbs labels.Labels) {
 	validation.DiscardedSamplesByPolicy.WithLabelValues(reason, policy, tenantID, retention.String()).Add(float64(1))
 	validation.DiscardedBytesByPolicy.WithLabelValues(reason, policy, tenantID, retention.String()).Add(float64(discardedStreamBytes))
 

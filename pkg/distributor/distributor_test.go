@@ -437,19 +437,19 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 
 	// request with all required labels.
 	lbs := labels.FromMap(map[string]string{"app": "foo", "env": "prod"})
-	err, errLabel := distributors[0].missingEnforcedLabels(lbs, "test")
+	errLabel, err := distributors[0].missingEnforcedLabels(lbs, "test")
 	assert.NoError(t, err)
 	assert.Empty(t, errLabel)
 
 	// request missing the `app` label.
 	lbs = labels.FromMap(map[string]string{"env": "prod"})
-	err, errLabel = distributors[0].missingEnforcedLabels(lbs, "test")
+	errLabel, err = distributors[0].missingEnforcedLabels(lbs, "test")
 	assert.NoError(t, err)
 	assert.EqualValues(t, []string{"app"}, errLabel)
 
 	// request missing all required labels.
 	lbs = labels.FromMap(map[string]string{"pod": "distributor-abc"})
-	err, errLabel = distributors[0].missingEnforcedLabels(lbs, "test")
+	errLabel, err = distributors[0].missingEnforcedLabels(lbs, "test")
 	assert.NoError(t, err)
 	assert.EqualValues(t, []string{"app", "env"}, errLabel)
 }
@@ -1725,7 +1725,8 @@ func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 				for _, expectedError := range tc.expectedValidationErrors {
 					groupedExpectedErrors.Add(expectedError)
 				}
-				expectedErrorMsg := httpgrpc.Errorf(400, groupedExpectedErrors.Error())
+				mergedErr := groupedExpectedErrors.Error()
+				expectedErrorMsg := httpgrpc.Errorf(400, mergedErr)
 				require.EqualError(t, err, expectedErrorMsg.Error())
 			} else {
 				require.NoError(t, err)
