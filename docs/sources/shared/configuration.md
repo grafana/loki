@@ -3956,7 +3956,8 @@ otlp_config:
 [policy_stream_mapping: <map of string to string>]
 
 # Map of policies to enforced labels. Push streams that matches a policy
-# selector will be considered as belonging to that policy. Experimental.
+# selector will be considered as belonging to that policy and as such, the
+# labels related to the policy will be enforced. Experimental.
 [policy_enforced_labels: <map of string to list of strings>]
 
 # List of labels that must be present in the stream. If any of the labels are
