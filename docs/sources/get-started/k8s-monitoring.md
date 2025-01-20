@@ -79,24 +79,18 @@ As well as cloning the repository, we have also changed directories to `alloy-sc
 
 Grafana Loki will be used to store our collected logs. In this tutorial we will deploy Loki with a minimal footprint and use the default storage backend provided by the Loki Helm (MinIO).
 
-{{< docs/ignore >}}
-> **Note**: Due to the resource constraints of the Kubernetes cluster running in the playground, we are deploying Loki using a custom values file. This values file reduces the resource requirements of Loki. This turns off features such as; cache, Loki Canary, and runs Loki with limited resources.
-{{< /docs/ignore >}}
+> **Note**: Due to the resource constraints of the Kubernetes cluster running in the playground, we are deploying Loki using a custom values file. This values file reduces the resource requirements of Loki. This turns off features such as; cache, Loki Canary, and runs Loki with limited resources. This can take up to **1 minute** to complete.
 
 To deploy Loki run the following command:
 
-<!-- INTERACTIVE ignore START -->
 ```bash
 helm install --values loki-values.yml loki grafana/loki -n meta
 ```
-<!-- INTERACTIVE ignore END -->
-
-{{< docs/ignore >}}
 
 ```bash
 helm install --values killercoda/loki-values.yml loki grafana/loki -n meta
 ```
-{{< /docs/ignore >}}
+
 
 This command will deploy Loki in the `meta` namespace. The command also includes a `values` file that specifies the configuration for Loki. For more details on how to configure the Loki Helm refer to the Loki Helm [documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm).
 
@@ -189,13 +183,14 @@ alloy-receiver:
 ```
 
 To break down the configuration file:
-* We define the cluster name as `meta-monitoring-tutorial`. This a static label that will be attached to all logs collected by the Kubernetes Monitoring Helm chart.
-* We define a destination named `loki` that will be used to forward logs to Loki. The `url` attribute specifies the URL of the Loki gateway. **If you choose to deploy Loki in a different namespace or with a different name, you will need to update the `url` attribute accordingly.**
-* We enable the collection of cluster events and pod logs:
+* Define the cluster name as `meta-monitoring-tutorial`. This a static label that will be attached to all logs collected by the Kubernetes Monitoring Helm chart.
+* Define a destination named `loki` that will be used to forward logs to Loki. The `url` attribute specifies the URL of the Loki gateway. **If you choose to deploy Loki in a different namespace or in a different location entirley, you will need to update the `url` attribute accordingly.**
+* Enable the collection of cluster events and pod logs:
   * `collector`: specifies which collector to use to collect logs. In this case, we are using the `alloy-logs` collector.
   * `namespaces`: specifies the namespaces to collect logs from. In this case, we are collecting logs from the `meta` and `prod` namespaces.
-* We disable the collection of node logs for the purpose of this tutorial as it requires the mounting of `/var/log/journal`. This is out of scope for this tutorial.
-* Lastly, we define the role of the collector. The Kubernetes Monitoring Helm chart is designed to deploy only what you need and nothing more. So in this case, we are telling the Helm chart to only deploy Alloy with the capability to collect logs. If you need to collect K8s metrics, traces, or continuous profiling data, you can enable the respective collectors.
+* Disable the collection of node logs for the purpose of this tutorial as it requires the mounting of `/var/log/journal`. This is out of scope for this tutorial.
+* Lastly, define the role of the collector. The Kubernetes Monitoring Helm chart will deploy only what you need and nothing more. In this case, we are telling the Helm chart to only deploy Alloy with the capability to collect logs. If you need to collect K8s metrics, traces, or continuous profiling data, you can enable the respective collectors.
+
 
 ## Step 7: Accessing Grafana
 
@@ -210,13 +205,15 @@ kubectl --namespace meta port-forward $POD_NAME 3000 --address 0.0.0.0
 This will make your terminal unusable until you stop the port-forwarding process. To do this, press `Ctrl + C`.
 {{< /admonition >}}
 
-This command will port-forward the Grafana service to your local machine on port `3000`. You can access Grafana by navigating to [http://localhost:3000](http://localhost:3000)in your browser. The default credentials are `admin` and `adminadminadmin`.  One of the first places you should visit is Explore Logs which will provide a no-code view of the logs being stored in Loki:
+This command will port-forward the Grafana service to your local machine on port `3000`. You can access Grafana by navigating to [http://localhost:3000](http://localhost:3000) in your browser. The default credentials are `admin` and `adminadminadmin`.  One of the first places you should visit is Explore Logs which will provide a no-code view of the logs being stored in Loki:
 
 [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app)
 
+{{< figure max-width="100%" src="/media/docs/loki/k8s-logs-explore-logs.png" caption="Explore Logs view of K8s logs" alt="Explore Logs view of K8s logs" >}}
+
 ## Step 8 (Optional): View the Alloy UI
 
-The Kubernetes Monitoring Helm chart deploys Grafana Alloy a collector that is used to collect logs, metrics, traces, and continuous profiling data. If you would like to understand the pipeline of logs from the Kubernetes Monitoring Helm chart to Loki, you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
+The Kubernetes Monitoring Helm chart deploys Grafana Alloy to collect and forward telemetry data from the Kubernetes cluster. The Helm is designed to abstract you from creating an Alloy configuration file. However if you would like to understand the pipeline you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
 
 ```bash
 export POD_NAME=$(kubectl get pods --namespace meta -l "app.kubernetes.io/name=alloy-logs,app.kubernetes.io/instance=k8s" -o jsonpath="{.items[0].metadata.name}") && \
@@ -229,9 +226,11 @@ This will make your terminal unusable until you stop the port-forwarding process
 
 This command will port-forward the Alloy service to your local machine on port `12345`. You can access the Alloy UI by navigating to [http://localhost:12345](http://localhost:12345) in your browser.
 
+{{< figure max-width="100%" src="/media/docs/loki/k8s-logs-alloy-ui.png" caption="Grafana Alloy UI" alt="Grafana Alloy UI" >}}
+
 ## Step 9: Adding a sample application to `prod`
 
-Lastly, lets deploy a sample application to the `prod` namespace that will generate logs. To deploy the sample application run the following command:
+Lastly, lets deploy a sample application to the `prod` namespace that will generate some logs. To deploy the sample application run the following command:
 
 ```bash
 helm install tempo grafana/tempo-distributed -n prod
@@ -248,13 +247,18 @@ kubectl --namespace meta port-forward $POD_NAME 3000 --address 0.0.0.0
 
 and navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app) to view Grafana Tempo logs.
 
+{{< figure max-width="100%" src="/media/docs/loki/k8s-logs-tempo.png" caption="Label view of Tempo logs" alt="Label view of Tempo logs" >}}
+
+
 ## Conclusion
 
-In this tutorial, you learned how to deploy Loki, Grafana, and the Kubernetes Monitoring Helm chart to collect and store logs from your Kubernetes cluster. We have deployed a minimal test version of each of these helm charts to demonstrate how quickly you can get started with Loki. It now worth exploring each of these helm charts in more detail to understand how you can scale them to meet your production needs:
+In this tutorial, you learned how to deploy Loki, Grafana, and the Kubernetes Monitoring Helm chart to collect and store logs from a Kubernetes cluster. We have deployed a minimal test version of each of these helm charts to demonstrate how quickly you can get started with Loki. It now worth exploring each of these helm charts in more detail to understand how to scale them to meet your production needs:
 
 * [Loki Helm](https://grafana.com/docs/loki/latest/setup/install/helm/)
 * [Grafana Helm](https://grafana.com/docs/grafana/latest/installation/helm/)
 * [Kubernetes Monitoring Helm](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/)
+
+
 
 
 
