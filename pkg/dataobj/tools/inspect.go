@@ -9,6 +9,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
 func Inspect(dataobj io.ReadSeeker) {
@@ -48,7 +51,11 @@ func printStreamInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 	for _, col := range cols {
 		totalCompressedSize += uint64(col.Info.CompressedSize)
 		totalUncompressedSize += uint64(col.Info.UncompressedSize)
-		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(uint64(col.Info.CompressedSize)), col.Info.Compression.String()[17:], humanize.Bytes(uint64(col.Info.UncompressedSize)))
+		pageDescs, err := result.Collect(dec.Pages(context.Background(), []*streamsmd.ColumnDesc{col}))
+		if err != nil {
+			log.Printf("failed to fetch page descriptors: %v", err)
+		}
+		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed; %d pages\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(uint64(col.Info.CompressedSize)), col.Info.Compression.String()[17:], humanize.Bytes(uint64(col.Info.UncompressedSize)), len(pageDescs[0]))
 	}
 	fmt.Println("")
 	fmt.Printf("Streams Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(cols), humanize.Bytes(totalCompressedSize), humanize.Bytes(totalUncompressedSize))
@@ -73,7 +80,11 @@ func printLogsInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 	for _, col := range cols {
 		totalCompressedSize += uint64(col.Info.CompressedSize)
 		totalUncompressedSize += uint64(col.Info.UncompressedSize)
-		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(uint64(col.Info.CompressedSize)), col.Info.Compression.String()[17:], humanize.Bytes(uint64(col.Info.UncompressedSize)))
+		pageDescs, err := result.Collect(dec.Pages(context.Background(), []*logsmd.ColumnDesc{col}))
+		if err != nil {
+			log.Printf("failed to fetch page descriptors: %v", err)
+		}
+		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed; %d pages\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(uint64(col.Info.CompressedSize)), col.Info.Compression.String()[17:], humanize.Bytes(uint64(col.Info.UncompressedSize)), len(pageDescs[0]))
 	}
 	fmt.Println("")
 	fmt.Printf("Logs Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(cols), humanize.Bytes(totalCompressedSize), humanize.Bytes(totalUncompressedSize))
