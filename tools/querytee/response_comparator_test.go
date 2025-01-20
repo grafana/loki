@@ -70,7 +70,7 @@ func TestCompareMatrix(t *testing.T) {
 							{"metric":{"foo":"bar"},"values":[[1,"1"],[3,"2"]]}
 						]`),
 			// timestamps are parsed from seconds to ms which are then added to errors as is so adding 3 0s to expected error.
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected timestamp 2 but got 3"),
+			err: errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected timestamp 2 but got 3"),
 		},
 		{
 			name: "difference in sample value",
@@ -80,7 +80,7 @@ func TestCompareMatrix(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[1,"1"],[2,"3"]]}
 						]`),
-			err: errors.New("sample pair not matching for metric {foo=\"bar\"}: expected value 2 for timestamp 2 but got 3"),
+			err: errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected value 2 for timestamp 2 but got 3"),
 		},
 		{
 			name: "correct samples",
@@ -93,7 +93,80 @@ func TestCompareMatrix(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareMatrix(tc.expected, tc.actual, SampleComparisonOptions{})
+			_, err := compareMatrix(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
+			if tc.err == nil {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.ErrorContains(t, err, tc.err.Error())
+		})
+	}
+}
+
+func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		expected          json.RawMessage
+		actual            json.RawMessage
+		skipSamplesBefore time.Duration
+		skipRecentSamples time.Duration
+		evaluationTime    time.Time
+		err               error
+	}{
+		{
+			name: "skip samples before window",
+			expected: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[0,"1"],[5,"2"],[15,"3"],[20,"4"]]}
+						]`),
+			actual: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[15,"3"],[20,"4"]]}
+						]`),
+			skipSamplesBefore: 90 * time.Second,
+			evaluationTime:    time.Unix(100, 0),
+		},
+		{
+			name: "skip recent samples",
+			expected: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[80,"3"],[94,"4"],[96,"5"]]}
+						]`),
+			actual: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[80,"3"],[95, "4"]]}
+						]`),
+			skipRecentSamples: 10 * time.Second,
+			evaluationTime:    time.Unix(100, 0),
+		},
+		{
+			name: "skip both recent and old samples",
+			expected: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[80,"3"],[94,"4"],[96,"5"]]}
+						]`),
+			actual: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"0"],[25,"2"],[80,"3"],[95, "4"]]}
+						]`),
+			skipSamplesBefore: 10 * time.Second,
+			skipRecentSamples: 10 * time.Second,
+			evaluationTime:    time.Unix(100, 0),
+		},
+		{
+			name: "skip entire series",
+			expected: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[94,"4"],[96,"5"]]}
+						]`),
+			actual: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"0"],[96,"1"]]}
+						]`),
+			skipSamplesBefore: 10 * time.Second,
+			skipRecentSamples: 10 * time.Second,
+			evaluationTime:    time.Unix(100, 0),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := compareMatrix(tc.expected, tc.actual, tc.evaluationTime, SampleComparisonOptions{
+				SkipSamplesBefore: tc.skipSamplesBefore,
+				SkipRecentSamples: tc.skipRecentSamples,
+			})
+
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -176,7 +249,7 @@ func TestCompareVector(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareVector(tc.expected, tc.actual, SampleComparisonOptions{})
+			_, err := compareVector(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -213,7 +286,7 @@ func TestCompareScalar(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareScalar(tc.expected, tc.actual, SampleComparisonOptions{})
+			_, err := compareScalar(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{})
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -408,7 +481,7 @@ func TestCompareSamplesResponse(t *testing.T) {
 				UseRelativeError:  tc.useRelativeError,
 				SkipRecentSamples: tc.skipRecentSamples,
 			})
-			_, err := samplesComparator.Compare(tc.expected, tc.actual)
+			_, err := samplesComparator.Compare(tc.expected, tc.actual, time.Now())
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -501,9 +574,62 @@ func TestCompareStreams(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := compareStreams(tc.expected, tc.actual, SampleComparisonOptions{Tolerance: 0})
+			_, err := compareStreams(tc.expected, tc.actual, time.Now(), SampleComparisonOptions{Tolerance: 0})
 			if tc.err == nil {
 				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.Equal(t, tc.err.Error(), err.Error())
+		})
+	}
+}
+
+func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		expected          json.RawMessage
+		actual            json.RawMessage
+		skipSamplesBefore time.Duration
+		skipRecentSamples time.Duration
+		evaluationTime    time.Time
+		err               error
+	}{
+		// stream entry timestamp is in ns
+		{
+			name: "skip samples before window",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"],["95","4"]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["2","0"],["15","2"],["50","3"],["95","4"]]}
+			]`),
+			skipSamplesBefore: 90 * time.Nanosecond,
+			evaluationTime:    time.Unix(0, 100),
+		},
+		{
+			name: "skip recent samples",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"],["95","4"]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"]]}
+			]`),
+			skipRecentSamples: 10 * time.Nanosecond,
+			evaluationTime:    time.Unix(0, 100),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			summary, err := compareStreams(tc.expected, tc.actual, tc.evaluationTime, SampleComparisonOptions{
+				SkipSamplesBefore: tc.skipSamplesBefore,
+				SkipRecentSamples: tc.skipRecentSamples,
+			})
+
+			if tc.err == nil {
+				require.NoError(t, err)
+				if summary != nil {
+					require.True(t, summary.skipped)
+				}
 				return
 			}
 			require.Error(t, err)
