@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/validation/openshift"
 )
 
 // objectStorageSchemaMap defines the type for mapping a schema version with a date
@@ -108,7 +109,7 @@ func (v *LokiStackValidator) validateOTLPConfiguration(spec *lokiv1.LokiStackSpe
 
 	if spec.Tenants.Mode == lokiv1.OpenshiftLogging {
 		// This tenancy mode always provides stream labels
-		return nil
+		return openshift.ValidateOTLPInvalidDrop(spec)
 	}
 
 	if spec.Tenants.Mode == lokiv1.OpenshiftNetwork {
