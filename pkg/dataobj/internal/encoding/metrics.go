@@ -351,9 +351,13 @@ func (m *Metrics) observeLogsSection(ctx context.Context, section *filemd.Sectio
 	for i, column := range columns {
 		columnType := column.Type.String()
 		pages := columnPages[i]
+		compression := column.Info.Compression
 
 		m.datasetColumnCompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.CompressedSize))
 		m.datasetColumnUncompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.UncompressedSize))
+		if compression != datasetmd.COMPRESSION_TYPE_NONE {
+			m.datasetColumnCompressionRatio.WithLabelValues(sectionType, columnType, compression.String()).Observe(float64(column.Info.UncompressedSize) / float64(column.Info.CompressedSize))
+		}
 		m.datasetColumnRows.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.RowsCount))
 		m.datasetColumnValues.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.ValuesCount))
 
@@ -362,6 +366,9 @@ func (m *Metrics) observeLogsSection(ctx context.Context, section *filemd.Sectio
 		for _, page := range pages {
 			m.datasetPageCompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.CompressedSize))
 			m.datasetPageUncompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.UncompressedSize))
+			if compression != datasetmd.COMPRESSION_TYPE_NONE {
+				m.datasetPageCompressionRatio.WithLabelValues(sectionType, columnType, compression.String()).Observe(float64(page.Info.UncompressedSize) / float64(page.Info.CompressedSize))
+			}
 			m.datasetPageRows.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.RowsCount))
 			m.datasetPageValues.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.ValuesCount))
 		}
