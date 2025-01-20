@@ -307,7 +307,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, i.evaluateRetention(labels))
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -341,13 +341,25 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 		)
 	}
 
-	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
+	retention := i.evaluateRetention(labels)
+	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retention.String()).Add(float64(len(pushReqStream.Entries)))
 	bytes := util.EntriesTotalSize(pushReqStream.Entries)
-	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retention.String()).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
 	}
 	return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, labels, i.instanceID)
+}
+
+func (i *instance) evaluateRetention(labels labels.Labels) time.Duration {
+	streamRetention := i.limiter.limits.StreamRetention(i.instanceID)
+	for _, retention := range streamRetention {
+		if retention.Matches(labels) {
+			return time.Duration(retention.Period)
+		}
+	}
+	// no matches, return default retention
+	return i.limiter.limits.RetentionPeriod(i.instanceID)
 }
 
 func (i *instance) onStreamCreated(s *stream) {
@@ -375,7 +387,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, i.evaluateRetention(ls))
 
 	i.onStreamCreated(s)
 

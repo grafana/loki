@@ -616,7 +616,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if policy != "" {
 				streamSize := util.EntriesTotalSize(stream.Entries)
 				if yes, until, retStatusCode := d.validator.ShouldBlockIngestionForPolicy(validationContext, policy, now); yes {
-					d.trackDiscardedDataFromPolicy(ctx, policy, tenantID, now, validation.BlockedPolicyIngestion, streamRetention, streamSize, lbs)
+					d.trackDiscardedDataFromPolicy(ctx, policy, tenantID, validation.BlockedPolicyIngestion, streamRetention, streamSize, lbs)
 
 					err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode, policy)
 					d.writeFailuresManager.Log(tenantID, err)
@@ -878,7 +878,7 @@ func (d *Distributor) missingPolicyEnforcedLabels(lbs labels.Labels, tenantID st
 	return nil
 }
 
-func (d *Distributor) trackDiscardedDataFromPolicy(ctx context.Context, policy string, tenantID string, now time.Time, reason string, retention time.Duration, discardedStreamBytes int, lbs labels.Labels) {
+func (d *Distributor) trackDiscardedDataFromPolicy(ctx context.Context, policy string, tenantID string, reason string, retention time.Duration, discardedStreamBytes int, lbs labels.Labels) {
 	validation.DiscardedSamplesByPolicy.WithLabelValues(reason, policy, tenantID, retention.String()).Add(float64(1))
 	validation.DiscardedBytesByPolicy.WithLabelValues(reason, policy, tenantID, retention.String()).Add(float64(discardedStreamBytes))
 

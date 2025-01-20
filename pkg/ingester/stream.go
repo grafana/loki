@@ -82,6 +82,8 @@ type stream struct {
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 
 	configs *runtime.TenantConfigs
+
+	retention time.Duration
 }
 
 type chunkDesc struct {
@@ -112,6 +114,7 @@ func newStream(
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
 	configs *runtime.TenantConfigs,
+	retention time.Duration,
 ) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
@@ -132,7 +135,8 @@ func newStream(
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
 
-		configs: configs,
+		configs:   configs,
+		retention: retention,
 	}
 }
 

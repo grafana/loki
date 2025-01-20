@@ -31,6 +31,8 @@ type Limits interface {
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
+	StreamRetention(userID string) []validation.StreamRetention
+	RetentionPeriod(userID string) time.Duration
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
 }

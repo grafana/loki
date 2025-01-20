@@ -15,7 +15,7 @@ func TestStreamsMap(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
 	chunkfmt, headfmt := defaultChunkFormat(t)
-
+	retention := limiter.limits.RetentionPeriod("fake")
 	ss := []*stream{
 		newStream(
 			chunkfmt,
@@ -32,6 +32,7 @@ func TestStreamsMap(t *testing.T) {
 			NilMetrics,
 			nil,
 			nil,
+			retention,
 		),
 		newStream(
 			chunkfmt,
@@ -48,6 +49,7 @@ func TestStreamsMap(t *testing.T) {
 			NilMetrics,
 			nil,
 			nil,
+			retention,
 		),
 	}
 	var s *stream

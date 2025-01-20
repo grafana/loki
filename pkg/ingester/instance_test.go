@@ -310,12 +310,15 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		{Labels: "{app=\"test\",job=\"varlogs2\"}", Entries: entries(5, currentTime.Add(12*time.Nanosecond))},
 	}
 
+	retention, err := time.ParseDuration("720h")
+	require.NoError(t, err)
+
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(context.Background(), testStream, recordPool.GetRecord())
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retention).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -573,9 +576,12 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	chunkfmt, headfmt, err := inst.chunkFormatAt(model.Now())
 	require.NoError(b, err)
 
+	retention, err := time.ParseDuration("720h")
+	require.NoError(b, err)
+
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retention))
 		}
 	})
 }
