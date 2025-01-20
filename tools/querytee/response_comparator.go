@@ -31,16 +31,17 @@ type SampleComparisonOptions struct {
 	Tolerance         float64
 	UseRelativeError  bool
 	SkipRecentSamples time.Duration
-	SkipSamplesBefore time.Duration
+	SkipSamplesBefore time.Time
 }
 
 func (opts *SampleComparisonOptions) SkipSample(sampleTime, evaluationTime time.Time) bool {
 	// Skip if sample is too old
-	if opts.SkipSamplesBefore > 0 && sampleTime.Before(evaluationTime.Add(-opts.SkipSamplesBefore)) {
+	if !opts.SkipSamplesBefore.IsZero() && sampleTime.Before(opts.SkipSamplesBefore) {
 		return true
 	}
+
 	// Skip if sample is too recent
-	if opts.SkipRecentSamples > 0 && evaluationTime.Sub(sampleTime) < opts.SkipRecentSamples {
+	if opts.SkipRecentSamples > 0 && sampleTime.After(evaluationTime.Add(-opts.SkipRecentSamples)) {
 		return true
 	}
 	return false
@@ -110,7 +111,7 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 	}
 
 	// Filter out samples outside the comparable window
-	if opts.SkipSamplesBefore > 0 || opts.SkipRecentSamples > 0 {
+	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
 		expected = filterSamplesOutsideWindow(expected, func(sampleTime time.Time) bool {
 			return opts.SkipSample(sampleTime, evaluationTime)
 		})
@@ -213,7 +214,7 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 	}
 
 	// Filter out samples outside the comparable windows
-	if opts.SkipSamplesBefore > 0 || opts.SkipRecentSamples > 0 {
+	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
 		filtered := expected[:0]
 		for i := range expected {
 			if !opts.SkipSample(expected[i].Timestamp.Time(), evaluationTime) {
@@ -347,7 +348,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 	}
 
 	// Filter out entries outside the comparable window
-	if opts.SkipSamplesBefore > 0 || opts.SkipRecentSamples > 0 {
+	if !opts.SkipSamplesBefore.IsZero() || opts.SkipRecentSamples > 0 {
 		expected = filterStreamsOutsideWindow(expected, func(entryTime time.Time) bool {
 			return opts.SkipSample(entryTime, evaluationTime)
 		})

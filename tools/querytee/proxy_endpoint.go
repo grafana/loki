@@ -15,7 +15,7 @@ import (
 )
 
 type ResponsesComparator interface {
-	Compare(expected, actual []byte) (*ComparisonSummary, error)
+	Compare(expected, actual []byte, queryEvaluationTime time.Time) (*ComparisonSummary, error)
 }
 
 type ComparisonSummary struct {
@@ -176,7 +176,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			actualResponse := responses[i]
 
 			result := comparisonSuccess
-			summary, err := p.compareResponses(expectedResponse, actualResponse)
+			summary, err := p.compareResponses(expectedResponse, actualResponse, time.Now().UTC())
 			if err != nil {
 				level.Error(p.logger).Log("msg", "response comparison failed",
 					"backend-name", p.backends[i].name,
@@ -230,7 +230,7 @@ func (p *ProxyEndpoint) waitBackendResponseForDownstream(resCh chan *backendResp
 	return responses[0]
 }
 
-func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse) (*ComparisonSummary, error) {
+func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backendResponse, queryEvalTime time.Time) (*ComparisonSummary, error) {
 	if expectedResponse.err != nil {
 		return &ComparisonSummary{skipped: true}, nil
 	}
@@ -252,7 +252,7 @@ func (p *ProxyEndpoint) compareResponses(expectedResponse, actualResponse *backe
 		return nil, fmt.Errorf("expected status code %d but got %d", expectedResponse.status, actualResponse.status)
 	}
 
-	return p.comparator.Compare(expectedResponse.body, actualResponse.body)
+	return p.comparator.Compare(expectedResponse.body, actualResponse.body, queryEvalTime)
 }
 
 type backendResponse struct {

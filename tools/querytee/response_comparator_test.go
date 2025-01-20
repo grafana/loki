@@ -109,7 +109,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 		name              string
 		expected          json.RawMessage
 		actual            json.RawMessage
-		skipSamplesBefore time.Duration
+		skipSamplesBefore time.Time
 		skipRecentSamples time.Duration
 		evaluationTime    time.Time
 		err               error
@@ -122,7 +122,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[5,"1"],[15,"3"],[20,"4"]]}
 						]`),
-			skipSamplesBefore: 90 * time.Second,
+			skipSamplesBefore: time.Unix(10, 0),
 			evaluationTime:    time.Unix(100, 0),
 		},
 		{
@@ -144,7 +144,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[5,"0"],[25,"2"],[80,"3"],[95, "4"]]}
 						]`),
-			skipSamplesBefore: 10 * time.Second,
+			skipSamplesBefore: time.Unix(10, 0),
 			skipRecentSamples: 10 * time.Second,
 			evaluationTime:    time.Unix(100, 0),
 		},
@@ -156,7 +156,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo":"bar"},"values":[[5,"0"],[96,"1"]]}
 						]`),
-			skipSamplesBefore: 10 * time.Second,
+			skipSamplesBefore: time.Unix(10, 0),
 			skipRecentSamples: 10 * time.Second,
 			evaluationTime:    time.Unix(100, 0),
 		},
@@ -590,7 +590,7 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 		name              string
 		expected          json.RawMessage
 		actual            json.RawMessage
-		skipSamplesBefore time.Duration
+		skipSamplesBefore time.Time
 		skipRecentSamples time.Duration
 		evaluationTime    time.Time
 		err               error
@@ -604,7 +604,7 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 			actual: json.RawMessage(`[
 				{"stream":{"foo":"bar"},"values":[["2","0"],["15","2"],["50","3"],["95","4"]]}
 			]`),
-			skipSamplesBefore: 90 * time.Nanosecond,
+			skipSamplesBefore: time.Unix(0, 10),
 			evaluationTime:    time.Unix(0, 100),
 		},
 		{
