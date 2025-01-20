@@ -397,8 +397,8 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 
 	t.ingestLimitsRing, err = ring.New(
 		t.Cfg.IngestLimits.LifecyclerConfig.RingConfig,
-		limits.RingKey,
 		limits.RingName,
+		limits.RingKey,
 		util_log.Logger,
 		reg,
 	)

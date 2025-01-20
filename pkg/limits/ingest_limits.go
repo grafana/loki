@@ -62,7 +62,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	}
 
 	// Initialize lifecycler
-	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingKey, RingName, true, logger, reg)
+	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingName, RingKey, true, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
 	}
@@ -105,7 +105,26 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 
 // starting implements the Service interface's starting method.
 // It is called when the service starts and performs any necessary initialization.
-func (s *IngestLimits) starting(_ context.Context) error {
+func (s *IngestLimits) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			// if starting() fails for any reason (e.g., context canceled),
+			// the lifecycler must be stopped.
+			_ = services.StopAndAwaitTerminated(context.Background(), s.lifecycler)
+		}
+	}()
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when IngestLimits's service context is done
+	err = s.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = s.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -209,7 +228,12 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
 	}
-	return failureCase
+
+	var allErrs util.MultiError
+	allErrs.Add(services.StopAndAwaitTerminated(context.Background(), s.lifecycler))
+	allErrs.Add(failureCase)
+
+	return allErrs.Err()
 }
 
 // ServeHTTP implements the http.Handler interface.
