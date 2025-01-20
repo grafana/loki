@@ -654,6 +654,55 @@ var ltt = []struct {
 			},
 		),
 	},
+	{
+		desc: "lokistack with custom OTLP configuration listing an attribute as both stream-label and drop",
+		spec: lokiv1.LokiStack{
+			Spec: lokiv1.LokiStackSpec{
+				Limits: &lokiv1.LimitsSpec{
+					Global: &lokiv1.LimitsTemplateSpec{
+						OTLP: &lokiv1.OTLPSpec{
+							StreamLabels: &lokiv1.OTLPStreamLabelSpec{
+								ResourceAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "global.stream.label",
+									},
+								},
+							},
+							Drop: &lokiv1.OTLPMetadataSpec{
+								ResourceAttributes: []lokiv1.OTLPAttributeReference{
+									{
+										Name: "global.stream.label",
+									},
+								},
+							},
+						},
+					},
+				},
+				Storage: lokiv1.ObjectStorageSpec{
+					Schemas: []lokiv1.ObjectStorageSchema{
+						{
+							Version:       lokiv1.ObjectStorageSchemaV13,
+							EffectiveDate: "2024-10-22",
+						},
+					},
+				},
+				Tenants: &lokiv1.TenantsSpec{
+					Mode: lokiv1.Static,
+				},
+			},
+		},
+		err: apierrors.NewInvalid(
+			schema.GroupKind{Group: "loki.grafana.com", Kind: "LokiStack"},
+			"testing-stack",
+			field.ErrorList{
+				field.Invalid(
+					field.NewPath("spec", "limits", "global", "otlp", "drop", "resourceAttributes").Index(0),
+					"global.stream.label",
+					lokiv1.ErrOTLPInvalidDrop.Error(),
+				),
+			},
+		),
+	},
 }
 
 func TestLokiStackValidationWebhook_ValidateCreate(t *testing.T) {
