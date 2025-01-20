@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { FileMetadata } from "./components/FileMetadata";
 
 interface FileInfo {
   name: string;
@@ -27,6 +28,8 @@ export default function App() {
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedFileMetadata, setSelectedFileMetadata] = useState(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -52,9 +55,27 @@ export default function App() {
   }, [path]);
 
   const navigateTo = (newPath: string) => {
+    setSelectedFileMetadata(null);
+    setSelectedFile(null);
     // Remove leading/trailing slashes
     const cleanPath = newPath.replace(/^\/+|\/+$/g, "");
     setSearchParams(cleanPath ? { path: cleanPath } : {});
+  };
+
+  const handleFileClick = async (file: string) => {
+    try {
+      setSelectedFile(file);
+      const response = await fetch(
+        `api/inspect?file=${encodeURIComponent(file)}`
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to fetch metadata: ${response.statusText}`);
+      }
+      const metadata = await response.json();
+      setSelectedFileMetadata(metadata);
+    } catch (error) {
+      console.error("Failed to fetch file metadata:", error);
+    }
   };
 
   if (loading) {
@@ -122,94 +143,169 @@ export default function App() {
                 </div>
               </li>
             ))}
+            {selectedFile && (
+              <li>
+                <div className="flex items-center">
+                  <svg
+                    className="w-3 h-3 text-gray-400 mx-1"
+                    aria-hidden="true"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 6 10"
+                  >
+                    <path
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="m1 9 4-4-4-4"
+                    />
+                  </svg>
+                  <span className="ml-1 text-sm font-medium text-gray-500 md:ml-2">
+                    {selectedFile.split("/").pop()}
+                  </span>
+                </div>
+              </li>
+            )}
           </ol>
         </nav>
       </div>
 
-      <div className="bg-white shadow-md rounded-lg overflow-hidden">
-        <div className="grid grid-cols-12 bg-gray-50 border-b">
-          <div className="col-span-8 p-4 font-semibold text-gray-600">Name</div>
-          <div className="col-span-4 p-4 font-semibold text-gray-600">Size</div>
+      {selectedFileMetadata ? (
+        <div>
+          <button
+            onClick={() => {
+              setSelectedFileMetadata(null);
+              setSelectedFile(null);
+            }}
+            className="mb-4 inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            <svg
+              className="w-4 h-4 mr-1"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            Back to file list
+          </button>
+          <FileMetadata
+            metadata={selectedFileMetadata}
+            filename={selectedFile || ""}
+            onDownload={() => {
+              if (selectedFile) {
+                window.open(
+                  `api/download?file=${encodeURIComponent(selectedFile)}`,
+                  "_blank"
+                );
+              }
+            }}
+          />
         </div>
-
-        {data.parent !== data.current && (
-          <div
-            onClick={() => navigateTo(data.parent)}
-            className="grid grid-cols-12 border-b cursor-pointer hover:bg-gray-50"
-          >
-            <div className="col-span-8 p-4 flex items-center">
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-              ..
+      ) : (
+        <div className="bg-white shadow-md rounded-lg overflow-hidden">
+          <div className="grid grid-cols-12 bg-gray-50 border-b">
+            <div className="col-span-8 p-4 font-semibold text-gray-600">
+              Name
             </div>
-            <div className="col-span-4 p-4">-</div>
-          </div>
-        )}
-
-        {data.folders.map((folder) => (
-          <div
-            key={folder}
-            onClick={() =>
-              navigateTo(data.current ? `${data.current}/${folder}` : folder)
-            }
-            className="grid grid-cols-12 border-b cursor-pointer hover:bg-gray-50"
-          >
-            <div className="col-span-8 p-4 flex items-center">
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                />
-              </svg>
-              {folder}
+            <div className="col-span-4 p-4 font-semibold text-gray-600">
+              Size
             </div>
-            <div className="col-span-4 p-4">-</div>
           </div>
-        ))}
 
-        {data.files.map((file) => (
-          <div
-            key={file.name}
-            className="grid grid-cols-12 border-b hover:bg-gray-50"
-          >
-            <div className="col-span-8 p-4 flex items-center">
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
-                />
-              </svg>
-              {file.name}
+          {data.parent !== data.current && (
+            <div
+              onClick={() => navigateTo(data.parent)}
+              className="grid grid-cols-12 border-b cursor-pointer hover:bg-gray-50"
+            >
+              <div className="col-span-8 p-4 flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                ..
+              </div>
+              <div className="col-span-4 p-4">-</div>
             </div>
-            <div className="col-span-4 p-4">{formatBytes(file.size)}</div>
+          )}
+
+          {data.folders.map((folder) => (
+            <div
+              key={folder}
+              onClick={() =>
+                navigateTo(data.current ? `${data.current}/${folder}` : folder)
+              }
+              className="grid grid-cols-12 border-b cursor-pointer hover:bg-gray-50"
+            >
+              <div className="col-span-8 p-4 flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                  />
+                </svg>
+                {folder}
+              </div>
+              <div className="col-span-4 p-4">-</div>
+            </div>
+          ))}
+
+          {/* Files */}
+          <div className="space-y-2">
+            {data.files.map((file) => (
+              <div
+                key={file.name}
+                className="grid grid-cols-12 border-b hover:bg-gray-50 cursor-pointer"
+                onClick={() =>
+                  handleFileClick(
+                    data.current ? `${data.current}/${file.name}` : file.name
+                  )
+                }
+              >
+                <div className="col-span-8 p-4 flex items-center">
+                  <svg
+                    className="w-5 h-5 mr-2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                    />
+                  </svg>
+                  {file.name}
+                </div>
+                <div className="col-span-4 p-4">{formatBytes(file.size)}</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
