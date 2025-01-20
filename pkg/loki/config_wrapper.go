@@ -262,6 +262,22 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.Pattern.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
+	// IngestLimits
+	if mergeWithExisting || reflect.DeepEqual(r.IngestLimits.LifecyclerConfig.RingConfig, defaults.IngestLimits.LifecyclerConfig.RingConfig) {
+		r.IngestLimits.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngestLimits.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngestLimits.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngestLimits.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngestLimits.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngestLimits.LifecyclerConfig.ID = rc.InstanceID
+		r.IngestLimits.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngestLimits.LifecyclerConfig.Port = rc.InstancePort
+		r.IngestLimits.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngestLimits.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngestLimits.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngestLimits.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
 	// Distributor
 	if mergeWithExisting || reflect.DeepEqual(r.Distributor.DistributorRing, defaults.Distributor.DistributorRing) {
 		r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
@@ -331,6 +347,13 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.Ingester.LifecyclerConfig.TokensFilePath = f
+
+	// IngestLimits
+	f, err = tokensFile(cfg, "ingestlimits.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.IngestLimits.LifecyclerConfig.TokensFilePath = f
 
 	// Compactor
 	f, err = tokensFile(cfg, "compactor.tokens")
@@ -414,6 +437,11 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.Ingester.LifecyclerConfig.InfNames, defaults.Ingester.LifecyclerConfig.InfNames) {
 		cfg.Ingester.LifecyclerConfig.InfNames = append(cfg.Ingester.LifecyclerConfig.InfNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.IngestLimits.LifecyclerConfig.InfNames, defaults.IngestLimits.LifecyclerConfig.InfNames) {
+		cfg.IngestLimits.LifecyclerConfig.InfNames = append(cfg.IngestLimits.LifecyclerConfig.InfNames, loopbackIface)
+	}
+
 	if reflect.DeepEqual(cfg.Pattern.LifecyclerConfig.InfNames, defaults.Pattern.LifecyclerConfig.InfNames) {
 		cfg.Pattern.LifecyclerConfig.InfNames = append(cfg.Pattern.LifecyclerConfig.InfNames, loopbackIface)
 	}
@@ -453,6 +481,7 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 // (for example, use consul for the distributor), it seems harmless to take a guess at better defaults here.
 func applyMemberlistConfig(r *ConfigWrapper) {
 	r.Ingester.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
+	r.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 	r.Pattern.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 	r.Distributor.DistributorRing.KVStore.Store = memberlistStr
 	r.Ruler.Ring.KVStore.Store = memberlistStr
