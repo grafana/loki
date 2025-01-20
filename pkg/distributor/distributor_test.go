@@ -43,7 +43,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	fe "github.com/grafana/loki/v3/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
@@ -1628,14 +1627,14 @@ func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 	afterOneHour := time.Now().Add(1 * time.Hour)
 
 	for _, tc := range []struct {
-		name                     string
-		blockUntilPolicy         map[string]flagext.Time
-		blockStatusCodeScope     map[string]int
-		policyStreamMapping      map[string]string
-		expectError              bool
-		expectedValidationErrors []error
-		expectedStatusCode       int
-		requestLbs               []string
+		name                    string
+		blockUntilPolicy        map[string]flagext.Time
+		blockStatusCodeScope    map[string]int
+		policyStreamMapping     map[string]string
+		expectError             bool
+		expectedValidationError error
+		expectedStatusCode      int
+		requestLbs              []string
 	}{
 		{
 			name:               "not configured",
@@ -1676,15 +1675,10 @@ func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 				"policy2": `{team="squad-1", env="dev"}`,
 				"policy3": `{team="squad-2", env="prod"}`,
 			},
-			expectError: true,
-			expectedValidationErrors: []error{
-				fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "policy1"),
-				fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "policy1"),
-				fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "policy1"),
-				fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "policy1"),
-			},
-			expectedStatusCode: 456,
-			requestLbs:         []string{`{team="squad-1", env="prod"}`, `{team="squad-1", env="dev"}`, `{team="squad-2", env="prod"}`, `{team="squad-2", env="dev"}`},
+			expectError:             true,
+			expectedValidationError: httpgrpc.Errorf(400, validation.BlockedPolicyIngestionErrorMsg, "test", afterOneHour.Format(time.RFC3339), 456, "policy1"),
+			expectedStatusCode:      456,
+			requestLbs:              []string{`{team="squad-1", env="prod"}`, `{team="squad-1", env="dev"}`, `{team="squad-2", env="prod"}`, `{team="squad-2", env="dev"}`},
 		},
 		{
 			name: "blocked with status code 200",
@@ -1719,13 +1713,7 @@ func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 
 			if tc.expectError {
 				require.Error(t, err)
-
-				var groupedExpectedErrors util.GroupedErrors
-				for _, expectedError := range tc.expectedValidationErrors {
-					groupedExpectedErrors.Add(expectedError)
-				}
-				expectedErrorMsg := httpgrpc.Errorf(400, "%s", groupedExpectedErrors.Error())
-				require.EqualError(t, err, expectedErrorMsg.Error())
+				require.EqualError(t, err, tc.expectedValidationError.Error())
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)

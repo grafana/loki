@@ -516,14 +516,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			tenantRetention := d.validator.Limits.RetentionPeriod(tenantID)
 
+			initialEntriesSize := util.EntriesTotalSize(stream.Entries)
+
 			var lbs labels.Labels
 			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, tenantRetention.String()).Add(float64(len(stream.Entries)))
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, tenantRetention.String()).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, tenantRetention.String()).Add(float64(initialEntriesSize))
 				continue
 			}
 
@@ -531,8 +532,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(errorLbValue, tenantID, tenantRetention.String()).Add(float64(len(stream.Entries)))
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(errorLbValue, tenantID, tenantRetention.String()).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(errorLbValue, tenantID, tenantRetention.String()).Add(float64(initialEntriesSize))
 				continue
 			}
 
@@ -612,8 +612,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			policy := d.policyForStream(lbs, tenantID)
-			if policy != "" {
+			if policy := d.policyForStream(lbs, tenantID); policy != "" {
 				streamSize := util.EntriesTotalSize(stream.Entries)
 				if yes, until, retStatusCode := d.validator.ShouldBlockIngestionForPolicy(validationContext, policy, now); yes {
 					d.trackDiscardedDataFromPolicy(ctx, policy, tenantID, validation.BlockedPolicyIngestion, streamRetention, streamSize, lbs)
