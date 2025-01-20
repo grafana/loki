@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/queue"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 )
@@ -121,14 +120,7 @@ type GatewayClient struct {
 	dnsProvider *discovery.DNS
 }
 
-func NewClient(
-	cfg ClientConfig,
-	limits Limits,
-	registerer prometheus.Registerer,
-	logger log.Logger,
-	cacheGen resultscache.CacheGenNumberLoader,
-	retentionEnabled bool,
-) (*GatewayClient, error) {
+func NewClient(cfg ClientConfig, registerer prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
 	metrics := newClientMetrics(registerer)
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(metrics.requestLatency))
