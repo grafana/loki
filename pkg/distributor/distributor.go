@@ -540,7 +540,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			retention := d.retentionPeriodForStream(lbs, tenantID)
 
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retention); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue

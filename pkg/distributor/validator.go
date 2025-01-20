@@ -94,7 +94,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 }
 
 // ValidateEntry returns an error if the entry is invalid and report metrics for invalid entries accordingly.
-func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, labels labels.Labels, entry logproto.Entry) error {
+func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, labels labels.Labels, entry logproto.Entry, retention time.Duration) error {
 	ts := entry.Timestamp.UnixNano()
 	validation.LineLengthHist.Observe(float64(len(entry.Line)))
 	structuredMetadataCount := len(entry.StructuredMetadata)
@@ -105,8 +105,8 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		// Makes time string on the error message formatted consistently.
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		formatedRejectMaxAgeTime := time.Unix(0, vCtx.rejectOldSampleMaxAge).Format(timeFormat)
-		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, vCtx.userID).Inc()
-		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, vCtx.userID).Add(entrySize)
+		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, vCtx.userID, retention.String()).Inc()
+		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, vCtx.userID, retention.String()).Add(entrySize)
 		if v.usageTracker != nil {
 			v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.GreaterThanMaxSampleAge, labels, entrySize)
 		}
@@ -115,8 +115,8 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 
 	if ts > vCtx.creationGracePeriod {
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
-		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, vCtx.userID).Inc()
-		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, vCtx.userID).Add(entrySize)
+		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, vCtx.userID, retention.String()).Inc()
+		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, vCtx.userID, retention.String()).Add(entrySize)
 		if v.usageTracker != nil {
 			v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.TooFarInFuture, labels, entrySize)
 		}
@@ -128,8 +128,8 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		// an orthogonal concept (we need not use ValidateLabels in this context)
 		// but the upstream cortex_validation pkg uses it, so we keep this
 		// for parity.
-		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, vCtx.userID).Inc()
-		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, vCtx.userID).Add(entrySize)
+		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, vCtx.userID, retention.String()).Inc()
+		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, vCtx.userID, retention.String()).Add(entrySize)
 		if v.usageTracker != nil {
 			v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.LineTooLong, labels, entrySize)
 		}
@@ -138,8 +138,8 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 
 	if structuredMetadataCount > 0 {
 		if !vCtx.allowStructuredMetadata {
-			validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, vCtx.userID).Inc()
-			validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, vCtx.userID).Add(entrySize)
+			validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, vCtx.userID, retention.String()).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, vCtx.userID, retention.String()).Add(entrySize)
 			if v.usageTracker != nil {
 				v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.DisallowedStructuredMetadata, labels, entrySize)
 			}
@@ -147,8 +147,8 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		}
 
 		if maxSize := vCtx.maxStructuredMetadataSize; maxSize != 0 && structuredMetadataSizeBytes > maxSize {
-			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooLarge, vCtx.userID).Inc()
-			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooLarge, vCtx.userID).Add(entrySize)
+			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooLarge, vCtx.userID, retention.String()).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooLarge, vCtx.userID, retention.String()).Add(entrySize)
 			if v.usageTracker != nil {
 				v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.StructuredMetadataTooLarge, labels, entrySize)
 			}
@@ -156,8 +156,8 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		}
 
 		if maxCount := vCtx.maxStructuredMetadataCount; maxCount != 0 && structuredMetadataCount > maxCount {
-			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooMany, vCtx.userID).Inc()
-			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooMany, vCtx.userID).Add(entrySize)
+			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooMany, vCtx.userID, retention.String()).Inc()
+			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooMany, vCtx.userID, retention.String()).Add(entrySize)
 			if v.usageTracker != nil {
 				v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.StructuredMetadataTooMany, labels, entrySize)
 			}

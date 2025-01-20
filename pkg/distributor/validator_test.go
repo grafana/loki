@@ -130,8 +130,9 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			assert.NoError(t, err)
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
+			retention := o.RetentionPeriod(tt.userID)
 
-			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry)
+			err = v.ValidateEntry(ctx, v.getValidationContextForTime(testTime, tt.userID), testStreamLabels, tt.entry, retention)
 			assert.Equal(t, tt.expected, err)
 		})
 	}
