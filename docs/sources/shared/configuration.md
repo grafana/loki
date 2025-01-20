@@ -3941,8 +3941,8 @@ otlp_config:
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
 
-# Block ingestion until the given time for the given policy. The policy is the
-# value of the policy label in the log line. Experimental.
+# Block ingestion until the given time for the given policy. Pushes will be
+# assigned to a policy based on the stream matcher configuration. Experimental.
 [block_policy_ingestion_until: <map of string to Time>]
 
 # HTTP status code to return when ingestion is blocked for the given policy.
@@ -3950,8 +3950,14 @@ otlp_config:
 [block_policy_ingestion_status_code: <map of string to int>]
 
 # Map of policies to stream selectors. Push streams that matches a policy
-# selector will be considered as belonging to that policy. Experimental.
+# selector will be considered as belonging to that policy. If that policy is
+# blocked, the push will be rejected with the status code specified in
+# block_policy_ingestion_status_code. Experimental.
 [policy_stream_mapping: <map of string to string>]
+
+# Map of policies to enforced labels. Push streams that matches a policy
+# selector will be considered as belonging to that policy. Experimental.
+[policy_enforced_labels: <map of string to list of strings>]
 
 # List of labels that must be present in the stream. If any of the labels are
 # missing, the stream will be discarded. This flag configures it globally for

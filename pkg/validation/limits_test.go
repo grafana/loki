@@ -251,6 +251,7 @@ ruler_remote_write_headers:
 				BlockPolicyIngestionStatusCode: map[string]int{},
 				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
+				PolicyEnforcedLabels:           map[string][]string{},
 			},
 		},
 		{
@@ -274,6 +275,7 @@ ruler_remote_write_headers:
 				BlockPolicyIngestionStatusCode: map[string]int{},
 				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
+				PolicyEnforcedLabels:           map[string][]string{},
 			},
 		},
 		{
@@ -301,6 +303,7 @@ retention_stream:
 				BlockPolicyIngestionStatusCode: map[string]int{},
 				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
+				PolicyEnforcedLabels:           map[string][]string{},
 			},
 		},
 		{
@@ -327,6 +330,7 @@ reject_old_samples: true
 				BlockPolicyIngestionStatusCode: map[string]int{},
 				PolicyStreamMapping:            map[string]string{},
 				EnforcedLabels:                 []string{},
+				PolicyEnforcedLabels:           map[string][]string{},
 			},
 		},
 		{
@@ -353,6 +357,7 @@ query_timeout: 5m
 				BlockPolicyIngestionUntil:      map[string]flagext.Time{},
 				BlockPolicyIngestionStatusCode: map[string]int{},
 				PolicyStreamMapping:            map[string]string{},
+				PolicyEnforcedLabels:           map[string][]string{},
 				EnforcedLabels:                 []string{},
 			},
 		},

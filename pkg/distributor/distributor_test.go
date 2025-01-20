@@ -17,8 +17,6 @@ import (
 
 	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -29,7 +27,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -39,12 +36,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	fe "github.com/grafana/loki/v3/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
@@ -1725,8 +1724,7 @@ func TestDistributor_PushIngestionBlockedPolicy(t *testing.T) {
 				for _, expectedError := range tc.expectedValidationErrors {
 					groupedExpectedErrors.Add(expectedError)
 				}
-				mergedErr := groupedExpectedErrors.Error()
-				expectedErrorMsg := httpgrpc.Errorf(400, mergedErr)
+				expectedErrorMsg := httpgrpc.Errorf(400, "%s", groupedExpectedErrors.Error())
 				require.EqualError(t, err, expectedErrorMsg.Error())
 			} else {
 				require.NoError(t, err)
