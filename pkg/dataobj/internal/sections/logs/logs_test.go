@@ -15,8 +15,6 @@ import (
 )
 
 func Test(t *testing.T) {
-	t.Skip("Disabled until sorting is reimplemented")
-
 	records := []logs.Record{
 		{
 			StreamID:  1,

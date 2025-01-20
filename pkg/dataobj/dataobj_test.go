@@ -94,10 +94,7 @@ func Test(t *testing.T) {
 
 		actual, err := result.Collect(reader.Streams(context.Background(), objects[0]))
 		require.NoError(t, err)
-
-		// TODO(rfratto): reenable once sorting is reintroduced.
-		_ = actual
-		// require.Equal(t, sortStreams(t, streams), actual)
+		require.Equal(t, sortStreams(t, streams), actual)
 	})
 }
 
