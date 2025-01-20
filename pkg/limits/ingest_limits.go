@@ -10,16 +10,21 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/plugin/kprom"
-
-	"github.com/grafana/dskit/services"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+)
+
+const (
+	RingKey  = "ingest-limits"
+	RingName = "ingest-limits"
 )
 
 // IngestLimits is a service that manages stream metadata limits.
@@ -30,9 +35,20 @@ type IngestLimits struct {
 	logger log.Logger
 	client *kgo.Client
 
+	lifecycler        *ring.Lifecycler
+	lifecyclerWatcher *services.FailureWatcher
+
 	// Track stream metadata
 	mtx      sync.RWMutex
 	metadata map[string]map[uint64]int64 // tenant -> streamHash -> lastSeenAt
+}
+
+// Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
+func (s *IngestLimits) Flush() {}
+
+// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits instance.
+func (s *IngestLimits) TransferOut(_ context.Context) error {
+	return nil
 }
 
 // NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
@@ -44,6 +60,16 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 		logger:   logger,
 		metadata: make(map[string]map[uint64]int64),
 	}
+
+	// Initialize lifecycler
+	s.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, s, RingName, RingKey, true, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
+	}
+
+	// Watch the lifecycler
+	s.lifecyclerWatcher = services.NewFailureWatcher()
+	s.lifecyclerWatcher.WatchService(s.lifecycler)
 
 	metrics := kprom.NewMetrics("loki_ingest_limits",
 		kprom.Registerer(reg),
@@ -79,7 +105,26 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 
 // starting implements the Service interface's starting method.
 // It is called when the service starts and performs any necessary initialization.
-func (s *IngestLimits) starting(_ context.Context) error {
+func (s *IngestLimits) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			// if starting() fails for any reason (e.g., context canceled),
+			// the lifecycler must be stopped.
+			_ = services.StopAndAwaitTerminated(context.Background(), s.lifecycler)
+		}
+	}()
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when IngestLimits's service context is done
+	err = s.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = s.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -94,6 +139,9 @@ func (s *IngestLimits) running(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		// stop
+		case err := <-s.lifecyclerWatcher.Chan():
+			return fmt.Errorf("lifecycler failed: %w", err)
 		default:
 			fetches := s.client.PollFetches(ctx)
 			if fetches.IsClientClosed() {
@@ -180,7 +228,12 @@ func (s *IngestLimits) stopping(failureCase error) error {
 	if errors.Is(failureCase, context.Canceled) || errors.Is(failureCase, kgo.ErrClientClosed) {
 		return nil
 	}
-	return failureCase
+
+	var allErrs util.MultiError
+	allErrs.Add(services.StopAndAwaitTerminated(context.Background(), s.lifecycler))
+	allErrs.Add(failureCase)
+
+	return allErrs.Err()
 }
 
 // ServeHTTP implements the http.Handler interface.

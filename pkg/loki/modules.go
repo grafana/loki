@@ -107,6 +107,7 @@ const (
 	InternalServer           string = "internal-server"
 	Distributor              string = "distributor"
 	IngestLimits             string = "ingest-limits"
+	IngestLimitsRing         string = "ingest-limits-ring"
 	IngestLimitsFrontend     string = "ingest-limits-frontend"
 	Querier                  string = "querier"
 	CacheGenerationLoader    string = "cache-generation-loader"
@@ -296,6 +297,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ruler.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 
 	return t.runtimeConfig, err
 }
@@ -384,6 +386,32 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.Server.HTTP.Path("/loki/api/v1/push").Methods("POST").Handler(lokiPushHandler)
 	t.Server.HTTP.Path("/otlp/v1/logs").Methods("POST").Handler(otlpPushHandler)
 	return t.distributor, nil
+}
+
+func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	t.ingestLimitsRing, err = ring.New(
+		t.Cfg.IngestLimits.LifecyclerConfig.RingConfig,
+		limits.RingName,
+		limits.RingKey,
+		util_log.Logger,
+		reg,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
+	}
+
+	return t.ingestLimitsRing, nil
 }
 
 func (t *Loki) initIngestLimits() (services.Service, error) {
@@ -1463,6 +1491,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
