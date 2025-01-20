@@ -28,6 +28,7 @@ cmd/querytee/querytee
 dlv
 rootfs/
 dist
+!pkg/dataobj/explorer/dist
 *coverage.txt
 *test_results.txt
 .DS_Store
