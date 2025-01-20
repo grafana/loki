@@ -37,38 +37,38 @@ These are the node types we suggest from various cloud providers. Please see the
 </div>
 
 {{< tabs >}}
-{{< tab-content name="~1PB/month (30TB/day)" >}}
-| Component       | CPU Request | Memory Request | Base Replicas  |
-|------------------|-------------|----------------|----------------|
-| Ingester         | 4           | 8              | 150            |
-| Distributor      | 2           | 1              | 100            |
-| Index gateway    | 1           | 4              | 20             |
-| Querier          | 1.5         | 3              | 250            |
-| Query-frontend   | 1           | 4              | 16             |
-| Query-scheduler  | 2           | 0.5            | 2              |
-| Compactor        | 6           | 20             | 1 (Singleton)  |
+{{< tab-content name="Less than 100TB/month (3TB/day)" >}}
+| Component        | CPU Request | Memory Request (Gi)| Base Replicas | Total CPU Req |Total Mem Req (Gi)|
+|------------------|-------------|-------------------|----------------|----------------|-----------------|
+| Ingester         | 2           | 4                 | 6              | 12             | 36              |
+| Distributor      | 2           | 0.5               | 4              | 8              | 2               |
+| Index gateway    | 0.5         | 2                 | 4              | 2              | 8               |
+| Querier          | 1           | 1                 | 10             | 10             | 10              |
+| Query-frontend   | 1           | 2                 | 2              | 2              | 4               |
+| Query-scheduler  | 1           | 0.5               | 2              | 2              | 1               |
+| Compactor        | 2           | 10                | 1 (Singleton)  | 2              | 10              |
 {{< /tab-content >}}
 {{< tab-content name="100TB to 1PB /month (3-30TB/day)" >}}
-| Component       | CPU Request | Memory Request | Base Replicas  |
-|------------------|-------------|----------------|----------------|
-| Ingester         | 2           | 6              | 90             |
-| Distributor      | 2           | 1              | 40             |
-| Index gateway    | 0.5         | 4              | 10             |
-| Querier          | 1.5         | 2              | 100            |
-| Query-frontend   | 1           | 2              | 8              |
-| Query-scheduler  | 1           | 0.5            | 2              |
-| Compactor        | 6           | 20             | 1 (Singleton)  |
+| Component        | CPU Request | Memory Request (Gi)| Base Replicas | Total CPU Req |Total Mem Req (Gi)|
+|------------------|-------------|-------------------|----------------|----------------|-----------------|
+| Ingester         | 2           | 6                 | 90             | 180            | 540             |
+| Distributor      | 2           | 1                 | 40             | 80             | 40              |
+| Index gateway    | 0.5         | 4                 | 10             | 5              | 40              |
+| Querier          | 1.5         | 2                 | 100            | 150            | 200             |
+| Query-frontend   | 1           | 2                 | 8              | 8              | 16              |
+| Query-scheduler  | 1           | 0.5               | 2              | 2              | 1               |
+| Compactor        | 6           | 20                | 1 (Singleton)  | 6              | 20              |
 {{< /tab-content >}}
-{{< tab-content name="Less than 100TB/month (3TB/day)" >}}
-| Component       | CPU Request | Memory Request | Base Replicas  |
-|------------------|-------------|----------------|----------------|
-| Ingester         | 2           | 4              | 6              |
-| Distributor      | 2           | 0.5            | 4              |
-| Index gateway    | 0.5         | 2              | 4              |
-| Querier          | 1           | 1              | 10             |
-| Query-frontend   | 1           | 2              | 2              |
-| Query-scheduler  | 1           | 0.5            | 2              |
-| Compactor        | 2           | 10             | 1 (Singleton)  |
+{{< tab-content name="~1PB/month (30TB/day)" >}}
+| Component        | CPU Request | Memory Request (Gi)| Base Replicas | Total CPU Req |Total Mem Req (Gi)|
+|------------------|-------------|-------------------|----------------|----------------|-----------------|
+| Ingester         | 4           | 8                 | 150            | 600            | 1200            |
+| Distributor      | 2           | 1                 | 100            | 200            | 100             |
+| Index gateway    | 1           | 4                 | 20             | 20             | 80              |
+| Querier          | 1.5         | 3                 | 250            | 375            | 750             |
+| Query-frontend   | 1           | 4                 | 16             | 16             | 64              |
+| Query-scheduler  | 2           | 0.5               | 2              | 4              | 1               |
+| Compactor        | 6           | 40                | 1 (Singleton)  | 6              | 40              |
 {{< /tab-content >}}
 {{< /tabs >}}   
 
