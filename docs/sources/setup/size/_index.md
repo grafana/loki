@@ -20,10 +20,11 @@ weight: 100
 This section is a guide to size base resource needs of a Loki cluster.
 
 Based on the expected ingestion volume, Loki clusters can be categorised into three tiers. Recommendations below are based on p90 resource utilisations of the relevant components. Each tab represents a different tier.
-Please use this document as a rough guide for base resource needs between these tiers. This is only documented for microservices/distributed mode.
+Please use this document as a rough guide to specify CPU and Memory requests in your deployment. This is only documented for microservices/distributed mode at this time.
 
-General notes on Query Performance:
-- Query resource needs can greatly vary with usage patterns. The rule of thumb is to run as small and many queriers as possible. Unoptimised queries can easily require 10x of the suggested querier resources below in all tiers. Running horizontal autoscaling will be most cost effective solution to meet the demand.
+Query resource needs can greatly vary with usage patterns and correct configurations. General notes on Query Performance:
+- The rule of thumb is to run as small and many queriers as possible. Unoptimised queries can easily require 10x of the suggested querier resources below in all tiers. Running horizontal autoscaling will be most cost effective solution to meet the demand.
+- Use this [blog post](https://grafana.com/blog/2023/12/28/the-concise-guide-to-loki-how-to-get-the-most-out-of-your-query-performance/) to adopt best practices for optimised query performance.
 - Parallel-querier and related components can be sized the same along with queriers for starters, depending on how much Loki rules are used.
 - Large Loki clusters benefits from disk based caching solution, memcached-extstore. Please see a detailed [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) and read more on [memcached/nvm-caching here](https://memcached.org/blog/nvm-caching/).
 - If you’re running a cluster that handles less than 30TB/day (~1PB/month) ingestion, we do not recommend configuring memcached-extstore. The additional operational complexity does not justify the savings.
