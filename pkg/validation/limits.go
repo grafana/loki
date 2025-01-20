@@ -264,8 +264,11 @@ type StreamRetention struct {
 }
 
 func (r *StreamRetention) Matches(lbs labels.Labels) bool {
-	for _, matcher := range r.Matchers {
-		// TODO: Is it possible for lbs.Type to not be `Equal`?
+	return LabelMatchesMatchers(lbs, r.Matchers)
+}
+
+func LabelMatchesMatchers(lbs labels.Labels, matchers []*labels.Matcher) bool {
+	for _, matcher := range matchers {
 		if !matcher.Matches(lbs.Get(matcher.Name)) {
 			return false
 		}

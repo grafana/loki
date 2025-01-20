@@ -771,7 +771,7 @@ func (d *Distributor) retentionPeriodForStream(lbs labels.Labels, tenantID strin
 	retentions := d.validator.Limits.StreamRetention(tenantID)
 
 	for _, retention := range retentions {
-		if d.lbsMatchesMatchers(lbs, retention.Matchers) {
+		if retention.Matches(lbs) {
 			return time.Duration(retention.Period)
 		}
 	}
@@ -817,16 +817,6 @@ func (d *Distributor) missingTenantEnforcedLabels(lbs labels.Labels, tenantID st
 	return nil
 }
 
-func (d *Distributor) lbsMatchesMatchers(lbs labels.Labels, matchers []*labels.Matcher) bool {
-	for _, matcher := range matchers {
-		if !matcher.Matches(lbs.Get(matcher.Name)) {
-			return false
-		}
-	}
-
-	return true
-}
-
 func (d *Distributor) policyForStream(lbs labels.Labels, tenantID string) string {
 	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
 	if len(policyStreamMapping) == 0 {
@@ -841,7 +831,7 @@ func (d *Distributor) policyForStream(lbs labels.Labels, tenantID string) string
 			continue
 		}
 
-		if d.lbsMatchesMatchers(lbs, matchers) {
+		if validation.LabelMatchesMatchers(lbs, matchers) {
 			return policy
 		}
 	}
