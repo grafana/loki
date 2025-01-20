@@ -168,10 +168,23 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 	return nil
 }
 
+func (v Validator) RetentionForStream(userID string, ls labels.Labels) time.Duration {
+	retentions := v.Limits.StreamRetention(userID)
+	for _, retention := range retentions {
+		if retention.Matches(ls) {
+			return time.Duration(retention.Period)
+		}
+	}
+
+	return v.Limits.RetentionPeriod(userID)
+}
+
 // Validate labels returns an error if the labels are invalid
 func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, stream logproto.Stream) error {
+	streamRetention := v.RetentionForStream(ctx.userID, ls)
+
 	if len(ls) == 0 {
-		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID).Inc()
+		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID, streamRetention.String()).Inc()
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 
@@ -188,20 +201,20 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 	}
 
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
-		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream)
+		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream, streamRetention)
 		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)
 	}
 
 	lastLabelName := ""
 	for _, l := range ls {
 		if len(l.Name) > ctx.maxLabelNameLength {
-			updateMetrics(validation.LabelNameTooLong, ctx.userID, stream)
+			updateMetrics(validation.LabelNameTooLong, ctx.userID, stream, streamRetention)
 			return fmt.Errorf(validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
 		} else if len(l.Value) > ctx.maxLabelValueLength {
-			updateMetrics(validation.LabelValueTooLong, ctx.userID, stream)
+			updateMetrics(validation.LabelValueTooLong, ctx.userID, stream, streamRetention)
 			return fmt.Errorf(validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
-			updateMetrics(validation.DuplicateLabelNames, ctx.userID, stream)
+			updateMetrics(validation.DuplicateLabelNames, ctx.userID, stream, streamRetention)
 			return fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
 		}
 		lastLabelName = l.Name
@@ -248,8 +261,8 @@ func (v Validator) ShouldBlockPolicyIngestion(ctx validationContext, policy stri
 	return now.Before(ts), ts, ctx.blockPolicyIngestionStatusCode[policy]
 }
 
-func updateMetrics(reason, userID string, stream logproto.Stream) {
-	validation.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(len(stream.Entries)))
+func updateMetrics(reason, userID string, stream logproto.Stream, retention time.Duration) {
+	validation.DiscardedSamples.WithLabelValues(reason, userID, retention.String()).Add(float64(len(stream.Entries)))
 	bytes := util.EntriesTotalSize(stream.Entries)
-	validation.DiscardedBytes.WithLabelValues(reason, userID).Add(float64(bytes))
+	validation.DiscardedBytes.WithLabelValues(reason, userID, retention.String()).Add(float64(bytes))
 }
