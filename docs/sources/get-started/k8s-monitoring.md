@@ -3,14 +3,7 @@ title: Kubernetes Monitoring with Loki
 menuTitle: Kubernetes Monitoring with Loki
 weight: 300
 description: Learn how to collect and store logs from your Kubernetes cluster using Loki.
-killercoda:
-  title: Kubernetes Monitoring with Loki
-  description: Learn how to collect and store logs from your Kubernetes cluster using Loki.
-  backend:
-    imageid: kubernetes-kubeadm-2nodes
 ---
-
-<!-- INTERACTIVE page intro.md START -->
 
 # Kubernetes Monitoring with Loki
 
@@ -32,7 +25,6 @@ Before you begin, here are some things you should know:
 * **Deployment**: We will deploy Loki, Grafana and Alloy (As part of the Kubernetes Monitoring Helm) in the `meta` namespace of your Kubernetes cluster. Make sure you have the necessary permissions to create resources in this namespace. These pods will also require resources to run so consider the amount of capacity your nodes have available. It also possible to just deploy the Kubernetes monitoring helm (since it has a minimal resource footprint) within your cluster and write logs to an external Loki instance or Grafana Cloud.
 * **Storage**:  In this tutorial, Loki will use the default object storage backend provided in the Loki Helm; [MinIO](https://min.io/docs/minio/kubernetes/upstream/index.html). You should migrate to a more production-ready storage backend like [S3](https://aws.amazon.com/s3/getting-started/), [GCS](https://cloud.google.com/storage/docs), [Azure Blob Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/) or a MinIO Cluster for production use cases.
 
-<!-- INTERACTIVE ignore START -->
 ## Prerequisites
 
 Before you begin, you will need the following:
@@ -50,11 +42,6 @@ It's a fully configured environment with all the dependencies already installed.
 
 Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repository](https://github.com/grafana/killercoda).
 {{< /admonition >}}
-<!-- INTERACTIVE ignore END -->
-
-<!-- INTERACTIVE page intro.md END -->
-
-<!-- INTERACTIVE page step1.md START -->
 
 ## Step 1: Create the `meta` and `prod` namespaces
 
@@ -67,10 +54,6 @@ Create the `meta` and `prod` namespaces by running the following commands:
 ```bash
 kubectl create namespace meta && kubectl create namespace prod
 ```
-
-<!-- INTERACTIVE page step1.md END -->
-
-<!-- INTERACTIVE page step2.md START -->
 
 ## Step 2: Add the Grafana Helm repository
 
@@ -91,10 +74,6 @@ git clone https://github.com/grafana/alloy-scenarios.git && cd alloy-scenarios/k
 ```
 
 As well as cloning the repository, we have also changed directories to `alloy-scenarios/k8s-logs`. **The rest of this tutorial assumes you are in this directory.**
-
-<!-- INTERACTIVE page step2.md END -->
-
-<!-- INTERACTIVE page step3.md START -->
 
 ## Step 4: Deploy Loki
 
@@ -151,10 +130,6 @@ As before the command also includes a `values` file that specifies the configura
               editable: false
    ```
   This configuration defines a data source named `Loki` that Grafana will use to query logs stored in Loki. The `url` attribute specifies the URL of the Loki gateway. The Loki gateway is a service that sits in front of the Loki API and provides a single endpoint for ingesting and querying logs. The URL is in the format `http://loki-gateway.meta.svc.cluster.local:80`. The `loki-gateway` service is created by the Loki Helm chart and is used to query logs stored in Loki. **If you choose to deploy Loki in a different namespace or with a different name, you will need to update the `url` attribute accordingly.**
-
-<!-- INTERACTIVE page step3.md END -->
-
-<!-- INTERACTIVE page step4.md START -->
 
 ## Step 6: Deploy the Kubernetes Monitoring Helm
 
@@ -222,10 +197,6 @@ To break down the configuration file:
 * We disable the collection of node logs for the purpose of this tutorial as it requires the mounting of `/var/log/journal`. This is out of scope for this tutorial.
 * Lastly, we define the role of the collector. The Kubernetes Monitoring Helm chart is designed to deploy only what you need and nothing more. So in this case, we are telling the Helm chart to only deploy Alloy with the capability to collect logs. If you need to collect K8s metrics, traces, or continuous profiling data, you can enable the respective collectors.
 
-<!-- INTERACTIVE page step4.md END -->
-
-<!-- INTERACTIVE page step5.md START -->
-
 ## Step 7: Accessing Grafana
 
 To access Grafana, you will need to port-forward the Grafana service to your local machine. To do this, run the following command:
@@ -258,10 +229,6 @@ This will make your terminal unusable until you stop the port-forwarding process
 
 This command will port-forward the Alloy service to your local machine on port `12345`. You can access the Alloy UI by navigating to [http://localhost:12345](http://localhost:12345) in your browser.
 
-<!-- INTERACTIVE page step5.md END -->
-
-<!-- INTERACTIVE page step6.md START -->
-
 ## Step 9: Adding a sample application to `prod`
 
 Lastly, lets deploy a sample application to the `prod` namespace that will generate logs. To deploy the sample application run the following command:
@@ -281,10 +248,6 @@ kubectl --namespace meta port-forward $POD_NAME 3000 --address 0.0.0.0
 
 and navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app) to view Grafana Tempo logs.
 
-<!-- INTERACTIVE page step6.md END -->
-
-<!-- INTERACTIVE page finish.md START -->
-
 ## Conclusion
 
 In this tutorial, you learned how to deploy Loki, Grafana, and the Kubernetes Monitoring Helm chart to collect and store logs from your Kubernetes cluster. We have deployed a minimal test version of each of these helm charts to demonstrate how quickly you can get started with Loki. It now worth exploring each of these helm charts in more detail to understand how you can scale them to meet your production needs:
@@ -293,7 +256,5 @@ In this tutorial, you learned how to deploy Loki, Grafana, and the Kubernetes Mo
 * [Grafana Helm](https://grafana.com/docs/grafana/latest/installation/helm/)
 * [Kubernetes Monitoring Helm](https://grafana.com/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/)
 
-
-<!-- INTERACTIVE page finish.md END -->
 
 
