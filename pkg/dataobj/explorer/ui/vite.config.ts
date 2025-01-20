@@ -10,19 +10,6 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: true,
-    assetsDir: "assets",
     cssCodeSplit: false,
-    rollupOptions: {
-      output: {
-        assetFileNames: (assetInfo) => {
-          if (!assetInfo.name) return "assets/[name]-[hash][extname]";
-          const ext = assetInfo.name.split(".").pop() || "";
-          if (/png|jpe?g|svg|gif|tiff|bmp|ico/i.test(ext)) {
-            return `assets/[name]-[hash][extname]`;
-          }
-          return `assets/[name]-[hash][extname]`;
-        },
-      },
-    },
   },
 });
