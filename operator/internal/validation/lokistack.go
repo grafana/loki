@@ -126,46 +126,50 @@ func (v *LokiStackValidator) validateOTLPConfiguration(spec *lokiv1.LokiStackSpe
 		hasGlobalStreamLabels = v.hasOTLPStreamLabel(spec.Limits.Global.OTLP)
 	}
 
-	if hasGlobalStreamLabels {
-		// When the global configuration has at least one stream label, then the configuration will be valid
+	errList := field.ErrorList{}
+	if !hasGlobalStreamLabels && spec.Limits.Tenants == nil {
+		// No tenant config and no global stream labels -> error
+		errList = append(errList, field.Invalid(
+			field.NewPath("spec", "limits", "global", "otlp", "streamLabels", "resourceAttributes"),
+			nil,
+			lokiv1.ErrOTLPGlobalNoStreamLabel.Error(),
+		),
+		)
+	}
+
+	errList = append(errList, v.validateOTLPTenantConfiguration(spec, hasGlobalStreamLabels)...)
+	return errList
+}
+
+func (v *LokiStackValidator) validateOTLPTenantConfiguration(spec *lokiv1.LokiStackSpec, hasGlobalStreamLabel bool) (errList field.ErrorList) {
+	if spec.Limits == nil || spec.Limits.Tenants == nil {
 		return nil
 	}
 
-	if spec.Limits.Tenants == nil {
-		// No tenant config and no global stream labels -> error
-		return field.ErrorList{
-			field.Invalid(
-				field.NewPath("spec", "limits", "global", "otlp", "streamLabels", "resourceAttributes"),
-				nil,
-				lokiv1.ErrOTLPGlobalNoStreamLabel.Error(),
-			),
-		}
-	}
-
-	errList := field.ErrorList{}
+	errList = field.ErrorList{}
 	for _, tenant := range spec.Tenants.Authentication {
 		tenantName := tenant.TenantName
 		tenantLimits, ok := spec.Limits.Tenants[tenantName]
 		if !ok || tenantLimits.OTLP == nil {
-			// No tenant limits defined and no global stream labels -> error
+			if !hasGlobalStreamLabel {
+				// No tenant limits defined and no global stream labels -> error
+				errList = append(errList, field.Invalid(
+					field.NewPath("spec", "limits", "tenants", tenantName, "otlp"),
+					nil,
+					lokiv1.ErrOTLPTenantMissing.Error(),
+				))
+			}
+
+			continue
+		}
+
+		if !hasGlobalStreamLabel && !v.hasOTLPStreamLabel(tenantLimits.OTLP) {
 			errList = append(errList, field.Invalid(
-				field.NewPath("spec", "limits", "tenants", tenantName, "otlp"),
+				field.NewPath("spec", "limits", "tenants", tenantName, "otlp", "streamLabels", "resourceAttributes"),
 				nil,
-				lokiv1.ErrOTLPTenantMissing.Error(),
+				lokiv1.ErrOTLPTenantNoStreamLabel.Error(),
 			))
-
-			continue
 		}
-
-		if v.hasOTLPStreamLabel(tenantLimits.OTLP) {
-			continue
-		}
-
-		errList = append(errList, field.Invalid(
-			field.NewPath("spec", "limits", "tenants", tenantName, "otlp", "streamLabels", "resourceAttributes"),
-			nil,
-			lokiv1.ErrOTLPTenantNoStreamLabel.Error(),
-		))
 	}
 
 	return errList
