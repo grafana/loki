@@ -123,9 +123,12 @@ func (v *LokiStackValidator) validateOTLPConfiguration(spec *lokiv1.LokiStackSpe
 
 	hasGlobalStreamLabels := false
 	errList := field.ErrorList{}
+	var globalOtlp *lokiv1.OTLPSpec
 	if spec.Limits.Global != nil && spec.Limits.Global.OTLP != nil {
-		hasGlobalStreamLabels = v.hasOTLPStreamLabel(spec.Limits.Global.OTLP)
-		errList = append(errList, v.checkOTLPInvalidDrop(spec.Limits.Global.OTLP, field.NewPath("spec", "limits", "global", "otlp"))...)
+		globalOtlp = spec.Limits.Global.OTLP
+
+		hasGlobalStreamLabels = v.hasOTLPStreamLabel(globalOtlp)
+		errList = append(errList, v.checkOTLPInvalidDrop(field.NewPath("spec", "limits", "global", "otlp"), globalOtlp, nil)...)
 	}
 
 	if !hasGlobalStreamLabels && spec.Limits.Tenants == nil {
@@ -137,11 +140,11 @@ func (v *LokiStackValidator) validateOTLPConfiguration(spec *lokiv1.LokiStackSpe
 		))
 	}
 
-	errList = append(errList, v.validateOTLPTenantConfiguration(spec, hasGlobalStreamLabels)...)
+	errList = append(errList, v.validateOTLPTenantConfiguration(spec, globalOtlp, hasGlobalStreamLabels)...)
 	return errList
 }
 
-func (v *LokiStackValidator) validateOTLPTenantConfiguration(spec *lokiv1.LokiStackSpec, hasGlobalStreamLabel bool) (errList field.ErrorList) {
+func (v *LokiStackValidator) validateOTLPTenantConfiguration(spec *lokiv1.LokiStackSpec, globalOtlp *lokiv1.OTLPSpec, hasGlobalStreamLabel bool) (errList field.ErrorList) {
 	if spec.Limits == nil || spec.Limits.Tenants == nil {
 		return nil
 	}
@@ -171,7 +174,7 @@ func (v *LokiStackValidator) validateOTLPTenantConfiguration(spec *lokiv1.LokiSt
 			))
 		}
 
-		errList = append(errList, v.checkOTLPInvalidDrop(tenantLimits.OTLP, field.NewPath("spec", "limits", "tenants", tenantName, "otlp"))...)
+		errList = append(errList, v.checkOTLPInvalidDrop(field.NewPath("spec", "limits", "tenants", tenantName, "otlp"), tenantLimits.OTLP, globalOtlp)...)
 	}
 
 	return errList
@@ -189,44 +192,72 @@ func (v *LokiStackValidator) hasOTLPStreamLabel(otlp *lokiv1.OTLPSpec) bool {
 	return len(otlp.StreamLabels.ResourceAttributes) > 0
 }
 
-func (v *LokiStackValidator) checkOTLPInvalidDrop(otlp *lokiv1.OTLPSpec, basePath *field.Path) field.ErrorList {
+func (v *LokiStackValidator) checkOTLPInvalidDrop(basePath *field.Path, otlp, inheritedOtlp *lokiv1.OTLPSpec) field.ErrorList {
 	if otlp.Drop == nil {
 		return nil
 	}
 
 	errList := field.ErrorList{}
 	if streamLabels := otlp.StreamLabels; streamLabels != nil {
+		resourceAttributes := [][]lokiv1.OTLPAttributeReference{
+			streamLabels.ResourceAttributes,
+		}
+		if inheritedOtlp != nil && inheritedOtlp.StreamLabels != nil && len(inheritedOtlp.StreamLabels.ResourceAttributes) > 0 {
+			resourceAttributes = append(resourceAttributes, inheritedOtlp.StreamLabels.ResourceAttributes)
+		}
+
 		errList = append(errList, v.checkOTLPInvalidDropReference(
 			basePath.Child("drop", "resourceAttributes"),
 			otlp.Drop.ResourceAttributes,
-			streamLabels.ResourceAttributes,
+			resourceAttributes,
 		)...)
 	}
 
 	if metadata := otlp.StructuredMetadata; metadata != nil {
+		resourceAttributes := [][]lokiv1.OTLPAttributeReference{
+			metadata.ResourceAttributes,
+		}
+		if inheritedOtlp != nil && inheritedOtlp.StructuredMetadata != nil && len(inheritedOtlp.StructuredMetadata.ResourceAttributes) > 0 {
+			resourceAttributes = append(resourceAttributes, inheritedOtlp.StructuredMetadata.ResourceAttributes)
+		}
+
 		errList = append(errList, v.checkOTLPInvalidDropReference(
 			basePath.Child("drop", "resourceAttributes"),
 			otlp.Drop.ResourceAttributes,
-			metadata.ResourceAttributes,
+			resourceAttributes,
 		)...)
+
+		scopeAttributes := [][]lokiv1.OTLPAttributeReference{
+			metadata.ScopeAttributes,
+		}
+		if inheritedOtlp != nil && inheritedOtlp.StructuredMetadata != nil && len(inheritedOtlp.StructuredMetadata.ScopeAttributes) > 0 {
+			resourceAttributes = append(resourceAttributes, inheritedOtlp.StructuredMetadata.ScopeAttributes)
+		}
 
 		errList = append(errList, v.checkOTLPInvalidDropReference(
 			basePath.Child("drop", "scopeAttributes"),
 			otlp.Drop.ScopeAttributes,
-			metadata.ScopeAttributes,
+			scopeAttributes,
 		)...)
+
+		logAttributes := [][]lokiv1.OTLPAttributeReference{
+			metadata.LogAttributes,
+		}
+		if inheritedOtlp != nil && inheritedOtlp.StructuredMetadata != nil && len(inheritedOtlp.StructuredMetadata.LogAttributes) > 0 {
+			resourceAttributes = append(resourceAttributes, inheritedOtlp.StructuredMetadata.LogAttributes)
+		}
 
 		errList = append(errList, v.checkOTLPInvalidDropReference(
 			basePath.Child("drop", "logAttributes"),
 			otlp.Drop.LogAttributes,
-			metadata.LogAttributes,
+			logAttributes,
 		)...)
 	}
 
 	return errList
 }
 
-func (v *LokiStackValidator) checkOTLPInvalidDropReference(basePath *field.Path, dropList []lokiv1.OTLPAttributeReference, keepLists ...[]lokiv1.OTLPAttributeReference) field.ErrorList {
+func (v *LokiStackValidator) checkOTLPInvalidDropReference(basePath *field.Path, dropList []lokiv1.OTLPAttributeReference, keepLists [][]lokiv1.OTLPAttributeReference) field.ErrorList {
 	attributeNames := map[string]bool{}
 	errList := field.ErrorList{}
 	for _, keeps := range keepLists {
