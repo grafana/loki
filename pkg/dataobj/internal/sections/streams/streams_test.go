@@ -26,7 +26,7 @@ func Test(t *testing.T) {
 		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0).UTC()},
 	}
 
-	tracker := streams.New()
+	tracker := streams.New(nil, 1024)
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time)
 	}
@@ -66,7 +66,7 @@ func Test(t *testing.T) {
 func buildObject(st *streams.Streams) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := encoding.NewEncoder(&buf)
-	if err := st.EncodeTo(enc, 1024); err != nil {
+	if err := st.EncodeTo(enc); err != nil {
 		return nil, err
 	} else if err := enc.Flush(); err != nil {
 		return nil, err

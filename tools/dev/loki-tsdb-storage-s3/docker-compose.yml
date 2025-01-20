@@ -29,7 +29,7 @@ services:
   memcached:
     logging:
       <<: *logging
-    image: memcached:1.6.33-alpine
+    image: memcached:1.6.34-alpine
 
   jaeger:
     logging:
