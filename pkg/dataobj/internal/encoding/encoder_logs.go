@@ -54,11 +54,11 @@ func (enc *LogsEncoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.C
 		Info: &datasetmd.ColumnInfo{
 			Name:             info.Name,
 			ValueType:        info.Type,
-			RowsCount:        uint32(info.RowsCount),
-			ValuesCount:      uint32(info.ValuesCount),
+			RowsCount:        uint64(info.RowsCount),
+			ValuesCount:      uint64(info.ValuesCount),
 			Compression:      info.Compression,
-			UncompressedSize: uint32(info.UncompressedSize),
-			CompressedSize:   uint32(info.CompressedSize),
+			UncompressedSize: uint64(info.UncompressedSize),
+			CompressedSize:   uint64(info.CompressedSize),
 			Statistics:       info.Statistics,
 
 			MetadataOffset: math.MaxUint32,
@@ -149,8 +149,8 @@ func (enc *LogsEncoder) append(data, metadata []byte) error {
 		return nil
 	}
 
-	enc.curColumn.Info.MetadataOffset = uint32(enc.startOffset + enc.data.Len() + len(data))
-	enc.curColumn.Info.MetadataSize = uint32(len(metadata))
+	enc.curColumn.Info.MetadataOffset = uint64(enc.startOffset + enc.data.Len() + len(data))
+	enc.curColumn.Info.MetadataSize = uint64(len(metadata))
 
 	// bytes.Buffer.Write never fails.
 	enc.data.Grow(len(data) + len(metadata))
@@ -201,15 +201,15 @@ func (enc *LogsColumnEncoder) AppendPage(page *dataset.MemPage) error {
 	// check it.
 	enc.pageHeaders = append(enc.pageHeaders, &logsmd.PageDesc{
 		Info: &datasetmd.PageInfo{
-			UncompressedSize: uint32(page.Info.UncompressedSize),
-			CompressedSize:   uint32(page.Info.CompressedSize),
+			UncompressedSize: uint64(page.Info.UncompressedSize),
+			CompressedSize:   uint64(page.Info.CompressedSize),
 			Crc32:            page.Info.CRC32,
-			RowsCount:        uint32(page.Info.RowCount),
-			ValuesCount:      uint32(page.Info.ValuesCount),
+			RowsCount:        uint64(page.Info.RowCount),
+			ValuesCount:      uint64(page.Info.ValuesCount),
 			Encoding:         page.Info.Encoding,
 
-			DataOffset: uint32(enc.startOffset + enc.totalPageSize),
-			DataSize:   uint32(len(page.Data)),
+			DataOffset: uint64(enc.startOffset + enc.totalPageSize),
+			DataSize:   uint64(len(page.Data)),
 
 			Statistics: page.Info.Stats,
 		},
