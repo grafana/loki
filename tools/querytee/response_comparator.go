@@ -294,8 +294,8 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage, evaluationTime time.T
 		return nil, errors.Wrap(err, "unable to actual expected scalar")
 	}
 
-	if opts.SkipSample(expected.Timestamp.Time(), evaluationTime) || opts.SkipSample(actual.Timestamp.Time(), evaluationTime) {
-		return nil, nil
+	if opts.SkipSample(expected.Timestamp.Time(), evaluationTime) && opts.SkipSample(actual.Timestamp.Time(), evaluationTime) {
+		return &ComparisonSummary{skipped: true}, nil
 	}
 
 	return nil, compareSamplePair(model.SamplePair{
@@ -379,29 +379,29 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 		}
 
 		actualStream := actual[actualStreamIndex]
-		expectedEntriesCount := len(expectedStream.Entries)
-		actualEntriesCount := len(actualStream.Entries)
+		expectedValuesLen := len(expectedStream.Entries)
+		actualValuesLen := len(actualStream.Entries)
 
-		if expectedEntriesCount != actualEntriesCount {
-			err = fmt.Errorf("expected %d values for stream %s but got %d", expectedEntriesCount, expectedStream.Labels, actualEntriesCount)
-			if actualEntriesCount > 0 && expectedEntriesCount > 0 {
-				level.Error(util_log.Logger).Log("msg", err.Error(),
-					"oldest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
-					"newest-expected-ts", expectedStream.Entries[expectedEntriesCount-1].Timestamp.UnixNano(),
-					"oldest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(),
-					"newest-actual-ts", actualStream.Entries[actualEntriesCount-1].Timestamp.UnixNano())
+		if expectedValuesLen != actualValuesLen {
+			err := fmt.Errorf("expected %d values for stream %s but got %d", expectedValuesLen,
+				expectedStream.Labels, actualValuesLen)
+			if expectedValuesLen > 0 && actualValuesLen > 0 {
+				level.Error(util_log.Logger).Log("msg", err.Error(), "oldest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
+					"newest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
+					"oldest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "newest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
 			}
 			return nil, err
 		}
 
-		for i := range expectedStream.Entries {
-			if !expectedStream.Entries[i].Timestamp.Equal(actualStream.Entries[i].Timestamp) {
-				return nil, fmt.Errorf("expected timestamp %v but got %v for stream %s",
-					expectedStream.Entries[i].Timestamp.UnixNano(), actualStream.Entries[i].Timestamp.UnixNano(), expectedStream.Labels)
+		for i, expectedSamplePair := range expectedStream.Entries {
+			actualSamplePair := actualStream.Entries[i]
+			if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
+				return nil, fmt.Errorf("expected timestamp %v but got %v for stream %s", expectedSamplePair.Timestamp.UnixNano(),
+					actualSamplePair.Timestamp.UnixNano(), expectedStream.Labels)
 			}
-			if expectedStream.Entries[i].Line != actualStream.Entries[i].Line {
-				return nil, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s",
-					expectedStream.Entries[i].Line, expectedStream.Entries[i].Timestamp.UnixNano(), actualStream.Entries[i].Line, expectedStream.Labels)
+			if expectedSamplePair.Line != actualSamplePair.Line {
+				return nil, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s", expectedSamplePair.Line,
+					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, expectedStream.Labels)
 			}
 		}
 	}
