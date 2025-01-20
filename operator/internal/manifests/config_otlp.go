@@ -92,6 +92,23 @@ func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec, base *config.OT
 			convertAttributeReferences(streamLabels.ResourceAttributes, config.OTLPAttributeActionStreamLabel)...)
 	}
 
+	if dropLabels := otlpSpec.Drop; dropLabels != nil {
+		if resAttr := dropLabels.ResourceAttributes; len(resAttr) > 0 {
+			result.ResourceAttributes = append(result.ResourceAttributes,
+				convertAttributeReferences(resAttr, config.OTLPAttributeActionDrop)...)
+		}
+
+		if scopeAttr := dropLabels.ScopeAttributes; len(scopeAttr) > 0 {
+			result.ScopeAttributes = append(result.ScopeAttributes,
+				convertAttributeReferences(scopeAttr, config.OTLPAttributeActionDrop)...)
+		}
+
+		if logAttr := dropLabels.LogAttributes; len(logAttr) > 0 {
+			result.LogAttributes = append(result.LogAttributes,
+				convertAttributeReferences(logAttr, config.OTLPAttributeActionDrop)...)
+		}
+	}
+
 	if structuredMetadata := otlpSpec.StructuredMetadata; structuredMetadata != nil {
 		if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
 			result.ResourceAttributes = append(result.ResourceAttributes,
@@ -230,6 +247,27 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 				if resAttr := streamLabels.ResourceAttributes; len(resAttr) > 0 {
 					result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
 						convertAttributeReferences(resAttr, config.OTLPAttributeActionStreamLabel)...)
+				}
+			}
+
+			if dropLabels := globalOTLP.Drop; dropLabels != nil {
+				if result.Global == nil {
+					result.Global = &config.OTLPTenantAttributeConfig{}
+				}
+
+				if resAttr := dropLabels.ResourceAttributes; len(resAttr) > 0 {
+					result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
+						convertAttributeReferences(resAttr, config.OTLPAttributeActionDrop)...)
+				}
+
+				if scopeAttr := dropLabels.ScopeAttributes; len(scopeAttr) > 0 {
+					result.Global.ScopeAttributes = append(result.Global.ScopeAttributes,
+						convertAttributeReferences(scopeAttr, config.OTLPAttributeActionDrop)...)
+				}
+
+				if logAttr := dropLabels.LogAttributes; len(logAttr) > 0 {
+					result.Global.LogAttributes = append(result.Global.LogAttributes,
+						convertAttributeReferences(logAttr, config.OTLPAttributeActionDrop)...)
 				}
 			}
 
