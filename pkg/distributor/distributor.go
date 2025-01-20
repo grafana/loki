@@ -622,8 +622,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					d.writeFailuresManager.Log(tenantID, err)
 
 					validationErrors.Add(err)
-					validation.DiscardedSamples.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(len(stream.Entries)))
-					validation.DiscardedBytes.WithLabelValues(validation.BlockedPolicyIngestion, tenantID).Add(float64(streamSize))
+					validation.DiscardedSamples.WithLabelValues(validation.BlockedPolicyIngestion, tenantID, streamRetention.String()).Add(float64(len(stream.Entries)))
+					validation.DiscardedBytes.WithLabelValues(validation.BlockedPolicyIngestion, tenantID, streamRetention.String()).Add(float64(streamSize))
 					continue
 				}
 			}
