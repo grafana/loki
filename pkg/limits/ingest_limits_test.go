@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
@@ -106,6 +108,20 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			s := &IngestLimits{
 				cfg: Config{
 					WindowSize: tt.windowSize,
+					LifecyclerConfig: ring.LifecyclerConfig{
+						RingConfig: ring.Config{
+							KVStore: kv.Config{
+								Store: "inmemory",
+							},
+							ReplicationFactor: 1,
+						},
+						NumTokens:       1,
+						ID:              "test",
+						Zone:            "test",
+						FinalSleep:      0,
+						HeartbeatPeriod: 100 * time.Millisecond,
+						ObservePeriod:   100 * time.Millisecond,
+					},
 				},
 				logger:   log.NewNopLogger(),
 				metadata: tt.setupMetadata,
@@ -150,6 +166,20 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 	s := &IngestLimits{
 		cfg: Config{
 			WindowSize: time.Hour,
+			LifecyclerConfig: ring.LifecyclerConfig{
+				RingConfig: ring.Config{
+					KVStore: kv.Config{
+						Store: "inmemory",
+					},
+					ReplicationFactor: 1,
+				},
+				NumTokens:       1,
+				ID:              "test",
+				Zone:            "test",
+				FinalSleep:      0,
+				HeartbeatPeriod: 100 * time.Millisecond,
+				ObservePeriod:   100 * time.Millisecond,
+			},
 		},
 		logger:   log.NewNopLogger(),
 		metadata: metadata,
@@ -194,6 +224,20 @@ func TestNewIngestLimits(t *testing.T) {
 			Topic: "test-topic",
 		},
 		WindowSize: time.Hour,
+		LifecyclerConfig: ring.LifecyclerConfig{
+			RingConfig: ring.Config{
+				KVStore: kv.Config{
+					Store: "inmemory",
+				},
+				ReplicationFactor: 1,
+			},
+			NumTokens:       1,
+			ID:              "test",
+			Zone:            "test",
+			FinalSleep:      0,
+			HeartbeatPeriod: 100 * time.Millisecond,
+			ObservePeriod:   100 * time.Millisecond,
+		},
 	}
 
 	s, err := NewIngestLimits(cfg, log.NewNopLogger(), prometheus.NewRegistry())
@@ -202,4 +246,5 @@ func TestNewIngestLimits(t *testing.T) {
 	require.NotNil(t, s.client)
 	require.Equal(t, cfg, s.cfg)
 	require.NotNil(t, s.metadata)
+	require.NotNil(t, s.lifecycler)
 }
