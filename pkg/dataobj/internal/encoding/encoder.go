@@ -162,6 +162,7 @@ func (enc *Encoder) append(data, metadata []byte) error {
 	enc.curSection.MetadataSize = uint32(len(metadata))
 
 	// bytes.Buffer.Write never fails.
+	enc.data.Grow(len(data) + len(metadata))
 	_, _ = enc.data.Write(data)
 	_, _ = enc.data.Write(metadata)
 

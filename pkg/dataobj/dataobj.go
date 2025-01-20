@@ -132,11 +132,12 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 	}
 
 	var (
-		metrics = newMetrics(cfg)
+		metrics = newMetrics()
 
 		flushBuffer = bytes.NewBuffer(make([]byte, 0, int(cfg.TargetObjectSize)))
 		encoder     = encoding.NewEncoder(flushBuffer)
 	)
+	metrics.ObserveConfig(cfg)
 
 	return &Builder{
 		cfg:      cfg,
@@ -301,6 +302,8 @@ func (b *Builder) buildObject() error {
 	} else if err := b.encoder.Flush(); err != nil {
 		return fmt.Errorf("encoding object: %w", err)
 	}
+
+	b.metrics.builtSize.Observe(float64(b.flushBuffer.Len()))
 
 	// We pass context.Background() below to avoid allowing building an object to
 	// time out; timing out on build would discard anything we built and would

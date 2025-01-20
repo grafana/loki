@@ -9,6 +9,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
@@ -27,12 +28,14 @@ type Metrics struct {
 	datasetColumnCount             *prometheus.HistogramVec
 	datasetColumnCompressedBytes   *prometheus.HistogramVec
 	datasetColumnUncompressedBytes *prometheus.HistogramVec
+	datasetColumnCompressionRatio  *prometheus.HistogramVec
 	datasetColumnRows              *prometheus.HistogramVec
 	datasetColumnValues            *prometheus.HistogramVec
 
 	datasetPageCount             *prometheus.HistogramVec
 	datasetPageCompressedBytes   *prometheus.HistogramVec
 	datasetPageUncompressedBytes *prometheus.HistogramVec
+	datasetPageCompressionRatio  *prometheus.HistogramVec
 	datasetPageRows              *prometheus.HistogramVec
 	datasetPageValues            *prometheus.HistogramVec
 }
@@ -100,6 +103,13 @@ func NewMetrics() *Metrics {
 			Help:      "Distribution of uncompressed bytes per encoded dataset column.",
 		}, []string{"section", "column_type"}),
 
+		datasetColumnCompressionRatio: newNativeHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_dataobj",
+			Subsystem: "encoding",
+			Name:      "dataset_column_compression_ratio",
+			Help:      "Distribution of compression ratio per encoded dataset column. Not reported when compression is disabled.",
+		}, []string{"section", "column_type", "compression_type"}),
+
 		datasetColumnRows: newNativeHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki_dataobj",
 			Subsystem: "encoding",
@@ -134,6 +144,13 @@ func NewMetrics() *Metrics {
 			Name:      "dataset_page_uncompressed_bytes",
 			Help:      "Distribution of uncompressed bytes per encoded dataset page.",
 		}, []string{"section", "column_type"}),
+
+		datasetPageCompressionRatio: newNativeHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_dataobj",
+			Subsystem: "encoding",
+			Name:      "dataset_page_compression_ratio",
+			Help:      "Distribution of compression ratio per encoded dataset page. Not reported when compression is disabled.",
+		}, []string{"section", "column_type", "compression_type"}),
 
 		datasetPageRows: newNativeHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki_dataobj",
@@ -178,11 +195,13 @@ func (m *Metrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.datasetColumnCount))
 	errs = append(errs, reg.Register(m.datasetColumnCompressedBytes))
 	errs = append(errs, reg.Register(m.datasetColumnUncompressedBytes))
+	errs = append(errs, reg.Register(m.datasetColumnCompressionRatio))
 	errs = append(errs, reg.Register(m.datasetColumnRows))
 	errs = append(errs, reg.Register(m.datasetColumnValues))
 	errs = append(errs, reg.Register(m.datasetPageCount))
 	errs = append(errs, reg.Register(m.datasetPageCompressedBytes))
 	errs = append(errs, reg.Register(m.datasetPageUncompressedBytes))
+	errs = append(errs, reg.Register(m.datasetPageCompressionRatio))
 	errs = append(errs, reg.Register(m.datasetPageRows))
 	errs = append(errs, reg.Register(m.datasetPageValues))
 	return errors.Join(errs...)
@@ -198,11 +217,13 @@ func (m *Metrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.datasetColumnCount)
 	reg.Unregister(m.datasetColumnCompressedBytes)
 	reg.Unregister(m.datasetColumnUncompressedBytes)
+	reg.Unregister(m.datasetColumnCompressionRatio)
 	reg.Unregister(m.datasetColumnRows)
 	reg.Unregister(m.datasetColumnValues)
 	reg.Unregister(m.datasetPageCount)
 	reg.Unregister(m.datasetPageCompressedBytes)
 	reg.Unregister(m.datasetPageUncompressedBytes)
+	reg.Unregister(m.datasetPageCompressionRatio)
 	reg.Unregister(m.datasetPageRows)
 	reg.Unregister(m.datasetPageValues)
 }
@@ -274,9 +295,13 @@ func (m *Metrics) observeStreamsSection(ctx context.Context, section *filemd.Sec
 	for i, column := range columns {
 		columnType := column.Type.String()
 		pages := columnPages[i]
+		compression := column.Info.Compression
 
 		m.datasetColumnCompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.CompressedSize))
 		m.datasetColumnUncompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.UncompressedSize))
+		if compression != datasetmd.COMPRESSION_TYPE_NONE {
+			m.datasetColumnCompressionRatio.WithLabelValues(sectionType, columnType, compression.String()).Observe(float64(column.Info.UncompressedSize) / float64(column.Info.CompressedSize))
+		}
 		m.datasetColumnRows.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.RowsCount))
 		m.datasetColumnValues.WithLabelValues(sectionType, columnType).Observe(float64(column.Info.ValuesCount))
 
@@ -285,6 +310,9 @@ func (m *Metrics) observeStreamsSection(ctx context.Context, section *filemd.Sec
 		for _, page := range pages {
 			m.datasetPageCompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.CompressedSize))
 			m.datasetPageUncompressedBytes.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.UncompressedSize))
+			if compression != datasetmd.COMPRESSION_TYPE_NONE {
+				m.datasetPageCompressionRatio.WithLabelValues(sectionType, columnType, compression.String()).Observe(float64(page.Info.UncompressedSize) / float64(page.Info.CompressedSize))
+			}
 			m.datasetPageRows.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.RowsCount))
 			m.datasetPageValues.WithLabelValues(sectionType, columnType).Observe(float64(page.Info.ValuesCount))
 		}
