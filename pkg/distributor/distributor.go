@@ -453,9 +453,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
-	totalLineSize := 0
-	validatedLineSize := make(map[string]int)  // map of retention period to validated line size
-	validatedLineCount := make(map[string]int) // map of retention period to validated line count
+	validatedLineCountTotal := 0
+	validatedLineSizeTotal := 0
+	validatedLineSizePerRetention := make(map[string]int)  // map of retention period to validated line size
+	validatedLineCountPerRetention := make(map[string]int) // map of retention period to validated line count
 
 	var validationErrors util.GroupedErrors
 
@@ -596,9 +597,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				n++
 
 				entrySize := util.EntryTotalSize(&entry)
-				validatedLineSize[retention.String()] += entrySize
-				validatedLineCount[retention.String()]++
-				totalLineSize += entrySize
+				validatedLineSizePerRetention[retention.String()] += entrySize
+				validatedLineCountPerRetention[retention.String()]++
+				validatedLineSizeTotal += entrySize
+				validatedLineCountTotal++
 				pushSize += entrySize
 			}
 
@@ -639,7 +641,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestionForTenant(validationContext, now); block {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCountPerRetention, validatedLineSizePerRetention, validation.BlockedIngestion)
 
 		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -653,10 +655,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, totalLineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSizeTotal) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCountPerRetention, validatedLineSizePerRetention, validation.RateLimited)
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCountTotal, validatedLineSizeTotal)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
