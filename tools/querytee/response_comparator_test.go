@@ -151,10 +151,11 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 		{
 			name: "skip entire series",
 			expected: json.RawMessage(`[
-							{"metric":{"foo":"bar"},"values":[[5,"1"],[94,"4"],[96,"5"]]}
-						]`),
+							{"metric":{"foo":"bar"},"values":[[50,"1"],[75,"2"]]},
+							{"metric":{"foo":"buzz"},"values":[[5,"1"],[9,"4"],[96,"5"]]}
+						]`), // skip comparing {"foo":"buzz"}
 			actual: json.RawMessage(`[
-							{"metric":{"foo":"bar"},"values":[[5,"0"],[96,"1"]]}
+							{"metric":{"foo":"bar"},"values":[[50,"1"],[75,"2"],[95,"3"]]}
 						]`),
 			skipSamplesBefore: time.Unix(10, 0),
 			skipRecentSamples: 10 * time.Second,
@@ -616,6 +617,18 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"]]}
 			]`),
 			skipRecentSamples: 10 * time.Nanosecond,
+			evaluationTime:    time.Unix(0, 100),
+		},
+		{
+			name: "skip both recent and old samples",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"],["95","4"]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["15","2"],["50","3"]]}
+			]`),
+			skipRecentSamples: 10 * time.Nanosecond,
+			skipSamplesBefore: time.Unix(0, 10),
 			evaluationTime:    time.Unix(0, 100),
 		},
 	} {
