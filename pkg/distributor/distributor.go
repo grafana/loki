@@ -514,33 +514,35 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			// Truncate first so subsequent steps have consistent line lengths
 			d.truncateLines(validationContext, &stream)
 
+			tenantRetention := d.validator.Limits.RetentionPeriod(tenantID)
+
 			var lbs labels.Labels
 			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, tenantRetention.String()).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, tenantRetention.String()).Add(float64(discardedBytes))
 				continue
 			}
 
 			if errorLbValue, err := d.missingEnforcedLabels(lbs, tenantID); err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(errorLbValue, tenantID).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(errorLbValue, tenantID, tenantRetention.String()).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(errorLbValue, tenantID).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(errorLbValue, tenantID, tenantRetention.String()).Add(float64(discardedBytes))
 				continue
 			}
 
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
-			retention := d.retentionPeriodForStream(lbs, tenantID)
+			streamRetention := d.retentionPeriodForStream(lbs, tenantID)
 
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retention); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, streamRetention); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -597,8 +599,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				n++
 
 				entrySize := util.EntryTotalSize(&entry)
-				validatedLineSizePerRetention[retention.String()] += entrySize
-				validatedLineCountPerRetention[retention.String()]++
+				validatedLineSizePerRetention[streamRetention.String()] += entrySize
+				validatedLineCountPerRetention[streamRetention.String()]++
 				validatedLineSizeTotal += entrySize
 				validatedLineCountTotal++
 				pushSize += entrySize
@@ -614,7 +616,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			if policy != "" {
 				streamSize := util.EntriesTotalSize(stream.Entries)
 				if yes, until, retStatusCode := d.validator.ShouldBlockIngestionForPolicy(validationContext, policy, now); yes {
-					d.trackDiscardedDataFromPolicy(ctx, policy, tenantID, now, validation.BlockedPolicyIngestion, retention, streamSize, lbs)
+					d.trackDiscardedDataFromPolicy(ctx, policy, tenantID, now, validation.BlockedPolicyIngestion, streamRetention, streamSize, lbs)
 
 					err := fmt.Errorf(validation.BlockedPolicyIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode, policy)
 					d.writeFailuresManager.Log(tenantID, err)
