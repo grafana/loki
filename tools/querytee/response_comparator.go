@@ -386,9 +386,10 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, evaluationTime time.
 			err := fmt.Errorf("expected %d values for stream %s but got %d", expectedValuesLen,
 				expectedStream.Labels, actualValuesLen)
 			if expectedValuesLen > 0 && actualValuesLen > 0 {
-				level.Error(util_log.Logger).Log("msg", err.Error(), "oldest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
-					"newest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
-					"oldest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "newest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
+				// assuming BACKWARD search since that is the default ordering
+				level.Error(util_log.Logger).Log("msg", err.Error(), "newest-expected-ts", expectedStream.Entries[0].Timestamp.UnixNano(),
+					"oldest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
+					"newest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "oldest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
 			}
 			return nil, err
 		}
