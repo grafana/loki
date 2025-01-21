@@ -46,9 +46,9 @@ func printStreamInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 	totalCompressedSize := uint64(0)
 	totalUncompressedSize := uint64(0)
 	for _, col := range cols {
-		totalCompressedSize += uint64(col.Info.CompressedSize)
-		totalUncompressedSize += uint64(col.Info.UncompressedSize)
-		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(uint64(col.Info.CompressedSize)), col.Info.Compression.String()[17:], humanize.Bytes(uint64(col.Info.UncompressedSize)))
+		totalCompressedSize += col.Info.CompressedSize
+		totalUncompressedSize += col.Info.UncompressedSize
+		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(col.Info.CompressedSize), col.Info.Compression.String()[17:], humanize.Bytes(col.Info.UncompressedSize))
 	}
 	fmt.Println("")
 	fmt.Printf("Streams Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(cols), humanize.Bytes(totalCompressedSize), humanize.Bytes(totalUncompressedSize))
@@ -71,9 +71,9 @@ func printLogsInfo(reader encoding.Decoder, section *filemd.SectionInfo) {
 	totalCompressedSize := uint64(0)
 	totalUncompressedSize := uint64(0)
 	for _, col := range cols {
-		totalCompressedSize += uint64(col.Info.CompressedSize)
-		totalUncompressedSize += uint64(col.Info.UncompressedSize)
-		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(uint64(col.Info.CompressedSize)), col.Info.Compression.String()[17:], humanize.Bytes(uint64(col.Info.UncompressedSize)))
+		totalCompressedSize += col.Info.CompressedSize
+		totalUncompressedSize += col.Info.UncompressedSize
+		fmt.Printf("%v[%v]; %d populated rows; %v compressed (%v); %v uncompressed\n", col.Type.String()[12:], col.Info.Name, col.Info.ValuesCount, humanize.Bytes(col.Info.CompressedSize), col.Info.Compression.String()[17:], humanize.Bytes(col.Info.UncompressedSize))
 	}
 	fmt.Println("")
 	fmt.Printf("Logs Section Summary: %d columns; compressed size: %v; uncompressed size %v\n", len(cols), humanize.Bytes(totalCompressedSize), humanize.Bytes(totalUncompressedSize))
