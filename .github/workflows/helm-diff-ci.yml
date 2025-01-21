@@ -284,6 +284,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - id: get-secrets
         uses: grafana/shared-workflows/actions/get-vault-secrets@main
