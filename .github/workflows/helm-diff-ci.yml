@@ -8,7 +8,7 @@ on:
 # These permissions are needed to assume roles from Github's OIDC.
 permissions:
   contents: read
-  id-token: write
+  pull-requests: write
 
 jobs:
   single-binary-diff:
@@ -282,8 +282,13 @@ jobs:
       - simple-scalable-aws-kube-irsa-values-diff
 
     steps:
+      - if: github.event.pull_request.head.repo.fork
+        run: |
+          echo "Changing coming from a fork, check the artifacts for the diff output"
+
       - name: Checkout code
         uses: actions/checkout@v4
+        if: github.event.pull_request.head.repo.fork == false
         with:
           persist-credentials: false
 
@@ -401,8 +406,3 @@ jobs:
           append: true
           hide_classify: "OUTDATED"
           path: formatted_diff_output.md
-          github_token: ${{ steps.generate-token.outputs.token }}
-
-      - if: github.event.pull_request.head.repo.fork
-        run: |
-          echo "Changing coming from a fork, check the artifacts for the diff output"
