@@ -18,8 +18,8 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.23.1
-BUILD_IMAGE_TAG    := 0.34.3
+GO_VERSION         := 1.23.5
+BUILD_IMAGE_TAG    := 0.34.4
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
