@@ -117,8 +117,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="flex items-center justify-center min-h-screen dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 dark:border-blue-400"></div>
       </div>
     );
   }
@@ -257,8 +257,8 @@ export default function App() {
         </div>
 
         {fileMetadataLoading ? (
-          <div className="flex items-center justify-center min-h-[200px]">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <div className="flex items-center justify-center min-h-[200px] dark:bg-gray-900">
+            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 dark:border-blue-400"></div>
           </div>
         ) : selectedFileMetadata ? (
           <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden dark:text-gray-200">
