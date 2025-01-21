@@ -112,6 +112,7 @@ local weeklyImageJobs = {
           'main',
         ],
       },
+      workflow_dispatch: {},
     },
     permissions: {
       'id-token': 'write',

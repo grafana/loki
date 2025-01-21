@@ -429,6 +429,7 @@
     "branches":
     - "k[0-9]+*"
     - "main"
+  "workflow_dispatch": {}
 "permissions":
   "contents": "write"
   "id-token": "write"
