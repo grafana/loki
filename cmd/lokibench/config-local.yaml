@@ -1,0 +1,11 @@
+queries:
+  - 'sum(rate({container="index-gateway"}[5m]))'
+  - 'sum by (cluster,namespace) (rate({container="index-gateway"}[5m]))'
+  - 'sum(rate({namespace="loki-dev-005"}[5m]))'
+  - 'sum(rate({cluster="dev-us-central-0"}[5m]))'
+  - 'sum(rate({container="cortex-gw"}[5m]))'
+  - 'sum(rate({name="grafana"}[5m]))'
+min_query_range: 1h
+max_query_range: 24h
+oldest_start_timestamp: 2025-01-15T00:00:00Z
+skip_recent_duration: 6h
