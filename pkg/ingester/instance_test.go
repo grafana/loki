@@ -310,12 +310,13 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		{Labels: "{app=\"test\",job=\"varlogs2\"}", Entries: entries(5, currentTime.Add(12*time.Nanosecond))},
 	}
 
+	retentionHours := limiter.limits.RetentionHours("test", nil)
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(context.Background(), testStream, recordPool.GetRecord())
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -550,6 +551,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	limits, err := validation.NewOverrides(l, nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	retentionHours := limiter.limits.RetentionHours("test", nil)
 
 	ctx := context.Background()
 
@@ -575,7 +577,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours))
 		}
 	})
 }

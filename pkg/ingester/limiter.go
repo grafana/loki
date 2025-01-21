@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
@@ -31,6 +32,9 @@ type Limits interface {
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
+	StreamRetention(userID string) []validation.StreamRetention
+	RetentionHours(userID string, labels labels.Labels) string
+	RetentionPeriod(userID string) time.Duration
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
 }

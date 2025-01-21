@@ -28,6 +28,7 @@ import (
 	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
+	retentionUtil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -255,6 +256,16 @@ type StreamRetention struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
 	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
+}
+
+func (r *StreamRetention) Matches(lbs labels.Labels) bool {
+	for _, matcher := range r.Matchers {
+		if !matcher.Matches(lbs.Get(matcher.Name)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 // LimitError are errors that do not comply with the limits specified.
@@ -957,6 +968,27 @@ func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 // StreamRetention returns the retention period for a given user.
 func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 	return o.getOverridesForUser(userID).StreamRetention
+}
+
+// RetentionHours returns the retention period for a given user.
+func (o *Overrides) RetentionHours(userID string, ls labels.Labels) string {
+	streamRetentions := o.getOverridesForUser(userID).StreamRetention
+
+	selectedRetention := o.getOverridesForUser(userID).RetentionPeriod
+	highestPriority := -1
+
+	if len(ls) > 0 {
+		for _, retention := range streamRetentions {
+			if retention.Matches(ls) {
+				if retention.Priority > highestPriority {
+					highestPriority = retention.Priority
+					selectedRetention = retention.Period
+				}
+			}
+		}
+	}
+
+	return retentionUtil.RetentionHours(time.Duration(selectedRetention))
 }
 
 func (o *Overrides) UnorderedWrites(userID string) bool {
