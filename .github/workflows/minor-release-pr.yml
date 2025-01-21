@@ -219,7 +219,8 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   fluentd:
     needs:
     - "version"
@@ -282,7 +283,8 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   logcli:
     needs:
     - "version"
@@ -345,11 +347,14 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
         - arch: "linux/arm64"
-          runs_on: "ubuntu-arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
         - arch: "linux/arm"
-          runs_on: "ubuntu-arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   logstash:
     needs:
     - "version"
@@ -412,7 +417,8 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   loki:
     needs:
     - "version"
@@ -475,11 +481,14 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
         - arch: "linux/arm64"
-          runs_on: "ubuntu-arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
         - arch: "linux/arm"
-          runs_on: "ubuntu-arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   loki-canary:
     needs:
     - "version"
@@ -542,11 +551,14 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
         - arch: "linux/arm64"
-          runs_on: "ubuntu-arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
         - arch: "linux/arm"
-          runs_on: "ubuntu-arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   loki-canary-boringcrypto:
     needs:
     - "version"
@@ -609,11 +621,14 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
         - arch: "linux/arm64"
-          runs_on: "ubuntu-arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
         - arch: "linux/arm"
-          runs_on: "ubuntu-arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   loki-docker-driver:
     needs:
     - "version"
@@ -753,11 +768,14 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
         - arch: "linux/arm64"
-          runs_on: "ubuntu-arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
         - arch: "linux/arm"
-          runs_on: "ubuntu-arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   querytee:
     needs:
     - "version"
@@ -820,7 +838,8 @@ jobs:
       matrix:
         include:
         - arch: "linux/amd64"
-          runs_on: "ubuntu-amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
   version:
     needs:
     - "check"
