@@ -7,6 +7,8 @@ import (
 	"iter"
 	"slices"
 
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
@@ -238,17 +240,18 @@ func (b *stripeBuffer) Timestamps(opts Options) *dataset.ColumnBuilder {
 
 func (b *stripeBuffer) AllMetadatas() []*dataset.ColumnBuilder { return b.metadatas }
 
-func (b *stripeBuffer) Metadatas(key string, opts Options, compression datasetmd.CompressionType) *dataset.ColumnBuilder {
+func (b *stripeBuffer) Metadatas(key string, opts Options, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
 	index, ok := b.metadataLookup[key]
 	if ok {
 		return b.metadatas[index]
 	}
 
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
-		PageSizeHint: opts.PageSizeHint,
-		Value:        datasetmd.VALUE_TYPE_STRING,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  compression,
+		PageSizeHint:       opts.PageSizeHint,
+		Value:              datasetmd.VALUE_TYPE_STRING,
+		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		CompressionOptions: compressionOpts,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -310,16 +313,17 @@ func (b *stripeBuffer) Reset() {
 	}
 }
 
-func (b *stripeBuffer) Messages(opts Options, compression datasetmd.CompressionType) *dataset.ColumnBuilder {
+func (b *stripeBuffer) Messages(opts Options, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
 	if b.messages != nil {
 		return b.messages
 	}
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: opts.PageSizeHint,
-		Value:        datasetmd.VALUE_TYPE_STRING,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  compression,
+		PageSizeHint:       opts.PageSizeHint,
+		Value:              datasetmd.VALUE_TYPE_STRING,
+		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		CompressionOptions: compressionOpts,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -344,10 +348,14 @@ func buildStripe(opts Options, buf *stripeBuffer, records []Record) *stripe {
 	// Ensure the buffer doesn't have any data in it before we append.
 	buf.Reset()
 
+	compressionOpts := dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
+	}
+
 	var (
 		streamIDsBuilder  = buf.StreamIDs(opts)
 		timestampsBuilder = buf.Timestamps(opts)
-		messagesBuilder   = buf.Messages(opts, datasetmd.COMPRESSION_TYPE_SNAPPY)
+		messagesBuilder   = buf.Messages(opts, compressionOpts)
 	)
 
 	for i, record := range records {
@@ -360,7 +368,7 @@ func buildStripe(opts Options, buf *stripeBuffer, records []Record) *stripe {
 		_ = messagesBuilder.Append(i, dataset.StringValue(record.Line))
 
 		for _, metadata := range record.Metadata {
-			metadataBuilder := buf.Metadatas(metadata.Name, opts, datasetmd.COMPRESSION_TYPE_SNAPPY)
+			metadataBuilder := buf.Metadatas(metadata.Name, opts, compressionOpts)
 			_ = metadataBuilder.Append(i, dataset.StringValue(metadata.Value))
 		}
 	}

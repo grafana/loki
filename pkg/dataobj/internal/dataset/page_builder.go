@@ -56,7 +56,7 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 		presenceBuffer = bytes.NewBuffer(nil)
 		valuesBuffer   = bytes.NewBuffer(make([]byte, 0, opts.PageSizeHint))
 
-		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression)
+		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression, opts.CompressionOptions)
 	)
 
 	presenceEnc := newBitmapEncoder(presenceBuffer)
@@ -179,8 +179,8 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 		return nil, fmt.Errorf("flushing presence encoder: %w", err)
 	} else if err := b.valuesEnc.Flush(); err != nil {
 		return nil, fmt.Errorf("flushing values encoder: %w", err)
-	} else if err := b.valuesWriter.Flush(); err != nil {
-		return nil, fmt.Errorf("flushing values writer: %w", err)
+	} else if err := b.valuesWriter.Close(); err != nil {
+		return nil, fmt.Errorf("closing values writer: %w", err)
 	}
 
 	// The final data of our page is the combination of the presence bitmap and

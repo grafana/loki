@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"runtime"
 	"sync"
 
 	"github.com/golang/snappy"
@@ -107,7 +106,10 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		return bitmapReader, newZstdReader(compressedDataReader), nil
+		return bitmapReader, &fixedZstdReader{
+			page: p,
+			data: p.Data[n+int(bitmapSize):],
+		}, nil
 	}
 
 	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
@@ -126,43 +128,55 @@ var snappyPool = sync.Pool{
 	},
 }
 
-// zstdReader implements [io.ReadCloser] for a [zstd.Decoder].
-type zstdReader struct{ *zstd.Decoder }
-
-// newZstdReader returns a new [io.ReadCloser] for a [zstd.Decoder].
-func newZstdReader(r io.Reader) io.ReadCloser {
-NextReader:
-	dec := zstdReaderPool.Get().(*zstd.Decoder)
-	if err := dec.Reset(r); err != nil {
-		// Reset should only fail if the decoder was closed improperly. This
-		// shouldn't happen, but if it does, we'll fall back to getting another
-		// one.
-		goto NextReader
+var globalZstdDecoder = func() *zstd.Decoder {
+	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+	if err != nil {
+		panic(err)
 	}
+	return d
+}()
 
-	return &zstdReader{Decoder: dec}
+type fixedZstdReader struct {
+	page *MemPage
+	data []byte
+
+	uncompressedBuf *bytes.Buffer
+	closed          bool
 }
 
-// Close implements [io.Closer].
-func (r *zstdReader) Close() error {
-	// Do *not* call [zstd.Decoder.Close] here! After Close is called, the
-	// decoder can't be used anymore. Instead, we should reset the encoder to nil
-	// and put it back into the pool.
-	if err := r.Reset(nil); err != nil {
-		return fmt.Errorf("resetting zstd reader: %w", err)
+func (r *fixedZstdReader) Read(p []byte) (int, error) {
+	if r.closed {
+		return 0, io.ErrClosedPipe
 	}
-	zstdReaderPool.Put(r.Decoder)
+
+	if r.uncompressedBuf != nil {
+		return r.uncompressedBuf.Read(p)
+	}
+
+	r.uncompressedBuf = bytesbufferPool.Get().(*bytes.Buffer)
+	r.uncompressedBuf.Reset()
+	r.uncompressedBuf.Grow(r.page.Info.UncompressedSize)
+
+	buf, err := globalZstdDecoder.DecodeAll(r.data, r.uncompressedBuf.AvailableBuffer())
+	if err != nil {
+		return 0, fmt.Errorf("decoding zstd: %w", err)
+	}
+	_, _ = r.uncompressedBuf.Write(buf)
+
+	return r.uncompressedBuf.Read(p)
+}
+
+func (r *fixedZstdReader) Close() error {
+	if r.uncompressedBuf != nil {
+		bytesbufferPool.Put(r.uncompressedBuf)
+		r.uncompressedBuf = nil
+	}
+	r.closed = true
 	return nil
 }
 
-var zstdReaderPool = sync.Pool{
-	New: func() interface{} {
-		zr, err := zstd.NewReader(nil)
-		if err != nil {
-			panic(fmt.Sprintf("zstd.NewReader: %v", err))
-		}
-
-		runtime.SetFinalizer(zr, func(zr *zstd.Decoder) { zr.Close() })
-		return zr
+var bytesbufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
 	},
 }

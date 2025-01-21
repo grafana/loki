@@ -3,6 +3,8 @@ package dataset
 import (
 	"fmt"
 
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
@@ -21,6 +23,13 @@ type BuilderOptions struct {
 
 	// Compression is the compression algorithm to use for values.
 	Compression datasetmd.CompressionType
+
+	// CompressionOptions configures the configured compression type.
+	CompressionOptions CompressionOptions
+}
+
+type CompressionOptions struct {
+	Zstd []zstd.EOption
 }
 
 // A ColumnBuilder builds a sequence of [Value] entries of a common type into a

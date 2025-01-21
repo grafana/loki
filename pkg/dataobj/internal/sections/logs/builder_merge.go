@@ -7,8 +7,9 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -18,10 +19,14 @@ func mergeStripes(opts Options, buf *stripeBuffer, stripes []*stripe) (*stripe, 
 	// Ensure the buffer doesn't have any data in it before we append.
 	buf.Reset()
 
+	compressionOpts := dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
+	}
+
 	var (
 		streamIDsBuilder  = buf.StreamIDs(opts)
 		timestampsBuilder = buf.Timestamps(opts)
-		messagesBuilder   = buf.Messages(opts, datasetmd.COMPRESSION_TYPE_ZSTD)
+		messagesBuilder   = buf.Messages(opts, compressionOpts)
 	)
 
 	var (
@@ -87,7 +92,7 @@ func mergeStripes(opts Options, buf *stripeBuffer, stripes []*stripe) (*stripe, 
 			columnIndex := i + 2 // Skip stream ID and timestamp.
 			key := columns[columnIndex].Info.Name
 
-			columnBuilder := buf.Metadatas(key, opts, datasetmd.COMPRESSION_TYPE_ZSTD)
+			columnBuilder := buf.Metadatas(key, opts, compressionOpts)
 			_ = columnBuilder.Append(rows, value)
 
 			usedMetadata[key] = struct{}{}
