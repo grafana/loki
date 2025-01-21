@@ -4,7 +4,7 @@ menuTitle:  Promtail
 description: How to use the Promtail agent to ship logs to Loki
 aliases: 
 - ../clients/promtail/ # /docs/loki/latest/clients/promtail/
-weight:  200
+weight:  300
 ---
 # Promtail agent
 
