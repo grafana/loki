@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"runtime"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
@@ -101,11 +103,7 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		return bitmapReader, io.NopCloser(sr), nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		zr, err := zstd.NewReader(compressedDataReader)
-		if err != nil {
-			return nil, nil, fmt.Errorf("opening zstd reader: %w", err)
-		}
-		return bitmapReader, newZstdReader(zr), nil
+		return bitmapReader, newZstdReader(compressedDataReader), nil
 	}
 
 	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
@@ -115,12 +113,39 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 type zstdReader struct{ *zstd.Decoder }
 
 // newZstdReader returns a new [io.ReadCloser] for a [zstd.Decoder].
-func newZstdReader(dec *zstd.Decoder) io.ReadCloser {
+func newZstdReader(r io.Reader) io.ReadCloser {
+NextReader:
+	dec := zstdReaderPool.Get().(*zstd.Decoder)
+	if err := dec.Reset(r); err != nil {
+		// Reset should only fail if the decoder was closed improperly. This
+		// shouldn't happen, but if it does, we'll fall back to getting another
+		// one.
+		goto NextReader
+	}
+
 	return &zstdReader{Decoder: dec}
 }
 
 // Close implements [io.Closer].
 func (r *zstdReader) Close() error {
-	r.Decoder.Close()
+	// Do *not* call [zstd.Decoder.Close] here! After Close is called, the
+	// decoder can't be used anymore. Instead, we should reset the encoder to nil
+	// and put it back into the pool.
+	if err := r.Reset(nil); err != nil {
+		return fmt.Errorf("resetting zstd reader: %w", err)
+	}
+	zstdReaderPool.Put(r.Decoder)
 	return nil
+}
+
+var zstdReaderPool = sync.Pool{
+	New: func() interface{} {
+		zr, err := zstd.NewReader(nil)
+		if err != nil {
+			panic(fmt.Sprintf("zstd.NewReader: %v", err))
+		}
+
+		runtime.SetFinalizer(zr, func(zr *zstd.Decoder) { zr.Close() })
+		return zr
+	},
 }
