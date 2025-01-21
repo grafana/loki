@@ -55,25 +55,25 @@ type ColumnWithPages struct {
 	Name             string     `json:"name,omitempty"`
 	Type             string     `json:"type"`
 	ValueType        string     `json:"value_type"`
-	RowsCount        uint32     `json:"rows_count"`
+	RowsCount        uint64     `json:"rows_count"`
 	Compression      string     `json:"compression"`
-	UncompressedSize uint32     `json:"uncompressed_size"`
-	CompressedSize   uint32     `json:"compressed_size"`
-	MetadataOffset   uint32     `json:"metadata_offset"`
-	MetadataSize     uint32     `json:"metadata_size"`
-	ValuesCount      uint32     `json:"values_count"`
+	UncompressedSize uint64     `json:"uncompressed_size"`
+	CompressedSize   uint64     `json:"compressed_size"`
+	MetadataOffset   uint64     `json:"metadata_offset"`
+	MetadataSize     uint64     `json:"metadata_size"`
+	ValuesCount      uint64     `json:"values_count"`
 	Pages            []PageInfo `json:"pages"`
 }
 
 type PageInfo struct {
-	UncompressedSize uint32 `json:"uncompressed_size"`
-	CompressedSize   uint32 `json:"compressed_size"`
+	UncompressedSize uint64 `json:"uncompressed_size"`
+	CompressedSize   uint64 `json:"compressed_size"`
 	CRC32            uint32 `json:"crc32"`
-	RowsCount        uint32 `json:"rows_count"`
+	RowsCount        uint64 `json:"rows_count"`
 	Encoding         string `json:"encoding"`
-	DataOffset       uint32 `json:"data_offset"`
-	DataSize         uint32 `json:"data_size"`
-	ValuesCount      uint32 `json:"values_count"`
+	DataOffset       uint64 `json:"data_offset"`
+	DataSize         uint64 `json:"data_size"`
+	ValuesCount      uint64 `json:"values_count"`
 }
 
 type SectionMetadata struct {
