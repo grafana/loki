@@ -73,8 +73,8 @@ func (cfg *BuilderConfig) Validate() error {
 		errs = append(errs, errors.New("TargetPageSize must be less than TargetObjectSize"))
 	}
 
-	if cfg.TargetObjectSize <= 0 || cfg.TargetObjectSize > 3_000_000_000 {
-		errs = append(errs, errors.New("TargetObjectSize must be greater than 0 and less than 3GB"))
+	if cfg.TargetObjectSize <= 0 {
+		errs = append(errs, errors.New("TargetObjectSize must be greater than 0"))
 	}
 
 	return errors.Join(errs...)
