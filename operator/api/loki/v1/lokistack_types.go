@@ -843,17 +843,6 @@ type OTLPSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Dropped Attributes"
 	Drop *OTLPMetadataSpec `json:"drop,omitempty"`
-
-	// StructuredMetadata configures which attributes are saved in structured metadata.
-	//
-	// Deprecated: Using StructuredMetadata to specify which attributes are saved as structured metadata is not
-	// necessary, as this is the default behavior. Not listing attributes in StructuredMetadata will not remove
-	// the attributes from the entry, they need to be listed in Drop instead.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Structured Metadata"
-	StructuredMetadata *OTLPMetadataSpec `json:"structuredMetadata,omitempty"`
 }
 
 type OTLPStreamLabelSpec struct {

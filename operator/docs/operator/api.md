@@ -2768,23 +2768,6 @@ OTLPMetadataSpec
 <p>Drop configures which attributes are dropped from the log entry.</p>
 </td>
 </tr>
-<tr>
-<td>
-<code>structuredMetadata</code><br/>
-<em>
-<a href="#loki-grafana-com-v1-OTLPMetadataSpec">
-OTLPMetadataSpec
-</a>
-</em>
-</td>
-<td>
-<em>(Optional)</em>
-<p>StructuredMetadata configures which attributes are saved in structured metadata.</p>
-<p>Deprecated: Using StructuredMetadata to specify which attributes are saved as structured metadata is not
-necessary, as this is the default behavior. Not listing attributes in StructuredMetadata will not remove
-the attributes from the entry, they need to be listed in Drop instead.</p>
-</td>
-</tr>
 </tbody>
 </table>
 

@@ -355,51 +355,6 @@ spec:
           instead of as a verbatim attribute name.
         displayName: Treat name as regular expression
         path: limits.global.otlp.streamLabels.resourceAttributes[0].regex
-      - description: |-
-          StructuredMetadata configures which attributes are saved in structured metadata.
-
-
-          Deprecated: Using StructuredMetadata to specify which attributes are saved as structured metadata is not
-          necessary, as this is the default behavior. Not listing attributes in StructuredMetadata will not remove
-          the attributes from the entry, they need to be listed in Drop instead.
-        displayName: Structured Metadata
-        path: limits.global.otlp.structuredMetadata
-      - description: LogAttributes lists the names of log attributes that should be
-          included in structured metadata.
-        displayName: Log Attributes
-        path: limits.global.otlp.structuredMetadata.logAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.global.otlp.structuredMetadata.logAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.global.otlp.structuredMetadata.logAttributes[0].regex
-      - description: ResourceAttributes lists the names of resource attributes that
-          should be included in structured metadata.
-        displayName: Resource Attributes
-        path: limits.global.otlp.structuredMetadata.resourceAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.global.otlp.structuredMetadata.resourceAttributes[0].regex
-      - description: ScopeAttributes lists the names of scope attributes that should
-          be included in structured metadata.
-        displayName: Scope Attributes
-        path: limits.global.otlp.structuredMetadata.scopeAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.global.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.global.queries.cardinalityLimit
@@ -560,51 +515,6 @@ spec:
           instead of as a verbatim attribute name.
         displayName: Treat name as regular expression
         path: limits.tenants.otlp.streamLabels.resourceAttributes[0].regex
-      - description: |-
-          StructuredMetadata configures which attributes are saved in structured metadata.
-
-
-          Deprecated: Using StructuredMetadata to specify which attributes are saved as structured metadata is not
-          necessary, as this is the default behavior. Not listing attributes in StructuredMetadata will not remove
-          the attributes from the entry, they need to be listed in Drop instead.
-        displayName: Structured Metadata
-        path: limits.tenants.otlp.structuredMetadata
-      - description: LogAttributes lists the names of log attributes that should be
-          included in structured metadata.
-        displayName: Log Attributes
-        path: limits.tenants.otlp.structuredMetadata.logAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.tenants.otlp.structuredMetadata.logAttributes[0].regex
-      - description: ResourceAttributes lists the names of resource attributes that
-          should be included in structured metadata.
-        displayName: Resource Attributes
-        path: limits.tenants.otlp.structuredMetadata.resourceAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.tenants.otlp.structuredMetadata.resourceAttributes[0].regex
-      - description: ScopeAttributes lists the names of scope attributes that should
-          be included in structured metadata.
-        displayName: Scope Attributes
-        path: limits.tenants.otlp.structuredMetadata.scopeAttributes
-      - description: Name contains either a verbatim name of an attribute or a regular
-          expression matching many attributes.
-        displayName: Name
-        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].name
-      - description: If Regex is true, then Name is treated as a regular expression
-          instead of as a verbatim attribute name.
-        displayName: Treat name as regular expression
-        path: limits.tenants.otlp.structuredMetadata.scopeAttributes[0].regex
       - description: Blocked defines the list of rules to block matching queries.
         displayName: Blocked
         path: limits.tenants.queries.blocked
