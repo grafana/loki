@@ -59,8 +59,8 @@ type PrefixType struct {
 }
 
 type PutBucketArgs struct {
-	TagList string `json:"-"`
-	EnableMultiAz bool `json:"enableMultiAz"`
+	TagList       string `json:"-"`
+	EnableMultiAz bool   `json:"enableMultiAz"`
 }
 
 // ListObjectsResult defines the result structure of ListObjects api.
@@ -98,6 +98,7 @@ type AclRefererType struct {
 type AclCondType struct {
 	IpAddress []string       `json:"ipAddress"`
 	Referer   AclRefererType `json:"referer"`
+	VpcId     []string       `json:"vpcId"`
 }
 
 // GrantType defines the grant struct in ACL setting
@@ -285,8 +286,8 @@ type CopyObjectArgs struct {
 }
 
 type MultiCopyObjectArgs struct {
-	StorageClass string
-	ObjectTagging string
+	StorageClass     string
+	ObjectTagging    string
 	TaggingDirective string
 }
 
@@ -396,8 +397,8 @@ type EndMessage struct {
 
 // FetchObjectArgs defines the optional arguments structure for the fetch object api.
 type FetchObjectArgs struct {
-	FetchMode    string
-	StorageClass string
+	FetchMode            string
+	StorageClass         string
 	FetchCallBackAddress string
 }
 

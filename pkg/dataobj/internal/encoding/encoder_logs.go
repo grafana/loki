@@ -54,11 +54,11 @@ func (enc *LogsEncoder) OpenColumn(columnType logsmd.ColumnType, info *dataset.C
 		Info: &datasetmd.ColumnInfo{
 			Name:             info.Name,
 			ValueType:        info.Type,
-			RowsCount:        uint32(info.RowsCount),
-			ValuesCount:      uint32(info.ValuesCount),
+			RowsCount:        uint64(info.RowsCount),
+			ValuesCount:      uint64(info.ValuesCount),
 			Compression:      info.Compression,
-			UncompressedSize: uint32(info.UncompressedSize),
-			CompressedSize:   uint32(info.CompressedSize),
+			UncompressedSize: uint64(info.UncompressedSize),
+			CompressedSize:   uint64(info.CompressedSize),
 			Statistics:       info.Statistics,
 
 			MetadataOffset: math.MaxUint32,
@@ -149,10 +149,11 @@ func (enc *LogsEncoder) append(data, metadata []byte) error {
 		return nil
 	}
 
-	enc.curColumn.Info.MetadataOffset = uint32(enc.startOffset + enc.data.Len() + len(data))
-	enc.curColumn.Info.MetadataSize = uint32(len(metadata))
+	enc.curColumn.Info.MetadataOffset = uint64(enc.startOffset + enc.data.Len() + len(data))
+	enc.curColumn.Info.MetadataSize = uint64(len(metadata))
 
 	// bytes.Buffer.Write never fails.
+	enc.data.Grow(len(data) + len(metadata))
 	_, _ = enc.data.Write(data)
 	_, _ = enc.data.Write(metadata)
 
@@ -169,8 +170,11 @@ type LogsColumnEncoder struct {
 	startOffset int  // Byte offset in the file where the column starts.
 	closed      bool // true if LogsColumnEncoder has been closed.
 
-	data  *bytes.Buffer // All page data.
-	pages []*logsmd.PageDesc
+	data        *bytes.Buffer // All page data.
+	pageHeaders []*logsmd.PageDesc
+
+	memPages      []*dataset.MemPage // Pages to write.
+	totalPageSize int                // Size of bytes across all pages.
 }
 
 func newLogsColumnEncoder(parent *LogsEncoder, offset int) *LogsColumnEncoder {
@@ -195,23 +199,24 @@ func (enc *LogsColumnEncoder) AppendPage(page *dataset.MemPage) error {
 	// It's possible the caller can pass an incorrect value for UncompressedSize
 	// and CompressedSize, but those fields are purely for stats so we don't
 	// check it.
-	enc.pages = append(enc.pages, &logsmd.PageDesc{
+	enc.pageHeaders = append(enc.pageHeaders, &logsmd.PageDesc{
 		Info: &datasetmd.PageInfo{
-			UncompressedSize: uint32(page.Info.UncompressedSize),
-			CompressedSize:   uint32(page.Info.CompressedSize),
+			UncompressedSize: uint64(page.Info.UncompressedSize),
+			CompressedSize:   uint64(page.Info.CompressedSize),
 			Crc32:            page.Info.CRC32,
-			RowsCount:        uint32(page.Info.RowCount),
-			ValuesCount:      uint32(page.Info.ValuesCount),
+			RowsCount:        uint64(page.Info.RowCount),
+			ValuesCount:      uint64(page.Info.ValuesCount),
 			Encoding:         page.Info.Encoding,
 
-			DataOffset: uint32(enc.startOffset + enc.data.Len()),
-			DataSize:   uint32(len(page.Data)),
+			DataOffset: uint64(enc.startOffset + enc.totalPageSize),
+			DataSize:   uint64(len(page.Data)),
 
 			Statistics: page.Info.Stats,
 		},
 	})
 
-	_, _ = enc.data.Write(page.Data) // bytes.Buffer.Write never fails.
+	enc.memPages = append(enc.memPages, page)
+	enc.totalPageSize += len(page.Data)
 	return nil
 }
 
@@ -220,7 +225,7 @@ func (enc *LogsColumnEncoder) AppendPage(page *dataset.MemPage) error {
 func (enc *LogsColumnEncoder) MetadataSize() int { return elementMetadataSize(enc) }
 
 func (enc *LogsColumnEncoder) metadata() proto.Message {
-	return &logsmd.ColumnMetadata{Pages: enc.pages}
+	return &logsmd.ColumnMetadata{Pages: enc.pageHeaders}
 }
 
 // Commit closes the column, flushing all data to the parent element. After
@@ -233,9 +238,16 @@ func (enc *LogsColumnEncoder) Commit() error {
 
 	defer bytesBufferPool.Put(enc.data)
 
-	if len(enc.pages) == 0 {
+	if len(enc.pageHeaders) == 0 {
 		// No data was written; discard.
 		return enc.parent.append(nil, nil)
+	}
+
+	// Write all pages. To avoid costly reallocations, we grow our buffer to fit
+	// all data first.
+	enc.data.Grow(enc.totalPageSize)
+	for _, p := range enc.memPages {
+		_, _ = enc.data.Write(p.Data) // bytes.Buffer.Write never fails.
 	}
 
 	metadataBuffer := bytesBufferPool.Get().(*bytes.Buffer)
@@ -245,6 +257,7 @@ func (enc *LogsColumnEncoder) Commit() error {
 	if err := elementMetadataWrite(enc, metadataBuffer); err != nil {
 		return err
 	}
+
 	return enc.parent.append(enc.data.Bytes(), metadataBuffer.Bytes())
 }
 

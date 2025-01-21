@@ -158,10 +158,11 @@ func (enc *Encoder) append(data, metadata []byte) error {
 		return nil
 	}
 
-	enc.curSection.MetadataOffset = uint32(enc.startOffset + enc.data.Len() + len(data))
-	enc.curSection.MetadataSize = uint32(len(metadata))
+	enc.curSection.MetadataOffset = uint64(enc.startOffset + enc.data.Len() + len(data))
+	enc.curSection.MetadataSize = uint64(len(metadata))
 
 	// bytes.Buffer.Write never fails.
+	enc.data.Grow(len(data) + len(metadata))
 	_, _ = enc.data.Write(data)
 	_, _ = enc.data.Write(metadata)
 
