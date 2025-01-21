@@ -368,7 +368,6 @@ jobs:
           echo "" >> formatted_diff_output.md
 
       - name: Post diff as PR comment
-        if: github.event.pull_request.head.repo.fork == false
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: "Helm Diff Output - Summary"
