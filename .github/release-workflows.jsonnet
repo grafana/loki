@@ -146,7 +146,7 @@ local weeklyImageJobs = {
     } + {
       ['%s-manifest' % name]:
         job.new()
-        + job.withNeeds(['check', '%s-image' % name])
+        + job.withNeeds(['%s-image' % name])
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
           step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),

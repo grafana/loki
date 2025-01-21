@@ -94,7 +94,6 @@
     "env":
       "BUILD_TIMEOUT": 60
     "needs":
-    - "check"
     - "loki-canary-boringcrypto-image"
     "runs-on": "ubuntu-latest"
     "steps":
@@ -201,7 +200,6 @@
     "env":
       "BUILD_TIMEOUT": 60
     "needs":
-    - "check"
     - "loki-canary-image"
     "runs-on": "ubuntu-latest"
     "steps":
@@ -308,7 +306,6 @@
     "env":
       "BUILD_TIMEOUT": 60
     "needs":
-    - "check"
     - "loki-image"
     "runs-on": "ubuntu-latest"
     "steps":
@@ -415,7 +412,6 @@
     "env":
       "BUILD_TIMEOUT": 60
     "needs":
-    - "check"
     - "promtail-image"
     "runs-on": "ubuntu-latest"
     "steps":
