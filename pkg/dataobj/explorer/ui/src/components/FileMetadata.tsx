@@ -400,25 +400,40 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                                           key={pageIndex}
                                           className="border-t border-gray-100 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600"
                                         >
-                                          <td className="p-3">
+                                          <td className="p-3 dark:text-gray-200">
                                             {pageIndex + 1}
                                           </td>
-                                          <td className="p-3">
+                                          <td className="p-3 dark:text-gray-200">
                                             {page.rows_count.toLocaleString()}
                                           </td>
-                                          <td className="p-3">
+                                          <td className="p-3 dark:text-gray-200">
                                             {page.values_count.toLocaleString()}
                                           </td>
-                                          <td className="p-3 font-medium">
+                                          <td className="p-3 dark:text-gray-200">
                                             {page.encoding}
                                           </td>
                                           <td className="p-3">
-                                            <CompressionRatio
-                                              compressed={page.compressed_size}
-                                              uncompressed={
-                                                page.uncompressed_size
-                                              }
-                                            />
+                                            <div className="flex items-center gap-2">
+                                              <CompressionRatio
+                                                compressed={
+                                                  page.compressed_size
+                                                }
+                                                uncompressed={
+                                                  page.uncompressed_size
+                                                }
+                                              />
+                                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                (
+                                                {formatBytes(
+                                                  page.compressed_size
+                                                )}{" "}
+                                                →{" "}
+                                                {formatBytes(
+                                                  page.uncompressed_size
+                                                )}
+                                                )
+                                              </span>
+                                            </div>
                                           </td>
                                         </tr>
                                       ))}
