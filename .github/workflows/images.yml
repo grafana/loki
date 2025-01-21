@@ -7,7 +7,7 @@
       "release_lib_ref": "main"
       "skip_validation": false
       "use_github_app_token": true
-  "loki":
+  "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
@@ -15,7 +15,13 @@
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
-    "runs-on": "ubuntu-latest"
+    "outputs":
+      "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
+      "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
+      "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
+      "image_name": "${{ steps.weekly-version.outputs.image_name }}"
+      "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
       "uses": "actions/checkout@v4"
@@ -32,120 +38,80 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
-    - "name": "Set up QEMU"
-      "uses": "docker/setup-qemu-action@v3"
-    - "name": "set up docker buildx"
+    - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@v3"
-    - "name": "Login to DockerHub (from vault)"
+    - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
-        echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
+        version=$(./tools/image-tag)
+        echo "image_version=$version" >> $GITHUB_OUTPUT
+        echo "image_name=${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto" >> $GITHUB_OUTPUT
+        echo "image_full_name=${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:$version" >> $GITHUB_OUTPUT
       "working-directory": "release"
-    - "name": "Build and push"
-      "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v6"
-      "with":
-        "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
-        "context": "release"
-        "file": "release/cmd/loki/Dockerfile"
-        "platforms": "linux/amd64,linux/arm64,linux/arm"
-        "push": true
-        "tags": "${{ env.IMAGE_PREFIX }}/loki:${{ steps.weekly-version.outputs.version }}"
-  "loki-canary":
-    "env":
-      "BUILD_TIMEOUT": 60
-      "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/loki"
-    "needs":
-    - "check"
-    "runs-on": "ubuntu-latest"
-    "steps":
-    - "name": "pull release library code"
-      "uses": "actions/checkout@v4"
-      "with":
-        "path": "lib"
-        "ref": "${{ env.RELEASE_LIB_REF }}"
-        "repository": "grafana/loki-release"
-    - "name": "pull code to release"
-      "uses": "actions/checkout@v4"
-      "with":
-        "path": "release"
-        "repository": "${{ env.RELEASE_REPO }}"
-    - "name": "setup node"
-      "uses": "actions/setup-node@v4"
-      "with":
-        "node-version": 20
-    - "name": "Set up QEMU"
-      "uses": "docker/setup-qemu-action@v3"
-    - "name": "set up docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
-    - "name": "Login to DockerHub (from vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
-    - "id": "weekly-version"
-      "name": "Get weekly version"
+    - "id": "platform"
+      "name": "Parse image platform"
       "run": |
-        echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       "working-directory": "release"
-    - "name": "Build and push"
+    - "id": "build-push"
+      "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       "uses": "docker/build-push-action@v6"
       "with":
-        "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
-        "context": "release"
-        "file": "release/cmd/loki-canary/Dockerfile"
-        "platforms": "linux/amd64,linux/arm64,linux/arm"
-        "push": true
-        "tags": "${{ env.IMAGE_PREFIX }}/loki-canary:${{ steps.weekly-version.outputs.version }}"
-  "loki-canary-boringcrypto":
-    "env":
-      "BUILD_TIMEOUT": 60
-      "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "main"
-      "RELEASE_REPO": "grafana/loki"
-    "needs":
-    - "check"
-    "runs-on": "ubuntu-latest"
-    "steps":
-    - "name": "pull release library code"
-      "uses": "actions/checkout@v4"
-      "with":
-        "path": "lib"
-        "ref": "${{ env.RELEASE_LIB_REF }}"
-        "repository": "grafana/loki-release"
-    - "name": "pull code to release"
-      "uses": "actions/checkout@v4"
-      "with":
-        "path": "release"
-        "repository": "${{ env.RELEASE_REPO }}"
-    - "name": "setup node"
-      "uses": "actions/setup-node@v4"
-      "with":
-        "node-version": 20
-    - "name": "Set up QEMU"
-      "uses": "docker/setup-qemu-action@v3"
-    - "name": "set up docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
-    - "name": "Login to DockerHub (from vault)"
-      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
-    - "id": "weekly-version"
-      "name": "Get weekly version"
-      "run": |
-        echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
-      "working-directory": "release"
-    - "name": "Build and push"
-      "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
-      "uses": "docker/build-push-action@v6"
-      "with":
-        "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
+        "build-args": |
+          IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         "context": "release"
         "file": "release/cmd/loki-canary-boringcrypto/Dockerfile"
-        "platforms": "linux/amd64,linux/arm64,linux/arm"
-        "push": true
-        "tags": "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ steps.weekly-version.outputs.version }}"
-  "promtail":
+        "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
+        "platforms": "${{ matrix.arch }}"
+        "provenance": true
+        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+    - "id": "digest"
+      "name": "Process image digest"
+      "run": |
+        arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    "strategy":
+      "fail-fast": true
+      "matrix":
+        "include":
+        - "arch": "linux/amd64"
+          "runs_on": "ubuntu-amd64"
+        - "arch": "linux/arm64"
+          "runs_on": "ubuntu-arm64"
+        - "arch": "linux/arm"
+          "runs_on": "ubuntu-arm"
+  "loki-canary-boringcrypto-manifest":
+    "env":
+      "BUILD_TIMEOUT": 60
+    "needs":
+    - "check"
+    - "loki-canary-boringcrypto-image"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@v3"
+    - "name": "Login to DockerHub (from Vault)"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+    - "name": "Create and publish manifest"
+      "run": |
+        # Unfortunately there is no better way atm than having a separate named output for each digest
+        echo '${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.loki-canary-boringcrypto.outputs.image_name }}:${{ needs.loki-canary-boringcrypto.outputs.image_tag }}
+        docker buildx imagetools create -t $IMAGE \
+          ${{ needs.loki-canary-boringcrypto.outputs.image_name }}@${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.loki-canary-boringcrypto.outputs.image_name }}@${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm64 }}
+          ${{ needs.loki-canary-boringcrypto.outputs.image_name }}@${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm }}
+        docker buildx imagetools inspect $IMAGE
+  "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "grafana"
@@ -153,7 +119,13 @@
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
-    "runs-on": "ubuntu-latest"
+    "outputs":
+      "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
+      "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
+      "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
+      "image_name": "${{ steps.weekly-version.outputs.image_name }}"
+      "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "runs-on": "${{ matrix.runs_on }}"
     "steps":
     - "name": "pull release library code"
       "uses": "actions/checkout@v4"
@@ -170,27 +142,287 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
-    - "name": "Set up QEMU"
-      "uses": "docker/setup-qemu-action@v3"
-    - "name": "set up docker buildx"
+    - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@v3"
-    - "name": "Login to DockerHub (from vault)"
+    - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
-        echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
+        version=$(./tools/image-tag)
+        echo "image_version=$version" >> $GITHUB_OUTPUT
+        echo "image_name=${{ env.IMAGE_PREFIX }}/loki-canary" >> $GITHUB_OUTPUT
+        echo "image_full_name=${{ env.IMAGE_PREFIX }}/loki-canary:$version" >> $GITHUB_OUTPUT
       "working-directory": "release"
-    - "name": "Build and push"
+    - "id": "platform"
+      "name": "Parse image platform"
+      "run": |
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    - "id": "build-push"
+      "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
       "uses": "docker/build-push-action@v6"
       "with":
-        "build-args": "IMAGE_TAG=${{ steps.weekly-version.outputs.version }}"
+        "build-args": |
+          IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+          GO_VERSION=${{ env.GO_VERSION }}
+        "context": "release"
+        "file": "release/cmd/loki-canary/Dockerfile"
+        "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
+        "platforms": "${{ matrix.arch }}"
+        "provenance": true
+        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+    - "id": "digest"
+      "name": "Process image digest"
+      "run": |
+        arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    "strategy":
+      "fail-fast": true
+      "matrix":
+        "include":
+        - "arch": "linux/amd64"
+          "runs_on": "ubuntu-amd64"
+        - "arch": "linux/arm64"
+          "runs_on": "ubuntu-arm64"
+        - "arch": "linux/arm"
+          "runs_on": "ubuntu-arm"
+  "loki-canary-manifest":
+    "env":
+      "BUILD_TIMEOUT": 60
+    "needs":
+    - "check"
+    - "loki-canary-image"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@v3"
+    - "name": "Login to DockerHub (from Vault)"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+    - "name": "Create and publish manifest"
+      "run": |
+        # Unfortunately there is no better way atm than having a separate named output for each digest
+        echo '${{ needs.loki-canary.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.loki-canary.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.loki-canary.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.loki-canary.outputs.image_name }}:${{ needs.loki-canary.outputs.image_tag }}
+        docker buildx imagetools create -t $IMAGE \
+          ${{ needs.loki-canary.outputs.image_name }}@${{ needs.loki-canary.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.loki-canary.outputs.image_name }}@${{ needs.loki-canary.outputs.image_digest_linux_arm64 }}
+          ${{ needs.loki-canary.outputs.image_name }}@${{ needs.loki-canary.outputs.image_digest_linux_arm }}
+        docker buildx imagetools inspect $IMAGE
+  "loki-image":
+    "env":
+      "BUILD_TIMEOUT": 60
+      "IMAGE_PREFIX": "grafana"
+      "RELEASE_LIB_REF": "main"
+      "RELEASE_REPO": "grafana/loki"
+    "needs":
+    - "check"
+    "outputs":
+      "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
+      "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
+      "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
+      "image_name": "${{ steps.weekly-version.outputs.image_name }}"
+      "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "runs-on": "${{ matrix.runs_on }}"
+    "steps":
+    - "name": "pull release library code"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "lib"
+        "ref": "${{ env.RELEASE_LIB_REF }}"
+        "repository": "grafana/loki-release"
+    - "name": "pull code to release"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "release"
+        "repository": "${{ env.RELEASE_REPO }}"
+    - "name": "setup node"
+      "uses": "actions/setup-node@v4"
+      "with":
+        "node-version": 20
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@v3"
+    - "name": "Login to DockerHub (from Vault)"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+    - "id": "weekly-version"
+      "name": "Get weekly version"
+      "run": |
+        version=$(./tools/image-tag)
+        echo "image_version=$version" >> $GITHUB_OUTPUT
+        echo "image_name=${{ env.IMAGE_PREFIX }}/loki" >> $GITHUB_OUTPUT
+        echo "image_full_name=${{ env.IMAGE_PREFIX }}/loki:$version" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    - "id": "platform"
+      "name": "Parse image platform"
+      "run": |
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    - "id": "build-push"
+      "name": "Build and push"
+      "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      "uses": "docker/build-push-action@v6"
+      "with":
+        "build-args": |
+          IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+          GO_VERSION=${{ env.GO_VERSION }}
+        "context": "release"
+        "file": "release/cmd/loki/Dockerfile"
+        "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
+        "platforms": "${{ matrix.arch }}"
+        "provenance": true
+        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+    - "id": "digest"
+      "name": "Process image digest"
+      "run": |
+        arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    "strategy":
+      "fail-fast": true
+      "matrix":
+        "include":
+        - "arch": "linux/amd64"
+          "runs_on": "ubuntu-amd64"
+        - "arch": "linux/arm64"
+          "runs_on": "ubuntu-arm64"
+        - "arch": "linux/arm"
+          "runs_on": "ubuntu-arm"
+  "loki-manifest":
+    "env":
+      "BUILD_TIMEOUT": 60
+    "needs":
+    - "check"
+    - "loki-image"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@v3"
+    - "name": "Login to DockerHub (from Vault)"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+    - "name": "Create and publish manifest"
+      "run": |
+        # Unfortunately there is no better way atm than having a separate named output for each digest
+        echo '${{ needs.loki.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.loki.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.loki.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.loki.outputs.image_name }}:${{ needs.loki.outputs.image_tag }}
+        docker buildx imagetools create -t $IMAGE \
+          ${{ needs.loki.outputs.image_name }}@${{ needs.loki.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.loki.outputs.image_name }}@${{ needs.loki.outputs.image_digest_linux_arm64 }}
+          ${{ needs.loki.outputs.image_name }}@${{ needs.loki.outputs.image_digest_linux_arm }}
+        docker buildx imagetools inspect $IMAGE
+  "promtail-image":
+    "env":
+      "BUILD_TIMEOUT": 60
+      "IMAGE_PREFIX": "grafana"
+      "RELEASE_LIB_REF": "main"
+      "RELEASE_REPO": "grafana/loki"
+    "needs":
+    - "check"
+    "outputs":
+      "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
+      "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
+      "image_digest_linux_arm64": "${{ steps.digest.outputs.digest_linux_arm64 }}"
+      "image_name": "${{ steps.weekly-version.outputs.image_name }}"
+      "image_tag": "${{ steps.weekly-version.outputs.image_version }}"
+    "runs-on": "${{ matrix.runs_on }}"
+    "steps":
+    - "name": "pull release library code"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "lib"
+        "ref": "${{ env.RELEASE_LIB_REF }}"
+        "repository": "grafana/loki-release"
+    - "name": "pull code to release"
+      "uses": "actions/checkout@v4"
+      "with":
+        "path": "release"
+        "repository": "${{ env.RELEASE_REPO }}"
+    - "name": "setup node"
+      "uses": "actions/setup-node@v4"
+      "with":
+        "node-version": 20
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@v3"
+    - "name": "Login to DockerHub (from Vault)"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+    - "id": "weekly-version"
+      "name": "Get weekly version"
+      "run": |
+        version=$(./tools/image-tag)
+        echo "image_version=$version" >> $GITHUB_OUTPUT
+        echo "image_name=${{ env.IMAGE_PREFIX }}/promtail" >> $GITHUB_OUTPUT
+        echo "image_full_name=${{ env.IMAGE_PREFIX }}/promtail:$version" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    - "id": "platform"
+      "name": "Parse image platform"
+      "run": |
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    - "id": "build-push"
+      "name": "Build and push"
+      "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      "uses": "docker/build-push-action@v6"
+      "with":
+        "build-args": |
+          IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+          GO_VERSION=${{ env.GO_VERSION }}
         "context": "release"
         "file": "release/clients/cmd/promtail/Dockerfile"
-        "platforms": "linux/amd64,linux/arm64,linux/arm"
-        "push": true
-        "tags": "${{ env.IMAGE_PREFIX }}/promtail:${{ steps.weekly-version.outputs.version }}"
+        "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
+        "platforms": "${{ matrix.arch }}"
+        "provenance": true
+        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+    - "id": "digest"
+      "name": "Process image digest"
+      "run": |
+        arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+      "working-directory": "release"
+    "strategy":
+      "fail-fast": true
+      "matrix":
+        "include":
+        - "arch": "linux/amd64"
+          "runs_on": "ubuntu-amd64"
+        - "arch": "linux/arm64"
+          "runs_on": "ubuntu-arm64"
+        - "arch": "linux/arm"
+          "runs_on": "ubuntu-arm"
+  "promtail-manifest":
+    "env":
+      "BUILD_TIMEOUT": 60
+    "needs":
+    - "check"
+    - "promtail-image"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "name": "Set up Docker buildx"
+      "uses": "docker/setup-buildx-action@v3"
+    - "name": "Login to DockerHub (from Vault)"
+      "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
+    - "name": "Create and publish manifest"
+      "run": |
+        # Unfortunately there is no better way atm than having a separate named output for each digest
+        echo '${{ needs.promtail.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.promtail.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.promtail.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.promtail.outputs.image_name }}:${{ needs.promtail.outputs.image_tag }}
+        docker buildx imagetools create -t $IMAGE \
+          ${{ needs.promtail.outputs.image_name }}@${{ needs.promtail.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.promtail.outputs.image_name }}@${{ needs.promtail.outputs.image_digest_linux_arm64 }}
+          ${{ needs.promtail.outputs.image_name }}@${{ needs.promtail.outputs.image_digest_linux_arm }}
+        docker buildx imagetools inspect $IMAGE
 "name": "publish images"
 "on":
   "push":

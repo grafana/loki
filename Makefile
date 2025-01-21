@@ -148,6 +148,12 @@ DOC_TEMPLATE_PATH := docs/templates
 DOC_FLAGS_TEMPLATE := $(DOC_TEMPLATE_PATH)/configuration.template
 DOC_FLAGS := $(DOC_SOURCES_PATH)/shared/configuration.md
 
+.PHONY: print-env
+print-env:  # Print variables from Makefile so they can be used in GH actions
+	@echo "GO_VERSION=$(GO_VERSION)"
+	@echo "IMAGE_TAG=$(IMAGE_TAG)"
+	@echo "BUILD_IMAGE_TAG=$(BUILD_IMAGE_TAG)"
+
 ##########
 # Docker #
 ##########
@@ -836,7 +842,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
 	# pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
 endif
 
 .PHONY: release-workflows-check

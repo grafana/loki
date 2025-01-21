@@ -1,9 +1,11 @@
-local lokiRelease = import 'workflows/main.jsonnet';
-
+local lokiRelease = import 'workflows/main.jsonnet',
+      job = lokiRelease.job,
+      step = lokiRelease.step;
 local build = lokiRelease.build;
 local releaseLibRef = 'main';
 local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % releaseLibRef;
 local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
+local goVersion = std.extVar('GO_VERSION');
 local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
 local golangCiLintVersion = 'v1.60.3';
 local imageBuildTimeoutMin = 60;
@@ -127,16 +129,46 @@ local weeklyImageJobs = {
           use_github_app_token: true,
         },
       },
-    } + std.mapWithKey(function(name, job)
-      job
-      + lokiRelease.job.withNeeds(['check'])
-      + {
-        env: {
-          BUILD_TIMEOUT: imageBuildTimeoutMin,
-          RELEASE_REPO: 'grafana/loki',
-          RELEASE_LIB_REF: releaseLibRef,
-          IMAGE_PREFIX: imagePrefix,
-        },
-      }, weeklyImageJobs),
+    } + {
+      ['%s-image' % name]:
+        weeklyImageJobs[name]
+        + lokiRelease.job.withNeeds(['check'])
+        + {
+          env: {
+            BUILD_TIMEOUT: imageBuildTimeoutMin,
+            RELEASE_REPO: 'grafana/loki',
+            RELEASE_LIB_REF: releaseLibRef,
+            IMAGE_PREFIX: imagePrefix,
+          },
+        }
+      for name in std.objectFields(weeklyImageJobs)
+    } + {
+      ['%s-manifest' % name]:
+        job.new()
+        + job.withNeeds(['check', '%s-image' % name])
+        + job.withSteps([
+          step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
+          step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+          step.new('Create and publish manifest')
+          + step.withRun(|||
+            # Unfortunately there is no better way atm than having a separate named output for each digest
+            echo '${{ needs.%(name)s.outputs.image_digest_linux_amd64 }}'
+            echo '${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}'
+            echo '${{ needs.%(name)s.outputs.image_digest_linux_arm }}'
+            IMAGE=${{ needs.%(name)s.outputs.image_name }}:${{ needs.%(name)s.outputs.image_tag }}
+            docker buildx imagetools create -t $IMAGE \
+              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_amd64 }} \
+              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}
+              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm }}
+            docker buildx imagetools inspect $IMAGE
+          ||| % { name: name }),
+        ])
+        + {
+          env: {
+            BUILD_TIMEOUT: imageBuildTimeoutMin,
+          },
+        }
+      for name in std.objectFields(weeklyImageJobs)
+    },
   }),
 }
