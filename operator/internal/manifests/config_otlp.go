@@ -109,7 +109,7 @@ func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec, base *config.OT
 		}
 	}
 
-	if structuredMetadata := otlpSpec.StructuredMetadata; structuredMetadata != nil {
+	if structuredMetadata := otlpSpec.StructuredMetadata; structuredMetadata != nil { // nolint:staticcheck
 		if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
 			result.ResourceAttributes = append(result.ResourceAttributes,
 				convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
@@ -271,7 +271,7 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 				}
 			}
 
-			if structuredMetadata := globalOTLP.StructuredMetadata; structuredMetadata != nil {
+			if structuredMetadata := globalOTLP.StructuredMetadata; structuredMetadata != nil { // nolint:staticcheck
 				if result.Global == nil {
 					result.Global = &config.OTLPTenantAttributeConfig{}
 				}

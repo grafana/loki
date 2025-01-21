@@ -215,16 +215,16 @@ func (v *LokiStackValidator) checkOTLPInvalidDrop(basePath *field.Path, otlp, in
 	resourceAttributes := [][]lokiv1.OTLPAttributeReference{}
 	scopeAttributes := [][]lokiv1.OTLPAttributeReference{}
 	logAttributes := [][]lokiv1.OTLPAttributeReference{}
-	if metadata := otlp.StructuredMetadata; metadata != nil {
+	if metadata := otlp.StructuredMetadata; metadata != nil { // nolint:staticcheck
 		resourceAttributes = append(resourceAttributes, metadata.ResourceAttributes)
 		scopeAttributes = append(scopeAttributes, metadata.ScopeAttributes)
 		logAttributes = append(logAttributes, metadata.LogAttributes)
 	}
 
-	if inheritedOtlp != nil && inheritedOtlp.StructuredMetadata != nil {
-		resourceAttributes = append(resourceAttributes, inheritedOtlp.StructuredMetadata.ResourceAttributes)
-		scopeAttributes = append(scopeAttributes, inheritedOtlp.StructuredMetadata.ScopeAttributes)
-		logAttributes = append(logAttributes, inheritedOtlp.StructuredMetadata.LogAttributes)
+	if inheritedOtlp != nil && inheritedOtlp.StructuredMetadata != nil { // nolint:staticcheck
+		resourceAttributes = append(resourceAttributes, inheritedOtlp.StructuredMetadata.ResourceAttributes) // nolint:staticcheck
+		scopeAttributes = append(scopeAttributes, inheritedOtlp.StructuredMetadata.ScopeAttributes)          // nolint:staticcheck
+		logAttributes = append(logAttributes, inheritedOtlp.StructuredMetadata.LogAttributes)                // nolint:staticcheck
 	}
 
 	errList = append(errList, v.checkOTLPInvalidDropReference(
