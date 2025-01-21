@@ -72,8 +72,11 @@ func Test(t *testing.T) {
 		builderConfig := BuilderConfig{
 			SHAPrefixSize: 2,
 
-			TargetPageSize:   1_500_000,
-			TargetObjectSize: 10_000_000,
+			TargetPageSize:    1_500_000,
+			TargetObjectSize:  10_000_000,
+			TargetSectionSize: 5_000_000,
+
+			BufferSize: 1_500_000 * 8,
 		}
 
 		builder, err := NewBuilder(builderConfig, bucket, "fake")
@@ -94,10 +97,7 @@ func Test(t *testing.T) {
 
 		actual, err := result.Collect(reader.Streams(context.Background(), objects[0]))
 		require.NoError(t, err)
-
-		// TODO(rfratto): reenable once sorting is reintroduced.
-		_ = actual
-		// require.Equal(t, sortStreams(t, streams), actual)
+		require.Equal(t, sortStreams(t, streams), actual)
 	})
 }
 
@@ -114,8 +114,11 @@ func Test_Builder_Append(t *testing.T) {
 	builderConfig := BuilderConfig{
 		SHAPrefixSize: 2,
 
-		TargetPageSize:   2048,
-		TargetObjectSize: 4096,
+		TargetPageSize:    2048,
+		TargetObjectSize:  4096,
+		TargetSectionSize: 4096,
+
+		BufferSize: 2048 * 8,
 	}
 
 	builder, err := NewBuilder(builderConfig, bucket, "fake")
