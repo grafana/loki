@@ -24,18 +24,26 @@ type InteractiveBrowserCredentialOptions struct {
 	// tokens. Add the wildcard value "*" to allow the credential to acquire tokens for any tenant.
 	AdditionallyAllowedTenants []string
 
-	// authenticationRecord returned by a call to a credential's Authenticate method. Set this option
+	// AuthenticationRecord returned by a call to a credential's Authenticate method. Set this option
 	// to enable the credential to use data from a previous authentication.
-	authenticationRecord authenticationRecord
+	AuthenticationRecord AuthenticationRecord
 
-	// ClientID is the ID of the application users will authenticate to.
-	// Defaults to the ID of an Azure development application.
+	// Cache is a persistent cache the credential will use to store the tokens it acquires, making
+	// them available to other processes and credential instances. The default, zero value means the
+	// credential will store tokens in memory and not share them with any other credential instance.
+	Cache Cache
+
+	// ClientID is the ID of the application to which users will authenticate. When not set, users
+	// will authenticate to an Azure development application, which isn't recommended for production
+	// scenarios. In production, developers should instead register their applications and assign
+	// appropriate roles. See https://aka.ms/azsdk/identity/AppRegistrationAndRoleAssignment for more
+	// information.
 	ClientID string
 
-	// disableAutomaticAuthentication prevents the credential from automatically prompting the user to authenticate.
-	// When this option is true, GetToken will return authenticationRequiredError when user interaction is necessary
+	// DisableAutomaticAuthentication prevents the credential from automatically prompting the user to authenticate.
+	// When this option is true, GetToken will return AuthenticationRequiredError when user interaction is necessary
 	// to acquire a token.
-	disableAutomaticAuthentication bool
+	DisableAutomaticAuthentication bool
 
 	// DisableInstanceDiscovery should be set true only by applications authenticating in disconnected clouds, or
 	// private clouds such as Azure Stack. It determines whether the credential requests Microsoft Entra instance metadata
@@ -54,9 +62,6 @@ type InteractiveBrowserCredentialOptions struct {
 	// TenantID is the Microsoft Entra tenant the credential authenticates in. Defaults to the
 	// "organizations" tenant, which can authenticate work and school accounts.
 	TenantID string
-
-	// tokenCachePersistenceOptions enables persistent token caching when not nil.
-	tokenCachePersistenceOptions *tokenCachePersistenceOptions
 }
 
 func (o *InteractiveBrowserCredentialOptions) init() {
@@ -82,13 +87,13 @@ func NewInteractiveBrowserCredential(options *InteractiveBrowserCredentialOption
 	cp.init()
 	msalOpts := publicClientOptions{
 		AdditionallyAllowedTenants:     cp.AdditionallyAllowedTenants,
+		Cache:                          cp.Cache,
 		ClientOptions:                  cp.ClientOptions,
-		DisableAutomaticAuthentication: cp.disableAutomaticAuthentication,
+		DisableAutomaticAuthentication: cp.DisableAutomaticAuthentication,
 		DisableInstanceDiscovery:       cp.DisableInstanceDiscovery,
 		LoginHint:                      cp.LoginHint,
-		Record:                         cp.authenticationRecord,
+		Record:                         cp.AuthenticationRecord,
 		RedirectURL:                    cp.RedirectURL,
-		TokenCachePersistenceOptions:   cp.tokenCachePersistenceOptions,
 	}
 	c, err := newPublicClient(cp.TenantID, cp.ClientID, credNameBrowser, msalOpts)
 	if err != nil {
@@ -97,8 +102,9 @@ func NewInteractiveBrowserCredential(options *InteractiveBrowserCredentialOption
 	return &InteractiveBrowserCredential{client: c}, nil
 }
 
-// Authenticate a user via the default browser. Subsequent calls to GetToken will automatically use the returned AuthenticationRecord.
-func (c *InteractiveBrowserCredential) authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (authenticationRecord, error) {
+// Authenticate opens the default browser so a user can log in. Subsequent
+// GetToken calls will automatically use the returned AuthenticationRecord.
+func (c *InteractiveBrowserCredential) Authenticate(ctx context.Context, opts *policy.TokenRequestOptions) (AuthenticationRecord, error) {
 	var err error
 	ctx, endSpan := runtime.StartSpan(ctx, credNameBrowser+"."+traceOpAuthenticate, c.client.azClient.Tracer(), nil)
 	defer func() { endSpan(err) }()
