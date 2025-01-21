@@ -109,23 +109,6 @@ func convertTenantAttributeReferences(otlpSpec *lokiv1.OTLPSpec, base *config.OT
 		}
 	}
 
-	if structuredMetadata := otlpSpec.StructuredMetadata; structuredMetadata != nil { // nolint:staticcheck
-		if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
-			result.ResourceAttributes = append(result.ResourceAttributes,
-				convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
-		}
-
-		if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
-			result.ScopeAttributes = append(result.ScopeAttributes,
-				convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
-		}
-
-		if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
-			result.LogAttributes = append(result.LogAttributes,
-				convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
-		}
-	}
-
 	return result
 }
 
@@ -268,27 +251,6 @@ func otlpAttributeConfig(ls *lokiv1.LokiStackSpec) config.OTLPAttributeConfig {
 				if logAttr := dropLabels.LogAttributes; len(logAttr) > 0 {
 					result.Global.LogAttributes = append(result.Global.LogAttributes,
 						convertAttributeReferences(logAttr, config.OTLPAttributeActionDrop)...)
-				}
-			}
-
-			if structuredMetadata := globalOTLP.StructuredMetadata; structuredMetadata != nil { // nolint:staticcheck
-				if result.Global == nil {
-					result.Global = &config.OTLPTenantAttributeConfig{}
-				}
-
-				if resAttr := structuredMetadata.ResourceAttributes; len(resAttr) > 0 {
-					result.Global.ResourceAttributes = append(result.Global.ResourceAttributes,
-						convertAttributeReferences(resAttr, config.OTLPAttributeActionMetadata)...)
-				}
-
-				if scopeAttr := structuredMetadata.ScopeAttributes; len(scopeAttr) > 0 {
-					result.Global.ScopeAttributes = append(result.Global.ScopeAttributes,
-						convertAttributeReferences(scopeAttr, config.OTLPAttributeActionMetadata)...)
-				}
-
-				if logAttr := structuredMetadata.LogAttributes; len(logAttr) > 0 {
-					result.Global.LogAttributes = append(result.Global.LogAttributes,
-						convertAttributeReferences(logAttr, config.OTLPAttributeActionMetadata)...)
 				}
 			}
 		}
