@@ -117,10 +117,10 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 		{
 			name: "skip samples before window",
 			expected: json.RawMessage(`[
-							{"metric":{"foo":"bar"},"values":[[0,"1"],[5,"2"],[15,"3"],[20,"4"]]}
+							{"metric":{"foo":"bar"},"values":[[0,"1"],[5,"2"],[10,"3"],[20,"4"]]}
 						]`),
 			actual: json.RawMessage(`[
-							{"metric":{"foo":"bar"},"values":[[5,"1"],[15,"3"],[20,"4"]]}
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[10,"3"],[20,"4"]]}
 						]`),
 			skipSamplesBefore: time.Unix(10, 0),
 			evaluationTime:    time.Unix(100, 0),
@@ -128,10 +128,10 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 		{
 			name: "skip recent samples",
 			expected: json.RawMessage(`[
-							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[80,"3"],[94,"4"],[96,"5"]]}
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[90,"3"],[94,"4"],[96,"5"]]}
 						]`),
 			actual: json.RawMessage(`[
-							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[80,"3"],[95, "4"]]}
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[90,"3"],[95, "4"]]}
 						]`),
 			skipRecentSamples: 10 * time.Second,
 			evaluationTime:    time.Unix(100, 0),
@@ -147,6 +147,32 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 			skipSamplesBefore: time.Unix(10, 0),
 			skipRecentSamples: 10 * time.Second,
 			evaluationTime:    time.Unix(100, 0),
+		},
+		{
+			name: "mismatch in sample value on the right boundary",
+			expected: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[90,"3"],[94,"4"],[96,"5"]]}
+						]`),
+			actual: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[5,"1"],[25,"2"],[90,"4"],[95, "4"]]}
+						]`),
+			skipSamplesBefore: time.Unix(10, 0),
+			skipRecentSamples: 10 * time.Second,
+			evaluationTime:    time.Unix(100, 0),
+			err:               errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected value 3 for timestamp 90 but got 4"),
+		},
+		{
+			name: "mismatch in sample value on the left boundary",
+			expected: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[10,"1"],[25,"2"],[90,"3"],[94,"4"],[96,"5"]]}
+						]`),
+			actual: json.RawMessage(`[
+							{"metric":{"foo":"bar"},"values":[[10,"0"],[25,"2"],[90,"3"],[95, "4"]]}
+						]`),
+			skipSamplesBefore: time.Unix(10, 0),
+			skipRecentSamples: 10 * time.Second,
+			evaluationTime:    time.Unix(100, 0),
+			err:               errors.New("float sample pair does not match for metric {foo=\"bar\"}: expected value 1 for timestamp 10 but got 0"),
 		},
 		{
 			name: "skip entire series",
@@ -173,7 +199,7 @@ func TestCompareMatrix_SamplesOutsideComparableWindow(t *testing.T) {
 				return
 			}
 			require.Error(t, err)
-			require.Equal(t, tc.err.Error(), err.Error())
+			require.ErrorContains(t, err, tc.err.Error())
 		})
 	}
 }
@@ -600,10 +626,10 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 		{
 			name: "skip samples before window",
 			expected: json.RawMessage(`[
-				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"],["95","4"]]}
+				{"stream":{"foo":"bar"},"values":[["5","1"],["10","2"],["50","3"],["95","4"]]}
 			]`),
 			actual: json.RawMessage(`[
-				{"stream":{"foo":"bar"},"values":[["2","0"],["15","2"],["50","3"],["95","4"]]}
+				{"stream":{"foo":"bar"},"values":[["2","0"],["10","2"],["50","3"],["95","4"]]}
 			]`),
 			skipSamplesBefore: time.Unix(0, 10),
 			evaluationTime:    time.Unix(0, 100),
@@ -611,10 +637,10 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 		{
 			name: "skip recent samples",
 			expected: json.RawMessage(`[
-				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"],["95","4"]]}
+				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["90","3"],["95","4"]]}
 			]`),
 			actual: json.RawMessage(`[
-				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"]]}
+				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["90","3"]]}
 			]`),
 			skipRecentSamples: 10 * time.Nanosecond,
 			evaluationTime:    time.Unix(0, 100),
@@ -630,6 +656,32 @@ func TestCompareStreams_SamplesOutsideComparableWindow(t *testing.T) {
 			skipRecentSamples: 10 * time.Nanosecond,
 			skipSamplesBefore: time.Unix(0, 10),
 			evaluationTime:    time.Unix(0, 100),
+		},
+		{
+			name: "mismatch in sample value on the right boundary",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["5","1"],["15","2"],["50","3"],["90","4"]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["15","2"],["50","3"],["90","5"]]}
+			]`),
+			skipRecentSamples: 10 * time.Nanosecond,
+			skipSamplesBefore: time.Unix(0, 10),
+			evaluationTime:    time.Unix(0, 100),
+			err:               errors.New("expected line 4 for timestamp 90 but got 5 for stream {foo=\"bar\"}"),
+		},
+		{
+			name: "mismatch in sample value on the left boundary",
+			expected: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["5","1"],["10","2"],["50","3"],["90","4"]]}
+			]`),
+			actual: json.RawMessage(`[
+				{"stream":{"foo":"bar"},"values":[["10","22"],["50","3"],["90","5"]]}
+			]`),
+			skipRecentSamples: 10 * time.Nanosecond,
+			skipSamplesBefore: time.Unix(0, 10),
+			evaluationTime:    time.Unix(0, 100),
+			err:               errors.New("expected line 2 for timestamp 10 but got 22 for stream {foo=\"bar\"}"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
