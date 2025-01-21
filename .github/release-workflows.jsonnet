@@ -140,6 +140,7 @@ local weeklyImageJobs = {
             RELEASE_REPO: 'grafana/loki',
             RELEASE_LIB_REF: releaseLibRef,
             IMAGE_PREFIX: imagePrefix,
+            GO_VERSION: goVersion,
           },
         }
       for name in std.objectFields(weeklyImageJobs)
