@@ -47,16 +47,29 @@ type BuilderConfig struct {
 
 	// TargetObjectSize configures a target size for data objects.
 	TargetObjectSize flagext.Bytes `yaml:"target_object_size"`
+
+	// TargetSectionSize configures the maximum size of data in a section. Sections
+	// which support this parameter will place overflow data into new sections of
+	// the same type.
+	TargetSectionSize flagext.Bytes `yaml:"section_size"`
+
+	// BufferSize configures the size of the buffer used to accumulate
+	// uncompressed logs in memory prior to sorting.
+	BufferSize flagext.Bytes `yaml:"buffer_size"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.TargetPageSize.Set("2MB")
 	_ = cfg.TargetObjectSize.Set("1GB")
+	_ = cfg.BufferSize.Set("16MB")         // Page Size * 8
+	_ = cfg.TargetSectionSize.Set("128MB") // Target Object Size / 8
 
 	f.IntVar(&cfg.SHAPrefixSize, prefix+"sha-prefix-size", 2, "The size of the SHA prefix to use for the data object builder.")
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
+	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
+	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
 }
 
 // Validate validates the BuilderConfig.
@@ -75,6 +88,15 @@ func (cfg *BuilderConfig) Validate() error {
 
 	if cfg.TargetObjectSize <= 0 {
 		errs = append(errs, errors.New("TargetObjectSize must be greater than 0"))
+	}
+
+	if cfg.BufferSize <= 0 {
+		errs = append(errs, errors.New("BufferSize must be greater than 0"))
+	}
+
+	if cfg.TargetSectionSize <= 0 || cfg.TargetSectionSize > cfg.TargetObjectSize {
+		errs = append(errs, errors.New("SectionSize must be greater than 0 and less than or equal to TargetObjectSize"))
+
 	}
 
 	return errors.Join(errs...)
@@ -148,7 +170,11 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 		labelCache: labelCache,
 
 		streams: streams.New(metrics.streams, int(cfg.TargetPageSize)),
-		logs:    logs.New(metrics.logs, int(cfg.TargetPageSize)),
+		logs: logs.New(metrics.logs, logs.Options{
+			PageSizeHint: int(cfg.TargetPageSize),
+			BufferSize:   int(cfg.BufferSize),
+			SectionSize:  int(cfg.TargetSectionSize),
+		}),
 
 		flushBuffer: flushBuffer,
 		encoder:     encoder,
