@@ -6,7 +6,7 @@ Each scenario is used in a different job execution that will be used to deploy l
 
 We deploy the scenario with the latest release and then we execute a helm diff with the current version in the workspace, the diff between the release deployed will be posted in the pull request inside a comment like [this](https://github.com/grafana/loki/pull/15734#issuecomment-2592439539) making clear to review.
 
->*NOTE*: the helm diff output file will be available for each scenario inside github action to download for 2 days, after this you may need to re-run the job if you would like to download the output files.
+> _NOTE_: the helm diff output file will be available for each scenario inside github action to download for 2 days, after this you may need to re-run the job if you would like to download the output files.
 
 ## Run scenarios locally
 
@@ -16,9 +16,9 @@ All this process that we run in the CI can be done locally, the following steps 
 
 To run locally you will need the following tools in your local environment
 
-* k3d or any kubernetes cluster
-* helm
-* [helm-diff plugin](https://github.com/databus23/helm-diff)
+- k3d or any kubernetes cluster
+- helm
+- [helm-diff plugin](https://github.com/databus23/helm-diff)
 
 ## Run
 
@@ -32,7 +32,7 @@ Deploy in your kubernetes cluster the latest released version of the helm chart 
   helm install --create-namespace loki-release grafana/loki -f ${scenario}-values.yaml
 ```
 
- Then run the helm diff plugin to compare the local helm chart to see the upgrade changes that will happen:
+Then run the helm diff plugin to compare the local helm chart to see the upgrade changes that will happen:
 
 ```shell
     HELM_DIFF_USE_UPGRADE_DRY_RUN: true helm diff upgrade loki-release -f ${scenario}-values.yaml production/helm/loki
@@ -61,3 +61,7 @@ As the last step you need to run a diff between both files:
 ```shell
   diff current-manifest.yaml release-manifest.yaml
 ```
+
+## Known issues
+
+Running the comments in the PR
