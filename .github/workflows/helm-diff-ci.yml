@@ -274,6 +274,7 @@ jobs:
   summary-diff-outputs:
     name: Summary Diffs
     runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.fork == false
     needs:
       - single-binary-diff
       - default-values-diff
@@ -282,48 +283,37 @@ jobs:
       - simple-scalable-aws-kube-irsa-values-diff
 
     steps:
-      - if: github.event.pull_request.head.repo.fork
-        run: |
-          echo "Changing coming from a fork, check the artifacts for the diff output"
-
       - name: Checkout code
         uses: actions/checkout@v4
-        if: github.event.pull_request.head.repo.fork == false
         with:
           persist-credentials: false
 
-      - if: github.event.pull_request.head.repo.fork == false
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: single-binary-diff-output
           path: single-binary-diff
 
-      - if: github.event.pull_request.head.repo.fork == false
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: default-values-diff-output
           path: default-values-diff
 
-      - if: github.event.pull_request.head.repo.fork == false
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: ingress-diff-output
           path: ingress-values-diff
 
-      - if: github.event.pull_request.head.repo.fork == false
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: legacy-monitoring-diff-output
           path: legacy-monitoring-values-diff
 
-      - if: github.event.pull_request.head.repo.fork == false
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: simple-scalable-aws-kube-irsa-diff-output
           path: simple-scalable-aws-kube-irsa-values-diff
 
       - name: Combine diff outputs
-        if: github.event.pull_request.head.repo.fork == false
         run: |
           echo "## Helm Diff Output - Summary" > formatted_diff_output.md
 
