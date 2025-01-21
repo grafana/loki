@@ -160,7 +160,7 @@ jobs:
   fluent-bit:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -183,16 +183,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -205,10 +205,10 @@ jobs:
         context: "release"
         file: "release/clients/cmd/fluent-bit/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-bit-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/fluent-bit-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -217,12 +217,13 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
   fluentd:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -245,16 +246,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -267,10 +268,10 @@ jobs:
         context: "release"
         file: "release/clients/cmd/fluentd/Dockerfile"
         outputs: "type=docker,dest=release/images/fluent-plugin-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/fluent-plugin-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -279,12 +280,13 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
   logcli:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -307,16 +309,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -329,10 +331,10 @@ jobs:
         context: "release"
         file: "release/cmd/logcli/Dockerfile"
         outputs: "type=docker,dest=release/images/logcli-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/logcli:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -341,14 +343,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
+        - arch: "linux/arm64"
+          runs_on: "ubuntu-arm64"
+        - arch: "linux/arm"
+          runs_on: "ubuntu-arm"
   logstash:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -371,16 +376,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -393,10 +398,10 @@ jobs:
         context: "release"
         file: "release/clients/cmd/logstash/Dockerfile"
         outputs: "type=docker,dest=release/images/logstash-output-loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/logstash-output-loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -405,12 +410,13 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
   loki:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -433,16 +439,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -455,10 +461,10 @@ jobs:
         context: "release"
         file: "release/cmd/loki/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -467,14 +473,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
+        - arch: "linux/arm64"
+          runs_on: "ubuntu-arm64"
+        - arch: "linux/arm"
+          runs_on: "ubuntu-arm"
   loki-canary:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -497,16 +506,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -519,10 +528,10 @@ jobs:
         context: "release"
         file: "release/cmd/loki-canary/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -531,14 +540,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
+        - arch: "linux/arm64"
+          runs_on: "ubuntu-arm64"
+        - arch: "linux/arm"
+          runs_on: "ubuntu-arm"
   loki-canary-boringcrypto:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -561,16 +573,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -583,10 +595,10 @@ jobs:
         context: "release"
         file: "release/cmd/loki-canary-boringcrypto/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-canary-boringcrypto-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-canary-boringcrypto:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -595,10 +607,13 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
+        - arch: "linux/arm64"
+          runs_on: "ubuntu-arm64"
+        - arch: "linux/arm"
+          runs_on: "ubuntu-arm"
   loki-docker-driver:
     needs:
     - "version"
@@ -679,7 +694,7 @@ jobs:
   promtail:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -702,16 +717,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -724,10 +739,10 @@ jobs:
         context: "release"
         file: "release/clients/cmd/promtail/Dockerfile"
         outputs: "type=docker,dest=release/images/promtail-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/promtail:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -736,14 +751,17 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
-        - "linux/arm64"
-        - "linux/arm"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
+        - arch: "linux/arm64"
+          runs_on: "ubuntu-arm64"
+        - arch: "linux/arm"
+          runs_on: "ubuntu-arm"
   querytee:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -766,16 +784,16 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up QEMU"
       uses: "docker/setup-qemu-action@v3"
-    - name: "set up docker buildx"
+    - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
-      name: "parse image platform"
+      name: "Parse image platform"
       run: |
-        mkdir -p images
+        mkdir -p release/images
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       working-directory: "release"
     - env:
         IMAGE_TAG: "${{ needs.version.outputs.version }}"
@@ -788,10 +806,10 @@ jobs:
         context: "release"
         file: "release/cmd/querytee/Dockerfile"
         outputs: "type=docker,dest=release/images/loki-query-tee-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         tags: "${{ env.IMAGE_PREFIX }}/loki-query-tee:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
-      name: "upload artifacts"
+      name: "Upload artifacts"
       uses: "google-github-actions/upload-cloud-storage@v2"
       with:
         destination: "${{ env.BUILD_ARTIFACTS_BUCKET }}/${{ github.sha }}/images"
@@ -800,8 +818,9 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
-        - "linux/amd64"
+        include:
+        - arch: "linux/amd64"
+          runs_on: "ubuntu-amd64"
   version:
     needs:
     - "check"

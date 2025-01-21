@@ -1,4 +1,5 @@
 local common = import 'common.libsonnet';
+local runner = import 'runner.libsonnet';
 local job = common.job;
 local step = common.step;
 local releaseStep = common.releaseStep;
@@ -16,11 +17,11 @@ local releaseLibStep = common.releaseLibStep;
       'linux/arm',
     ]
         )
-    job.new()
+    job.new('${{ matrix.runs_on }}')
     + job.withStrategy({
       'fail-fast': true,
       matrix: {
-        platform: platform,
+        include: [runner.forPlatform(p) for p in platform],
       },
     })
     + job.withSteps([
@@ -30,16 +31,16 @@ local releaseLibStep = common.releaseLibStep;
       common.googleAuth,
 
       step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
-      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+      step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
 
-      releaseStep('parse image platform')
+      releaseStep('Parse image platform')
       + step.withId('platform')
       + step.withRun(|||
-        mkdir -p images
+        mkdir -p release/images
 
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
       step.new('Build and export', 'docker/build-push-action@v6')
@@ -51,12 +52,12 @@ local releaseLibStep = common.releaseLibStep;
       + step.with({
         context: context,
         file: 'release/%s/%s' % [path, dockerfile],
-        platforms: '${{ matrix.platform }}',
+        platforms: '${{ matrix.arch }}',
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
         'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
       }),
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      step.new('Upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
