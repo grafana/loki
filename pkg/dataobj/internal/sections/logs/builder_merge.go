@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -20,7 +21,7 @@ func mergeStripes(opts Options, buf *stripeBuffer, stripes []*stripe) (*stripe, 
 	var (
 		streamIDsBuilder  = buf.StreamIDs(opts)
 		timestampsBuilder = buf.Timestamps(opts)
-		messagesBuilder   = buf.Messages(opts)
+		messagesBuilder   = buf.Messages(opts, datasetmd.COMPRESSION_TYPE_ZSTD)
 	)
 
 	var (
@@ -86,7 +87,7 @@ func mergeStripes(opts Options, buf *stripeBuffer, stripes []*stripe) (*stripe, 
 			columnIndex := i + 2 // Skip stream ID and timestamp.
 			key := columns[columnIndex].Info.Name
 
-			columnBuilder := buf.Metadatas(key, opts)
+			columnBuilder := buf.Metadatas(key, opts, datasetmd.COMPRESSION_TYPE_ZSTD)
 			_ = columnBuilder.Append(rows, value)
 
 			usedMetadata[key] = struct{}{}

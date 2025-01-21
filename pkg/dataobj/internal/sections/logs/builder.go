@@ -238,7 +238,7 @@ func (b *stripeBuffer) Timestamps(opts Options) *dataset.ColumnBuilder {
 
 func (b *stripeBuffer) AllMetadatas() []*dataset.ColumnBuilder { return b.metadatas }
 
-func (b *stripeBuffer) Metadatas(key string, opts Options) *dataset.ColumnBuilder {
+func (b *stripeBuffer) Metadatas(key string, opts Options, compression datasetmd.CompressionType) *dataset.ColumnBuilder {
 	index, ok := b.metadataLookup[key]
 	if ok {
 		return b.metadatas[index]
@@ -248,7 +248,7 @@ func (b *stripeBuffer) Metadatas(key string, opts Options) *dataset.ColumnBuilde
 		PageSizeHint: opts.PageSizeHint,
 		Value:        datasetmd.VALUE_TYPE_STRING,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Compression:  compression,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -310,7 +310,7 @@ func (b *stripeBuffer) Reset() {
 	}
 }
 
-func (b *stripeBuffer) Messages(opts Options) *dataset.ColumnBuilder {
+func (b *stripeBuffer) Messages(opts Options, compression datasetmd.CompressionType) *dataset.ColumnBuilder {
 	if b.messages != nil {
 		return b.messages
 	}
@@ -319,7 +319,7 @@ func (b *stripeBuffer) Messages(opts Options) *dataset.ColumnBuilder {
 		PageSizeHint: opts.PageSizeHint,
 		Value:        datasetmd.VALUE_TYPE_STRING,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Compression:  compression,
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -347,7 +347,7 @@ func buildStripe(opts Options, buf *stripeBuffer, records []Record) *stripe {
 	var (
 		streamIDsBuilder  = buf.StreamIDs(opts)
 		timestampsBuilder = buf.Timestamps(opts)
-		messagesBuilder   = buf.Messages(opts)
+		messagesBuilder   = buf.Messages(opts, datasetmd.COMPRESSION_TYPE_SNAPPY)
 	)
 
 	for i, record := range records {
@@ -360,7 +360,7 @@ func buildStripe(opts Options, buf *stripeBuffer, records []Record) *stripe {
 		_ = messagesBuilder.Append(i, dataset.StringValue(record.Line))
 
 		for _, metadata := range record.Metadata {
-			metadataBuilder := buf.Metadatas(metadata.Name, opts)
+			metadataBuilder := buf.Metadatas(metadata.Name, opts, datasetmd.COMPRESSION_TYPE_SNAPPY)
 			_ = metadataBuilder.Append(i, dataset.StringValue(metadata.Value))
 		}
 	}

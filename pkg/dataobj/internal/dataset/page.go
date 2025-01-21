@@ -99,14 +99,31 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		return bitmapReader, io.NopCloser(compressedDataReader), nil
 
 	case datasetmd.COMPRESSION_TYPE_SNAPPY:
-		sr := snappy.NewReader(compressedDataReader)
-		return bitmapReader, io.NopCloser(sr), nil
+		sr := snappyPool.Get().(*snappy.Reader)
+		sr.Reset(compressedDataReader)
+		return bitmapReader, &closerFunc{Reader: sr, closeFunc: func() error {
+			snappyPool.Put(sr)
+			return nil
+		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
 		return bitmapReader, newZstdReader(compressedDataReader), nil
 	}
 
 	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
+}
+
+type closerFunc struct {
+	io.Reader
+	closeFunc func() error
+}
+
+func (cf *closerFunc) Close() error { return cf.closeFunc() }
+
+var snappyPool = sync.Pool{
+	New: func() interface{} {
+		return snappy.NewReader(nil)
+	},
 }
 
 // zstdReader implements [io.ReadCloser] for a [zstd.Decoder].
