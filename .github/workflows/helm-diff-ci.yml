@@ -292,25 +292,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - id: get-secrets
-        uses: grafana/shared-workflows/actions/get-vault-secrets@main
-        if: github.event.pull_request.head.repo.fork == false
-        with:
-          repo_secrets: |
-            GRAFANA_APP_ID=github_actions:grafana-loki-app-id
-            GRAFANA_APP_INSTALATION_ID=github_actions:grafana-loki-app-installation-id
-            GRAFANA_APP_PEM=github_actions:grafana-loki-app-pem
-
-      - name: Generate a token
-        id: generate-token
-        if: github.event.pull_request.head.repo.fork == false
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ env.GRAFANA_APP_ID }}
-          private-key: ${{ env.GRAFANA_APP_PEM }}
-          owner: grafana
-          repositories: loki
-
       - if: github.event.pull_request.head.repo.fork == false
         uses: actions/download-artifact@v4
         with:
