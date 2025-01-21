@@ -268,7 +268,6 @@ type OTLPAttributeAction string
 
 const (
 	OTLPAttributeActionStreamLabel OTLPAttributeAction = "index_label"
-	OTLPAttributeActionMetadata    OTLPAttributeAction = "structured_metadata"
 	OTLPAttributeActionDrop        OTLPAttributeAction = "drop"
 )
 

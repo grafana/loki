@@ -510,20 +510,8 @@ func TestSortOTLPAttributes(t *testing.T) {
 			desc: "sort",
 			attrs: []config.OTLPAttribute{
 				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.a"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.c",
-				},
-				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Names:  []string{"test.b"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
 				},
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
@@ -538,18 +526,6 @@ func TestSortOTLPAttributes(t *testing.T) {
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Regex:  "test.regex.b",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.a"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.c",
 				},
 			},
 		},
@@ -584,24 +560,12 @@ func TestSortOTLPAttributes(t *testing.T) {
 					Names:  []string{"test.c"},
 				},
 				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.d", "test.e"},
-				},
-				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Names:  []string{"test.b"},
 				},
 				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.f"},
-				},
-				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Regex:  "test.regex.b",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
 				},
 			},
 			wantAttrs: []config.OTLPAttribute{
@@ -612,14 +576,6 @@ func TestSortOTLPAttributes(t *testing.T) {
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Regex:  "test.regex.b",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.d", "test.e", "test.f"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
 				},
 			},
 		},
