@@ -9,9 +9,7 @@ import { BasenameProvider } from "./contexts/BasenameContext";
 const pathname = window.location.pathname;
 const match = pathname.match(/(.*\/dataobj\/explorer\/)/);
 const basename =
-  match?.[0] != "/dataobj/explorer/"
-    ? match?.[1] + "dataobj/explorer/"
-    : "/dataobj/explorer/";
+  match?.[0] != "/dataobj/explorer/" ? match?.[1] : "/dataobj/explorer/";
 
 console.log({
   pathname,
