@@ -8,18 +8,16 @@
   ],
   "prHourlyLimit": 4,
   "baseBranches": [
-    "main"
+    "main",
+    "release-3.3.x", // Update when a new release is out, 2 minors, 1 major.
+    "release-3.2.x", // Also ensure to update the 'packageRules' section to match
+    "release-2.9.x"
   ],
   "packageRules": [
     {
-      "matchBaseBranches": [
-        "release-2.9.x",
-        "release-2.8.x"
-      ],
-      "enabled": false,
-      "matchPackageNames": [
-        "*"
-      ]
+      // Disable updates for all branches - we only want security updates
+      "matchBaseBranches": ["release-3.3.x", "release-3.2.x", "release-2.9.x"], 
+      "enabled": false
     },
     {
       // Disable Go version updates
@@ -65,9 +63,8 @@
       "groupName": "{{packageName}}",
       "enabled": true,
       "matchUpdateTypes": ["major", "minor", "patch"],
-      // After we have tested the above configuration, we can enable the following
-      "automerge": false,
-      "autoApprove": false
+      "automerge": true,
+      "autoApprove": true
     }
   ],
   "digest": {
@@ -77,7 +74,9 @@
     "enabled": true,
     "addLabels": [
       "area/security"
-    ]
+    ],
+    "automerge": true, 
+    "autoApprove": true
   },
   "osvVulnerabilityAlerts": true,
   "prConcurrentLimit": 10,
