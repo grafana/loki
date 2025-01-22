@@ -119,37 +119,36 @@ local weeklyImageJobs = {
       contents: 'write',
       'pull-requests': 'write',
     },
-    // Disable for faster testing
-    // jobs: {
-    //   check: {
-    //     uses: checkTemplate,
-    //     with: {
-    //       build_image: buildImage,
-    //       golang_ci_lint_version: golangCiLintVersion,
-    //       release_lib_ref: releaseLibRef,
-    //       skip_validation: false,
-    //       use_github_app_token: true,
-    //     },
-    //   },
-    // } + {
     jobs: {
+      check: {
+        uses: checkTemplate,
+        with: {
+          build_image: buildImage,
+          golang_ci_lint_version: golangCiLintVersion,
+          release_lib_ref: releaseLibRef,
+          skip_validation: false,
+          use_github_app_token: true,
+        },
+      },
+    } + {
       ['%s-image' % name]:
         weeklyImageJobs[name]
-        // + lokiRelease.job.withNeeds(['check'])
-        {
-          env: {
-            BUILD_TIMEOUT: imageBuildTimeoutMin,
-            RELEASE_REPO: 'grafana/loki',
-            RELEASE_LIB_REF: releaseLibRef,
-            IMAGE_PREFIX: imagePrefix,
-            GO_VERSION: goVersion,
-          },
-        }
+        + job.withNeeds(['check'])
+        + job.withEnv({
+          BUILD_TIMEOUT: imageBuildTimeoutMin,
+          RELEASE_REPO: 'grafana/loki',
+          RELEASE_LIB_REF: releaseLibRef,
+          IMAGE_PREFIX: imagePrefix,
+          GO_VERSION: goVersion,
+        })
       for name in std.objectFields(weeklyImageJobs)
     } + {
       ['%s-manifest' % name]:
         job.new()
         + job.withNeeds(['%s-image' % name])
+        + job.withEnv({
+          BUILD_TIMEOUT: imageBuildTimeoutMin,
+        })
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
           step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
@@ -168,11 +167,6 @@ local weeklyImageJobs = {
             docker buildx imagetools inspect $IMAGE
           ||| % { name: '%s-image' % name }),
         ])
-        + {
-          env: {
-            BUILD_TIMEOUT: imageBuildTimeoutMin,
-          },
-        }
       for name in std.objectFields(weeklyImageJobs)
     },
   }),

@@ -1,4 +1,12 @@
 "jobs":
+  "check":
+    "uses": "grafana/loki-release/.github/workflows/check.yml@main"
+    "with":
+      "build_image": "grafana/loki-build-image:0.34.4"
+      "golang_ci_lint_version": "v1.60.3"
+      "release_lib_ref": "main"
+      "skip_validation": false
+      "use_github_app_token": true
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
@@ -6,6 +14,8 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
+    "needs":
+    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
@@ -112,6 +122,8 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
+    "needs":
+    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
@@ -218,6 +230,8 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
+    "needs":
+    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
@@ -324,6 +338,8 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
+    "needs":
+    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
