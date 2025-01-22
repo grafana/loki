@@ -1,7 +1,6 @@
 package encoding
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // decode* methods for metadata shared by Decoder implementations.
@@ -108,9 +108,8 @@ func decodeProto(r streamio.Reader, pb proto.Message) error {
 		return fmt.Errorf("read proto message size: %w", err)
 	}
 
-	buf := bytesBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer bytesBufferPool.Put(buf)
+	buf := bufpool.Get(int(size))
+	defer bufpool.Put(buf)
 
 	n, err := io.Copy(buf, io.LimitReader(r, int64(size)))
 	if err != nil {

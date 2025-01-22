@@ -13,6 +13,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // Helper types.
@@ -153,9 +154,8 @@ func (r *fixedZstdReader) Read(p []byte) (int, error) {
 		return r.uncompressedBuf.Read(p)
 	}
 
-	r.uncompressedBuf = bytesbufferPool.Get().(*bytes.Buffer)
+	r.uncompressedBuf = bufpool.Get(r.page.Info.UncompressedSize)
 	r.uncompressedBuf.Reset()
-	r.uncompressedBuf.Grow(r.page.Info.UncompressedSize)
 
 	buf, err := globalZstdDecoder.DecodeAll(r.data, r.uncompressedBuf.AvailableBuffer())
 	if err != nil {
@@ -168,15 +168,9 @@ func (r *fixedZstdReader) Read(p []byte) (int, error) {
 
 func (r *fixedZstdReader) Close() error {
 	if r.uncompressedBuf != nil {
-		bytesbufferPool.Put(r.uncompressedBuf)
+		bufpool.Put(r.uncompressedBuf)
 		r.uncompressedBuf = nil
 	}
 	r.closed = true
 	return nil
-}
-
-var bytesbufferPool = sync.Pool{
-	New: func() any {
-		return new(bytes.Buffer)
-	},
 }
