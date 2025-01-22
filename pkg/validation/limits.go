@@ -972,23 +972,24 @@ func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 
 // RetentionHours returns the retention period for a given user.
 func (o *Overrides) RetentionHours(userID string, ls labels.Labels) string {
-	streamRetentions := o.getOverridesForUser(userID).StreamRetention
-
-	selectedRetention := o.getOverridesForUser(userID).RetentionPeriod
+	streamRetentions := o.StreamRetention(userID)
+	selectedRetention := o.RetentionPeriod(userID) // default to the tenant retention.
 	highestPriority := -1
 
-	if len(ls) > 0 {
-		for _, retention := range streamRetentions {
-			if retention.Matches(ls) {
-				if retention.Priority > highestPriority {
-					highestPriority = retention.Priority
-					selectedRetention = retention.Period
-				}
+	if len(ls) == 0 {
+		return retentionUtil.RetentionHours(selectedRetention)
+	}
+
+	for _, retention := range streamRetentions {
+		if retention.Matches(ls) {
+			if retention.Priority > highestPriority {
+				highestPriority = retention.Priority
+				selectedRetention = time.Duration(retention.Period)
 			}
 		}
 	}
 
-	return retentionUtil.RetentionHours(time.Duration(selectedRetention))
+	return retentionUtil.RetentionHours(selectedRetention)
 }
 
 func (o *Overrides) UnorderedWrites(userID string) bool {
