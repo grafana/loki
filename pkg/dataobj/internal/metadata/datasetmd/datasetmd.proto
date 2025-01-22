@@ -14,29 +14,29 @@ message ColumnInfo {
   ValueType value_type = 2;
 
   // Total number of rows in the entire column.
-  uint32 rows_count = 3;
+  uint64 rows_count = 3;
 
   // Compression type used for all pages.
   CompressionType compression = 4;
 
   // Total uncompressed size of all pages in the column.
-  uint32 uncompressed_size = 5;
+  uint64 uncompressed_size = 5;
 
   // Total compressed size of all pages in the column. Compressed size may
   // match uncompressed size if no compression is used.
-  uint32 compressed_size = 6;
+  uint64 compressed_size = 6;
 
   // Byte offset from the start of the data object to the column's metadata.
-  uint32 metadata_offset = 7;
+  uint64 metadata_offset = 7;
 
   // Size of the column's metadata in bytes.
-  uint32 metadata_size = 8;
+  uint64 metadata_size = 8;
 
   // Statistics for the column.
   Statistics statistics = 9;
 
   // Total number of non-NULL values in the entire column.
-  uint32 values_count = 10;
+  uint64 values_count = 10;
 }
 
 // ValueType represents the valid types that values within a column can have.
@@ -83,32 +83,32 @@ message Statistics {
 // Page describes an individual page within a column.
 message PageInfo {
   // Uncompressed size of the page within the data object.
-  uint32 uncompressed_size = 1;
+  uint64 uncompressed_size = 1;
 
   // Compressed size of the page within the data object. Compression size
   // will match uncompressed size if no compression is used.
-  uint32 compressed_size = 2;
+  uint64 compressed_size = 2;
 
   // CRC32 checksum of the page data.
   uint32 crc32 = 3;
 
   // Number of rows in the page.
-  uint32 rows_count = 4;
+  uint64 rows_count = 4;
 
   // Encoding type used for the page.
   EncodingType encoding = 5;
 
   // Byte offset from the start of the data object to the page's data.
-  uint32 data_offset = 6;
+  uint64 data_offset = 6;
 
   // Size of the page's data in bytes.
-  uint32 data_size = 7;
+  uint64 data_size = 7;
 
   // Optional statistics for the page.
   Statistics statistics = 8;
 
   // Total number of non-NULL values in the page.
-  uint32 values_count = 9;
+  uint64 values_count = 9;
 }
 
 // EncodingType represents the valid types that a sequence of values which a

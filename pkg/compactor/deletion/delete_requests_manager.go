@@ -92,6 +92,16 @@ func (d *DeleteRequestsManager) updateMetrics() error {
 	oldestPendingRequestCreatedAt := model.Time(0)
 
 	for _, deleteRequest := range deleteRequests {
+		// do not consider requests from users whose delete requests should not be processed as per their config
+		processRequest, err := d.shouldProcessRequest(deleteRequest)
+		if err != nil {
+			return err
+		}
+
+		if !processRequest {
+			continue
+		}
+
 		// adding an extra minute here to avoid a race between cancellation of request and picking up the request for processing
 		if deleteRequest.Status != StatusReceived || deleteRequest.CreatedAt.Add(d.deleteRequestCancelPeriod).Add(time.Minute).After(model.Now()) {
 			continue
