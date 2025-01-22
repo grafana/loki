@@ -156,14 +156,14 @@ local weeklyImageJobs = {
           step.new('Publish multi-arch manifest')
           + step.withRun(|||
             # Unfortunately there is no better way atm than having a separate named output for each digest
-            echo '${{ needs.%(name)s.outputs.image_digest_linux_amd64 }}'
-            echo '${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}'
-            echo '${{ needs.%(name)s.outputs.image_digest_linux_arm }}'
+            echo 'linux/arm64 ${{ needs.%(name)s.outputs.image_digest_linux_amd64 }}'
+            echo 'linux/amd64 ${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}'
+            echo 'linux/arm   ${{ needs.%(name)s.outputs.image_digest_linux_arm }}'
             IMAGE=${{ needs.%(name)s.outputs.image_name }}:${{ needs.%(name)s.outputs.image_tag }}
-            echo "IMAGE=$IMAGE"
+            echo "Create multi-arch manifest for $IMAGE"
             docker buildx imagetools create -t $IMAGE \
               ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_amd64 }} \
-              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}
+              ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm64 }} \
               ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm }}
             docker buildx imagetools inspect $IMAGE
           ||| % { name: '%s-image' % name }),
