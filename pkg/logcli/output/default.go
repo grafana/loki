@@ -19,7 +19,7 @@ type DefaultOutput struct {
 
 // Format a log entry in a human readable format
 func (o *DefaultOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, maxLabelsLen int, line string) {
-	// set .Format to RFC3339 or RFC3339Nano depending on the --timestamp value
+	// set .Format to RFC3339 (default), RFC822Z, RFC1123Z, StampMicro, StampMilli, StampNano or RFC3339Nano depending on the --timestamp value
 	timestamp := ts.In(o.options.Timezone).Format(o.options.TimestampFormat)
 	line = strings.TrimSpace(line)
 
