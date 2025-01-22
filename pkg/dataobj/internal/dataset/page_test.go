@@ -51,8 +51,9 @@ func Benchmark_pageBuilder_WriteRead(b *testing.B) {
 			b.Fatal()
 		}
 
-		io.Copy(io.Discard, values)
-		if err := values.Close(); err != nil {
+		if _, err := io.Copy(io.Discard, values); err != nil {
+			b.Fatal(err)
+		} else if err := values.Close(); err != nil {
 			b.Fatal(err)
 		}
 	}
