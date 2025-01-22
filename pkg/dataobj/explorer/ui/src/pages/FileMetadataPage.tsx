@@ -17,7 +17,7 @@ export const FileMetadataPage: React.FC = () => {
 
   return (
     <Layout breadcrumbParts={pathParts} isLastBreadcrumbClickable={false}>
-      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden dark:text-gray-200">
+      <div className="bg-gray-50 dark:bg-gray-800 shadow-md rounded-lg overflow-hidden dark:text-gray-200">
         {loading ? (
           <LoadingContainer />
         ) : error ? (

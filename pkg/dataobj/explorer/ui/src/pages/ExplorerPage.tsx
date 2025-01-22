@@ -19,18 +19,22 @@ export const ExplorerPage: React.FC = () => {
 
   return (
     <Layout breadcrumbParts={pathParts} isLastBreadcrumbClickable={true}>
-      {loading ? (
-        <LoadingContainer fullScreen />
-      ) : error ? (
-        <ErrorContainer message={error} fullScreen />
-      ) : data ? (
-        <FileList
-          current={data.current}
-          parent={data.parent}
-          files={data.files}
-          folders={data.folders}
-        />
-      ) : null}
+      <div className="relative" style={{ overflow: "visible" }}>
+        {loading ? (
+          <LoadingContainer fullScreen />
+        ) : error ? (
+          <ErrorContainer message={error} fullScreen />
+        ) : data ? (
+          <div className="relative" style={{ overflow: "visible" }}>
+            <FileList
+              current={data.current}
+              parent={data.parent}
+              files={data.files}
+              folders={data.folders}
+            />
+          </div>
+        ) : null}
+      </div>
     </Layout>
   );
 };
