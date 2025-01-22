@@ -153,9 +153,6 @@ func (m *IAM) RetrieveWithCredContext(cc *CredContext) (Value, error) {
 	}
 
 	endpoint := m.Endpoint
-	if endpoint == "" {
-		endpoint = cc.Endpoint
-	}
 
 	switch {
 	case identityFile != "":
