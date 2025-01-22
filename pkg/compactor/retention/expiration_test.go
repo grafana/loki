@@ -123,6 +123,43 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	}
 }
 
+func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
+	sevenDays, err := model.ParseDuration("720h")
+	require.NoError(t, err)
+	oneDay, err := model.ParseDuration("24h")
+	require.NoError(t, err)
+
+	tr := NewTenantsRetention(fakeLimits{
+		defaultLimit: retentionLimit{
+			retentionPeriod: time.Duration(sevenDays),
+			streamRetention: []validation.StreamRetention{
+				{
+					Period: model.Duration(oneDay),
+					Matchers: []*labels.Matcher{
+						labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+					},
+				},
+			},
+		},
+		perTenant: map[string]retentionLimit{
+			"1": {
+				retentionPeriod: time.Duration(sevenDays),
+				streamRetention: []validation.StreamRetention{
+					{
+						Period: model.Duration(oneDay),
+						Matchers: []*labels.Matcher{
+							labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+						},
+					},
+				},
+			},
+		},
+	})
+
+	require.Equal(t, time.Duration(sevenDays), tr.RetentionPeriodFor("1", nil))
+	require.Equal(t, time.Duration(oneDay), tr.RetentionPeriodFor("1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}))
+}
+
 func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 
 	// Default retention should be zero

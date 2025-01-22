@@ -290,11 +290,11 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
+	retentionHours := i.limiter.limits.RetentionHours(i.instanceID, labels)
+
 	if record != nil {
 		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
 	}
-
-	retentionHours := i.limiter.limits.RetentionHours(i.instanceID, labels)
 
 	if err != nil {
 		return i.onStreamCreationError(ctx, pushReqStream, err, labels, retentionHours)

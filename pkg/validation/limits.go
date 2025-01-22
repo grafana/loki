@@ -28,7 +28,6 @@ import (
 	ruler_config "github.com/grafana/loki/v3/pkg/ruler/config"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
-	retentionUtil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -968,28 +967,6 @@ func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 // StreamRetention returns the retention period for a given user.
 func (o *Overrides) StreamRetention(userID string) []StreamRetention {
 	return o.getOverridesForUser(userID).StreamRetention
-}
-
-// RetentionHours returns the retention period for a given user.
-func (o *Overrides) RetentionHours(userID string, ls labels.Labels) string {
-	streamRetentions := o.StreamRetention(userID)
-	selectedRetention := o.RetentionPeriod(userID) // default to the tenant retention.
-	highestPriority := -1
-
-	if len(ls) == 0 {
-		return retentionUtil.RetentionHours(selectedRetention)
-	}
-
-	for _, retention := range streamRetentions {
-		if retention.Matches(ls) {
-			if retention.Priority > highestPriority {
-				highestPriority = retention.Priority
-				selectedRetention = time.Duration(retention.Period)
-			}
-		}
-	}
-
-	return retentionUtil.RetentionHours(selectedRetention)
 }
 
 func (o *Overrides) UnorderedWrites(userID string) bool {

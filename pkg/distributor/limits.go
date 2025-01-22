@@ -3,8 +3,6 @@ package distributor
 import (
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -37,7 +35,6 @@ type Limits interface {
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig
-	RetentionHours(userID string, labels labels.Labels) string
 
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int

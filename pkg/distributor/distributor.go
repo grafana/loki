@@ -453,7 +453,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
-	validationMetrics := newValidationMetrics()
 
 	var validationErrors util.GroupedErrors
 
@@ -493,7 +492,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}
 
-	tenantRetentionHours := d.validator.Limits.RetentionHours(tenantID, nil)
+	tenantRetentionHours := util.RetentionHours(d.tenantsRetention.RetentionPeriodFor(tenantID, nil))
+	validationMetrics := newValidationMetrics(tenantRetentionHours)
 
 	func() {
 		sp := opentracing.SpanFromContext(ctx)
@@ -524,7 +524,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			retentionHours := d.validator.Limits.RetentionHours(tenantID, lbs)
+			retentionHours := util.RetentionHours(d.tenantsRetention.RetentionPeriodFor(tenantID, lbs))
 
 			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
@@ -620,7 +620,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationMetrics, validation.BlockedIngestion, tenantRetentionHours)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationMetrics, validation.BlockedIngestion)
 
 		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -635,7 +635,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationMetrics.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationMetrics, validation.RateLimited, tenantRetentionHours)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationMetrics, validation.RateLimited)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationMetrics.lineCount, validationMetrics.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -773,7 +773,6 @@ func (d *Distributor) trackDiscardedData(
 	tenantID string,
 	validationMetrics validationMetrics,
 	reason string,
-	tenantRetentionHours string,
 ) {
 	for retentionHours, count := range validationMetrics.lineCountPerRetentionHours {
 		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours).Add(float64(count))
@@ -782,7 +781,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, tenantRetentionHours)
+			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, validationMetrics.tenantRetentionHours)
 			if err != nil {
 				continue
 			}
@@ -1263,26 +1262,4 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 // distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
 func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
-}
-
-type validationMetrics struct {
-	lineSizePerRetentionHours  map[string]int
-	lineCountPerRetentionHours map[string]int
-	lineSize                   int
-	lineCount                  int
-}
-
-func newValidationMetrics() validationMetrics {
-	return validationMetrics{
-		lineSizePerRetentionHours:  make(map[string]int),
-		lineCountPerRetentionHours: make(map[string]int),
-	}
-}
-
-func (v *validationMetrics) compute(entry logproto.Entry, retentionHours string) {
-	totalEntrySize := util.EntryTotalSize(&entry)
-	v.lineSizePerRetentionHours[retentionHours] += totalEntrySize
-	v.lineCountPerRetentionHours[retentionHours]++
-	v.lineSize += totalEntrySize
-	v.lineCount++
 }
