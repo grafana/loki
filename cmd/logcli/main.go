@@ -33,7 +33,7 @@ var (
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").Default("default").Short('o').Enum("default", "raw", "jsonl")
 	timezone   = app.Flag("timezone", "Specify the timezone to use when formatting output timestamps [Local, UTC]").Default("Local").Short('z').Enum("Local", "UTC")
-	timestamp  = app.Flag("timestamp", "Specify the format of timestamps in the default output mode [seconds, nanos]").Default("seconds").Enum("seconds", "nanos")
+	timestamp  = app.Flag("timestamp", "Specify the format of timestamps in the default output mode [seconds, nanos, unix, rfc822z, rfc1123z, stampmilli, stampmicro, stampnano]").Default("seconds").Enum("seconds", "nanos", "unix", "rfc822z", "rfc1123z", "stampmillis", "stampmicros", "stampnanos")
 	cpuProfile = app.Flag("cpuprofile", "Specify the location for writing a CPU profile.").Default("").String()
 	memProfile = app.Flag("memprofile", "Specify the location for writing a memory profile.").Default("").String()
 	stdin      = app.Flag("stdin", "Take input logs from stdin").Bool()
@@ -374,6 +374,18 @@ func main() {
 		switch *timestamp {
 		case "nanos":
 			outputOptions.TimestampFormat = time.RFC3339Nano
+		case "unix":
+			outputOptions.TimestampFormat = time.UnixDate
+		case "rfc822z":
+			outputOptions.TimestampFormat = time.RFC822Z
+		case "rfc1123z":
+			outputOptions.TimestampFormat = time.RFC1123Z
+		case "stampmillis":
+			outputOptions.TimestampFormat = time.StampMilli
+		case "stampmicros":
+			outputOptions.TimestampFormat = time.StampMicro
+		case "stampnanos":
+			outputOptions.TimestampFormat = time.StampNano
 		default:
 			outputOptions.TimestampFormat = time.RFC3339
 		}
