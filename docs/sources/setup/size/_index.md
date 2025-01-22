@@ -22,11 +22,11 @@ Please use this document as a rough guide to specify CPU and Memory requests in 
 Query resource needs can greatly vary with usage patterns and correct configurations. General notes on Query Performance:
 - The rule of thumb is to run as small and as many queriers as possible. Unoptimised queries can easily require 10x of the suggested querier resources below in all tiers. Running horizontal autoscaling will be most cost effective solution to meet the demand.
 - Use this [blog post](https://grafana.com/blog/2023/12/28/the-concise-guide-to-loki-how-to-get-the-most-out-of-your-query-performance/) to adopt best practices for optimised query performance.
-- Parallel-querier and related components can be sized the same along with queriers for starters, depending on how much Loki rules are used.
-- Large Loki clusters benefits from disk based caching solution, memcached-extstore. Please see a detailed [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) and read more on [memcached/nvm-caching here](https://memcached.org/blog/nvm-caching/).
+- Parallel-querier and related components can be sized the same along with queriers to start, depending on how much Loki rules are used.
+- Large Loki clusters benefit from a disk based caching solution, memcached-extstore. Please see the detailed [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) and read more about [memcached/nvm-caching here](https://memcached.org/blog/nvm-caching/).
 - If you’re running a cluster that handles less than 30TB/day (~1PB/month) ingestion, we do not recommend configuring memcached-extstore. The additional operational complexity does not justify the savings.
 
-These are the node types we suggest from various cloud providers. Please see the relevant specs on the provider documents.
+These are the node types we suggest from various cloud providers. Please see the relevant specifications in your provider documentation.
 <div id="app">
     <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
     <select name="node-type" v-model="node">
