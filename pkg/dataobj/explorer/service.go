@@ -3,6 +3,7 @@ package explorer
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httputil"
@@ -81,6 +82,7 @@ func (s *Service) Handler() http.Handler {
 	mux.HandleFunc("/dataobj/explorer/api/list", s.handleList)
 	mux.HandleFunc("/dataobj/explorer/api/inspect", s.handleInspect)
 	mux.HandleFunc("/dataobj/explorer/api/download", s.handleDownload)
+	mux.HandleFunc("/dataobj/explorer/api/provider", s.handleProvider)
 
 	// Serve UI
 	if isDev && s.devProxy != nil {
@@ -100,4 +102,17 @@ func (s *Service) Handler() http.Handler {
 	}
 
 	return mux
+}
+
+func (s *Service) handleProvider(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	provider := s.bucket.Provider()
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]string{"provider": string(provider)}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

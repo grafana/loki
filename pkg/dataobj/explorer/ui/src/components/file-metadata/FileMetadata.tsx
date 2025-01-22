@@ -115,7 +115,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
   return (
     <div className={`space-y-6 p-4 ${className}`}>
       {/* Thor Dataobj File */}
-      <div className="bg-white dark:bg-gray-900 shadow rounded-lg">
+      <div className="bg-white dark:bg-gray-700 shadow rounded-lg">
         {/* Overview */}
         <div className="p-4 border-b dark:border-gray-700">
           <div className="flex justify-between items-start mb-4">
@@ -191,9 +191,9 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
         </div>
 
         {/* Sections */}
-        <div className="divide-y dark:divide-gray-700">
+        <div className="divide-y dark:divide-gray-900">
           {metadata.sections.map((section, sectionIndex) => (
-            <div key={sectionIndex} className="dark:bg-gray-800">
+            <div key={sectionIndex} className="dark:bg-gray-700">
               {/* Section Header */}
               <div
                 className="p-4 cursor-pointer flex justify-between items-center hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -221,7 +221,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
 
               {/* Section Content */}
               {expandedSections[sectionIndex] && (
-                <div className="p-4 bg-gray-100 dark:bg-gray-700">
+                <div className="p-4 bg-gray-50 dark:bg-gray-800">
                   {/* Section Stats */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                     <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
@@ -260,7 +260,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                     {section.columns.map((column, columnIndex) => (
                       <div
                         key={columnIndex}
-                        className="bg-gray-100 dark:bg-gray-700 shadow rounded-lg overflow-hidden"
+                        className="bg-white dark:bg-gray-700 shadow rounded-lg overflow-hidden"
                       >
                         {/* Column Header */}
                         <div
@@ -307,7 +307,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
 
                         {/* Column Content */}
                         {expandedColumns[`${sectionIndex}-${columnIndex}`] && (
-                          <div className="p-4 bg-gray-100 dark:bg-gray-700">
+                          <div className="p-4 bg-white dark:bg-gray-700">
                             {/* Column Stats */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                               <div className="bg-gray-50 dark:bg-gray-600 p-3 rounded-lg">
@@ -378,7 +378,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                                         </th>
                                       </tr>
                                     </thead>
-                                    <tbody className="bg-gray-100 dark:bg-gray-700">
+                                    <tbody className="bg-white dark:bg-gray-700">
                                       {column.pages.map((page, pageIndex) => (
                                         <tr
                                           key={pageIndex}

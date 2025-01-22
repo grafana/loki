@@ -29,7 +29,7 @@ export const FileMetadataPage: React.FC = () => {
               <FileMetadata
                 metadata={metadata}
                 filename={filePath}
-                className="dark:bg-gray-800 dark:text-gray-200 [&>div]:dark:bg-gray-800 [&>div:nth-child(even)]:dark:bg-gray-700 [&>div>div]:dark:bg-gray-800 [&>div>div:nth-child(even)]:dark:bg-gray-700"
+                className="dark:bg-gray-800 dark:text-gray-200"
               />
             )}
           </>
