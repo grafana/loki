@@ -3,7 +3,6 @@ package logs
 import (
 	"cmp"
 	"fmt"
-	"iter"
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -137,11 +136,6 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 	b.metadataLookup[key] = len(b.metadatas) - 1
 	b.usedMetadatas[col] = key
 	return col
-}
-
-// MetadataIter returns an iterator over the metadata columns.
-func (b *tableBuffer) MetadataIter() iter.Seq2[int, *dataset.ColumnBuilder] {
-	return slices.All(b.metadatas)
 }
 
 // Reset resets the buffer to its initial state.
