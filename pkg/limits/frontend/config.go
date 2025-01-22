@@ -2,18 +2,17 @@ package frontend
 
 import (
 	"flag"
-
-	"github.com/grafana/dskit/grpcclient"
 )
 
 type Config struct {
-	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
+	ClientConfig ClientConfig `yaml:"client_config"`
 }
 
 func (cfg Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("limits-frontend.grpc-client-config", f)
+	cfg.ClientConfig.RegisterFlags(f)
 }
 
+// TODO: Validate configuration. This is called during initialization.
 func (cfg Config) Validate() error {
 	return nil
 }
