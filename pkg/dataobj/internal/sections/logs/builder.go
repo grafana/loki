@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
 // A builder is used to construct a set of logs sections.
@@ -91,7 +92,7 @@ func (b *builder) flushBuffer() {
 
 	stripe := buildStripe(b.opts, &b.stripeBuffer, b.records)
 	b.stripes = append(b.stripes, stripe)
-	b.records = b.records[:0]
+	b.records = sliceclear.Clear(b.records)
 	b.recordsSize = 0
 	b.stripesSize += stripe.EstimatedSize()
 
@@ -111,16 +112,16 @@ func (b *builder) flushStripes() {
 		panic(fmt.Sprintf("merging stripes: %v", err))
 	}
 	b.sections = append(b.sections, section)
-	b.stripes = b.stripes[:0]
+	b.stripes = sliceclear.Clear(b.stripes)
 	b.stripesSize = 0
 }
 
 func (b *builder) Reset() {
-	b.sections = b.sections[:0]
-	b.stripes = b.stripes[:0]
+	b.sections = sliceclear.Clear(b.sections)
+	b.stripes = sliceclear.Clear(b.stripes)
 	b.stripesSize = 0
 
-	b.records = b.records[:0]
+	b.records = sliceclear.Clear(b.records)
 	b.recordsSize = 0
 
 	b.sectionBuffer.Reset()
