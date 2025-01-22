@@ -69,6 +69,81 @@
     // Set to four times the scrape interval to account for edge cases: https://www.robustperception.io/what-range-should-i-use-with-rate/
     recording_rules_range_interval: '1m',
 
+    // labels
+    labels: {
+      // the label to use to differentiate between different clusters
+      cluster: 'cluster',
+      // the label to use to differentiate between different containers
+      container: 'container',
+      // the label to use to differentiate between different components
+      component: 'component',
+      // the label to use to differentiate between different jobs
+      job: 'job',
+      // the label to use to differentiate between different namespaces
+      namespace: 'namespace',
+      // the label to use to differentiate between different nodes
+      node: 'instance',
+      // the label to use to differentiate between different pods
+      pod: 'pod',
+    },
+
+    // components
+    // component schema: {
+    //   *paths: [''], // optional, the paths the component is in
+    //   *ssd_path: '', // optional, the path the component is deployed in for SSD mode
+    //   *pattern: '', // optional, the pattern to use when matching the component in all selectors job, pod, etc., if not provided, the component key value is used
+    //   *pod_pattern: '', // optional, the pattern to use when matching the component in pod selectors, if not provided, the pattern is the same as the component key value
+    // }
+    components: {
+      'admin-api': {
+        ssd_path: 'backend',
+      },
+      'bloom-builder': {},
+      'bloom-gateway': {},
+      'bloom-planner': {},
+      compactor: {
+        ssd_path: 'backend',
+      },
+      'cortex-gw': {
+        ssd_path: 'backend',
+        pattern: 'cortex-gw(-internal)?',
+      },
+      distributor: {
+        ssd_path: 'write',
+      },
+      gateway: {},
+      'index-gateway': {
+        ssd_path: 'backend',
+      },
+      ingester: {
+        ssd_path: 'write',
+        pattern: 'ingester.*',
+      },
+      'ingester-zone-aware': {
+        ssd_path: 'write',
+        pattern: 'ingester-zone.*',
+      },
+      'overrides-exporter': {},
+      'partition-ingester': {
+        ssd_path: 'read',
+      },
+      'pattern-ingester': {
+        pattern: 'partition-ingester.*',
+      },
+      'query-frontend': {
+        ssd_path: 'read',
+      },
+      'query-scheduler': {
+        ssd_path: 'read',
+      },
+      'querier': {
+        ssd_path: 'read',
+      },
+      ruler: {
+        ssd_path: 'read',
+      },
+    },
+
     // SSD related configuration for dashboards.
     ssd: {
       // Support Loki SSD mode on dashboards.
@@ -80,7 +155,7 @@
 
     // Meta-monitoring related configuration
     meta_monitoring: {
-      enabled: false,
+      enabled: true,
 
       // The prefix used to match the job labels, i.e. job="logs/loki-ingester"
       job_prefix: '((loki|enterprise-logs)-)?',
