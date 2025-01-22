@@ -10,7 +10,7 @@ const pathname = window.location.pathname;
 const match = pathname.match(/(.*\/dataobj\/explorer\/)/);
 const basename =
   match?.[0] != "/dataobj/explorer/"
-    ? match?.[1] + "/dataobj/explorer/"
+    ? match?.[1] + "dataobj/explorer/"
     : "/dataobj/explorer/";
 
 console.log({
