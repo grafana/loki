@@ -51,6 +51,7 @@ func mergeStripes(opts Options, buf *stripeBuffer, stripes []*stripe) (*stripe, 
 
 		seq := dataset.Iter(context.Background(), dsetColumns)
 		next, stop := result.Pull(seq)
+		defer stop()
 
 		stripeColumns = append(stripeColumns, columns)
 		rowIters = append(rowIters, rowIter{Next: next, Stop: stop})
