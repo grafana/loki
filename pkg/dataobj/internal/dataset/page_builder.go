@@ -56,7 +56,7 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 		presenceBuffer = bytes.NewBuffer(nil)
 		valuesBuffer   = bytes.NewBuffer(make([]byte, 0, opts.PageSizeHint))
 
-		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression)
+		valuesWriter = newCompressWriter(valuesBuffer, opts.Compression, opts.CompressionOptions)
 	)
 
 	presenceEnc := newBitmapEncoder(presenceBuffer)
