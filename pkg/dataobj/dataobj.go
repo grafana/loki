@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"sort"
 
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -156,6 +157,7 @@ func ToBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string, f io.
 			return nil, err
 		}
 		if _, ok := streamIDs[stream.ID]; !ok {
+			sort.Sort(stream.Labels)
 			streamIDs[stream.ID] = &stream.Labels
 		}
 	}

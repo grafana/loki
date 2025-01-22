@@ -264,7 +264,7 @@ func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPa
 				return newMetastore, nil
 			})
 			if err == nil {
-				level.Error(p.logger).Log("msg", "successfully merged & updated metastore", "store", metastorePath)
+				level.Info(p.logger).Log("msg", "successfully merged & updated metastore", "store", metastorePath)
 				break
 			}
 			level.Error(p.logger).Log("msg", "failed to get and replace metastore object", "err", err)
