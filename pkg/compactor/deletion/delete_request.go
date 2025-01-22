@@ -162,7 +162,11 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 }
 
 func (d *DeleteRequest) IsDuplicate(o *DeleteRequest) (bool, error) {
-	if d.RequestID == o.RequestID || d.UserID != o.UserID || d.StartTime != o.StartTime || d.EndTime != o.EndTime {
+	// we would never have duplicates from same request
+	if d.RequestID == o.RequestID {
+		return false, nil
+	}
+	if d.UserID != o.UserID || d.StartTime != o.StartTime || d.EndTime != o.EndTime {
 		return false, nil
 	}
 
