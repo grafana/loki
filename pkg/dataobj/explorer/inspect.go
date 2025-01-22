@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
@@ -19,8 +20,9 @@ import (
 )
 
 type FileMetadata struct {
-	Sections []SectionMetadata `json:"sections"`
-	Error    string            `json:"error,omitempty"`
+	Sections     []SectionMetadata `json:"sections"`
+	Error        string            `json:"error,omitempty"`
+	LastModified time.Time         `json:"lastModified,omitempty"`
 }
 
 type ColumnWithPages struct {
@@ -68,7 +70,14 @@ func (s *Service) handleInspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	attrs, err := s.bucket.Attributes(r.Context(), filename)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get file attributes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	metadata := inspectFile(r.Context(), s.bucket, filename)
+	metadata.LastModified = attrs.LastModified.UTC()
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {

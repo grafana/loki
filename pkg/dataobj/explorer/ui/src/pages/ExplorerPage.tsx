@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { FileList } from "../components/FileList";
 import { ScrollToTopButton } from "../components/ScrollToTopButton";
 import { Layout } from "../components/Layout";
+import { useBasename } from "../contexts/BasenameContext";
 
 interface FileInfo {
   name: string;
@@ -17,13 +18,13 @@ interface ListResponse {
 }
 
 export const ExplorerPage: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const path = searchParams.get("path") || "";
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const basename = useBasename();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -39,7 +40,7 @@ export const ExplorerPage: React.FC = () => {
       try {
         setLoading(true);
         const response = await fetch(
-          `api/list?path=${encodeURIComponent(path)}`
+          `${basename}api/list?path=${encodeURIComponent(path)}`
         );
         if (!response.ok) {
           throw new Error("Failed to fetch data");
@@ -56,15 +57,6 @@ export const ExplorerPage: React.FC = () => {
 
     fetchData();
   }, [path]);
-
-  const navigateTo = (newPath: string) => {
-    const cleanPath = newPath.replace(/^\/+|\/+$/g, "");
-    setSearchParams(cleanPath ? { path: cleanPath } : {});
-  };
-
-  const handleFileClick = (file: string) => {
-    navigate(`/dataobj/explorer/file/${encodeURIComponent(file)}`);
-  };
 
   if (loading) {
     return (
@@ -94,18 +86,12 @@ export const ExplorerPage: React.FC = () => {
   const pathParts = (data.current || "").split("/").filter(Boolean);
 
   return (
-    <Layout
-      breadcrumbParts={pathParts}
-      onBreadcrumbNavigate={navigateTo}
-      isLastBreadcrumbClickable={true}
-    >
+    <Layout breadcrumbParts={pathParts} isLastBreadcrumbClickable={true}>
       <FileList
         current={data.current}
         parent={data.parent}
         files={data.files}
         folders={data.folders}
-        onNavigate={navigateTo}
-        onFileSelect={handleFileClick}
       />
       <ScrollToTopButton show={showScrollButton} />
     </Layout>

@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import { formatBytes } from "../utils/format";
+import { DateWithHover } from "./DateWithHover";
+import { Link } from "react-router-dom";
+import { useBasename } from "../contexts/BasenameContext";
 
 interface CompressionRatioProps {
   compressed: number;
@@ -72,17 +75,16 @@ interface FileMetadataProps {
   metadata: {
     sections: SectionMetadata[];
     error?: string;
+    lastModified: string;
   };
   filename: string;
   className?: string;
-  onDownload?: () => void;
 }
 
 export const FileMetadata: React.FC<FileMetadataProps> = ({
   metadata,
   filename,
   className = "",
-  onDownload,
 }) => {
   const [expandedSections, setExpandedSections] = useState<
     Record<number, boolean>
@@ -133,8 +135,16 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
   const logSection = metadata.sections.find(
     (s) => s.type === "SECTION_TYPE_LOGS"
   );
-  const streamCount = streamSection?.columns[0]?.rows_count;
-  const logCount = logSection?.columns[0]?.rows_count;
+  const streamCount = streamSection?.columns.reduce(
+    (sum, col) => sum + (col.rows_count || 0),
+    0
+  );
+  const logCount = logSection?.columns.reduce(
+    (sum, col) => sum + (col.rows_count || 0),
+    0
+  );
+
+  const basename = useBasename();
 
   return (
     <div className={`space-y-6 p-4 ${className}`}>
@@ -147,18 +157,26 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
               <h2 className="text-lg font-semibold mb-2 dark:text-gray-200">
                 Thor Dataobj File
               </h2>
-              <p className="text-sm font-mono mb-4 dark:text-gray-300">
-                {filename}
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-mono dark:text-gray-300">
+                  {filename}
+                </p>
+                {metadata.lastModified && (
+                  <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                    <span>Last modified:</span>
+                    <DateWithHover date={new Date(metadata.lastModified)} />
+                  </div>
+                )}
+              </div>
             </div>
-            {onDownload && (
-              <button
-                onClick={onDownload}
-                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-              >
-                Download
-              </button>
-            )}
+            <Link
+              to={`/api/download?file=${encodeURIComponent(filename)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+            >
+              Download
+            </Link>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

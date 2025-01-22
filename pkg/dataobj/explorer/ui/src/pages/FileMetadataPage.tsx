@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { FileMetadata } from "../components/FileMetadata";
 import { Layout } from "../components/Layout";
+import { useBasename } from "../contexts/BasenameContext";
 
 export const FileMetadataPage: React.FC = () => {
   const { filePath } = useParams<{ filePath: string }>();
@@ -9,6 +10,7 @@ export const FileMetadataPage: React.FC = () => {
   const [metadata, setMetadata] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const basename = useBasename();
 
   useEffect(() => {
     const fetchMetadata = async () => {
@@ -16,7 +18,7 @@ export const FileMetadataPage: React.FC = () => {
       try {
         setLoading(true);
         const response = await fetch(
-          `../api/inspect?file=${encodeURIComponent(filePath)}`
+          `${basename}api/inspect?file=${encodeURIComponent(filePath)}`
         );
         if (!response.ok) {
           throw new Error(`Failed to fetch metadata: ${response.statusText}`);
@@ -33,14 +35,6 @@ export const FileMetadataPage: React.FC = () => {
 
     fetchMetadata();
   }, [filePath]);
-
-  const handleNavigate = (path: string) => {
-    if (path === "") {
-      navigate("/dataobj/explorer/");
-    } else {
-      navigate(`/dataobj/explorer/?path=${encodeURIComponent(path)}`);
-    }
-  };
 
   // Get path parts for breadcrumb
   const pathParts = (filePath || "").split("/").filter(Boolean);
@@ -64,11 +58,7 @@ export const FileMetadataPage: React.FC = () => {
   }
 
   return (
-    <Layout
-      breadcrumbParts={pathParts}
-      onBreadcrumbNavigate={handleNavigate}
-      isLastBreadcrumbClickable={false}
-    >
+    <Layout breadcrumbParts={pathParts} isLastBreadcrumbClickable={false}>
       <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden dark:text-gray-200">
         <button
           onClick={() => navigate(-1)}
@@ -94,12 +84,6 @@ export const FileMetadataPage: React.FC = () => {
             metadata={metadata}
             filename={filePath}
             className="dark:bg-gray-800 dark:text-gray-200 [&>div]:dark:bg-gray-800 [&>div:nth-child(even)]:dark:bg-gray-700 [&>div>div]:dark:bg-gray-800 [&>div>div:nth-child(even)]:dark:bg-gray-700"
-            onDownload={() => {
-              window.open(
-                `../api/download?file=${encodeURIComponent(filePath)}`,
-                "_blank"
-              );
-            }}
           />
         )}
       </div>

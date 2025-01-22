@@ -6,11 +6,8 @@ import { ExplorerPage } from "./pages/ExplorerPage";
 export default function App() {
   return (
     <Routes>
-      <Route path="dataobj/explorer/" element={<ExplorerPage />} />
-      <Route
-        path="dataobj/explorer/file/:filePath"
-        element={<FileMetadataPage />}
-      />
+      <Route path="file/:filePath" element={<FileMetadataPage />} />
+      <Route path="*" element={<ExplorerPage />} />
     </Routes>
   );
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log/level"
 )
@@ -17,8 +18,9 @@ type listResponse struct {
 }
 
 type fileInfo struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
+	Name         string    `json:"name"`
+	Size         int64     `json:"size"`
+	LastModified time.Time `json:"lastModified"`
 }
 
 func (s *Service) handleList(w http.ResponseWriter, r *http.Request) {
@@ -54,8 +56,9 @@ func (s *Service) handleList(w http.ResponseWriter, r *http.Request) {
 			}
 
 			files = append(files, fileInfo{
-				Name: relativePath,
-				Size: attrs.Size,
+				Name:         relativePath,
+				Size:         attrs.Size,
+				LastModified: attrs.LastModified.UTC(),
 			})
 		}
 		return nil

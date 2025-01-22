@@ -1,26 +1,26 @@
 import React from "react";
+import { Link } from "react-router-dom";
 
 interface BreadcrumbProps {
   parts: string[];
-  onNavigate: (path: string) => void;
   isLastPartClickable?: boolean;
 }
 
+// todo use link instead of button
 export const Breadcrumb: React.FC<BreadcrumbProps> = ({
   parts,
-  onNavigate,
   isLastPartClickable = false,
 }) => {
   return (
     <nav className="flex mb-4" aria-label="Breadcrumb">
       <ol className="inline-flex items-center space-x-1 md:space-x-3">
         <li className="inline-flex items-center">
-          <button
-            onClick={() => onNavigate("")}
+          <Link
             className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400"
+            to="/"
           >
             Root
-          </button>
+          </Link>
         </li>
         {parts.map((part, index, array) => (
           <li key={index}>
@@ -45,14 +45,14 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({
                   {part}
                 </span>
               ) : (
-                <button
-                  onClick={() =>
-                    onNavigate(array.slice(0, index + 1).join("/"))
-                  }
+                <Link
+                  to={`/?path=${encodeURIComponent(
+                    array.slice(0, index + 1).join("/")
+                  )}`}
                   className="ml-1 text-sm font-medium text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 md:ml-2"
                 >
                   {part}
-                </button>
+                </Link>
               )}
             </div>
           </li>

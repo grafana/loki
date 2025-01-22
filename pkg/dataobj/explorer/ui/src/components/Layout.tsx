@@ -5,14 +5,12 @@ import { Breadcrumb } from "./Breadcrumb";
 interface LayoutProps {
   children: React.ReactNode;
   breadcrumbParts?: string[];
-  onBreadcrumbNavigate?: (path: string) => void;
   isLastBreadcrumbClickable?: boolean;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
   children,
   breadcrumbParts = [],
-  onBreadcrumbNavigate,
   isLastBreadcrumbClickable = false,
 }) => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -43,10 +41,9 @@ export const Layout: React.FC<LayoutProps> = ({
             onToggle={() => setIsDarkMode(!isDarkMode)}
           />
         </div>
-        {breadcrumbParts.length > 0 && onBreadcrumbNavigate && (
+        {breadcrumbParts.length > 0 && (
           <Breadcrumb
             parts={breadcrumbParts}
-            onNavigate={onBreadcrumbNavigate}
             isLastPartClickable={isLastBreadcrumbClickable}
           />
         )}
