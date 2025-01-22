@@ -183,8 +183,12 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 	}, nil
 }
 
-// FromObject creates a new Builder from an existing data object, replicating all the state like stream IDs and logs.
-func (b *Builder) FromObject(f io.ReadSeeker) error {
+// FromExisting updates this builder with content from an existing data object, replicating all the state like stream IDs and logs.
+func (b *Builder) FromExisting(f io.ReadSeeker) error {
+	if b.currentSizeEstimate > 0 {
+		return fmt.Errorf("builder already has data, cannot use FromExisting")
+	}
+
 	dec := encoding.ReadSeekerDecoder(f)
 	var streamIDs = make(map[int64]*labels.Labels)
 
