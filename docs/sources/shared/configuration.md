@@ -798,11 +798,17 @@ compactor_grpc_client:
 [limits_config: <limits_config>]
 
 limits_frontend_config:
-  # The grpc_client block configures the gRPC client used to communicate between
-  # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is:
-  # querier.frontend-grpc-client
-  [grpc_client_config: <grpc_client>]
+  client_config:
+    # Configures client gRPC connections to limits service.
+    # The CLI flags prefix for this block configuration is:
+    # querier.frontend-grpc-client
+    [grpc_client_config: <grpc_client>]
+
+    # Configures client gRPC connections pool to limits service.
+    pool_config:
+      [client_cleanup_period: <duration>]
+
+      [remote_timeout: <duration>]
 
 # The frontend_worker configures the worker - running within the Loki querier -
 # picking up and executing queries enqueued by the query-frontend.
