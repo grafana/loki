@@ -134,7 +134,7 @@ func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
 			retentionPeriod: time.Duration(sevenDays),
 			streamRetention: []validation.StreamRetention{
 				{
-					Period: model.Duration(oneDay),
+					Period: oneDay,
 					Matchers: []*labels.Matcher{
 						labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 					},
@@ -146,7 +146,7 @@ func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
 				retentionPeriod: time.Duration(sevenDays),
 				streamRetention: []validation.StreamRetention{
 					{
-						Period: model.Duration(oneDay),
+						Period: oneDay,
 						Matchers: []*labels.Matcher{
 							labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 						},
