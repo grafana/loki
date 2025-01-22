@@ -8,6 +8,7 @@ import { useBasename } from "../contexts/BasenameContext";
 interface FileInfo {
   name: string;
   size: number;
+  lastModified: string;
 }
 
 interface ListResponse {
@@ -23,17 +24,7 @@ export const ExplorerPage: React.FC = () => {
   const [data, setData] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
   const basename = useBasename();
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollButton(window.scrollY > 300);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -93,7 +84,7 @@ export const ExplorerPage: React.FC = () => {
         files={data.files}
         folders={data.folders}
       />
-      <ScrollToTopButton show={showScrollButton} />
+      <ScrollToTopButton />
     </Layout>
   );
 };

@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { FileMetadata } from "../components/FileMetadata";
 import { Layout } from "../components/Layout";
 import { useBasename } from "../contexts/BasenameContext";
+import { ScrollToTopButton } from "../components/ScrollToTopButton";
 
 export const FileMetadataPage: React.FC = () => {
   const { filePath } = useParams<{ filePath: string }>();
-  const navigate = useNavigate();
   const [metadata, setMetadata] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,8 +60,10 @@ export const FileMetadataPage: React.FC = () => {
   return (
     <Layout breadcrumbParts={pathParts} isLastBreadcrumbClickable={false}>
       <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-hidden dark:text-gray-200">
-        <button
-          onClick={() => navigate(-1)}
+        <Link
+          to={`/?path=${encodeURIComponent(
+            filePath ? filePath.split("/").slice(0, -1).join("/") : ""
+          )}`}
           className="mb-4 p-4 inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
         >
           <svg
@@ -78,7 +80,7 @@ export const FileMetadataPage: React.FC = () => {
             />
           </svg>
           Back to file list
-        </button>
+        </Link>
         {metadata && filePath && (
           <FileMetadata
             metadata={metadata}
@@ -87,6 +89,7 @@ export const FileMetadataPage: React.FC = () => {
           />
         )}
       </div>
+      <ScrollToTopButton />
     </Layout>
   );
 };

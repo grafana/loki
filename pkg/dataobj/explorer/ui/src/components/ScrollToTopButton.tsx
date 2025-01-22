@@ -1,12 +1,17 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 
-interface ScrollToTopButtonProps {
-  show: boolean;
-}
+export const ScrollToTopButton: React.FC = () => {
+  const [show, setShow] = useState(false);
 
-export const ScrollToTopButton: React.FC<ScrollToTopButtonProps> = ({
-  show,
-}) => {
+  useEffect(() => {
+    const handleScroll = () => {
+      setShow(window.scrollY > 300);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   const scrollToTop = () => {
     window.scrollTo({
       top: 0,
