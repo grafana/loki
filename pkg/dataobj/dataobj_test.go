@@ -19,6 +19,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
+var testBuilderConfig = BuilderConfig{
+	SHAPrefixSize: 2,
+
+	TargetPageSize:    2048,
+	TargetObjectSize:  4096,
+	TargetSectionSize: 4096,
+
+	BufferSize: 2048 * 8,
+}
+
 func Test(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 
@@ -67,16 +77,7 @@ func Test(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		// Create a tiny builder which flushes a lot of objects and pages to properly
-		// test the builder.
-		builderConfig := BuilderConfig{
-			SHAPrefixSize: 2,
-
-			TargetPageSize:   1_500_000,
-			TargetObjectSize: 10_000_000,
-		}
-
-		builder, err := NewBuilder(builderConfig, bucket, "fake")
+		builder, err := NewBuilder(testBuilderConfig, bucket, "fake")
 		require.NoError(t, err)
 
 		for _, entry := range streams {
@@ -94,10 +95,7 @@ func Test(t *testing.T) {
 
 		actual, err := result.Collect(reader.Streams(context.Background(), objects[0]))
 		require.NoError(t, err)
-
-		// TODO(rfratto): reenable once sorting is reintroduced.
-		_ = actual
-		// require.Equal(t, sortStreams(t, streams), actual)
+		require.Equal(t, sortStreams(t, streams), actual)
 	})
 }
 
@@ -109,16 +107,7 @@ func Test_Builder_Append(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 
-	// Create a tiny builder which flushes a lot of objects and pages to properly
-	// test the builder.
-	builderConfig := BuilderConfig{
-		SHAPrefixSize: 2,
-
-		TargetPageSize:   2048,
-		TargetObjectSize: 4096,
-	}
-
-	builder, err := NewBuilder(builderConfig, bucket, "fake")
+	builder, err := NewBuilder(testBuilderConfig, bucket, "fake")
 	require.NoError(t, err)
 
 	for {
