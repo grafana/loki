@@ -25,6 +25,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
@@ -126,6 +127,8 @@ type instance struct {
 	schemaconfig *config.SchemaConfig
 
 	customStreamsTracker push.UsageTracker
+
+	tenantsRetention *retention.TenantsRetention
 }
 
 func newInstance(
@@ -143,6 +146,7 @@ func newInstance(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
+	tenantsRetention *retention.TenantsRetention,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -181,6 +185,8 @@ func newInstance(
 		schemaconfig:  &c,
 
 		customStreamsTracker: customStreamsTracker,
+
+		tenantsRetention: tenantsRetention,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 
@@ -290,7 +296,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
-	retentionHours := i.limiter.limits.RetentionHours(i.instanceID, labels)
+	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
 
 	if record != nil {
 		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
@@ -377,7 +383,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
 
-	retentionHours := i.limiter.limits.RetentionHours(i.instanceID, ls)
+	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, ls))
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours)
 
 	i.onStreamCreated(s)
