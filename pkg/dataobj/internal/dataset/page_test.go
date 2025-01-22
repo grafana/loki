@@ -75,7 +75,7 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
 		Value:        datasetmd.VALUE_TYPE_STRING,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 	b, err := newPageBuilder(opts)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
@@ -101,8 +102,12 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		return bitmapReader, io.NopCloser(compressedValuesReader), nil
 
 	case datasetmd.COMPRESSION_TYPE_SNAPPY:
-		sr := snappy.NewReader(compressedValuesReader)
-		return bitmapReader, io.NopCloser(sr), nil
+		sr := snappyPool.Get().(*snappy.Reader)
+		sr.Reset(compressedValuesReader)
+		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
+			snappyPool.Put(sr)
+			return nil
+		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
 		zr := &fixedZstdReader{page: p, data: compressedValuesData}
@@ -111,6 +116,19 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 
 	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
 }
+
+var snappyPool = sync.Pool{
+	New: func() interface{} {
+		return snappy.NewReader(nil)
+	},
+}
+
+type closerFunc struct {
+	io.Reader
+	onClose func() error
+}
+
+func (c *closerFunc) Close() error { return c.onClose() }
 
 // globalZstdDecoder is a shared zstd decoder for [fixedZstdReader]. Concurrent
 // uses of globalZstdDecoder are only safe when using [zstd.Decoder.DecodeAll].
