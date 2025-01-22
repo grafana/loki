@@ -71,7 +71,7 @@
         "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
-        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+        "tags": "${{ steps.weekly-version.outputs.image_name }}"
     - "id": "digest"
       "name": "Process image digest"
       "run": |
@@ -178,7 +178,7 @@
         "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
-        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+        "tags": "${{ steps.weekly-version.outputs.image_name }}"
     - "id": "digest"
       "name": "Process image digest"
       "run": |
@@ -285,7 +285,7 @@
         "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
-        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+        "tags": "${{ steps.weekly-version.outputs.image_name }}"
     - "id": "digest"
       "name": "Process image digest"
       "run": |
@@ -392,7 +392,7 @@
         "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
-        "tags": "${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}"
+        "tags": "${{ steps.weekly-version.outputs.image_name }}"
     - "id": "digest"
       "name": "Process image digest"
       "run": |

@@ -129,7 +129,8 @@ local releaseLibStep = common.releaseLibStep;
         platforms: '${{ matrix.arch }}',
         provenance: true,
         outputs: 'push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true',
-        tags: '${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}',
+        tags: '${{ steps.weekly-version.outputs.image_name }}',
+        // tags: '${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}',
         'build-args': |||
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
           GO_VERSION=${{ env.GO_VERSION }}
