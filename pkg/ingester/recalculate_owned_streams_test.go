@@ -37,7 +37,7 @@ func Test_recalculateOwnedStreams_newRecalculateOwnedStreamsIngester(t *testing.
 func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) {
 	tests := map[string]struct {
 		featureEnabled              bool
-		expectedOwnedStreamCount    int
+		expectedOwnedStreamCount    int64
 		expectedNotOwnedStreamCount int
 	}{
 		"expected streams ownership to be recalculated": {
@@ -101,7 +101,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 			mockRing.addMapping(createStream(t, tenant, 100), true)
 			mockRing.addMapping(createStream(t, tenant, 250), true)
 
-			require.Equal(t, 7, tenant.ownedStreamsSvc.ownedStreamCount)
+			require.Equal(t, int64(7), tenant.ownedStreamsSvc.ownedStreamCount.Load())
 			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, 0)
 
 			mockTenantsSupplier := &mockTenantsSuplier{tenants: []*instance{tenant}}
@@ -116,7 +116,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 			if testData.featureEnabled {
 				require.Equal(t, 50, tenant.ownedStreamsSvc.getFixedLimit(), "fixed limit must be updated after recalculation")
 			}
-			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount)
+			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount.Load())
 			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, testData.expectedNotOwnedStreamCount)
 		})
 	}

@@ -1183,7 +1183,7 @@ func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error))
 	}()
 
 	var err error
-	i.streams.WithLock(func() {
+	i.streams.WithRLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
 		err = i.streams.ForEach(func(s *stream) (bool, error) {
 			ownedStream, err := isOwnedStream(s)
