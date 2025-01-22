@@ -6,7 +6,6 @@ interface BreadcrumbProps {
   isLastPartClickable?: boolean;
 }
 
-// todo use link instead of button
 export const Breadcrumb: React.FC<BreadcrumbProps> = ({
   parts,
   isLastPartClickable = false,
