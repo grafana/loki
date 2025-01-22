@@ -103,7 +103,7 @@ func (l *Logs) Append(entry Record) {
 func recordSize(record Record) int {
 	var size int
 
-	size += 1 // One byte per stream ID (for uvarint).
+	size++    // One byte per stream ID (for uvarint).
 	size += 8 // Eight bytes for timestamp.
 	for _, metadata := range record.Metadata {
 		size += len(metadata.Value)
@@ -188,7 +188,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	l.flushRecords()
 	l.flushSection()
 
-	// TODO(rfratto): handle individual sections having oversized metadata. Thsi
+	// TODO(rfratto): handle individual sections having oversized metadata. This
 	// can happen when the number of columns is very wide, due to a lot of
 	// metadata columns.
 	//
