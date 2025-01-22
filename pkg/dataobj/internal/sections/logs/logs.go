@@ -19,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
 // A Record is an individual log record within the logs section.
@@ -312,7 +313,7 @@ func (l *Logs) Reset() {
 
 	l.streamIDs.Reset()
 	l.timestamps.Reset()
-	l.metadatas = l.metadatas[:0]
+	l.metadatas = sliceclear.Clear(l.metadatas)
 	clear(l.metadataLookup)
 	l.messages.Reset()
 }
