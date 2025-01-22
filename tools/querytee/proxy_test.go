@@ -25,7 +25,7 @@ var testWriteRoutes = []Route{}
 
 type testComparator struct{}
 
-func (testComparator) Compare(_, _ []byte) (*ComparisonSummary, error) { return nil, nil }
+func (testComparator) Compare(_, _ []byte, _ time.Time) (*ComparisonSummary, error) { return nil, nil }
 
 func Test_NewProxy(t *testing.T) {
 	cfg := ProxyConfig{}

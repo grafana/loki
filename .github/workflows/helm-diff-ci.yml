@@ -3,8 +3,9 @@ name: Helm Loki Diff CI
 on:
   pull_request:
     paths:
-      - 'production/helm/loki/**'
+      - "production/helm/loki/**"
 
+# These permissions are needed to assume roles from Github's OIDC.
 permissions:
   contents: read
   pull-requests: write
@@ -273,6 +274,7 @@ jobs:
   summary-diff-outputs:
     name: Summary Diffs
     runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.fork == false
     needs:
       - single-binary-diff
       - default-values-diff
@@ -283,6 +285,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/download-artifact@v4
         with:

@@ -1,10 +1,10 @@
 ---
 title: Ingesting logs to Loki using OpenTelemetry Collector
-menuTitle:  OTel Collector
+menuTitle:  OpenTelemetry
 description: Configuring the OpenTelemetry Collector to send logs to Loki.
 aliases: 
 - ../clients/k6/
-weight:  250
+weight:  200
 ---
 
 # Ingesting logs to Loki using OpenTelemetry Collector
