@@ -19,7 +19,6 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -142,45 +141,6 @@ const (
 	builderStateFlush
 )
 
-func ToBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string, f io.ReadSeeker) (*Builder, error) {
-	b, err := NewBuilder(cfg, bucket, tenantID)
-	if err != nil {
-		return nil, err
-	}
-
-	dec := encoding.ReadSeekerDecoder(f)
-	var streamIDs = make(map[int64]*labels.Labels)
-
-	for result := range streams.Iter(context.Background(), dec) {
-		stream, err := result.Value()
-		if err != nil {
-			return nil, err
-		}
-		if _, ok := streamIDs[stream.ID]; !ok {
-			sort.Sort(stream.Labels)
-			streamIDs[stream.ID] = &stream.Labels
-		}
-	}
-
-	i := 0
-	for result := range logs.Iter(context.Background(), dec) {
-		record, err := result.Value()
-		if err != nil {
-			return nil, err
-		}
-		streamLabels, ok := streamIDs[record.StreamID]
-		if !ok {
-			return nil, fmt.Errorf("stream ID %d not found", record.StreamID)
-		}
-
-		b.streams.Record(*streamLabels, record.Timestamp)
-		b.logs.Append(record)
-		i++
-	}
-
-	return b, nil
-}
-
 // NewBuilder creates a new Builder which stores data objects for the specified
 // tenant in a bucket.
 //
@@ -221,6 +181,41 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 		flushBuffer: flushBuffer,
 		encoder:     encoder,
 	}, nil
+}
+
+// FromObject creates a new Builder from an existing data object, replicating all the state like stream IDs and logs.
+func (b *Builder) FromObject(f io.ReadSeeker) error {
+	dec := encoding.ReadSeekerDecoder(f)
+	var streamIDs = make(map[int64]*labels.Labels)
+
+	for result := range streams.Iter(context.Background(), dec) {
+		stream, err := result.Value()
+		if err != nil {
+			return err
+		}
+		if _, ok := streamIDs[stream.ID]; !ok {
+			sort.Sort(stream.Labels)
+			streamIDs[stream.ID] = &stream.Labels
+		}
+	}
+
+	i := 0
+	for result := range logs.Iter(context.Background(), dec) {
+		record, err := result.Value()
+		if err != nil {
+			return err
+		}
+		streamLabels, ok := streamIDs[record.StreamID]
+		if !ok {
+			return fmt.Errorf("stream ID %d not found", record.StreamID)
+		}
+
+		b.streams.Record(*streamLabels, record.Timestamp)
+		b.logs.Append(record)
+		i++
+	}
+
+	return nil
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
@@ -363,8 +358,10 @@ func (b *Builder) FlushToBuffer() (*bytes.Buffer, error) {
 	return b.flushBuffer, nil
 }
 
-func (b *Builder) StreamsIter() result.Seq[streams.Stream] {
-	return b.streams.Iter(context.Background())
+func (b *Builder) ForEachStream(f func(stream streams.Stream)) {
+	for stream := range b.streams.Iter(context.Background()) {
+		f(stream.MustValue())
+	}
 }
 
 func (b *Builder) buildObject() error {

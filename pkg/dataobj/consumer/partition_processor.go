@@ -17,6 +17,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -178,10 +179,10 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		err = p.writeMetastores(backoff, dataobjPath)
 		if err != nil {
 			level.Error(p.logger).Log("msg", "failed to write metastores", "err", err)
-			p.metrics.incMetastoreWriteFailures()
 			return
 		}
 
+		// Reset builder after flushing & storing in metastore
 		p.builder.Reset()
 
 		backoff.Reset()
@@ -203,17 +204,19 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 }
 
 func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPath string) error {
+	start := time.Now()
+	defer p.metrics.observeMetastoreProcessing(start)
 	// Scan dataobj streams to find out how many metastore objects need to be updated/created.
 	minTimestamp := time.Time{}
 	maxTimestamp := time.Time{}
-	for stream := range p.builder.StreamsIter() {
-		if stream.MustValue().MinTimestamp.Before(minTimestamp) || minTimestamp.IsZero() {
-			minTimestamp = stream.MustValue().MinTimestamp
+	p.builder.ForEachStream(func(stream streams.Stream) {
+		if stream.MinTimestamp.Before(minTimestamp) || minTimestamp.IsZero() {
+			minTimestamp = stream.MinTimestamp
 		}
-		if stream.MustValue().MaxTimestamp.After(maxTimestamp) || maxTimestamp.IsZero() {
-			maxTimestamp = stream.MustValue().MaxTimestamp
+		if stream.MaxTimestamp.After(maxTimestamp) || maxTimestamp.IsZero() {
+			maxTimestamp = stream.MaxTimestamp
 		}
-	}
+	})
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
@@ -224,43 +227,43 @@ func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPa
 		backoff.Reset()
 		for backoff.Ongoing() {
 			err := p.bucket.GetAndReplace(p.ctx, metastorePath, func(existing io.ReadCloser) (io.Reader, error) {
-				var existingMetastoreBuilder *dataobj.Builder
 				buf, err := io.ReadAll(existing)
 				if err != nil {
 					return nil, err
 				}
 
-				if len(buf) > 0 {
-					existingMetastoreBuilder, err = dataobj.ToBuilder(p.builderCfg, p.bucket, string(p.tenantID), bytes.NewReader(buf))
-					if err != nil {
-						return nil, err
-					}
-				} else {
-					var err error
-					existingMetastoreBuilder, err = dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
-					if err != nil {
-						return nil, err
-					}
+				metastoreBuilder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
+				if err != nil {
+					return nil, err
 				}
 
-				for stream := range p.builder.StreamsIter() {
-					stream := stream.MustValue()
-					if stream.MinTimestamp.After(metastoreWindow.Add(metastoreWindowSize)) || stream.MaxTimestamp.Before(metastoreWindow) {
-						continue
+				if len(buf) > 0 {
+					replayStart := time.Now()
+					err = metastoreBuilder.FromObject(bytes.NewReader(buf))
+					if err != nil {
+						return nil, err
 					}
-					existingMetastoreBuilder.Append(logproto.Stream{
+					p.metrics.observeMetastoreReplay(replayStart)
+				}
+
+				encodingStart := time.Now()
+				p.builder.ForEachStream(func(stream streams.Stream) {
+					if stream.MinTimestamp.After(metastoreWindow.Add(metastoreWindowSize)) || stream.MaxTimestamp.Before(metastoreWindow) {
+						return
+					}
+					metastoreBuilder.Append(logproto.Stream{
 						Labels: stream.Labels.String(),
 						Entries: []logproto.Entry{{
 							Timestamp: metastoreWindow,
 							Line:      dataobjPath,
 						}},
 					})
-				}
-
-				newMetastore, err := existingMetastoreBuilder.FlushToBuffer()
+				})
+				newMetastore, err := metastoreBuilder.FlushToBuffer()
 				if err != nil {
 					return nil, err
 				}
+				p.metrics.observeMetastoreEncoding(encodingStart)
 				return newMetastore, nil
 			})
 			if err == nil {
@@ -268,7 +271,7 @@ func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPa
 				break
 			}
 			level.Error(p.logger).Log("msg", "failed to get and replace metastore object", "err", err)
-			p.metrics.metastoreWriteFailures.Inc()
+			p.metrics.incMetastoreWriteFailures()
 			backoff.Wait()
 		}
 	}
