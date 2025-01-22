@@ -62,7 +62,7 @@
       "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
       "groupName": "{{packageName}}",
       "enabled": true,
-      "matchUpdateTypes": ["major", "minor", "patch"],
+      "matchUpdateTypes": ["minor", "patch"],
       "automerge": true,
       "autoApprove": true
     },
