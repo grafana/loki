@@ -58,13 +58,22 @@
       "automerge": false
     },
     {
-      // Enable all other updates
+      // Enable all other updates, and auto-merge minor and patch updates
       "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
       "groupName": "{{packageName}}",
       "enabled": true,
       "matchUpdateTypes": ["major", "minor", "patch"],
       "automerge": true,
       "autoApprove": true
+    },
+    {
+      // Enable all other updates, don't auto-merge major updates
+      "matchFileNames": ["!operator/go.mod", "!operator/api/loki/go.mod"],
+      "groupName": "{{packageName}}",
+      "enabled": true,
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "autoApprove": false
     }
   ],
   "digest": {
