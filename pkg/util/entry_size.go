@@ -1,10 +1,7 @@
 package util
 
 import (
-	"fmt"
-	"math"
 	"slices"
-	"time"
 
 	"github.com/grafana/loki/pkg/push"
 
@@ -34,8 +31,4 @@ func StructuredMetadataSize(metas push.LabelsAdapter) int {
 		size += len(meta.Name) + len(meta.Value)
 	}
 	return size
-}
-
-func RetentionHours(retention time.Duration) string {
-	return fmt.Sprintf("%d", int64(math.Floor(retention.Hours())))
 }
