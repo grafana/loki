@@ -239,7 +239,7 @@ func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPa
 
 				if len(buf) > 0 {
 					replayStart := time.Now()
-					err = metastoreBuilder.FromObject(bytes.NewReader(buf))
+					err = metastoreBuilder.FromExisting(bytes.NewReader(buf))
 					if err != nil {
 						return nil, err
 					}
