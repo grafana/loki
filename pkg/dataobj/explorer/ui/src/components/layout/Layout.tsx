@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { DarkModeToggle } from "./DarkModeToggle";
 import { Breadcrumb } from "./Breadcrumb";
+import { ScrollToTopButton } from "./ScrollToTopButton";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -11,7 +12,7 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({
   children,
   breadcrumbParts = [],
-  isLastBreadcrumbClickable = false,
+  isLastBreadcrumbClickable = true,
 }) => {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem("theme");
@@ -35,19 +36,18 @@ export const Layout: React.FC<LayoutProps> = ({
       }`}
     >
       <div className="container mx-auto px-4 py-8">
-        <div className="absolute top-4 right-4">
+        <div className="flex justify-between items-center mb-6">
+          <Breadcrumb
+            parts={breadcrumbParts}
+            isLastPartClickable={isLastBreadcrumbClickable}
+          />
           <DarkModeToggle
             isDarkMode={isDarkMode}
             onToggle={() => setIsDarkMode(!isDarkMode)}
           />
         </div>
-        {breadcrumbParts.length > 0 && (
-          <Breadcrumb
-            parts={breadcrumbParts}
-            isLastPartClickable={isLastBreadcrumbClickable}
-          />
-        )}
         {children}
+        <ScrollToTopButton />
       </div>
     </div>
   );

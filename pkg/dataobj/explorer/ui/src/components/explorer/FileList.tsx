@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { DateWithHover } from "./DateWithHover";
+import { DateWithHover } from "../common/DateWithHover";
 
 interface FileInfo {
   name: string;

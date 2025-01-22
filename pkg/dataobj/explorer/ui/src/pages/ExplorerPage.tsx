@@ -1,90 +1,36 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { useSearchParams } from "react-router-dom";
-import { FileList } from "../components/FileList";
-import { ScrollToTopButton } from "../components/ScrollToTopButton";
-import { Layout } from "../components/Layout";
-import { useBasename } from "../contexts/BasenameContext";
-
-interface FileInfo {
-  name: string;
-  size: number;
-  lastModified: string;
-}
-
-interface ListResponse {
-  files: FileInfo[];
-  folders: string[];
-  parent: string;
-  current: string;
-}
+import { FileList } from "../components/explorer/FileList";
+import { Layout } from "../components/layout/Layout";
+import { LoadingContainer } from "../components/common/LoadingContainer";
+import { ErrorContainer } from "../components/common/ErrorContainer";
+import { useExplorerData } from "../hooks/useExplorerData";
 
 export const ExplorerPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const path = searchParams.get("path") || "";
-  const [data, setData] = useState<ListResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const basename = useBasename();
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(
-          `${basename}api/list?path=${encodeURIComponent(path)}`
-        );
-        if (!response.ok) {
-          throw new Error("Failed to fetch data");
-        }
-        const json = await response.json();
-        setData(json);
-        setError(null);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [path]);
-
-  if (loading) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-screen dark:bg-gray-900">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500 dark:border-blue-400"></div>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (error) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-red-500">Error: {error}</div>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!data) {
-    return null;
-  }
+  const { data, loading, error } = useExplorerData(path);
 
   // Get path parts for breadcrumb
-  const pathParts = (data.current || "").split("/").filter(Boolean);
+  const pathParts = React.useMemo(
+    () => (data?.current || "").split("/").filter(Boolean),
+    [data?.current]
+  );
 
   return (
     <Layout breadcrumbParts={pathParts} isLastBreadcrumbClickable={true}>
-      <FileList
-        current={data.current}
-        parent={data.parent}
-        files={data.files}
-        folders={data.folders}
-      />
-      <ScrollToTopButton />
+      {loading ? (
+        <LoadingContainer fullScreen />
+      ) : error ? (
+        <ErrorContainer message={error} fullScreen />
+      ) : data ? (
+        <FileList
+          current={data.current}
+          parent={data.parent}
+          files={data.files}
+          folders={data.folders}
+        />
+      ) : null}
     </Layout>
   );
 };
