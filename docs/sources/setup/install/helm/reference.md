@@ -3595,6 +3595,9 @@ null
     "labels": {},
     "nodeSelector": {},
     "priorityClassName": "",
+    "rbac": {
+      "create": true
+    },
     "securityContext": {
       "fsGroup": 10001,
       "runAsGroup": 10001,
@@ -3995,6 +3998,9 @@ null
   "labels": {},
   "nodeSelector": {},
   "priorityClassName": "",
+  "rbac": {
+    "create": true
+  },
   "securityContext": {
     "fsGroup": 10001,
     "runAsGroup": 10001,
@@ -4112,6 +4118,17 @@ true
 			<td>The name of the PriorityClass for tokengen Pods</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.tokengen.rbac</td>
+			<td>object</td>
+			<td>Whether to create a ServiceAccount, a (Cluster)Role and a (Cluster)RoleBinding for the tokengen Job - this allows the components to be created externally when needed</td>
+			<td><pre lang="json">
+{
+  "create": true
+}
 </pre>
 </td>
 		</tr>
