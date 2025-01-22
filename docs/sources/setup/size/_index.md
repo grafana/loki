@@ -17,7 +17,7 @@ weight: 100
 This section is a guide to size base resource needs of a Loki cluster.
 
 Based on the expected ingestion volume, Loki clusters can be categorised into three tiers. Recommendations below are based on p90 resource utilisations of the relevant components. Each tab represents a different tier.
-Please use this document as a rough guide to specify CPU and Memory requests in your deployment. This is only documented for [microservices/distributed](https://grafana.com/docs/loki/latest/get-started/deployment-modes/#microservices-mode) mode at this time.
+Please use this document as a rough guide to specify CPU and Memory requests in your deployment. This is only documented for [microservices/distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode at this time.
 
 Query resource needs can greatly vary with usage patterns and correct configurations. General notes on Query Performance:
 - The rule of thumb is to run as small and as many queriers as possible. Unoptimised queries can easily require 10x of the suggested querier resources below in all tiers. Running horizontal autoscaling will be most cost effective solution to meet the demand.
