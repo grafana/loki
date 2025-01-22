@@ -100,7 +100,6 @@ message GetStreamUsageResponse {
 
 message RecordedStreams {
   uint64 streamHash = 1;
-  bool active = 2;
 }
 
 message StreamRate {

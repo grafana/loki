@@ -17,13 +17,13 @@ import (
 
 func TestIngestLimits_GetStreamUsage(t *testing.T) {
 	tests := []struct {
-		name           string
-		tenant         string
-		streamHashes   []uint64
-		setupMetadata  map[string]map[uint64]int64
-		windowSize     time.Duration
-		expectedActive uint64
-		expectedStatus []bool // 1 for active, 0 for inactive
+		name                    string
+		tenant                  string
+		streamHashes            []uint64
+		setupMetadata           map[string]map[uint64]int64
+		windowSize              time.Duration
+		expectedActive          uint64
+		expectedRecordedStreams []uint64
 	}{
 		{
 			name:         "tenant not found",
@@ -35,9 +35,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					5: time.Now().UnixNano(),
 				},
 			},
-			windowSize:     time.Hour,
-			expectedActive: 0,
-			expectedStatus: []bool{false, false, false},
+			windowSize:              time.Hour,
+			expectedActive:          0,
+			expectedRecordedStreams: []uint64{},
 		},
 		{
 			name:         "all streams active",
@@ -51,9 +51,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					4: time.Now().UnixNano(), // Additional active stream
 				},
 			},
-			windowSize:     time.Hour,
-			expectedActive: 4,                        // Total active streams for tenant
-			expectedStatus: []bool{true, true, true}, // Status of requested streams
+			windowSize:              time.Hour,
+			expectedActive:          4, // Total active streams for tenant
+			expectedRecordedStreams: []uint64{1, 2, 3, 4},
 		},
 		{
 			name:         "mixed active and expired streams",
@@ -68,9 +68,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					5: time.Now().UnixNano(),                     // Additional active stream
 				},
 			},
-			windowSize:     time.Hour,
-			expectedActive: 3,                                // Total active streams for tenant
-			expectedStatus: []bool{true, false, true, false}, // Status of requested streams
+			windowSize:              time.Hour,
+			expectedActive:          3, // Total active streams for tenant
+			expectedRecordedStreams: []uint64{1, 3, 5},
 		},
 		{
 			name:         "all streams expired",
@@ -82,9 +82,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					2: time.Now().Add(-2 * time.Hour).UnixNano(),
 				},
 			},
-			windowSize:     time.Hour,
-			expectedActive: 0,
-			expectedStatus: []bool{false, false},
+			windowSize:              time.Hour,
+			expectedActive:          0,
+			expectedRecordedStreams: []uint64{},
 		},
 		{
 			name:         "empty stream hashes",
@@ -96,9 +96,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 					2: time.Now().UnixNano(),
 				},
 			},
-			windowSize:     time.Hour,
-			expectedActive: 2,
-			expectedStatus: []bool{},
+			windowSize:              time.Hour,
+			expectedActive:          2,
+			expectedRecordedStreams: []uint64{1, 2},
 		},
 	}
 
@@ -139,13 +139,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			require.NotNil(t, resp)
 			require.Equal(t, tt.tenant, resp.Tenant)
 			require.Equal(t, tt.expectedActive, resp.ActiveStreams)
-			require.Len(t, resp.RecordedStreams, len(tt.streamHashes))
-
-			// Verify stream status
-			for i, hash := range tt.streamHashes {
-				require.Equal(t, hash, resp.RecordedStreams[i].StreamHash)
-				require.Equal(t, tt.expectedStatus[i], resp.RecordedStreams[i].Active)
-			}
+			require.Len(t, resp.RecordedStreams, len(tt.expectedRecordedStreams))
 		})
 	}
 }
@@ -202,13 +196,6 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 			require.NotNil(t, resp)
 			require.Equal(t, "tenant1", resp.Tenant)
 			require.Equal(t, uint64(3), resp.ActiveStreams) // Should count only the 3 active streams
-
-			// Verify stream status
-			expectedStatus := []bool{true, true, false, true, false} // active, active, expired, active, expired
-			for i, status := range expectedStatus {
-				require.Equal(t, req.StreamHash[i], resp.RecordedStreams[i].StreamHash)
-				require.Equal(t, status, resp.RecordedStreams[i].Active)
-			}
 		}()
 	}
 
