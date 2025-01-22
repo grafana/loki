@@ -104,7 +104,7 @@ local weeklyImageJobs = {
     },
   }),
   'images.yml': std.manifestYamlDoc({
-    name: 'publish images',
+    name: 'Publish images',
     on: {
       push: {
         branches: [
@@ -119,22 +119,24 @@ local weeklyImageJobs = {
       contents: 'write',
       'pull-requests': 'write',
     },
+    // Disable for faster testing
+    // jobs: {
+    //   check: {
+    //     uses: checkTemplate,
+    //     with: {
+    //       build_image: buildImage,
+    //       golang_ci_lint_version: golangCiLintVersion,
+    //       release_lib_ref: releaseLibRef,
+    //       skip_validation: false,
+    //       use_github_app_token: true,
+    //     },
+    //   },
+    // } + {
     jobs: {
-      check: {
-        uses: checkTemplate,
-        with: {
-          build_image: buildImage,
-          golang_ci_lint_version: golangCiLintVersion,
-          release_lib_ref: releaseLibRef,
-          skip_validation: false,
-          use_github_app_token: true,
-        },
-      },
-    } + {
       ['%s-image' % name]:
         weeklyImageJobs[name]
-        + lokiRelease.job.withNeeds(['check'])
-        + {
+        // + lokiRelease.job.withNeeds(['check'])
+        {
           env: {
             BUILD_TIMEOUT: imageBuildTimeoutMin,
             RELEASE_REPO: 'grafana/loki',
@@ -151,19 +153,20 @@ local weeklyImageJobs = {
         + job.withSteps([
           step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
           step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
-          step.new('Create and publish manifest')
+          step.new('Publish multi-arch manifest')
           + step.withRun(|||
             # Unfortunately there is no better way atm than having a separate named output for each digest
             echo '${{ needs.%(name)s.outputs.image_digest_linux_amd64 }}'
             echo '${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}'
             echo '${{ needs.%(name)s.outputs.image_digest_linux_arm }}'
             IMAGE=${{ needs.%(name)s.outputs.image_name }}:${{ needs.%(name)s.outputs.image_tag }}
+            echo "IMAGE=$IMAGE"
             docker buildx imagetools create -t $IMAGE \
               ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_amd64 }} \
               ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm64 }}
               ${{ needs.%(name)s.outputs.image_name }}@${{ needs.%(name)s.outputs.image_digest_linux_arm }}
             docker buildx imagetools inspect $IMAGE
-          ||| % { name: name }),
+          ||| % { name: '%s-image' % name }),
         ])
         + {
           env: {

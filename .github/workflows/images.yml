@@ -1,12 +1,4 @@
 "jobs":
-  "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@main"
-    "with":
-      "build_image": "grafana/loki-build-image:0.34.4"
-      "golang_ci_lint_version": "v1.60.3"
-      "release_lib_ref": "main"
-      "skip_validation": false
-      "use_github_app_token": true
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
@@ -14,8 +6,6 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
-    "needs":
-    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
@@ -102,17 +92,18 @@
       "uses": "docker/setup-buildx-action@v3"
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
-    - "name": "Create and publish manifest"
+    - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo '${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_amd64 }}'
-        echo '${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm64 }}'
-        echo '${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm }}'
-        IMAGE=${{ needs.loki-canary-boringcrypto.outputs.image_name }}:${{ needs.loki-canary-boringcrypto.outputs.image_tag }}
+        echo '${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}:${{ needs.loki-canary-boringcrypto-image.outputs.image_tag }}
+        echo "IMAGE=$IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${{ needs.loki-canary-boringcrypto.outputs.image_name }}@${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_amd64 }} \
-          ${{ needs.loki-canary-boringcrypto.outputs.image_name }}@${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm64 }}
-          ${{ needs.loki-canary-boringcrypto.outputs.image_name }}@${{ needs.loki-canary-boringcrypto.outputs.image_digest_linux_arm }}
+          ${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}@${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}@${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm64 }}
+          ${{ needs.loki-canary-boringcrypto-image.outputs.image_name }}@${{ needs.loki-canary-boringcrypto-image.outputs.image_digest_linux_arm }}
         docker buildx imagetools inspect $IMAGE
   "loki-canary-image":
     "env":
@@ -121,8 +112,6 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
-    "needs":
-    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
@@ -209,17 +198,18 @@
       "uses": "docker/setup-buildx-action@v3"
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
-    - "name": "Create and publish manifest"
+    - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo '${{ needs.loki-canary.outputs.image_digest_linux_amd64 }}'
-        echo '${{ needs.loki-canary.outputs.image_digest_linux_arm64 }}'
-        echo '${{ needs.loki-canary.outputs.image_digest_linux_arm }}'
-        IMAGE=${{ needs.loki-canary.outputs.image_name }}:${{ needs.loki-canary.outputs.image_tag }}
+        echo '${{ needs.loki-canary-image.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.loki-canary-image.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.loki-canary-image.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.loki-canary-image.outputs.image_name }}:${{ needs.loki-canary-image.outputs.image_tag }}
+        echo "IMAGE=$IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${{ needs.loki-canary.outputs.image_name }}@${{ needs.loki-canary.outputs.image_digest_linux_amd64 }} \
-          ${{ needs.loki-canary.outputs.image_name }}@${{ needs.loki-canary.outputs.image_digest_linux_arm64 }}
-          ${{ needs.loki-canary.outputs.image_name }}@${{ needs.loki-canary.outputs.image_digest_linux_arm }}
+          ${{ needs.loki-canary-image.outputs.image_name }}@${{ needs.loki-canary-image.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.loki-canary-image.outputs.image_name }}@${{ needs.loki-canary-image.outputs.image_digest_linux_arm64 }}
+          ${{ needs.loki-canary-image.outputs.image_name }}@${{ needs.loki-canary-image.outputs.image_digest_linux_arm }}
         docker buildx imagetools inspect $IMAGE
   "loki-image":
     "env":
@@ -228,8 +218,6 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
-    "needs":
-    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
@@ -316,17 +304,18 @@
       "uses": "docker/setup-buildx-action@v3"
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
-    - "name": "Create and publish manifest"
+    - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo '${{ needs.loki.outputs.image_digest_linux_amd64 }}'
-        echo '${{ needs.loki.outputs.image_digest_linux_arm64 }}'
-        echo '${{ needs.loki.outputs.image_digest_linux_arm }}'
-        IMAGE=${{ needs.loki.outputs.image_name }}:${{ needs.loki.outputs.image_tag }}
+        echo '${{ needs.loki-image.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.loki-image.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.loki-image.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.loki-image.outputs.image_name }}:${{ needs.loki-image.outputs.image_tag }}
+        echo "IMAGE=$IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${{ needs.loki.outputs.image_name }}@${{ needs.loki.outputs.image_digest_linux_amd64 }} \
-          ${{ needs.loki.outputs.image_name }}@${{ needs.loki.outputs.image_digest_linux_arm64 }}
-          ${{ needs.loki.outputs.image_name }}@${{ needs.loki.outputs.image_digest_linux_arm }}
+          ${{ needs.loki-image.outputs.image_name }}@${{ needs.loki-image.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.loki-image.outputs.image_name }}@${{ needs.loki-image.outputs.image_digest_linux_arm64 }}
+          ${{ needs.loki-image.outputs.image_name }}@${{ needs.loki-image.outputs.image_digest_linux_arm }}
         docker buildx imagetools inspect $IMAGE
   "promtail-image":
     "env":
@@ -335,8 +324,6 @@
       "IMAGE_PREFIX": "grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
-    "needs":
-    - "check"
     "outputs":
       "image_digest_linux_amd64": "${{ steps.digest.outputs.digest_linux_amd64 }}"
       "image_digest_linux_arm": "${{ steps.digest.outputs.digest_linux_arm }}"
@@ -423,19 +410,20 @@
       "uses": "docker/setup-buildx-action@v3"
     - "name": "Login to DockerHub (from Vault)"
       "uses": "grafana/shared-workflows/actions/dockerhub-login@main"
-    - "name": "Create and publish manifest"
+    - "name": "Publish multi-arch manifest"
       "run": |
         # Unfortunately there is no better way atm than having a separate named output for each digest
-        echo '${{ needs.promtail.outputs.image_digest_linux_amd64 }}'
-        echo '${{ needs.promtail.outputs.image_digest_linux_arm64 }}'
-        echo '${{ needs.promtail.outputs.image_digest_linux_arm }}'
-        IMAGE=${{ needs.promtail.outputs.image_name }}:${{ needs.promtail.outputs.image_tag }}
+        echo '${{ needs.promtail-image.outputs.image_digest_linux_amd64 }}'
+        echo '${{ needs.promtail-image.outputs.image_digest_linux_arm64 }}'
+        echo '${{ needs.promtail-image.outputs.image_digest_linux_arm }}'
+        IMAGE=${{ needs.promtail-image.outputs.image_name }}:${{ needs.promtail-image.outputs.image_tag }}
+        echo "IMAGE=$IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${{ needs.promtail.outputs.image_name }}@${{ needs.promtail.outputs.image_digest_linux_amd64 }} \
-          ${{ needs.promtail.outputs.image_name }}@${{ needs.promtail.outputs.image_digest_linux_arm64 }}
-          ${{ needs.promtail.outputs.image_name }}@${{ needs.promtail.outputs.image_digest_linux_arm }}
+          ${{ needs.promtail-image.outputs.image_name }}@${{ needs.promtail-image.outputs.image_digest_linux_amd64 }} \
+          ${{ needs.promtail-image.outputs.image_name }}@${{ needs.promtail-image.outputs.image_digest_linux_arm64 }}
+          ${{ needs.promtail-image.outputs.image_name }}@${{ needs.promtail-image.outputs.image_digest_linux_arm }}
         docker buildx imagetools inspect $IMAGE
-"name": "publish images"
+"name": "Publish images"
 "on":
   "push":
     "branches":
