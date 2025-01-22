@@ -2,7 +2,7 @@
 // It is responsible for receiving and answering gRPC requests from distributors,
 // such as exceeds limits requests, forwarding them to individual limits backends,
 // gathering and aggregating their responses (where required), and returning
-// the final result. 
+// the final result.
 package frontend
 
 import (
@@ -19,17 +19,17 @@ import (
 // all components needed to run the limits-frontend.
 type Frontend struct {
 	services.Service
-	cfg     Config
-	logger  log.Logger
-	limits  IngestLimitsService
+	cfg    Config
+	logger log.Logger
+	limits IngestLimitsService
 }
 
 // NewFrontend returns a new Frontend.
 func NewFrontend(cfg Config, logger log.Logger, _ prometheus.Registerer, limits IngestLimitsService) (*Frontend, error) {
 	f := &Frontend{
-		cfg:     cfg,
-		logger:  logger,
-		limits:  limits,
+		cfg:    cfg,
+		logger: logger,
+		limits: limits,
 	}
 	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
 	return f, nil

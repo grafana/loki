@@ -15,7 +15,7 @@ import (
 // IngestLimitsService is responsible for receiving, processing and
 // validating requests, forwarding them to individual limits backends,
 // gathering and aggregating their responses (where required), and returning
-// the final result. 
+// the final result.
 type IngestLimitsService interface {
 	// ExceedsLimits checks if the request would exceed the current tenants
 	// limits.
