@@ -47,6 +47,7 @@ func Iter(ctx context.Context, columns []Column) result.Seq[Row] {
 			}
 
 			next, stop := result.Pull(lazyColumnIter(ctx, col.ColumnInfo(), pages))
+			defer stop()
 			pullColumns = append(pullColumns, pullColumnIter{Next: next, Stop: stop})
 		}
 
