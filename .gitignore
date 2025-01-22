@@ -36,6 +36,9 @@ dist
 pkg/loki/wal
 tools/lambda-promtail/main
 tools/dev/kafka/data/
+dashboards_out/
+production/loki-mixin/alerts.yaml
+production/loki-mixin/rules.yaml
 
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login

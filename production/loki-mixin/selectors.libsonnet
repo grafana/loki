@@ -192,9 +192,8 @@
 
       // wrapper for calling the correct matcher method based on the label
       resource(label, value, op='=~')::
-        local camelCaseLabel = cfg.toCamelCase(label);
-        if std.objectHasAll(root, camelCaseLabel) then
-          root[camelCaseLabel](value, op)
+        if std.objectHasAll(root, label) then
+          root[label](value, op)
         else
           error 'Invalid resource: %s, no selector method found for this resource' % [label],
 
@@ -305,11 +304,7 @@
                 std.sort(
                   // loop over each of the labels and build the matcher string
                   [
-                    std.format(
-                      '%s%s"%s"',
-                      [l.label, l.op, l.value]
-                    )
-
+                    std.format('%(label)s%(op)s"%(value)s"', l)
                     for l in self.list()
                   ]
                 )
