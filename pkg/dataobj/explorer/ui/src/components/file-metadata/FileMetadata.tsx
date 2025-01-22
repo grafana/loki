@@ -52,11 +52,9 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
   filename,
   className = "",
 }) => {
-  const [expandedSections, setExpandedSections] = useState<
-    Record<number, boolean>
-  >(
-    metadata.sections.reduce((acc, _, index) => ({ ...acc, [index]: true }), {})
-  );
+  const [expandedSectionIndex, setExpandedSectionIndex] = useState<
+    number | null
+  >(null);
   const [expandedColumns, setExpandedColumns] = useState<
     Record<string, boolean>
   >({});
@@ -70,10 +68,9 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
   }
 
   const toggleSection = (sectionIndex: number) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [sectionIndex]: !prev[sectionIndex],
-    }));
+    setExpandedSectionIndex(
+      expandedSectionIndex === sectionIndex ? null : sectionIndex
+    );
   };
 
   const toggleColumn = (sectionIndex: number, columnIndex: number) => {
@@ -146,7 +143,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+            <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded">
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 Compression
               </div>
@@ -160,7 +157,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                 {formatBytes(totalUncompressed)}
               </div>
             </div>
-            <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+            <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded">
               <div className="text-sm text-gray-500 dark:text-gray-400">
                 Sections
               </div>
@@ -170,7 +167,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
               </div>
             </div>
             {streamCount && (
-              <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+              <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded">
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   Stream Count
                 </div>
@@ -180,7 +177,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
               </div>
             )}
             {logCount && (
-              <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+              <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded">
                 <div className="text-sm text-gray-500 dark:text-gray-400">
                   Log Count
                 </div>
@@ -200,11 +197,11 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                 onClick={() => toggleSection(sectionIndex)}
               >
                 <h3 className="text-lg font-semibold dark:text-gray-200">
-                  Section: {section.type}
+                  Section #{sectionIndex + 1}: {section.type}
                 </h3>
                 <svg
-                  className={`w-5 h-5 transform transition-transform ${
-                    expandedSections[sectionIndex] ? "rotate-180" : ""
+                  className={`w-5 h-5 transform transition-transform duration-700 ${
+                    expandedSectionIndex === sectionIndex ? "rotate-180" : ""
                   }`}
                   fill="none"
                   stroke="currentColor"
@@ -220,11 +217,17 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
               </div>
 
               {/* Section Content */}
-              {expandedSections[sectionIndex] && (
+              <div
+                className={`transition-all duration-700 ease-in-out overflow-hidden ${
+                  expandedSectionIndex === sectionIndex
+                    ? "max-h-[5000px] opacity-100"
+                    : "max-h-0 opacity-0"
+                }`}
+              >
                 <div className="p-4 bg-gray-50 dark:bg-gray-800">
                   {/* Section Stats */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+                    <div className="bg-white dark:bg-gray-700 p-3 rounded">
                       <div className="text-sm text-gray-500 dark:text-gray-400">
                         Compression
                       </div>
@@ -238,13 +241,13 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                         {formatBytes(section.totalUncompressedSize)}
                       </div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+                    <div className="bg-white dark:bg-gray-700 p-3 rounded">
                       <div className="text-sm text-gray-500 dark:text-gray-400">
                         Column Count
                       </div>
                       <div className="font-medium">{section.columnCount}</div>
                     </div>
-                    <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded">
+                    <div className="bg-white dark:bg-gray-700 p-3 rounded">
                       <div className="text-sm text-gray-500 dark:text-gray-400">
                         Type
                       </div>
@@ -255,7 +258,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                   {/* Columns */}
                   <div className="space-y-4">
                     <h4 className="font-medium text-lg mb-4 dark:text-gray-200">
-                      Columns
+                      Columns ({section.columnCount})
                     </h4>
                     {section.columns.map((column, columnIndex) => (
                       <div
@@ -432,7 +435,7 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                     ))}
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           ))}
         </div>
