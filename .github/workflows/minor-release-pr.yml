@@ -181,8 +181,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -245,8 +243,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -309,8 +305,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -379,8 +373,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -443,8 +435,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -513,8 +503,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -583,8 +571,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -704,8 +690,15 @@ jobs:
       fail-fast: true
       matrix:
         platform:
-        - "linux/amd64"
-        - "linux/arm64"
+        - arch: "linux/amd64"
+          runs_on:
+          - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
+        - arch: "linux/arm"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   promtail:
     needs:
     - "version"
@@ -730,8 +723,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"
@@ -800,8 +791,6 @@ jobs:
       uses: "google-github-actions/auth@v2"
       with:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
-    - name: "Set up QEMU"
-      uses: "docker/setup-qemu-action@v3"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
     - id: "platform"

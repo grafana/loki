@@ -1,9 +1,10 @@
-local common = import 'common.libsonnet';
-local runner = import 'runner.libsonnet';
-local job = common.job;
-local step = common.step;
-local releaseStep = common.releaseStep;
-local releaseLibStep = common.releaseLibStep;
+local common = import 'common.libsonnet',
+      job = common.job,
+      step = common.step,
+      releaseStep = common.releaseStep,
+      releaseLibStep = common.releaseLibStep;
+local runner = import 'runner.libsonnet',
+      r = runner.withDefaultMapping();
 
 {
   image: function(
@@ -12,16 +13,16 @@ local releaseLibStep = common.releaseLibStep;
     dockerfile='Dockerfile',
     context='release',
     platform=[
-      'linux/amd64',
-      'linux/arm64',
-      'linux/arm',
+      r.forPlatform('linux/amd64'),
+      r.forPlatform('linux/arm64'),
+      r.forPlatform('linux/arm'),
     ]
         )
     job.new('${{ matrix.runs_on }}')
     + job.withStrategy({
       'fail-fast': true,
       matrix: {
-        include: [runner.forPlatform(p) for p in platform],
+        include: platform,
       },
     })
     + job.withSteps([
@@ -30,7 +31,6 @@ local releaseLibStep = common.releaseLibStep;
       common.setupNode,
       common.googleAuth,
 
-      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
 
       releaseStep('Parse image platform')
@@ -73,16 +73,16 @@ local releaseLibStep = common.releaseLibStep;
     dockerfile='Dockerfile',
     context='release',
     platform=[
-      'linux/amd64',
-      'linux/arm64',
-      'linux/arm',
+      r.forPlatform('linux/amd64'),
+      r.forPlatform('linux/arm64'),
+      r.forPlatform('linux/arm'),
     ]
               )
     job.new('${{ matrix.runs_on }}')
     + job.withStrategy({
       'fail-fast': true,
       matrix: {
-        include: [runner.forPlatform(p) for p in platform],
+        include: platform,
       },
     })
     + job.withOutputs({
@@ -91,15 +91,12 @@ local releaseLibStep = common.releaseLibStep;
       image_digest_linux_amd64: '${{ steps.digest.outputs.digest_linux_amd64 }}',
       image_digest_linux_arm64: '${{ steps.digest.outputs.digest_linux_arm64 }}',
       image_digest_linux_arm: '${{ steps.digest.outputs.digest_linux_arm }}',
-      // image_digest_linux_arm_v6: '${{ steps.digest.outputs.digest_linux_arm_v6 }}',
-      // image_digest_linux_arm_v7: '${{ steps.digest.outputs.digest_linux_arm_v7 }}',
     })
     + job.withSteps([
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
 
-      // step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
       step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
       step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
 
@@ -125,12 +122,11 @@ local releaseLibStep = common.releaseLibStep;
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.with({
         context: context,
-        file: 'release/%s/%s' % [path, dockerfile],
+        file: '%s/%s/%s' % [context, path, dockerfile],
         platforms: '${{ matrix.arch }}',
         provenance: true,
         outputs: 'push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true',
         tags: '${{ steps.weekly-version.outputs.image_name }}',
-        // tags: '${{ steps.weekly-version.outputs.image_name }},${{ steps.weekly-version.outputs.image_name }}-${{ steps.platform.outputs.platform_short }}',
         'build-args': |||
           IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
           GO_VERSION=${{ env.GO_VERSION }}
