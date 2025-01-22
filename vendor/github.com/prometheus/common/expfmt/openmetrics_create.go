@@ -152,8 +152,8 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 	if metricType == dto.MetricType_COUNTER && strings.HasSuffix(compliantName, "_total") {
 		compliantName = name[:len(name)-6]
 	}
-	if toOM.withUnit && in.Unit != nil && !strings.HasSuffix(compliantName, fmt.Sprintf("_%s", *in.Unit)) {
-		compliantName = compliantName + fmt.Sprintf("_%s", *in.Unit)
+	if toOM.withUnit && in.Unit != nil && !strings.HasSuffix(compliantName, "_"+*in.Unit) {
+		compliantName = compliantName + "_" + *in.Unit
 	}
 
 	// Comments, first HELP, then TYPE.

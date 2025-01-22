@@ -15,7 +15,7 @@
 package expfmt
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -109,7 +109,7 @@ func NewOpenMetricsFormat(version string) (Format, error) {
 	if version == OpenMetricsVersion_1_0_0 {
 		return FmtOpenMetrics_1_0_0, nil
 	}
-	return FmtUnknown, fmt.Errorf("unknown open metrics version string")
+	return FmtUnknown, errors.New("unknown open metrics version string")
 }
 
 // WithEscapingScheme returns a copy of Format with the specified escaping

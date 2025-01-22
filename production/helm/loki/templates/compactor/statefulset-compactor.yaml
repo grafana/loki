@@ -51,7 +51,7 @@ spec:
       {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.compactor.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
@@ -173,7 +173,9 @@ spec:
   {{- if .Values.compactor.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.compactor.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

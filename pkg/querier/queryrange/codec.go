@@ -1282,6 +1282,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryrangebase.Response) (*http.Response, error) {
 	if req.Header.Get("Accept") == ProtobufType {
 		return encodeResponseProtobuf(ctx, res)
+	} else if req.Header.Get("Accept") == ParquetType {
+		return encodeResponseParquet(ctx, res)
 	}
 
 	// Default to JSON.

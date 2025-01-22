@@ -2,7 +2,9 @@ package log
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -585,7 +587,8 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 
 	// Get all labels at once and sort them
 	b.buf = b.UnsortedLabels(b.buf)
-	sort.Sort(b.buf)
+	// sort.Sort(b.buf)
+	slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	hash := b.hasher.Hash(b.buf)
 
 	if cached, ok := b.resultCache[hash]; ok {

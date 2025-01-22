@@ -186,6 +186,8 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 	return bkt, nil
 }
 
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.GCS }
+
 // Name returns the bucket name for gcs.
 func (b *Bucket) Name() string {
 	return b.name

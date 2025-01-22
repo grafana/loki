@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"runtime/pprof"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
+
+	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -27,7 +31,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -66,6 +69,14 @@ const (
 var (
 	maxLabelCacheSize = 100000
 	rfStats           = analytics.NewInt("distributor_replication_factor")
+
+	// the rune error replacement is rejected by Prometheus hence replacing them with space.
+	removeInvalidUtf = func(r rune) rune {
+		if r == utf8.RuneError {
+			return 32 // rune value for space
+		}
+		return r
+	}
 )
 
 // Config for a Distributor.
@@ -156,10 +167,11 @@ type Distributor struct {
 	RequestParserWrapper push.RequestParserWrapper
 
 	// metrics
-	ingesterAppends        *prometheus.CounterVec
-	ingesterAppendTimeouts *prometheus.CounterVec
-	replicationFactor      prometheus.Gauge
-	streamShardCount       prometheus.Counter
+	ingesterAppends                       *prometheus.CounterVec
+	ingesterAppendTimeouts                *prometheus.CounterVec
+	replicationFactor                     prometheus.Gauge
+	streamShardCount                      prometheus.Counter
+	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
@@ -273,6 +285,11 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
+		tenantPushSanitizedStructuredMetadata: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "distributor_push_structured_metadata_sanitized_total",
+			Help:      "The total number of times we've had to sanitize structured metadata (names or values) at ingestion time per tenant.",
+		}, []string{"tenant"}),
 		kafkaAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "distributor_kafka_appends_total",
@@ -429,7 +446,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
-		return &logproto.PushResponse{}, nil
+		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
 	}
 
 	// First we flatten out the request into a list of samples.
@@ -443,8 +460,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 	now := time.Now()
 	validationContext := d.validator.getValidationContextForTime(now, tenantID)
-	levelDetector := newLevelDetector(validationContext)
-	shouldDiscoverLevels := levelDetector.shouldDiscoverLogLevels()
+	fieldDetector := newFieldDetector(validationContext)
+	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
+	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
@@ -505,6 +523,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
+			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID).Add(float64(discardedBytes))
+				continue
+			}
+
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
@@ -516,12 +544,36 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					continue
 				}
 
+				var normalized string
 				structuredMetadata := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
-				if shouldDiscoverLevels {
-					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
-					if ok {
-						entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+				for i := range entry.StructuredMetadata {
+					normalized = otlptranslate.NormalizeLabel(structuredMetadata[i].Name)
+					if normalized != structuredMetadata[i].Name {
+						structuredMetadata[i].Name = normalized
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
 					}
+					if strings.ContainsRune(structuredMetadata[i].Value, utf8.RuneError) {
+						structuredMetadata[i].Value = strings.Map(removeInvalidUtf, structuredMetadata[i].Value)
+						d.tenantPushSanitizedStructuredMetadata.WithLabelValues(tenantID).Inc()
+					}
+				}
+				if shouldDiscoverLevels {
+					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
+						if ok {
+							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+						}
+					})
+				}
+				if shouldDiscoverGenericFields {
+					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
+							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+							if ok {
+								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+							}
+						}
+					})
 				}
 				stream.Entries[n] = entry
 
@@ -658,9 +710,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		for ingester, streams := range streamsByIngester {
 			func(ingester ring.InstanceDesc, samples []*streamTracker) {
-				// Use a background context to make sure all ingesters get samples even if we return early
-				localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
-				localCtx = user.InjectOrgID(localCtx, tenantID)
+				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
+				// This is to make sure all ingesters get samples even if we return early
+				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
 				if sp := opentracing.SpanFromContext(ctx); sp != nil {
 					localCtx = opentracing.ContextWithSpan(localCtx, sp)
 				}
@@ -689,6 +741,27 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// missingEnforcedLabels returns true if the stream is missing any of the required labels.
+//
+// It also returns the first label that is missing if any (for the case of multiple labels missing).
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
+	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
+	if len(requiredLbs) == 0 {
+		// no enforced labels configured.
+		return false, []string{}
+	}
+
+	missingLbs := []string{}
+
+	for _, lb := range requiredLbs {
+		if !lbs.Has(lb) {
+			missingLbs = append(missingLbs, lb)
+		}
+	}
+
+	return len(missingLbs) > 0, missingLbs
 }
 
 func (d *Distributor) trackDiscardedData(

@@ -192,7 +192,7 @@ type overrideSignerType struct {
 }
 
 func (s *overrideSignerType) Retrieve() (credentials.Value, error) {
-	v, err := s.Provider.Retrieve()
+	v, err := s.RetrieveWithCredContext(nil)
 	if err != nil {
 		return v, err
 	}
@@ -344,6 +344,8 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string, wra
 	}
 	return bkt, nil
 }
+
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.S3 }
 
 // Name returns the bucket name for s3.
 func (b *Bucket) Name() string {

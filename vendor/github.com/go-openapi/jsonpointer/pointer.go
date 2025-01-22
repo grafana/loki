@@ -264,7 +264,7 @@ func (p *Pointer) set(node, data any, nameProvider *swag.NameProvider) error {
 	knd := reflect.ValueOf(node).Kind()
 
 	if knd != reflect.Ptr && knd != reflect.Struct && knd != reflect.Map && knd != reflect.Slice && knd != reflect.Array {
-		return fmt.Errorf("only structs, pointers, maps and slices are supported for setting values")
+		return errors.New("only structs, pointers, maps and slices are supported for setting values")
 	}
 
 	if nameProvider == nil {

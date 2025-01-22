@@ -4,7 +4,7 @@
 package otlp // import "go.opentelemetry.io/collector/pdata/internal/otlp"
 
 import (
-	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1experimental"
+	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
 )
 
 // MigrateProfiles implements any translation needed due to deprecation in OTLP profiles protocol.

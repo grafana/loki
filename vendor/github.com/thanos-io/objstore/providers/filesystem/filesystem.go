@@ -50,6 +50,8 @@ func NewBucket(rootDir string) (*Bucket, error) {
 	return &Bucket{rootDir: absDir}, nil
 }
 
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.FILESYSTEM }
+
 func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
 	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
 }

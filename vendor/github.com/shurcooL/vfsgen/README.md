@@ -1,7 +1,7 @@
 vfsgen
 ======
 
-[![Build Status](https://travis-ci.org/shurcooL/vfsgen.svg?branch=master)](https://travis-ci.org/shurcooL/vfsgen) [![GoDoc](https://godoc.org/github.com/shurcooL/vfsgen?status.svg)](https://godoc.org/github.com/shurcooL/vfsgen)
+[![Go Reference](https://pkg.go.dev/badge/github.com/shurcooL/vfsgen.svg)](https://pkg.go.dev/github.com/shurcooL/vfsgen)
 
 Package vfsgen takes an http.FileSystem (likely at `go generate` time) and
 generates Go code that statically implements the provided http.FileSystem.
@@ -19,8 +19,8 @@ Features:
 Installation
 ------------
 
-```bash
-go get -u github.com/shurcooL/vfsgen
+```sh
+go get github.com/shurcooL/vfsgen
 ```
 
 Usage
@@ -81,7 +81,7 @@ By using build tags, you can create a development mode where assets are loaded d
 For example, suppose your source filesystem is defined in a package with import path "example.com/project/data" as:
 
 ```Go
-// +build dev
+//go:build dev
 
 package data
 
@@ -96,7 +96,7 @@ When built with the "dev" build tag, accessing `data.Assets` will read from disk
 A generate helper file assets_generate.go can be invoked via "//go:generate go run -tags=dev assets_generate.go" directive:
 
 ```Go
-// +build ignore
+//go:build ignore
 
 package main
 
@@ -177,6 +177,7 @@ It strives to be the best in its class in terms of code quality and efficiency o
 
 ### Alternatives
 
+-	[`embed`](https://go.dev/pkg/embed) - Package embed provides access to files embedded in the running Go program.
 -	[`go-bindata`](https://github.com/jteeuwen/go-bindata) - Reads from disk, generates Go code that provides access to data via a [custom API](https://github.com/jteeuwen/go-bindata#accessing-an-asset).
 -	[`go-bindata-assetfs`](https://github.com/elazarl/go-bindata-assetfs) - Takes output of go-bindata and provides a wrapper that implements `http.FileSystem` interface (the same as what vfsgen outputs directly).
 -	[`becky`](https://github.com/tv42/becky) - Embeds assets as string literals in Go source.
@@ -194,6 +195,13 @@ Attribution
 -----------
 
 This package was originally based on the excellent work by [@jteeuwen](https://github.com/jteeuwen) on [`go-bindata`](https://github.com/jteeuwen/go-bindata) and [@elazarl](https://github.com/elazarl) on [`go-bindata-assetfs`](https://github.com/elazarl/go-bindata-assetfs).
+
+Directories
+-----------
+
+| Path                                                                         | Synopsis                                                                                |
+|------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|
+| [cmd/vfsgendev](https://pkg.go.dev/github.com/shurcooL/vfsgen/cmd/vfsgendev) | vfsgendev is a convenience tool for using vfsgen in a common development configuration. |
 
 License
 -------

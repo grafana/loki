@@ -44,7 +44,7 @@ value is set to the specified default.
 You can use environment variable references in the configuration file to set values that need to be configurable during deployment.
 To do this, pass `-config.expand-env=true` and use:
 
-```
+```bash
 ${VAR}
 ```
 
@@ -56,7 +56,7 @@ References to undefined variables are replaced by empty strings unless you speci
 
 To specify a default value, use:
 
-```
+```bash
 ${VAR:-default_value}
 ```
 
@@ -77,6 +77,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 - `<secret>` : a string that represents a secret, such as a password
 
 ### Supported contents and default values of `loki.yaml`
+
+<!-- vale Grafana.Spelling = NO -->
 
 ```yaml
 # A comma-separated list of components to run. The default value 'all' runs Loki
@@ -171,10 +173,6 @@ block_builder:
   # CLI flag: -blockbuilder.max-chunk-age
   [max_chunk_age: <duration> | default = 2h]
 
-  # The interval at which to run.
-  # CLI flag: -blockbuilder.interval
-  [interval: <duration> | default = 10m]
-
   backoff_config:
     # Minimum delay when backing off.
     # CLI flag: -blockbuilder.backoff..backoff-min-period
@@ -187,6 +185,59 @@ block_builder:
     # Number of times to backoff and retry before failing.
     # CLI flag: -blockbuilder.backoff..backoff-retries
     [max_retries: <int> | default = 10]
+
+  # The number of workers to run in parallel to process jobs.
+  # CLI flag: -blockbuilder.worker-parallelism
+  [worker_parallelism: <int> | default = 1]
+
+  # The interval at which to sync job status with the scheduler.
+  # CLI flag: -blockbuilder.sync-interval
+  [sync_interval: <duration> | default = 30s]
+
+  # The interval at which to poll for new jobs.
+  # CLI flag: -blockbuilder.poll-interval
+  [poll_interval: <duration> | default = 30s]
+
+  # Address of the scheduler in the format described here:
+  # https://github.com/grpc/grpc/blob/master/doc/naming.md
+  # CLI flag: -blockbuilder.scheduler-address
+  [scheduler_address: <string> | default = ""]
+
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is:
+  # blockbuilder.scheduler-grpc-client.
+  [scheduler_grpc_client_config: <grpc_client>]
+
+block_scheduler:
+  # How often the scheduler should plan jobs.
+  # CLI flag: -block-scheduler.interval
+  [interval: <duration> | default = 15m]
+
+  # Lookback period used by the scheduler to plan jobs when the consumer group
+  # has no commits. 0 consumes from the start of the partition.
+  # CLI flag: -block-scheduler.lookback-period
+  [lookback_period: <duration> | default = 0s]
+
+  # Strategy used by the planner to plan jobs. One of record-count
+  # CLI flag: -block-scheduler.strategy
+  [strategy: <string> | default = "record-count"]
+
+  # Target record count used by the planner to plan jobs. Only used when
+  # strategy is record-count
+  # CLI flag: -block-scheduler.target-record-count
+  [target_record_count: <int> | default = 1000]
+
+  job_queue:
+    # Interval to check for expired job leases
+    # CLI flag: -jobqueue.lease-expiry-check-interval
+    [lease_expiry_check_interval: <duration> | default = 1m]
+
+    # Duration after which a job lease is considered expired if the scheduler
+    # receives no updates from builders about the job. Expired jobs are
+    # re-enqueued
+    # CLI flag: -jobqueue.lease-duration
+    [lease_duration: <duration> | default = 10m]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -794,10 +845,8 @@ kafka_config:
   [sasl_password: <string> | default = ""]
 
   # The consumer group used by the consumer to track the last consumed offset.
-  # The consumer group must be different for each ingester. If the configured
-  # consumer group contains the '<partition>' placeholder, it is replaced with
-  # the actual partition ID owned by the ingester. When empty (recommended),
-  # Mimir uses the ingester instance ID to guarantee uniqueness.
+  # The consumer group must be different for each ingester zone.When empty, Loki
+  # uses the ingester instance ID.
   # CLI flag: -kafka.consumer-group
   [consumer_group: <string> | default = ""]
 
@@ -927,6 +976,14 @@ Configuration for `analytics`.
 # URL to which reports are sent
 # CLI flag: -reporting.usage-stats-url
 [usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
+
+# URL to the proxy server
+# CLI flag: -reporting.proxy-url
+[proxy_url: <string> | default = ""]
+
+# The TLS configuration.
+# The CLI flags prefix for this block configuration is: reporting.tls-config
+[tls_config: <tls_config>]
 ```
 
 ### attributes_config
@@ -1337,22 +1394,6 @@ client:
   # bloom-gateway-client.grpc
   [grpc_client_config: <grpc_client>]
 
-  results_cache:
-    # The cache_config block configures the cache backend for a specific Loki
-    # component.
-    # The CLI flags prefix for this block configuration is:
-    # bloom-gateway-client.cache
-    [cache: <cache_config>]
-
-    # Use compression in cache. The default is an empty value '', which disables
-    # compression. Supported values are: 'snappy' and ''.
-    # CLI flag: -bloom-gateway-client.cache.compression
-    [compression: <string> | default = ""]
-
-  # Flag to control whether to cache bloom gateway client requests/responses.
-  # CLI flag: -bloom-gateway-client.cache_results
-  [cache_results: <boolean> | default = false]
-
   # Comma separated addresses list in DNS Service Discovery format:
   # https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes
   # CLI flag: -bloom-gateway-client.addresses
@@ -1408,7 +1449,6 @@ The `bos_storage_config` block configures the connection to Baidu Object Storage
 
 The `cache_config` block configures the cache backend for a specific Loki component. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `bloom-gateway-client.cache`
 - `bloom.metas-cache`
 - `frontend`
 - `frontend.index-stats-results-cache`
@@ -1670,6 +1710,11 @@ The `chunk_store_config` block configures how chunks will be cached and how long
 # Consider using TSDB index which does not require a write dedupe cache.
 # The CLI flags prefix for this block configuration is: store.index-cache-write
 [write_dedupe_cache_config: <cache_config>]
+
+# Chunks fetched from queriers before this duration will not be written to the
+# cache. A value of 0 will write all chunks to the cache
+# CLI flag: -store.skip-query-writeback-older-than
+[skip_query_writeback_cache_older_than: <duration> | default = 0s]
 
 # Chunks will be handed off to the L2 cache after this duration. 0 to disable L2
 # cache.
@@ -2511,7 +2556,11 @@ The `frontend` block configures the Loki query-frontend.
 [tail_proxy_url: <string> | default = ""]
 
 # The TLS configuration.
+# The CLI flags prefix for this block configuration is: frontend.tail-tls-config
 [tail_tls_config: <tls_config>]
+
+# Support 'application/vnd.apache.parquet' content type in HTTP responses.
+[support_parquet_encoding: <boolean>]
 ```
 
 ### frontend_worker
@@ -2612,6 +2661,7 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `blockbuilder.scheduler-grpc-client.`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
@@ -3329,6 +3379,12 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -validation.increment-duplicate-timestamps
 [increment_duplicate_timestamp: <boolean> | default = false]
 
+# Experimental: Detect fields from stream labels, structured metadata, or
+# json/logfmt formatted log line and put them into structured metadata of the
+# log entry.
+discover_generic_fields:
+  [fields: <map of string to list of strings>]
+
 # If no service_name label exists, Loki maps a single label from the configured
 # list to service_name. If none of the configured labels exist in the stream,
 # label is set to unknown_service. Empty list disables setting the label.
@@ -3755,19 +3811,10 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# Experimental. The shard size defines how many bloom gateways should be used by
-# a tenant for querying.
-# CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 0]
-
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
-
-# Experimental. Interval for computing the cache key in the Bloom Gateway.
-# CLI flag: -bloom-gateway.cache-key-interval
-[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Experimental. Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.
@@ -3867,6 +3914,12 @@ otlp_config:
 # status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
+
+# List of labels that must be present in the stream. If any of the labels are
+# missing, the stream will be discarded. This flag configures it globally for
+# all tenants. Experimental.
+# CLI flag: -validation.enforced-labels
+[enforced_labels: <list of strings> | default = []]
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
@@ -4915,6 +4968,9 @@ remote_write:
   # Configure remote write clients. A map with remote client id as key. For
   # details, see
   # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#remote_write
+  # Specifying a header with key 'X-Scope-OrgID' under the 'headers' section of
+  # RemoteWriteConfig is not permitted. If specified, it will be dropped during
+  # config parsing.
   [clients: <map of string to RemoteWriteConfig>]
 
   # Enable remote-write functionality.
@@ -4927,7 +4983,8 @@ remote_write:
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
 
-  # Add X-Scope-OrgID header in remote write requests.
+  # Add an X-Scope-OrgID header in remote write requests with the tenant ID of a
+  # Loki tenant that the recording rules are part of.
   # CLI flag: -ruler.remote-write.add-org-id-header
   [add_org_id_header: <boolean> | default = true]
 
@@ -6314,30 +6371,35 @@ chunk_tables_provisioning:
 
 ### tls_config
 
-The TLS configuration.
+The TLS configuration. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `frontend.tail-tls-config`
+- `reporting.tls-config`
+
+&nbsp;
 
 ```yaml
 # Path to the client certificate, which will be used for authenticating with the
 # server. Also requires the key path to be configured.
-# CLI flag: -frontend.tail-tls-config.tls-cert-path
+# CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
 # Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
-# CLI flag: -frontend.tail-tls-config.tls-key-path
+# CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
 # Path to the CA certificates to validate server certificate against. If not
 # set, the host's root CA certificates are used.
-# CLI flag: -frontend.tail-tls-config.tls-ca-path
+# CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
 # Override the expected name on the server certificate.
-# CLI flag: -frontend.tail-tls-config.tls-server-name
+# CLI flag: -<prefix>.tls-server-name
 [tls_server_name: <string> | default = ""]
 
 # Skip validating server certificate.
-# CLI flag: -frontend.tail-tls-config.tls-insecure-skip-verify
+# CLI flag: -<prefix>.tls-insecure-skip-verify
 [tls_insecure_skip_verify: <boolean> | default = false]
 
 # Override the default cipher suite list (separated by commas). Allowed values:
@@ -6370,12 +6432,12 @@ The TLS configuration.
 # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
 # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
 # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-# CLI flag: -frontend.tail-tls-config.tls-cipher-suites
+# CLI flag: -<prefix>.tls-cipher-suites
 [tls_cipher_suites: <string> | default = ""]
 
 # Override the default minimum TLS version. Allowed values: VersionTLS10,
 # VersionTLS11, VersionTLS12, VersionTLS13
-# CLI flag: -frontend.tail-tls-config.tls-min-version
+# CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
 ```
 
@@ -6388,6 +6450,8 @@ Configuration for `tracing`.
 # CLI flag: -tracing.enabled
 [enabled: <boolean> | default = true]
 ```
+
+<!-- vale Grafana.Spelling = YES -->
 
 ## Runtime Configuration file
 
@@ -6433,7 +6497,7 @@ on a cluster or per-tenant basis.
 - To disable out-of-order writes for all tenants,
 place in the `limits_config` section:
 
-    ```
+    ```yaml
     limits_config:
         unordered_writes: false
     ```
@@ -6441,7 +6505,7 @@ place in the `limits_config` section:
 - To disable out-of-order writes for specific tenants,
 configure a runtime configuration file:
 
-    ```
+    ```yaml
     runtime_config:
       file: overrides.yaml
     ```
@@ -6449,7 +6513,7 @@ configure a runtime configuration file:
     In the `overrides.yaml` file, add `unordered_writes` for each tenant
     permitted to have out-of-order writes:
 
-    ```
+    ```yaml
     overrides:
       "tenantA":
         unordered_writes: false
@@ -6461,7 +6525,7 @@ is configurable with `max_chunk_age`.
 Loki calculates the earliest time that out-of-order entries may have
 and be accepted with
 
-```
+```yaml
 time_of_most_recent_line - (max_chunk_age/2)
 ```
 

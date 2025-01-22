@@ -15613,6 +15613,23 @@ type LifecycleRule struct {
 	// period in the object's lifetime.
 	NoncurrentVersionExpiration *NoncurrentVersionExpiration `type:"structure"`
 
+	// Specifies the transition rule for the lifecycle rule that describes when
+	// noncurrent objects transition to a specific storage class. If your bucket
+	// is versioning-enabled (or versioning is suspended), you can set this action
+	// to request that Amazon S3 transition noncurrent object versions to a specific
+	// storage class at a set period in the object's lifetime.
+	NoncurrentVersionTransitions []*NoncurrentVersionTransition `locationName:"NoncurrentVersionTransition" type:"list" flattened:"true"`
+
+	// Prefix identifying one or more objects to which the rule applies. This is
+	// no longer used; use Filter instead.
+	//
+	// Replacement must be made for object keys containing special characters (such
+	// as carriage returns) when using XML requests. For more information, see XML
+	// related object key constraints (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html#object-key-xml-related-constraints).
+	//
+	// Deprecated: Prefix has been deprecated
+	Prefix *string `deprecated:"true" type:"string"`
+
 	// If 'Enabled', the rule is currently being applied. If 'Disabled', the rule
 	// is not currently being applied.
 	//
@@ -15649,6 +15666,11 @@ func (s *LifecycleRule) Validate() error {
 	}
 	if s.Status == nil {
 		invalidParams.Add(request.NewErrParamRequired("Status"))
+	}
+	if s.Filter != nil {
+		if err := s.Filter.Validate(); err != nil {
+			invalidParams.AddNested("Filter", err.(request.ErrInvalidParams))
+		}
 	}
 
 	if invalidParams.Len() > 0 {
@@ -15687,6 +15709,18 @@ func (s *LifecycleRule) SetNoncurrentVersionExpiration(v *NoncurrentVersionExpir
 	return s
 }
 
+// SetNoncurrentVersionTransitions sets the NoncurrentVersionTransitions field's value.
+func (s *LifecycleRule) SetNoncurrentVersionTransitions(v []*NoncurrentVersionTransition) *LifecycleRule {
+	s.NoncurrentVersionTransitions = v
+	return s
+}
+
+// SetPrefix sets the Prefix field's value.
+func (s *LifecycleRule) SetPrefix(v string) *LifecycleRule {
+	s.Prefix = &v
+	return s
+}
+
 // SetStatus sets the Status field's value.
 func (s *LifecycleRule) SetStatus(v string) *LifecycleRule {
 	s.Status = &v
@@ -15699,10 +15733,99 @@ func (s *LifecycleRule) SetTransitions(v []*Transition) *LifecycleRule {
 	return s
 }
 
+// This is used in a Lifecycle Rule Filter to apply a logical AND to two or
+// more predicates. The Lifecycle Rule will apply to any object matching all
+// of the predicates configured inside the And operator.
+type LifecycleRuleAndOperator struct {
+	_ struct{} `type:"structure"`
+
+	ObjectSizeGreaterThan *int64 `type:"long"`
+
+	ObjectSizeLessThan *int64 `type:"long"`
+
+	// Prefix identifying one or more objects to which the rule applies.
+	Prefix *string `type:"string"`
+
+	// All of these tags must exist in the object's tag set in order for the rule
+	// to apply.
+	Tags []*Tag `locationName:"Tag" locationNameList:"Tag" type:"list" flattened:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s LifecycleRuleAndOperator) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s LifecycleRuleAndOperator) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *LifecycleRuleAndOperator) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "LifecycleRuleAndOperator"}
+	if s.Tags != nil {
+		for i, v := range s.Tags {
+			if v == nil {
+				continue
+			}
+			if err := v.Validate(); err != nil {
+				invalidParams.AddNested(fmt.Sprintf("%s[%v]", "Tags", i), err.(request.ErrInvalidParams))
+			}
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetObjectSizeGreaterThan sets the ObjectSizeGreaterThan field's value.
+func (s *LifecycleRuleAndOperator) SetObjectSizeGreaterThan(v int64) *LifecycleRuleAndOperator {
+	s.ObjectSizeGreaterThan = &v
+	return s
+}
+
+// SetObjectSizeLessThan sets the ObjectSizeLessThan field's value.
+func (s *LifecycleRuleAndOperator) SetObjectSizeLessThan(v int64) *LifecycleRuleAndOperator {
+	s.ObjectSizeLessThan = &v
+	return s
+}
+
+// SetPrefix sets the Prefix field's value.
+func (s *LifecycleRuleAndOperator) SetPrefix(v string) *LifecycleRuleAndOperator {
+	s.Prefix = &v
+	return s
+}
+
+// SetTags sets the Tags field's value.
+func (s *LifecycleRuleAndOperator) SetTags(v []*Tag) *LifecycleRuleAndOperator {
+	s.Tags = v
+	return s
+}
+
 // The Filter is used to identify objects that a Lifecycle Rule applies to.
 // A Filter must have exactly one of Prefix, Tag, or And specified.
 type LifecycleRuleFilter struct {
 	_ struct{} `type:"structure"`
+
+	// This is used in a Lifecycle Rule Filter to apply a logical AND to two or
+	// more predicates. The Lifecycle Rule will apply to any object matching all
+	// of the predicates configured inside the And operator.
+	And *LifecycleRuleAndOperator `type:"structure"`
+
+	ObjectSizeGreaterThan *int64 `type:"long"`
+
+	ObjectSizeLessThan *int64 `type:"long"`
 
 	// Prefix identifying one or more objects to which the rule applies.
 	//
@@ -15710,6 +15833,9 @@ type LifecycleRuleFilter struct {
 	// as carriage returns) when using XML requests. For more information, see XML
 	// related object key constraints (https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-keys.html#object-key-xml-related-constraints).
 	Prefix *string `type:"string"`
+
+	// This tag must exist in the object's tag set in order for the rule to apply.
+	Tag *Tag `type:"structure"`
 }
 
 // String returns the string representation.
@@ -15730,9 +15856,53 @@ func (s LifecycleRuleFilter) GoString() string {
 	return s.String()
 }
 
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *LifecycleRuleFilter) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "LifecycleRuleFilter"}
+	if s.And != nil {
+		if err := s.And.Validate(); err != nil {
+			invalidParams.AddNested("And", err.(request.ErrInvalidParams))
+		}
+	}
+	if s.Tag != nil {
+		if err := s.Tag.Validate(); err != nil {
+			invalidParams.AddNested("Tag", err.(request.ErrInvalidParams))
+		}
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetAnd sets the And field's value.
+func (s *LifecycleRuleFilter) SetAnd(v *LifecycleRuleAndOperator) *LifecycleRuleFilter {
+	s.And = v
+	return s
+}
+
+// SetObjectSizeGreaterThan sets the ObjectSizeGreaterThan field's value.
+func (s *LifecycleRuleFilter) SetObjectSizeGreaterThan(v int64) *LifecycleRuleFilter {
+	s.ObjectSizeGreaterThan = &v
+	return s
+}
+
+// SetObjectSizeLessThan sets the ObjectSizeLessThan field's value.
+func (s *LifecycleRuleFilter) SetObjectSizeLessThan(v int64) *LifecycleRuleFilter {
+	s.ObjectSizeLessThan = &v
+	return s
+}
+
 // SetPrefix sets the Prefix field's value.
 func (s *LifecycleRuleFilter) SetPrefix(v string) *LifecycleRuleFilter {
 	s.Prefix = &v
+	return s
+}
+
+// SetTag sets the Tag field's value.
+func (s *LifecycleRuleFilter) SetTag(v *Tag) *LifecycleRuleFilter {
+	s.Tag = v
 	return s
 }
 
@@ -17861,6 +18031,8 @@ func (s *MultipartUpload) SetUploadId(v string) *MultipartUpload {
 type NoncurrentVersionExpiration struct {
 	_ struct{} `type:"structure"`
 
+	NewerNoncurrentVersions *int64 `type:"integer"`
+
 	// Specifies the number of days an object is noncurrent before Amazon S3 can
 	// perform the associated action. For information about the noncurrent days
 	// calculations, see How Amazon S3 Calculates When an Object Became Noncurrent
@@ -17887,9 +18059,74 @@ func (s NoncurrentVersionExpiration) GoString() string {
 	return s.String()
 }
 
+// SetNewerNoncurrentVersions sets the NewerNoncurrentVersions field's value.
+func (s *NoncurrentVersionExpiration) SetNewerNoncurrentVersions(v int64) *NoncurrentVersionExpiration {
+	s.NewerNoncurrentVersions = &v
+	return s
+}
+
 // SetNoncurrentDays sets the NoncurrentDays field's value.
 func (s *NoncurrentVersionExpiration) SetNoncurrentDays(v int64) *NoncurrentVersionExpiration {
 	s.NoncurrentDays = &v
+	return s
+}
+
+// Container for the transition rule that describes when noncurrent objects
+// transition to the STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING, GLACIER,
+// or DEEP_ARCHIVE storage class. If your bucket is versioning-enabled (or versioning
+// is suspended), you can set this action to request that Amazon S3 transition
+// noncurrent object versions to the STANDARD_IA, ONEZONE_IA, INTELLIGENT_TIERING,
+// GLACIER, or DEEP_ARCHIVE storage class at a specific period in the object's
+// lifetime.
+type NoncurrentVersionTransition struct {
+	_ struct{} `type:"structure"`
+
+	NewerNoncurrentVersions *int64 `type:"integer"`
+
+	// Specifies the number of days an object is noncurrent before Amazon S3 can
+	// perform the associated action. For information about the noncurrent days
+	// calculations, see How Amazon S3 Calculates How Long an Object Has Been Noncurrent
+	// (https://docs.aws.amazon.com/AmazonS3/latest/dev/intro-lifecycle-rules.html#non-current-days-calculations)
+	// in the Amazon S3 User Guide.
+	NoncurrentDays *int64 `type:"integer"`
+
+	// The class of storage used to store the object.
+	StorageClass *string `type:"string" enum:"TransitionStorageClass"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s NoncurrentVersionTransition) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s NoncurrentVersionTransition) GoString() string {
+	return s.String()
+}
+
+// SetNewerNoncurrentVersions sets the NewerNoncurrentVersions field's value.
+func (s *NoncurrentVersionTransition) SetNewerNoncurrentVersions(v int64) *NoncurrentVersionTransition {
+	s.NewerNoncurrentVersions = &v
+	return s
+}
+
+// SetNoncurrentDays sets the NoncurrentDays field's value.
+func (s *NoncurrentVersionTransition) SetNoncurrentDays(v int64) *NoncurrentVersionTransition {
+	s.NoncurrentDays = &v
+	return s
+}
+
+// SetStorageClass sets the StorageClass field's value.
+func (s *NoncurrentVersionTransition) SetStorageClass(v string) *NoncurrentVersionTransition {
+	s.StorageClass = &v
 	return s
 }
 

@@ -160,6 +160,25 @@ func (DataPointFlags) EnumDescriptor() ([]byte, []int) {
 // storage, OR can be embedded by other protocols that transfer OTLP metrics
 // data but do not implement the OTLP protocol.
 //
+// MetricsData
+// └─── ResourceMetrics
+//
+//	├── Resource
+//	├── SchemaURL
+//	└── ScopeMetrics
+//	   ├── Scope
+//	   ├── SchemaURL
+//	   └── Metric
+//	      ├── Name
+//	      ├── Description
+//	      ├── Unit
+//	      └── data
+//	         ├── Gauge
+//	         ├── Sum
+//	         ├── Histogram
+//	         ├── ExponentialHistogram
+//	         └── Summary
+//
 // The main difference between this message and collector protocol is that
 // in this message there will not be any "control" or "metadata" specific to
 // OTLP protocol.
@@ -224,7 +243,8 @@ type ResourceMetrics struct {
 	// A list of metrics that originate from a resource.
 	ScopeMetrics []*ScopeMetrics `protobuf:"bytes,2,rep,name=scope_metrics,json=scopeMetrics,proto3" json:"scope_metrics,omitempty"`
 	// The Schema URL, if known. This is the identifier of the Schema that the resource data
-	// is recorded in. To learn more about Schema URL see
+	// is recorded in. Notably, the last part of the URL path is the version number of the
+	// schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
 	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to the data in the "resource" field. It does not apply
 	// to the data in the "scope_metrics" field which have their own schema_url field.
@@ -301,7 +321,8 @@ type ScopeMetrics struct {
 	// A list of metrics that originate from an instrumentation library.
 	Metrics []*Metric `protobuf:"bytes,2,rep,name=metrics,proto3" json:"metrics,omitempty"`
 	// The Schema URL, if known. This is the identifier of the Schema that the metric data
-	// is recorded in. To learn more about Schema URL see
+	// is recorded in. Notably, the last part of the URL path is the version number of the
+	// schema: http[s]://server[:port]/path/<version>. To learn more about Schema URL see
 	// https://opentelemetry.io/docs/specs/otel/schemas/#schema-url
 	// This schema_url applies to all metrics in the "metrics" field.
 	SchemaUrl string `protobuf:"bytes,3,opt,name=schema_url,json=schemaUrl,proto3" json:"schema_url,omitempty"`
@@ -855,6 +876,9 @@ func (m *ExponentialHistogram) GetAggregationTemporality() AggregationTemporalit
 // data type. These data points cannot always be merged in a meaningful way.
 // While they can be useful in some applications, histogram data points are
 // recommended for new applications.
+// Summary metrics do not have an aggregation temporality field. This is
+// because the count and sum fields of a SummaryDataPoint are assumed to be
+// cumulative values.
 type Summary struct {
 	DataPoints []*SummaryDataPoint `protobuf:"bytes,1,rep,name=data_points,json=dataPoints,proto3" json:"data_points,omitempty"`
 }
@@ -1084,7 +1108,7 @@ type HistogramDataPoint struct {
 	// events, and is assumed to be monotonic over the values of these events.
 	// Negative events *can* be recorded, but sum should not be filled out when
 	// doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
-	// see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
+	// see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#histogram
 	//
 	// Types that are valid to be assigned to Sum_:
 	//	*HistogramDataPoint_Sum
@@ -1329,7 +1353,7 @@ type ExponentialHistogramDataPoint struct {
 	// events, and is assumed to be monotonic over the values of these events.
 	// Negative events *can* be recorded, but sum should not be filled out when
 	// doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
-	// see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#histogram
+	// see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#histogram
 	//
 	// Types that are valid to be assigned to Sum_:
 	//	*ExponentialHistogramDataPoint_Sum
@@ -1644,7 +1668,8 @@ func (m *ExponentialHistogramDataPoint_Buckets) GetBucketCounts() []uint64 {
 }
 
 // SummaryDataPoint is a single data point in a timeseries that describes the
-// time-varying values of a Summary metric.
+// time-varying values of a Summary metric. The count and sum fields represent
+// cumulative values.
 type SummaryDataPoint struct {
 	// The set of key/value pairs that uniquely identify the timeseries from
 	// where this point belongs. The list may be empty (may contain 0 elements).
@@ -1671,7 +1696,7 @@ type SummaryDataPoint struct {
 	// events, and is assumed to be monotonic over the values of these events.
 	// Negative events *can* be recorded, but sum should not be filled out when
 	// doing so.  This is specifically to enforce compatibility w/ OpenMetrics,
-	// see: https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#summary
+	// see: https://github.com/prometheus/OpenMetrics/blob/v1.0.0/specification/OpenMetrics.md#summary
 	Sum float64 `protobuf:"fixed64,5,opt,name=sum,proto3" json:"sum,omitempty"`
 	// (Optional) list of values at different quantiles of the distribution calculated
 	// from the current snapshot. The quantiles must be strictly increasing.

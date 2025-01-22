@@ -18,8 +18,8 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.23.1
-BUILD_IMAGE_TAG    := 0.34.1
+GO_VERSION         := 1.23.5
+BUILD_IMAGE_TAG    := 0.34.4
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -102,9 +102,9 @@ help: ## Display this help
 .PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
 .PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
-.PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
-.PHONY: fluentd-image, fluentd-push, fluentd-test
-.PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image build-image-push
+.PHONY: fluent-bit-image, fluent-bit-test
+.PHONY: fluentd-image, fluentd-test
+.PHONY: promtail-image loki-image build-image build-image-push
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, check-mod
 .PHONY: migrate migrate-image lint-markdown ragel
@@ -384,7 +384,7 @@ test: all ## run the unit tests
 	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | tee lambda_promtail_test_results.txt
 
 test-integration:
-	$(GOTEST) -count=1 -v -tags=integration -timeout 10m ./integration
+	$(GOTEST) -count=1 -v -tags=integration -timeout 15m ./integration
 
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
@@ -523,16 +523,12 @@ docker-driver-clean:
 #####################
 # fluent-bit plugin #
 #####################
+
 fluent-bit-plugin: ## build the fluent-bit plugin
 	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o clients/cmd/fluent-bit/out_grafana_loki.so ./clients/cmd/fluent-bit/
 
 fluent-bit-image: ## build the fluent-bit plugin docker image
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
-fluent-bit-image-cross:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
-
-fluent-bit-push: fluent-bit-image-cross ## push the fluent-bit plugin docker image
-	$(OCI_PUSH) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
 fluent-bit-test:
@@ -542,6 +538,7 @@ fluent-bit-test:
 ##################
 # fluentd plugin #
 ##################
+
 fluentd-plugin: ## build the fluentd plugin
 	$(MAKE) -BC clients/cmd/fluentd $@
 
@@ -551,17 +548,14 @@ fluentd-plugin-push: ## push the fluentd plugin
 fluentd-image: ## build the fluentd docker image
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
 
-fluentd-push:
-fluentd-image-push: ## push the fluentd docker image
-	$(OCI_PUSH) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
-
 fluentd-test: LOKI_URL ?= http://loki:3100
 fluentd-test:
 	LOKI_URL="$(LOKI_URL)" docker-compose -f clients/cmd/fluentd/docker/docker-compose.yml up --build
 
-##################
+###################
 # logstash plugin #
-##################
+###################
+
 logstash-image: ## build the logstash image
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f clients/cmd/logstash/Dockerfile ./
 
@@ -570,9 +564,6 @@ logstash-push-test-logs: LOKI_URL ?= http://host.docker.internal:3100/loki/api/v
 logstash-push-test-logs:
 	docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/clients/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
 		$(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f loki.conf
-
-logstash-push: ## push the logstash image
-	$(OCI_PUSH) $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
 # Enter an env already configure to build and test logstash output plugin.
 logstash-env:
@@ -597,53 +588,31 @@ push-bigtable-backup: bigtable-backup
 # Images #
 ##########
 
-images: promtail-image loki-image loki-canary-image helm-test-image docker-driver fluent-bit-image fluentd-image
-
-# push(app, optional tag)
-# pushes the app, optionally tagging it differently before
-define push
-	 $(OCI_TAG)  $(IMAGE_PREFIX)/$(1):$(IMAGE_TAG) $(IMAGE_PREFIX)/$(1):$(2)
-	 $(OCI_PUSH) $(IMAGE_PREFIX)/$(1):$(2)
-endef
-
-# push-image(app)
-# pushes the app, also as :main
-define push-image
-	$(call push,$(1),$(IMAGE_TAG))
-	$(call push,$(1),main)
-endef
+images: promtail-image loki-image loki-canary-image helm-test-image docker-driver
 
 # Promtail image
 promtail-image: ## build the promtail docker image
 	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile .
-promtail-image-cross:
-	$(OCI_BUILD) -t $(PROMTAIL_IMAGE) -f clients/cmd/promtail/Dockerfile.cross .
 promtail-debug-image: ## build the promtail debug docker image
 	$(OCI_BUILD) -t $(PROMTAIL_IMAGE)-debug -f clients/cmd/promtail/Dockerfile.debug .
-promtail-push: promtail-image-cross
-	$(call push-image,promtail)
 
 # Loki image
 loki-image: ## build the loki docker image
 	$(OCI_BUILD) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile .
-loki-image-cross:
-	$(OCI_BUILD) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile.cross .
 loki-debug-image: ## build the loki debug docker image
 	$(OCI_BUILD) -t $(LOKI_IMAGE)-debug -f cmd/loki/Dockerfile.debug .
-loki-push: loki-image-cross
-	$(call push-image,loki)
+
+# Loki local image
+# Default architecture for local builds
+LOCAL_ARCH ?= linux/amd64
+loki-local-image: ## build the loki docker image locally (set LOCAL_ARCH=linux/arm64 for arm64)
+	docker buildx build --load --platform=$(LOCAL_ARCH) -t $(LOKI_IMAGE) -f cmd/loki/Dockerfile .
 
 # Canary image
 loki-canary-image: ## build the canary docker image
 	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
-loki-canary-image-cross:
-	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile.cross .
-loki-canary-push: loki-canary-image-cross
-	$(OCI_PUSH) $(LOKI_CANARY_IMAGE)
-loki-canary-image-cross-boringcrypto:
+loki-canary-boringcrypto-image:
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
-loki-canary-push-boringcrypto: loki-canary-image-cross-boringcrypto
-	$(OCI_PUSH) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
 
 # Helm test image
 helm-test-image: ## build the helm test docker image
@@ -654,10 +623,6 @@ helm-test-push: helm-test-image
 # Query Tee image
 loki-querytee-image: ## build the querytee docker image
 	$(OCI_BUILD) -t $(QUERY_TEE_IMAGE) -f cmd/querytee/Dockerfile .
-loki-querytee-image-cross:
-	$(OCI_BUILD) -t $(QUERY_TEE_IMAGE) -f cmd/querytee/Dockerfile.cross .
-loki-querytee-push: loki-querytee-image-cross
-	$(OCI_PUSH) $(QUERY_TEE_IMAGE)
 
 # Migrate image
 migrate-image: ## build the migrate docker image
@@ -666,26 +631,20 @@ migrate-image: ## build the migrate docker image
 # LogQL Analyzer
 logql-analyzer-image: ## build the logql analyzer docker image
 	$(OCI_BUILD) -t $(LOGQL_ANALYZER_IMAGE) -f cmd/logql-analyzer/Dockerfile .
-logql-analyzer-push: logql-analyzer-image
-	$(call push-image,logql-analyzer)
 
 # Build image
 build-image: ## build the build docker image
 	$(OCI_BUILD) -t $(BUILD_IMAGE) ./loki-build-image
-build-image-push:  build-image
+build-image-push:
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
 endif
-	$(OCI_PUSH) -t $(BUILD_IMAGE)
+	DOCKER_BUILDKIT=1 docker buildx build $(OCI_PLATFORMS) $(OCI_BUILD_ARGS) $(OCI_PUSH_ARGS) -t $(BUILD_IMAGE) ./loki-build-image
 
 # Loki Operator
 loki-operator-image: ## build the operator docker image
-	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile operator/
-loki-operator-image-cross:
-	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile.cross operator/
-loki-operator-push: loki-operator-image-cross
-	$(OCI_PUSH) $(OPERATOR_IMAGE)
+	$(OCI_BUILD) -t $(OPERATOR_IMAGE) -f operator/Dockerfile ./operator
 
 #################
 # Documentation #
@@ -865,6 +824,7 @@ trivy: loki-image build-image
 snyk: loki-image build-image
 	snyk container test $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) --file=cmd/loki/Dockerfile
 	snyk container test $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) --file=loki-build-image/Dockerfile
+	snyk container test $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) --file=clients/cmd/promtail/Dockerfile
 	snyk code test
 
 .PHONY: scan-vulnerabilities
@@ -872,8 +832,12 @@ scan-vulnerabilities: trivy snyk
 
 .PHONY: release-workflows
 release-workflows:
+ifeq ($(BUILD_IN_CONTAINER),true)
+	$(run_in_container)
+else
 	pushd $(CURDIR)/.github && jb update && popd
 	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) .github/release-workflows.jsonnet
+endif
 
 .PHONY: release-workflows-check
 release-workflows-check:
