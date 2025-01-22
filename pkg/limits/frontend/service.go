@@ -13,8 +13,16 @@ import (
 )
 
 const (
+	// RejectedStreamReasonExceedsGlobalLimit is the reason for rejecting a stream
+	// because it exceeds the global per tenant limit.
 	RejectedStreamReasonExceedsGlobalLimit = "exceeds_global_limit"
 )
+
+// Limits is the interface of the limits confgiration
+// builder to be passed to the frontend service.
+type Limits interface {
+	MaxGlobalStreamsPerUser(userID string) int
+}
 
 // IngestLimitsService is responsible for receiving, processing and
 // validating requests, forwarding them to individual limits backends,
@@ -30,9 +38,6 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
-type Limits interface {
-	MaxGlobalStreamsPerUser(userID string) int
-}
 type ringFunc func(context.Context, logproto.IngestLimitsClient) (*logproto.GetStreamUsageResponse, error)
 
 // RingIngestLimitsService is an IngestLimitsService that uses the ring to read the responses
@@ -86,19 +91,17 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 	return responses, nil
 }
 
-func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
-	req := &logproto.GetStreamUsageRequest{
-		Tenant: r.Tenant,
-	}
-
+func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
 	resps, err := s.forAllBackends(ctx, func(_ context.Context, client logproto.IngestLimitsClient) (*logproto.GetStreamUsageResponse, error) {
-		return client.GetStreamUsage(ctx, req)
+		return client.GetStreamUsage(ctx, &logproto.GetStreamUsageRequest{
+			Tenant: req.Tenant,
+		})
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	maxGlobalStreams := s.limits.MaxGlobalStreamsPerUser(r.Tenant)
+	maxGlobalStreams := s.limits.MaxGlobalStreamsPerUser(req.Tenant)
 
 	var (
 		activeStreamsTotal uint64
@@ -111,6 +114,10 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, r *logproto
 
 		activeStreamsTotal += resp.Response.ActiveStreams
 
+		// Record the unique stream hashes
+		// and decrement the active streams
+		// total if the stream hash is already
+		// recorded
 		for _, stream := range resp.Response.RecordedStreams {
 			if !uniqueStreamHashes[stream.StreamHash] {
 				uniqueStreamHashes[stream.StreamHash] = true
@@ -122,14 +129,12 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, r *logproto
 
 	if activeStreamsTotal < uint64(maxGlobalStreams) {
 		return &logproto.ExceedsLimitsResponse{
-			Tenant: r.Tenant,
+			Tenant: req.Tenant,
 		}, nil
 	}
 
-	var (
-		rejectedStreams []*logproto.RejectedStream
-	)
-	for _, stream := range r.Streams {
+	var rejectedStreams []*logproto.RejectedStream
+	for _, stream := range req.Streams {
 		if !uniqueStreamHashes[stream.StreamHash] {
 			rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
 				StreamHash: stream.StreamHash,
@@ -139,7 +144,7 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, r *logproto
 	}
 
 	return &logproto.ExceedsLimitsResponse{
-		Tenant:          r.Tenant,
+		Tenant:          req.Tenant,
 		RejectedStreams: rejectedStreams,
 	}, nil
 }
