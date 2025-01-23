@@ -37,13 +37,18 @@
 
       // Adds cluster label selector using the configured cluster variable
       // shorthand for selector().label('cluster').eq('$cluster')
-      cluster()::
-        self.withLabel(cfg._config.labels.cluster, '=', '$cluster'),
+      cluster(value='$cluster', op='=')::
+        self.withLabel(cfg._config.labels.cluster, op, value),
 
       // Adds namespace label selector using the configured namespace variable
       // shorthand for selector().label('namespace').eq('$namespace')
-      namespace()::
-        self.withLabel(cfg._config.labels.namespace, '=', '$namespace'),
+      namespace(value='$namespace', op='=')::
+        self.withLabel(cfg._config.labels.namespace, op, value),
+
+      // Adds node label selector using the configured node variable
+      // shorthand for selector().label('node').re('$node')
+      node(value='$node', op='=~')::
+        self.withLabel(cfg._config.labels.node, op, value),
 
       // Adds tenant label selector using the configured tenant variable
       // shorthand for selector().label('tenant').eq('$tenant')
@@ -64,14 +69,28 @@
       base()::
         self.cluster().namespace(),
 
+      // gets a label mapping from the config, if the label mapping doesn't exist, return the label
+      _getLabelMapping(label)::
+        // make sure the labels key exists in the config and the label key exists in labels
+        if std.objectHas(cfg._config, 'labels') && std.objectHas(cfg._config.labels, label) then
+          cfg._config.labels[label]
+        else
+          // there is no mapping just return the label
+          label,
+
+      // get the component from the config, if the component doesn't exist in the config, return an empty object
+      _getComponent(component)::
+        if std.objectHas(cfg._config, 'components') && std.objectHas(cfg._config.components, component) then
+          cfg._config.components[component]
+        else
+          {},
+
       // gets a key from a component in the config, if the component or key doesn't exist in the config, return the default value
       _getComponentKey(component, key, default=null)::
-         // check if the component exists in the config
-        if !std.objectHas(cfg._config.components, component) then
-          error 'Invalid component: %s, the component does not exist in config.components' % [component]
-        // check if the key exists in the component
-        else if std.objectHas(cfg._config.components[component], key) then
-          cfg._config.components[component][key]
+        // get the component from the config
+        local componentObj = self._getComponent(component);
+        if std.objectHas(componentObj, key) then
+          componentObj[key]
         else
           default,
 
@@ -83,8 +102,9 @@
         // label, save it and add it to the list of passed components.  this handles the case where multiple shorthand components
         // are used i.e. selector().querier().queryFrontend().queryScheduler() which would render the same result as
         // selector().job(['querier', 'query-frontend', 'query-scheduler'])
+        local baseComponents = if std.isArray(components) then components else [components];
         local mergedComponents = (
-          if std.isArray(components) then components else [components]
+          baseComponents
           +
           // get the list of existing labels/matchers that have the passed label i.e. job, pod, container, component
           std.map(
@@ -101,11 +121,31 @@
           function(c)
             local componentPattern = self._getComponentKey(component=c, key='pattern', default=c);
             local componentPath = self._getComponentKey(component=c, key='ssd_path');
-            std.join('|', [componentPattern, componentPath, 'single-binary']),
+            std.join(
+              '|',
+              // merge the component pattern, component path (if meta-monitoring is enabled and include_path is true)
+              // and single-binary (if meta-monitoring is enabled and include_sb is true)
+              [componentPattern]
+              + (
+                // if meta-monitoring is enabled and include_path is true and the component is not cortex-gateway, add the component path
+                if cfg._config.meta_monitoring.enabled && cfg._config.meta_monitoring.include_path && !std.member(mergedComponents, 'cortex-gateway') then
+                  [componentPath]
+                else
+                  []
+              )
+              + (
+                // if meta-monitoring is enabled and include_sb is true and the component is not cortex-gateway, add single-binary
+                if cfg._config.meta_monitoring.enabled && cfg._config.meta_monitoring.include_sb && !std.member(mergedComponents, 'cortex-gateway') then
+                  ['single-binary']
+                else
+                  []
+              )
+            ),
           mergedComponents
         );
         // we need to convert the array of matchers to a single string, with no duplicates
-        std.join('|',
+        std.join(
+          '|',
           std.uniq(
             std.sort(
               std.split(std.join('|', formattedMatchers), '|')
@@ -133,7 +173,7 @@
           pattern='($namespace)/%(prefix)s(%(matcher)s)',
         );
         self.withLabel(
-          label=cfg._config.labels.job,
+          label=self._getLabelMapping(label='job'),
           op=self._handleOperator(op),
           value=formattedSelector,
           metadata={
@@ -150,7 +190,7 @@
           pattern='%(prefix)s((%(matcher)s)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))',
         );
         self.withLabel(
-          label=cfg._config.labels.pod,
+          label=self._getLabelMapping(label='pod'),
           op=self._handleOperator(op),
           value=formattedSelector,
           metadata={
@@ -166,7 +206,7 @@
           pattern='%(prefix)s(%(matcher)s)',
         );
         self.withLabel(
-          label=cfg._config.labels.container,
+          label=self._getLabelMapping(label='container'),
           op=self._handleOperator(op),
           value=formattedSelector,
           metadata={
@@ -182,7 +222,7 @@
           pattern='%(prefix)s(%(matcher)s)',
         );
         self.withLabel(
-          label=cfg._config.labels.job,
+          label=self._getLabelMapping(label='component'),
           op=self._handleOperator(op),
           value=formattedSelector,
           metadata={
@@ -214,7 +254,7 @@
         self.resource(label=label, value='compactor', op=op),
 
       cortexGateway(label='job', op='=~')::
-        self.resource(label=label, value='cortex-gw', op=op),
+        self.resource(label=label, value='cortex-gateway', op=op),
 
       distributor(label='job', op='=~')::
         self.resource(label=label, value='distributor', op=op),
@@ -228,8 +268,8 @@
       ingester(label='job', op='=~')::
         self.resource(label=label, value='ingester', op=op),
 
-      ingesterZoneAware(label='job', op='=~')::
-        self.resource(label=label, value='ingester-zone-aware', op=op),
+      ingesterZone(label='job', op='=~')::
+        self.resource(label=label, value='ingester-zone', op=op),
 
       overridesExporter(label='job', op='=~')::
         self.resource(label=label, value='overrides-exporter', op=op),
@@ -252,20 +292,15 @@
       ruler(label='job', op='=~')::
         self.resource(label=label, value='ruler', op=op),
 
-      // Adds multiple label selectors from a key-value object
-      withLabels(labels):: self {
-        _labels+:: [{ label: k, op: '=', value: labels[k] } for k in std.objectFields(labels)],
-      },
-
       // Adds a single label selector with specified operator and value
       withLabel(label, op='=', value=null, metadata={}):: self {
         // add the label to the list of labels
-        _labels+:: [
+        _labels+:: if std.length(label) > 0 then [
           if std.type(label) == 'object' then
             metadata + label
           else
-            metadata + { label: label, op: op, value: value },
-        ],
+            metadata { label: label, op: op, value: value },
+        ] else [],
       },
 
       // get the final label selector array with only the last occurrence of each label+op and only the label, op and value properties
@@ -273,6 +308,7 @@
         // Reverse the array and filter out duplicates by label+op, keeping only the last occurrence
         // duplicates are possible if the shorthand components are used i.e. selector().querier().queryFrontend().queryScheduler()
         // and we don't want the same label/op/value to be rendered multiple times
+        // jsonnet-lint: ignore
         std.reverse(
           std.foldl(
             function(acc, l)
@@ -282,10 +318,10 @@
                 acc,
                 false
               )
-              then acc + [{label: l.label, op: l.op, value: l.value}]
+              then acc + [{ label: l.label, op: l.op, value: l.value }]
               else acc,
-            std.reverse(self._labels), // Reverse array to process last items first
-            [] // Start with empty accumulator
+            std.reverse(self._labels),  // Reverse array to process last items first
+            []  // Start with empty accumulator
           )
         ),
 
@@ -310,7 +346,7 @@
                 )
               )
             )
-          );
+        );
         if brackets then
           '{' + selectorString + '}'
         else
