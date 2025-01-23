@@ -33,7 +33,6 @@ func Iter(ctx context.Context, columns []Column) result.Seq[Row] {
 
 	type pullColumnIter struct {
 		Next func() (result.Result[Value], bool)
-		Stop func()
 	}
 
 	return result.Iter(func(yield func(Row) bool) error {
@@ -47,7 +46,9 @@ func Iter(ctx context.Context, columns []Column) result.Seq[Row] {
 			}
 
 			next, stop := result.Pull(lazyColumnIter(ctx, col.ColumnInfo(), pages))
-			pullColumns = append(pullColumns, pullColumnIter{Next: next, Stop: stop})
+			defer stop()
+
+			pullColumns = append(pullColumns, pullColumnIter{Next: next})
 		}
 
 		// Start emitting rows; each row is composed of the next value from all of
