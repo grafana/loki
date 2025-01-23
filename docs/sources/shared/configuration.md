@@ -797,19 +797,6 @@ compactor_grpc_client:
 # file
 [limits_config: <limits_config>]
 
-limits_frontend_config:
-  client_config:
-    # Configures client gRPC connections to limits service.
-    # The CLI flags prefix for this block configuration is:
-    # querier.frontend-grpc-client
-    [grpc_client_config: <grpc_client>]
-
-    # Configures client gRPC connections pool to limits service.
-    pool_config:
-      [client_cleanup_period: <duration>]
-
-      [remote_timeout: <duration>]
-
 # The frontend_worker configures the worker - running within the Loki querier -
 # picking up and executing queries enqueued by the query-frontend.
 [frontend_worker: <frontend_worker>]
@@ -1053,6 +1040,28 @@ ingest_limits:
     # ID to register in the ring.
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
+
+ingest_limits_frontend:
+  client_config:
+    # Configures client gRPC connections to limits service.
+    # The CLI flags prefix for this block configuration is:
+    # ingest-limits-frontend.limits-client
+    [grpc_client_config: <grpc_client>]
+
+    # Configures client gRPC connections pool to limits service.
+    pool_config:
+      # How frequently to clean up clients for ingest-limits that have gone
+      # away.
+      # CLI flag: -ingest-limits-frontend.client-cleanup-period
+      [client_cleanup_period: <duration> | default = 15s]
+
+      # Run a health check on each ingest-limits client during periodic cleanup.
+      # CLI flag: -ingest-limits-frontend.health-check-ingest-limits
+      [health_check_ingest_limits: <boolean> | default = true]
+
+      # Timeout for the health check.
+      # CLI flag: -ingest-limits-frontend.remote-timeout
+      [remote_timeout: <duration> | default = 1s]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
@@ -2756,18 +2765,20 @@ The `frontend_worker` configures the worker - running within the Loki querier - 
 
 # Configures the querier gRPC client used to communicate with the
 # query-frontend. This can't be used in conjunction with 'grpc_client_config'.
-# The CLI flags prefix for this block configuration is: querier.frontend-client
+# The CLI flags prefix for this block configuration is:
+# querier.frontend-grpc-client
 [query_frontend_grpc_client: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the query-frontend
 # and with the query-scheduler. This can't be used in conjunction with
 # 'query_frontend_grpc_client' or 'query_scheduler_grpc_client'.
-# The CLI flags prefix for this block configuration is:
-# querier.scheduler-grpc-client
+# The CLI flags prefix for this block configuration is: querier.frontend-client
 [grpc_client_config: <grpc_client>]
 
 # Configures the querier gRPC client used to communicate with the
 # query-scheduler. This can't be used in conjunction with 'grpc_client_config'.
+# The CLI flags prefix for this block configuration is:
+# querier.scheduler-grpc-client
 [query_scheduler_grpc_client: <grpc_client>]
 ```
 
@@ -2825,6 +2836,7 @@ The `grpc_client` block configures the gRPC client used to communicate between a
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
+- `ingest-limits-frontend.limits-client`
 - `ingester.client`
 - `pattern-ingester.client`
 - `querier.frontend-client`
