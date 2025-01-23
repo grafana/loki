@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useBasename } from "../../contexts/BasenameContext";
 
 interface BreadcrumbProps {
   parts: string[];
@@ -95,13 +96,13 @@ export const Breadcrumb: React.FC<BreadcrumbProps> = ({
   isLastPartClickable = false,
 }) => {
   const [provider, setProvider] = React.useState<string>("");
-
+  const basename = useBasename();
   React.useEffect(() => {
-    fetch("/dataobj/explorer/api/provider")
+    fetch(`${basename}api/provider`)
       .then((res) => res.json())
       .then((data) => setProvider(data.provider))
       .catch(console.error);
-  }, []);
+  }, [basename]);
 
   const providerStyles = getProviderStyles(provider);
 
