@@ -185,6 +185,16 @@ func newQuantileSketchIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
 ) RangeVectorIterator {
+	// forces at least one step.
+	/*
+	if step == 0 {
+		step = 1
+	}
+	if offset != 0 {
+		start = start - offset
+		end = end - offset
+	}
+    */
 	inner := &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
