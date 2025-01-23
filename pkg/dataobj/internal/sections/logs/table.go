@@ -194,6 +194,30 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 	return col
 }
 
+// Message gets or creates a message column for the buffer.
+func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
+	if b.message != nil {
+		return b.message
+	}
+
+	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
+		PageSizeHint:       pageSize,
+		Value:              datasetmd.VALUE_TYPE_STRING,
+		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		CompressionOptions: compressionOpts,
+	})
+	if err != nil {
+		// We control the Value/Encoding tuple so this can't fail; if it does,
+		// we're left in an unrecoverable state where nothing can be encoded
+		// properly so we panic.
+		panic(fmt.Sprintf("creating messages column: %v", err))
+	}
+
+	b.message = col
+	return col
+}
+
 // Reset resets the buffer to its initial state.
 func (b *tableBuffer) Reset() {
 	if b.streamID != nil {
@@ -285,28 +309,4 @@ func (b *tableBuffer) Flush() (*table, error) {
 		Metadatas: metadatas,
 		Message:   &tableColumn{messages, logsmd.COLUMN_TYPE_MESSAGE},
 	}, nil
-}
-
-// Message gets or creates a message column for the buffer.
-func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
-	if b.message != nil {
-		return b.message
-	}
-
-	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_STRING,
-		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
-		CompressionOptions: compressionOpts,
-	})
-	if err != nil {
-		// We control the Value/Encoding tuple so this can't fail; if it does,
-		// we're left in an unrecoverable state where nothing can be encoded
-		// properly so we panic.
-		panic(fmt.Sprintf("creating messages column: %v", err))
-	}
-
-	b.message = col
-	return col
 }
