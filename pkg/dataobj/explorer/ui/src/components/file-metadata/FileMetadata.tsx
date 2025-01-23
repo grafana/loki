@@ -57,18 +57,18 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
   );
 
   // Get stream and log counts from first column of each section
-  const streamSection = metadata.sections.find(
+  const streamSection = metadata.sections.filter(
     (s) => s.type === "SECTION_TYPE_STREAMS"
   );
-  const logSection = metadata.sections.find(
+  const logSection = metadata.sections.filter(
     (s) => s.type === "SECTION_TYPE_LOGS"
   );
-  const streamCount = streamSection?.columns.reduce(
-    (sum, col) => sum + (col.rows_count || 0),
+  const streamCount = streamSection?.reduce(
+    (sum, sec) => sum + (sec.columnCount || 0),
     0
   );
-  const logCount = logSection?.columns.reduce(
-    (sum, col) => sum + (col.rows_count || 0),
+  const logCount = logSection?.reduce(
+    (sum, sec) => sum + (sec.columnCount || 0),
     0
   );
 
