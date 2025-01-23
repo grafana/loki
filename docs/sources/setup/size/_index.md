@@ -26,13 +26,6 @@ Query resource needs can greatly vary with usage patterns and correct configurat
 - Large Loki clusters benefit from a disk based caching solution, memcached-extstore. Please see the detailed [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) and read more about [memcached/nvm-caching here](https://memcached.org/blog/nvm-caching/).
 - If you’re running a cluster that handles less than 30TB/day (~1PB/month) ingestion, we do not recommend configuring memcached-extstore. The additional operational complexity does not justify the savings.
 
-These are the node types we suggest from various cloud providers. Please see the relevant specifications in your provider documentation.
-<div id="app">
-    <label>Node Type</label>
-    <select name="node-type" v-model="node">
-    <option v-for="node of nodes">{{ node }}</option>
-    </select><br>
-</div>
 
 {{< tabs >}}
 {{< tab-content name="Less than 100TB/month (3TB/day)" >}}
@@ -70,74 +63,9 @@ These are the node types we suggest from various cloud providers. Please see the
 {{< /tab-content >}}
 {{< /tabs >}}   
 
+<h3>Instance Types</h3>
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-<style>
-
-#app label.icon.question::after {
-  content: '\f29c';
-  display: inline-block;
-  font: normal normal normal 14px/1 FontAwesome;
-  padding-left: 8px;
-}
-
-#app a {
-  padding: .5em;
-
-}
-}
-</style>
-
-<script>
-const API_URL = `https://logql-analyzer.grafana.net/next/api/sizing`
-const { createApp } = Vue
-
-createApp({
-  data() {
-    return {
-      nodes: ["Loading..."],
-      node: "Loading...",
-      help: null,
-    }
-  },
-
-  computed: {
-    helmURL() {
-      return `${API_URL}/helm?${this.queryString}`
-    },
-    queryString() {
-      return `node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
-    },
-    ingestInGB: {
-	get () {
-                if (this.bytesDayIngest == null) {
-                    return null
-                }
-                // Convert to GB
-                return this.bytesDayIngest / 1000 / 1000 / 1000
-	},
-	set (gbDayIngest) {
-		console.log(gbDayIngest)
-		this.bytesDayIngest = gbDayIngest * 1000 * 1000 * 1000
-		console.log(this.bytesDayIngest)
-	}
-    }
-  },
-
-  created() {
-    // fetch on init
-    this.fetchNodeTypes()
-  },
-
-  methods: {
-    async fetchNodeTypes() {
-      const url = `${API_URL}/nodes`
-      this.nodes = await (await fetch(url,{mode: 'cors'})).json()
-    },
-  },
-
-  watch: {
-    node:           'calculateClusterSize',
-  }
-}).mount('#app')
-</script>
+These are the node types we suggest from various cloud providers. Please see the relevant specifications in the provider's documentation.
+- For AWS any General Purpose machine available in your region that belongs to `M6` instance family and above for Intel chips and `T2` machine family and above for ARM chips.
+- For GCP any General Purpose machine available in your region that belongs to to `E2` instance family and above.
+- For memcached-extstore nodes we suggest storage optimised instances that can has NVMe storage so that the additional disk space is utilized.
