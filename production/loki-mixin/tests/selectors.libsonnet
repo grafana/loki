@@ -6,7 +6,7 @@
       cases: [
         {
           name: 'supports multiple label operations in any order',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet').new;
             selector()
             .label('a').eq('1')
@@ -18,7 +18,7 @@
         },
         {
           name: 'handles duplicate label operations',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet').new;
             selector()
             .label('test').eq('1')

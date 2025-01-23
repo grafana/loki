@@ -6,14 +6,14 @@
       cases: [
         {
           name: 'supports disabling base selectors',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet').new;
             selector(false).build(),
           expected: '',
         },
         {
           name: 'preserves order with base selectors disabled',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet').new;
             selector(false)
             .label('z').eq('2')

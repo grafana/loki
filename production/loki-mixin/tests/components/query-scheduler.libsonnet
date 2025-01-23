@@ -6,42 +6,42 @@
       cases: [
         {
           name: 'supports building a query-scheduler job selector from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().job('query-scheduler').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler job selector from a string using the shorthand wrapper',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler(label='job').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler job selector without cluster or namespace labels',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).job('query-scheduler').build(),
           expected: 'job=~"($namespace)/(query-scheduler)"',
         },
         {
           name: 'supports building a query-scheduler job selector without namespace label',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).cluster().job('query-scheduler').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)"',
         },
         {
           name: 'supports building a query-scheduler job selector from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().job(['query-scheduler']).build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler job selector with meta-monitoring enabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -54,7 +54,7 @@
         },
         {
           name: 'supports building a query-scheduler job selector with meta-monitoring enabled and loki-single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -68,7 +68,7 @@
         },
         {
           name: 'supports building a query-scheduler job selector with meta-monitoring enabled and paths disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -82,7 +82,7 @@
         },
         {
           name: 'supports building a query-scheduler job selector with meta-monitoring enabled and both paths and single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -102,42 +102,42 @@
       cases: [
         {
           name: 'supports building a query-scheduler pod selector from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().pod('query-scheduler').build(),
           expected: 'cluster="$cluster", namespace="$namespace", pod=~"((query-scheduler)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a query-scheduler pod selector from a string using the shorthand wrapper',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler(label='pod').build(),
           expected: 'cluster="$cluster", namespace="$namespace", pod=~"((query-scheduler)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a query-scheduler pod selector without cluster or namespace labels',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).pod('query-scheduler').build(),
           expected: 'pod=~"((query-scheduler)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a query-scheduler pod selector without namespace label',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).cluster().pod('query-scheduler').build(),
           expected: 'cluster="$cluster", pod=~"((query-scheduler)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a query-scheduler pod selector from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().pod(['query-scheduler']).build(),
           expected: 'cluster="$cluster", namespace="$namespace", pod=~"((query-scheduler)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a query-scheduler pod selector with meta-monitoring enabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -150,7 +150,7 @@
         },
         {
           name: 'supports building a query-scheduler pod selector with meta-monitoring enabled and loki-single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -164,7 +164,7 @@
         },
         {
           name: 'supports building a query-scheduler pod selector with meta-monitoring enabled and paths disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -178,7 +178,7 @@
         },
         {
           name: 'supports building a query-scheduler pod selector with meta-monitoring enabled and both paths and single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -198,42 +198,42 @@
       cases: [
         {
           name: 'supports building a query-scheduler container selector from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().container('query-scheduler').build(),
           expected: 'cluster="$cluster", container=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler container selector from a string using the shorthand wrapper',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler(label='container').build(),
           expected: 'cluster="$cluster", container=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler container selector without cluster or namespace labels',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).container('query-scheduler').build(),
           expected: 'container=~"(query-scheduler)"',
         },
         {
           name: 'supports building a query-scheduler container selector without namespace label',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).cluster().container('query-scheduler').build(),
           expected: 'cluster="$cluster", container=~"(query-scheduler)"',
         },
         {
           name: 'supports building a query-scheduler container selector from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().container(['query-scheduler']).build(),
           expected: 'cluster="$cluster", container=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler container selector with meta-monitoring enabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -246,7 +246,7 @@
         },
         {
           name: 'supports building a query-scheduler container selector with meta-monitoring enabled and loki-single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -260,7 +260,7 @@
         },
         {
           name: 'supports building a query-scheduler container selector with meta-monitoring enabled and paths disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -274,7 +274,7 @@
         },
         {
           name: 'supports building a query-scheduler container selector with meta-monitoring enabled and both paths and single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -294,42 +294,42 @@
       cases: [
         {
           name: 'supports building a query-scheduler component selector from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().component('query-scheduler').build(),
           expected: 'cluster="$cluster", component=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler component selector from a string using the shorthand wrapper',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler(label='component').build(),
           expected: 'cluster="$cluster", component=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler component selector without cluster or namespace labels',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).component('query-scheduler').build(),
           expected: 'component=~"(query-scheduler)"',
         },
         {
           name: 'supports building a query-scheduler component selector without namespace label',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector(false).cluster().component('query-scheduler').build(),
           expected: 'cluster="$cluster", component=~"(query-scheduler)"',
         },
         {
           name: 'supports building a query-scheduler component selector from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().component(['query-scheduler']).build(),
           expected: 'cluster="$cluster", component=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler component selector with meta-monitoring enabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -342,7 +342,7 @@
         },
         {
           name: 'supports building a query-scheduler component selector with meta-monitoring enabled and loki-single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -356,7 +356,7 @@
         },
         {
           name: 'supports building a query-scheduler component selector with meta-monitoring enabled and paths disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -370,7 +370,7 @@
         },
         {
           name: 'supports building a query-scheduler component selector with meta-monitoring enabled and both paths and single-binary disabled',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet') {
               _config+:: {
                 meta_monitoring+: {
@@ -390,56 +390,56 @@
       cases: [
         {
           name: 'supports building a query-scheduler selector for the job label using the resource() wrapper from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='job', value='query-scheduler').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler selector for the job label using the resource() wrapper from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='job', value=['query-scheduler']).build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler selector for the pod label using the resource() wrapper from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='pod', value='query-scheduler').build(),
           expected: 'cluster="$cluster", namespace="$namespace", pod=~"((query-scheduler)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a query-scheduler selector for the pod label using the resource() wrapper from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='pod', value=['query-scheduler']).build(),
           expected: 'cluster="$cluster", namespace="$namespace", pod=~"((query-scheduler)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a query-scheduler selector for the container label using the resource() wrapper from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='container', value='query-scheduler').build(),
           expected: 'cluster="$cluster", container=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler selector for the container label using the resource() wrapper from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='container', value=['query-scheduler']).build(),
           expected: 'cluster="$cluster", container=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler selector for the component label using the resource() wrapper from a string',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='component', value='query-scheduler').build(),
           expected: 'cluster="$cluster", component=~"(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler selector for the component label using the resource() wrapper from an array',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().resource(label='component', value=['query-scheduler']).build(),
           expected: 'cluster="$cluster", component=~"(query-scheduler)", namespace="$namespace"',
@@ -451,14 +451,14 @@
       cases: [
         {
           name: 'supports building a query-scheduler route selector',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler().route().build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace", route=~"$route"',
         },
         {
           name: 'supports building a query-scheduler route selector with custom route',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler().route('/api/v1/push').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace", route=~"/api/v1/push"',
@@ -470,35 +470,35 @@
       cases: [
         {
           name: 'supports building a query-scheduler selector with custom label using regex match',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler().label('status').re('success|failed').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace", status=~"success|failed"',
         },
         {
           name: 'supports building a query-scheduler selector with custom label using regex non-match',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler().label('status').nre('error|timeout').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(query-scheduler)", namespace="$namespace", status!~"error|timeout"',
         },
         {
           name: 'supports building a query-scheduler selector with custom label using equality',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler().label('env').eq('prod').build(),
           expected: 'cluster="$cluster", env="prod", job=~"($namespace)/(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler selector with custom label using inequality',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler().label('env').neq('dev').build(),
           expected: 'cluster="$cluster", env!="dev", job=~"($namespace)/(query-scheduler)", namespace="$namespace"',
         },
         {
           name: 'supports building a query-scheduler selector with multiple custom labels using different operators',
-          actual:
+          test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().queryScheduler()
             .label('env').eq('prod')

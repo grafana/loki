@@ -6,7 +6,7 @@
       cases: [
         {
           name: 'supports changing the cluster label',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -19,7 +19,7 @@
         },
         {
           name: 'supports changing the cluster operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -32,7 +32,7 @@
         },
         {
           name: 'supports specifying a cluster value',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -45,7 +45,7 @@
         },
         {
           name: 'supports changing the cluster label, operator and specifying a cluster value',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -63,7 +63,7 @@
       cases: [
         {
           name: 'supports changing the namespace label',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -76,7 +76,7 @@
         },
         {
           name: 'supports changing the namespace operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -89,7 +89,7 @@
         },
         {
           name: 'supports specifying a namespace value',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -102,7 +102,7 @@
         },
         {
           name: 'supports changing the namespace label, operator and specifying a namespace value',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -120,7 +120,7 @@
       cases: [
         {
           name: 'supports changing the pod label',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -133,7 +133,7 @@
         },
         {
           name: 'supports changing the pod operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -146,7 +146,7 @@
         },
         {
           name: 'supports changing the pod label and operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -164,7 +164,7 @@
       cases: [
         {
           name: 'supports changing the job label',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -177,7 +177,7 @@
         },
         {
           name: 'supports changing the job operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -190,7 +190,7 @@
         },
         {
           name: 'supports changing the job label and operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -208,7 +208,7 @@
       cases: [
         {
           name: 'supports changing the container label',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -221,7 +221,7 @@
         },
         {
           name: 'supports changing the container operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -234,7 +234,7 @@
         },
         {
           name: 'supports changing the container label and operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -252,7 +252,7 @@
       cases: [
         {
           name: 'supports changing the component label',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -265,7 +265,7 @@
         },
         {
           name: 'supports changing the component operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -278,7 +278,7 @@
         },
         {
           name: 'supports changing the component label and operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -296,7 +296,7 @@
       cases: [
         {
           name: 'supports changing the node label',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -309,7 +309,7 @@
         },
         {
           name: 'supports changing the node operator',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -322,7 +322,7 @@
         },
         {
           name: 'supports specifying a node value',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -335,7 +335,7 @@
         },
         {
           name: 'supports changing the node label, operator and specifying a node value',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet') {
               _config+:: {
                 labels+: {
@@ -353,14 +353,14 @@
       cases: [
         {
           name: 'handles empty label name',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet').new;
             selector().label('').eq('value').build(),
           expected: 'cluster="$cluster", namespace="$namespace"',
         },
         {
           name: 'handles empty label value',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet').new;
             selector().label('mylabel').eq('').build(),
           expected: 'cluster="$cluster", mylabel="", namespace="$namespace"',

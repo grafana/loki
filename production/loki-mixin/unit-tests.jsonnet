@@ -5,9 +5,9 @@ local testCases = import './tests/_exports.libsonnet';
 // Compares expected vs actual values and returns a structured result
 local runTestCase(testCase) = {
   name: testCase.name,
-  success: testCase.expected == testCase.actual,
+  success: testCase.expected == testCase.test,
   expected: testCase.expected,
-  actual: testCase.actual,
+  actual: testCase.test,
 };
 
 // Helper function to process a group of test cases

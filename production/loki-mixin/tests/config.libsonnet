@@ -6,7 +6,7 @@
       cases: [
         {
           name: 'handles missing component config',
-          actual:
+          test:
             local selector = (import '../selectors.libsonnet').new;
             selector().job('non-existent-component').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(non-existent-component)", namespace="$namespace"',
