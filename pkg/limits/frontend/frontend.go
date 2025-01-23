@@ -36,8 +36,8 @@ type Frontend struct {
 	limits IngestLimitsService
 }
 
-// NewFrontend returns a new Frontend.
-func NewFrontend(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger log.Logger) (*Frontend, error) {
+// New returns a new Frontend.
+func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger log.Logger) (*Frontend, error) {
 	var servs []services.Service
 
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
