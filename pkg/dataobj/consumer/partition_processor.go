@@ -33,9 +33,10 @@ type partitionProcessor struct {
 	partition int32
 	tenantID  []byte
 	// Processing pipeline
-	records chan *kgo.Record
-	builder *dataobj.Builder
-	decoder *kafka.Decoder
+	records          chan *kgo.Record
+	builder          *dataobj.Builder
+	metastoreBuilder *dataobj.Builder
+	decoder          *kafka.Decoder
 
 	// Builder initialization
 	builderOnce sync.Once
@@ -126,6 +127,13 @@ func (p *partitionProcessor) initBuilder() error {
 			return
 		}
 		p.builder = builder
+
+		metastoreBuilder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
+		if err != nil {
+			initErr = err
+			return
+		}
+		p.metastoreBuilder = metastoreBuilder
 	})
 	return initErr
 }
@@ -206,17 +214,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPath string) error {
 	start := time.Now()
 	defer p.metrics.observeMetastoreProcessing(start)
-	// Scan dataobj streams to find out how many metastore objects need to be updated/created.
-	minTimestamp := time.Time{}
-	maxTimestamp := time.Time{}
-	p.builder.ForEachStream(func(stream streams.Stream) {
-		if stream.MinTimestamp.Before(minTimestamp) || minTimestamp.IsZero() {
-			minTimestamp = stream.MinTimestamp
-		}
-		if stream.MaxTimestamp.After(maxTimestamp) || maxTimestamp.IsZero() {
-			maxTimestamp = stream.MaxTimestamp
-		}
-	})
+	minTimestamp, maxTimestamp := p.builder.GetStreamMinMax()
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
@@ -232,14 +230,11 @@ func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPa
 					return nil, err
 				}
 
-				metastoreBuilder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
-				if err != nil {
-					return nil, err
-				}
+				p.metastoreBuilder.Reset()
 
 				if len(buf) > 0 {
 					replayStart := time.Now()
-					err = metastoreBuilder.FromExisting(bytes.NewReader(buf))
+					err = p.metastoreBuilder.FromExisting(bytes.NewReader(buf))
 					if err != nil {
 						return nil, err
 					}
@@ -251,15 +246,11 @@ func (p *partitionProcessor) writeMetastores(backoff *backoff.Backoff, dataobjPa
 					if stream.MinTimestamp.After(metastoreWindow.Add(metastoreWindowSize)) || stream.MaxTimestamp.Before(metastoreWindow) {
 						return
 					}
-					metastoreBuilder.Append(logproto.Stream{
-						Labels: stream.Labels.String(),
-						Entries: []logproto.Entry{{
-							Timestamp: metastoreWindow,
-							Line:      dataobjPath,
-						}},
-					})
+					p.metastoreBuilder.AppendEntries(stream, []logproto.Entry{{
+						Line: dataobjPath,
+					}})
 				})
-				newMetastore, err := metastoreBuilder.FlushToBuffer()
+				newMetastore, err := p.metastoreBuilder.FlushToBuffer()
 				if err != nil {
 					return nil, err
 				}

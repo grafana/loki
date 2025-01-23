@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -33,6 +34,12 @@ type Stream struct {
 	MinTimestamp time.Time     // Minimum timestamp in the stream.
 	MaxTimestamp time.Time     // Maximum timestamp in the stream.
 	Rows         int           // Number of rows in the stream.
+}
+
+var streamPool = sync.Pool{
+	New: func() interface{} {
+		return &Stream{}
+	},
 }
 
 // Streams tracks information about streams in a data object.
@@ -63,7 +70,8 @@ func New(metrics *Metrics, pageSize int) *Streams {
 	return &Streams{
 		metrics:  metrics,
 		pageSize: pageSize,
-		lookup:   make(map[uint64][]*Stream),
+		lookup:   make(map[uint64][]*Stream, 10000),
+		ordered:  make([]*Stream, 0, 10000),
 	}
 }
 
@@ -76,6 +84,10 @@ func (s *Streams) Iter(ctx context.Context) result.Seq[Stream] {
 		}
 		return nil
 	})
+}
+
+func (s *Streams) GetMinMax() (time.Time, time.Time) {
+	return s.globalMinTimestamp, s.globalMaxTimestamp
 }
 
 // Record a stream record within the Streams section. The provided timestamp is
@@ -166,7 +178,13 @@ func (s *Streams) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 		s.currentLabelsSize += len(lbl.Value)
 	}
 
-	newStream := &Stream{ID: s.lastID.Add(1), Labels: streamLabels}
+	newStream := streamPool.Get().(*Stream)
+	newStream.ID = s.lastID.Add(1)
+	newStream.Labels = streamLabels
+	newStream.MinTimestamp = time.Time{}
+	newStream.MaxTimestamp = time.Time{}
+	newStream.Rows = 0
+
 	s.lookup[hash] = append(s.lookup[hash], newStream)
 	s.ordered = append(s.ordered, newStream)
 	s.metrics.streamCount.Inc()
@@ -345,6 +363,9 @@ func encodeColumn(enc *encoding.StreamsEncoder, columnType streamsmd.ColumnType,
 // Reset resets all state, allowing Streams to be reused.
 func (s *Streams) Reset() {
 	s.lastID.Store(0)
+	for _, stream := range s.ordered {
+		streamPool.Put(stream)
+	}
 	clear(s.lookup)
 	s.ordered = sliceclear.Clear(s.ordered)
 	s.currentLabelsSize = 0

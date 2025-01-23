@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"time"
 
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -19,6 +20,8 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -98,7 +101,6 @@ func (cfg *BuilderConfig) Validate() error {
 
 	if cfg.TargetSectionSize <= 0 || cfg.TargetSectionSize > cfg.TargetObjectSize {
 		errs = append(errs, errors.New("SectionSize must be greater than 0 and less than or equal to TargetObjectSize"))
-
 	}
 
 	return errors.Join(errs...)
@@ -190,17 +192,28 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 	}
 
 	dec := encoding.ReadSeekerDecoder(f)
-	var streamIDs = make(map[int64]*labels.Labels)
+	cols, err := dec.StreamsDecoder().Columns(context.Background(), &filemd.SectionInfo{
+		Type: filemd.SECTION_TYPE_STREAMS,
+	})
+	if err != nil {
+		return err
+	}
+	var totalStreams uint64
+	for _, col := range cols {
+		if col.Type == streamsmd.COLUMN_TYPE_STREAM_ID {
+			totalStreams = col.Info.RowsCount
+			break
+		}
+	}
+	var streamIDs = make([]*labels.Labels, totalStreams)
 
 	for result := range streams.Iter(context.Background(), dec) {
 		stream, err := result.Value()
 		if err != nil {
 			return err
 		}
-		if _, ok := streamIDs[stream.ID]; !ok {
-			sort.Sort(stream.Labels)
-			streamIDs[stream.ID] = &stream.Labels
-		}
+		sort.Sort(stream.Labels)
+		streamIDs[stream.ID-1] = &stream.Labels
 	}
 
 	i := 0
@@ -209,10 +222,7 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 		if err != nil {
 			return err
 		}
-		streamLabels, ok := streamIDs[record.StreamID]
-		if !ok {
-			return fmt.Errorf("stream ID %d not found", record.StreamID)
-		}
+		streamLabels := streamIDs[record.StreamID-1]
 
 		b.streams.Record(*streamLabels, record.Timestamp)
 		b.logs.Append(record)
@@ -220,6 +230,14 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 	}
 
 	return nil
+}
+
+func (b *Builder) Hash(stream logproto.Stream) uint64 {
+	ls, err := b.parseLabels(stream.Labels)
+	if err != nil {
+		return 0
+	}
+	return ls.Hash()
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
@@ -261,6 +279,47 @@ func (b *Builder) Append(stream logproto.Stream) error {
 			Metadata:  entry.StructuredMetadata,
 			Line:      entry.Line,
 		})
+	}
+
+	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
+	return nil
+}
+
+// Append buffers a stream to be written to a data object. Append returns an
+// error if the stream labels cannot be parsed or [ErrBufferFull] if the
+// builder is full.
+//
+// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
+// then call Append again with the same entry.
+func (b *Builder) AppendEntries(stream streams.Stream, entries []logproto.Entry) error {
+	// Don't allow appending to a builder that has data to be flushed.
+	if b.state == builderStateFlush {
+		return ErrBufferFull
+	}
+
+	// Check whether the buffer is full before a stream can be appended; this is
+	// tends to overestimate, but we may still go over our target size.
+	//
+	// Since this check only happens after the first call to Append,
+	// b.currentSizeEstimate will always be updated to reflect the size following
+	// the previous append.
+	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(stream.Labels)+entriesSizeEstimate(entries) > int(b.cfg.TargetObjectSize) {
+		return ErrBufferFull
+	}
+
+	timer := prometheus.NewTimer(b.metrics.appendTime)
+	defer timer.ObserveDuration()
+
+	for _, entry := range entries {
+		b.streams.Record(stream.Labels, entry.Timestamp)
+
+		/* 		b.logs.Append(logs.Record{
+			StreamID:  streamID,
+			Timestamp: entry.Timestamp,
+			Metadata:  entry.StructuredMetadata,
+			Line:      entry.Line,
+		}) */
 	}
 
 	b.currentSizeEstimate = b.estimatedSize()
@@ -322,6 +381,21 @@ func streamSizeEstimate(stream logproto.Stream) int {
 	return size
 }
 
+// streamSizeEstimate estimates the size of a stream in bytes.
+func entriesSizeEstimate(entries []logproto.Entry) int {
+	var size int
+	for _, entry := range entries {
+		// We only check the size of the line and metadata. Timestamps and IDs
+		// encode so well that they're unlikely to make a singificant impact on our
+		// size estimate.
+		size += len(entry.Line) / 2 // Line with 2x compression ratio
+		for _, md := range entry.StructuredMetadata {
+			size += len(md.Name) + len(md.Value)/2
+		}
+	}
+	return size
+}
+
 // Flush flushes all buffered data to object storage. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
@@ -368,6 +442,9 @@ func (b *Builder) ForEachStream(f func(stream streams.Stream)) {
 	}
 }
 
+func (b *Builder) GetStreamMinMax() (time.Time, time.Time) {
+	return b.streams.GetMinMax()
+}
 func (b *Builder) buildObject() error {
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()

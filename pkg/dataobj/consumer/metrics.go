@@ -98,6 +98,9 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 		p.commitFailures,
 		p.appendFailures,
 		p.processingDelay,
+		p.metastoreReplay,
+		p.metastoreEncoding,
+		p.metastoreProcessing,
 	}
 
 	for _, collector := range collectors {
@@ -117,6 +120,9 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.commitFailures,
 		p.appendFailures,
 		p.processingDelay,
+		p.metastoreReplay,
+		p.metastoreEncoding,
+		p.metastoreProcessing,
 	}
 
 	for _, collector := range collectors {
