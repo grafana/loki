@@ -432,3 +432,144 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
 }
+
+func TestDeleteRequest_IsDuplicate(t *testing.T) {
+	query1 := `{foo="bar", fizz="buzz"} |= "foo"`
+	query2 := `{foo="bar", fizz="buzz2"} |= "foo"`
+
+	for _, tc := range []struct {
+		name           string
+		req1, req2     DeleteRequest
+		expIsDuplicate bool
+	}{
+		{
+			name: "not duplicate - different user id",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "1",
+				UserID:    user2,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			expIsDuplicate: false,
+		},
+		{
+			name: "not duplicate - same request id",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			expIsDuplicate: false,
+		},
+		{
+			name: "not duplicate - different start time",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-13 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+		},
+		{
+			name: "not duplicate - different end time",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-11 * time.Hour),
+				Query:     query1,
+			},
+		},
+		{
+			name: "not duplicate - different labels",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query2,
+			},
+		},
+		{
+			name: "duplicate - same request",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			expIsDuplicate: true,
+		},
+		{
+			name: "duplicate - same request with irregularities in query",
+			req1: DeleteRequest{
+				RequestID: "1",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     query1,
+			},
+			req2: DeleteRequest{
+				RequestID: "2",
+				UserID:    user1,
+				StartTime: now.Add(-12 * time.Hour),
+				EndTime:   now.Add(-10 * time.Hour),
+				Query:     "{foo=\"bar\",      fizz=`buzz`}     |=     `foo`",
+			},
+			expIsDuplicate: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			isDuplicate, err := tc.req1.IsDuplicate(&tc.req2)
+			require.NoError(t, err)
+			require.Equal(t, tc.expIsDuplicate, isDuplicate)
+		})
+	}
+}
