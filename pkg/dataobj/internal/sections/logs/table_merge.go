@@ -4,8 +4,10 @@ import (
 	"cmp"
 	"container/heap"
 	"context"
+	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -21,17 +23,12 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 	)
 
 	var (
-		// columnSets holds the set of columns per table. Each set of columns
-		// *must* match the following order specified by [table.Columns], which is
-		// stream ID, timestamp, metadata (one per column), and log messages.
-		columnSets   = make([][]*dataset.MemColumn, 0, len(tables))
+		// columnSets holds the set of columns per table.
+		columnSets   = make([][]dataset.Column, 0, len(tables))
 		tablePullers = make([]pullRow, 0, len(tables)) // Pull iterator per table.
 	)
 	for _, t := range tables {
-		columns := t.Columns()
-
-		dset := dataset.FromMemory(columns)
-		dsetColumns, err := result.Collect(dset.ListColumns(context.Background()))
+		dsetColumns, err := result.Collect(t.ListColumns(context.Background()))
 		if err != nil {
 			return nil, err
 		}
@@ -40,7 +37,7 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 		next, stop := result.Pull(seq)
 		defer stop()
 
-		columnSets = append(columnSets, columns)
+		columnSets = append(columnSets, dsetColumns)
 		tablePullers = append(tablePullers, next)
 	}
 
@@ -71,22 +68,31 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 	for h.Len() > 0 {
 		elem := heap.Pop(&h).(*rowHeapElement)
 
-		_ = streamIDBuilder.Append(rows, elem.Row.Values[0])
-		_ = timestampBuilder.Append(rows, elem.Row.Values[1])
-
 		columns := columnSets[elem.TableIndex]
 
-		// Metadata columns (skipping over stream ID, timestamp at the front and
-		// messages at the back).
-		for i, val := range elem.Row.Values[2 : len(elem.Row.Values)-1] {
-			columnIndex := i + 2
-			key := columns[columnIndex].Info.Name
+		for i, column := range columns {
+			// column is guaranteed to be a *tableColumn since we got it from *table.
+			column := column.(*tableColumn)
 
-			columnBuilder := buf.Metadata(key, pageSize, compressionOpts)
-			_ = columnBuilder.Append(rows, val)
+			// dataset.Iter returns values in the same order as the number of
+			// columns.
+			value := elem.Row.Values[i]
+
+			switch column.Type {
+			case logsmd.COLUMN_TYPE_STREAM_ID:
+				_ = streamIDBuilder.Append(rows, value)
+			case logsmd.COLUMN_TYPE_TIMESTAMP:
+				_ = timestampBuilder.Append(rows, value)
+			case logsmd.COLUMN_TYPE_METADATA:
+				columnBuilder := buf.Metadata(column.Info.Name, pageSize, compressionOpts)
+				_ = columnBuilder.Append(rows, value)
+			case logsmd.COLUMN_TYPE_MESSAGE:
+				_ = messageBuilder.Append(rows, value)
+			default:
+				return nil, fmt.Errorf("unknown column type %s", column.Type)
+			}
 		}
 
-		_ = messageBuilder.Append(rows, elem.Row.Values[len(elem.Row.Values)-1])
 		rows++
 
 		// Pull the next row from the table.

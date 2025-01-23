@@ -17,15 +17,15 @@ func Test_table_metadataCleanup(t *testing.T) {
 
 	table, err := buf.Flush()
 	require.NoError(t, err)
-	require.Equal(t, 2, len(table.metadatas))
+	require.Equal(t, 2, len(table.Metadatas))
 
 	initBuffer(&buf)
 	_ = buf.Metadata("bar", 1024, dataset.CompressionOptions{})
 
 	table, err = buf.Flush()
 	require.NoError(t, err)
-	require.Equal(t, 1, len(table.metadatas))
-	require.Equal(t, "bar", table.metadatas[0].Info.Name)
+	require.Equal(t, 1, len(table.Metadatas))
+	require.Equal(t, "bar", table.Metadatas[0].Info.Name)
 }
 
 func initBuffer(buf *tableBuffer) {
