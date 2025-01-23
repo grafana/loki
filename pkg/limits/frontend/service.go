@@ -49,7 +49,7 @@ type RingIngestLimitsService struct {
 }
 
 // NewRingIngestLimitsService returns a new RingIngestLimitsClient.
-func NewRingIngestLimitsService(cfg Config, limits Limits, logger log.Logger, ring ring.ReadRing) *RingIngestLimitsService {
+func NewRingIngestLimitsService(cfg Config, ring ring.ReadRing, limits Limits, logger log.Logger) *RingIngestLimitsService {
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return NewIngestLimitsClient(cfg.ClientConfig, addr)
 	})

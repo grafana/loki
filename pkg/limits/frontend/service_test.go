@@ -19,7 +19,7 @@ type mockLimits struct {
 	maxGlobalStreams int
 }
 
-func (m *mockLimits) MaxGlobalStreamsPerUser(userID string) int {
+func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
 	return m.maxGlobalStreams
 }
 
@@ -28,7 +28,7 @@ type mockReadRing struct {
 	replicationSet ring.ReplicationSet
 }
 
-func (m *mockReadRing) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
+func (m *mockReadRing) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
 	return m.replicationSet, nil
 }
 
@@ -36,10 +36,33 @@ type mockFactory struct {
 	clients []logproto.IngestLimitsClient
 }
 
-func (f *mockFactory) FromInstance(instance ring.InstanceDesc) (ring_client.PoolClient, error) {
+func (f *mockFactory) FromInstance(_ ring.InstanceDesc) (ring_client.PoolClient, error) {
 	for _, c := range f.clients {
 		return c.(ring_client.PoolClient), nil
 	}
+	return nil, nil
+}
+
+type mockIngestLimitsClient struct {
+	logproto.IngestLimitsClient
+	getStreamUsageResponse *logproto.GetStreamUsageResponse
+}
+
+func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, _ *logproto.GetStreamUsageRequest, _ ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
+	return m.getStreamUsageResponse, nil
+}
+
+func (m *mockIngestLimitsClient) Close() error {
+	return nil
+}
+
+func (m *mockIngestLimitsClient) Check(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	return &grpc_health_v1.HealthCheckResponse{
+		Status: grpc_health_v1.HealthCheckResponse_SERVING,
+	}, nil
+}
+
+func (m *mockIngestLimitsClient) Watch(_ context.Context, _ *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
 	return nil, nil
 }
 
@@ -233,27 +256,4 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			require.Equal(t, tt.expectedRejections, resp.RejectedStreams)
 		})
 	}
-}
-
-type mockIngestLimitsClient struct {
-	logproto.IngestLimitsClient
-	getStreamUsageResponse *logproto.GetStreamUsageResponse
-}
-
-func (m *mockIngestLimitsClient) GetStreamUsage(ctx context.Context, req *logproto.GetStreamUsageRequest, opts ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
-	return m.getStreamUsageResponse, nil
-}
-
-func (m *mockIngestLimitsClient) Close() error {
-	return nil
-}
-
-func (m *mockIngestLimitsClient) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
-	return &grpc_health_v1.HealthCheckResponse{
-		Status: grpc_health_v1.HealthCheckResponse_SERVING,
-	}, nil
-}
-
-func (m *mockIngestLimitsClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckRequest, opts ...grpc.CallOption) (grpc_health_v1.Health_WatchClient, error) {
-	return nil, nil
 }
