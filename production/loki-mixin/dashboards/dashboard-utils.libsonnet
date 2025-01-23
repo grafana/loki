@@ -82,10 +82,38 @@ local utils = import 'mixin-utils/utils.libsonnet';
     },
 
   jobMatcher(job)::
-    $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
+    $._config.per_cluster_label + '=~"$cluster", job=~"%s"' % self.componentMatcher(job),
 
   namespaceMatcher()::
     $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
+
+  componentMatcher(component, path=null)::
+    local _getComponentKey(component, key) = (
+      // if the component is an array, look up the key for each component and join with |
+      if std.isArray(component) then
+        std.join(
+          '|', std.uniq(
+            std.map(
+              function(c)
+                if std.objectHas($._config.components, c) && std.objectHas($._config.components[c], key) then $._config.components[c][key]
+                else null,
+              component
+            )
+          )
+        )
+      // otherwise look up the key for the single component
+      else if std.objectHas($._config.components, component) && std.objectHas($._config.components[component], key) then $._config.components[component][key]
+      else if key == 'pattern' then component
+      else ''
+    );
+    // get the component path(s) (read, write, etc)
+    local componentPaths = _getComponentKey(component, 'path');
+
+    // get the component patterns if they exist in the config, otherwise use the component
+    local componentPattern = _getComponentKey(component, 'pattern');
+
+    // join the component pattern and component and paths
+    '($namespace)/((loki|enterprise-logs)-)?(%s)' % [std.join('|', [componentPattern, componentPaths, 'single-binary'])],
 
   logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,

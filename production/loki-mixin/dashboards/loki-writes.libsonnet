@@ -16,16 +16,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
                               [],
 
                           matchers:: {
-                            cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
-                            distributor: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/%s(distributor|%s-write|loki-single-binary)' % [$._config.meta_monitoring.job_prefix, $._config.ssd.pod_prefix_matcher])]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
-                            ingester: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/%s(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % [$._config.meta_monitoring.job_prefix, $._config.ssd.pod_prefix_matcher])]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
-                            ingester_zone: if $._config.meta_monitoring.enabled
-                            then [utils.selector.re('job', '($namespace)/%s(partition-ingester-.*|ingester-zone-.*|%s-write|loki-single-binary)' % [$._config.meta_monitoring.job_prefix, $._config.ssd.pod_prefix_matcher])]
-                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester-zone.*|partition-ingester-.*)'))],
+                            cortexgateway: [utils.selector.re('job', $.componentMatcher('cortex-gw'))],
+                            distributor: [utils.selector.re('job', $.componentMatcher('distributor'))],
+                            ingester: [utils.selector.re('job', $.componentMatcher(['partition-ingester', 'ingester']))],
+                            ingester_zone: [utils.selector.re('job', $.componentMatcher(['partition-ingester', 'ingester-zone']))],
                           },
 
                           local selector(matcherId) =

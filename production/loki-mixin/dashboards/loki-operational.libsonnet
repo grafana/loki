@@ -31,19 +31,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                ],
 
                                jobMatchers:: {
-                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
-                                 distributor: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/%s(distributor|%s-write|loki-single-binary)' % [$._config.meta_monitoring.job_prefix, $._config.ssd.pod_prefix_matcher])]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
-                                 ingester: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/%s(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % [$._config.meta_monitoring.job_prefix, $._config.ssd.pod_prefix_matcher])]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
-                                 querier: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/%s(querier|%s-read|loki-single-binary)' % [$._config.meta_monitoring.job_prefix, $._config.ssd.pod_prefix_matcher])]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
-                                 queryFrontend: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/%s(query-frontend|%s-read|loki-single-binary)' % [$._config.meta_monitoring.job_prefix, $._config.ssd.pod_prefix_matcher])]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
+                                 cortexgateway: [utils.selector.re('job', $.componentMatcher('cortex-gw'))],
+                                 distributor: [utils.selector.re('job', $.componentMatcher('distributor'))],
+                                 ingester: [utils.selector.re('job', $.componentMatcher(['ingester', 'partition-ingester']))],
+                                 querier: [utils.selector.re('job', $.componentMatcher('querier'))],
+                                 queryFrontend: [utils.selector.re('job', $.componentMatcher('query-frontend'))],
                                  backend: [utils.selector.re('job', '($namespace)/%s-backend' % $._config.ssd.pod_prefix_matcher)],
                                },
 
