@@ -1,10 +1,10 @@
 ---
-title: Kubernetes Monitoring with Loki
-menuTitle: Kubernetes Monitoring with Loki
+title: Kubernetes Monitoring Helm
+menuTitle: Kubernetes Monitoring Helm
 weight: 300
 description: Learn how to collect and store logs from your Kubernetes cluster using Loki.
 killercoda:
-  title: Kubernetes Monitoring with Loki
+  title: Kubernetes Monitoring Helm
   description: Learn how to collect and store logs from your Kubernetes cluster using Loki.
   backend:
     imageid: kubernetes-kubeadm-2nodes
@@ -12,7 +12,7 @@ killercoda:
 
 <!-- INTERACTIVE page intro.md START -->
 
-# Kubernetes Monitoring with Loki
+# Kubernetes Monitoring Helm
 
 One of the primary use cases for Loki is to collect and store logs from your [Kubernetes cluster](https://kubernetes.io/docs/concepts/overview/). These logs fall into three categories:
 
