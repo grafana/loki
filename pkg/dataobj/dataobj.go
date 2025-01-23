@@ -328,6 +328,8 @@ func (b *Builder) buildObject() error {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
+	b.metrics.builtSize.Observe(float64(b.flushBuffer.Len()))
+
 	// We pass context.Background() below to avoid allowing building an object to
 	// time out; timing out on build would discard anything we built and would
 	// cause data loss.
