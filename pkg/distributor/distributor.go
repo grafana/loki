@@ -492,8 +492,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}
 
-	tenantRetentionHours := util.RetentionHours(d.tenantsRetention.RetentionPeriodFor(tenantID, nil))
-	validationMetrics := newValidationMetrics(tenantRetentionHours)
+	tenantRetentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, nil)
 
 	func() {
 		sp := opentracing.SpanFromContext(ctx)
@@ -524,7 +523,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			retentionHours := util.RetentionHours(d.tenantsRetention.RetentionPeriodFor(tenantID, lbs))
+			retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, lbs)
 
 			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
@@ -596,7 +595,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				n++
-				validationMetrics.compute(entry, retentionHours)
+				validationContext.validationMetrics.compute(entry, retentionHours)
 				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
@@ -620,7 +619,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationMetrics, validation.BlockedIngestion)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.BlockedIngestion)
 
 		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -634,10 +633,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationMetrics.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationMetrics, validation.RateLimited)
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.lineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited)
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationMetrics.lineCount, validationMetrics.lineSize)
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.lineCount, validationContext.validationMetrics.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
