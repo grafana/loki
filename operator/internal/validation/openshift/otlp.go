@@ -4,33 +4,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
-)
-
-var (
-	requiredStreamLabels = []string{
-		"k8s.namespace.name",
-		"kubernetes.namespace_name",
-		"log_source",
-		"log_type",
-		"openshift.cluster.uid",
-		"openshift.log.source",
-		"openshift.log.type",
-	}
-
-	optionalStreamLabels = []string{
-		"k8s.container.name",
-		"k8s.cronjob.name",
-		"k8s.daemonset.name",
-		"k8s.deployment.name",
-		"k8s.job.name",
-		"k8s.node.name",
-		"k8s.pod.name",
-		"k8s.statefulset.name",
-		"kubernetes.container_name",
-		"kubernetes.host",
-		"kubernetes.pod_name",
-		"service.name",
-	}
+	"github.com/grafana/loki/operator/internal/manifests/openshift/otlp"
 )
 
 // ValidateOTLPInvalidDrop validates that a spec does not drop required OTLP attributes in the openshift-logging tenancy mode.
@@ -40,16 +14,15 @@ func ValidateOTLPInvalidDrop(spec *lokiv1.LokiStackSpec) field.ErrorList {
 	}
 
 	requiredAttributes := map[string]bool{}
-	for _, label := range requiredStreamLabels {
+	for _, label := range otlp.RequiredAttributes {
 		requiredAttributes[label] = true
 	}
 
-	disableRecommendedAttributes := false
-	if spec.Tenants != nil && spec.Tenants.Openshift != nil && spec.Tenants.Openshift.OTLP != nil {
-		disableRecommendedAttributes = spec.Tenants.Openshift.OTLP.DisableRecommendedAttributes
-	}
-	if !disableRecommendedAttributes {
-		for _, label := range optionalStreamLabels {
+	if spec.Tenants != nil &&
+		spec.Tenants.Openshift != nil &&
+		spec.Tenants.Openshift.OTLP != nil &&
+		!spec.Tenants.Openshift.OTLP.DisableRecommendedAttributes {
+		for _, label := range otlp.RecommendedAttributes {
 			requiredAttributes[label] = true
 		}
 	}
