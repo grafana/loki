@@ -6,7 +6,7 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/openshift/otlp"
 )
 
 func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConfig {
@@ -19,7 +19,17 @@ func defaultOTLPAttributeConfig(ts *lokiv1.TenantsSpec) config.OTLPAttributeConf
 		disableRecommended = ts.Openshift.OTLP.DisableRecommendedAttributes
 	}
 
-	return openshift.DefaultOTLPAttributes(disableRecommended)
+	return config.OTLPAttributeConfig{
+		RemoveDefaultLabels: true,
+		Global: &config.OTLPTenantAttributeConfig{
+			ResourceAttributes: []config.OTLPAttribute{
+				{
+					Action: config.OTLPAttributeActionStreamLabel,
+					Names:  otlp.DefaultOTLPAttributes(disableRecommended),
+				},
+			},
+		},
+	}
 }
 
 func convertAttributeReferences(refs []lokiv1.OTLPAttributeReference, action config.OTLPAttributeAction) []config.OTLPAttribute {

@@ -13,18 +13,16 @@ func ValidateOTLPInvalidDrop(spec *lokiv1.LokiStackSpec) field.ErrorList {
 		return nil
 	}
 
-	requiredAttributes := map[string]bool{}
-	for _, label := range otlp.RequiredAttributes {
-		requiredAttributes[label] = true
-	}
-
+	disableRecommendedAttributes := false
 	if spec.Tenants != nil &&
 		spec.Tenants.Openshift != nil &&
-		spec.Tenants.Openshift.OTLP != nil &&
-		!spec.Tenants.Openshift.OTLP.DisableRecommendedAttributes {
-		for _, label := range otlp.RecommendedAttributes {
-			requiredAttributes[label] = true
-		}
+		spec.Tenants.Openshift.OTLP != nil {
+		disableRecommendedAttributes = spec.Tenants.Openshift.OTLP.DisableRecommendedAttributes
+	}
+
+	requiredAttributes := map[string]bool{}
+	for _, label := range otlp.DefaultOTLPAttributes(disableRecommendedAttributes) {
+		requiredAttributes[label] = true
 	}
 
 	errList := field.ErrorList{}

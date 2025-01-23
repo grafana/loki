@@ -1,7 +1,11 @@
 package otlp
 
+import (
+	"slices"
+)
+
 var (
-	RequiredAttributes = []string{
+	requiredAttributes = []string{
 		"k8s.namespace.name",
 		"kubernetes.namespace_name",
 		"log_source",
@@ -11,7 +15,7 @@ var (
 		"openshift.log.type",
 	}
 
-	RecommendedAttributes = []string{
+	recommendedAttributes = []string{
 		"k8s.container.name",
 		"k8s.cronjob.name",
 		"k8s.daemonset.name",
@@ -26,3 +30,16 @@ var (
 		"service.name",
 	}
 )
+
+// DefaultOTLPAttributes provides the required/recommended set of OTLP attributes for OpenShift Logging.
+func DefaultOTLPAttributes(disableRecommended bool) []string {
+	result := append([]string{}, requiredAttributes...)
+	if disableRecommended {
+		return result
+	}
+
+	result = append(result, recommendedAttributes...)
+	slices.Sort(result)
+
+	return result
+}
