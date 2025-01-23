@@ -12,4 +12,9 @@ export default defineConfig({
     emptyOutDir: true,
     cssCodeSplit: false,
   },
+  server: {
+    proxy: {
+      "/dataobj/explorer/api": "http://localhost:3100",
+    },
+  },
 });
