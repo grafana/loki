@@ -189,6 +189,8 @@ func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 
 // inRange returns true if t is in step range of ts.
 func (e *mergeOverTimeStepEvaluator) inRange(t, ts int64) bool {
+	// The time stamp needs to be adjusted because the original datapoint at t is
+	// from a shifted query.
 	ts -= e.offset.Milliseconds()
 
 	// special case instant queries

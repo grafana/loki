@@ -193,8 +193,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		query         string
 		realtiveError float64
 	}{
-		//{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
-		//{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
+		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.05},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
 		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s] offset 2s) by (a)`, 0.02},
 	} {
 		q := NewMockQuerier(
@@ -247,8 +247,8 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			// plus set step and interval to 0
 			params, err := NewLiteralParams(
 				tc.query,
-				time.Unix(1, 0),
-				time.Unix(1, 0),
+				time.Unix(10, 0),
+				time.Unix(10, 0),
 				0,
 				0,
 				logproto.FORWARD,
