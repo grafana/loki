@@ -586,7 +586,7 @@ github.com/distribution/reference
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/docker/docker v27.5.0+incompatible
+# github.com/docker/docker v27.5.1+incompatible
 ## explicit
 github.com/docker/docker/api
 github.com/docker/docker/api/types
@@ -1276,7 +1276,7 @@ github.com/miekg/dns
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.83
+# github.com/minio/minio-go/v7 v7.0.84
 ## explicit; go 1.22
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/cors
@@ -1652,7 +1652,7 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.7.0
 ## explicit; go 1.18
 github.com/tklauser/numcpus
-# github.com/twmb/franz-go v1.18.0
+# github.com/twmb/franz-go v1.18.1
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kbin
 github.com/twmb/franz-go/pkg/kerr
@@ -1661,7 +1661,7 @@ github.com/twmb/franz-go/pkg/kgo/internal/sticky
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
-# github.com/twmb/franz-go/pkg/kadm v1.14.0
+# github.com/twmb/franz-go/pkg/kadm v1.15.0
 ## explicit; go 1.21
 github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20241015013301-cea7aa5d8037
@@ -1782,7 +1782,7 @@ go.opencensus.io/tag
 ## explicit; go 1.22.0
 go.opentelemetry.io/auto/sdk
 go.opentelemetry.io/auto/sdk/internal/telemetry
-# go.opentelemetry.io/collector/pdata v1.23.0
+# go.opentelemetry.io/collector/pdata v1.24.0
 ## explicit; go 1.22.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data
@@ -1819,7 +1819,7 @@ go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/request
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconv
 go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconvutil
-# go.opentelemetry.io/otel v1.33.0
+# go.opentelemetry.io/otel v1.34.0
 ## explicit; go 1.22.0
 go.opentelemetry.io/otel
 go.opentelemetry.io/otel/attribute
@@ -1836,7 +1836,7 @@ go.opentelemetry.io/otel/semconv/v1.20.0
 go.opentelemetry.io/otel/semconv/v1.21.0
 go.opentelemetry.io/otel/semconv/v1.24.0
 go.opentelemetry.io/otel/semconv/v1.26.0
-# go.opentelemetry.io/otel/metric v1.33.0
+# go.opentelemetry.io/otel/metric v1.34.0
 ## explicit; go 1.22.0
 go.opentelemetry.io/otel/metric
 go.opentelemetry.io/otel/metric/embedded
@@ -1855,7 +1855,7 @@ go.opentelemetry.io/otel/sdk/metric/internal
 go.opentelemetry.io/otel/sdk/metric/internal/aggregate
 go.opentelemetry.io/otel/sdk/metric/internal/x
 go.opentelemetry.io/otel/sdk/metric/metricdata
-# go.opentelemetry.io/otel/trace v1.33.0
+# go.opentelemetry.io/otel/trace v1.34.0
 ## explicit; go 1.22.0
 go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
