@@ -103,6 +103,13 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	return s, nil
 }
 
+func (s *IngestLimits) CheckReady(ctx context.Context) error {
+	if s.State() != services.Running && s.State() != services.Stopping {
+		return fmt.Errorf("ingest limits not ready: %v", s.State())
+	}
+	return s.lifecycler.CheckReady(ctx)
+}
+
 // starting implements the Service interface's starting method.
 // It is called when the service starts and performs any necessary initialization.
 func (s *IngestLimits) starting(ctx context.Context) (err error) {
@@ -290,39 +297,27 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// Get the tenant's streams
 	streams := s.metadata[req.Tenant]
 	if streams == nil {
-		// If tenant not found, return zero active streams and all streams as inactive
-		recordedStreams := make([]*logproto.RecordedStreams, len(req.StreamHash))
-		for i, hash := range req.StreamHash {
-			recordedStreams[i] = &logproto.RecordedStreams{
-				StreamHash: hash,
-				Active:     false,
-			}
-		}
+		// If tenant not found, return zero active streams and all requested streams as not recorded
 		return &logproto.GetStreamUsageResponse{
-			Tenant:          req.Tenant,
-			ActiveStreams:   0,
-			RecordedStreams: recordedStreams,
+			Tenant:        req.Tenant,
+			ActiveStreams: 0,
 		}, nil
 	}
 
 	// Count total active streams for the tenant
-	var activeStreams uint64
-	for _, lastSeen := range streams {
+	// across all assigned partitions and record
+	// the streams that have been seen within the
+	// window
+	var (
+		activeStreams   uint64
+		recordedStreams = make([]*logproto.RecordedStreams, 0, len(streams))
+	)
+	for hash, lastSeen := range streams {
 		if lastSeen >= cutoff {
 			activeStreams++
-		}
-	}
-
-	// Check each requested stream hash
-	recordedStreams := make([]*logproto.RecordedStreams, len(req.StreamHash))
-	for i, hash := range req.StreamHash {
-		lastSeen, exists := streams[hash]
-		recordedStreams[i] = &logproto.RecordedStreams{
-			StreamHash: hash,
-			Active:     false,
-		}
-		if exists && lastSeen >= cutoff {
-			recordedStreams[i].Active = true
+			recordedStreams = append(recordedStreams, &logproto.RecordedStreams{
+				StreamHash: hash,
+			})
 		}
 	}
 

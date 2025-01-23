@@ -393,6 +393,8 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 		return nil, nil
 	}
 
+	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
 	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
 
 	t.ingestLimitsRing, err = ring.New(
@@ -444,17 +446,24 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		return nil, nil
 	}
 
-	ingestLimitsFrontend, err := limits_frontend.NewFrontend(
-		t.Cfg.LimitsFrontendConfig,
+	ingestLimitsFrontend, err := limits_frontend.New(
+		t.Cfg.IngestLimitsFrontend,
+		limits.RingName,
+		t.ingestLimitsRing,
+		t.Overrides,
 		util_log.Logger,
-		prometheus.DefaultRegisterer,
-		nil,
 	)
 	if err != nil {
 		return nil, err
 	}
 	t.ingestLimitsFrontend = ingestLimitsFrontend
 	logproto.RegisterIngestLimitsFrontendServer(t.Server.GRPC, ingestLimitsFrontend)
+
+	// Register HTTP handler to check if a tenant exceeds limits
+	// Returns a JSON response for the frontend to display which
+	// streams are rejected.
+	t.Server.HTTP.Path("/ingest/exceeds-limits").Methods("POST").Handler(ingestLimitsFrontend)
+
 	return ingestLimitsFrontend, nil
 }
 

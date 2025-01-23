@@ -89,7 +89,6 @@ service IngestLimits {
 
 message GetStreamUsageRequest {
   string tenant = 1;
-  repeated uint64 streamHash = 2;
 }
 
 message GetStreamUsageResponse {
@@ -100,7 +99,6 @@ message GetStreamUsageResponse {
 
 message RecordedStreams {
   uint64 streamHash = 1;
-  bool active = 2;
 }
 
 message StreamRate {

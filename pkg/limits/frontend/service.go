@@ -12,6 +12,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+const (
+	// RejectedStreamReasonExceedsGlobalLimit is the reason for rejecting a stream
+	// because it exceeds the global per tenant limit.
+	RejectedStreamReasonExceedsGlobalLimit = "exceeds_global_limit"
+)
+
+// Limits is the interface of the limits confgiration
+// builder to be passed to the frontend service.
+type Limits interface {
+	MaxGlobalStreamsPerUser(userID string) int
+}
+
 // IngestLimitsService is responsible for receiving, processing and
 // validating requests, forwarding them to individual limits backends,
 // gathering and aggregating their responses (where required), and returning
@@ -26,28 +38,31 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
-type ringFunc func(context.Context, logproto.IngestLimitsClient) (interface{}, error)
+type ringFunc func(context.Context, logproto.IngestLimitsClient) (*logproto.GetStreamUsageResponse, error)
 
 // RingIngestLimitsService is an IngestLimitsService that uses the ring to read the responses
 // from all limits backends.
 type RingIngestLimitsService struct {
+	logger log.Logger
+
 	ring ring.ReadRing
 	pool *ring_client.Pool
+
+	limits Limits
 }
 
 // NewRingIngestLimitsService returns a new RingIngestLimitsClient.
-func NewRingIngestLimitsService(cfg Config, logger log.Logger, ring ring.ReadRing) *RingIngestLimitsService {
-	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return NewIngestLimitsClient(cfg.ClientConfig, addr)
-	})
+func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limits Limits, logger log.Logger) *RingIngestLimitsService {
 	return &RingIngestLimitsService{
-		ring: ring,
-		pool: NewIngestLimitsClientPool("ingest-limits", cfg.ClientConfig.PoolConfig, ring, factory, logger),
+		logger: logger,
+		ring:   ring,
+		pool:   pool,
+		limits: limits,
 	}
 }
 
 func (s *RingIngestLimitsService) forAllBackends(ctx context.Context, f ringFunc) ([]Response, error) {
-	replicaSet, err := s.ring.GetReplicationSetForOperation(LimitsRead)
+	replicaSet, err := s.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
@@ -77,24 +92,61 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 	return responses, nil
 }
 
-func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, r *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
-	req := &logproto.GetStreamUsageRequest{
-		Tenant: r.Tenant,
-	}
-	resps, err := s.forAllBackends(ctx, func(_ context.Context, client logproto.IngestLimitsClient) (interface{}, error) {
-		return client.GetStreamUsage(ctx, req)
+func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
+	resps, err := s.forAllBackends(ctx, func(_ context.Context, client logproto.IngestLimitsClient) (*logproto.GetStreamUsageResponse, error) {
+		return client.GetStreamUsage(ctx, &logproto.GetStreamUsageRequest{
+			Tenant: req.Tenant,
+		})
 	})
 	if err != nil {
 		return nil, err
 	}
-	var sum uint64
+
+	maxGlobalStreams := s.limits.MaxGlobalStreamsPerUser(req.Tenant)
+
+	var (
+		activeStreamsTotal uint64
+		uniqueStreamHashes = make(map[uint64]bool)
+	)
 	for _, resp := range resps {
-		sum += resp.Response.(*logproto.GetStreamUsageResponse).ActiveStreams
+		var duplicates uint64
+		// Record the unique stream hashes
+		// and count duplicates active streams
+		// to be subtracted from the total
+		for _, stream := range resp.Response.RecordedStreams {
+			if uniqueStreamHashes[stream.StreamHash] {
+				duplicates++
+				continue
+			}
+			uniqueStreamHashes[stream.StreamHash] = true
+		}
+
+		activeStreamsTotal += resp.Response.ActiveStreams - duplicates
 	}
-	return &logproto.ExceedsLimitsResponse{}, nil
+
+	if activeStreamsTotal < uint64(maxGlobalStreams) {
+		return &logproto.ExceedsLimitsResponse{
+			Tenant: req.Tenant,
+		}, nil
+	}
+
+	var rejectedStreams []*logproto.RejectedStream
+	for _, stream := range req.Streams {
+		if !uniqueStreamHashes[stream.StreamHash] {
+			rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
+				StreamHash: stream.StreamHash,
+				Reason:     RejectedStreamReasonExceedsGlobalLimit,
+			})
+		}
+	}
+
+	return &logproto.ExceedsLimitsResponse{
+		Tenant:          req.Tenant,
+		RejectedStreams: rejectedStreams,
+	}, nil
 }
 
 type Response struct {
 	Addr     string
-	Response interface{}
+	Response *logproto.GetStreamUsageResponse
 }
