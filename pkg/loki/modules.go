@@ -393,6 +393,8 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 		return nil, nil
 	}
 
+	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
 	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
 
 	t.ingestLimitsRing, err = ring.New(
