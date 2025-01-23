@@ -228,8 +228,8 @@ github.com/baidubce/bce-sdk-go v0.9.214 h1:bsVfwMh/emI6vreEveUEq9xAr6xtHLycTAGy2
 github.com/baidubce/bce-sdk-go v0.9.214/go.mod h1:zbYJMQwE4IZuyrJiFO8tO8NbtYiKTFTbwh4eIsqjVdg=
 github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3 h1:6df1vn4bBlDDo4tARvBm7l6KA9iVMnE3NWizDeWSrps=
 github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3/go.mod h1:CIWtjkly68+yqLPbvwwR/fjNJA/idrtULjZWh2v1ys0=
-github.com/benclive/objstore v0.0.0-20250122102107-6fcf7b9a2903 h1:2jgCgWSVyr0ZYqVEH6cUUDBCOOV+fE0LC4z4E9mdCiw=
-github.com/benclive/objstore v0.0.0-20250122102107-6fcf7b9a2903/go.mod h1:Quz9HUDjGidU0RQpoytzK4KqJ7kwzP+DMAm4K57/usM=
+github.com/benclive/objstore v0.0.0-20250122170312-3f71d73c03dd h1:EtsJOLTb14nQwPSfVDj6b101VhSj25EyUEW9mwJ4X9M=
+github.com/benclive/objstore v0.0.0-20250122170312-3f71d73c03dd/go.mod h1:Quz9HUDjGidU0RQpoytzK4KqJ7kwzP+DMAm4K57/usM=
 github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24TaqPxmxbtue+5NUziq4I4S80YR8gNf3Q=
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

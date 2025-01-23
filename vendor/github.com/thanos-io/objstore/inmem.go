@@ -194,7 +194,28 @@ func (b *InMemBucket) GetRange(_ context.Context, name string, off, length int64
 }
 
 func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.Reader, error)) error {
-	panic("unimplemented: inMemBucket.GetAndReplace")
+	reader, err := b.Get(ctx, name)
+	if err != nil && !errors.Is(err, errNotFound) {
+		return err
+	}
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	if reader == nil {
+		reader = io.NopCloser(bytes.NewReader(nil))
+	}
+
+	new, err := f(reader)
+	if err != nil {
+		return err
+	}
+
+	newObj, err := io.ReadAll(new)
+	if err != nil {
+		return err
+	}
+
+	b.objects[name] = newObj
 	return nil
 }
 
