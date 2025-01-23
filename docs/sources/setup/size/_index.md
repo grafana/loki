@@ -28,7 +28,7 @@ Query resource needs can greatly vary with usage patterns and correct configurat
 
 These are the node types we suggest from various cloud providers. Please see the relevant specifications in your provider documentation.
 <div id="app">
-    <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
+    <label>Node Type</label>
     <select name="node-type" v-model="node">
     <option v-for="node of nodes">{{ node }}</option>
     </select><br>
@@ -69,14 +69,6 @@ These are the node types we suggest from various cloud providers. Please see the
 | Compactor        | 6           | 40                | 1 (Singleton)  | 6              | 40              |
 {{< /tab-content >}}
 {{< /tabs >}}   
-
-
-  <blockquote v-if="help">
-    <span v-else-if="help === 'node'">
-    Defines the node type of the Kubernetes cluster. Is a vendor or type
-    missing? If so, add it to <code>pkg/sizing/node.go</code>.
-    </span>
-  </blockquote>
 
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
