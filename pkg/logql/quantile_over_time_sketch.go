@@ -318,13 +318,13 @@ type QuantileSketchMatrixStepEvaluator struct {
 
 func NewQuantileSketchMatrixStepEvaluator(m ProbabilisticQuantileMatrix, params Params) *QuantileSketchMatrixStepEvaluator {
 	var (
-		step  = params.Step()
+		step = params.Step()
 	)
 	return &QuantileSketchMatrixStepEvaluator{
-		end:   params.End(),
-		ts:    params.Start().Add(-step), // will be corrected on first Next() call
-		step:  step,
-		m:     m,
+		end:  params.End(),
+		ts:   params.Start().Add(-step), // will be corrected on first Next() call
+		step: step,
+		m:    m,
 	}
 }
 

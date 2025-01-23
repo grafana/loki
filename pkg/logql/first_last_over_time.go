@@ -145,7 +145,7 @@ type mergeOverTimeStepEvaluator struct {
 	step           time.Duration
 	matrices       []promql.Matrix
 	merge          func(promql.Vector, int, int, promql.Series) promql.Vector
-	offset         time.Duration 
+	offset         time.Duration
 }
 
 // Next returns the first or last element within one step of each matrix.
