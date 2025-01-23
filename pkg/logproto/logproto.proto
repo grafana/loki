@@ -89,7 +89,6 @@ service IngestLimits {
 
 message GetStreamUsageRequest {
   string tenant = 1;
-  repeated uint64 streamHash = 2;
 }
 
 message GetStreamUsageResponse {

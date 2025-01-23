@@ -19,16 +19,14 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 	tests := []struct {
 		name                    string
 		tenant                  string
-		streamHashes            []uint64
 		setupMetadata           map[string]map[uint64]int64
 		windowSize              time.Duration
 		expectedActive          uint64
 		expectedRecordedStreams []uint64
 	}{
 		{
-			name:         "tenant not found",
-			tenant:       "tenant1",
-			streamHashes: []uint64{1, 2, 3},
+			name:   "tenant not found",
+			tenant: "tenant1",
 			setupMetadata: map[string]map[uint64]int64{
 				"tenant2": {
 					4: time.Now().UnixNano(),
@@ -40,9 +38,8 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			expectedRecordedStreams: []uint64{},
 		},
 		{
-			name:         "all streams active",
-			tenant:       "tenant1",
-			streamHashes: []uint64{1, 2, 3},
+			name:   "all streams active",
+			tenant: "tenant1",
 			setupMetadata: map[string]map[uint64]int64{
 				"tenant1": {
 					1: time.Now().UnixNano(),
@@ -56,9 +53,8 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			expectedRecordedStreams: []uint64{1, 2, 3, 4},
 		},
 		{
-			name:         "mixed active and expired streams",
-			tenant:       "tenant1",
-			streamHashes: []uint64{1, 2, 3, 4},
+			name:   "mixed active and expired streams",
+			tenant: "tenant1",
 			setupMetadata: map[string]map[uint64]int64{
 				"tenant1": {
 					1: time.Now().UnixNano(),
@@ -73,9 +69,8 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			expectedRecordedStreams: []uint64{1, 3, 5},
 		},
 		{
-			name:         "all streams expired",
-			tenant:       "tenant1",
-			streamHashes: []uint64{1, 2},
+			name:   "all streams expired",
+			tenant: "tenant1",
 			setupMetadata: map[string]map[uint64]int64{
 				"tenant1": {
 					1: time.Now().Add(-2 * time.Hour).UnixNano(),
@@ -87,9 +82,8 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			expectedRecordedStreams: []uint64{},
 		},
 		{
-			name:         "empty stream hashes",
-			tenant:       "tenant1",
-			streamHashes: []uint64{},
+			name:   "empty stream hashes",
+			tenant: "tenant1",
 			setupMetadata: map[string]map[uint64]int64{
 				"tenant1": {
 					1: time.Now().UnixNano(),
@@ -129,8 +123,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 
 			// Create request
 			req := &logproto.GetStreamUsageRequest{
-				Tenant:     tt.tenant,
-				StreamHash: tt.streamHashes,
+				Tenant: tt.tenant,
 			}
 
 			// Call GetStreamUsage
@@ -187,8 +180,7 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 			defer func() { done <- struct{}{} }()
 
 			req := &logproto.GetStreamUsageRequest{
-				Tenant:     "tenant1",
-				StreamHash: []uint64{1, 2, 3, 4, 5},
+				Tenant: "tenant1",
 			}
 
 			resp, err := s.GetStreamUsage(context.Background(), req)

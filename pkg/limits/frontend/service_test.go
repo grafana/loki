@@ -173,14 +173,14 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			},
 		},
 		{
-			name:             "nil response from backend",
+			name:             "empty response from backend",
 			tenant:           "test",
 			maxGlobalStreams: 10,
 			streams: []*logproto.StreamMetadataWithSize{
 				{StreamHash: 1},
 			},
 			backendResponses: []*logproto.GetStreamUsageResponse{
-				nil,
+				{},
 			},
 			expectedRejections: nil, // No rejections because activeStreamsTotal is 0
 		},

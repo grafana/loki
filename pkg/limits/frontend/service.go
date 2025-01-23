@@ -108,23 +108,19 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		uniqueStreamHashes = make(map[uint64]bool)
 	)
 	for _, resp := range resps {
-		if resp.Response == nil {
-			continue
-		}
-
-		activeStreamsTotal += resp.Response.ActiveStreams
-
+		var duplicates uint64
 		// Record the unique stream hashes
-		// and decrement the active streams
-		// total if the stream hash is already
-		// recorded
+		// and count duplicates active streams
+		// to be subtracted from the total
 		for _, stream := range resp.Response.RecordedStreams {
-			if !uniqueStreamHashes[stream.StreamHash] {
-				uniqueStreamHashes[stream.StreamHash] = true
+			if uniqueStreamHashes[stream.StreamHash] {
+				duplicates++
 				continue
 			}
-			activeStreamsTotal--
+			uniqueStreamHashes[stream.StreamHash] = true
 		}
+
+		activeStreamsTotal += resp.Response.ActiveStreams - duplicates
 	}
 
 	if activeStreamsTotal < uint64(maxGlobalStreams) {
