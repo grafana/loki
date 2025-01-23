@@ -64,11 +64,11 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
     (s) => s.type === "SECTION_TYPE_LOGS"
   );
   const streamCount = streamSection?.reduce(
-    (sum, sec) => sum + (sec.columnCount || 0),
+    (sum, sec) => sum + (sec.columns[0].rows_count || 0),
     0
   );
   const logCount = logSection?.reduce(
-    (sum, sec) => sum + (sec.columnCount || 0),
+    (sum, sec) => sum + (sec.columns[0].rows_count || 0),
     0
   );
 
