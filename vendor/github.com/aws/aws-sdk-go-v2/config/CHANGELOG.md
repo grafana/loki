@@ -1,3 +1,48 @@
+# v1.28.6 (2024-12-02)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.5 (2024-11-18)
+
+* **Dependency Update**: Update to smithy-go v1.22.1.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.4 (2024-11-14)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.3 (2024-11-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.2 (2024-11-06)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.1 (2024-10-28)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.0 (2024-10-16)
+
+* **Feature**: Adds the LoadOptions hook `WithBaseEndpoint` for setting global endpoint override in-code.
+
+# v1.27.43 (2024-10-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.42 (2024-10-07)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.41 (2024-10-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.40 (2024-10-03)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.27.39 (2024-09-27)
 
 * **Dependency Update**: Updated to the latest SDK module versions

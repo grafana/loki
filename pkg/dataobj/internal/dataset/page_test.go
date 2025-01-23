@@ -39,6 +39,8 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	page, err := b.Flush()
 	require.NoError(t, err)
+	require.Equal(t, len(in), page.Info.RowCount)
+	require.Equal(t, len(in)-2, page.Info.ValuesCount) // -2 for the empty strings
 
 	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
 	t.Log("Compressed size: ", page.Info.CompressedSize)

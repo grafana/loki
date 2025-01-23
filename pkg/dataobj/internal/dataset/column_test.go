@@ -39,6 +39,8 @@ func TestColumnBuilder_ReadWrite(t *testing.T) {
 	col, err := b.Flush()
 	require.NoError(t, err)
 	require.Equal(t, datasetmd.VALUE_TYPE_STRING, col.Info.Type)
+	require.Equal(t, len(in), col.Info.RowsCount)
+	require.Equal(t, len(in)-2, col.Info.ValuesCount) // -2 for the empty strings
 	require.Greater(t, len(col.Pages), 1)
 
 	t.Log("Uncompressed size: ", col.Info.UncompressedSize)

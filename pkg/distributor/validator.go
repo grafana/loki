@@ -55,6 +55,7 @@ type validationContext struct {
 
 	blockIngestionUntil      time.Time
 	blockIngestionStatusCode int
+	enforcedLabels           []string
 
 	userID string
 }
@@ -80,6 +81,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		maxStructuredMetadataCount:   v.MaxStructuredMetadataCount(userID),
 		blockIngestionUntil:          v.BlockIngestionUntil(userID),
 		blockIngestionStatusCode:     v.BlockIngestionStatusCode(userID),
+		enforcedLabels:               v.EnforcedLabels(userID),
 	}
 }
 

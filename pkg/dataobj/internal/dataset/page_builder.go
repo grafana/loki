@@ -44,7 +44,8 @@ type pageBuilder struct {
 	presenceEnc *bitmapEncoder
 	valuesEnc   valueEncoder
 
-	rows int // Number of rows appended to the builder.
+	rows   int // Number of rows appended to the builder.
+	values int // Number of non-NULL values appended to the builder.
 }
 
 // newPageBuilder creates a new pageBuilder that stores a sequence of [Value]s.
@@ -90,7 +91,7 @@ func (b *pageBuilder) Append(value Value) bool {
 	//
 	// We use a rough estimate which will tend to overshoot the page size, making
 	// sure we rarely go over.
-	if sz := b.estimatedSize(); sz > 0 && sz+valueSize(value) > b.opts.PageSizeHint {
+	if sz := b.EstimatedSize(); sz > 0 && sz+valueSize(value) > b.opts.PageSizeHint {
 		return false
 	}
 
@@ -104,6 +105,7 @@ func (b *pageBuilder) Append(value Value) bool {
 	}
 
 	b.rows++
+	b.values++
 	return true
 }
 
@@ -115,7 +117,7 @@ func (b *pageBuilder) AppendNull() bool {
 	//
 	// Here we assume appending a NULL costs one byte, but in reality most NULLs
 	// have no cost depending on the state of our bitmap encoder.
-	if sz := b.estimatedSize(); sz > 0 && sz+1 > b.opts.PageSizeHint {
+	if sz := b.EstimatedSize(); sz > 0 && sz+1 > b.opts.PageSizeHint {
 		return false
 	}
 
@@ -148,9 +150,9 @@ func valueSize(v Value) int {
 	return 0
 }
 
-// estimatedSize returns the estimated uncompressed size of the builder in
+// EstimatedSize returns the estimated uncompressed size of the builder in
 // bytes.
-func (b *pageBuilder) estimatedSize() int {
+func (b *pageBuilder) EstimatedSize() int {
 	// This estimate doesn't account for any values in encoders which haven't
 	// been flushed yet. However, encoder buffers are usually small enough that
 	// we wouldn't massively overshoot our estimate.
@@ -209,6 +211,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 			CompressedSize:   finalData.Len(),
 			CRC32:            checksum,
 			RowCount:         b.rows,
+			ValuesCount:      b.values,
 
 			Encoding: b.opts.Encoding,
 
@@ -237,4 +240,5 @@ func (b *pageBuilder) Reset() {
 	b.presenceBuffer.Reset()
 	b.valuesEnc.Reset(b.valuesWriter)
 	b.rows = 0
+	b.values = 0
 }

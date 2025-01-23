@@ -31,7 +31,7 @@ docker plugin install grafana/loki-docker-driver:3.3.2-arm64 --alias loki --gran
 ```
 
 {{< admonition type="note" >}}
-Add `-arm64` to the image tag for AMR64 hosts.
+Add `-arm64` to the image tag for ARM64 hosts.
 {{< /admonition >}}
 
 To check installed plugins, use the `docker plugin ls` command.
@@ -48,7 +48,7 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once you have successfully installed the plugin you can [configure](https://grafana.com/docs/loki/<LOKI_VERSION/configure/) it.
+Once you have successfully installed the plugin you can [configure](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/configuration/) it.
 
 ## Upgrade the Docker driver client
 

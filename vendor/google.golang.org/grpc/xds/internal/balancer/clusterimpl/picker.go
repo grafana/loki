@@ -87,17 +87,6 @@ type picker struct {
 	telemetryLabels map[string]string
 }
 
-func (b *clusterImplBalancer) newPicker(config *dropConfigs) *picker {
-	return &picker{
-		drops:           config.drops,
-		s:               b.childState,
-		loadStore:       b.loadWrapper,
-		counter:         config.requestCounter,
-		countMax:        config.requestCountMax,
-		telemetryLabels: b.telemetryLabels,
-	}
-}
-
 func telemetryLabels(ctx context.Context) map[string]string {
 	if ctx == nil {
 		return nil

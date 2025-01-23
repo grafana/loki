@@ -28,14 +28,12 @@ func (p *errorMockPool) Addr(_ string) (string, error) {
 func TestBloomGatewayClient(t *testing.T) {
 	logger := log.NewNopLogger()
 
-	limits := newLimits()
-
 	cfg := ClientConfig{}
 	flagext.DefaultValues(&cfg)
 
 	t.Run("FilterChunks returns response", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		c, err := NewClient(cfg, limits, reg, logger, nil, false)
+		c, err := NewClient(cfg, reg, logger)
 		require.NoError(t, err)
 		expr, err := syntax.ParseExpr(`{foo="bar"}`)
 		require.NoError(t, err)
@@ -46,7 +44,7 @@ func TestBloomGatewayClient(t *testing.T) {
 
 	t.Run("pool error is suppressed and returns full list of chunks", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		c, err := NewClient(cfg, limits, reg, logger, nil, false)
+		c, err := NewClient(cfg, reg, logger)
 		require.NoError(t, err)
 		c.pool = &errorMockPool{}
 

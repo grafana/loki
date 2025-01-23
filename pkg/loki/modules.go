@@ -1544,14 +1544,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var bloomQuerier indexgateway.BloomQuerier
 	if t.Cfg.BloomGateway.Enabled {
-		bloomGatewayClient, err := bloomgateway.NewClient(
-			t.Cfg.BloomGateway.Client,
-			t.Overrides,
-			prometheus.DefaultRegisterer,
-			logger,
-			t.cacheGenerationLoader,
-			t.Cfg.CompactorConfig.RetentionEnabled,
-		)
+		bloomGatewayClient, err := bloomgateway.NewClient(t.Cfg.BloomGateway.Client, prometheus.DefaultRegisterer, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -1675,14 +1668,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 	var bloomGatewayClient bloomgateway.Client
 	if t.Cfg.BloomGateway.Enabled {
 		var err error
-		bloomGatewayClient, err = bloomgateway.NewClient(
-			t.Cfg.BloomGateway.Client,
-			t.Overrides,
-			prometheus.DefaultRegisterer,
-			logger,
-			t.cacheGenerationLoader,
-			t.Cfg.CompactorConfig.RetentionEnabled,
-		)
+		bloomGatewayClient, err = bloomgateway.NewClient(t.Cfg.BloomGateway.Client, prometheus.DefaultRegisterer, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -1869,7 +1855,6 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 
 	s, err := blockscheduler.NewScheduler(
 		t.Cfg.BlockScheduler,
-		blockscheduler.NewJobQueue(t.Cfg.BlockScheduler.JobQueueConfig, logger, prometheus.DefaultRegisterer),
 		offsetManager,
 		logger,
 		prometheus.DefaultRegisterer,
