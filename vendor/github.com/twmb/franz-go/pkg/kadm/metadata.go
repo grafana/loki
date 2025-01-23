@@ -85,6 +85,8 @@ type TopicDetail struct {
 	IsInternal bool             // IsInternal is whether the topic is an internal topic.
 	Partitions PartitionDetails // Partitions contains details about the topic's partitions.
 
+	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform on this topic.
+
 	Err error // Err is non-nil if the topic could not be loaded.
 }
 
@@ -183,10 +185,11 @@ func (ds TopicDetails) TopicsList() TopicsList {
 
 // Metadata is the data from a metadata response.
 type Metadata struct {
-	Cluster    string        // Cluster is the cluster name, if any.
-	Controller int32         // Controller is the node ID of the controller broker, if available, otherwise -1.
-	Brokers    BrokerDetails // Brokers contains broker details, sorted by default.
-	Topics     TopicDetails  // Topics contains topic details.
+	Cluster              string         // Cluster is the cluster name, if any.
+	Controller           int32          // Controller is the node ID of the controller broker, if available, otherwise -1.
+	Brokers              BrokerDetails  // Brokers contains broker details, sorted by default.
+	Topics               TopicDetails   // Topics contains topic details.
+	AuthorizedOperations []ACLOperation // AuthorizedOperations contains operations the requesting client is allowed to perform, if the client has Describe permissions on the cluster.
 }
 
 func int32s(is []int32) []int32 {
@@ -226,6 +229,8 @@ func (cl *Client) Metadata(
 
 func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) (Metadata, error) {
 	req := kmsg.NewPtrMetadataRequest()
+	req.IncludeClusterAuthorizedOperations = true
+	req.IncludeTopicAuthorizedOperations = true
 	for _, t := range topics {
 		rt := kmsg.NewMetadataRequestTopic()
 		rt.Topic = kmsg.StringPtr(t)
@@ -245,10 +250,11 @@ func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) 
 			return Metadata{}, err
 		}
 		td := TopicDetail{
-			ID:         t.TopicID,
-			Partitions: make(map[int32]PartitionDetail),
-			IsInternal: t.IsInternal,
-			Err:        kerr.ErrorForCode(t.ErrorCode),
+			ID:                   t.TopicID,
+			Partitions:           make(map[int32]PartitionDetail),
+			IsInternal:           t.IsInternal,
+			AuthorizedOperations: DecodeACLOperations(t.AuthorizedOperations),
+			Err:                  kerr.ErrorForCode(t.ErrorCode),
 		}
 		if t.Topic != nil {
 			td.Topic = *t.Topic
@@ -271,8 +277,9 @@ func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) 
 	}
 
 	m := Metadata{
-		Controller: resp.ControllerID,
-		Topics:     tds,
+		Controller:           resp.ControllerID,
+		Topics:               tds,
+		AuthorizedOperations: DecodeACLOperations(resp.AuthorizedOperations),
 	}
 	if resp.ClusterID != nil {
 		m.Cluster = *resp.ClusterID
