@@ -444,16 +444,11 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		return nil, nil
 	}
 
-	ingestLimitsService := limits_frontend.NewRingIngestLimitsService(
-		t.Cfg.LimitsFrontendConfig,
+	ingestLimitsFrontend, err := limits_frontend.NewFrontend(
+		t.Cfg.IngestLimitsFrontend,
+		limits.RingName,
 		t.ingestLimitsRing,
 		t.Overrides,
-		util_log.Logger,
-	)
-
-	ingestLimitsFrontend, err := limits_frontend.NewFrontend(
-		t.Cfg.LimitsFrontendConfig,
-		ingestLimitsService,
 		util_log.Logger,
 	)
 	if err != nil {

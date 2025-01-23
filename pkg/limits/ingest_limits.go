@@ -103,6 +103,13 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	return s, nil
 }
 
+func (s *IngestLimits) CheckReady(ctx context.Context) error {
+	if s.State() != services.Running && s.State() != services.Stopping {
+		return fmt.Errorf("ingest limits not ready: %v", s.State())
+	}
+	return s.lifecycler.CheckReady(ctx)
+}
+
 // starting implements the Service interface's starting method.
 // It is called when the service starts and performs any necessary initialization.
 func (s *IngestLimits) starting(ctx context.Context) (err error) {

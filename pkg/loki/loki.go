@@ -106,12 +106,12 @@ type Config struct {
 	CompactorHTTPClient  compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
 	CompactorGRPCClient  compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
 	LimitsConfig         validation.Limits          `yaml:"limits_config"`
-	LimitsFrontendConfig limits_frontend.Config     `yaml:"limits_frontend_config"`
 	Worker               worker.Config              `yaml:"frontend_worker,omitempty"`
 	TableManager         index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV         memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig          kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
 	IngestLimits         limits.Config              `yaml:"ingest_limits,omitempty" category:"experimental"`
+	IngestLimitsFrontend limits_frontend.Config     `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -175,7 +175,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.ChunkStoreConfig.RegisterFlags(f)
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
-	c.LimitsFrontendConfig.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.Ruler.RegisterFlags(f)
@@ -195,6 +194,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.BlockBuilder.RegisterFlags(f)
 	c.BlockScheduler.RegisterFlags(f)
 	c.IngestLimits.RegisterFlags(f)
+	c.IngestLimitsFrontend.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -279,7 +279,7 @@ func (c *Config) Validate() error {
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
 	}
-	if err := c.LimitsFrontendConfig.Validate(); err != nil {
+	if err := c.IngestLimitsFrontend.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_frontend config"))
 	}
 	if err := c.Worker.Validate(); err != nil {
@@ -664,6 +664,14 @@ func (t *Loki) readyHandler(sm *services.Manager, shutdownRequested *atomic.Bool
 			}
 		}
 
+		// Ingest Limits has a special check that makes sure that it was able to register into the ring
+		if t.ingestLimits != nil {
+			if err := t.ingestLimits.CheckReady(r.Context()); err != nil {
+				http.Error(w, "Ingest Limits not ready: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+		}
+
 		http.Error(w, "ready", http.StatusOK)
 	}
 }
@@ -685,8 +693,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
 	mm.RegisterModule(Distributor, t.initDistributor)
-	mm.RegisterModule(IngestLimits, t.initIngestLimits, modules.UserInvisibleModule)
-	mm.RegisterModule(IngestLimitsFrontend, t.initIngestLimitsFrontend, modules.UserInvisibleModule)
+	mm.RegisterModule(IngestLimits, t.initIngestLimits)
+	mm.RegisterModule(IngestLimitsFrontend, t.initIngestLimitsFrontend)
 	mm.RegisterModule(Store, t.initStore, modules.UserInvisibleModule)
 	mm.RegisterModule(Querier, t.initQuerier)
 	mm.RegisterModule(Ingester, t.initIngester)
@@ -732,7 +740,7 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
 		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:             {MemberlistKV, IngestLimitsRing, Server},
-		IngestLimitsFrontend:     {MemberlistKV, IngestLimitsRing, Server},
+		IngestLimitsFrontend:     {MemberlistKV, IngestLimitsRing, Overrides, Server},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},

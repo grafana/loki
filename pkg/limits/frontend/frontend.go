@@ -13,7 +13,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -23,36 +26,65 @@ import (
 // all components needed to run the limits-frontend.
 type Frontend struct {
 	services.Service
+
 	cfg    Config
 	logger log.Logger
+
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+
 	limits IngestLimitsService
 }
 
 // NewFrontend returns a new Frontend.
-func NewFrontend(cfg Config, srv IngestLimitsService, logger log.Logger) (*Frontend, error) {
+func NewFrontend(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger log.Logger) (*Frontend, error) {
+	var servs []services.Service
+
+	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		return NewIngestLimitsClient(cfg.ClientConfig, addr)
+	})
+
+	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, ring, factory, logger)
+	limitsSrv := NewRingIngestLimitsService(ring, pool, limits, logger)
+
 	f := &Frontend{
 		cfg:    cfg,
 		logger: logger,
-		limits: srv,
+		limits: limitsSrv,
 	}
+
+	servs = append(servs, pool)
+	mgr, err := services.NewManager(servs...)
+	if err != nil {
+		return nil, errors.Wrap(err, "services manager")
+	}
+
+	f.subservices = mgr
+	f.subservicesWatcher = services.NewFailureWatcher()
+	f.subservicesWatcher.WatchManager(f.subservices)
 	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
+
 	return f, nil
 }
 
 // starting implements services.Service.
-func (f *Frontend) starting(_ context.Context) error {
-	return nil
+func (f *Frontend) starting(ctx context.Context) error {
+	return services.StartManagerAndAwaitHealthy(ctx, f.subservices)
 }
 
 // running implements services.Service.
 func (f *Frontend) running(ctx context.Context) error {
-	<-ctx.Done()
-	return nil
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-f.subservicesWatcher.Chan():
+		return errors.Wrap(err, "ingest limits frontend subservice failed")
+	}
 }
 
 // stopping implements services.Service.
 func (f *Frontend) stopping(_ error) error {
-	return nil
+	return services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 }
 
 // ExceedsLimits implements logproto.IngestLimitsFrontendClient.

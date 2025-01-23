@@ -41,19 +41,21 @@ type ClientConfig struct {
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
 }
 
-func (cfg ClientConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ingest-limits-frontend.grpc-client-config", f)
-	cfg.PoolConfig.RegisterFlagsWithPrefix("ingest-limits-frontend", f)
+func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".limits-client", f)
+	cfg.PoolConfig.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // PoolConfig contains the config for a pool of ingest-limits clients.
 type PoolConfig struct {
-	ClientCleanupPeriod time.Duration `yaml:"client_cleanup_period"`
-	RemoteTimeout       time.Duration `yaml:"remote_timeout"`
+	ClientCleanupPeriod     time.Duration `yaml:"client_cleanup_period"`
+	HealthCheckIngestLimits bool          `yaml:"health_check_ingest_limits"`
+	RemoteTimeout           time.Duration `yaml:"remote_timeout"`
 }
 
 func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.DurationVar(&cfg.ClientCleanupPeriod, prefix+".client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingesters that have gone away.")
+	f.DurationVar(&cfg.ClientCleanupPeriod, prefix+".client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingest-limits that have gone away.")
+	f.BoolVar(&cfg.HealthCheckIngestLimits, prefix+".health-check-ingest-limits", true, "Run a health check on each ingest-limits client during periodic cleanup.")
 	f.DurationVar(&cfg.RemoteTimeout, prefix+".remote-timeout", 1*time.Second, "Timeout for the health check.")
 }
 
@@ -100,18 +102,12 @@ func getGRPCInterceptors(cfg *ClientConfig) ([]grpc.UnaryClientInterceptor, []gr
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientHTTPHeadersInterceptor)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
-	// if !cfg.Internal {
-	// 	unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
-	// }
 	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(limitsClientRequestDuration))
 
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
 	streamInterceptors = append(streamInterceptors, server.StreamClientHTTPHeadersInterceptor)
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
-	// if !cfg.Internal {
-	// 	streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
-	// }
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(limitsClientRequestDuration))
 
 	return unaryInterceptors, streamInterceptors
@@ -127,7 +123,7 @@ func NewIngestLimitsClientPool(
 ) *ring_client.Pool {
 	poolCfg := ring_client.PoolConfig{
 		CheckInterval:      cfg.ClientCleanupPeriod,
-		HealthCheckEnabled: false, // TODO: Enable configuration of health checking. See queriers.
+		HealthCheckEnabled: cfg.HealthCheckIngestLimits,
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
 	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, limitsClients, logger)

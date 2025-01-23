@@ -43,25 +43,26 @@ type ringFunc func(context.Context, logproto.IngestLimitsClient) (*logproto.GetS
 // RingIngestLimitsService is an IngestLimitsService that uses the ring to read the responses
 // from all limits backends.
 type RingIngestLimitsService struct {
-	ring   ring.ReadRing
-	pool   *ring_client.Pool
+	logger log.Logger
+
+	ring ring.ReadRing
+	pool *ring_client.Pool
+
 	limits Limits
 }
 
 // NewRingIngestLimitsService returns a new RingIngestLimitsClient.
-func NewRingIngestLimitsService(cfg Config, ring ring.ReadRing, limits Limits, logger log.Logger) *RingIngestLimitsService {
-	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return NewIngestLimitsClient(cfg.ClientConfig, addr)
-	})
+func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limits Limits, logger log.Logger) *RingIngestLimitsService {
 	return &RingIngestLimitsService{
+		logger: logger,
 		ring:   ring,
-		pool:   NewIngestLimitsClientPool("ingest-limits", cfg.ClientConfig.PoolConfig, ring, factory, logger),
+		pool:   pool,
 		limits: limits,
 	}
 }
 
 func (s *RingIngestLimitsService) forAllBackends(ctx context.Context, f ringFunc) ([]Response, error) {
-	replicaSet, err := s.ring.GetReplicationSetForOperation(LimitsRead)
+	replicaSet, err := s.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
