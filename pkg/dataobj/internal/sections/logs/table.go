@@ -2,41 +2,96 @@ package logs
 
 import (
 	"cmp"
+	"context"
 	"fmt"
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
 // A table is a collection of columns that form a logs section.
 type table struct {
-	streamID  *dataset.MemColumn
-	timestamp *dataset.MemColumn
-	metadatas []*dataset.MemColumn
-	message   *dataset.MemColumn
+	StreamID  *tableColumn
+	Timestamp *tableColumn
+	Metadatas []*tableColumn
+	Message   *tableColumn
 }
 
-// Columns returns the set of columns of the table. The return order of columns
-// is always stream ID, timestamp, metadata (one per column), and log messages.
-func (t *table) Columns() []*dataset.MemColumn {
-	cols := make([]*dataset.MemColumn, 0, 3+len(t.metadatas))
-	cols = append(cols, t.streamID, t.timestamp)
-	cols = append(cols, t.metadatas...)
-	cols = append(cols, t.message)
-	return cols
+type tableColumn struct {
+	*dataset.MemColumn
+
+	Type logsmd.ColumnType
+}
+
+var _ dataset.Dataset = (*table)(nil)
+
+// ListColumns implements [dataset.Dataset].
+func (t *table) ListColumns(_ context.Context) result.Seq[dataset.Column] {
+	return result.Iter(func(yield func(dataset.Column) bool) error {
+		if !yield(t.StreamID) {
+			return nil
+		}
+		if !yield(t.Timestamp) {
+			return nil
+		}
+		for _, metadata := range t.Metadatas {
+			if !yield(metadata) {
+				return nil
+			}
+		}
+		if !yield(t.Message) {
+			return nil
+		}
+
+		return nil
+	})
+}
+
+// ListPages implements [dataset.Dataset].
+func (t *table) ListPages(ctx context.Context, columns []dataset.Column) result.Seq[dataset.Pages] {
+	return result.Iter(func(yield func(dataset.Pages) bool) error {
+		for _, c := range columns {
+			pages, err := result.Collect(c.ListPages(ctx))
+			if err != nil {
+				return err
+			} else if !yield(dataset.Pages(pages)) {
+				return nil
+			}
+		}
+
+		return nil
+	})
+}
+
+// ReadPages implements [dataset.Dataset].
+func (t *table) ReadPages(ctx context.Context, pages []dataset.Page) result.Seq[dataset.PageData] {
+	return result.Iter(func(yield func(dataset.PageData) bool) error {
+		for _, p := range pages {
+			data, err := p.ReadPage(ctx)
+			if err != nil {
+				return err
+			} else if !yield(data) {
+				return nil
+			}
+		}
+
+		return nil
+	})
 }
 
 // Size returns the total size of the table in bytes.
 func (t *table) Size() int {
 	var size int
 
-	size += t.streamID.ColumnInfo().CompressedSize
-	size += t.timestamp.ColumnInfo().CompressedSize
-	for _, metadata := range t.metadatas {
+	size += t.StreamID.ColumnInfo().CompressedSize
+	size += t.Timestamp.ColumnInfo().CompressedSize
+	for _, metadata := range t.Metadatas {
 		size += metadata.ColumnInfo().CompressedSize
 	}
-	size += t.message.ColumnInfo().CompressedSize
+	size += t.Message.ColumnInfo().CompressedSize
 
 	return size
 }
@@ -138,6 +193,30 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 	return col
 }
 
+// Message gets or creates a message column for the buffer.
+func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
+	if b.message != nil {
+		return b.message
+	}
+
+	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
+		PageSizeHint:       pageSize,
+		Value:              datasetmd.VALUE_TYPE_STRING,
+		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
+		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
+		CompressionOptions: compressionOpts,
+	})
+	if err != nil {
+		// We control the Value/Encoding tuple so this can't fail; if it does,
+		// we're left in an unrecoverable state where nothing can be encoded
+		// properly so we panic.
+		panic(fmt.Sprintf("creating messages column: %v", err))
+	}
+
+	b.message = col
+	return col
+}
+
 // Reset resets the buffer to its initial state.
 func (b *tableBuffer) Reset() {
 	if b.streamID != nil {
@@ -201,7 +280,7 @@ func (b *tableBuffer) Flush() (*table, error) {
 		timestamp, _ = b.timestamp.Flush()
 		messages, _  = b.message.Flush()
 
-		metadatas = make([]*dataset.MemColumn, 0, len(b.metadatas))
+		metadatas = make([]*tableColumn, 0, len(b.metadatas))
 	)
 
 	for _, metadataBuilder := range b.metadatas {
@@ -215,42 +294,18 @@ func (b *tableBuffer) Flush() (*table, error) {
 		// other columns. Since adding NULLs isn't free, we don't call Backfill
 		// here.
 		metadata, _ := metadataBuilder.Flush()
-		metadatas = append(metadatas, metadata)
+		metadatas = append(metadatas, &tableColumn{metadata, logsmd.COLUMN_TYPE_METADATA})
 	}
 
 	// Sort metadata columns by name for consistency.
-	slices.SortFunc(metadatas, func(a, b *dataset.MemColumn) int {
+	slices.SortFunc(metadatas, func(a, b *tableColumn) int {
 		return cmp.Compare(a.ColumnInfo().Name, b.ColumnInfo().Name)
 	})
 
 	return &table{
-		streamID:  streamID,
-		timestamp: timestamp,
-		metadatas: metadatas,
-		message:   messages,
+		StreamID:  &tableColumn{streamID, logsmd.COLUMN_TYPE_STREAM_ID},
+		Timestamp: &tableColumn{timestamp, logsmd.COLUMN_TYPE_TIMESTAMP},
+		Metadatas: metadatas,
+		Message:   &tableColumn{messages, logsmd.COLUMN_TYPE_MESSAGE},
 	}, nil
-}
-
-// Message gets or creates a message column for the buffer.
-func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
-	if b.message != nil {
-		return b.message
-	}
-
-	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_STRING,
-		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
-		CompressionOptions: compressionOpts,
-	})
-	if err != nil {
-		// We control the Value/Encoding tuple so this can't fail; if it does,
-		// we're left in an unrecoverable state where nothing can be encoded
-		// properly so we panic.
-		panic(fmt.Sprintf("creating messages column: %v", err))
-	}
-
-	b.message = col
-	return col
 }

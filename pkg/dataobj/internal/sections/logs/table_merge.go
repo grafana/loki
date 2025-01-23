@@ -2,15 +2,18 @@ package logs
 
 import (
 	"cmp"
-	"container/heap"
 	"context"
+	"fmt"
+	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
 // mergeTables merges the provided sorted tables into a new single sorted table
-// using heap sort.
+// using k-way merge.
 func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, tables []*table) (*table, error) {
 	buf.Reset()
 
@@ -21,17 +24,10 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 	)
 
 	var (
-		// columnSets holds the set of columns per table. Each set of columns
-		// *must* match the following order specified by [table.Columns], which is
-		// stream ID, timestamp, metadata (one per column), and log messages.
-		columnSets   = make([][]*dataset.MemColumn, 0, len(tables))
-		tablePullers = make([]pullRow, 0, len(tables)) // Pull iterator per table.
+		tableSequences = make([]*tableSequence, 0, len(tables))
 	)
 	for _, t := range tables {
-		columns := t.Columns()
-
-		dset := dataset.FromMemory(columns)
-		dsetColumns, err := result.Collect(dset.ListColumns(context.Background()))
+		dsetColumns, err := result.Collect(t.ListColumns(context.Background()))
 		if err != nil {
 			return nil, err
 		}
@@ -40,98 +36,96 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 		next, stop := result.Pull(seq)
 		defer stop()
 
-		columnSets = append(columnSets, columns)
-		tablePullers = append(tablePullers, next)
+		tableSequences = append(tableSequences, &tableSequence{
+			columns: dsetColumns,
+
+			pull: next, stop: stop,
+		})
 	}
 
-	var h rowHeap
-	heap.Init(&h)
+	maxValue := result.Value(dataset.Row{
+		Index: math.MaxInt,
+		Values: []dataset.Value{
+			dataset.Int64Value(math.MaxInt64),
+			dataset.Int64Value(math.MaxInt64),
+		},
+	})
 
-	// Initialize our heap with the first row of each table.
-	for tableIndex, pull := range tablePullers {
-		result, ok := pull()
-		if !ok {
-			continue // Empty table.
-		}
+	var rows int
 
-		row, err := result.Value()
+	tree := loser.New(tableSequences, maxValue, tableSequenceValue, rowResultLess, tableSequenceStop)
+	for tree.Next() {
+		seq := tree.Winner()
+
+		row, err := tableSequenceValue(seq).Value()
 		if err != nil {
 			return nil, err
 		}
-		heap.Push(&h, &rowHeapElement{Row: row, TableIndex: tableIndex})
-	}
 
-	// Now, we can heap sort by popping the smallest row and appending it to our
-	// output columns. Every time we pop an element, we'll pull the next element
-	// from that table and push it onto the heap.
-	//
-	// We continue this process until the heap is empty, completing the sort.
-	var rows int
+		for i, column := range seq.columns {
+			// column is guaranteed to be a *tableColumn since we got it from *table.
+			column := column.(*tableColumn)
 
-	for h.Len() > 0 {
-		elem := heap.Pop(&h).(*rowHeapElement)
+			// dataset.Iter returns values in the same order as the number of
+			// columns.
+			value := row.Values[i]
 
-		_ = streamIDBuilder.Append(rows, elem.Row.Values[0])
-		_ = timestampBuilder.Append(rows, elem.Row.Values[1])
-
-		columns := columnSets[elem.TableIndex]
-
-		// Metadata columns (skipping over stream ID, timestamp at the front and
-		// messages at the back).
-		for i, val := range elem.Row.Values[2 : len(elem.Row.Values)-1] {
-			columnIndex := i + 2
-			key := columns[columnIndex].Info.Name
-
-			columnBuilder := buf.Metadata(key, pageSize, compressionOpts)
-			_ = columnBuilder.Append(rows, val)
-		}
-
-		_ = messageBuilder.Append(rows, elem.Row.Values[len(elem.Row.Values)-1])
-		rows++
-
-		// Pull the next row from the table.
-		if result, ok := tablePullers[elem.TableIndex](); ok {
-			row, err := result.Value()
-			if err != nil {
-				return nil, err
+			switch column.Type {
+			case logsmd.COLUMN_TYPE_STREAM_ID:
+				_ = streamIDBuilder.Append(rows, value)
+			case logsmd.COLUMN_TYPE_TIMESTAMP:
+				_ = timestampBuilder.Append(rows, value)
+			case logsmd.COLUMN_TYPE_METADATA:
+				columnBuilder := buf.Metadata(column.Info.Name, pageSize, compressionOpts)
+				_ = columnBuilder.Append(rows, value)
+			case logsmd.COLUMN_TYPE_MESSAGE:
+				_ = messageBuilder.Append(rows, value)
+			default:
+				return nil, fmt.Errorf("unknown column type %s", column.Type)
 			}
-			heap.Push(&h, &rowHeapElement{Row: row, TableIndex: elem.TableIndex})
 		}
+
+		rows++
 	}
 
 	return buf.Flush()
 }
 
-type pullRow func() (result.Result[dataset.Row], bool)
+type tableSequence struct {
+	curValue result.Result[dataset.Row]
 
-type rowHeap []*rowHeapElement
+	columns []dataset.Column
 
-type rowHeapElement struct {
-	Row        dataset.Row
-	TableIndex int
+	pull func() (result.Result[dataset.Row], bool)
+	stop func()
 }
 
-func (h rowHeap) Len() int {
-	return len(h)
+var _ loser.Sequence = (*tableSequence)(nil)
+
+func (seq *tableSequence) Next() bool {
+	val, ok := seq.pull()
+	seq.curValue = val
+	return ok
 }
 
-func (h rowHeap) Less(i, j int) bool {
-	return compareRows(h[i].Row, h[j].Row) < 0
-}
+func tableSequenceValue(seq *tableSequence) result.Result[dataset.Row] { return seq.curValue }
 
-func (h rowHeap) Swap(i, j int) {
-	h[i], h[j] = h[j], h[i]
-}
+func tableSequenceStop(seq *tableSequence) { seq.stop() }
 
-func (h *rowHeap) Push(x interface{}) {
-	*h = append(*h, x.(*rowHeapElement))
-}
+func rowResultLess(a, b result.Result[dataset.Row]) bool {
+	var (
+		aRow, aErr = a.Value()
+		bRow, bErr = b.Value()
+	)
 
-func (h *rowHeap) Pop() interface{} {
-	n := len(*h)
-	x := (*h)[n-1]
-	*h = (*h)[:n-1]
-	return x
+	// Put errors first so we return errors early.
+	if aErr != nil {
+		return true
+	} else if bErr != nil {
+		return false
+	}
+
+	return compareRows(aRow, bRow) < 0
 }
 
 // compareRows compares two rows by their first two columns. compareRows panics

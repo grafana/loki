@@ -16,7 +16,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
@@ -216,23 +215,14 @@ func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
 		_ = logsEnc.Discard()
 	}()
 
-	dset := dataset.FromMemory(section.Columns())
-
-	dsetColumns, err := result.Collect(dset.ListColumns(context.Background())) // dset is in memory; "real" context not needed.
-	if err != nil {
-		return fmt.Errorf("listing columns: %w", err)
-	}
-
-	// Encode our columns. The slice order here *must* match the order in
-	// [table.Columns]!
 	{
-		errs := make([]error, 0, len(dsetColumns))
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, dsetColumns[0]))
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, dsetColumns[1]))
-		for _, mdCol := range dsetColumns[2 : len(dsetColumns)-1] {
-			errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_METADATA, mdCol))
+		errs := make([]error, 0, len(section.Metadatas)+3)
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
+		for _, md := range section.Metadatas {
+			errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_METADATA, md))
 		}
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_MESSAGE, dsetColumns[len(dsetColumns)-1]))
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
