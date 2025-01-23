@@ -28,7 +28,7 @@ type mockReadRing struct {
 	replicationSet ring.ReplicationSet
 }
 
-func (m *mockReadRing) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
+func (m *mockReadRing) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
 	return m.replicationSet, nil
 }
 
