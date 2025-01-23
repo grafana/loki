@@ -6,7 +6,7 @@ local selectors = {
   queryFrontend: selector().queryFrontend(),
   querier: selector().querier(),
   ingester: selector().ingester(),
-  ingesterZoneAware: selector().ingesterZoneAware(),
+  ingesterZone: selector().ingesterZone(),
   querierOrIndexGateway: selector().querier().indexGateway(),
   indexGateway: selector().indexGateway(),
   bloomGateway: selector().bloomGateway(),
@@ -85,7 +85,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.cortexGw.route(http_routes).build(),
+            selectors.cortexGw.route(http_routes).build(brackets=true),
           )
         )
       )
@@ -106,7 +106,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.queryFrontend.route(http_routes).build(),
+            selectors.queryFrontend.route(http_routes).build(brackets=true),
           )
         )
       )
@@ -128,7 +128,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.querier.route(http_routes).build(),
+            selectors.querier.route(http_routes).build(brackets=true),
           )
         )
       )
@@ -150,7 +150,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.ingester.route(grpc_routes).build(),
+            selectors.ingester.route(grpc_routes).build(brackets=true),
           )
         )
       )
@@ -160,20 +160,20 @@ local grpc_routes = '(%s)' % std.join('|', [
         $.row('Ingester - Zone Aware')
         .addPanel(
           $.newQueryPanel('QPS') +
-          $.newQpsPanel('loki_request_duration_seconds_count{%s}' % selectors.ingesterZoneAware.route(grpc_routes).build())
+          $.newQpsPanel('loki_request_duration_seconds_count{%s}' % selectors.ingesterZone.route(grpc_routes).build())
         )
         .addPanel(
           $.newQueryPanel('Latency', 'ms') +
           utils.latencyRecordingRulePanel(
             'loki_request_duration_seconds',
-            selectors.ingesterZoneAware.route(grpc_routes).list(),
+            selectors.ingesterZone.route(grpc_routes).list(),
             sum_by=['route']
           )
         )
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.ingesterZoneAware.route(grpc_routes).build(),
+            selectors.ingesterZone.route(grpc_routes).build(brackets=true),
           )
         )
       )
@@ -195,7 +195,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.indexGateway.route(grpc_routes).build(),
+            selectors.indexGateway.route(grpc_routes).build(brackets=true),
           )
         )
       )
@@ -217,7 +217,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.bloomGateway.route(grpc_routes).build(),
+            selectors.bloomGateway.route(grpc_routes).build(brackets=true),
           )
         )
       )
@@ -253,7 +253,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         .addPanel(
           $.p99LatencyByPod(
             'loki_index_request_duration_seconds',
-            selectors.querier.label('operation').neq('index_chunk').build()
+            selectors.querier.label('operation').neq('index_chunk').build(brackets=true)
           )
         )
       )
