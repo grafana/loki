@@ -1,7 +1,4 @@
 ---
-_build:
-  list: false
-noindex: true
 title: Size the cluster 
 menuTitle: Size the cluster 
 description: Provides a tool that generates a Helm Chart values.yaml file based on expected ingestion, retention rate, and node type, to help size your Grafana deployment.
@@ -17,162 +14,58 @@ weight: 100
 <!-- vale Grafana.Quotes = NO -->
 <!-- vale Grafana.Quotes = YES -->
 
-This tool helps to generate a Helm Charts `values.yaml` file based on specified
- expected ingestion, retention rate and node type. It will always configure a
- [scalable]({{< relref "../../get-started/deployment-modes#simple-scalable" >}}) deployment. The storage needs to be configured after generation.
+This section is a guide to size base resource needs of a Loki cluster.
 
-<div id="app">
-  <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
-  <select name="node-type" v-model="node"> 
-  <option v-for="node of nodes">{{ node }}</option>
-  </select>
-  <label>Ingest<i class="fa fa-question" v-on:mouseover="help='ingest'" v-on:mouseleave="help=null"></i></label>
-  <div style="display: flex;">
-    <input style="padding-right:4.5em;" v-model="ingestInGB" name="ingest" placeholder="Desired ingest in GB/day" type="number" max="1048576" min="0"/>
-    <span style="margin: auto auto auto -4em;">GB/day</span>
-  </div>
-  <label>Log retention period<i class="fa fa-question" v-on:mouseover="help='retention'" v-on:mouseleave="help=null"></i></label>
-  <div style="display: flex;">
-    <input style="padding-right:4.5em;"  v-model="retention" name="retention" placeholder="Desired retention period in days" type="number" min="0"/>
-    <span style="margin: auto auto auto -4em;">days</span>
-  </div>
-  <label>Query performance<i class="fa fa-question" v-on:mouseover="help='queryperf'" v-on:mouseleave="help=null"></i></label>
-  <div id="queryperf" style="display: inline-flex;">
-  <label for="basic">
-  <input type="radio" id="basic" value="Basic" v-model="queryperf"/>Basic
-  </label>
-  <label for="super">
-  <input type="radio" id="super" value="Super" v-model="queryperf"/>Super
-  </label>
-  </div>
+Based on the expected ingestion volume, Loki clusters can be categorised into three tiers. Recommendations below are based on p90 resource utilisations of the relevant components. Each tab represents a different tier.
+Please use this document as a rough guide to specify CPU and Memory requests in your deployment. This is only documented for [microservices/distributed](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode) mode at this time.
 
-  <div v-if="clusterSize">
-    <table>
-    <tr>
-      <th>Read Replicas</th>
-      <th>Write Replicas</th>
-      <th>Nodes</th>
-      <th>Cores</th>
-      <th>Memory</th>
-    </tr>
-    <tr>
-      <td>{{ clusterSize.TotalReadReplicas }}</td>
-      <td>{{ clusterSize.TotalWriteReplicas }}</td>
-      <td>{{ clusterSize.TotalNodes}}</td>
-      <td>{{ clusterSize.TotalCoresRequest}}</td>
-      <td>{{ clusterSize.TotalMemoryRequest}} GB</td>
-    </tr>
-    </table>
-  </div>
+Query resource needs can greatly vary with usage patterns and correct configurations. General notes on Query Performance:
+- The rule of thumb is to run as small and as many queriers as possible. Unoptimised queries can easily require 10x of the suggested querier resources below in all tiers. Running horizontal autoscaling will be most cost effective solution to meet the demand.
+- Use this [blog post](https://grafana.com/blog/2023/12/28/the-concise-guide-to-loki-how-to-get-the-most-out-of-your-query-performance/) to adopt best practices for optimised query performance.
+- Parallel-querier and related components can be sized the same along with queriers to start, depending on how much Loki rules are used.
+- Large Loki clusters benefit from a disk based caching solution, memcached-extstore. Please see the detailed [blog post](https://grafana.com/blog/2023/08/23/how-we-scaled-grafana-cloud-logs-memcached-cluster-to-50tb-and-improved-reliability/) and read more about [memcached/nvm-caching here](https://memcached.org/blog/nvm-caching/).
+- If you’re running a cluster that handles less than 30TB/day (~1PB/month) ingestion, we do not recommend configuring memcached-extstore. The additional operational complexity does not justify the savings.
 
-  <a v-bind:href="helmURL" class="primary-button">Generate and download values file</a>
 
-  <blockquote v-if="help">
-    <span v-if="help === 'ingest'">
-    Defines the log volume in gigabytes, ie 1e+9 bytes, expected to be ingested each day.
-    </span>
-    <span v-else-if="help === 'node'">
-    Defines the node type of the Kubernetes cluster. Is a vendor or type
-    missing? If so, add it to <code>pkg/sizing/node.go</code>.
-    </span>
-    <span v-else-if="help === 'retention'">
-    Defines how long the ingested logs should be kept.
-    </span>
-    <span v-else-if="help === 'queryperf'">
-    Defines the expected query performance. Basic is sized for a max query throughput of around 3GB/s. Super aims for 25% more throughput.
-    </span>
-  </blockquote>
-</div>
+{{< tabs >}}
+{{< tab-content name="Less than 100TB/month (3TB/day)" >}}
+| Component        | CPU Request | Memory Request (Gi)| Base Replicas | Total CPU Req |Total Mem Req (Gi)|
+|------------------|-------------|-------------------|----------------|----------------|-----------------|
+| Ingester         | 2           | 4                 | 6              | 12             | 36              |
+| Distributor      | 2           | 0.5               | 4              | 8              | 2               |
+| Index gateway    | 0.5         | 2                 | 4              | 2              | 8               |
+| Querier          | 1           | 1                 | 10             | 10             | 10              |
+| Query-frontend   | 1           | 2                 | 2              | 2              | 4               |
+| Query-scheduler  | 1           | 0.5               | 2              | 2              | 1               |
+| Compactor        | 2           | 10                | 1 (Singleton)  | 2              | 10              |
+{{< /tab-content >}}
+{{< tab-content name="100TB to 1PB /month (3-30TB/day)" >}}
+| Component        | CPU Request | Memory Request (Gi)| Base Replicas | Total CPU Req |Total Mem Req (Gi)|
+|------------------|-------------|-------------------|----------------|----------------|-----------------|
+| Ingester         | 2           | 6                 | 90             | 180            | 540             |
+| Distributor      | 2           | 1                 | 40             | 80             | 40              |
+| Index gateway    | 0.5         | 4                 | 10             | 5              | 40              |
+| Querier          | 1.5         | 2                 | 100            | 150            | 200             |
+| Query-frontend   | 1           | 2                 | 8              | 8              | 16              |
+| Query-scheduler  | 1           | 0.5               | 2              | 2              | 1               |
+| Compactor        | 6           | 20                | 1 (Singleton)  | 6              | 20              |
+{{< /tab-content >}}
+{{< tab-content name="~1PB/month (30TB/day)" >}}
+| Component        | CPU Request | Memory Request (Gi)| Base Replicas | Total CPU Req |Total Mem Req (Gi)|
+|------------------|-------------|-------------------|----------------|----------------|-----------------|
+| Ingester         | 4           | 8                 | 150            | 600            | 1200            |
+| Distributor      | 2           | 1                 | 100            | 200            | 100             |
+| Index gateway    | 1           | 4                 | 20             | 20             | 80              |
+| Querier          | 1.5         | 3                 | 250            | 375            | 750             |
+| Query-frontend   | 1           | 4                 | 16             | 16             | 64              |
+| Query-scheduler  | 2           | 0.5               | 2              | 4              | 1               |
+| Compactor        | 6           | 40                | 1 (Singleton)  | 6              | 40              |
+{{< /tab-content >}}
+{{< /tabs >}}   
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-<style>
+<h3>Instance Types</h3>
 
-#app label.icon.question::after {
-  content: '\f29c';
-  display: inline-block;
-  font: normal normal normal 14px/1 FontAwesome;
-  padding-left: 8px;
-}
-
-#app #queryperf label {
-  padding: 1em;
-  text-align: center;
-}
-
-#app #queryperf label input {
-  display: block;
-}
-
-#app a {
-  padding: .5em;
-
-}
-</style>
-
-<script>
-const API_URL = `https://logql-analyzer.grafana.net/next/api/sizing`
-const { createApp } = Vue
-
-createApp({
-  data() {
-    return {
-      nodes: ["Loading..."],
-      node: "Loading...",
-      bytesDayIngest: null,
-      retention: null,
-      queryperf: 'Basic',
-      help: null,
-      clusterSize: null
-    }
-  },
-
-  computed: {
-    helmURL() {
-      return `${API_URL}/helm?${this.queryString}`
-    },
-    queryString() {
-      return `node-type=${encodeURIComponent(this.node)}&ingest=${encodeURIComponent(this.bytesDayIngest)}&retention=${encodeURIComponent(this.retention)}&queryperf=${encodeURIComponent(this.queryperf)}`
-    },
-    ingestInGB: {
-	get () {
-                if (this.bytesDayIngest == null) {
-                    return null
-                }
-                // Convert to GB
-                return this.bytesDayIngest / 1000 / 1000 / 1000
-	},
-	set (gbDayIngest) {
-		console.log(gbDayIngest)
-		this.bytesDayIngest = gbDayIngest * 1000 * 1000 * 1000
-		console.log(this.bytesDayIngest)
-	}
-    }
-  },
-
-  created() {
-    // fetch on init
-    this.fetchNodeTypes()
-  },
-
-  methods: {
-    async fetchNodeTypes() {
-      const url = `${API_URL}/nodes`
-      this.nodes = await (await fetch(url,{mode: 'cors'})).json()
-    },
-    async calculateClusterSize() {
-      if (this.node == 'Loading...' || this.bytesDayIngest== null || this.retention == null) {
-        return
-      }
-      const url = `${API_URL}/cluster?${this.queryString}`
-      this.clusterSize = await (await fetch(url,{mode: 'cors'})).json()
-    }
-  },
-
-  watch: {
-    node:           'calculateClusterSize',
-    bytesDayIngest: 'calculateClusterSize',
-    retention:      'calculateClusterSize',
-    queryperf:      'calculateClusterSize'
-  }
-}).mount('#app')
-</script>
+These are the node types we suggest from various cloud providers. Please see the relevant specifications in the provider's documentation.
+- For AWS any General Purpose machine available in your region that belongs to `M6` instance family and above for Intel chips and `T2` machine family and above for ARM chips.
+- For GCP any General Purpose machine available in your region that belongs to to `E2` instance family and above.
+- For memcached-extstore nodes we suggest storage optimised instances that can has NVMe storage so that the additional disk space is utilized.

@@ -25,6 +25,7 @@ type metrics struct {
 	flushTime  prometheus.Histogram
 
 	sizeEstimate prometheus.Gauge
+	builtSize    prometheus.Histogram
 }
 
 // newMetrics creates a new set of [metrics] for instrumenting data objects.
@@ -104,6 +105,18 @@ func newMetrics() *metrics {
 
 			Help: "Current estimated size of the data object in bytes.",
 		}),
+
+		builtSize: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "dataobj",
+			Name:      "built_size_bytes",
+
+			Help: "Distribution of constructed data object sizes in bytes.",
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
+		}),
 	}
 }
 
@@ -131,6 +144,7 @@ func (m *metrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.flushTime))
 
 	errs = append(errs, reg.Register(m.sizeEstimate))
+	errs = append(errs, reg.Register(m.builtSize))
 
 	return errors.Join(errs...)
 }
@@ -141,9 +155,14 @@ func (m *metrics) Unregister(reg prometheus.Registerer) {
 	m.streams.Unregister(reg)
 	m.encoding.Unregister(reg)
 
+	reg.Unregister(m.shaPrefixSize)
+	reg.Unregister(m.targetPageSize)
+	reg.Unregister(m.targetObjectSize)
+
 	reg.Unregister(m.appendTime)
 	reg.Unregister(m.buildTime)
 	reg.Unregister(m.flushTime)
 
 	reg.Unregister(m.sizeEstimate)
+	reg.Unregister(m.builtSize)
 }

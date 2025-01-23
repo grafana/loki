@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
 // A Stream is an individual stream within a data object.
@@ -333,7 +334,7 @@ func encodeColumn(enc *encoding.StreamsEncoder, columnType streamsmd.ColumnType,
 func (s *Streams) Reset() {
 	s.lastID.Store(0)
 	clear(s.lookup)
-	s.ordered = s.ordered[:0]
+	s.ordered = sliceclear.Clear(s.ordered)
 	s.currentLabelsSize = 0
 	s.globalMinTimestamp = time.Time{}
 	s.globalMaxTimestamp = time.Time{}

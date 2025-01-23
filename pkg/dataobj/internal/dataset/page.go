@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"sync"
 
 	"github.com/golang/snappy"
 	"github.com/klauspost/compress/zstd"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
 // Helper types.
@@ -88,39 +90,99 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 	}
 
 	var (
-		bitmapReader         = bytes.NewReader(p.Data[n : n+int(bitmapSize)])
-		compressedDataReader = bytes.NewReader(p.Data[n+int(bitmapSize):])
+		bitmapData           = p.Data[n : n+int(bitmapSize)]
+		compressedValuesData = p.Data[n+int(bitmapSize):]
+
+		bitmapReader           = bytes.NewReader(bitmapData)
+		compressedValuesReader = bytes.NewReader(compressedValuesData)
 	)
 
 	switch compression {
 	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
-		return bitmapReader, io.NopCloser(compressedDataReader), nil
+		return bitmapReader, io.NopCloser(compressedValuesReader), nil
 
 	case datasetmd.COMPRESSION_TYPE_SNAPPY:
-		sr := snappy.NewReader(compressedDataReader)
-		return bitmapReader, io.NopCloser(sr), nil
+		sr := snappyPool.Get().(*snappy.Reader)
+		sr.Reset(compressedValuesReader)
+		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
+			snappyPool.Put(sr)
+			return nil
+		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		zr, err := zstd.NewReader(compressedDataReader)
-		if err != nil {
-			return nil, nil, fmt.Errorf("opening zstd reader: %w", err)
-		}
-		return bitmapReader, newZstdReader(zr), nil
+		zr := &fixedZstdReader{page: p, data: compressedValuesData}
+		return bitmapReader, zr, nil
 	}
 
 	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
 }
 
-// zstdReader implements [io.ReadCloser] for a [zstd.Decoder].
-type zstdReader struct{ *zstd.Decoder }
-
-// newZstdReader returns a new [io.ReadCloser] for a [zstd.Decoder].
-func newZstdReader(dec *zstd.Decoder) io.ReadCloser {
-	return &zstdReader{Decoder: dec}
+var snappyPool = sync.Pool{
+	New: func() interface{} {
+		return snappy.NewReader(nil)
+	},
 }
 
-// Close implements [io.Closer].
-func (r *zstdReader) Close() error {
-	r.Decoder.Close()
+type closerFunc struct {
+	io.Reader
+	onClose func() error
+}
+
+func (c *closerFunc) Close() error { return c.onClose() }
+
+// globalZstdDecoder is a shared zstd decoder for [fixedZstdReader]. Concurrent
+// uses of globalZstdDecoder are only safe when using [zstd.Decoder.DecodeAll].
+var globalZstdDecoder = func() *zstd.Decoder {
+	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+	if err != nil {
+		panic(err)
+	}
+	return d
+}()
+
+// fixedZstdReader is an [io.ReadCloser] that decompresses a zstd buffer in a
+// single pass.
+type fixedZstdReader struct {
+	page *MemPage
+	data []byte
+
+	uncompressedBuf *bytes.Buffer
+	closed          bool
+}
+
+func (r *fixedZstdReader) Read(p []byte) (int, error) {
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
+
+	if r.uncompressedBuf != nil {
+		return r.uncompressedBuf.Read(p)
+	}
+
+	// We decompress the entire buffer in a single pass. While a pooled zstd
+	// reader would require less memory and would allow us to stream values as we
+	// decompress, pooling zstd decoders is difficult to do properly, as it
+	// requires a finalizer to release resources, and the goroutines spawned by
+	// decoders prevent the finalizer from ever being called.
+	//
+	// To make efficient zstd decoding less error prone, we opt for this instead.
+	r.uncompressedBuf = bufpool.Get(r.page.Info.UncompressedSize)
+	r.uncompressedBuf.Reset()
+
+	buf, err := globalZstdDecoder.DecodeAll(r.data, r.uncompressedBuf.AvailableBuffer())
+	if err != nil {
+		return 0, fmt.Errorf("decoding zstd: %w", err)
+	}
+	_, _ = r.uncompressedBuf.Write(buf)
+
+	return r.uncompressedBuf.Read(p)
+}
+
+func (r *fixedZstdReader) Close() error {
+	if r.uncompressedBuf != nil {
+		bufpool.Put(r.uncompressedBuf)
+		r.uncompressedBuf = nil
+	}
+	r.closed = true
 	return nil
 }
