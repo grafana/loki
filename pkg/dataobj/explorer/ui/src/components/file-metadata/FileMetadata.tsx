@@ -4,45 +4,10 @@ import { DateWithHover } from "../common/DateWithHover";
 import { Link } from "react-router-dom";
 import { useBasename } from "../../contexts/BasenameContext";
 import { CompressionRatio } from "./CompressionRatio";
-
-interface PageInfo {
-  compressed_size: number;
-  uncompressed_size: number;
-  rows_count: number;
-  values_count: number;
-  encoding: string;
-  data_offset: number;
-  data_size: number;
-}
-
-interface ColumnInfo {
-  name?: string;
-  type: string;
-  value_type: string;
-  rows_count: number;
-  compression: string;
-  uncompressed_size: number;
-  compressed_size: number;
-  metadata_offset: number;
-  metadata_size: number;
-  values_count: number;
-  pages: PageInfo[];
-}
-
-interface SectionMetadata {
-  type: string;
-  totalCompressedSize: number;
-  totalUncompressedSize: number;
-  columnCount: number;
-  columns: ColumnInfo[];
-}
+import { FileMetadataResponse } from "../../types/metadata";
 
 interface FileMetadataProps {
-  metadata: {
-    sections: SectionMetadata[];
-    error?: string;
-    lastModified: string;
-  };
+  metadata: FileMetadataResponse;
   filename: string;
   className?: string;
 }
@@ -218,10 +183,10 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
 
               {/* Section Content */}
               <div
-                className={`transition-all duration-700 ease-in-out overflow-hidden ${
+                className={`transition-all duration-700 ease-in-out ${
                   expandedSectionIndex === sectionIndex
-                    ? "max-h-[5000px] opacity-100"
-                    : "max-h-0 opacity-0"
+                    ? "opacity-100"
+                    : "opacity-0 hidden"
                 }`}
               >
                 <div className="p-4 bg-gray-50 dark:bg-gray-800">
