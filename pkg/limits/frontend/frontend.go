@@ -104,8 +104,8 @@ type exceedsLimitsResponse struct {
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var req exceedsLimitsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		level.Error(f.logger).Log("msg", "error unmarshaling request body", "err", err)
-		http.Error(w, "error unmarshaling request body", http.StatusBadRequest)
+		level.Error(f.logger).Log("msg", "error unmarshalling request body", "err", err)
+		http.Error(w, "error unmarshalling request body", http.StatusBadRequest)
 		return
 	}
 
