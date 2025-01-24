@@ -55,8 +55,8 @@ func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Log
 		logger:   logger,
 		tenantID: tenantID,
 		backoff: backoff.New(context.TODO(), backoff.Config{
-			MinBackoff: 10 * time.Millisecond,
-			MaxBackoff: 100 * time.Millisecond,
+			MinBackoff: 50 * time.Millisecond,
+			MaxBackoff: 10 * time.Second,
 		}),
 		builderOnce: sync.Once{},
 	}, nil

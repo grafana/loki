@@ -57,7 +57,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 
 	scratchBuilder := labels.NewBuilder(baseLabels)
 
-	for i := 0; i < 1_000_000; i++ {
+	for i := 0; i < 100_000; i++ {
 		scratchBuilder.Set("__stream_shard__", fmt.Sprintf("%d", i))
 		labels := scratchBuilder.Labels()
 
@@ -74,7 +74,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 		MaxTimestamp: now,
 	}
 
-	f, err := os.OpenFile("/Users/benclive/Downloads/2025-01-24T00_00_00Z.store", os.O_CREATE|os.O_RDWR, 0644)
+	f, err := os.OpenFile("/Users/benclive/Downloads/dataobj_tenant-29_metastore_2025-01-23T12_00_00Z(1).store", os.O_RDONLY, 0644)
 	require.NoError(t, err)
 	defer f.Close()
 
@@ -100,30 +100,30 @@ func BenchmarkWriteMetastores(t *testing.B) {
 			require.NoError(t, err)
 		}
 	})
-	/*
-		// Verify the metastores were written correctly
-		// We expect two metastore files because our test data spans two 12-hour windows
-		for _, window := range []time.Time{
-			now.Truncate(metastoreWindowSize),
-			//now.Add(-12 * time.Hour).Truncate(metastoreWindowSize),
-		} {
-			metastorePath := "tenant-test-tenant/metastore/" + window.Format(time.RFC3339) + ".store"
-			exists, err := bucket.Exists(ctx, metastorePath)
-			require.NoError(t, err)
-			require.True(t, exists, "metastore file should exist: %s", metastorePath)
 
-			reader, err := bucket.Get(ctx, metastorePath)
-			require.NoError(t, err)
+	/* 	// Verify the metastores were written correctly
+	   	// We expect two metastore files because our test data spans two 12-hour windows
+	   	for _, window := range []time.Time{
+	   		now.Truncate(metastoreWindowSize),
+	   		//now.Add(-12 * time.Hour).Truncate(metastoreWindowSize),
+	   	} {
+	   		metastorePath := "tenant-test-tenant/metastore/" + window.Format(time.RFC3339) + ".store"
+	   		exists, err := bucket.Exists(ctx, metastorePath)
+	   		require.NoError(t, err)
+	   		require.True(t, exists, "metastore file should exist: %s", metastorePath)
 
-			buf, err := io.ReadAll(reader)
-			require.NoError(t, err)
+	   		reader, err := bucket.Get(ctx, metastorePath)
+	   		require.NoError(t, err)
 
-			dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf))
-			streamCount := 0
-			for range streams.Iter(ctx, dec) {
-				streamCount++
-			}
-			require.Greater(t, streamCount, 0, "Metastore should contain at least one stream")
-		} */
+	   		buf, err := io.ReadAll(reader)
+	   		require.NoError(t, err)
+
+	   		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf))
+	   		streamCount := 0
+	   		for range streams.Iter(ctx, dec) {
+	   			streamCount++
+	   		}
+	   		require.Greater(t, streamCount, 0, "Metastore should contain at least one stream")
+	   	} */
 
 }

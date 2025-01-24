@@ -192,9 +192,23 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 	}
 
 	dec := encoding.ReadSeekerDecoder(f)
-	cols, err := dec.StreamsDecoder().Columns(context.Background(), &filemd.SectionInfo{
-		Type: filemd.SECTION_TYPE_STREAMS,
-	})
+	sections, err := dec.Sections(context.Background())
+	if err != nil {
+		return err
+	}
+
+	var streamsSectionInfo *filemd.SectionInfo
+	for _, section := range sections {
+		if section.Type == filemd.SECTION_TYPE_STREAMS {
+			streamsSectionInfo = section
+			break
+		}
+	}
+	if streamsSectionInfo == nil {
+		return fmt.Errorf("no streams section found")
+	}
+
+	cols, err := dec.StreamsDecoder().Columns(context.Background(), streamsSectionInfo)
 	if err != nil {
 		return err
 	}
