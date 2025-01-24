@@ -207,6 +207,8 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 	}
 	var streamIDs = make([]*labels.Labels, totalStreams)
 
+	b.streams.Expand(int(totalStreams))
+
 	for result := range streams.Iter(context.Background(), dec) {
 		stream, err := result.Value()
 		if err != nil {
