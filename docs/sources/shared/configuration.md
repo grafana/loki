@@ -895,6 +895,12 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+dataobj_explorer:
+  # Prefix to use when exploring the bucket. If set, only objects under this
+  # prefix will be visible.
+  # CLI flag: -dataobj-explorer.storage-bucket-prefix
+  [storage_bucket_prefix: <string> | default = "dataobj/"]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]

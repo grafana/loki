@@ -164,6 +164,8 @@ func (rx *ResumableUpload) transferChunk(ctx context.Context) (*http.Response, e
 // and calls the returned functions after the request returns (see send.go).
 // rx is private to the auto-generated API code.
 // Exactly one of resp or err will be nil.  If resp is non-nil, the caller must call resp.Body.Close.
+// Upload does not parse the response into the error on a non 200 response;
+// it is the caller's responsibility to call resp.Body.Close.
 func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err error) {
 
 	// There are a couple of cases where it's possible for err and resp to both
@@ -256,6 +258,18 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 				rCtx, cancel = context.WithTimeout(ctx, rx.ChunkTransferTimeout)
 			}
 
+			// We close the response's body here, since we definitely will not
+			// return `resp` now. If we close it before the select case above, a
+			// timer may fire and cause us to return a response with a closed body
+			// (in which case, the caller will not get the error message in the body).
+			if resp != nil && resp.Body != nil {
+				// Read the body to EOF - if the Body is not both read to EOF and closed,
+				// the Client's underlying RoundTripper may not be able to re-use the
+				// persistent TCP connection to the server for a subsequent "keep-alive" request.
+				// See https://pkg.go.dev/net/http#Client.Do
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
+			}
 			resp, err = rx.transferChunk(rCtx)
 
 			var status int
@@ -282,15 +296,11 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 
 			rx.attempts++
 			pause = bo.Pause()
-			if resp != nil && resp.Body != nil {
-				resp.Body.Close()
-			}
 		}
 
 		// If the chunk was uploaded successfully, but there's still
 		// more to go, upload the next chunk without any delay.
 		if statusResumeIncomplete(resp) {
-			resp.Body.Close()
 			continue
 		}
 
