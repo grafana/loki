@@ -4,7 +4,6 @@ import (
 	"flag"
 	"net/http"
 
-	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/server"
@@ -19,7 +18,7 @@ func main() {
 	util_log.InitLogger(&server.Config{
 		LogLevel: cfg.LogLevel,
 	}, prometheus.DefaultRegisterer, false)
-	s, err := createServer(cfg, util_log.Logger)
+	s, err := createServer(cfg)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error while creating the server", "err", err)
 	}
@@ -38,7 +37,7 @@ func getConfig() server.Config {
 	return cfg
 }
 
-func createServer(cfg server.Config, logger log.Logger) (*server.Server, error) {
+func createServer(cfg server.Config) (*server.Server, error) {
 	s, err := server.New(cfg)
 	if err != nil {
 		return nil, err
