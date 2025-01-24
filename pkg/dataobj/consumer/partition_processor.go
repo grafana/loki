@@ -61,7 +61,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	metastoreManager, err := metastore.NewMetastoreManager(builderCfg, bucket, tenantID, logger, reg)
+	metastoreManager, err := metastore.NewMetastoreManager(bucket, tenantID, logger, reg)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create metastore manager", "err", err)
 		return nil
