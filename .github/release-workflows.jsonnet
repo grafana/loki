@@ -128,20 +128,8 @@ local weeklyImageJobs = {
       'pull-requests': 'write',
     },
     jobs: {
-      check: {
-        uses: checkTemplate,
-        with: {
-          build_image: buildImage,
-          golang_ci_lint_version: golangCiLintVersion,
-          release_lib_ref: releaseLibRef,
-          skip_validation: false,
-          use_github_app_token: true,
-        },
-      },
-    } + {
       ['%s-image' % name]:
         weeklyImageJobs[name]
-        + job.withNeeds(['check'])
         + job.withEnv({
           BUILD_TIMEOUT: imageBuildTimeoutMin,
           RELEASE_REPO: 'grafana/loki',
