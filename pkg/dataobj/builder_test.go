@@ -29,7 +29,7 @@ var testBuilderConfig = BuilderConfig{
 	BufferSize: 2048 * 8,
 }
 
-func Test(t *testing.T) {
+func TestBuilder(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 
 	streams := []logproto.Stream{
@@ -99,9 +99,9 @@ func Test(t *testing.T) {
 	})
 }
 
-// Test_Builder_Append ensures that appending to the buffer eventually reports
+// TestBuilder_Append ensures that appending to the buffer eventually reports
 // that the buffer is full.
-func Test_Builder_Append(t *testing.T) {
+func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
