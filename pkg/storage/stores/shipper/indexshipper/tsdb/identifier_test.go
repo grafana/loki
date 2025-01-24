@@ -1,6 +1,7 @@
 package tsdb
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"testing"
@@ -75,6 +76,32 @@ func TestParseSingleTenantTSDBPath(t *testing.T) {
 			if ok {
 				require.Equal(t, tc.input, id.Name())
 			}
+		})
+	}
+}
+
+func TestSingleTenantTSDBIdentifierSerialization(t *testing.T) {
+	for _, tc := range []struct {
+		desc  string
+		input SingleTenantTSDBIdentifier
+	}{
+		{
+			desc:  "simple_works",
+			input: SingleTenantTSDBIdentifier{ExportTSInSecs: true, TS: time.Unix(1, 0), From: 1, Through: 10, Checksum: 255},
+		},
+		{
+			desc:  "simple_works_with_nanosecond",
+			input: SingleTenantTSDBIdentifier{ExportTSInSecs: false, TS: time.Unix(0, 1712534400000000000), From: 1, Through: 10, Checksum: 255},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			b, err := json.Marshal(tc.input)
+			require.NoError(t, err)
+
+			var id SingleTenantTSDBIdentifier
+			require.NoError(t, json.Unmarshal(b, &id))
+			require.Equal(t, tc.input.Name(), id.Name())
+			require.Equal(t, tc.input, id)
 		})
 	}
 }
