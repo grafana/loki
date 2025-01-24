@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -125,8 +126,14 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(r.Context(), req.TenantID))
+	if err != nil {
+		http.Error(w, "failed to inject org ID", http.StatusInternalServerError)
+		return
+	}
+
 	// Call the service
-	resp, err := f.limits.ExceedsLimits(r.Context(), protoReq)
+	resp, err := f.limits.ExceedsLimits(ctx, protoReq)
 	if err != nil {
 		level.Error(f.logger).Log("msg", "error checking limits", "err", err)
 		http.Error(w, "error checking limits", http.StatusInternalServerError)
