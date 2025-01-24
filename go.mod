@@ -104,7 +104,7 @@ require (
 	golang.org/x/sys v0.29.0
 	golang.org/x/time v0.9.0
 	google.golang.org/api v0.218.0
-	google.golang.org/grpc v1.69.4
+	google.golang.org/grpc v1.70.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/klog/v2 v2.130.1

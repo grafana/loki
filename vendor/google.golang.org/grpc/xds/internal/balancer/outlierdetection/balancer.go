@@ -33,6 +33,7 @@ import (
 	"unsafe"
 
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/balancer/pickfirst/pickfirstleaf"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/internal/balancer/gracefulswitch"
 	"google.golang.org/grpc/internal/buffer"
@@ -72,7 +73,7 @@ func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Ba
 	}
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
-	b.child = gracefulswitch.NewBalancer(b, bOpts)
+	b.child = synchronizingBalancerWrapper{lb: gracefulswitch.NewBalancer(b, bOpts)}
 	go b.run()
 	return b
 }
@@ -152,6 +153,11 @@ type lbCfgUpdate struct {
 	done chan struct{}
 }
 
+type scHealthUpdate struct {
+	scw   *subConnWrapper
+	state balancer.SubConnState
+}
+
 type outlierDetectionBalancer struct {
 	// These fields are safe to be accessed without holding any mutex because
 	// they are synchronized in run(), which makes these field accesses happen
@@ -170,10 +176,7 @@ type outlierDetectionBalancer struct {
 	logger         *grpclog.PrefixLogger
 	channelzParent channelz.Identifier
 
-	// childMu guards calls into child (to uphold the balancer.Balancer API
-	// guarantee of synchronous calls).
-	childMu sync.Mutex
-	child   *gracefulswitch.Balancer
+	child synchronizingBalancerWrapper
 
 	// mu guards access to the following fields. It also helps to synchronize
 	// behaviors of the following events: config updates, firing of the interval
@@ -190,8 +193,8 @@ type outlierDetectionBalancer struct {
 	// which uses addrs. This balancer waits for the interval timer algorithm to
 	// finish before making the update to the addrs map.
 	//
-	// This mutex is never held at the same time as childMu (within the context
-	// of a single goroutine).
+	// This mutex is never held when calling methods on the child policy
+	// (within the context of a single goroutine).
 	mu                    sync.Mutex
 	addrs                 map[string]*addressInfo
 	cfg                   *LBConfig
@@ -276,13 +279,9 @@ func (b *outlierDetectionBalancer) UpdateClientConnState(s balancer.ClientConnSt
 	// the balancer.Balancer API, so it is guaranteed to be called in a
 	// synchronous manner, so it cannot race with this read.
 	if b.cfg == nil || b.cfg.ChildPolicy.Name != lbCfg.ChildPolicy.Name {
-		b.childMu.Lock()
-		err := b.child.SwitchTo(bb)
-		if err != nil {
-			b.childMu.Unlock()
+		if err := b.child.switchTo(bb); err != nil {
 			return fmt.Errorf("outlier detection: error switching to child of type %q: %v", lbCfg.ChildPolicy.Name, err)
 		}
-		b.childMu.Unlock()
 	}
 
 	b.mu.Lock()
@@ -319,12 +318,10 @@ func (b *outlierDetectionBalancer) UpdateClientConnState(s balancer.ClientConnSt
 	}
 	b.mu.Unlock()
 
-	b.childMu.Lock()
-	err := b.child.UpdateClientConnState(balancer.ClientConnState{
+	err := b.child.updateClientConnState(balancer.ClientConnState{
 		ResolverState:  s.ResolverState,
 		BalancerConfig: b.cfg.ChildPolicy.Config,
 	})
-	b.childMu.Unlock()
 
 	done := make(chan struct{})
 	b.pickerUpdateCh.Put(lbCfgUpdate{
@@ -337,9 +334,7 @@ func (b *outlierDetectionBalancer) UpdateClientConnState(s balancer.ClientConnSt
 }
 
 func (b *outlierDetectionBalancer) ResolverError(err error) {
-	b.childMu.Lock()
-	defer b.childMu.Unlock()
-	b.child.ResolverError(err)
+	b.child.resolverError(err)
 }
 
 func (b *outlierDetectionBalancer) updateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
@@ -355,6 +350,7 @@ func (b *outlierDetectionBalancer) updateSubConnState(sc balancer.SubConn, state
 	if state.ConnectivityState == connectivity.Shutdown {
 		delete(b.scWrappers, scw.SubConn)
 	}
+	scw.setLatestConnectivityState(state.ConnectivityState)
 	b.scUpdateCh.Put(&scUpdate{
 		scw:   scw,
 		state: state,
@@ -368,9 +364,7 @@ func (b *outlierDetectionBalancer) UpdateSubConnState(sc balancer.SubConn, state
 func (b *outlierDetectionBalancer) Close() {
 	b.closed.Fire()
 	<-b.done.Done()
-	b.childMu.Lock()
-	b.child.Close()
-	b.childMu.Unlock()
+	b.child.closeLB()
 
 	b.scUpdateCh.Close()
 	b.pickerUpdateCh.Close()
@@ -383,9 +377,7 @@ func (b *outlierDetectionBalancer) Close() {
 }
 
 func (b *outlierDetectionBalancer) ExitIdle() {
-	b.childMu.Lock()
-	defer b.childMu.Unlock()
-	b.child.ExitIdle()
+	b.child.exitIdle()
 }
 
 // wrappedPicker delegates to the child policy's picker, and when the request
@@ -475,10 +467,13 @@ func (b *outlierDetectionBalancer) NewSubConn(addrs []resolver.Address, opts bal
 		return nil, err
 	}
 	scw := &subConnWrapper{
-		SubConn:    sc,
-		addresses:  addrs,
-		scUpdateCh: b.scUpdateCh,
-		listener:   oldListener,
+		SubConn:                    sc,
+		addresses:                  addrs,
+		scUpdateCh:                 b.scUpdateCh,
+		listener:                   oldListener,
+		latestRawConnectivityState: balancer.SubConnState{ConnectivityState: connectivity.Idle},
+		latestHealthState:          balancer.SubConnState{ConnectivityState: connectivity.Connecting},
+		healthListenerEnabled:      len(addrs) == 1 && pickfirstleaf.IsManagedByPickfirst(addrs[0]),
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -596,34 +591,18 @@ func (b *outlierDetectionBalancer) Target() string {
 // if the SubConn is not ejected.
 func (b *outlierDetectionBalancer) handleSubConnUpdate(u *scUpdate) {
 	scw := u.scw
-	scw.latestState = u.state
-	if !scw.ejected {
-		if scw.listener != nil {
-			b.childMu.Lock()
-			scw.listener(u.state)
-			b.childMu.Unlock()
-		}
-	}
+	scw.clearHealthListener()
+	b.child.updateSubConnState(scw, u.state)
+}
+
+func (b *outlierDetectionBalancer) handleSubConnHealthUpdate(u *scHealthUpdate) {
+	b.child.updateSubConnHealthState(u.scw, u.state)
 }
 
 // handleEjectedUpdate handles any SubConns that get ejected/unejected, and
 // forwards the appropriate corresponding subConnState to the child policy.
 func (b *outlierDetectionBalancer) handleEjectedUpdate(u *ejectionUpdate) {
-	scw := u.scw
-	scw.ejected = u.isEjected
-	// If scw.latestState has never been written to will default to connectivity
-	// IDLE, which is fine.
-	stateToUpdate := scw.latestState
-	if u.isEjected {
-		stateToUpdate = balancer.SubConnState{
-			ConnectivityState: connectivity.TransientFailure,
-		}
-	}
-	if scw.listener != nil {
-		b.childMu.Lock()
-		scw.listener(stateToUpdate)
-		b.childMu.Unlock()
-	}
+	b.child.handleEjectionUpdate(u)
 }
 
 // handleChildStateUpdate forwards the picker update wrapped in a wrapped picker
@@ -696,6 +675,8 @@ func (b *outlierDetectionBalancer) run() {
 				b.handleSubConnUpdate(u)
 			case *ejectionUpdate:
 				b.handleEjectedUpdate(u)
+			case *scHealthUpdate:
+				b.handleSubConnHealthUpdate(u)
 			}
 		case update, ok := <-b.pickerUpdateCh.Get():
 			if !ok {
@@ -877,6 +858,69 @@ func (b *outlierDetectionBalancer) unejectAddress(addrInfo *addressInfo) {
 	for _, sbw := range addrInfo.sws {
 		sbw.uneject()
 		channelz.Infof(logger, b.channelzParent, "Subchannel unejected: %s", sbw)
+	}
+}
+
+// synchronizingBalancerWrapper serializes calls into balancer (to uphold the
+// balancer.Balancer API guarantee of synchronous calls). It also ensures a
+// consistent order of locking mutexes when using SubConn listeners to avoid
+// deadlocks.
+type synchronizingBalancerWrapper struct {
+	// mu should not be used directly from outside this struct, instead use
+	// methods defined on the struct.
+	mu sync.Mutex
+	lb *gracefulswitch.Balancer
+}
+
+func (sbw *synchronizingBalancerWrapper) switchTo(builder balancer.Builder) error {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	return sbw.lb.SwitchTo(builder)
+}
+
+func (sbw *synchronizingBalancerWrapper) updateClientConnState(state balancer.ClientConnState) error {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	return sbw.lb.UpdateClientConnState(state)
+}
+
+func (sbw *synchronizingBalancerWrapper) resolverError(err error) {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	sbw.lb.ResolverError(err)
+}
+
+func (sbw *synchronizingBalancerWrapper) closeLB() {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	sbw.lb.Close()
+}
+
+func (sbw *synchronizingBalancerWrapper) exitIdle() {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	sbw.lb.ExitIdle()
+}
+
+func (sbw *synchronizingBalancerWrapper) updateSubConnHealthState(scw *subConnWrapper, scs balancer.SubConnState) {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	scw.updateSubConnHealthState(scs)
+}
+
+func (sbw *synchronizingBalancerWrapper) updateSubConnState(scw *subConnWrapper, scs balancer.SubConnState) {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	scw.updateSubConnConnectivityState(scs)
+}
+
+func (sbw *synchronizingBalancerWrapper) handleEjectionUpdate(u *ejectionUpdate) {
+	sbw.mu.Lock()
+	defer sbw.mu.Unlock()
+	if u.isEjected {
+		u.scw.handleEjection()
+	} else {
+		u.scw.handleUnejection()
 	}
 }
 
