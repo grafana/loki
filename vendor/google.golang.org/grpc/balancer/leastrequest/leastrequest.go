@@ -22,17 +22,17 @@ package leastrequest
 import (
 	"encoding/json"
 	"fmt"
+	rand "math/rand/v2"
 	"sync/atomic"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/base"
 	"google.golang.org/grpc/grpclog"
-	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/serviceconfig"
 )
 
-// grpcranduint32 is a global to stub out in tests.
-var grpcranduint32 = grpcrand.Uint32
+// randuint32 is a global to stub out in tests.
+var randuint32 = rand.Uint32
 
 // Name is the name of the least request balancer.
 const Name = "least_request_experimental"
@@ -112,7 +112,9 @@ type scWithRPCCount struct {
 }
 
 func (lrb *leastRequestBalancer) Build(info base.PickerBuildInfo) balancer.Picker {
-	logger.Infof("least-request: Build called with info: %v", info)
+	if logger.V(2) {
+		logger.Infof("least-request: Build called with info: %v", info)
+	}
 	if len(info.ReadySCs) == 0 {
 		return base.NewErrPicker(balancer.ErrNoSubConnAvailable)
 	}
@@ -157,7 +159,7 @@ func (p *picker) Pick(balancer.PickInfo) (balancer.PickResult, error) {
 	var pickedSC *scWithRPCCount
 	var pickedSCNumRPCs int32
 	for i := 0; i < int(p.choiceCount); i++ {
-		index := grpcranduint32() % uint32(len(p.subConns))
+		index := randuint32() % uint32(len(p.subConns))
 		sc := p.subConns[index]
 		n := sc.numRPCs.Load()
 		if pickedSC == nil || n < pickedSCNumRPCs {

@@ -31,7 +31,6 @@ These components need to be connected into a hash ring:
 - query schedulers
 - compactors
 - rulers
-- bloom compactors (Experimental)
 
 These components can optionally be connected into a hash ring:
 - index gateway
@@ -104,13 +103,3 @@ The ruler ring is used to determine which rulers evaluate which rule groups.
 ## About the index gateway ring
 
 The index gateway ring is used to determine which gateway is responsible for which tenant's indexes when queried by rulers or queriers.
-
-## About the Bloom Compactor ring
-{{% admonition type="warning" %}}
-This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available.  No SLA is provided.  
-{{% /admonition %}}
-
-The Bloom Compactor ring is used to determine which subset of compactors own a given tenant, 
-and which series fingerprint ranges each compactor owns. 
-The ring is also used to determine which compactor owns retention. 
-Retention will be applied by the compactor owning the smallest token in the ring.

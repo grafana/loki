@@ -19,9 +19,9 @@ package xdsresource
 
 import (
 	"fmt"
+	rand "math/rand/v2"
 	"strings"
 
-	"google.golang.org/grpc/internal/grpcrand"
 	"google.golang.org/grpc/internal/grpcutil"
 	iresolver "google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/xds/matcher"
@@ -142,11 +142,11 @@ func newFractionMatcher(fraction uint32) *fractionMatcher {
 	return &fractionMatcher{fraction: int64(fraction)}
 }
 
-// RandInt63n overwrites grpcrand for control in tests.
-var RandInt63n = grpcrand.Int63n
+// RandInt64n overwrites rand for control in tests.
+var RandInt64n = rand.Int64N
 
 func (fm *fractionMatcher) match() bool {
-	t := RandInt63n(1000000)
+	t := RandInt64n(1000000)
 	return t <= fm.fraction
 }
 

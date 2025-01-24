@@ -11,9 +11,10 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"github.com/tklauser/go-sysconf"
 	"golang.org/x/sys/unix"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 var (
@@ -136,7 +137,7 @@ func parseDmesgBoot(fileName string) (InfoStat, int, error) {
 			c.Model = matches[4]
 			t, err := strconv.ParseInt(matches[5], 10, 32)
 			if err != nil {
-				return c, 0, fmt.Errorf("unable to parse FreeBSD CPU stepping information from %q: %v", line, err)
+				return c, 0, fmt.Errorf("unable to parse FreeBSD CPU stepping information from %q: %w", line, err)
 			}
 			c.Stepping = int32(t)
 		} else if matches := featuresMatch.FindStringSubmatch(line); matches != nil {
@@ -150,12 +151,12 @@ func parseDmesgBoot(fileName string) (InfoStat, int, error) {
 		} else if matches := cpuCores.FindStringSubmatch(line); matches != nil {
 			t, err := strconv.ParseInt(matches[1], 10, 32)
 			if err != nil {
-				return c, 0, fmt.Errorf("unable to parse FreeBSD CPU Nums from %q: %v", line, err)
+				return c, 0, fmt.Errorf("unable to parse FreeBSD CPU Nums from %q: %w", line, err)
 			}
 			cpuNum = int(t)
 			t2, err := strconv.ParseInt(matches[2], 10, 32)
 			if err != nil {
-				return c, 0, fmt.Errorf("unable to parse FreeBSD CPU cores from %q: %v", line, err)
+				return c, 0, fmt.Errorf("unable to parse FreeBSD CPU cores from %q: %w", line, err)
 			}
 			c.Cores = int32(t2)
 		}

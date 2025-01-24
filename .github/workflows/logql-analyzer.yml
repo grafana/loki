@@ -1,0 +1,114 @@
+name: LogQL Analyzer
+
+on:
+  workflow_dispatch:
+  release:
+    types:
+      - released
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    env:
+      BUILD_TIMEOUT: 60
+      IMAGE_PREFIX: "grafana"
+      RELEASE_VERSION: "${{ github.event.release.tag_name || 'test' }}"
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-tags: true
+        path: loki
+
+    - name: prepare
+      id: prepare
+      env:
+        MAJOR_MINOR_VERSION_REGEXP: '([0-9]+\\.[0-9]+)'
+        RELEASE_TAG_REGEXP: '^([0-9]+\\.[0-9]+\\.[0-9]+)$'
+      working-directory: loki
+      run: |
+        echo "$(./tools/image-tag)" > .tag
+        if [[ "$RELEASE_VERSION" == "test" ]]; then
+          echo "RELEASE_VERSION is not set, using image tag"
+          RELEASE_VERSION="$(cat .tag)"
+        fi
+        echo "RELEASE_VERSION: $RELEASE_VERSION"
+
+        # if the tag matches the pattern `D.D.D` then RELEASE_NAME="D-D-x", otherwise RELEASE_NAME="next"
+        RELEASE_NAME=$([[ $RELEASE_VERSION =~ $RELEASE_TAG_REGEXP ]] && echo $RELEASE_TAG | grep -oE $MAJOR_MINOR_VERSION_REGEXP | sed "s/\\./-/g" | sed "s/$/-x/" || echo "next")
+        echo "RELEASE_NAME: $RELEASE_NAME"
+
+        echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+        echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
+
+    - id: "get-github-app-token"
+      name: "get github app token"
+      uses: "actions/create-github-app-token@v1"
+      with:
+        app-id: "${{ secrets.APP_ID }}"
+        owner: "${{ github.repository_owner }}"
+        private-key: "${{ secrets.APP_PRIVATE_KEY }}"
+
+    - name: "Set up QEMU"
+      uses: "docker/setup-qemu-action@v3"
+    - name: "set up docker buildx"
+      uses: "docker/setup-buildx-action@v3"
+    - name: "Login to DockerHub (from vault)"
+      uses: "grafana/shared-workflows/actions/dockerhub-login@main"
+
+    - name: "Build and push"
+      timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
+      with:
+        build-args: "IMAGE_TAG=${{ steps.prepare.outputs.release_version }}"
+        context: loki
+        file: "loki/cmd/logql-analyzer/Dockerfile"
+        platforms: "linux/amd64"
+        push: true
+        tags: "grafana/logql-analyzer:${{ steps.prepare.outputs.release_version }}"
+
+    - name: Log in to Google Artifact Registry
+      uses: grafana/shared-workflows/actions/login-to-gar@main
+      with:
+        registry: "us-docker.pkg.dev"
+        environment: "prod"
+
+    - name: Update to latest image
+      env:
+        GITHUB_TOKEN: ${{ steps.get-github-app-token.outputs.token }}
+        RELEASE_NAME: ${{ steps.prepare.outputs.release_name }}
+        RELEASE_VERSION: ${{ steps.prepare.outputs.release_version }}
+      run: |
+        set -e -o pipefail
+
+        cat << EOF > config.json
+        {
+          "repo_name": "deployment_tools",
+          "destination_branch": "master",
+          "git_author_email": "119986603+updater-for-ci[bot]@users.noreply.github.com",
+          "git_author_name": "version_bumper[bot]",
+          "git_committer_email": "119986603+updater-for-ci[bot]@users.noreply.github.com",
+          "git_committer_name": "version_bumper[bot]",
+          "pull_request_branch_prefix": "logql-analyzer/updater",
+          "pull_request_enabled": true,
+          "pull_request_existing_strategy": "replace",
+          "pull_request_title_prefix": "[logql-analyzer updater] ",
+          "pull_request_message": "Add logql-analyzer version to ${RELEASE_VERSION} to supported versions",
+          "update_jsonnet_attribute_configs": [
+              {
+                "file_path": "ksonnet/environments/logql-analyzer/supported-versions.libsonnet",
+                "jsonnet_key": "${RELEASE_NAME}",
+                "jsonnet_value": "grafana/logql-analyzer:${RELEASE_VERSION}-amd64",
+                "upsert": true
+              }
+            ]
+        }
+        EOF
+
+        docker run --rm \
+          -e GITHUB_TOKEN="$GITHUB_TOKEN" \
+          -e CONFIG_JSON="$(cat config.json)" us-docker.pkg.dev/grafanalabs-global/docker-deployment-tools-prod/updater |& tee updater-output.log

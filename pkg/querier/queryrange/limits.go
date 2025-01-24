@@ -39,7 +39,7 @@ import (
 
 const (
 	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
-	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
+	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)"
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"
 	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
@@ -156,7 +156,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	// Clamp the time range based on the max query lookback.
@@ -277,8 +277,6 @@ func NewQuerySizeLimiterMiddleware(
 func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryrangebase.Request) (uint64, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "querySizeLimiter.getBytesReadForRequest")
 	defer sp.Finish()
-	log := spanlogger.FromContextWithFallback(ctx, q.logger)
-	defer log.Finish()
 
 	expr, err := syntax.ParseExpr(r.GetQuery())
 	if err != nil {
@@ -300,7 +298,7 @@ func (q *querySizeLimiter) getBytesReadForRequest(ctx context.Context, r queryra
 
 	combinedStats := stats.MergeStats(matcherStats...)
 
-	level.Debug(log).Log(
+	level.Debug(q.logger).Log(
 		append(
 			combinedStats.LoggingKeyValues(),
 			"msg", "queried index",
@@ -354,7 +352,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	limitFuncCapture := func(id string) int { return q.limitFunc(ctx, id) }
@@ -371,8 +369,6 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 			level.Warn(log).Log("msg", "Query exceeds limits", "status", "rejected", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, q.limitErrorTmpl, statsBytesStr, maxBytesReadStr)
 		}
-
-		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
 	return q.next.Do(ctx, r)
@@ -499,7 +495,7 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	parallelism := MinWeightedParallelism(
@@ -512,7 +508,7 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 	)
 
 	if parallelism < 1 {
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", ErrMaxQueryParalellism.Error())
 	}
 
 	semWithTiming := NewSemaphoreWithTiming(int64(parallelism))
@@ -682,7 +678,7 @@ func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []c
 func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limits) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(ctx, id) }

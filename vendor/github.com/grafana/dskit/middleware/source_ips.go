@@ -18,6 +18,9 @@ var (
 	// De-facto standard header keys.
 	xForwardedFor = http.CanonicalHeaderKey("X-Forwarded-For")
 	xRealIP       = http.CanonicalHeaderKey("X-Real-IP")
+	// Allows to extract the host from the X-Forwarded-For header.
+	// Will strip out any spaces or double quote surrounding host.
+	xForwardedForRegex = regexp.MustCompile(`(?: *"?([^,]+)"? *)`)
 )
 
 var (
@@ -25,9 +28,9 @@ var (
 	// existing use of X-Forwarded-* headers.
 	// e.g. Forwarded: for=192.0.2.60;proto=https;by=203.0.113.43
 	forwarded = http.CanonicalHeaderKey("Forwarded")
-	// Allows for a sub-match of the first value after 'for=' to the next
-	// comma, semi-colon or space. The match is case-insensitive.
-	forRegex = regexp.MustCompile(`(?i)(?:for=)([^(;|,| )]+)`)
+	// Allows to extract the host from the for clause of the Forwarded header.
+	// Will strip out any spaces or double quote surrounding host.
+	forwardedRegex = regexp.MustCompile(`(?i)(?:for=)(?: *"?([^;,]+)"? *)`)
 )
 
 // SourceIPExtractor extracts the source IPs from a HTTP request
@@ -37,10 +40,12 @@ type SourceIPExtractor struct {
 	// A regex that extracts the IP address from the header.
 	// It should contain at least one capturing group the first of which will be returned.
 	regex *regexp.Regexp
+	// A boolean to choose if we should return all found IP or just first match
+	extractAllHosts bool
 }
 
 // NewSourceIPs creates a new SourceIPs
-func NewSourceIPs(header, regex string) (*SourceIPExtractor, error) {
+func NewSourceIPs(header, regex string, extractAllHosts bool) (*SourceIPExtractor, error) {
 	if (header == "" && regex != "") || (header != "" && regex == "") {
 		return nil, fmt.Errorf("either both a header field and a regex have to be given or neither")
 	}
@@ -50,8 +55,9 @@ func NewSourceIPs(header, regex string) (*SourceIPExtractor, error) {
 	}
 
 	return &SourceIPExtractor{
-		header: header,
-		regex:  re,
+		header:          header,
+		regex:           re,
+		extractAllHosts: extractAllHosts,
 	}, nil
 }
 
@@ -72,7 +78,15 @@ func extractHost(address string) string {
 
 // Get returns any source addresses we can find in the request, comma-separated
 func (sips SourceIPExtractor) Get(req *http.Request) string {
-	fwd := extractHost(sips.getIP(req))
+	hosts := []string{}
+
+	// Remove port informations from extracted address
+	for _, addr := range sips.getIP(req) {
+		hosts = append(hosts, extractHost(addr))
+	}
+
+	fwd := strings.Join(hosts, ", ")
+
 	if fwd == "" {
 		if req.RemoteAddr == "" {
 			return ""
@@ -94,52 +108,45 @@ func (sips SourceIPExtractor) Get(req *http.Request) string {
 // getIP retrieves the IP from the RFC7239 Forwarded headers,
 // X-Real-IP and X-Forwarded-For (in that order) or from the
 // custom regex.
-func (sips SourceIPExtractor) getIP(r *http.Request) string {
-	var addr string
+func (sips SourceIPExtractor) getIP(r *http.Request) []string {
+	var addrs = []string{}
 
 	// Use the custom regex only if it was setup
 	if sips.header != "" {
 		hdr := r.Header.Get(sips.header)
 		if hdr == "" {
-			return ""
+			return addrs
 		}
-		allMatches := sips.regex.FindAllStringSubmatch(hdr, 1)
-		if len(allMatches) == 0 {
-			return ""
-		}
-		firstMatch := allMatches[0]
-		// Check there is at least 1 submatch
-		if len(firstMatch) < 2 {
-			return ""
-		}
-		return firstMatch[1]
-	}
 
-	if fwd := r.Header.Get(forwarded); fwd != "" {
-		// match should contain at least two elements if the protocol was
-		// specified in the Forwarded header. The first element will always be
-		// the 'for=' capture, which we ignore. In the case of multiple IP
-		// addresses (for=8.8.8.8, 8.8.4.4,172.16.1.20 is valid) we only
-		// extract the first, which should be the client IP.
-		if match := forRegex.FindStringSubmatch(fwd); len(match) > 1 {
-			// IPv6 addresses in Forwarded headers are quoted-strings. We strip
-			// these quotes.
-			addr = strings.Trim(match[1], `"`)
-		}
+		addrs = sips.extractHeader(hdr, sips.regex)
+	} else if fwd := r.Header.Get(forwarded); fwd != "" {
+		addrs = sips.extractHeader(fwd, forwardedRegex)
 	} else if fwd := r.Header.Get(xRealIP); fwd != "" {
 		// X-Real-IP should only contain one IP address (the client making the
 		// request).
-		addr = fwd
+		addrs = append([]string{}, fwd)
 	} else if fwd := strings.ReplaceAll(r.Header.Get(xForwardedFor), " ", ""); fwd != "" {
-		// Only grab the first (client) address. Note that '192.168.0.1,
-		// 10.1.1.1' is a valid key for X-Forwarded-For where addresses after
-		// the first may represent forwarding proxies earlier in the chain.
-		s := strings.Index(fwd, ",")
-		if s == -1 {
-			s = len(fwd)
-		}
-		addr = fwd[:s]
+		addrs = sips.extractHeader(fwd, xForwardedForRegex)
 	}
 
-	return addr
+	return addrs
+}
+
+// extractHeader is a toolbox function that will parse a header content with a regex and return a list
+// of all matching groups as string.
+func (sips SourceIPExtractor) extractHeader(header string, regex *regexp.Regexp) []string {
+	var addrs = []string{}
+
+	if allMatches := regex.FindAllStringSubmatch(header, -1); len(allMatches) > 0 {
+		for _, match := range allMatches {
+			if len(match) > 1 {
+				addrs = append(addrs, match[1])
+			}
+			if !sips.extractAllHosts {
+				break
+			}
+		}
+	}
+
+	return addrs
 }

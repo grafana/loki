@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -27,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/util/mempool"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -40,14 +42,21 @@ func stringSlice[T fmt.Stringer](s []T) []string {
 
 func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.GroupedChunkRefs {
 	t.Helper()
-	return groupChunkRefs(chunkRefs, nil)
+	grouped := groupChunkRefs(nil, chunkRefs, nil)
+	// Put fake labels to the series
+	for _, g := range grouped {
+		g.Labels = &logproto.IndexSeries{
+			Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", fmt.Sprintf("%d", g.Fingerprint))),
+		}
+	}
+
+	return grouped
 }
 
 func newLimits() *validation.Overrides {
 	limits := validation.Limits{}
 	flagext.DefaultValues(&limits)
 	limits.BloomGatewayEnabled = true
-	limits.BloomGatewayShardSize = 1
 
 	overrides, _ := validation.NewOverrides(limits, nil)
 	return overrides
@@ -92,7 +101,7 @@ func setupBloomStore(t *testing.T) *bloomshipper.BloomStore {
 
 	reg := prometheus.NewRegistry()
 	blocksCache := bloomshipper.NewFsBlocksCache(storageCfg.BloomShipperConfig.BlocksCache, nil, logger)
-	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, reg, logger)
+	store, err := bloomshipper.NewBloomStore(schemaCfg.Configs, storageCfg, cm, nil, blocksCache, &mempool.SimpleHeapAllocator{}, reg, logger)
 	require.NoError(t, err)
 	t.Cleanup(store.Stop)
 
@@ -140,8 +149,8 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 	t.Run("request fails when providing invalid block", func(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
-		_, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
-		mockStore := newMockBloomStore(queriers, metas)
+		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 
 		reg := prometheus.NewRegistry()
 		gw, err := New(cfg, mockStore, logger, reg)
@@ -156,7 +165,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		chunkRefs := createQueryInputFromBlockData(t, tenantID, data, 100)
 
-		expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+		expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 		require.NoError(t, err)
 
 		req := &logproto.FilterChunkRefRequest{
@@ -164,7 +173,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			Through: now,
 			Refs:    groupRefs(t, chunkRefs),
 			Plan:    plan.QueryPlan{AST: expr},
-			Blocks:  []string{"bloom/invalid/block.tar.gz"},
+			Blocks:  []string{"bloom/invalid/block.tar"},
 		}
 
 		ctx := user.InjectOrgID(context.Background(), tenantID)
@@ -176,7 +185,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
-		mockStore := newMockBloomStore(queriers, metas)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 		mockStore.err = errors.New("request failed")
 
 		reg := prometheus.NewRegistry()
@@ -195,7 +204,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{
@@ -220,7 +229,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		// replace store implementation and re-initialize workers and sub-services
 		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
-		mockStore := newMockBloomStore(queriers, metas)
+		mockStore := newMockBloomStore(refs, queriers, metas)
 		mockStore.delay = 2000 * time.Millisecond
 
 		reg := prometheus.NewRegistry()
@@ -239,7 +248,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		// saturate workers
 		// then send additional request
 		for i := 0; i < gw.cfg.WorkerConcurrency+1; i++ {
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{
@@ -263,7 +272,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -294,12 +303,18 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				{Fingerprint: 1000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696248000000, Through: 1696251600000, Checksum: 2},
 					{From: 1696244400000, Through: 1696248000000, Checksum: 4},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1000")),
 				}},
 				{Fingerprint: 2000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696255200000, Through: 1696258800000, Checksum: 3},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "2000")),
 				}},
 				{Fingerprint: 3000, Tenant: tenantID, Refs: []*logproto.ShortRef{
 					{From: 1696240800000, Through: 1696244400000, Checksum: 1},
+				}, Labels: &logproto.IndexSeries{
+					Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "3000")),
 				}},
 			},
 		}, res)
@@ -309,7 +324,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		now := mktime("2023-10-03 10:00")
 
 		reg := prometheus.NewRegistry()
-		gw, err := New(cfg, newMockBloomStore(nil, nil), logger, reg)
+		gw, err := New(cfg, newMockBloomStore(nil, nil, nil), logger, reg)
 		require.NoError(t, err)
 
 		err = services.StartAndAwaitRunning(context.Background(), gw)
@@ -325,7 +340,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				{
 					Fingerprint: uint64(1000 + 100*idx),
 					UserID:      tenantID,
-					From:        now.Add(-24 * time.Hour),
+					From:        now.Add(-4 * time.Hour),
 					Through:     now,
 					Checksum:    uint32(idx),
 				},
@@ -335,15 +350,15 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 					TenantID:       tenantID,
 					TableName:      "table_1",
 					Bounds:         v1.NewBounds(0, 10000),
-					StartTimestamp: now.Add(-24 * time.Hour),
+					StartTimestamp: now.Add(-4 * time.Hour),
 					EndTimestamp:   now,
 					Checksum:       uint32(idx),
 				},
 			}
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "foo"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
-				From:    now.Add(-24 * time.Hour),
+				From:    now.Add(-4 * time.Hour),
 				Through: now,
 				Refs:    groupRefs(t, chunkRefs),
 				Plan:    plan.QueryPlan{AST: expr},
@@ -363,7 +378,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 		refs, metas, queriers, data := createBlocks(t, tenantID, 10, now.Add(-1*time.Hour), now, 0x0000, 0x0fff)
 
 		reg := prometheus.NewRegistry()
-		store := newMockBloomStore(queriers, metas)
+		store := newMockBloomStore(refs, queriers, metas)
 
 		gw, err := New(cfg, store, logger, reg)
 		require.NoError(t, err)
@@ -379,7 +394,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 
 		t.Run("no match - return empty response", func(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
-			expr, err := syntax.ParseExpr(`{foo="bar"} |= "does not match"`)
+			expr, err := syntax.ParseExpr(`{foo="bar"} | trace_id="nomatch"`)
 			require.NoError(t, err)
 			req := &logproto.FilterChunkRefRequest{
 				From:    now.Add(-8 * time.Hour),
@@ -402,16 +417,15 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 			inputChunkRefs := groupRefs(t, chunkRefs)
 			// Hack to get search string for a specific series
 			// see MkBasicSeriesWithBlooms() in pkg/storage/bloom/v1/test_util.go
-			// each series has 1 chunk
-			// each chunk has multiple strings, from int(fp) to int(nextFp)-1
-			x := rand.Intn(len(inputChunkRefs))
-			fp := inputChunkRefs[x].Fingerprint
-			chks := inputChunkRefs[x].Refs
-			line := fmt.Sprintf("%04x:%04x", int(fp), 0) // first line
+			rnd := rand.Intn(len(inputChunkRefs))
+			fp := inputChunkRefs[rnd].Fingerprint
+			lbs := inputChunkRefs[rnd].Labels
+			chks := inputChunkRefs[rnd].Refs
+			key := fmt.Sprintf("%s:%04x", model.Fingerprint(fp), 0)
 
-			t.Log("x=", x, "fp=", fp, "line=", line)
+			t.Log("rnd=", rnd, "fp=", fp, "key=", key)
 
-			expr, err := syntax.ParseExpr(fmt.Sprintf(`{foo="bar"} |= "%s"`, line))
+			expr, err := syntax.ParseExpr(fmt.Sprintf(`{foo="bar"} | trace_id="%s"`, key))
 			require.NoError(t, err)
 
 			req := &logproto.FilterChunkRefRequest{
@@ -429,6 +443,7 @@ func TestBloomGateway_FilterChunkRefs(t *testing.T) {
 				ChunkRefs: []*logproto.GroupedChunkRefs{
 					{
 						Fingerprint: fp,
+						Labels:      lbs,
 						Refs:        chks,
 						Tenant:      tenantID,
 					},
@@ -517,18 +532,15 @@ func TestFilterChunkRefs(t *testing.T) {
 		fp        uint64
 		checksums []uint32
 	}
-	mkRemovals := func(xs [][]instruction) [][]v1.Output {
-		out := make([][]v1.Output, len(xs))
+	mkRemovals := func(xs []instruction) []v1.Output {
+		out := make([]v1.Output, len(xs))
 		for i, x := range xs {
-			out[i] = make([]v1.Output, len(x))
-			for j, c := range x {
-				out[i][j] = v1.Output{
-					Fp:       model.Fingerprint(c.fp),
-					Removals: make(v1.ChunkRefs, len(c.checksums)),
-				}
-				for k, chk := range c.checksums {
-					out[i][j].Removals[k] = v1.ChunkRef{Checksum: chk}
-				}
+			out[i] = v1.Output{
+				Fp:       model.Fingerprint(x.fp),
+				Removals: make(v1.ChunkRefs, len(x.checksums)),
+			}
+			for k, chk := range x.checksums {
+				out[i].Removals[k] = v1.ChunkRef{Checksum: chk}
 			}
 		}
 		return out
@@ -551,7 +563,7 @@ func TestFilterChunkRefs(t *testing.T) {
 	for _, tc := range []struct {
 		desc     string
 		input    *logproto.FilterChunkRefRequest
-		removals [][]instruction
+		removals []instruction
 		expected *logproto.FilterChunkRefRequest
 	}{
 		{
@@ -562,22 +574,18 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove all",
 			input: mkInput(2, 2),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{0, 1}},
-					{fp: 1, checksums: []uint32{0, 1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{0, 1}},
+				{fp: 1, checksums: []uint32{0, 1}},
 			},
 			expected: mkInput(0, 0),
 		},
 		{
 			desc:  "remove every other series",
 			input: mkInput(4, 2),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{0, 1}},
-					{fp: 2, checksums: []uint32{0, 1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{0, 1}},
+				{fp: 2, checksums: []uint32{0, 1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 1, checksums: []uint32{0, 1}},
@@ -587,13 +595,11 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove the last chunk for each series",
 			input: mkInput(4, 2),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 1, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-					{fp: 3, checksums: []uint32{1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{1}},
+				{fp: 1, checksums: []uint32{1}},
+				{fp: 2, checksums: []uint32{1}},
+				{fp: 3, checksums: []uint32{1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0}},
@@ -605,11 +611,9 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove the middle chunk for every other series",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{1}},
+				{fp: 2, checksums: []uint32{1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0, 2}},
@@ -621,10 +625,8 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "remove the first chunk of the last series",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 3, checksums: []uint32{0}},
-				},
+			removals: []instruction{
+				{fp: 3, checksums: []uint32{0}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0, 1, 2}},
@@ -636,13 +638,11 @@ func TestFilterChunkRefs(t *testing.T) {
 		{
 			desc:  "duplicate removals",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{0, 1}},
-					{fp: 0, checksums: []uint32{0, 1, 2}},
-					{fp: 1, checksums: []uint32{0, 2}},
-					{fp: 2, checksums: []uint32{1}},
-				},
+			removals: []instruction{
+				{fp: 0, checksums: []uint32{0, 1}},
+				{fp: 0, checksums: []uint32{0, 1, 2}},
+				{fp: 1, checksums: []uint32{0, 2}},
+				{fp: 2, checksums: []uint32{1}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 1, checksums: []uint32{1}},
@@ -651,44 +651,18 @@ func TestFilterChunkRefs(t *testing.T) {
 			}),
 		},
 		{
-			desc:  "middle duplicates across 2 days",
-			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-				},
-				{
-					{fp: 0, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{1}},
-				},
-			},
-			expected: mkResult([]instruction{
-				{fp: 0, checksums: []uint32{0, 2}},
-				{fp: 1, checksums: []uint32{0, 1, 2}},
-				{fp: 2, checksums: []uint32{0, 2}},
-				{fp: 3, checksums: []uint32{0, 1, 2}},
-			}),
-		},
-		{
 			desc:  "unordered fingerprints",
 			input: mkInput(4, 3),
-			removals: [][]instruction{
-				{
-					{fp: 3, checksums: []uint32{2}},
-					{fp: 0, checksums: []uint32{1, 2}},
-					{fp: 2, checksums: []uint32{1, 2}},
-				},
-				{
-					{fp: 1, checksums: []uint32{1}},
-					{fp: 2, checksums: []uint32{0, 1}},
-					{fp: 3, checksums: []uint32{0}},
-				},
+			removals: []instruction{
+				{fp: 3, checksums: []uint32{2}},
+				{fp: 0, checksums: []uint32{1, 2}},
+				{fp: 2, checksums: []uint32{1, 2}},
 			},
 			expected: mkResult([]instruction{
 				{fp: 0, checksums: []uint32{0}},
-				{fp: 1, checksums: []uint32{0, 2}},
-				{fp: 3, checksums: []uint32{1}},
+				{fp: 1, checksums: []uint32{0, 1, 2}},
+				{fp: 2, checksums: []uint32{0}},
+				{fp: 3, checksums: []uint32{0, 1}},
 			}),
 		},
 	} {
@@ -752,7 +726,7 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 		{
 			desc: "filterChunkRefs",
 			f: func(req *logproto.FilterChunkRefRequest, responses []v1.Output) {
-				filterChunkRefs(req, [][]v1.Output{responses})
+				filterChunkRefs(req, responses)
 			},
 		},
 	} {

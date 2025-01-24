@@ -62,7 +62,6 @@ func TestMerge(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			it := NewMerge(tt.iterators...)
 			defer it.Close()

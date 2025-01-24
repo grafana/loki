@@ -23,7 +23,6 @@ import (
 
 func TestCompactedIndex_IndexProcessor(t *testing.T) {
 	for _, tt := range allSchemas {
-		tt := tt
 		t.Run(tt.schema, func(t *testing.T) {
 			cm := storage.NewClientMetrics()
 			defer cm.Unregister()

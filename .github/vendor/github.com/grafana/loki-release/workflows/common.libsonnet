@@ -75,6 +75,10 @@
   checkout:
     $.step.new('checkout', 'actions/checkout@v4'),
 
+  cleanUpBuildCache:
+    $.step.new('clean up build tools cache')
+    + $.step.withRun('rm -rf /opt/hostedtoolcache'),
+
   fetchReleaseRepo:
     $.step.new('pull code to release', 'actions/checkout@v4')
     + $.step.with({

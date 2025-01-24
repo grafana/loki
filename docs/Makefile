@@ -17,7 +17,12 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		-c /helm-docs/production/helm/ \
 		-t reference.md.gotmpl \
 		-o reference.md
+	$(PODMAN) run --rm --volume "$(realpath ..):/helm-docs" -u "$$(id -u)" "docker.io/jnorwood/helm-docs:v1.11.0" \
+		-c /helm-docs/production/helm/ \
+		-t README.md.gotmpl \
+		-o README.md
 else
 	helm-docs -c ../production/helm/ -t reference.md.gotmpl -o reference.md
+	helm-docs -c ../production/helm/ -t README.md.gotmpl -o README.md
 endif
 	mv "$(basename $<)" "$@"

@@ -1,5 +1,3 @@
-local utils = import 'mixin-utils/utils.libsonnet';
-
 (import 'dashboard-utils.libsonnet') {
   local compactor_pod_matcher = if $._config.meta_monitoring.enabled
   then 'pod=~"(compactor.*|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher
@@ -42,7 +40,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
           $.row('')
           .addPanel(
             $.newQueryPanel('Number of times Tables were skipped during Compaction') +
-            $.queryPanel(['sum(increase(loki_compactor_skipped_compacting_locked_table_total{%s}[$__range]))' % $.namespaceMatcher()], ['{{table_name}}']),
+            $.queryPanel(['sum(loki_compactor_locked_table_successive_compaction_skips{%s})' % $.namespaceMatcher()], ['{{table_name}}']),
           )
           .addPanel(
             $.newQueryPanel('Compact Tables Operations Per Status') +

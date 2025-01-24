@@ -71,15 +71,33 @@ func (m *KV) createAndRegisterMetrics() {
 		Help:      "Total size of pulled state",
 	})
 
-	m.numberOfBroadcastMessagesInQueue = promauto.With(m.registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Namespace: m.cfg.MetricsNamespace,
-		Subsystem: subsystem,
-		Name:      "messages_in_broadcast_queue",
-		Help:      "Number of user messages in the broadcast queue",
+	const queueMetricName = "messages_in_broadcast_queue"
+	const queueMetricHelp = "Number of user messages in the broadcast queue"
+
+	m.numberOfGossipMessagesInQueue = promauto.With(m.registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace:   m.cfg.MetricsNamespace,
+		Subsystem:   subsystem,
+		Name:        queueMetricName,
+		Help:        queueMetricHelp,
+		ConstLabels: map[string]string{"queue": "gossip"},
 	}, func() float64 {
-		// m.broadcasts is not set before Starting state
+		// Queues are not set before Starting state
 		if m.State() == services.Running || m.State() == services.Stopping {
-			return float64(m.broadcasts.NumQueued())
+			return float64(m.gossipBroadcasts.NumQueued())
+		}
+		return 0
+	})
+
+	m.numberOfLocalMessagesInQueue = promauto.With(m.registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace:   m.cfg.MetricsNamespace,
+		Subsystem:   subsystem,
+		Name:        queueMetricName,
+		Help:        queueMetricHelp,
+		ConstLabels: map[string]string{"queue": "local"},
+	}, func() float64 {
+		// Queues are not set before Starting state
+		if m.State() == services.Running || m.State() == services.Stopping {
+			return float64(m.localBroadcasts.NumQueued())
 		}
 		return 0
 	})

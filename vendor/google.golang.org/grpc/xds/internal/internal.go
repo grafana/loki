@@ -55,6 +55,11 @@ func (l LocalityID) Equal(o any) bool {
 	return l.Region == ol.Region && l.Zone == ol.Zone && l.SubZone == ol.SubZone
 }
 
+// Empty returns whether or not the locality ID is empty.
+func (l LocalityID) Empty() bool {
+	return l.Region == "" && l.Zone == "" && l.SubZone == ""
+}
+
 // LocalityIDFromString converts a json representation of locality, into a
 // LocalityID struct.
 func LocalityIDFromString(s string) (ret LocalityID, _ error) {
@@ -83,3 +88,10 @@ func SetLocalityID(addr resolver.Address, l LocalityID) resolver.Address {
 
 // ResourceTypeMapForTesting maps TypeUrl to corresponding ResourceType.
 var ResourceTypeMapForTesting map[string]any
+
+// UnknownCSMLabels are TelemetryLabels emitted from CDS if CSM Telemetry Label
+// data is not present in the CDS Resource.
+var UnknownCSMLabels = map[string]string{
+	"csm.service_name":           "unknown",
+	"csm.service_namespace_name": "unknown",
+}

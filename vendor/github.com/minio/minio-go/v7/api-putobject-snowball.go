@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -48,6 +49,10 @@ type SnowballOptions struct {
 	// Compression will typically reduce memory and network usage,
 	// Compression can safely be enabled with MinIO hosts.
 	Compress bool
+
+	// SkipErrs if enabled will skip any errors while reading the
+	// object content while creating the snowball archive
+	SkipErrs bool
 }
 
 // SnowballObject contains information about a single object to be added to the snowball.
@@ -65,6 +70,14 @@ type SnowballObject struct {
 	// Content of the object.
 	// Exactly 'Size' number of bytes must be provided.
 	Content io.Reader
+
+	// VersionID of the object; if empty, a new versionID will be generated
+	VersionID string
+
+	// Headers contains more options for this object upload, the same as you
+	// would include in a regular PutObject operation, such as user metadata
+	// and content-disposition, expires, ..
+	Headers http.Header
 
 	// Close will be called when an object has finished processing.
 	// Note that if PutObjectsSnowball returns because of an error,
@@ -94,7 +107,7 @@ type readSeekCloser interface {
 // Total size should be < 5TB.
 // This function blocks until 'objs' is closed and the content has been uploaded.
 func (c Client) PutObjectsSnowball(ctx context.Context, bucketName string, opts SnowballOptions, objs <-chan SnowballObject) (err error) {
-	err = opts.Opts.validate()
+	err = opts.Opts.validate(&c)
 	if err != nil {
 		return err
 	}
@@ -177,6 +190,14 @@ objectLoop:
 				header.ModTime = time.Now().UTC()
 			}
 
+			header.PAXRecords = make(map[string]string)
+			if obj.VersionID != "" {
+				header.PAXRecords["minio.versionId"] = obj.VersionID
+			}
+			for k, vals := range obj.Headers {
+				header.PAXRecords["minio.metadata."+k] = strings.Join(vals, ",")
+			}
+
 			if err := t.WriteHeader(&header); err != nil {
 				closeObj()
 				return err
@@ -184,10 +205,16 @@ objectLoop:
 			n, err := io.Copy(t, obj.Content)
 			if err != nil {
 				closeObj()
+				if opts.SkipErrs {
+					continue
+				}
 				return err
 			}
 			if n != obj.Size {
 				closeObj()
+				if opts.SkipErrs {
+					continue
+				}
 				return io.ErrUnexpectedEOF
 			}
 			closeObj()

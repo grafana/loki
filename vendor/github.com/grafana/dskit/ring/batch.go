@@ -49,9 +49,26 @@ func isHTTPStatus4xx(err error) bool {
 	return code/100 == 4
 }
 
+// DoBatchRing defines the interface required by a ring implementation to use DoBatch() and DoBatchWithOptions().
+type DoBatchRing interface {
+	// Get returns a ReplicationSet containing the instances to which the input key should be sharded to
+	// for the input Operation.
+	//
+	// The input buffers may be referenced in the returned ReplicationSet. This means that it's unsafe to call
+	// Get() multiple times passing the same buffers if ReplicationSet is retained between two different Get()
+	// calls. In this cas, you can pass nil buffers.
+	Get(key uint32, op Operation, bufInstances []InstanceDesc, bufStrings1, bufStrings2 []string) (ReplicationSet, error)
+
+	// ReplicationFactor returns the number of instances each key is expected to be sharded to.
+	ReplicationFactor() int
+
+	// InstancesCount returns the number of instances in the ring eligible to get any key sharded to.
+	InstancesCount() int
+}
+
 // DoBatch is a deprecated version of DoBatchWithOptions where grpc errors containing status codes 4xx are treated as client errors.
 // Deprecated. Use DoBatchWithOptions instead.
-func DoBatch(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(InstanceDesc, []int) error, cleanup func()) error {
+func DoBatch(ctx context.Context, op Operation, r DoBatchRing, keys []uint32, callback func(InstanceDesc, []int) error, cleanup func()) error {
 	return DoBatchWithOptions(ctx, op, r, keys, callback, DoBatchOptions{
 		Cleanup:       cleanup,
 		IsClientError: isHTTPStatus4xx,
@@ -94,14 +111,14 @@ func (o *DoBatchOptions) replaceZeroValuesWithDefaults() {
 // See comments on DoBatchOptions for available options for this call.
 //
 // Not implemented as a method on Ring, so we can test separately.
-func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []uint32, callback func(InstanceDesc, []int) error, o DoBatchOptions) error {
+func DoBatchWithOptions(ctx context.Context, op Operation, r DoBatchRing, keys []uint32, callback func(InstanceDesc, []int) error, o DoBatchOptions) error {
 	o.replaceZeroValuesWithDefaults()
 
 	if r.InstancesCount() <= 0 {
 		o.Cleanup()
 		return fmt.Errorf("DoBatch: InstancesCount <= 0")
 	}
-	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.InstancesCount()
+	expectedTrackersPerInstance := len(keys) * (r.ReplicationFactor() + 1) / r.InstancesCount()
 	itemTrackers := make([]itemTracker, len(keys))
 	instances := make(map[string]instance, r.InstancesCount())
 
@@ -114,7 +131,7 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []ui
 		// Get call below takes ~1 microsecond for ~500 instances.
 		// Checking every 10K calls would be every 10ms.
 		if i%10e3 == 0 {
-			if err := ctx.Err(); err != nil {
+			if err := context.Cause(ctx); err != nil {
 				o.Cleanup()
 				return err
 			}
@@ -132,8 +149,8 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []ui
 		for _, desc := range replicationSet.Instances {
 			curr, found := instances[desc.Addr]
 			if !found {
-				curr.itemTrackers = make([]*itemTracker, 0, expectedTrackers)
-				curr.indexes = make([]int, 0, expectedTrackers)
+				curr.itemTrackers = make([]*itemTracker, 0, expectedTrackersPerInstance)
+				curr.indexes = make([]int, 0, expectedTrackersPerInstance)
 			}
 			instances[desc.Addr] = instance{
 				desc:         desc,
@@ -144,7 +161,7 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []ui
 	}
 
 	// One last check before calling the callbacks: it doesn't make sense if context is canceled.
-	if err := ctx.Err(); err != nil {
+	if err := context.Cause(ctx); err != nil {
 		o.Cleanup()
 		return err
 	}
@@ -179,7 +196,7 @@ func DoBatchWithOptions(ctx context.Context, op Operation, r ReadRing, keys []ui
 	case <-tracker.done:
 		return nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return context.Cause(ctx)
 	}
 }
 

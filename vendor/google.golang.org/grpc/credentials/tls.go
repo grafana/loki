@@ -27,8 +27,12 @@ import (
 	"net/url"
 	"os"
 
+	"google.golang.org/grpc/grpclog"
 	credinternal "google.golang.org/grpc/internal/credentials"
+	"google.golang.org/grpc/internal/envconfig"
 )
+
+var logger = grpclog.Component("credentials")
 
 // TLSInfo contains the auth information for a TLS authenticated connection.
 // It implements the AuthInfo interface.
@@ -112,6 +116,22 @@ func (c *tlsCreds) ClientHandshake(ctx context.Context, authority string, rawCon
 		conn.Close()
 		return nil, nil, ctx.Err()
 	}
+
+	// The negotiated protocol can be either of the following:
+	// 1. h2: When the server supports ALPN. Only HTTP/2 can be negotiated since
+	//    it is the only protocol advertised by the client during the handshake.
+	//    The tls library ensures that the server chooses a protocol advertised
+	//    by the client.
+	// 2. "" (empty string): If the server doesn't support ALPN. ALPN is a requirement
+	//    for using HTTP/2 over TLS. We can terminate the connection immediately.
+	np := conn.ConnectionState().NegotiatedProtocol
+	if np == "" {
+		if envconfig.EnforceALPNEnabled {
+			conn.Close()
+			return nil, nil, fmt.Errorf("credentials: cannot check peer: missing selected ALPN property")
+		}
+		logger.Warningf("Allowing TLS connection to server %q with ALPN disabled. TLS connections to servers with ALPN disabled will be disallowed in future grpc-go releases", cfg.ServerName)
+	}
 	tlsInfo := TLSInfo{
 		State: conn.ConnectionState(),
 		CommonAuthInfo: CommonAuthInfo{
@@ -131,8 +151,20 @@ func (c *tlsCreds) ServerHandshake(rawConn net.Conn) (net.Conn, AuthInfo, error)
 		conn.Close()
 		return nil, nil, err
 	}
+	cs := conn.ConnectionState()
+	// The negotiated application protocol can be empty only if the client doesn't
+	// support ALPN. In such cases, we can close the connection since ALPN is required
+	// for using HTTP/2 over TLS.
+	if cs.NegotiatedProtocol == "" {
+		if envconfig.EnforceALPNEnabled {
+			conn.Close()
+			return nil, nil, fmt.Errorf("credentials: cannot check peer: missing selected ALPN property")
+		} else if logger.V(2) {
+			logger.Info("Allowing TLS connection from client with ALPN disabled. TLS connections with ALPN disabled will be disallowed in future grpc-go releases")
+		}
+	}
 	tlsInfo := TLSInfo{
-		State: conn.ConnectionState(),
+		State: cs,
 		CommonAuthInfo: CommonAuthInfo{
 			SecurityLevel: PrivacyAndIntegrity,
 		},
@@ -168,25 +200,40 @@ var tls12ForbiddenCipherSuites = map[uint16]struct{}{
 
 // NewTLS uses c to construct a TransportCredentials based on TLS.
 func NewTLS(c *tls.Config) TransportCredentials {
-	tc := &tlsCreds{credinternal.CloneTLSConfig(c)}
-	tc.config.NextProtos = credinternal.AppendH2ToNextProtos(tc.config.NextProtos)
+	config := applyDefaults(c)
+	if config.GetConfigForClient != nil {
+		oldFn := config.GetConfigForClient
+		config.GetConfigForClient = func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			cfgForClient, err := oldFn(hello)
+			if err != nil || cfgForClient == nil {
+				return cfgForClient, err
+			}
+			return applyDefaults(cfgForClient), nil
+		}
+	}
+	return &tlsCreds{config: config}
+}
+
+func applyDefaults(c *tls.Config) *tls.Config {
+	config := credinternal.CloneTLSConfig(c)
+	config.NextProtos = credinternal.AppendH2ToNextProtos(config.NextProtos)
 	// If the user did not configure a MinVersion and did not configure a
 	// MaxVersion < 1.2, use MinVersion=1.2, which is required by
 	// https://datatracker.ietf.org/doc/html/rfc7540#section-9.2
-	if tc.config.MinVersion == 0 && (tc.config.MaxVersion == 0 || tc.config.MaxVersion >= tls.VersionTLS12) {
-		tc.config.MinVersion = tls.VersionTLS12
+	if config.MinVersion == 0 && (config.MaxVersion == 0 || config.MaxVersion >= tls.VersionTLS12) {
+		config.MinVersion = tls.VersionTLS12
 	}
 	// If the user did not configure CipherSuites, use all "secure" cipher
 	// suites reported by the TLS package, but remove some explicitly forbidden
 	// by https://datatracker.ietf.org/doc/html/rfc7540#appendix-A
-	if tc.config.CipherSuites == nil {
+	if config.CipherSuites == nil {
 		for _, cs := range tls.CipherSuites() {
 			if _, ok := tls12ForbiddenCipherSuites[cs.ID]; !ok {
-				tc.config.CipherSuites = append(tc.config.CipherSuites, cs.ID)
+				config.CipherSuites = append(config.CipherSuites, cs.ID)
 			}
 		}
 	}
-	return tc
+	return config
 }
 
 // NewClientTLSFromCert constructs TLS credentials from the provided root

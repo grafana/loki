@@ -70,8 +70,19 @@ func run(ctx context.Context, call func(ctx context.Context) error, retry *retry
 	return internal.Retry(ctx, bo, func() (stop bool, err error) {
 		ctxWithHeaders := setInvocationHeaders(ctx, invocationID, attempts)
 		err = call(ctxWithHeaders)
+		if err != nil && retry.maxAttempts != nil && attempts >= *retry.maxAttempts {
+			return true, fmt.Errorf("storage: retry failed after %v attempts; last error: %w", *retry.maxAttempts, err)
+		}
 		attempts++
-		return !errorFunc(err), err
+		retryable := errorFunc(err)
+		// Explicitly check context cancellation so that we can distinguish between a
+		// DEADLINE_EXCEEDED error from the server and a user-set context deadline.
+		// Unfortunately gRPC will codes.DeadlineExceeded (which may be retryable if it's
+		// sent by the server) in both cases.
+		if ctxErr := ctx.Err(); errors.Is(ctxErr, context.Canceled) || errors.Is(ctxErr, context.DeadlineExceeded) {
+			retryable = false
+		}
+		return !retryable, err
 	})
 }
 
@@ -102,35 +113,37 @@ func ShouldRetry(err error) bool {
 	if errors.Is(err, io.ErrUnexpectedEOF) {
 		return true
 	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
 
 	switch e := err.(type) {
-	case *net.OpError:
-		if strings.Contains(e.Error(), "use of closed network connection") {
-			// TODO: check against net.ErrClosed (go 1.16+) instead of string
-			return true
-		}
 	case *googleapi.Error:
 		// Retry on 408, 429, and 5xx, according to
 		// https://cloud.google.com/storage/docs/exponential-backoff.
 		return e.Code == 408 || e.Code == 429 || (e.Code >= 500 && e.Code < 600)
-	case *url.Error:
+	case *net.OpError, *url.Error:
 		// Retry socket-level errors ECONNREFUSED and ECONNRESET (from syscall).
 		// Unfortunately the error type is unexported, so we resort to string
 		// matching.
-		retriable := []string{"connection refused", "connection reset"}
+		retriable := []string{"connection refused", "connection reset", "broken pipe"}
 		for _, s := range retriable {
 			if strings.Contains(e.Error(), s) {
 				return true
 			}
+		}
+	case *net.DNSError:
+		if e.IsTemporary {
+			return true
 		}
 	case interface{ Temporary() bool }:
 		if e.Temporary() {
 			return true
 		}
 	}
-	// UNAVAILABLE, RESOURCE_EXHAUSTED, and INTERNAL codes are all retryable for gRPC.
+	// UNAVAILABLE, RESOURCE_EXHAUSTED, INTERNAL, and DEADLINE_EXCEEDED codes are all retryable for gRPC.
 	if st, ok := status.FromError(err); ok {
-		if code := st.Code(); code == codes.Unavailable || code == codes.ResourceExhausted || code == codes.Internal {
+		if code := st.Code(); code == codes.Unavailable || code == codes.ResourceExhausted || code == codes.Internal || code == codes.DeadlineExceeded {
 			return true
 		}
 	}

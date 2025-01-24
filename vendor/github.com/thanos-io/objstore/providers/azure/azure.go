@@ -6,6 +6,7 @@ package azure
 import (
 	"context"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -29,7 +30,8 @@ import (
 
 // DefaultConfig for Azure objstore client.
 var DefaultConfig = Config{
-	Endpoint: "blob.core.windows.net",
+	Endpoint:               "blob.core.windows.net",
+	StorageCreateContainer: true,
 	HTTPConfig: exthttp.HTTPConfig{
 		IdleConnTimeout:       model.Duration(90 * time.Second),
 		ResponseHeaderTimeout: model.Duration(2 * time.Minute),
@@ -44,9 +46,13 @@ var DefaultConfig = Config{
 
 // Config Azure storage configuration.
 type Config struct {
+	AzTenantID              string             `yaml:"az_tenant_id"`
+	ClientID                string             `yaml:"client_id"`
+	ClientSecret            string             `yaml:"client_secret"`
 	StorageAccountName      string             `yaml:"storage_account"`
 	StorageAccountKey       string             `yaml:"storage_account_key"`
 	StorageConnectionString string             `yaml:"storage_connection_string"`
+	StorageCreateContainer  bool               `yaml:"storage_create_container"`
 	ContainerName           string             `yaml:"container"`
 	Endpoint                string             `yaml:"endpoint"`
 	UserAssignedID          string             `yaml:"user_assigned_id"`
@@ -79,6 +85,14 @@ func (conf *Config) validate() error {
 
 	if conf.UserAssignedID != "" && conf.StorageConnectionString != "" {
 		errMsg = append(errMsg, "user_assigned_id cannot be set when using storage_connection_string authentication")
+	}
+
+	if conf.UserAssignedID != "" && conf.ClientID != "" {
+		errMsg = append(errMsg, "user_assigned_id cannot be set when using client_id authentication")
+	}
+
+	if (conf.AzTenantID != "" || conf.ClientSecret != "" || conf.ClientID != "") && (conf.AzTenantID == "" || conf.ClientSecret == "" || conf.ClientID == "") {
+		errMsg = append(errMsg, "az_tenant_id, client_id, and client_secret must be set together")
 	}
 
 	if conf.StorageAccountKey != "" && conf.StorageConnectionString != "" {
@@ -143,7 +157,7 @@ type Bucket struct {
 }
 
 // NewBucket returns a new Bucket using the provided Azure config.
-func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket, error) {
+func NewBucket(logger log.Logger, azureConfig []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	level.Debug(logger).Log("msg", "creating new Azure bucket connection", "component", component)
 	conf, err := parseConfig(azureConfig)
 	if err != nil {
@@ -152,34 +166,35 @@ func NewBucket(logger log.Logger, azureConfig []byte, component string) (*Bucket
 	if conf.MSIResource != "" {
 		level.Warn(logger).Log("msg", "The field msi_resource has been deprecated and should no longer be set")
 	}
-	return NewBucketWithConfig(logger, conf, component)
+	return NewBucketWithConfig(logger, conf, component, wrapRoundtripper)
 }
 
 // NewBucketWithConfig returns a new Bucket using the provided Azure config struct.
-func NewBucketWithConfig(logger log.Logger, conf Config, component string) (*Bucket, error) {
+func NewBucketWithConfig(logger log.Logger, conf Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	if err := conf.validate(); err != nil {
 		return nil, err
 	}
 
-	containerClient, err := getContainerClient(conf)
+	containerClient, err := getContainerClient(conf, wrapRoundtripper)
 	if err != nil {
 		return nil, err
 	}
 
 	// Check if storage account container already exists, and create one if it does not.
-	ctx := context.Background()
-	_, err = containerClient.GetProperties(ctx, &container.GetPropertiesOptions{})
-	if err != nil {
-		if !bloberror.HasCode(err, bloberror.ContainerNotFound) {
-			return nil, err
-		}
-		_, err := containerClient.Create(ctx, nil)
+	if conf.StorageCreateContainer {
+		ctx := context.Background()
+		_, err = containerClient.GetProperties(ctx, &container.GetPropertiesOptions{})
 		if err != nil {
-			return nil, errors.Wrapf(err, "error creating Azure blob container: %s", conf.ContainerName)
+			if !bloberror.HasCode(err, bloberror.ContainerNotFound) {
+				return nil, err
+			}
+			_, err := containerClient.Create(ctx, nil)
+			if err != nil {
+				return nil, errors.Wrapf(err, "error creating Azure blob container: %s", conf.ContainerName)
+			}
+			level.Info(logger).Log("msg", "Azure blob container successfully created", "address", conf.ContainerName)
 		}
-		level.Info(logger).Log("msg", "Azure blob container successfully created", "address", conf.ContainerName)
 	}
-
 	bkt := &Bucket{
 		logger:           logger,
 		containerClient:  containerClient,
@@ -189,9 +204,17 @@ func NewBucketWithConfig(logger log.Logger, conf Config, component string) (*Buc
 	return bkt, nil
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.AZURE }
+
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	prefix := dir
 	if prefix != "" && !strings.HasSuffix(prefix, DirDelim) {
 		prefix += DirDelim
@@ -207,7 +230,13 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 				return err
 			}
 			for _, blob := range resp.Segment.BlobItems {
-				if err := f(*blob.Name); err != nil {
+				attrs := objstore.IterObjectAttributes{
+					Name: *blob.Name,
+				}
+				if params.LastModified {
+					attrs.SetLastModified(*blob.Properties.LastModified)
+				}
+				if err := f(attrs); err != nil {
 					return err
 				}
 			}
@@ -223,17 +252,40 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 			return err
 		}
 		for _, blobItem := range resp.Segment.BlobItems {
-			if err := f(*blobItem.Name); err != nil {
+			attrs := objstore.IterObjectAttributes{
+				Name: *blobItem.Name,
+			}
+			if params.LastModified {
+				attrs.SetLastModified(*blobItem.Properties.LastModified)
+			}
+			if err := f(attrs); err != nil {
 				return err
 			}
 		}
 		for _, blobPrefix := range resp.Segment.BlobPrefixes {
-			if err := f(*blobPrefix.Name); err != nil {
+			if err := f(objstore.IterObjectAttributes{Name: *blobPrefix.Name}); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
 }
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
@@ -266,7 +318,13 @@ func (b *Bucket) getBlobReader(ctx context.Context, name string, httpRange blob.
 		return nil, errors.Wrapf(err, "cannot download blob, address: %s", blobClient.URL())
 	}
 	retryOpts := azblob.RetryReaderOptions{MaxRetries: int32(b.readerMaxRetries)}
-	return resp.NewRetryReader(ctx, &retryOpts), nil
+
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: resp.NewRetryReader(ctx, &retryOpts),
+		Size: func() (int64, error) {
+			return *resp.ContentLength, nil
+		},
+	}, nil
 }
 
 // Get returns a reader for the given object name.
@@ -352,7 +410,7 @@ func NewTestBucket(t testing.TB, component string) (objstore.Bucket, func(), err
 	if err != nil {
 		return nil, nil, err
 	}
-	bkt, err := NewBucket(log.NewNopLogger(), bc, component)
+	bkt, err := NewBucket(log.NewNopLogger(), bc, component, nil)
 	if err != nil {
 		t.Errorf("Cannot create Azure storage container:")
 		return nil, nil, err

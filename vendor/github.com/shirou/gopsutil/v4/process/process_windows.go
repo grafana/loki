@@ -43,6 +43,7 @@ var (
 	procGetPriorityClass           = common.Modkernel32.NewProc("GetPriorityClass")
 	procGetProcessIoCounters       = common.Modkernel32.NewProc("GetProcessIoCounters")
 	procGetNativeSystemInfo        = common.Modkernel32.NewProc("GetNativeSystemInfo")
+	procGetProcessHandleCount      = common.Modkernel32.NewProc("GetProcessHandleCount")
 
 	processorArchitecture uint
 )
@@ -548,8 +549,21 @@ func (p *Process) NumCtxSwitchesWithContext(ctx context.Context) (*NumCtxSwitche
 	return nil, common.ErrNotImplementedError
 }
 
+// NumFDsWithContext returns the number of handles for a process on Windows,
+// not the number of file descriptors (FDs).
 func (p *Process) NumFDsWithContext(ctx context.Context) (int32, error) {
-	return 0, common.ErrNotImplementedError
+	handle, err := windows.OpenProcess(processQueryInformation, false, uint32(p.Pid))
+	if err != nil {
+		return 0, err
+	}
+	defer windows.CloseHandle(handle)
+
+	var handleCount uint32
+	ret, _, err := procGetProcessHandleCount.Call(uintptr(handle), uintptr(unsafe.Pointer(&handleCount)))
+	if ret == 0 {
+		return 0, err
+	}
+	return int32(handleCount), nil
 }
 
 func (p *Process) NumThreadsWithContext(ctx context.Context) (int32, error) {
@@ -744,7 +758,7 @@ func (p *Process) ConnectionsWithContext(ctx context.Context) ([]net.ConnectionS
 	return net.ConnectionsPidWithContext(ctx, "all", p.Pid)
 }
 
-func (p *Process) ConnectionsMaxWithContext(ctx context.Context, max int) ([]net.ConnectionStat, error) {
+func (p *Process) ConnectionsMaxWithContext(ctx context.Context, maxConn int) ([]net.ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -803,6 +817,7 @@ func (p *Process) KillWithContext(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer process.Release()
 	return process.Kill()
 }
 

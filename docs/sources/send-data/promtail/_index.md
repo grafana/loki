@@ -3,8 +3,8 @@ title: Promtail agent
 menuTitle:  Promtail
 description: How to use the Promtail agent to ship logs to Loki
 aliases: 
-- ../clients/promtail/
-weight:  200
+- ../clients/promtail/ # /docs/loki/latest/clients/promtail/
+weight:  300
 ---
 # Promtail agent
 
@@ -23,7 +23,7 @@ It primarily:
 - Pushes them to the Loki instance.
 
 Currently, Promtail can tail logs from two sources: local log files and the
-systemd journal (on AMD64 machines only).
+systemd journal (on ARM and AMD64 machines).
 
 ## Log file discovery
 
@@ -110,7 +110,7 @@ Important details are:
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) with the [loki_push_api](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#loki_push_api) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) with the [Promtail loki_push_api](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#loki_push_api) scrape config.
 
 There are a few instances where this might be helpful:
 
@@ -164,7 +164,7 @@ This endpoint returns 200 when Promtail is up and running, and there's at least 
 ### `GET /metrics`
 
 This endpoint returns Promtail metrics for Prometheus. Refer to
-[Observing Grafana Loki]({{< relref "../../operations/observability" >}}) for the list
+[Observing Grafana Loki]({{< relref "../../operations/meta-monitoring" >}}) for the list
 of exported metrics.
 
 ### Promtail web server config

@@ -1,0 +1,91 @@
+run:
+  go: "1.20"
+  timeout: 5m
+  deadline: 10m
+
+linters-settings:
+  govet:
+    check-shadowing: false
+  golint:
+    min-confidence: 0
+  gocyclo:
+    min-complexity: 99
+  maligned:
+    suggest-new: true
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 2
+    min-occurrences: 3
+  misspell:
+    locale: US
+  goimports:
+    local-prefixes: github.com/IBM/sarama
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+      # - experimental
+      # - opinionated
+      # - style
+    enabled-checks:
+      - importShadow
+      - nestingReduce
+      - stringsCompare
+      # - unnamedResult
+      # - whyNoLint
+    disabled-checks:
+      - assignOp
+      - appendAssign
+      - commentedOutCode
+      - hugeParam
+      - ifElseChain
+      - singleCaseSwitch
+      - sloppyReassign
+  funlen:
+    lines: 300
+    statements: 300
+
+  depguard:
+    rules:
+      main:
+        deny:
+          - pkg: "io/ioutil"
+            desc: Use the "io" and "os" packages instead.
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - depguard
+    # - copyloopvar
+    - dogsled
+    - errcheck
+    - errorlint
+    - funlen
+    - gochecknoinits
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosec
+    - govet
+    - misspell
+    - nilerr
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unused
+    - whitespace
+
+issues:
+  exclude:
+    - "G115: integer overflow conversion"
+    - "G404: Use of weak random number generator"
+  exclude-rules:
+    # exclude some linters from running on certains files.
+    - path: functional.*_test\.go
+      linters:
+        - paralleltest
+  # maximum count of issues with the same text. set to 0 for unlimited. default is 3.
+  max-same-issues: 0

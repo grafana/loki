@@ -1,3 +1,4 @@
+//go:build go1.7
 // +build go1.7
 
 package nethttp
@@ -9,6 +10,8 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 )
+
+var responseSizeKey = "http.response_size"
 
 type mwOptions struct {
 	opNameFunc    func(r *http.Request) string
@@ -67,24 +70,26 @@ func MWURLTagFunc(f func(u *url.URL) string) MWOption {
 // Additionally, it adds the span to the request's context.
 //
 // By default, the operation name of the spans is set to "HTTP {method}".
-// This can be overriden with options.
+// This can be overridden with options.
 //
 // Example:
-// 	 http.ListenAndServe("localhost:80", nethttp.Middleware(tracer, http.DefaultServeMux))
+//
+//	http.ListenAndServe("localhost:80", nethttp.Middleware(tracer, http.DefaultServeMux))
 //
 // The options allow fine tuning the behavior of the middleware.
 //
 // Example:
-//   mw := nethttp.Middleware(
-//      tracer,
-//      http.DefaultServeMux,
-//      nethttp.OperationNameFunc(func(r *http.Request) string {
-//	        return "HTTP " + r.Method + ":/api/customers"
-//      }),
-//      nethttp.MWSpanObserver(func(sp opentracing.Span, r *http.Request) {
-//			sp.SetTag("http.uri", r.URL.EscapedPath())
-//		}),
-//   )
+//
+//	  mw := nethttp.Middleware(
+//	     tracer,
+//	     http.DefaultServeMux,
+//	     nethttp.OperationNameFunc(func(r *http.Request) string {
+//		        return "HTTP " + r.Method + ":/api/customers"
+//	     }),
+//	     nethttp.MWSpanObserver(func(sp opentracing.Span, r *http.Request) {
+//				sp.SetTag("http.uri", r.URL.EscapedPath())
+//			}),
+//	  )
 func Middleware(tr opentracing.Tracer, h http.Handler, options ...MWOption) http.Handler {
 	return MiddlewareFunc(tr, h.ServeHTTP, options...)
 }
@@ -93,7 +98,8 @@ func Middleware(tr opentracing.Tracer, h http.Handler, options ...MWOption) http
 // It behaves identically to the Middleware function above.
 //
 // Example:
-//   http.ListenAndServe("localhost:80", nethttp.MiddlewareFunc(tracer, MyHandler))
+//
+//	http.ListenAndServe("localhost:80", nethttp.MiddlewareFunc(tracer, MyHandler))
 func MiddlewareFunc(tr opentracing.Tracer, h http.HandlerFunc, options ...MWOption) http.HandlerFunc {
 	opts := mwOptions{
 		opNameFunc: func(r *http.Request) string {
@@ -126,22 +132,25 @@ func MiddlewareFunc(tr opentracing.Tracer, h http.HandlerFunc, options ...MWOpti
 		ext.Component.Set(sp, componentName)
 		opts.spanObserver(sp, r)
 
-		sct := &statusCodeTracker{ResponseWriter: w}
+		mt := &metricsTracker{ResponseWriter: w}
 		r = r.WithContext(opentracing.ContextWithSpan(r.Context(), sp))
 
 		defer func() {
 			panicErr := recover()
 			didPanic := panicErr != nil
 
-			if sct.status == 0 && !didPanic {
+			if mt.status == 0 && !didPanic {
 				// Standard behavior of http.Server is to assume status code 200 if one was not written by a handler that returned successfully.
 				// https://github.com/golang/go/blob/fca286bed3ed0e12336532cc711875ae5b3cb02a/src/net/http/server.go#L120
-				sct.status = 200
+				mt.status = 200
 			}
-			if sct.status > 0 {
-				ext.HTTPStatusCode.Set(sp, uint16(sct.status))
+			if mt.status > 0 {
+				ext.HTTPStatusCode.Set(sp, uint16(mt.status)) //nolint:gosec // can't have integer overflow with status code
 			}
-			if sct.status >= http.StatusInternalServerError || didPanic {
+			if mt.size > 0 {
+				sp.SetTag(responseSizeKey, mt.size)
+			}
+			if mt.status >= http.StatusInternalServerError || didPanic {
 				ext.Error.Set(sp, true)
 			}
 			sp.Finish()
@@ -151,7 +160,7 @@ func MiddlewareFunc(tr opentracing.Tracer, h http.HandlerFunc, options ...MWOpti
 			}
 		}()
 
-		h(sct.wrappedResponseWriter(), r)
+		h(mt.wrappedResponseWriter(), r)
 	}
 	return http.HandlerFunc(fn)
 }

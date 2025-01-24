@@ -74,7 +74,7 @@ func (r *certificateRotation) NewCertificate(signer *crypto.CA, validity time.Du
 		return nil
 	}
 
-	return signer.MakeServerCertForDuration(sets.NewString(sets.List[string](r.Hostnames)...), validity, addClientAuthUsage, addSubject)
+	return signer.MakeServerCertForDuration(r.Hostnames, validity, addClientAuthUsage, addSubject)
 }
 
 func (r *certificateRotation) NeedNewCertificate(annotations map[string]string, signer *crypto.CA, caBundleCerts []*x509.Certificate, refresh time.Duration) string {

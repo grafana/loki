@@ -21,8 +21,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/math"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
@@ -105,7 +105,7 @@ func (s ResultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	if s.shouldCacheReq != nil && !s.shouldCacheReq(ctx, r) {
@@ -183,8 +183,6 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	)
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "handleHit")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	requests, responses, err := s.partition(r, extents)
 	if err != nil {
@@ -202,7 +200,7 @@ func (s ResultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
-		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(ctx, tenantIDs, r))
 
@@ -291,10 +289,10 @@ func merge(extents []Extent, acc *accumulator) ([]Extent, error) {
 		return nil, err
 	}
 	return append(extents, Extent{
-		Start:    acc.Extent.Start,
-		End:      acc.Extent.End,
+		Start:    acc.Start,
+		End:      acc.End,
 		Response: anyResp,
-		TraceId:  acc.Extent.TraceId,
+		TraceId:  acc.TraceId,
 	}), nil
 }
 
@@ -388,7 +386,7 @@ func (s ResultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 
 	// If start and end are the same (valid in promql), start == req.GetEnd() and we won't do the query.
 	// But we should only do the request if we don't have a valid cached response for it.
-	if req.GetStart() == req.GetEnd() && len(cachedResponses) == 0 {
+	if req.GetStart().Equal(req.GetEnd()) && len(cachedResponses) == 0 {
 		requests = append(requests, req)
 	}
 
@@ -426,14 +424,11 @@ func (s ResultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	var resp CachedResponse
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "unmarshal-extent") //nolint:ineffassign,staticcheck
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
-	log.LogFields(otlog.Int("bytes", len(bufs[0])))
+	sp.LogFields(otlog.Int("bytes", len(bufs[0])))
 
 	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
-		level.Error(log).Log("msg", "error unmarshalling cached value", "err", err)
-		log.Error(err)
+		level.Error(util_log.Logger).Log("msg", "error unmarshalling cached value", "err", err)
 		return nil, false
 	}
 

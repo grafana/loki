@@ -111,9 +111,7 @@ func NewService(opts ServiceOptions) (*Service, error) {
 
 // Register creates a new ORCA service implementation configured using the
 // provided options and registers the same on the provided grpc Server.
-func Register(s *grpc.Server, opts ServiceOptions) error {
-	// TODO(https://github.com/cncf/xds/issues/41): replace *grpc.Server with
-	// grpc.ServiceRegistrar when possible.
+func Register(s grpc.ServiceRegistrar, opts ServiceOptions) error {
 	service, err := NewService(opts)
 	if err != nil {
 		return err

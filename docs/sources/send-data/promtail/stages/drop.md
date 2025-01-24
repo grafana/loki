@@ -126,9 +126,9 @@ Would drop this log line:
 
 #### Drop old log lines
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 For `older_than` to work, you must be using the [timestamp]({{< relref "./timestamp" >}}) stage to set the timestamp from the ingested log line _before_ applying the `drop` stage.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Given the pipeline:
 

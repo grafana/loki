@@ -11,16 +11,18 @@ import (
 )
 
 type LogCluster struct {
-	id       int
-	Size     int
-	Tokens   []string
-	Stringer func([]string) string
-	Chunks   Chunks
+	id         int
+	Size       int
+	Tokens     []string
+	TokenState interface{}
+	Stringer   func([]string, interface{}) string
+
+	Chunks Chunks
 }
 
 func (c *LogCluster) String() string {
 	if c.Stringer != nil {
-		return c.Stringer(c.Tokens)
+		return c.Stringer(c.Tokens, c.TokenState)
 	}
 	return strings.Join(c.Tokens, " ")
 }

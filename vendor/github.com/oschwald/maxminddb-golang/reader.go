@@ -65,8 +65,8 @@ func FromBytes(buffer []byte) (*Reader, error) {
 
 	var metadata Metadata
 
-	rvMetdata := reflect.ValueOf(&metadata)
-	_, err := metadataDecoder.decode(0, rvMetdata, 0)
+	rvMetadata := reflect.ValueOf(&metadata)
+	_, err := metadataDecoder.decode(0, rvMetadata, 0)
 	if err != nil {
 		return nil, err
 	}

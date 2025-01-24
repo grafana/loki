@@ -45,8 +45,18 @@ message GroupedChunkRefs {
   uint64 fingerprint = 1;
   string tenant = 2;
   repeated ShortRef refs = 3;
+  // Labels are only populated on FilterChunkRefRequest. They are not returned on FilterChunkRefResponse
+  // TODO(salvacorts): Consider two different messages for FilterChunkRefRequest and FilterChunkRefResponse
+  IndexSeries labels = 4;
 }
+
+message PrefetchBloomBlocksRequest {
+  repeated string blocks = 1;
+}
+
+message PrefetchBloomBlocksResponse {}
 
 service BloomGateway {
   rpc FilterChunkRefs(FilterChunkRefRequest) returns (FilterChunkRefResponse) {}
+  rpc PrefetchBloomBlocks(PrefetchBloomBlocksRequest) returns (PrefetchBloomBlocksResponse) {}
 }

@@ -210,7 +210,9 @@ func (s *GatewayClient) Stop() {
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to stop index gateway connection pool", "err", err)
 	}
-	s.dnsProvider.Stop()
+	if s.cfg.Mode == SimpleMode {
+		s.dnsProvider.Stop()
+	}
 }
 
 func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
@@ -347,7 +349,7 @@ func (s *GatewayClient) GetShards(
 
 			return nil
 		},
-		func(err error) bool {
+		func(_ error) bool {
 			errCt++
 			return errCt <= maxErrs
 		},

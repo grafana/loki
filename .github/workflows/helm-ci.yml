@@ -4,63 +4,39 @@ on:
   pull_request:
     paths:
       - "production/helm/**"
+      - ".github/workflows/helm-ci.yml"
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
 
 jobs:
   call-lint:
-    name: Lint Helm Chart
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Check Docs
-        run: |
-          docker run --rm --volume "$(pwd):/helm-docs" -u "$(id -u)" jnorwood/helm-docs:v1.11.0
-          if ! git diff --exit-code; then
-              echo "Documentation not up to date. Please run helm-docs and commit changes!" >&2
-              exit 1
-          fi
-
-      - name: Lint Yaml
-        run: make helm-lint
-
-      - name: Lint Code Base
-        uses: docker://github/super-linter:v3.12.0
-        env:
-          FILTER_REGEX_EXCLUDE: .*(README\.md|Chart\.yaml|NOTES.txt).*
-          FILTER_REGEX_INCLUDE: .*production/helm/.*
-          VALIDATE_ALL_CODEBASE: false
-          VALIDATE_KUBERNETES_KUBEVAL: false
-          VALIDATE_YAML: false
-          VALIDATE_GO: false
-          DEFAULT_BRANCH: main
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: grafana/helm-charts/.github/workflows/linter.yml@main
+    with:
+      filter_regex_include: .*production/helm/loki/.*
   call-test:
     name: Test Helm Chart
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
         with:
           version: v3.8.2
 
       # Python is required because `ct lint` runs Yamale (https://github.com/23andMe/Yamale) and
       # yamllint (https://github.com/adrienverge/yamllint) which require Python
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.7
+          python-version: 3.13
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.6.0
+        uses: helm/chart-testing-action@v2.6.1
 
       - name: Run chart-testing (list-changed)
         id: list-changed
@@ -75,7 +51,7 @@ jobs:
         timeout-minutes: 10
 
       - name: Create kind cluster
-        uses: helm/kind-action@v1.8.0
+        uses: helm/kind-action@v1.11.0
         if: steps.list-changed.outputs.changed == 'true'
 
       - name: Install prometheus operator
@@ -84,10 +60,12 @@ jobs:
         run: |
           kubectl create namespace prometheus
 
-          helm install prometheus prometheus-community/kube-prometheus-stack \
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm install --debug prometheus prometheus-community/kube-prometheus-stack \
             --namespace prometheus \
             --set grafana.enabled=false \
-            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus
+            --set prometheus.prometheusSpec.serviceMonitorSelector.matchLabels.release=prometheus \
+            --set prometheus.prometheusSpec.scrapeConfigNamespaceSelector.matchLabels.release=prometheus
 
           kubectl --namespace prometheus get pods -l "release=prometheus"
           kubectl --namespace prometheus get services -l "release=prometheus"

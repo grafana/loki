@@ -4,21 +4,37 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/atomic"
+
 	"github.com/grafana/loki/v3/pkg/bloombuild/protos"
 )
 
-type Task struct {
-	*protos.Task
+type TaskMeta struct {
+	resultsChannel chan *protos.TaskResult
 
 	// Tracking
-	queueTime time.Time
-	ctx       context.Context
+	timesEnqueued atomic.Int64
+	queueTime     time.Time
+	ctx           context.Context
 }
 
-func NewTask(ctx context.Context, queueTime time.Time, task *protos.Task) *Task {
-	return &Task{
-		Task:      task,
-		ctx:       ctx,
-		queueTime: queueTime,
+type QueueTask struct {
+	*protos.ProtoTask
+	*TaskMeta
+}
+
+func NewQueueTask(
+	ctx context.Context,
+	queueTime time.Time,
+	task *protos.ProtoTask,
+	resultsChannel chan *protos.TaskResult,
+) *QueueTask {
+	return &QueueTask{
+		ProtoTask: task,
+		TaskMeta: &TaskMeta{
+			resultsChannel: resultsChannel,
+			ctx:            ctx,
+			queueTime:      queueTime,
+		},
 	}
 }

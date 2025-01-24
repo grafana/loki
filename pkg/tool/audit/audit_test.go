@@ -2,6 +2,7 @@ package audit
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -13,15 +14,31 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 )
 
+var errObjectNotFound = errors.New("object not found")
+
 type testObjClient struct {
 	client.ObjectClient
 }
 
-func (t testObjClient) ObjectExists(_ context.Context, object string) (bool, error) {
-	if strings.Contains(object, "missing") {
-		return false, nil
+func (t testObjClient) ObjectExists(ctx context.Context, object string) (bool, error) {
+	if _, err := t.GetAttributes(ctx, object); err != nil {
+		if t.IsObjectNotFoundErr(err) {
+			return false, nil
+		}
+		return false, err
 	}
 	return true, nil
+}
+
+func (t testObjClient) IsObjectNotFoundErr(err error) bool {
+	return errors.Is(err, errObjectNotFound)
+}
+
+func (t testObjClient) GetAttributes(_ context.Context, object string) (client.ObjectAttributes, error) {
+	if strings.Contains(object, "missing") {
+		return client.ObjectAttributes{}, errObjectNotFound
+	}
+	return client.ObjectAttributes{}, nil
 }
 
 type testCompactedIdx struct {

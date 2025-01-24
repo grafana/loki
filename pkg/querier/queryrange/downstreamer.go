@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
 	"github.com/opentracing/opentracing-go"
@@ -19,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 )
 
 const (
@@ -144,8 +142,7 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		}
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
-		logger := spanlogger.FromContext(ctx)
-		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
+		sp.LogKV("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "start", req.GetStart(), "end", req.GetEnd(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {
@@ -173,10 +170,12 @@ func (in instance) For(
 	go func() {
 		err := concurrency.ForEachJob(ctx, len(queries), in.parallelism, func(ctx context.Context, i int) error {
 			res, err := fn(queries[i])
+			if err != nil {
+				return err
+			}
 			response := logql.Resp{
 				I:   i,
 				Res: res,
-				Err: err,
 			}
 
 			// Feed the result into the channel unless the work has completed.
@@ -184,7 +183,7 @@ func (in instance) For(
 			case <-ctx.Done():
 			case ch <- response:
 			}
-			return err
+			return nil
 		})
 		if err != nil {
 			ch <- logql.Resp{
@@ -195,15 +194,19 @@ func (in instance) For(
 		close(ch)
 	}()
 
+	var err error
 	for resp := range ch {
+		if err != nil {
+			continue
+		}
 		if resp.Err != nil {
-			return nil, resp.Err
+			err = resp.Err
+			continue
 		}
-		if err := acc.Accumulate(ctx, resp.Res, resp.I); err != nil {
-			return nil, err
-		}
+		err = acc.Accumulate(ctx, resp.Res, resp.I)
 	}
-	return acc.Result(), nil
+
+	return acc.Result(), err
 }
 
 // convert to matrix

@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc/balancer"
+	"google.golang.org/grpc/balancer/base"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/internal/balancergroup"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
@@ -46,7 +48,6 @@ func (bb) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Bal
 	b := &bal{}
 	b.logger = prefixLogger(b)
 	b.stateAggregator = newBalancerStateAggregator(cc, b.logger)
-	b.stateAggregator.start()
 	b.bg = balancergroup.New(balancergroup.Options{
 		CC:                      cc,
 		BuildOpts:               opts,
@@ -68,72 +69,118 @@ func (bb) ParseConfig(c json.RawMessage) (serviceconfig.LoadBalancingConfig, err
 }
 
 type bal struct {
-	logger *internalgrpclog.PrefixLogger
-
-	// TODO: make this package not dependent on xds specific code. Same as for
-	// weighted target balancer.
+	logger          *internalgrpclog.PrefixLogger
 	bg              *balancergroup.BalancerGroup
 	stateAggregator *balancerStateAggregator
 
 	children map[string]childConfig
 }
 
-func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) {
-	update := false
-	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
+func (b *bal) setErrorPickerForChild(childName string, err error) {
+	b.stateAggregator.UpdateState(childName, balancer.State{
+		ConnectivityState: connectivity.TransientFailure,
+		Picker:            base.NewErrPicker(err),
+	})
+}
 
-	// Remove sub-pickers and sub-balancers that are not in the new cluster list.
+func (b *bal) updateChildren(s balancer.ClientConnState, newConfig *lbConfig) error {
+	// TODO: Get rid of handling hierarchy in addresses. This LB policy never
+	// gets addresses from the resolver.
+	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
+	endpointsSplit := hierarchy.GroupEndpoints(s.ResolverState.Endpoints)
+
+	// Remove sub-balancers that are not in the new list from the aggregator and
+	// balancergroup.
 	for name := range b.children {
 		if _, ok := newConfig.Children[name]; !ok {
 			b.stateAggregator.remove(name)
 			b.bg.Remove(name)
-			update = true
 		}
 	}
 
-	// For sub-balancers in the new cluster list,
-	// - add to balancer group if it's new,
-	// - forward the address/balancer config update.
-	for name, newT := range newConfig.Children {
-		if _, ok := b.children[name]; !ok {
-			// If this is a new sub-balancer, add it to the picker map.
-			b.stateAggregator.add(name)
-			// Then add to the balancer group.
-			b.bg.Add(name, balancer.Get(newT.ChildPolicy.Name))
+	var retErr error
+	for childName, childCfg := range newConfig.Children {
+		lbCfg := childCfg.ChildPolicy.Config
+		if _, ok := b.children[childName]; !ok {
+			// Add new sub-balancers to the aggregator and balancergroup.
+			b.stateAggregator.add(childName)
+			b.bg.Add(childName, balancer.Get(childCfg.ChildPolicy.Name))
 		} else {
-			// Already present, check for type change and if so send down a new builder.
-			if newT.ChildPolicy.Name != b.children[name].ChildPolicy.Name {
-				b.bg.UpdateBuilder(name, balancer.Get(newT.ChildPolicy.Name))
+			// If the child policy type has changed for existing sub-balancers,
+			// parse the new config and send down the config update to the
+			// balancergroup, which will take care of gracefully switching the
+			// child over to the new policy.
+			//
+			// If we run into errors here, we need to ensure that RPCs to this
+			// child fail, while RPCs to other children with good configs
+			// continue to succeed.
+			newPolicyName, oldPolicyName := childCfg.ChildPolicy.Name, b.children[childName].ChildPolicy.Name
+			if newPolicyName != oldPolicyName {
+				var err error
+				var cfgJSON []byte
+				cfgJSON, err = childCfg.ChildPolicy.MarshalJSON()
+				if err != nil {
+					retErr = fmt.Errorf("failed to JSON marshal load balancing policy for child %q: %v", childName, err)
+					b.setErrorPickerForChild(childName, retErr)
+					continue
+				}
+				// This overwrites lbCfg to be in the format expected by the
+				// gracefulswitch balancer. So, when this config is pushed to
+				// the child (below), it will result in a graceful switch to the
+				// new child policy.
+				lbCfg, err = balancergroup.ParseConfig(cfgJSON)
+				if err != nil {
+					retErr = fmt.Errorf("failed to parse load balancing policy for child %q: %v", childName, err)
+					b.setErrorPickerForChild(childName, retErr)
+					continue
+				}
 			}
 		}
-		// TODO: handle error? How to aggregate errors and return?
-		_ = b.bg.UpdateClientConnState(name, balancer.ClientConnState{
+
+		if err := b.bg.UpdateClientConnState(childName, balancer.ClientConnState{
 			ResolverState: resolver.State{
-				Addresses:     addressesSplit[name],
+				Addresses:     addressesSplit[childName],
+				Endpoints:     endpointsSplit[childName],
 				ServiceConfig: s.ResolverState.ServiceConfig,
 				Attributes:    s.ResolverState.Attributes,
 			},
-			BalancerConfig: newT.ChildPolicy.Config,
-		})
+			BalancerConfig: lbCfg,
+		}); err != nil {
+			retErr = fmt.Errorf("failed to push new configuration %v to child %q", childCfg.ChildPolicy.Config, childName)
+			b.setErrorPickerForChild(childName, retErr)
+		}
+
+		// Picker update is sent to the parent ClientConn only after the
+		// new child policy returns a picker. So, there is no need to
+		// set needUpdateStateOnResume to true here.
 	}
 
 	b.children = newConfig.Children
-	if update {
-		b.stateAggregator.buildAndUpdate()
-	}
+
+	// If multiple sub-balancers run into errors, we will return only the last
+	// one, which is still good enough, since the grpc channel will anyways
+	// return this error as balancer.ErrBadResolver to the name resolver,
+	// resulting in re-resolution attempts.
+	return retErr
+
+	// Adding or removing a sub-balancer will result in the
+	// needUpdateStateOnResume bit to true which results in a picker update once
+	// resumeStateUpdates() is called.
 }
 
 func (b *bal) UpdateClientConnState(s balancer.ClientConnState) error {
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	}
+
 	newConfig, ok := s.BalancerConfig.(*lbConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
 	}
-	b.logger.Infof("update with config %+v, resolver state %+v", pretty.ToJSON(s.BalancerConfig), s.ResolverState)
 
 	b.stateAggregator.pauseStateUpdates()
 	defer b.stateAggregator.resumeStateUpdates()
-	b.updateChildren(s, newConfig)
-	return nil
+	return b.updateChildren(s, newConfig)
 }
 
 func (b *bal) ResolverError(err error) {

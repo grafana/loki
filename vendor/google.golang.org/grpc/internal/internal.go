@@ -29,8 +29,6 @@ import (
 )
 
 var (
-	// WithHealthCheckFunc is set by dialoptions.go
-	WithHealthCheckFunc any // func (HealthChecker) DialOption
 	// HealthCheckFunc is used to provide client-side LB channel health checking
 	HealthCheckFunc HealthChecker
 	// BalancerUnregister is exported by package balancer to unregister a balancer.
@@ -106,6 +104,14 @@ var (
 	// This is used in the 1.0 release of gcp/observability, and thus must not be
 	// deleted or changed.
 	ClearGlobalDialOptions func()
+
+	// AddGlobalPerTargetDialOptions adds a PerTargetDialOption that will be
+	// configured for newly created ClientConns.
+	AddGlobalPerTargetDialOptions any // func (opt any)
+	// ClearGlobalPerTargetDialOptions clears the slice of global late apply
+	// dial options.
+	ClearGlobalPerTargetDialOptions func()
+
 	// JoinDialOptions combines the dial options passed as arguments into a
 	// single dial option.
 	JoinDialOptions any // func(...grpc.DialOption) grpc.DialOption
@@ -126,7 +132,8 @@ var (
 	// deleted or changed.
 	BinaryLogger any // func(binarylog.Logger) grpc.ServerOption
 
-	// SubscribeToConnectivityStateChanges adds a grpcsync.Subscriber to a provided grpc.ClientConn
+	// SubscribeToConnectivityStateChanges adds a grpcsync.Subscriber to a
+	// provided grpc.ClientConn.
 	SubscribeToConnectivityStateChanges any // func(*grpc.ClientConn, grpcsync.Subscriber)
 
 	// NewXDSResolverWithConfigForTesting creates a new xds resolver builder using
@@ -139,6 +146,20 @@ var (
 	// This function should ONLY be used for testing and may not work with some
 	// other features, including the CSDS service.
 	NewXDSResolverWithConfigForTesting any // func([]byte) (resolver.Builder, error)
+
+	// NewXDSResolverWithClientForTesting creates a new xDS resolver builder
+	// using the provided xDS client instead of creating a new one using the
+	// bootstrap configuration specified by the supported environment variables.
+	// The resolver.Builder is meant to be used in conjunction with the
+	// grpc.WithResolvers DialOption. The resolver.Builder does not take
+	// ownership of the provided xDS client and it is the responsibility of the
+	// caller to close the client when no longer required.
+	//
+	// Testing Only
+	//
+	// This function should ONLY be used for testing and may not work with some
+	// other features, including the CSDS service.
+	NewXDSResolverWithClientForTesting any // func(xdsclient.XDSClient) (resolver.Builder, error)
 
 	// RegisterRLSClusterSpecifierPluginForTesting registers the RLS Cluster
 	// Specifier Plugin for testing purposes, regardless of the XDSRLS environment
@@ -174,7 +195,7 @@ var (
 
 	// GRPCResolverSchemeExtraMetadata determines when gRPC will add extra
 	// metadata to RPCs.
-	GRPCResolverSchemeExtraMetadata string = "xds"
+	GRPCResolverSchemeExtraMetadata = "xds"
 
 	// EnterIdleModeForTesting gets the ClientConn to enter IDLE mode.
 	EnterIdleModeForTesting any // func(*grpc.ClientConn)
@@ -182,27 +203,49 @@ var (
 	// ExitIdleModeForTesting gets the ClientConn to exit IDLE mode.
 	ExitIdleModeForTesting any // func(*grpc.ClientConn) error
 
+	// ChannelzTurnOffForTesting disables the Channelz service for testing
+	// purposes.
 	ChannelzTurnOffForTesting func()
 
-	// TriggerXDSResourceNameNotFoundForTesting triggers the resource-not-found
-	// error for a given resource type and name. This is usually triggered when
-	// the associated watch timer fires. For testing purposes, having this
-	// function makes events more predictable than relying on timer events.
-	TriggerXDSResourceNameNotFoundForTesting any // func(func(xdsresource.Type, string), string, string) error
+	// TriggerXDSResourceNotFoundForTesting causes the provided xDS Client to
+	// invoke resource-not-found error for the given resource type and name.
+	TriggerXDSResourceNotFoundForTesting any // func(xdsclient.XDSClient, xdsresource.Type, string) error
 
-	// TriggerXDSResourceNotFoundClient invokes the testing xDS Client singleton
-	// to invoke resource not found for a resource type name and resource name.
-	TriggerXDSResourceNameNotFoundClient any // func(string, string) error
-
-	// FromOutgoingContextRaw returns the un-merged, intermediary contents of metadata.rawMD.
+	// FromOutgoingContextRaw returns the un-merged, intermediary contents of
+	// metadata.rawMD.
 	FromOutgoingContextRaw any // func(context.Context) (metadata.MD, [][]string, bool)
+
+	// UserSetDefaultScheme is set to true if the user has overridden the
+	// default resolver scheme.
+	UserSetDefaultScheme = false
+
+	// ConnectedAddress returns the connected address for a SubConnState. The
+	// address is only valid if the state is READY.
+	ConnectedAddress any // func (scs SubConnState) resolver.Address
+
+	// SetConnectedAddress sets the connected address for a SubConnState.
+	SetConnectedAddress any // func(scs *SubConnState, addr resolver.Address)
+
+	// SnapshotMetricRegistryForTesting snapshots the global data of the metric
+	// registry. Returns a cleanup function that sets the metric registry to its
+	// original state. Only called in testing functions.
+	SnapshotMetricRegistryForTesting func() func()
+
+	// SetDefaultBufferPoolForTesting updates the default buffer pool, for
+	// testing purposes.
+	SetDefaultBufferPoolForTesting any // func(mem.BufferPool)
+
+	// SetBufferPoolingThresholdForTesting updates the buffer pooling threshold, for
+	// testing purposes.
+	SetBufferPoolingThresholdForTesting any // func(int)
 )
 
-// HealthChecker defines the signature of the client-side LB channel health checking function.
+// HealthChecker defines the signature of the client-side LB channel health
+// checking function.
 //
 // The implementation is expected to create a health checking RPC stream by
 // calling newStream(), watch for the health status of serviceName, and report
-// it's health back by calling setConnectivityState().
+// its health back by calling setConnectivityState().
 //
 // The health checking protocol is defined at:
 // https://github.com/grpc/grpc/blob/master/doc/health-checking.md
@@ -224,3 +267,9 @@ const (
 // It currently has an experimental suffix which would be removed once
 // end-to-end testing of the policy is completed.
 const RLSLoadBalancingPolicyName = "rls_experimental"
+
+// EnforceSubConnEmbedding is used to enforce proper SubConn implementation
+// embedding.
+type EnforceSubConnEmbedding interface {
+	enforceSubConnEmbedding()
+}

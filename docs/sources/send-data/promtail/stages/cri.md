@@ -61,5 +61,5 @@ The following key-value pairs would be created in the set of extracted data:
 
 - `content`: `message`
 - `stream`: `stdout`
-- `flags`: `xx`
+- `flags`: `F`
 - `timestamp`: `2019-04-30T02:12:41.8443515` - The cri-stage both extracts the timestamp as a label and set it as the timestamp of the log entry.

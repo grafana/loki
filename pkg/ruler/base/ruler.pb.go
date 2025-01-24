@@ -11,13 +11,13 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
+	_ "github.com/golang/protobuf/ptypes/duration"
 	_ "github.com/grafana/loki/v3/pkg/logproto"
 	github_com_grafana_loki_v3_pkg_logproto "github.com/grafana/loki/v3/pkg/logproto"
 	rulespb "github.com/grafana/loki/v3/pkg/ruler/rulespb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	_ "google.golang.org/protobuf/types/known/durationpb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -1433,7 +1433,7 @@ func (this *GroupStateDesc) String() string {
 		`Group:` + strings.Replace(fmt.Sprintf("%v", this.Group), "RuleGroupDesc", "rulespb.RuleGroupDesc", 1) + `,`,
 		`ActiveRules:` + repeatedStringForActiveRules + `,`,
 		`EvaluationTimestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationTimestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
+		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1454,7 +1454,7 @@ func (this *RuleStateDesc) String() string {
 		`LastError:` + fmt.Sprintf("%v", this.LastError) + `,`,
 		`Alerts:` + repeatedStringForAlerts + `,`,
 		`EvaluationTimestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationTimestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
+		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s

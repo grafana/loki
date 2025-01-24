@@ -110,6 +110,8 @@ message Index {
   int64 postFilterChunks = 2 [(gogoproto.jsontag) = "postFilterChunks"];
   // Nanosecond duration spent fetching shards
   int64 shardsDuration = 3 [(gogoproto.jsontag) = "shardsDuration"];
+  // Indicates whether the query used blooms to filter chunks
+  bool usedBloomFilters = 4 [(gogoproto.jsontag) = "usedBloomFilters"];
 }
 
 message Querier {

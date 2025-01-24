@@ -28,6 +28,7 @@ const emptyStats = `{
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"usedBloomFilters": false,
 		"shardsDuration": 0
 	},
 	"ingester" : {
@@ -1056,7 +1057,7 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 				{Timestamp: time.Unix(0, 2), Labels: `{app="dropped"}`},
 			},
 		},
-			NewWebsocketJSONWriter(WebsocketWriterFunc(func(i int, b []byte) error {
+			NewWebsocketJSONWriter(WebsocketWriterFunc(func(_ int, b []byte) error {
 				require.Equal(t, `{"streams":[{"stream":{"app":"foo"},"values":[["1","foobar"]]}],"dropped_entries":[{"timestamp":"2","labels":{"app":"dropped"}}]}`, string(b))
 				return nil
 			})),
@@ -1125,7 +1126,6 @@ func Test_WriteQueryPatternsResponseJSON(t *testing.T) {
 			`{"status":"success","data":[{"pattern":"foo <*> bar","samples":[]},{"pattern":"foo <*> buzz","samples":[]}]}`,
 		},
 	} {
-		tc := tc
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			var b bytes.Buffer
 			err := WriteQueryPatternsResponseJSON(tc.input, &b)

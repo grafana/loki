@@ -8,6 +8,8 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/compression"
 )
 
 func TestSymbolizer(t *testing.T) {
@@ -125,13 +127,13 @@ func TestSymbolizer(t *testing.T) {
 			expectedUncompressedSize: 22,
 		},
 	} {
-		for _, encoding := range testEncoding {
+		for _, encoding := range testEncodings {
 			t.Run(fmt.Sprintf("%s - %s", tc.name, encoding), func(t *testing.T) {
 				s := newSymbolizer()
 				for i, labels := range tc.labelsToAdd {
 					symbols := s.Add(labels)
 					require.Equal(t, tc.expectedSymbols[i], symbols)
-					require.Equal(t, labels, s.Lookup(symbols))
+					require.Equal(t, labels, s.Lookup(symbols, nil))
 				}
 
 				// Test that Lookup returns empty labels if no symbols are provided.
@@ -141,7 +143,7 @@ func TestSymbolizer(t *testing.T) {
 							Name:  0,
 							Value: 0,
 						},
-					})
+					}, nil)
 					require.Equal(t, "", ret[0].Name)
 					require.Equal(t, "", ret[0].Value)
 				}
@@ -157,17 +159,17 @@ func TestSymbolizer(t *testing.T) {
 
 				loaded := symbolizerFromCheckpoint(buf.Bytes())
 				for i, symbols := range tc.expectedSymbols {
-					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols))
+					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols, nil))
 				}
 
 				buf.Reset()
-				_, _, err = s.SerializeTo(buf, GetWriterPool(encoding))
+				_, _, err = s.SerializeTo(buf, compression.GetWriterPool(encoding))
 				require.NoError(t, err)
 
-				loaded, err = symbolizerFromEnc(buf.Bytes(), GetReaderPool(encoding))
+				loaded, err = symbolizerFromEnc(buf.Bytes(), compression.GetReaderPool(encoding))
 				require.NoError(t, err)
 				for i, symbols := range tc.expectedSymbols {
-					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols))
+					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols, nil))
 				}
 			})
 		}

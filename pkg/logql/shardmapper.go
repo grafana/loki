@@ -16,6 +16,7 @@ const (
 	ShardLastOverTime     = "last_over_time"
 	ShardFirstOverTime    = "first_over_time"
 	ShardQuantileOverTime = "quantile_over_time"
+	SupportApproxTopk     = "approx_topk"
 )
 
 type ShardMapper struct {
@@ -24,29 +25,32 @@ type ShardMapper struct {
 	quantileOverTimeSharding bool
 	lastOverTimeSharding     bool
 	firstOverTimeSharding    bool
+	approxTopkSupport        bool
 }
 
 func NewShardMapper(strategy ShardingStrategy, metrics *MapperMetrics, shardAggregation []string) ShardMapper {
-	quantileOverTimeSharding := false
-	lastOverTimeSharding := false
-	firstOverTimeSharding := false
+	mapper := ShardMapper{
+		shards:                   strategy,
+		metrics:                  metrics,
+		quantileOverTimeSharding: false,
+		lastOverTimeSharding:     false,
+		firstOverTimeSharding:    false,
+		approxTopkSupport:        false,
+	}
 	for _, a := range shardAggregation {
 		switch a {
 		case ShardQuantileOverTime:
-			quantileOverTimeSharding = true
+			mapper.quantileOverTimeSharding = true
 		case ShardLastOverTime:
-			lastOverTimeSharding = true
+			mapper.lastOverTimeSharding = true
 		case ShardFirstOverTime:
-			firstOverTimeSharding = true
+			mapper.firstOverTimeSharding = true
+		case SupportApproxTopk:
+			mapper.approxTopkSupport = true
 		}
 	}
-	return ShardMapper{
-		shards:                   strategy,
-		metrics:                  metrics,
-		quantileOverTimeSharding: quantileOverTimeSharding,
-		firstOverTimeSharding:    firstOverTimeSharding,
-		lastOverTimeSharding:     lastOverTimeSharding,
-	}
+
+	return mapper
 }
 
 func NewShardMapperMetrics(registerer prometheus.Registerer) *MapperMetrics {
@@ -185,7 +189,6 @@ func (m ShardMapper) mapLogSelectorExpr(expr syntax.LogSelectorExpr, r *downstre
 func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	var head *ConcatSampleExpr
 	shards, maxBytesPerShard, err := m.shards.Shards(expr)
-
 	if err != nil {
 		return nil, 0, err
 	}
@@ -233,7 +236,6 @@ func (m ShardMapper) wrappedShardedVectorAggr(expr *syntax.VectorAggregationExpr
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
 func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {
 	if expr.Shardable(topLevel) {
-
 		switch expr.Operation {
 
 		case syntax.OpTypeSum:
@@ -286,6 +288,71 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Grouping:  expr.Grouping,
 				Operation: syntax.OpTypeSum,
 			}, bytesPerShard, nil
+		case syntax.OpTypeApproxTopK:
+			if !m.approxTopkSupport {
+				return nil, 0, fmt.Errorf("approx_topk is not enabled. See -limits.shard_aggregations")
+			}
+
+			// TODO(owen-d): integrate bounded sharding with approx_topk
+			// I'm not doing this now because it uses a separate code path and may not handle
+			// bounded shards in the same way
+			shards, bytesPerShard, err := m.shards.Resolver().Shards(expr)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			// approx_topk(k, inner) ->
+			// topk(
+			//   k,
+			//   eval_cms(
+			//     __count_min_sketch__(inner, shard=1) ++ __count_min_sketch__(inner, shard=2)...
+			//   )
+			// )
+
+			countMinSketchExpr := syntax.MustClone(expr)
+			countMinSketchExpr.Operation = syntax.OpTypeCountMinSketch
+			countMinSketchExpr.Params = 0
+
+			// Even if this query is not sharded the user wants an approximation. This is helpful if some
+			// inferred label has a very high cardinality. Note that the querier does not support CountMinSketchEvalExpr
+			// which is why it's evaluated on the front end.
+			if shards == 0 {
+				return &syntax.VectorAggregationExpr{
+					Left: &CountMinSketchEvalExpr{
+						downstreams: []DownstreamSampleExpr{{
+							SampleExpr: countMinSketchExpr,
+						}},
+					},
+					Grouping:  expr.Grouping,
+					Operation: syntax.OpTypeTopK,
+					Params:    expr.Params,
+				}, bytesPerShard, nil
+			}
+
+			downstreams := make([]DownstreamSampleExpr, 0, shards)
+			for shard := 0; shard < shards; shard++ {
+				s := NewPowerOfTwoShard(index.ShardAnnotation{
+					Shard: uint32(shard),
+					Of:    uint32(shards),
+				})
+				downstreams = append(downstreams, DownstreamSampleExpr{
+					shard: &ShardWithChunkRefs{
+						Shard: s,
+					},
+					SampleExpr: countMinSketchExpr,
+				})
+			}
+
+			sharded := &CountMinSketchEvalExpr{
+				downstreams: downstreams,
+			}
+
+			return &syntax.VectorAggregationExpr{
+				Left:      sharded,
+				Grouping:  expr.Grouping,
+				Operation: syntax.OpTypeTopK,
+				Params:    expr.Params,
+			}, bytesPerShard, nil
 		default:
 			// this should not be reachable. If an operation is shardable it should
 			// have an optimization listed. Nonetheless, we log this as a warning
@@ -300,7 +367,6 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}
 			return expr, exprStats.Bytes, nil
 		}
-
 	}
 
 	// if this AST contains unshardable operations, don't shard this at this level,
@@ -320,7 +386,6 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		Params:    expr.Params,
 		Operation: expr.Operation,
 	}, bytesPerShard, nil
-
 }
 
 func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *downstreamRecorder, topLevel bool) (syntax.SampleExpr, uint64, error) {
@@ -397,13 +462,18 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
+		grouping := expr.Grouping
+		if grouping == nil {
+			grouping = &syntax.Grouping{Without: true}
+		}
+
 		// avg_over_time() by (foo) -> sum by (foo) (sum_over_time()) / sum by (foo) (count_over_time())
 		lhs, lhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left: &syntax.RangeAggregationExpr{
 				Left:      expr.Left,
 				Operation: syntax.OpRangeTypeSum,
 			},
-			Grouping:  expr.Grouping,
+			Grouping:  grouping,
 			Operation: syntax.OpTypeSum,
 		}, r, false)
 		if err != nil {
@@ -416,12 +486,21 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return nil, 0, err
 		}
 
+		// labelSampleExtractor includes the unwrap identifier in without() list if no grouping is specified
+		// similar change is required for the RHS here to ensure the resulting label sets match
+		rhsGrouping := *grouping
+		if rhsGrouping.Without {
+			if expr.Left.Unwrap != nil {
+				rhsGrouping.Groups = append(rhsGrouping.Groups, expr.Left.Unwrap.Identifier)
+			}
+		}
+
 		rhs, rhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left: &syntax.RangeAggregationExpr{
 				Left:      countOverTimeSelector,
 				Operation: syntax.OpRangeTypeCount,
 			},
-			Grouping:  expr.Grouping,
+			Grouping:  &rhsGrouping,
 			Operation: syntax.OpTypeSum,
 		}, r, false)
 		if err != nil {

@@ -100,8 +100,8 @@ local rolloutOperator = import 'rollout-operator.libsonnet';
       },
     )),
 
-  newIngesterZoneStatefulSet(zone, container)::
-    local name = '%(prefix)s-%(zone)s' % { prefix: $._config.multi_zone_ingester_name_prefix, zone: zone };
+  newIngesterZoneStatefulSet(zone, container, name_prefix='')::
+    local name = '%(prefix)s-%(zone)s' % { prefix: if name_prefix == '' then $._config.multi_zone_ingester_name_prefix else name_prefix, zone: zone };
 
     self.newIngesterStatefulSet(name, container, with_anti_affinity=false) +
     statefulSet.mixin.metadata.withLabels({ 'rollout-group': 'ingester' }) +

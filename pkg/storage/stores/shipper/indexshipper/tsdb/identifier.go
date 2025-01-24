@@ -161,13 +161,13 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 }
 
 type MultitenantTSDBIdentifier struct {
-	nodeName string
-	ts       time.Time
+	NodeName string
+	Ts       time.Time
 }
 
 // Name builds filename with format <file-creation-ts> + `-` + `<nodeName>
 func (id MultitenantTSDBIdentifier) Name() string {
-	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
+	return fmt.Sprintf("%d-%s.tsdb", id.Ts.Unix(), id.NodeName)
 }
 
 func (id MultitenantTSDBIdentifier) Path() string {
@@ -200,7 +200,7 @@ func parseMultitenantTSDBNameFromBase(name string) (res MultitenantTSDBIdentifie
 	}
 
 	return MultitenantTSDBIdentifier{
-		ts:       time.Unix(int64(ts), 0),
-		nodeName: strings.Join(xs[1:], "-"),
+		Ts:       time.Unix(int64(ts), 0),
+		NodeName: strings.Join(xs[1:], "-"),
 	}, true
 }

@@ -7,7 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/manifests"
 )
@@ -72,6 +72,15 @@ func appendPodStatus(ctx context.Context, k k8s.Client, component, stack, ns str
 	for _, pod := range pods.Items {
 		status := podStatus(&pod)
 		psm[status] = append(psm[status], pod.Name)
+	}
+
+	if len(psm) == 0 {
+		psm = lokiv1.PodStatusMap{
+			lokiv1.PodFailed:  []string{},
+			lokiv1.PodPending: []string{},
+			lokiv1.PodRunning: []string{},
+			lokiv1.PodReady:   []string{},
+		}
 	}
 	return psm, nil
 }

@@ -1,13 +1,13 @@
 ---
-title: Scale Loki
-menuTitle:  Scale
-description: Describes how to scale Grafana Loki
+title: Manage larger production deployments
+menuTitle: Scale Loki
+description: Describes strategies how to scale a Loki deployment when log volume increases.
 weight: 
 ---
-# Scale Loki
+# Manage larger production deployments
 
-When scaling Loki, operators should consider running several Loki processes
-partitioned by role (ingester, distributor, querier) rather than a single Loki
+When needing to scale Loki due to increased log volume, operators should consider running several Loki processes
+partitioned by role (ingester, distributor, querier, and so on) rather than a single Loki
 process. Grafana Labs' [production setup](https://github.com/grafana/loki/blob/main/production/ksonnet/loki)
 contains `.libsonnet` files that demonstrates configuring separate components
 and scaling for resource usage.
@@ -66,9 +66,9 @@ this will result in far lower `ruler` resource usage because the majority of the
 The LogQL queries coming from the `ruler` will be executed against the given `query-frontend` service.
 Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` prefix is used.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Queries that fail to execute are _not_ retried.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ### Limits and Observability
 

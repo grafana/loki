@@ -1,10 +1,10 @@
 ---
-title: Authentication
-menuTitle:  
-description: Describes Loki's authentication.
+title: Manage authentication
+menuTitle: Authentication
+description: Describes how to add authentication to Grafana Loki.
 weight: 
 ---
-# Authentication
+# Manage authentication
 
 Grafana Loki does not come with any included authentication layer. Operators are
 expected to run an authenticating reverse proxy in front of your services.
@@ -18,11 +18,11 @@ A list of open-source reverse proxies you can use:
 -  [OAuth2 proxy](https://github.com/oauth2-proxy/oauth2-proxy)
 -  [HAProxy](https://www.haproxy.org/)
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 When using Loki in multi-tenant mode, Loki requires the HTTP header
 `X-Scope-OrgID` to be set to a string identifying the tenant; the responsibility
 of populating this value should be handled by the authenticating reverse proxy.
-For more information, read the [multi-tenancy]({{< relref "./multi-tenancy" >}}) documentation.{{% /admonition %}}
+For more information, read the [multi-tenancy]({{< relref "./multi-tenancy" >}}) documentation.{{< /admonition >}}
 
 For information on authenticating Promtail, see the documentation for [how to
 configure Promtail]({{< relref "../send-data/promtail/configuration" >}}).

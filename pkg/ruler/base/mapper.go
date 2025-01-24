@@ -1,7 +1,6 @@
 package base
 
 import (
-	"crypto/md5"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
+	"golang.org/x/crypto/sha3"
 	"gopkg.in/yaml.v3"
 )
 
@@ -148,11 +148,14 @@ func (m *mapper) writeRuleGroupsIfNewer(groups []rulefmt.RuleGroup, filename str
 		if err != nil {
 			return false, err
 		}
-		newHash := md5.New()
-		currentHash := md5.New()
+		newHash := sha3.New256()
+		currentHash := sha3.New256()
+
+		newHash.Write(d)
+		currentHash.Write(current)
 
 		// bailout if there is no update
-		if string(currentHash.Sum(current)) == string(newHash.Sum(d)) {
+		if string(currentHash.Sum(nil)) == string(newHash.Sum(nil)) {
 			return false, nil
 		}
 	}

@@ -33,7 +33,7 @@ func TestTailer(t *testing.T) {
 		"tail logs from historic entries only (no tail clients provided)": {
 			historicEntries: mockStreamIterator(1, 2),
 			tailClient:      nil,
-			tester: func(t *testing.T, tailer *Tailer, tailClient *tailClientMock) {
+			tester: func(t *testing.T, tailer *Tailer, _ *tailClientMock) {
 				responses, err := readFromTailer(tailer, 2)
 				require.NoError(t, err)
 
@@ -82,7 +82,7 @@ func TestTailer(t *testing.T) {
 		"honor max entries per tail response": {
 			historicEntries: mockStreamIterator(1, maxEntriesPerTailResponse+1),
 			tailClient:      nil,
-			tester: func(t *testing.T, tailer *Tailer, tailClient *tailClientMock) {
+			tester: func(t *testing.T, tailer *Tailer, _ *tailClientMock) {
 				responses, err := readFromTailer(tailer, maxEntriesPerTailResponse+1)
 				require.NoError(t, err)
 

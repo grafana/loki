@@ -12,11 +12,11 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/uuid"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared"
 )
@@ -25,212 +25,225 @@ import (
 // This allows us to provide a local implementation that fakes the server for hermetic testing.
 type blockWriter interface {
 	StageBlock(context.Context, string, io.ReadSeekCloser, *StageBlockOptions) (StageBlockResponse, error)
+	Upload(context.Context, io.ReadSeekCloser, *UploadOptions) (UploadResponse, error)
 	CommitBlockList(context.Context, []string, *CommitBlockListOptions) (CommitBlockListResponse, error)
 }
 
 // copyFromReader copies a source io.Reader to blob storage using concurrent uploads.
-// TODO(someone): The existing model provides a buffer size and buffer limit as limiting factors.  The buffer size is probably
-// useless other than needing to be above some number, as the network stack is going to hack up the buffer over some size. The
-// max buffers is providing a cap on how much memory we use (by multiplying it times the buffer size) and how many go routines can upload
-// at a time.  I think having a single max memory dial would be more efficient.  We can choose an internal buffer size that works
-// well, 4 MiB or 8 MiB, and auto-scale to as many goroutines within the memory limit. This gives a single dial to tweak and we can
-// choose a max value for the memory setting based on internal transfers within Azure (which will give us the maximum throughput model).
-// We can even provide a utility to dial this number in for customer networks to optimize their copies.
-func copyFromReader(ctx context.Context, from io.Reader, to blockWriter, o UploadStreamOptions) (CommitBlockListResponse, error) {
-	if err := o.format(); err != nil {
-		return CommitBlockListResponse{}, err
-	}
+func copyFromReader[T ~[]byte](ctx context.Context, src io.Reader, dst blockWriter, options UploadStreamOptions, getBufferManager func(maxBuffers int, bufferSize int64) shared.BufferManager[T]) (CommitBlockListResponse, error) {
+	options.setDefaults()
 
+	wg := sync.WaitGroup{}       // Used to know when all outgoing blocks have finished processing
+	errCh := make(chan error, 1) // contains the first error encountered during processing
+
+	buffers := getBufferManager(options.Concurrency, options.BlockSize)
+	defer buffers.Free()
+
+	// this controls the lifetime of the uploading goroutines.
+	// if an error is encountered, cancel() is called which will terminate all uploads.
+	// NOTE: the ordering is important here.  cancel MUST execute before
+	// cleaning up the buffers so that any uploading goroutines exit first,
+	// releasing their buffers back to the pool for cleanup.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	var err error
-	generatedUuid, err := uuid.New()
+	// all blocks have IDs that start with a random UUID
+	blockIDPrefix, err := uuid.New()
 	if err != nil {
 		return CommitBlockListResponse{}, err
 	}
-
-	cp := &copier{
-		ctx:    ctx,
-		cancel: cancel,
-		reader: from,
-		to:     to,
-		id:     newID(generatedUuid),
-		o:      o,
-		errCh:  make(chan error, 1),
+	tracker := blockTracker{
+		blockIDPrefix: blockIDPrefix,
+		options:       options,
 	}
 
-	// Send all our chunks until we get an error.
-	for {
-		if err = cp.sendChunk(); err != nil {
+	// This goroutine grabs a buffer, reads from the stream into the buffer,
+	// then creates a goroutine to upload/stage the block.
+	for blockNum := uint32(0); true; blockNum++ {
+		var buffer T
+		select {
+		case buffer = <-buffers.Acquire():
+			// got a buffer
+		default:
+			// no buffer available; allocate a new buffer if possible
+			if _, err := buffers.Grow(); err != nil {
+				return CommitBlockListResponse{}, err
+			}
+
+			// either grab the newly allocated buffer or wait for one to become available
+			buffer = <-buffers.Acquire()
+		}
+
+		var n int
+		n, err = shared.ReadAtLeast(src, buffer, len(buffer))
+
+		if n > 0 {
+			// some data was read, upload it
+			wg.Add(1) // We're posting a buffer to be sent
+
+			// NOTE: we must pass blockNum as an arg to our goroutine else
+			// it's captured by reference and can change underneath us!
+			go func(blockNum uint32) {
+				// Upload the outgoing block, matching the number of bytes read
+				err := tracker.uploadBlock(ctx, dst, blockNum, buffer[:n])
+				if err != nil {
+					select {
+					case errCh <- err:
+						// error was set
+					default:
+						// some other error is already set
+					}
+					cancel()
+				}
+				buffers.Release(buffer) // The goroutine reading from the stream can reuse this buffer now
+
+				// signal that the block has been staged.
+				// we MUST do this after attempting to write to errCh
+				// to avoid it racing with the reading goroutine.
+				wg.Done()
+			}(blockNum)
+		} else {
+			// nothing was read so the buffer is empty, send it back for reuse/clean-up.
+			buffers.Release(buffer)
+		}
+
+		if err != nil { // The reader is done, no more outgoing buffers
+			if errors.Is(err, io.EOF) {
+				// these are expected errors, we don't surface those
+				err = nil
+			} else {
+				// some other error happened, terminate any outstanding uploads
+				cancel()
+			}
 			break
 		}
 	}
-	// If the error is not EOF, then we have a problem.
-	if err != nil && !errors.Is(err, io.EOF) {
+
+	wg.Wait() // Wait for all outgoing blocks to complete
+
+	if err != nil {
+		// there was an error reading from src, favor this error over any error during staging
 		return CommitBlockListResponse{}, err
 	}
 
-	// Close out our upload.
-	if err := cp.close(); err != nil {
-		return CommitBlockListResponse{}, err
-	}
-
-	return cp.result, nil
-}
-
-// copier streams a file via chunks in parallel from a reader representing a file.
-// Do not use directly, instead use copyFromReader().
-type copier struct {
-	// ctx holds the context of a copier. This is normally a faux pas to store a Context in a struct. In this case,
-	// the copier has the lifetime of a function call, so it's fine.
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	// reader is the source to be written to storage.
-	reader io.Reader
-	// to is the location we are writing our chunks to.
-	to blockWriter
-
-	// o contains our options for uploading.
-	o UploadStreamOptions
-
-	// id provides the ids for each chunk.
-	id *id
-
-	//// num is the current chunk we are on.
-	//num int32
-	//// ch is used to pass the next chunk of data from our reader to one of the writers.
-	//ch chan copierChunk
-
-	// errCh is used to hold the first error from our concurrent writers.
-	errCh chan error
-	// wg provides a count of how many writers we are waiting to finish.
-	wg sync.WaitGroup
-
-	// result holds the final result from blob storage after we have submitted all chunks.
-	result CommitBlockListResponse
-}
-
-// copierChunk contains buffer
-type copierChunk struct {
-	buffer []byte
-	id     string
-	length int
-}
-
-// getErr returns an error by priority. First, if a function set an error, it returns that error. Next, if the Context has an error
-// it returns that error. Otherwise, it is nil. getErr supports only returning an error once per copier.
-func (c *copier) getErr() error {
 	select {
-	case err := <-c.errCh:
-		return err
+	case err = <-errCh:
+		// there was an error during staging
+		return CommitBlockListResponse{}, err
 	default:
+		// no error was encountered
 	}
-	return c.ctx.Err()
+
+	// If no error, after all blocks uploaded, commit them to the blob & return the result
+	return tracker.commitBlocks(ctx, dst)
 }
 
-// sendChunk reads data from out internal reader, creates a chunk, and sends it to be written via a channel.
-// sendChunk returns io.EOF when the reader returns an io.EOF or io.ErrUnexpectedEOF.
-func (c *copier) sendChunk() error {
-	if err := c.getErr(); err != nil {
-		return err
-	}
+// used to manage the uploading and committing of blocks
+type blockTracker struct {
+	blockIDPrefix uuid.UUID // UUID used with all blockIDs
+	maxBlockNum   uint32    // defaults to 0
+	firstBlock    []byte    // Used only if maxBlockNum is 0
+	options       UploadStreamOptions
+}
 
-	buffer := c.o.transferManager.Get()
-	if len(buffer) == 0 {
-		return fmt.Errorf("transferManager returned a 0 size buffer, this is a bug in the manager")
-	}
+func (bt *blockTracker) uploadBlock(ctx context.Context, to blockWriter, num uint32, buffer []byte) error {
+	if num == 0 {
+		bt.firstBlock = buffer
 
-	n, err := io.ReadFull(c.reader, buffer)
-	if n > 0 {
-		// Some data was read, schedule the Write.
-		id := c.id.next()
-		c.wg.Add(1)
-		c.o.transferManager.Run(
-			func() {
-				defer c.wg.Done()
-				c.write(copierChunk{buffer: buffer, id: id, length: n})
-			},
-		)
+		// If whole payload fits in 1 block, don't stage it; End will upload it with 1 I/O operation
+		// If the payload is exactly the same size as the buffer, there may be more content coming in.
+		if len(buffer) < int(bt.options.BlockSize) {
+			return nil
+		}
 	} else {
-		// Return the unused buffer to the manager.
-		c.o.transferManager.Put(buffer)
+		// Else, upload a staged block...
+		atomicMorphUint32(&bt.maxBlockNum, func(startVal uint32) (val uint32, morphResult uint32) {
+			// Atomically remember (in t.numBlocks) the maximum block num we've ever seen
+			if startVal < num {
+				return num, 0
+			}
+			return startVal, 0
+		})
 	}
 
-	if err == nil {
-		return nil
-	} else if err == io.EOF || err == io.ErrUnexpectedEOF {
-		return io.EOF
-	}
-
-	if cerr := c.getErr(); cerr != nil {
-		return cerr
-	}
-
+	blockID := newUUIDBlockID(bt.blockIDPrefix).WithBlockNumber(num).ToBase64()
+	_, err := to.StageBlock(ctx, blockID, streaming.NopCloser(bytes.NewReader(buffer)), bt.options.getStageBlockOptions())
 	return err
 }
 
-// write uploads a chunk to blob storage.
-func (c *copier) write(chunk copierChunk) {
-	defer c.o.transferManager.Put(chunk.buffer)
+func (bt *blockTracker) commitBlocks(ctx context.Context, to blockWriter) (CommitBlockListResponse, error) {
+	// If the first block had the exact same size as the buffer
+	// we would have staged it as a block thinking that there might be more data coming
+	if bt.maxBlockNum == 0 && len(bt.firstBlock) < int(bt.options.BlockSize) {
+		// If whole payload fits in 1 block (block #0), upload it with 1 I/O operation
+		up, err := to.Upload(ctx, streaming.NopCloser(bytes.NewReader(bt.firstBlock)), bt.options.getUploadOptions())
+		if err != nil {
+			return CommitBlockListResponse{}, err
+		}
 
-	if err := c.ctx.Err(); err != nil {
-		return
+		// convert UploadResponse to CommitBlockListResponse
+		return CommitBlockListResponse{
+			ClientRequestID:     up.ClientRequestID,
+			ContentMD5:          up.ContentMD5,
+			Date:                up.Date,
+			ETag:                up.ETag,
+			EncryptionKeySHA256: up.EncryptionKeySHA256,
+			EncryptionScope:     up.EncryptionScope,
+			IsServerEncrypted:   up.IsServerEncrypted,
+			LastModified:        up.LastModified,
+			RequestID:           up.RequestID,
+			Version:             up.Version,
+			VersionID:           up.VersionID,
+			//ContentCRC64:     up.ContentCRC64, doesn't exist on UploadResponse
+		}, nil
 	}
-	stageBlockOptions := c.o.getStageBlockOptions()
-	_, err := c.to.StageBlock(c.ctx, chunk.id, shared.NopCloser(bytes.NewReader(chunk.buffer[:chunk.length])), stageBlockOptions)
-	if err != nil {
-		select {
-		case c.errCh <- err:
-			// failed to stage block, cancel the copy
-		default:
-			// don't block the goroutine if there's a pending error
+
+	// Multiple blocks staged, commit them all now
+	blockID := newUUIDBlockID(bt.blockIDPrefix)
+	blockIDs := make([]string, bt.maxBlockNum+1)
+	for bn := uint32(0); bn < bt.maxBlockNum+1; bn++ {
+		blockIDs[bn] = blockID.WithBlockNumber(bn).ToBase64()
+	}
+
+	return to.CommitBlockList(ctx, blockIDs, bt.options.getCommitBlockListOptions())
+}
+
+// AtomicMorpherUint32 identifies a method passed to and invoked by the AtomicMorph function.
+// The AtomicMorpher callback is passed a startValue and based on this value it returns
+// what the new value should be and the result that AtomicMorph should return to its caller.
+type atomicMorpherUint32 func(startVal uint32) (val uint32, morphResult uint32)
+
+// AtomicMorph atomically morphs target in to new value (and result) as indicated bythe AtomicMorpher callback function.
+func atomicMorphUint32(target *uint32, morpher atomicMorpherUint32) uint32 {
+	for {
+		currentVal := atomic.LoadUint32(target)
+		desiredVal, morphResult := morpher(currentVal)
+		if atomic.CompareAndSwapUint32(target, currentVal, desiredVal) {
+			return morphResult
 		}
 	}
 }
 
-// close commits our blocks to blob storage and closes our writer.
-func (c *copier) close() error {
-	c.wg.Wait()
+type blockID [64]byte
 
-	if err := c.getErr(); err != nil {
-		return err
-	}
-
-	var err error
-	commitBlockListOptions := c.o.getCommitBlockListOptions()
-	c.result, err = c.to.CommitBlockList(c.ctx, c.id.issued(), commitBlockListOptions)
-	return err
+func (blockID blockID) ToBase64() string {
+	return base64.StdEncoding.EncodeToString(blockID[:])
 }
 
-// id allows the creation of unique IDs based on UUID4 + an int32. This auto-increments.
-type id struct {
-	u   [64]byte
-	num uint32
-	all []string
+type uuidBlockID blockID
+
+func newUUIDBlockID(u uuid.UUID) uuidBlockID {
+	ubi := uuidBlockID{}     // Create a new uuidBlockID
+	copy(ubi[:len(u)], u[:]) // Copy the specified UUID into it
+	// Block number defaults to 0
+	return ubi
 }
 
-// newID constructs a new id.
-func newID(uu uuid.UUID) *id {
-	u := [64]byte{}
-	copy(u[:], uu[:])
-	return &id{u: u}
+func (ubi uuidBlockID) WithBlockNumber(blockNumber uint32) uuidBlockID {
+	binary.BigEndian.PutUint32(ubi[len(uuid.UUID{}):], blockNumber) // Put block number after UUID
+	return ubi                                                      // Return the passed-in copy
 }
 
-// next returns the next ID.
-func (id *id) next() string {
-	defer atomic.AddUint32(&id.num, 1)
-
-	binary.BigEndian.PutUint32(id.u[len(uuid.UUID{}):], atomic.LoadUint32(&id.num))
-	str := base64.StdEncoding.EncodeToString(id.u[:])
-	id.all = append(id.all, str)
-
-	return str
-}
-
-// issued returns all ids that have been issued. This returned value shares the internal slice, so it is not safe to modify the return.
-// The value is only valid until the next time next() is called.
-func (id *id) issued() []string {
-	return id.all
+func (ubi uuidBlockID) ToBase64() string {
+	return blockID(ubi).ToBase64()
 }

@@ -44,12 +44,9 @@ func (ve ValidationErrors) Error() string {
 
 	buff := bytes.NewBufferString("")
 
-	var fe *fieldError
-
 	for i := 0; i < len(ve); i++ {
 
-		fe = ve[i].(*fieldError)
-		buff.WriteString(fe.Error())
+		buff.WriteString(ve[i].Error())
 		buff.WriteString("\n")
 	}
 
@@ -260,15 +257,19 @@ func (fe *fieldError) Error() string {
 // NOTE: if no registered translation can be found, it returns the original
 // untranslated error message.
 func (fe *fieldError) Translate(ut ut.Translator) string {
+	var fn TranslationFunc
 
 	m, ok := fe.v.transTagFunc[ut]
 	if !ok {
 		return fe.Error()
 	}
 
-	fn, ok := m[fe.tag]
+	fn, ok = m[fe.tag]
 	if !ok {
-		return fe.Error()
+		fn, ok = m[fe.actualTag]
+		if !ok {
+			return fe.Error()
+		}
 	}
 
 	return fn(ut, fe)

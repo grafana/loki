@@ -9,11 +9,11 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
+	_ "github.com/golang/protobuf/ptypes/duration"
 	github_com_grafana_loki_v3_pkg_logproto "github.com/grafana/loki/v3/pkg/logproto"
 	logproto "github.com/grafana/loki/v3/pkg/logproto"
 	definitions "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase/definitions"
 	resultscache "github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
-	_ "google.golang.org/protobuf/types/known/durationpb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -1022,7 +1022,7 @@ func (this *PrometheusRequest) String() string {
 		`Start:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Start), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`End:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.End), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Step:` + fmt.Sprintf("%v", this.Step) + `,`,
-		`Timeout:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timeout), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
+		`Timeout:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timeout), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
 		`CachingOptions:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.CachingOptions), "CachingOptions", "resultscache.CachingOptions", 1), `&`, ``, 1) + `,`,
 		`Headers:` + repeatedStringForHeaders + `,`,

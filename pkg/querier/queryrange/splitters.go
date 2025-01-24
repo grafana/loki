@@ -103,12 +103,12 @@ func (s *defaultSplitter) split(execTime time.Time, tenantIDs []string, req quer
 		factory = func(start, end time.Time) {
 			reqs = append(reqs, &DetectedFieldsRequest{
 				DetectedFieldsRequest: logproto.DetectedFieldsRequest{
-					Start:      start,
-					End:        end,
-					Query:      r.GetQuery(),
-					LineLimit:  r.GetLineLimit(),
-					FieldLimit: r.GetFieldLimit(),
-					Step:       r.GetStep(),
+					Start:     start,
+					End:       end,
+					Query:     r.GetQuery(),
+					LineLimit: r.GetLineLimit(),
+					Limit:     r.GetLimit(),
+					Step:      r.GetStep(),
 				},
 				path: r.path,
 			})

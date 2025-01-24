@@ -38,8 +38,8 @@ import (
 )
 
 const (
-	DefaultSegmentSize = 128 * 1024 * 1024 // 128 MB
-	pageSize           = 32 * 1024         // 32KB
+	DefaultSegmentSize = 128 * 1024 * 1024 // DefaultSegmentSize is 128 MB.
+	pageSize           = 32 * 1024         // pageSize is 32KB.
 	recordHeaderSize   = 7
 	WblDirName         = "wbl"
 )
@@ -228,10 +228,28 @@ type wlMetrics struct {
 	currentSegment  prometheus.Gauge
 	writesFailed    prometheus.Counter
 	walFileSize     prometheus.GaugeFunc
+
+	r prometheus.Registerer
+}
+
+func (w *wlMetrics) Unregister() {
+	if w.r == nil {
+		return
+	}
+	w.r.Unregister(w.fsyncDuration)
+	w.r.Unregister(w.pageFlushes)
+	w.r.Unregister(w.pageCompletions)
+	w.r.Unregister(w.truncateFail)
+	w.r.Unregister(w.truncateTotal)
+	w.r.Unregister(w.currentSegment)
+	w.r.Unregister(w.writesFailed)
+	w.r.Unregister(w.walFileSize)
 }
 
 func newWLMetrics(w *WL, r prometheus.Registerer) *wlMetrics {
-	m := &wlMetrics{}
+	m := &wlMetrics{
+		r: r,
+	}
 
 	m.fsyncDuration = prometheus.NewSummary(prometheus.SummaryOpts{
 		Name:       "fsync_duration_seconds",
@@ -594,16 +612,16 @@ func (w *WL) setSegment(segment *Segment) error {
 
 // flushPage writes the new contents of the page to disk. If no more records will fit into
 // the page, the remaining bytes will be set to zero and a new page will be started.
-// If clear is true, this is enforced regardless of how many bytes are left in the page.
-func (w *WL) flushPage(clear bool) error {
+// If forceClear is true, this is enforced regardless of how many bytes are left in the page.
+func (w *WL) flushPage(forceClear bool) error {
 	w.metrics.pageFlushes.Inc()
 
 	p := w.page
-	clear = clear || p.full()
+	shouldClear := forceClear || p.full()
 
 	// No more data will fit into the page or an implicit clear.
 	// Enqueue and clear it.
-	if clear {
+	if shouldClear {
 		p.alloc = pageSize // Write till end of page.
 	}
 
@@ -615,7 +633,7 @@ func (w *WL) flushPage(clear bool) error {
 	p.flushed += n
 
 	// We flushed an entire page, prepare a new one.
-	if clear {
+	if shouldClear {
 		p.reset()
 		w.donePages++
 		w.metrics.pageCompletions.Inc()
@@ -877,6 +895,8 @@ func (w *WL) Close() (err error) {
 	if err := w.segment.Close(); err != nil {
 		level.Error(w.logger).Log("msg", "close previous segment", "err", err)
 	}
+
+	w.metrics.Unregister()
 	w.closed = true
 	return nil
 }

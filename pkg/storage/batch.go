@@ -352,12 +352,12 @@ func (it *logBatchIterator) StreamHash() uint64 {
 	return it.curr.StreamHash()
 }
 
-func (it *logBatchIterator) Error() error {
+func (it *logBatchIterator) Err() error {
 	if it.err != nil {
 		return it.err
 	}
-	if it.curr != nil && it.curr.Error() != nil {
-		return it.curr.Error()
+	if it.curr != nil && it.curr.Err() != nil {
+		return it.curr.Err()
 	}
 	if it.ctx.Err() != nil {
 		return it.ctx.Err()
@@ -373,8 +373,8 @@ func (it *logBatchIterator) Close() error {
 	return nil
 }
 
-func (it *logBatchIterator) Entry() logproto.Entry {
-	return it.curr.Entry()
+func (it *logBatchIterator) At() logproto.Entry {
+	return it.curr.At()
 }
 
 func (it *logBatchIterator) Next() bool {
@@ -421,7 +421,7 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 	for _, chunks := range chks {
 		if len(chunks) != 0 && len(chunks[0]) != 0 {
 			streamPipeline := it.pipeline.ForStream(labels.NewBuilder(chunks[0][0].Chunk.Metric).Del(labels.MetricName).Labels())
-			iterator, err := it.buildHeapIterator(chunks, from, through, streamPipeline, nextChunk)
+			iterator, err := it.buildMergeIterator(chunks, from, through, streamPipeline, nextChunk)
 			if err != nil {
 				return nil, err
 			}
@@ -433,7 +433,7 @@ func (it *logBatchIterator) buildIterators(chks map[model.Fingerprint][][]*LazyC
 	return result, nil
 }
 
-func (it *logBatchIterator) buildHeapIterator(chks [][]*LazyChunk, from, through time.Time, streamPipeline log.StreamPipeline, nextChunk *LazyChunk) (iter.EntryIterator, error) {
+func (it *logBatchIterator) buildMergeIterator(chks [][]*LazyChunk, from, through time.Time, streamPipeline log.StreamPipeline, nextChunk *LazyChunk) (iter.EntryIterator, error) {
 	result := make([]iter.EntryIterator, 0, len(chks))
 
 	for i := range chks {
@@ -497,12 +497,12 @@ func (it *sampleBatchIterator) StreamHash() uint64 {
 	return it.curr.StreamHash()
 }
 
-func (it *sampleBatchIterator) Error() error {
+func (it *sampleBatchIterator) Err() error {
 	if it.err != nil {
 		return it.err
 	}
-	if it.curr != nil && it.curr.Error() != nil {
-		return it.curr.Error()
+	if it.curr != nil && it.curr.Err() != nil {
+		return it.curr.Err()
 	}
 	if it.ctx.Err() != nil {
 		return it.ctx.Err()
@@ -518,8 +518,8 @@ func (it *sampleBatchIterator) Close() error {
 	return nil
 }
 
-func (it *sampleBatchIterator) Sample() logproto.Sample {
-	return it.curr.Sample()
+func (it *sampleBatchIterator) At() logproto.Sample {
+	return it.curr.At()
 }
 
 func (it *sampleBatchIterator) Next() bool {

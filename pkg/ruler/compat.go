@@ -72,6 +72,12 @@ func queryFunc(evaluator Evaluator, checker readyChecker, userID string, logger 
 			return nil, errNotReady
 		}
 
+		// Extract rule details
+		ruleName := detail.Name
+		ruleType := detail.Kind
+
+		// Add rule details to context
+		ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
 		res, err := evaluator.Eval(ctx, qs, t)
 
 		if err != nil {
@@ -251,9 +257,9 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 		return errors.Errorf("field 'expr' must be set in rule")
 	} else if _, err := syntax.ParseExpr(r.Expr.Value); err != nil {
 		if r.Record.Value != "" {
-			return errors.Wrapf(err, fmt.Sprintf("could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName))
+			return errors.Wrapf(err, "could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName)
 		}
-		return errors.Wrapf(err, fmt.Sprintf("could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName))
+		return errors.Wrapf(err, "could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName)
 	}
 
 	if r.Record.Value != "" {
@@ -300,7 +306,7 @@ func testTemplateParsing(rl *rulefmt.RuleNode) (errs []error) {
 	}
 
 	// Trying to parse templates.
-	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", 0)
+	tmplData := template.AlertTemplateData(map[string]string{}, map[string]string{}, "", promql.Sample{})
 	defs := []string{
 		"{{$labels := .Labels}}",
 		"{{$externalLabels := .ExternalLabels}}",
@@ -356,4 +362,26 @@ type noopRuleDependencyController struct{}
 // AnalyseRules is a noop for Loki since there is no dependency relation between rules.
 func (*noopRuleDependencyController) AnalyseRules([]rules.Rule) {
 	// Do nothing
+}
+
+// Define context keys to avoid collisions
+type contextKey string
+
+const (
+	ruleNameKey contextKey = "rule_name"
+	ruleTypeKey contextKey = "rule_type"
+)
+
+// AddRuleDetailsToContext adds rule details to the context
+func AddRuleDetailsToContext(ctx context.Context, ruleName string, ruleType string) context.Context {
+	ctx = context.WithValue(ctx, ruleNameKey, ruleName)
+	ctx = context.WithValue(ctx, ruleTypeKey, ruleType)
+	return ctx
+}
+
+// GetRuleDetailsFromContext retrieves rule details from the context
+func GetRuleDetailsFromContext(ctx context.Context) (string, string) {
+	ruleName, _ := ctx.Value(ruleNameKey).(string)
+	ruleType, _ := ctx.Value(ruleTypeKey).(string)
+	return ruleName, ruleType
 }

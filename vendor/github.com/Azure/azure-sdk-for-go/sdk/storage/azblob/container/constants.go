@@ -8,7 +8,33 @@ package container
 
 import "github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/generated"
 
-// PublicAccessType defines values for AccessType - private (default) or blob or container
+// AccessTier defines values for blob access tiers.
+type AccessTier = generated.AccessTier
+
+const (
+	AccessTierArchive AccessTier = generated.AccessTierArchive
+	AccessTierCool    AccessTier = generated.AccessTierCool
+	AccessTierHot     AccessTier = generated.AccessTierHot
+	AccessTierP10     AccessTier = generated.AccessTierP10
+	AccessTierP15     AccessTier = generated.AccessTierP15
+	AccessTierP20     AccessTier = generated.AccessTierP20
+	AccessTierP30     AccessTier = generated.AccessTierP30
+	AccessTierP4      AccessTier = generated.AccessTierP4
+	AccessTierP40     AccessTier = generated.AccessTierP40
+	AccessTierP50     AccessTier = generated.AccessTierP50
+	AccessTierP6      AccessTier = generated.AccessTierP6
+	AccessTierP60     AccessTier = generated.AccessTierP60
+	AccessTierP70     AccessTier = generated.AccessTierP70
+	AccessTierP80     AccessTier = generated.AccessTierP80
+	AccessTierPremium AccessTier = generated.AccessTierPremium
+)
+
+// PossibleAccessTierValues returns the possible values for the AccessTier const type.
+func PossibleAccessTierValues() []AccessTier {
+	return generated.PossibleAccessTierValues()
+}
+
+// PublicAccessType defines values for AccessType - private (default) or blob or container.
 type PublicAccessType = generated.PublicAccessType
 
 const (
@@ -21,7 +47,7 @@ func PossiblePublicAccessTypeValues() []PublicAccessType {
 	return generated.PossiblePublicAccessTypeValues()
 }
 
-// SKUName defines values for SkuName - LRS, GRS, RAGRS, ZRS, Premium LRS
+// SKUName defines values for SkuName - LRS, GRS, RAGRS, ZRS, Premium LRS.
 type SKUName = generated.SKUName
 
 const (
@@ -65,48 +91,6 @@ const (
 // PossibleBlobTypeValues returns the possible values for the BlobType const type.
 func PossibleBlobTypeValues() []BlobType {
 	return generated.PossibleBlobTypeValues()
-}
-
-// LeaseStatusType defines values for LeaseStatusType
-type LeaseStatusType = generated.LeaseStatusType
-
-const (
-	LeaseStatusTypeLocked   LeaseStatusType = generated.LeaseStatusTypeLocked
-	LeaseStatusTypeUnlocked LeaseStatusType = generated.LeaseStatusTypeUnlocked
-)
-
-// PossibleLeaseStatusTypeValues returns the possible values for the LeaseStatusType const type.
-func PossibleLeaseStatusTypeValues() []LeaseStatusType {
-	return generated.PossibleLeaseStatusTypeValues()
-}
-
-// LeaseDurationType defines values for LeaseDurationType
-type LeaseDurationType = generated.LeaseDurationType
-
-const (
-	LeaseDurationTypeInfinite LeaseDurationType = generated.LeaseDurationTypeInfinite
-	LeaseDurationTypeFixed    LeaseDurationType = generated.LeaseDurationTypeFixed
-)
-
-// PossibleLeaseDurationTypeValues returns the possible values for the LeaseDurationType const type.
-func PossibleLeaseDurationTypeValues() []LeaseDurationType {
-	return generated.PossibleLeaseDurationTypeValues()
-}
-
-// LeaseStateType defines values for LeaseStateType
-type LeaseStateType = generated.LeaseStateType
-
-const (
-	LeaseStateTypeAvailable LeaseStateType = generated.LeaseStateTypeAvailable
-	LeaseStateTypeLeased    LeaseStateType = generated.LeaseStateTypeLeased
-	LeaseStateTypeExpired   LeaseStateType = generated.LeaseStateTypeExpired
-	LeaseStateTypeBreaking  LeaseStateType = generated.LeaseStateTypeBreaking
-	LeaseStateTypeBroken    LeaseStateType = generated.LeaseStateTypeBroken
-)
-
-// PossibleLeaseStateTypeValues returns the possible values for the LeaseStateType const type.
-func PossibleLeaseStateTypeValues() []LeaseStateType {
-	return generated.PossibleLeaseStateTypeValues()
 }
 
 // ArchiveStatus defines values for ArchiveStatus

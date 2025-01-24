@@ -2,7 +2,6 @@ package syntax
 
 import (
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 
@@ -366,6 +365,10 @@ var ParseTestCases = []struct {
 		err: logqlmodel.NewParseError("grouping not allowed for absent_over_time aggregation", 0, 0),
 	},
 	{
+		in:  `approx_topk(2, count_over_time({ foo = "bar" }[5h])) by (foo)`,
+		err: logqlmodel.NewParseError("grouping not allowed for approx_topk aggregation", 0, 0),
+	},
+	{
 		in:  `rate({ foo = "bar" }[5minutes])`,
 		err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 	},
@@ -499,19 +502,19 @@ var ParseTestCases = []struct {
 	// label filter for ip-matcher
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr>ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<=ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 30),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 30),
 	},
 	{
 		in:  `{ foo = "bar" }|logfmt|addr<ip("1.2.3.4")`,
-		err: logqlmodel.NewParseError("syntax error: unexpected ip, expecting BYTES or NUMBER or DURATION", 1, 29),
+		err: logqlmodel.NewParseError("syntax error: unexpected ip", 1, 29),
 	},
 	{
 		in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
@@ -3173,6 +3176,66 @@ var ParseTestCases = []struct {
 			},
 		},
 	},
+	{
+		in: `{app="foo"} |= "foo" or "bar" or "baz"`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStages: MultiStageExpr{
+				&LineFilterExpr{
+					LineFilter: LineFilter{
+						Ty:    log.LineMatchEqual,
+						Match: "foo",
+					},
+					Or: newOrLineFilter(
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchEqual,
+								Match: "bar",
+							},
+							IsOrChild: true,
+						},
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchEqual,
+								Match: "baz",
+							},
+							IsOrChild: true,
+						}),
+					IsOrChild: false,
+				},
+			},
+		},
+	},
+	{
+		in: `{app="foo"} |> "foo" or "bar" or "baz"`,
+		exp: &PipelineExpr{
+			Left: newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "app", "foo")}),
+			MultiStages: MultiStageExpr{
+				&LineFilterExpr{
+					LineFilter: LineFilter{
+						Ty:    log.LineMatchPattern,
+						Match: "foo",
+					},
+					Or: newOrLineFilter(
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchPattern,
+								Match: "bar",
+							},
+							IsOrChild: true,
+						},
+						&LineFilterExpr{
+							LineFilter: LineFilter{
+								Ty:    log.LineMatchPattern,
+								Match: "baz",
+							},
+							IsOrChild: true,
+						}),
+					IsOrChild: false,
+				},
+			},
+		},
+	},
 }
 
 func TestParse(t *testing.T) {
@@ -3180,7 +3243,7 @@ func TestParse(t *testing.T) {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
-			require.Equal(t, tc.exp, ast)
+			AssertExpressions(t, tc.exp, ast)
 		})
 	}
 }
@@ -3226,8 +3289,11 @@ func TestParseMatchers(t *testing.T) {
 				t.Errorf("ParseMatchers() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("ParseMatchers() = %v, want %v", got, tt.want)
+
+			if tt.want == nil {
+				require.Nil(t, got)
+			} else {
+				AssertMatchers(t, tt.want, got)
 			}
 		})
 	}

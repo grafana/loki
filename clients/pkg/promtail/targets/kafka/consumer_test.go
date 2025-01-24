@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -43,7 +43,7 @@ func Test_ComsumerConsume(t *testing.T) {
 			ctx:           context.Background(),
 			cancel:        func() {},
 			ConsumerGroup: group,
-			discoverer: DiscovererFn(func(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) (RunnableTarget, error) {
+			discoverer: DiscovererFn(func(_ sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) (RunnableTarget, error) {
 				if claim.Topic() != "dropped" {
 					return &fakeTarget{
 						ctx: ctx,

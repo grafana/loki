@@ -57,5 +57,6 @@ var s3ErrorResponseMap = map[string]string{
 	"BucketAlreadyOwnedByYou":           "Your previous request to create the named bucket succeeded and you already own it.",
 	"InvalidDuration":                   "Duration provided in the request is invalid.",
 	"XAmzContentSHA256Mismatch":         "The provided 'x-amz-content-sha256' header does not match what was computed.",
+	"NoSuchCORSConfiguration":           "The specified bucket does not have a CORS configuration.",
 	// Add new API errors here.
 }

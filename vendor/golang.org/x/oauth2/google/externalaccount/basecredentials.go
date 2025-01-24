@@ -329,7 +329,7 @@ type SubjectTokenSupplier interface {
 type AwsSecurityCredentialsSupplier interface {
 	// AwsRegion should return the AWS region or an error.
 	AwsRegion(ctx context.Context, options SupplierOptions) (string, error)
-	// GetAwsSecurityCredentials should return a valid set of AwsSecurityCredentials or an error.
+	// AwsSecurityCredentials should return a valid set of AwsSecurityCredentials or an error.
 	// The external account token source does not cache the returned security credentials, so caching
 	// logic should be implemented in the supplier to prevent multiple requests for the same security credentials.
 	AwsSecurityCredentials(ctx context.Context, options SupplierOptions) (*AwsSecurityCredentials, error)
@@ -471,11 +471,12 @@ func (ts tokenSource) Token() (*oauth2.Token, error) {
 		AccessToken: stsResp.AccessToken,
 		TokenType:   stsResp.TokenType,
 	}
-	if stsResp.ExpiresIn < 0 {
+
+	// The RFC8693 doesn't define the explicit 0 of "expires_in" field behavior.
+	if stsResp.ExpiresIn <= 0 {
 		return nil, fmt.Errorf("oauth2/google/externalaccount: got invalid expiry from security token service")
-	} else if stsResp.ExpiresIn >= 0 {
-		accessToken.Expiry = now().Add(time.Duration(stsResp.ExpiresIn) * time.Second)
 	}
+	accessToken.Expiry = now().Add(time.Duration(stsResp.ExpiresIn) * time.Second)
 
 	if stsResp.RefreshToken != "" {
 		accessToken.RefreshToken = stsResp.RefreshToken

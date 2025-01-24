@@ -51,6 +51,7 @@ func NewGRPCClient(addr string, cfg GRPCConfig, r prometheus.Registerer) (deleti
 		return nil, err
 	}
 
+	// nolint:staticcheck // grpc.Dial() has been deprecated; we'll address it before upgrading to gRPC 2.
 	client.conn, err = grpc.Dial(addr, dialOpts...)
 	if err != nil {
 		return nil, err

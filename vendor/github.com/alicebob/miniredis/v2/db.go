@@ -3,6 +3,7 @@ package miniredis
 import (
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -13,14 +14,24 @@ var (
 	errInvalidEntryID = errors.New("stream ID is invalid")
 )
 
+// exists also updates the lru
 func (db *RedisDB) exists(k string) bool {
 	_, ok := db.keys[k]
+	if ok {
+		db.lru[k] = db.master.effectiveNow()
+	}
 	return ok
 }
 
 // t gives the type of a key, or ""
 func (db *RedisDB) t(k string) string {
 	return db.keys[k]
+}
+
+// incr increases the version and the lru timestamp
+func (db *RedisDB) incr(k string) {
+	db.lru[k] = db.master.effectiveNow()
+	db.keyVersion[k]++
 }
 
 // allKeys returns all keys. Sorted.
@@ -36,6 +47,7 @@ func (db *RedisDB) allKeys() []string {
 // flush removes all keys and values.
 func (db *RedisDB) flush() {
 	db.keys = map[string]string{}
+	db.lru = map[string]time.Time{}
 	db.stringKeys = map[string]string{}
 	db.hashKeys = map[string]hashKey{}
 	db.listKeys = map[string]listKey{}
@@ -75,10 +87,10 @@ func (db *RedisDB) move(key string, to *RedisDB) bool {
 	default:
 		panic("unhandled key type")
 	}
-	to.keyVersion[key]++
 	if v, ok := db.ttl[key]; ok {
 		to.ttl[key] = v
 	}
+	to.incr(key)
 	db.del(key, true)
 	return true
 }
@@ -104,10 +116,10 @@ func (db *RedisDB) rename(from, to string) {
 		panic("missing case")
 	}
 	db.keys[to] = db.keys[from]
-	db.keyVersion[to]++
 	if v, ok := db.ttl[from]; ok {
 		db.ttl[to] = v
 	}
+	db.incr(to)
 
 	db.del(from, true)
 }
@@ -118,6 +130,7 @@ func (db *RedisDB) del(k string, delTTL bool) {
 	}
 	t := db.t(k)
 	delete(db.keys, k)
+	delete(db.lru, k)
 	db.keyVersion[k]++
 	if delTTL {
 		delete(db.ttl, k)
@@ -155,7 +168,7 @@ func (db *RedisDB) stringSet(k, v string) {
 	db.del(k, false)
 	db.keys[k] = "string"
 	db.stringKeys[k] = v
-	db.keyVersion[k]++
+	db.incr(k)
 }
 
 // change int key value
@@ -168,6 +181,17 @@ func (db *RedisDB) stringIncr(k string, delta int) (int, error) {
 			return 0, ErrIntValueError
 		}
 	}
+
+	if delta > 0 {
+		if math.MaxInt-delta < v {
+			return 0, ErrIntValueOverflowError
+		}
+	} else {
+		if math.MinInt-delta > v {
+			return 0, ErrIntValueOverflowError
+		}
+	}
+
 	v += delta
 	db.stringSet(k, strconv.Itoa(v))
 	return v, nil
@@ -197,7 +221,7 @@ func (db *RedisDB) listLpush(k, v string) int {
 	}
 	l = append([]string{v}, l...)
 	db.listKeys[k] = l
-	db.keyVersion[k]++
+	db.incr(k)
 	return len(l)
 }
 
@@ -211,7 +235,7 @@ func (db *RedisDB) listLpop(k string) string {
 	} else {
 		db.listKeys[k] = l
 	}
-	db.keyVersion[k]++
+	db.incr(k)
 	return el
 }
 
@@ -222,7 +246,7 @@ func (db *RedisDB) listPush(k string, v ...string) int {
 	}
 	l = append(l, v...)
 	db.listKeys[k] = l
-	db.keyVersion[k]++
+	db.incr(k)
 	return len(l)
 }
 
@@ -234,7 +258,7 @@ func (db *RedisDB) listPop(k string) string {
 		db.del(k, true)
 	} else {
 		db.listKeys[k] = l
-		db.keyVersion[k]++
+		db.incr(k)
 	}
 	return el
 }
@@ -243,7 +267,7 @@ func (db *RedisDB) listPop(k string) string {
 func (db *RedisDB) setSet(k string, set setKey) {
 	db.keys[k] = "set"
 	db.setKeys[k] = set
-	db.keyVersion[k]++
+	db.incr(k)
 }
 
 // setadd adds members to a set. Returns nr of new keys.
@@ -261,7 +285,7 @@ func (db *RedisDB) setAdd(k string, elems ...string) int {
 		s[e] = struct{}{}
 	}
 	db.setKeys[k] = s
-	db.keyVersion[k]++
+	db.incr(k)
 	return added
 }
 
@@ -283,7 +307,7 @@ func (db *RedisDB) setRem(k string, fields ...string) int {
 	} else {
 		db.setKeys[k] = s
 	}
-	db.keyVersion[k]++
+	db.incr(k)
 	return removed
 }
 
@@ -349,7 +373,7 @@ func (db *RedisDB) hashSet(k string, fv ...string) int {
 		f, v := fv[idx], fv[idx+1]
 		_, ok := db.hashKeys[k][f]
 		db.hashKeys[k][f] = v
-		db.keyVersion[k]++
+		db.incr(k)
 		if !ok {
 			new++
 		}
@@ -401,7 +425,7 @@ func (db *RedisDB) sortedSet(key string) map[string]float64 {
 // ssetSet sets a complete sorted set.
 func (db *RedisDB) ssetSet(key string, sset sortedSet) {
 	db.keys[key] = "zset"
-	db.keyVersion[key]++
+	db.incr(key)
 	db.sortedsetKeys[key] = sset
 }
 
@@ -415,7 +439,7 @@ func (db *RedisDB) ssetAdd(key string, score float64, member string) bool {
 	_, ok = ss[member]
 	ss[member] = score
 	db.sortedsetKeys[key] = ss
-	db.keyVersion[key]++
+	db.incr(key)
 	return !ok
 }
 
@@ -509,7 +533,7 @@ func (db *RedisDB) ssetIncrby(k, m string, delta float64) float64 {
 	v, _ := ss.get(m)
 	v += delta
 	ss.set(v, m)
-	db.keyVersion[k]++
+	db.incr(k)
 	return v
 }
 
@@ -578,6 +602,54 @@ func (db *RedisDB) setInter(keys []string) (setKey, error) {
 	return s, nil
 }
 
+// setIntercard implements the logic behind SINTER*
+// len keys needs to be > 0
+func (db *RedisDB) setIntercard(keys []string, limit int) (int, error) {
+	// all keys must either not exist, or be of type "set".
+	allExist := true
+	for _, key := range keys {
+		exists := db.exists(key)
+		allExist = allExist && exists
+		if exists && db.t(key) != "set" {
+			return 0, ErrWrongType
+		}
+	}
+
+	if !allExist {
+		return 0, nil
+	}
+
+	smallestKey := keys[0]
+	smallestIdx := 0
+	for i, key := range keys {
+		if len(db.setKeys[key]) < len(db.setKeys[smallestKey]) {
+			smallestKey = key
+			smallestIdx = i
+		}
+	}
+	keys[smallestIdx] = keys[len(keys)-1]
+	keys = keys[:len(keys)-1]
+
+	count := 0
+	for item := range db.setKeys[smallestKey] {
+		inIntersection := true
+		for _, key := range keys {
+			if _, ok := db.setKeys[key][item]; !ok {
+				inIntersection = false
+				break
+			}
+		}
+		if inIntersection {
+			count++
+			if count == limit {
+				break
+			}
+		}
+	}
+
+	return count, nil
+}
+
 // setUnion implements the logic behind SUNION*
 func (db *RedisDB) setUnion(keys []string) (setKey, error) {
 	key := keys[0]
@@ -613,7 +685,7 @@ func (db *RedisDB) newStream(key string) (*streamKey, error) {
 	db.keys[key] = "stream"
 	s := newStreamKey()
 	db.streamKeys[key] = s
-	db.keyVersion[key]++
+	db.incr(key)
 	return s, nil
 }
 
@@ -665,7 +737,7 @@ func (db *RedisDB) hllAdd(k string, elems ...string) int {
 		}
 	}
 	db.hllKeys[k] = s
-	db.keyVersion[k]++
+	db.incr(k)
 	return hllAltered
 }
 
@@ -712,7 +784,7 @@ func (db *RedisDB) hllMerge(keys []string) error {
 
 	db.hllKeys[destKey] = destHll
 	db.keys[destKey] = "hll"
-	db.keyVersion[destKey]++
+	db.incr(destKey)
 
 	return nil
 }

@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/efficientgo/core/logerrcapture"
 	"github.com/go-kit/log"
@@ -23,7 +22,6 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"gopkg.in/yaml.v2"
 
@@ -101,18 +99,12 @@ const (
 )
 
 var DefaultConfig = Config{
-	PutUserMetadata: map[string]string{},
-	HTTPConfig: exthttp.HTTPConfig{
-		IdleConnTimeout:       model.Duration(90 * time.Second),
-		ResponseHeaderTimeout: model.Duration(2 * time.Minute),
-		TLSHandshakeTimeout:   model.Duration(10 * time.Second),
-		ExpectContinueTimeout: model.Duration(1 * time.Second),
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
-		MaxConnsPerHost:       0,
-	},
+	PutUserMetadata:  map[string]string{},
+	HTTPConfig:       exthttp.DefaultHTTPConfig,
+	DisableMultipart: false,
 	PartSize:         1024 * 1024 * 64, // 64MB.
 	BucketLookupType: AutoLookup,
+	SendContentMd5:   true, // Default to using MD5.
 }
 
 // HTTPConfig exists here only because Cortex depends on it, and we depend on Cortex.
@@ -125,6 +117,7 @@ type Config struct {
 	Bucket             string             `yaml:"bucket"`
 	Endpoint           string             `yaml:"endpoint"`
 	Region             string             `yaml:"region"`
+	DisableDualstack   bool               `yaml:"disable_dualstack"`
 	AWSSDKAuth         bool               `yaml:"aws_sdk_auth"`
 	AccessKey          string             `yaml:"access_key"`
 	Insecure           bool               `yaml:"insecure"`
@@ -136,11 +129,14 @@ type Config struct {
 	TraceConfig        TraceConfig        `yaml:"trace"`
 	ListObjectsVersion string             `yaml:"list_objects_version"`
 	BucketLookupType   BucketLookupType   `yaml:"bucket_lookup_type"`
+	SendContentMd5     bool               `yaml:"send_content_md5"`
+	DisableMultipart   bool               `yaml:"disable_multipart"`
 	// PartSize used for multipart upload. Only used if uploaded object size is known and larger than configured PartSize.
 	// NOTE we need to make sure this number does not produce more parts than 10 000.
 	PartSize    uint64    `yaml:"part_size"`
 	SSEConfig   SSEConfig `yaml:"sse_config"`
 	STSEndpoint string    `yaml:"sts_endpoint"`
+	MaxRetries  int       `yaml:"max_retries"`
 }
 
 // SSEConfig deals with the configuration of SSE for Minio. The following options are valid:
@@ -158,14 +154,16 @@ type TraceConfig struct {
 
 // Bucket implements the store.Bucket interface against s3-compatible APIs.
 type Bucket struct {
-	logger          log.Logger
-	name            string
-	client          *minio.Client
-	defaultSSE      encrypt.ServerSide
-	putUserMetadata map[string]string
-	storageClass    string
-	partSize        uint64
-	listObjectsV1   bool
+	logger           log.Logger
+	name             string
+	client           *minio.Client
+	defaultSSE       encrypt.ServerSide
+	putUserMetadata  map[string]string
+	storageClass     string
+	disableMultipart bool
+	partSize         uint64
+	listObjectsV1    bool
+	sendContentMd5   bool
 }
 
 // parseConfig unmarshals a buffer into a Config with default values.
@@ -179,13 +177,13 @@ func parseConfig(conf []byte) (Config, error) {
 }
 
 // NewBucket returns a new Bucket using the provided s3 config values.
-func NewBucket(logger log.Logger, conf []byte, component string) (*Bucket, error) {
+func NewBucket(logger log.Logger, conf []byte, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	config, err := parseConfig(conf)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewBucketWithConfig(logger, config, component)
+	return NewBucketWithConfig(logger, config, component, wrapRoundtripper)
 }
 
 type overrideSignerType struct {
@@ -194,7 +192,7 @@ type overrideSignerType struct {
 }
 
 func (s *overrideSignerType) Retrieve() (credentials.Value, error) {
-	v, err := s.Provider.Retrieve()
+	v, err := s.RetrieveWithCredContext(nil)
 	if err != nil {
 		return v, err
 	}
@@ -205,7 +203,7 @@ func (s *overrideSignerType) Retrieve() (credentials.Value, error) {
 }
 
 // NewBucketWithConfig returns a new Bucket using the provided s3 config values.
-func NewBucketWithConfig(logger log.Logger, config Config, component string) (*Bucket, error) {
+func NewBucketWithConfig(logger log.Logger, config Config, component string, wrapRoundtripper func(http.RoundTripper) http.RoundTripper) (*Bucket, error) {
 	var chain []credentials.Provider
 
 	// TODO(bwplotka): Don't do flags as they won't scale, use actual params like v2, v4 instead
@@ -248,23 +246,25 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 
 	// Check if a roundtripper has been set in the config
 	// otherwise build the default transport.
-	var rt http.RoundTripper
+	var tpt http.RoundTripper
+	tpt, err := exthttp.DefaultTransport(config.HTTPConfig)
+	if err != nil {
+		return nil, err
+	}
 	if config.HTTPConfig.Transport != nil {
-		rt = config.HTTPConfig.Transport
-	} else {
-		var err error
-		rt, err = exthttp.DefaultTransport(config.HTTPConfig)
-		if err != nil {
-			return nil, err
-		}
+		tpt = config.HTTPConfig.Transport
+	}
+	if wrapRoundtripper != nil {
+		tpt = wrapRoundtripper(tpt)
 	}
 
 	client, err := minio.New(config.Endpoint, &minio.Options{
 		Creds:        credentials.NewChainCredentials(chain),
 		Secure:       !config.Insecure,
 		Region:       config.Region,
-		Transport:    rt,
+		Transport:    tpt,
 		BucketLookup: config.BucketLookupType.MinioType(),
+		MaxRetries:   config.MaxRetries,
 	})
 	if err != nil {
 		return nil, errors.Wrap(err, "initialize s3 client")
@@ -306,6 +306,11 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		}
 	}
 
+	if config.DisableDualstack {
+		// The value in the config is inverted for backward compatibility
+		client.SetS3EnableDualstack(false)
+	}
+
 	if config.TraceConfig.Enable {
 		logWriter := log.NewStdlibAdapter(level.Debug(logger), log.MessageKey("s3TraceMsg"))
 		client.TraceOn(logWriter)
@@ -326,17 +331,21 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 	}
 
 	bkt := &Bucket{
-		logger:          logger,
-		name:            config.Bucket,
-		client:          client,
-		defaultSSE:      sse,
-		putUserMetadata: config.PutUserMetadata,
-		storageClass:    storageClass,
-		partSize:        config.PartSize,
-		listObjectsV1:   config.ListObjectsVersion == "v1",
+		logger:           logger,
+		name:             config.Bucket,
+		client:           client,
+		defaultSSE:       sse,
+		putUserMetadata:  config.PutUserMetadata,
+		storageClass:     storageClass,
+		disableMultipart: config.DisableMultipart,
+		partSize:         config.PartSize,
+		listObjectsV1:    config.ListObjectsVersion == "v1",
+		sendContentMd5:   config.SendContentMd5,
 	}
 	return bkt, nil
 }
+
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.S3 }
 
 // Name returns the bucket name for s3.
 func (b *Bucket) Name() string {
@@ -382,18 +391,26 @@ func ValidateForTests(conf Config) error {
 	return nil
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, DirDelim) + DirDelim
 	}
 
+	appliedOpts := objstore.ApplyIterOptions(options...)
+
 	opts := minio.ListObjectsOptions{
 		Prefix:    dir,
-		Recursive: objstore.ApplyIterOptions(options...).Recursive,
+		Recursive: appliedOpts.Recursive,
 		UseV1:     b.listObjectsV1,
 	}
 
@@ -410,12 +427,35 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		if object.Key == dir {
 			continue
 		}
-		if err := f(object.Key); err != nil {
+
+		attr := objstore.IterObjectAttributes{
+			Name: object.Key,
+		}
+		if appliedOpts.LastModified {
+			attr.SetLastModified(object.LastModified)
+		}
+
+		if err := f(attr); err != nil {
 			return err
 		}
 	}
 
 	return ctx.Err()
+}
+
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
@@ -448,7 +488,17 @@ func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (
 		return nil, err
 	}
 
-	return r, nil
+	return objstore.ObjectSizerReadCloser{
+		ReadCloser: r,
+		Size: func() (int64, error) {
+			stat, err := r.Stat()
+			if err != nil {
+				return 0, err
+			}
+
+			return stat.Size, nil
+		},
+	}, nil
 }
 
 // Get returns a reader for the given object name.
@@ -492,6 +542,13 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 	if size < int64(partSize) {
 		partSize = 0
 	}
+
+	// Cloning map since minio may modify it
+	userMetadata := make(map[string]string, len(b.putUserMetadata))
+	for k, v := range b.putUserMetadata {
+		userMetadata[k] = v
+	}
+
 	if _, err := b.client.PutObject(
 		ctx,
 		b.name,
@@ -499,10 +556,12 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		r,
 		size,
 		minio.PutObjectOptions{
+			DisableMultipart:     b.disableMultipart,
 			PartSize:             partSize,
 			ServerSideEncryption: sse,
-			UserMetadata:         b.putUserMetadata,
+			UserMetadata:         userMetadata,
 			StorageClass:         b.storageClass,
+			SendContentMd5:       b.sendContentMd5,
 			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 			// ensure we pin this number to four.
 			// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.
@@ -598,14 +657,14 @@ func NewTestBucketFromConfig(t testing.TB, location string, c Config, reuseBucke
 	if err != nil {
 		return nil, nil, err
 	}
-	b, err := NewBucket(log.NewNopLogger(), bc, "thanos-e2e-test")
+	b, err := NewBucket(log.NewNopLogger(), bc, "thanos-e2e-test", nil)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	bktToCreate := c.Bucket
 	if c.Bucket != "" && reuseBucket {
-		if err := b.Iter(ctx, "", func(f string) error {
+		if err := b.Iter(ctx, "", func(string) error {
 			return errors.Errorf("bucket %s is not empty", c.Bucket)
 		}); err != nil {
 			return nil, nil, errors.Wrapf(err, "s3 check bucket %s", c.Bucket)

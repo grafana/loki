@@ -8,7 +8,7 @@ import (
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	_ "google.golang.org/protobuf/types/known/durationpb"
+	_ "github.com/golang/protobuf/ptypes/duration"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -251,7 +251,7 @@ func (this *Stats) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&Stats{`,
-		`WallTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.WallTime), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
+		`WallTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.WallTime), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
 		`FetchedSeriesCount:` + fmt.Sprintf("%v", this.FetchedSeriesCount) + `,`,
 		`FetchedChunkBytes:` + fmt.Sprintf("%v", this.FetchedChunkBytes) + `,`,
 		`}`,

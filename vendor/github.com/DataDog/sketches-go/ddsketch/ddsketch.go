@@ -173,7 +173,13 @@ func (s *DDSketch) GetValueAtQuantile(quantile float64) (float64, error) {
 		return math.NaN(), errEmptySketch
 	}
 
-	rank := quantile * (count - 1)
+	// Use an explicit floating point conversion (as per Go specification) to make sure that no
+	// "fused multiply and add" (FMA) operation is used in the following code subtracting values
+	// from `rank`. Not doing so can lead to inconsistent rounding and return value for this
+	// function, depending on the architecture and whether FMA operations are used or not by the
+	// compiler.
+	rank := float64(quantile * (count - 1))
+
 	negativeValueCount := s.negativeValueStore.TotalCount()
 	if rank < negativeValueCount {
 		return -s.Value(s.negativeValueStore.KeyAtRank(negativeValueCount - 1 - rank)), nil

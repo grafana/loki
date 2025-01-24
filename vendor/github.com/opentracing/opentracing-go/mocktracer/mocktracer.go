@@ -11,6 +11,7 @@ import (
 func New() *MockTracer {
 	t := &MockTracer{
 		finishedSpans: []*MockSpan{},
+		startedSpans:  []*MockSpan{},
 		injectors:     make(map[interface{}]Injector),
 		extractors:    make(map[interface{}]Extractor),
 	}
@@ -34,8 +35,20 @@ func New() *MockTracer {
 type MockTracer struct {
 	sync.RWMutex
 	finishedSpans []*MockSpan
+	startedSpans  []*MockSpan
 	injectors     map[interface{}]Injector
 	extractors    map[interface{}]Extractor
+}
+
+// UnfinishedSpans returns all spans that have been started and not finished since the
+// MockTracer was constructed or since the last call to its Reset() method.
+func (t *MockTracer) UnfinishedSpans() []*MockSpan {
+	t.RLock()
+	defer t.RUnlock()
+
+	spans := make([]*MockSpan, len(t.startedSpans))
+	copy(spans, t.startedSpans)
+	return spans
 }
 
 // FinishedSpans returns all spans that have been Finish()'ed since the
@@ -54,6 +67,7 @@ func (t *MockTracer) FinishedSpans() []*MockSpan {
 func (t *MockTracer) Reset() {
 	t.Lock()
 	defer t.Unlock()
+	t.startedSpans = []*MockSpan{}
 	t.finishedSpans = []*MockSpan{}
 }
 
@@ -63,7 +77,10 @@ func (t *MockTracer) StartSpan(operationName string, opts ...opentracing.StartSp
 	for _, o := range opts {
 		o.Apply(&sso)
 	}
-	return newMockSpan(t, operationName, sso)
+
+	span := newMockSpan(t, operationName, sso)
+	t.recordStartedSpan(span)
+	return span
 }
 
 // RegisterInjector registers injector for given format
@@ -98,8 +115,22 @@ func (t *MockTracer) Extract(format interface{}, carrier interface{}) (opentraci
 	return extractor.Extract(carrier)
 }
 
-func (t *MockTracer) recordSpan(span *MockSpan) {
+func (t *MockTracer) recordStartedSpan(span *MockSpan) {
+	t.Lock()
+	defer t.Unlock()
+	t.startedSpans = append(t.startedSpans, span)
+}
+
+func (t *MockTracer) recordFinishedSpan(span *MockSpan) {
 	t.Lock()
 	defer t.Unlock()
 	t.finishedSpans = append(t.finishedSpans, span)
+
+	for i := range t.startedSpans {
+		if t.startedSpans[i].SpanContext.SpanID == span.SpanContext.SpanID &&
+			t.startedSpans[i].SpanContext.TraceID == span.SpanContext.TraceID {
+			t.startedSpans = append(t.startedSpans[:i], t.startedSpans[i+1:]...)
+			return
+		}
+	}
 }

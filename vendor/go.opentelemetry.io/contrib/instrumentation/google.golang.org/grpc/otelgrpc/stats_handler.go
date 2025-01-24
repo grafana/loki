@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package otelgrpc // import "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
@@ -24,20 +13,22 @@ import (
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
 
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/internal"
 )
 
 type gRPCContextKey struct{}
 
 type gRPCContext struct {
-	messagesReceived int64
-	messagesSent     int64
-	metricAttrs      []attribute.KeyValue
+	inMessages  int64
+	outMessages int64
+	metricAttrs []attribute.KeyValue
+	record      bool
 }
 
 type serverHandler struct {
@@ -72,11 +63,15 @@ func (h *serverHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 		trace.ContextWithRemoteSpanContext(ctx, trace.SpanContextFromContext(ctx)),
 		name,
 		trace.WithSpanKind(trace.SpanKindServer),
-		trace.WithAttributes(attrs...),
+		trace.WithAttributes(append(attrs, h.config.SpanAttributes...)...),
 	)
 
 	gctx := gRPCContext{
-		metricAttrs: attrs,
+		metricAttrs: append(attrs, h.config.MetricAttributes...),
+		record:      true,
+	}
+	if h.config.Filter != nil {
+		gctx.record = h.config.Filter(info)
 	}
 	return context.WithValue(ctx, gRPCContextKey{}, &gctx)
 }
@@ -108,11 +103,15 @@ func (h *clientHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) cont
 		ctx,
 		name,
 		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(attrs...),
+		trace.WithAttributes(append(attrs, h.config.SpanAttributes...)...),
 	)
 
 	gctx := gRPCContext{
-		metricAttrs: attrs,
+		metricAttrs: append(attrs, h.config.MetricAttributes...),
+		record:      true,
+	}
+	if h.config.Filter != nil {
+		gctx.record = h.config.Filter(info)
 	}
 
 	return inject(context.WithValue(ctx, gRPCContextKey{}, &gctx), h.config.Propagators)
@@ -141,6 +140,9 @@ func (c *config) handleRPC(ctx context.Context, rs stats.RPCStats, isServer bool
 
 	gctx, _ := ctx.Value(gRPCContextKey{}).(*gRPCContext)
 	if gctx != nil {
+		if !gctx.record {
+			return
+		}
 		metricAttrs = make([]attribute.KeyValue, 0, len(gctx.metricAttrs)+1)
 		metricAttrs = append(metricAttrs, gctx.metricAttrs...)
 	}
@@ -149,8 +151,8 @@ func (c *config) handleRPC(ctx context.Context, rs stats.RPCStats, isServer bool
 	case *stats.Begin:
 	case *stats.InPayload:
 		if gctx != nil {
-			messageId = atomic.AddInt64(&gctx.messagesReceived, 1)
-			c.rpcRequestSize.Record(ctx, int64(rs.Length), metric.WithAttributes(metricAttrs...))
+			messageId = atomic.AddInt64(&gctx.inMessages, 1)
+			c.rpcInBytes.Record(ctx, int64(rs.Length), metric.WithAttributeSet(attribute.NewSet(metricAttrs...)))
 		}
 
 		if c.ReceivedEvent {
@@ -165,8 +167,8 @@ func (c *config) handleRPC(ctx context.Context, rs stats.RPCStats, isServer bool
 		}
 	case *stats.OutPayload:
 		if gctx != nil {
-			messageId = atomic.AddInt64(&gctx.messagesSent, 1)
-			c.rpcResponseSize.Record(ctx, int64(rs.Length), metric.WithAttributes(metricAttrs...))
+			messageId = atomic.AddInt64(&gctx.outMessages, 1)
+			c.rpcOutBytes.Record(ctx, int64(rs.Length), metric.WithAttributeSet(attribute.NewSet(metricAttrs...)))
 		}
 
 		if c.SentEvent {
@@ -203,14 +205,17 @@ func (c *config) handleRPC(ctx context.Context, rs stats.RPCStats, isServer bool
 		span.End()
 
 		metricAttrs = append(metricAttrs, rpcStatusAttr)
+		// Allocate vararg slice once.
+		recordOpts := []metric.RecordOption{metric.WithAttributeSet(attribute.NewSet(metricAttrs...))}
 
 		// Use floating point division here for higher precision (instead of Millisecond method).
+		// Measure right before calling Record() to capture as much elapsed time as possible.
 		elapsedTime := float64(rs.EndTime.Sub(rs.BeginTime)) / float64(time.Millisecond)
 
-		c.rpcDuration.Record(ctx, elapsedTime, metric.WithAttributes(metricAttrs...))
+		c.rpcDuration.Record(ctx, elapsedTime, recordOpts...)
 		if gctx != nil {
-			c.rpcRequestsPerRPC.Record(ctx, atomic.LoadInt64(&gctx.messagesReceived), metric.WithAttributes(metricAttrs...))
-			c.rpcResponsesPerRPC.Record(ctx, atomic.LoadInt64(&gctx.messagesSent), metric.WithAttributes(metricAttrs...))
+			c.rpcInMessages.Record(ctx, atomic.LoadInt64(&gctx.inMessages), recordOpts...)
+			c.rpcOutMessages.Record(ctx, atomic.LoadInt64(&gctx.outMessages), recordOpts...)
 		}
 	default:
 		return

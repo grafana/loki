@@ -95,7 +95,7 @@ func (v *DepthFirstTraversal) VisitDropLabels(e *DropLabelsExpr) {
 	if e == nil {
 		return
 	}
-	if v.VisitDecolorizeFn != nil {
+	if v.VisitDropLabelsFn != nil {
 		v.VisitDropLabelsFn(v, e)
 	}
 }

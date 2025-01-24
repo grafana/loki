@@ -275,7 +275,7 @@ func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
 	// Use a random tick up to the interval for the first tick
 	firstMt := true
-	randomGenerator := rand.New(rand.NewSource(time.Now().UnixNano()))
+	randomGenerator := rand.New(rand.NewSource(time.Now().UnixNano())) //#nosec G404 -- Random sampling for health testing purposes, does not require secure random.
 	mt := time.NewTicker(time.Duration(randomGenerator.Int63n(c.metricTestInterval.Nanoseconds())))
 	sc := time.NewTicker(c.spotCheckQueryRate)
 	ct := time.NewTicker(c.cacheTestInterval)
@@ -427,7 +427,7 @@ func (c *Comparator) spotCheckEntries(currTime time.Time) {
 		func(_ int, t *time.Time) bool {
 			return t.Before(currTime.Add(-c.spotCheckMax))
 		},
-		func(_ int, t *time.Time) {
+		func(_ int, _ *time.Time) {
 
 		})
 
@@ -513,7 +513,7 @@ func (c *Comparator) pruneEntries(currentTime time.Time) {
 		func(_ int, t *time.Time) bool {
 			return t.Before(currentTime.Add(-c.wait))
 		},
-		func(_ int, t *time.Time) {
+		func(_ int, _ *time.Time) {
 
 		})
 }

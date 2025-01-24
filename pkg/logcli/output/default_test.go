@@ -79,8 +79,6 @@ func TestDefaultOutput_Format(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			writer := &bytes.Buffer{}
@@ -168,8 +166,6 @@ func TestColorForLabels(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			labelsColor := getColor(testData.labels.String())

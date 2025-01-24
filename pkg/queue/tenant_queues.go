@@ -336,7 +336,7 @@ func shuffleConsumersForTenants(userSeed int64, consumersToSelect int, allSorted
 	}
 
 	result := make(map[string]struct{}, consumersToSelect)
-	rnd := rand.New(rand.NewSource(userSeed))
+	rnd := rand.New(rand.NewSource(userSeed)) //#nosec G404 -- Load spreading does not require CSPRNG
 
 	scratchpad = scratchpad[:0]
 	scratchpad = append(scratchpad, allSortedConsumers...)

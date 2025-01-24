@@ -62,3 +62,6 @@ limits_config:
   per_tenant_override_config: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.file"
   per_tenant_override_period: "Feature renamed to 'runtime configuration', flag deprecated in favor of runtime_config.period"
   allow_deletes: "Use deletion_mode per tenant configuration instead."
+
+server:
+  grpc_server_stats_tracking_enabled: "Deprecated, currently doesn't do anything, will be removed in a future version."

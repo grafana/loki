@@ -52,7 +52,6 @@ func TestShardedStringer(t *testing.T) {
 }
 
 func TestMapSampleExpr(t *testing.T) {
-
 	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
 	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
 
@@ -117,7 +116,7 @@ func TestMapSampleExpr(t *testing.T) {
 
 func TestMappingStrings(t *testing.T) {
 	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
-	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime})
+	m := NewShardMapper(strategy, nilShardMetrics, []string{ShardQuantileOverTime, SupportApproxTopk})
 	for _, tc := range []struct {
 		in  string
 		out string
@@ -166,6 +165,15 @@ func TestMappingStrings(t *testing.T) {
 			out: `topk(3,
 				downstream<rate({foo="bar"}[5m]), shard=0_of_2>
 				++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>
+			)`,
+		},
+		{
+			in: `approx_topk(3, sum by(ip)(rate({foo="bar"}[5m])))`,
+			out: `topk(3,
+			        CountMinSketchEval<
+				  downstream<__count_min_sketch__(sum by(ip)(rate({foo="bar"}[5m]))), shard=0_of_2>
+				  ++ downstream<__count_min_sketch__(sum by(ip)(rate({foo="bar"}[5m]))), shard=1_of_2>
+			        >
 			)`,
 		},
 		{
@@ -392,6 +400,38 @@ func TestMappingStrings(t *testing.T) {
 				)
 			)`,
 		},
+		{
+			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m])`,
+			out: `(
+				sum without() (
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without() (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
+				)
+				/
+				sum without(busy) (
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json | keep busy | unwrap busy [5m]) without (foo)`,
+			out: `(
+				sum without(foo) (
+					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(foo) (sum_over_time({job=~"myapps.*"} |="stats" | json | keep busy | unwrap busy [5m])),shard=1_of_2>
+				)
+				/
+				sum without(foo,busy) (
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=0_of_2>
+					++
+					downstream<sum without(foo,busy) (count_over_time({job=~"myapps.*"} |="stats" | json | keep busy [5m])),shard=1_of_2>
+				)
+			)`,
+		},
 		// should be noop if VectorExpr
 		{
 			in:  `vector(0)`,
@@ -468,7 +508,6 @@ func TestMappingStrings_NoProbabilisticSharding(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
-
 			shardedMapper := NewShardMapper(NewPowerOfTwoStrategy(ConstantShards(2)), nilShardMetrics, []string{ShardQuantileOverTime})
 
 			ast, err := syntax.ParseExpr(tc.in)
@@ -494,7 +533,7 @@ func TestMappingStrings_NoProbabilisticSharding(t *testing.T) {
 
 func TestMapping(t *testing.T) {
 	strategy := NewPowerOfTwoStrategy(ConstantShards(2))
-	m := NewShardMapper(strategy, nilShardMetrics, []string{})
+	m := NewShardMapper(strategy, nilShardMetrics, []string{SupportApproxTopk})
 
 	for _, tc := range []struct {
 		in   string
@@ -740,6 +779,56 @@ func TestMapping(t *testing.T) {
 							},
 						},
 						next: nil,
+					},
+				},
+			},
+		},
+		{
+			in: `approx_topk(3, rate({foo="bar"}[5m]))`,
+			expr: &syntax.VectorAggregationExpr{
+				Grouping:  &syntax.Grouping{},
+				Params:    3,
+				Operation: syntax.OpTypeTopK,
+				Left: &CountMinSketchEvalExpr{
+					downstreams: []DownstreamSampleExpr{
+						{
+							shard: NewPowerOfTwoShard(index.ShardAnnotation{
+								Shard: 0,
+								Of:    2,
+							}).Bind(nil),
+							SampleExpr: &syntax.VectorAggregationExpr{
+								Operation: syntax.OpTypeCountMinSketch,
+								Left: &syntax.RangeAggregationExpr{
+									Operation: syntax.OpRangeTypeRate,
+									Left: &syntax.LogRange{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										},
+										Interval: 5 * time.Minute,
+									},
+								},
+								Grouping: &syntax.Grouping{},
+							},
+						},
+						{
+							shard: NewPowerOfTwoShard(index.ShardAnnotation{
+								Shard: 1,
+								Of:    2,
+							}).Bind(nil),
+							SampleExpr: &syntax.VectorAggregationExpr{
+								Operation: syntax.OpTypeCountMinSketch,
+								Left: &syntax.RangeAggregationExpr{
+									Operation: syntax.OpRangeTypeRate,
+									Left: &syntax.LogRange{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										},
+										Interval: 5 * time.Minute,
+									},
+								},
+								Grouping: &syntax.Grouping{},
+							},
+						},
 					},
 				},
 			},
