@@ -87,11 +87,11 @@ func TestSingleTenantTSDBIdentifierSerialization(t *testing.T) {
 	}{
 		{
 			desc:  "simple_works",
-			input: SingleTenantTSDBIdentifier{ExportTSInSecs: true, TS: time.Unix(1, 0), From: 1, Through: 10, Checksum: 255},
+			input: SingleTenantTSDBIdentifier{ExportTSInSecs: true, TS: time.Unix(1, 0).UTC(), From: 1, Through: 10, Checksum: 255},
 		},
 		{
 			desc:  "simple_works_with_nanosecond",
-			input: SingleTenantTSDBIdentifier{ExportTSInSecs: false, TS: time.Unix(0, 1712534400000000000), From: 1, Through: 10, Checksum: 255},
+			input: SingleTenantTSDBIdentifier{ExportTSInSecs: false, TS: time.Unix(0, 1712534400000000000).UTC(), From: 1, Through: 10, Checksum: 255},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
