@@ -22,55 +22,56 @@ import (
 )
 
 var (
-	limitsClients = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "loki_ingest_limits_clients",
-		Help: "The current number of ingest limits clients.",
+	backendClients = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "loki_ingest_limits_backend_clients",
+		Help: "The current number of ingest limits backend clients.",
 	})
-	limitsClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "loki_ingest_limits_client_request_duration_seconds",
-		Help:    "Time spent doing ingest limits requests.",
+	backendRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "loki_ingest_limits_backend_client_request_duration_seconds",
+		Help:    "Time spent doing ingest limits backend requests.",
 		Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 	}, []string{"operation", "status_code"})
 )
 
-// ClientConfig contains the config for an ingest-limits client.
-type ClientConfig struct {
+// BackendClientConfig contains the config for an ingest-limits client.
+type BackendClientConfig struct {
 	GRPCClientConfig             grpcclient.Config              `yaml:"grpc_client_config" doc:"description=Configures client gRPC connections to limits service."`
-	PoolConfig                   PoolConfig                     `yaml:"pool_config,omitempty" doc:"description=Configures client gRPC connections pool to limits service."`
+	PoolConfig                   BackendPoolConfig              `yaml:"pool_config,omitempty" doc:"description=Configures client gRPC connections pool to limits service."`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
 }
 
-func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *BackendClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".limits-client", f)
 	cfg.PoolConfig.RegisterFlagsWithPrefix(prefix, f)
 }
 
-// PoolConfig contains the config for a pool of ingest-limits clients.
-type PoolConfig struct {
+// BackendPoolConfig contains the config for a pool of ingest-limits backend
+// clients.
+type BackendPoolConfig struct {
 	ClientCleanupPeriod     time.Duration `yaml:"client_cleanup_period"`
 	HealthCheckIngestLimits bool          `yaml:"health_check_ingest_limits"`
 	RemoteTimeout           time.Duration `yaml:"remote_timeout"`
 }
 
-func (cfg *PoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *BackendPoolConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ClientCleanupPeriod, prefix+".client-cleanup-period", 15*time.Second, "How frequently to clean up clients for ingest-limits that have gone away.")
 	f.BoolVar(&cfg.HealthCheckIngestLimits, prefix+".health-check-ingest-limits", true, "Run a health check on each ingest-limits client during periodic cleanup.")
 	f.DurationVar(&cfg.RemoteTimeout, prefix+".remote-timeout", 1*time.Second, "Timeout for the health check.")
 }
 
-// IngestLimitsClient is a gRPC client for the ingest-limits backend.
-// The ingest limits service uses a pool of clients to get usage data from
-// individual backends.
-type IngestLimitsClient struct {
+// IngestLimitsBackendClient is a gRPC client for the ingest-limits backend.
+// The ingest limits service gets usage data from individual backends, and
+// data is sharded over a ring of backends.
+type IngestLimitsBackendClient struct {
 	logproto.IngestLimitsClient
 	grpc_health_v1.HealthClient
 	io.Closer
 }
 
-// NewIngestLimitsClient returns a new IngestLimitsClient for the specified
-// ingest-limits backend.
-func NewIngestLimitsClient(cfg ClientConfig, addr string) (*IngestLimitsClient, error) {
+// NewIngestLimitsBackendClient returns a new IngestLimitsBackendClient for
+// the specified ingest-limits backend.
+func NewIngestLimitsBackendClient(cfg BackendClientConfig, addr string) (*IngestLimitsBackendClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
@@ -84,7 +85,7 @@ func NewIngestLimitsClient(cfg ClientConfig, addr string) (*IngestLimitsClient, 
 	if err != nil {
 		return nil, err
 	}
-	return &IngestLimitsClient{
+	return &IngestLimitsBackendClient{
 		IngestLimitsClient: logproto.NewIngestLimitsClient(conn),
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		Closer:             conn,
@@ -92,7 +93,7 @@ func NewIngestLimitsClient(cfg ClientConfig, addr string) (*IngestLimitsClient, 
 }
 
 // getInterceptors returns the gRPC interceptors for the given ClientConfig.
-func getGRPCInterceptors(cfg *ClientConfig) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+func getGRPCInterceptors(cfg *BackendClientConfig) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var (
 		unaryInterceptors  []grpc.UnaryClientInterceptor
 		streamInterceptors []grpc.StreamClientInterceptor
@@ -102,13 +103,13 @@ func getGRPCInterceptors(cfg *ClientConfig) ([]grpc.UnaryClientInterceptor, []gr
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientHTTPHeadersInterceptor)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
-	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(limitsClientRequestDuration))
+	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(backendRequestDuration))
 
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
 	streamInterceptors = append(streamInterceptors, server.StreamClientHTTPHeadersInterceptor)
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
-	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(limitsClientRequestDuration))
+	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(backendRequestDuration))
 
 	return unaryInterceptors, streamInterceptors
 }
@@ -116,7 +117,7 @@ func getGRPCInterceptors(cfg *ClientConfig) ([]grpc.UnaryClientInterceptor, []gr
 // NewIngestLimitsClientPool returns a new pool of IngestLimitsClients.
 func NewIngestLimitsClientPool(
 	name string,
-	cfg PoolConfig,
+	cfg BackendPoolConfig,
 	ring ring.ReadRing,
 	factory ring_client.PoolFactory,
 	logger log.Logger,
@@ -126,5 +127,5 @@ func NewIngestLimitsClientPool(
 		HealthCheckEnabled: cfg.HealthCheckIngestLimits,
 		HealthCheckTimeout: cfg.RemoteTimeout,
 	}
-	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, limitsClients, logger)
+	return ring_client.NewPool(name, poolCfg, ring_client.NewRingServiceDiscovery(ring), factory, backendClients, logger)
 }

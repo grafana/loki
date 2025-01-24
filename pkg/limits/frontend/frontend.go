@@ -40,7 +40,7 @@ func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger 
 	var servs []services.Service
 
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return NewIngestLimitsClient(cfg.ClientConfig, addr)
+		return NewIngestLimitsBackendClient(cfg.ClientConfig, addr)
 	})
 
 	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, ring, factory, logger)
