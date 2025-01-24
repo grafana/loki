@@ -16075,10 +16075,10 @@ type InstanceGroup struct {
 	// Name: The name of the instance group. The name must be 1-63 characters long,
 	// and comply with RFC1035.
 	Name string `json:"name,omitempty"`
-	// NamedPorts:  Assigns a name to a port number. For example: {name: "http",
-	// port: 80} This allows the system to reference ports by the assigned name
-	// instead of a port number. Named ports can also contain multiple ports. For
-	// example: [{name: "app1", port: 8080}, {name: "app1", port: 8081}, {name:
+	// NamedPorts:  Optional. Assigns a name to a port number. For example: {name:
+	// "http", port: 80} This allows the system to reference ports by the assigned
+	// name instead of a port number. Named ports can also contain multiple ports.
+	// For example: [{name: "app1", port: 8080}, {name: "app1", port: 8081}, {name:
 	// "app2", port: 8082}] Named ports apply to all instances in this instance
 	// group.
 	NamedPorts []*NamedPort `json:"namedPorts,omitempty"`
@@ -26737,23 +26737,25 @@ func (s NetworkEdgeSecurityServicesScopedListWarningData) MarshalJSON() ([]byte,
 
 // NetworkEndpoint: The network endpoint.
 type NetworkEndpoint struct {
-	// Annotations: Metadata defined as annotations on the network endpoint.
+	// Annotations: Optional metadata defined as annotations on the network
+	// endpoint.
 	Annotations map[string]string `json:"annotations,omitempty"`
 	// ClientDestinationPort: Represents the port number to which PSC consumer
-	// sends packets. Only valid for network endpoint groups created with
+	// sends packets. Optional. Only valid for network endpoint groups created with
 	// GCE_VM_IP_PORTMAP endpoint type.
 	ClientDestinationPort int64 `json:"clientDestinationPort,omitempty"`
 	// Fqdn: Optional fully qualified domain name of network endpoint. This can
 	// only be specified when NetworkEndpointGroup.network_endpoint_type is
 	// NON_GCP_FQDN_PORT.
 	Fqdn string `json:"fqdn,omitempty"`
-	// Instance: The name or a URL of VM instance of this network endpoint. This
-	// field is required for network endpoints of type GCE_VM_IP and
-	// GCE_VM_IP_PORT. The instance must be in the same zone of network endpoint
-	// group (for zonal NEGs) or in the zone within the region of the NEG (for
-	// regional NEGs). If the ipAddress is specified, it must belongs to the VM
-	// instance. The name must be 1-63 characters long, and comply with RFC1035 or
-	// be a valid URL pointing to an existing instance.
+	// Instance: The name or a URL of VM instance of this network endpoint.
+	// Optional, the field presence depends on the network endpoint type. The field
+	// is required for network endpoints of type GCE_VM_IP and GCE_VM_IP_PORT. The
+	// instance must be in the same zone of network endpoint group (for zonal NEGs)
+	// or in the zone within the region of the NEG (for regional NEGs). If the
+	// ipAddress is specified, it must belongs to the VM instance. The name must be
+	// 1-63 characters long, and comply with RFC1035 or be a valid URL pointing to
+	// an existing instance.
 	Instance string `json:"instance,omitempty"`
 	// IpAddress: Optional IPv4 address of network endpoint. The IP address must
 	// belong to a VM in Compute Engine (either the primary IP or as part of an
@@ -26795,22 +26797,24 @@ func (s NetworkEndpoint) MarshalJSON() ([]byte, error) {
 // information about using NEGs for different use cases, see Network endpoint
 // groups overview.
 type NetworkEndpointGroup struct {
-	// Annotations: Metadata defined as annotations on the network endpoint group.
+	// Annotations: Optional. Metadata defined as annotations on the network
+	// endpoint group.
 	Annotations map[string]string `json:"annotations,omitempty"`
-	// AppEngine: Only valid when networkEndpointType is SERVERLESS. Only one of
-	// cloudRun, appEngine or cloudFunction may be set.
+	// AppEngine: Optional. Only valid when networkEndpointType is SERVERLESS. Only
+	// one of cloudRun, appEngine or cloudFunction may be set.
 	AppEngine *NetworkEndpointGroupAppEngine `json:"appEngine,omitempty"`
-	// CloudFunction: Only valid when networkEndpointType is SERVERLESS. Only one
-	// of cloudRun, appEngine or cloudFunction may be set.
+	// CloudFunction: Optional. Only valid when networkEndpointType is SERVERLESS.
+	// Only one of cloudRun, appEngine or cloudFunction may be set.
 	CloudFunction *NetworkEndpointGroupCloudFunction `json:"cloudFunction,omitempty"`
-	// CloudRun: Only valid when networkEndpointType is SERVERLESS. Only one of
-	// cloudRun, appEngine or cloudFunction may be set.
+	// CloudRun: Optional. Only valid when networkEndpointType is SERVERLESS. Only
+	// one of cloudRun, appEngine or cloudFunction may be set.
 	CloudRun *NetworkEndpointGroupCloudRun `json:"cloudRun,omitempty"`
 	// CreationTimestamp: [Output Only] Creation timestamp in RFC3339 text format.
 	CreationTimestamp string `json:"creationTimestamp,omitempty"`
 	// DefaultPort: The default port used if the port number is not specified in
-	// the network endpoint. If the network endpoint type is either GCE_VM_IP,
-	// SERVERLESS or PRIVATE_SERVICE_CONNECT, this field must not be specified.
+	// the network endpoint. Optional. If the network endpoint type is either
+	// GCE_VM_IP, SERVERLESS or PRIVATE_SERVICE_CONNECT, this field must not be
+	// specified.
 	DefaultPort int64 `json:"defaultPort,omitempty"`
 	// Description: An optional description of this resource. Provide this property
 	// when you create the resource.
@@ -26855,11 +26859,14 @@ type NetworkEndpointGroup struct {
 	// connection is set up by private service connect
 	//   "SERVERLESS" - The network endpoint is handled by specified serverless
 	// infrastructure.
-	NetworkEndpointType string                       `json:"networkEndpointType,omitempty"`
-	PscData             *NetworkEndpointGroupPscData `json:"pscData,omitempty"`
+	NetworkEndpointType string `json:"networkEndpointType,omitempty"`
+	// PscData: Optional. Only valid when networkEndpointType is
+	// PRIVATE_SERVICE_CONNECT.
+	PscData *NetworkEndpointGroupPscData `json:"pscData,omitempty"`
 	// PscTargetService: The target service url used to set up private service
 	// connection to a Google API or a PSC Producer Service Attachment. An example
-	// value is: asia-northeast3-cloudkms.googleapis.com
+	// value is: asia-northeast3-cloudkms.googleapis.com. Optional. Only valid when
+	// networkEndpointType is PRIVATE_SERVICE_CONNECT.
 	PscTargetService string `json:"pscTargetService,omitempty"`
 	// Region: [Output Only] The URL of the region where the network endpoint group
 	// is located.
@@ -27742,9 +27749,11 @@ func (s NetworkEndpointGroupsScopedListWarningData) MarshalJSON() ([]byte, error
 }
 
 type NetworkEndpointWithHealthStatus struct {
-	// Healths: [Output only] The health status of network endpoint;
+	// Healths: [Output only] The health status of network endpoint. Optional.
+	// Displayed only if the network endpoint has centralized health checking
+	// configured.
 	Healths []*HealthStatusForNetworkEndpoint `json:"healths,omitempty"`
-	// NetworkEndpoint: [Output only] The network endpoint;
+	// NetworkEndpoint: [Output only] The network endpoint.
 	NetworkEndpoint *NetworkEndpoint `json:"networkEndpoint,omitempty"`
 	// ForceSendFields is a list of field names (e.g. "Healths") to unconditionally
 	// include in API requests. By default, fields with empty or default values are
