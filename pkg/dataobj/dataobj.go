@@ -234,14 +234,6 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 	return nil
 }
 
-func (b *Builder) Hash(stream logproto.Stream) uint64 {
-	ls, err := b.parseLabels(stream.Labels)
-	if err != nil {
-		return 0
-	}
-	return ls.Hash()
-}
-
 // Append buffers a stream to be written to a data object. Append returns an
 // error if the stream labels cannot be parsed or [ErrBufferFull] if the
 // builder is full.

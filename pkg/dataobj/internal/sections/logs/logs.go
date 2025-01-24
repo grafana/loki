@@ -99,19 +99,6 @@ func (l *Logs) Append(entry Record) {
 	l.metrics.recordCount.Inc()
 }
 
-func recordSize(record Record) int {
-	var size int
-
-	size++    // One byte per stream ID (for uvarint).
-	size += 8 // Eight bytes for timestamp.
-	for _, metadata := range record.Metadata {
-		size += len(metadata.Value)
-	}
-	size += len(record.Line)
-
-	return size
-}
-
 func (l *Logs) flushRecords() {
 	if len(l.records) == 0 {
 		return
