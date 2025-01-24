@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -38,34 +39,51 @@ type MetastoreManager struct {
 	bucket           objstore.Bucket
 	logger           log.Logger
 	backoff          *backoff.Backoff
+
+	builderOnce sync.Once
 }
 
 func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*MetastoreManager, error) {
-	metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg, bucket, tenantID)
-	if err != nil {
-		return nil, err
-	}
 	metrics := newMetastoreMetrics()
 	if err := metrics.register(reg); err != nil {
 		return nil, err
 	}
 
 	return &MetastoreManager{
-		metastoreBuilder: metastoreBuilder,
-		bucket:           bucket,
-		metrics:          metrics,
-		logger:           logger,
-		tenantID:         tenantID,
+		bucket:   bucket,
+		metrics:  metrics,
+		logger:   logger,
+		tenantID: tenantID,
 		backoff: backoff.New(context.TODO(), backoff.Config{
 			MinBackoff: 10 * time.Millisecond,
 			MaxBackoff: 100 * time.Millisecond,
 		}),
+		builderOnce: sync.Once{},
 	}, nil
+}
+
+func (m *MetastoreManager) initBuilder() error {
+	var initErr error
+	m.builderOnce.Do(func() {
+		metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg, m.bucket, m.tenantID)
+		if err != nil {
+			initErr = err
+			return
+		}
+		m.metastoreBuilder = metastoreBuilder
+	})
+	return initErr
 }
 
 func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult dataobj.FlushResult) error {
 	start := time.Now()
 	defer m.metrics.observeMetastoreProcessing(start)
+
+	// Initialize builder if this is the first call for this partition
+	if err := m.initBuilder(); err != nil {
+		return err
+	}
+
 	minTimestamp, maxTimestamp := flushResult.MinTimestamp, flushResult.MaxTimestamp
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
