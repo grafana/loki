@@ -46,7 +46,7 @@ func (m *mockBucket) Delete(_ context.Context, name string) error {
 	return nil
 }
 
-func (m *mockBucket) Iter(ctx context.Context, _ string, f func(name string) error, options ...objstore.IterOption) error {
+func (m *mockBucket) Iter(_ context.Context, _ string, f func(string) error, options ...objstore.IterOption) error {
 	for _, key := range m.iterKeys {
 		if err := f(key); err != nil {
 			return err
