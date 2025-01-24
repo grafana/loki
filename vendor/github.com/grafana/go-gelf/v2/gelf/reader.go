@@ -21,11 +21,12 @@ const (
 	//according to Gelf specification, all chunks must be received within 5 seconds. see:https://docs.graylog.org/docs/gelf
 	maxMessageTimeout             = 5 * time.Second
 	defarmentatorsCleanUpInterval = 5 * time.Second
+	maxReadChunkSize              = 64 << 10 // 64k
 )
 
 type Reader struct {
 	mu                     sync.Mutex
-	conn                   net.Conn
+	conn                   *net.UDPConn
 	messageDefragmentators map[string]*defragmentator
 	done                   chan struct{}
 	maxMessageTimeout      time.Duration
@@ -88,7 +89,7 @@ func (r *Reader) Read(p []byte) (int, error) {
 // and continue reading the message from the connection until it receives the last chunk of any previously received messages or if the reader receives not chunked message.
 // In this case, not chunked message will be returned immediately.
 func (r *Reader) ReadMessage() (*Message, error) {
-	cBuf := make([]byte, ChunkSize)
+	cBuf := make([]byte, maxReadChunkSize) // max chunk size is 64k
 	var (
 		err       error
 		n         int
@@ -99,18 +100,23 @@ func (r *Reader) ReadMessage() (*Message, error) {
 
 	for {
 		// we need to reset buffer length because we change the length of the buffer to `n` after the reading data from connection
-		cBuf = cBuf[:ChunkSize]
-		if n, err = r.conn.Read(cBuf); err != nil {
-			return nil, fmt.Errorf("Read: %s", err)
+		cBuf = cBuf[:maxReadChunkSize]
+		if n, _, err = r.conn.ReadFromUDP(cBuf); err != nil {
+			return nil, fmt.Errorf("failed to read from UDP stream: %s", err)
 		}
-		// first two bytes contains hardcoded values [0x1e, 0x0f] if message is chunked
-		chunkHead, cBuf = cBuf[:2], cBuf[:n]
+
+		// Check if message is chunked and if so, whether the first two bytes are the magic number.
+		m := len(magicChunked)
+		chunkHead, cBuf = cBuf[:m], cBuf[:n]
 		if bytes.Equal(chunkHead, magicChunked) {
-			if len(cBuf) <= chunkedHeaderLen {
-				return nil, fmt.Errorf("chunked message size must be greather than %v", chunkedHeaderLen)
+			// According to the GELF spec, the first 12 bytes are the chunk header:
+			// * First two bytes contain the magic number [0x1e, 0x0f]
+			// * Next 8 bytes are the message ID
+			// * Last two bytes are the currentChunkIndex and chunkCount respectively.
+			if len(cBuf) < chunkedHeaderLen {
+				return nil, fmt.Errorf("chunked message size must be greather than %v, got %v", chunkedHeaderLen, len(cBuf))
 			}
-			// in chunked message, message id is 8 bytes after the message head
-			messageID := string(cBuf[2 : 2+8])
+			messageID := string(cBuf[m : m+8])
 			deframentator := getDeframentator(r, messageID)
 			if deframentator.processed >= maxChunksCount {
 				return nil, fmt.Errorf("message must not be split into more than %v chunks", maxChunksCount)
@@ -122,7 +128,7 @@ func (r *Reader) ReadMessage() (*Message, error) {
 				continue
 			}
 			message = deframentator.bytes()
-			chunkHead = message[:2]
+			chunkHead = message[:m]
 			r.mu.Lock()
 			delete(r.messageDefragmentators, messageID)
 			r.mu.Unlock()
