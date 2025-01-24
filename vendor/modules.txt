@@ -1,7 +1,7 @@
 # cel.dev/expr v0.19.1
 ## explicit; go 1.21.1
 cel.dev/expr
-# cloud.google.com/go v0.117.0
+# cloud.google.com/go v0.118.0
 ## explicit; go 1.21
 cloud.google.com/go
 cloud.google.com/go/internal
@@ -30,8 +30,8 @@ cloud.google.com/go/auth/internal/transport/cert
 # cloud.google.com/go/auth/oauth2adapt v0.2.7
 ## explicit; go 1.22
 cloud.google.com/go/auth/oauth2adapt
-# cloud.google.com/go/bigtable v1.34.0
-## explicit; go 1.21
+# cloud.google.com/go/bigtable v1.35.0
+## explicit; go 1.22.7
 cloud.google.com/go/bigtable
 cloud.google.com/go/bigtable/admin/apiv2/adminpb
 cloud.google.com/go/bigtable/apiv2/bigtablepb
@@ -41,11 +41,11 @@ cloud.google.com/go/bigtable/internal/option
 # cloud.google.com/go/compute/metadata v0.6.0
 ## explicit; go 1.21
 cloud.google.com/go/compute/metadata
-# cloud.google.com/go/iam v1.2.2
+# cloud.google.com/go/iam v1.3.1
 ## explicit; go 1.21
 cloud.google.com/go/iam
 cloud.google.com/go/iam/apiv1/iampb
-# cloud.google.com/go/longrunning v0.6.2
+# cloud.google.com/go/longrunning v0.6.4
 ## explicit; go 1.21
 cloud.google.com/go/longrunning
 cloud.google.com/go/longrunning/autogen
@@ -2028,14 +2028,14 @@ google.golang.org/api/support/bundler
 google.golang.org/api/transport
 google.golang.org/api/transport/grpc
 google.golang.org/api/transport/http
-# google.golang.org/genproto v0.0.0-20241118233622-e639e219e697
+# google.golang.org/genproto v0.0.0-20241216192217-9240e9c98484
 ## explicit; go 1.21
 google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/googleapis/type/timeofday
 google.golang.org/genproto/protobuf/api
-# google.golang.org/genproto/googleapis/api v0.0.0-20250102185135-69823020774d
+# google.golang.org/genproto/googleapis/api v0.0.0-20250115164207-1a7da9e5054f
 ## explicit; go 1.22
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
