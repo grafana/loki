@@ -12,7 +12,8 @@ import (
 
 type mockBucket struct {
 	objstore.Bucket
-	lastKey string
+	lastKey  string
+	iterKeys []string
 }
 
 func (m *mockBucket) Get(_ context.Context, name string) (io.ReadCloser, error) {
@@ -45,11 +46,20 @@ func (m *mockBucket) Delete(_ context.Context, name string) error {
 	return nil
 }
 
+func (m *mockBucket) Iter(ctx context.Context, _ string, f func(name string) error, options ...objstore.IterOption) error {
+	for _, key := range m.iterKeys {
+		if err := f(key); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func TestKeyRewriteBucket(t *testing.T) {
 	mock := &mockBucket{}
 	bucket := &keyRewriteBucket{
 		Bucket:    mock,
-		delimiter: "_",
+		delimiter: "-",
 	}
 
 	tests := []struct {
@@ -61,7 +71,7 @@ func TestKeyRewriteBucket(t *testing.T) {
 		{
 			name:     "Get replaces colons",
 			input:    "foo:bar:baz",
-			expected: "foo_bar_baz",
+			expected: "foo-bar-baz",
 			fn: func(key string) error {
 				_, err := bucket.Get(context.Background(), key)
 				return err
@@ -70,7 +80,7 @@ func TestKeyRewriteBucket(t *testing.T) {
 		{
 			name:     "GetRange replaces colons",
 			input:    "foo:bar:baz",
-			expected: "foo_bar_baz",
+			expected: "foo-bar-baz",
 			fn: func(key string) error {
 				_, err := bucket.GetRange(context.Background(), key, 0, 10)
 				return err
@@ -79,7 +89,7 @@ func TestKeyRewriteBucket(t *testing.T) {
 		{
 			name:     "Exists replaces colons",
 			input:    "foo:bar:baz",
-			expected: "foo_bar_baz",
+			expected: "foo-bar-baz",
 			fn: func(key string) error {
 				_, err := bucket.Exists(context.Background(), key)
 				return err
@@ -88,7 +98,7 @@ func TestKeyRewriteBucket(t *testing.T) {
 		{
 			name:     "Attributes replaces colons",
 			input:    "foo:bar:baz",
-			expected: "foo_bar_baz",
+			expected: "foo-bar-baz",
 			fn: func(key string) error {
 				_, err := bucket.Attributes(context.Background(), key)
 				return err
@@ -97,7 +107,7 @@ func TestKeyRewriteBucket(t *testing.T) {
 		{
 			name:     "Upload replaces colons",
 			input:    "foo:bar:baz",
-			expected: "foo_bar_baz",
+			expected: "foo-bar-baz",
 			fn: func(key string) error {
 				return bucket.Upload(context.Background(), key, strings.NewReader("test"))
 			},
@@ -105,7 +115,7 @@ func TestKeyRewriteBucket(t *testing.T) {
 		{
 			name:     "Delete replaces colons",
 			input:    "foo:bar:baz",
-			expected: "foo_bar_baz",
+			expected: "foo-bar-baz",
 			fn: func(key string) error {
 				return bucket.Delete(context.Background(), key)
 			},
@@ -127,4 +137,24 @@ func TestKeyRewriteBucket(t *testing.T) {
 			require.Equal(t, tc.expected, mock.lastKey)
 		})
 	}
+}
+
+func TestKeyRewriteBucket_Iter(t *testing.T) {
+	iterKeys := []string{"foo:bar:baz", "foo-bar-qux", "foo-bar-quux"}
+	mock := &mockBucket{
+		iterKeys: iterKeys,
+	}
+	bucket := &keyRewriteBucket{
+		Bucket:    mock,
+		delimiter: "-",
+	}
+
+	var gotKeys []string
+	// keyRewriteBucket transparently returns the keys in the storage
+	bucket.Iter(context.Background(), "", func(name string) error {
+		gotKeys = append(gotKeys, name)
+		return nil
+	})
+
+	require.EqualValues(t, iterKeys, gotKeys)
 }
