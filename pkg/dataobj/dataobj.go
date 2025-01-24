@@ -230,6 +230,7 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 		b.logs.Append(record)
 		i++
 	}
+	b.state = builderStateDirty
 
 	return nil
 }
@@ -286,7 +287,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) AppendEntries(stream streams.Stream, entries []logproto.Entry) error {
+func (b *Builder) AppendSummary(stream StreamSummary, entries []logproto.Entry) error {
 	// Don't allow appending to a builder that has data to be flushed.
 	if b.state == builderStateFlush {
 		return ErrBufferFull
@@ -306,14 +307,14 @@ func (b *Builder) AppendEntries(stream streams.Stream, entries []logproto.Entry)
 	defer timer.ObserveDuration()
 
 	for _, entry := range entries {
-		b.streams.Record(stream.Labels, entry.Timestamp)
+		streamID := b.streams.Record(stream.Labels, entry.Timestamp)
 
-		/* 		b.logs.Append(logs.Record{
+		b.logs.Append(logs.Record{
 			StreamID:  streamID,
 			Timestamp: entry.Timestamp,
 			Metadata:  entry.StructuredMetadata,
 			Line:      entry.Line,
-		}) */
+		})
 	}
 
 	b.currentSizeEstimate = b.estimatedSize()
@@ -390,16 +391,27 @@ func entriesSizeEstimate(entries []logproto.Entry) int {
 	return size
 }
 
+type FlushResult struct {
+	Path                       string
+	Streams                    []StreamSummary
+	MinTimestamp, MaxTimestamp time.Time
+}
+
+type StreamSummary struct {
+	Labels                     labels.Labels
+	MinTimestamp, MaxTimestamp time.Time
+}
+
 // Flush flushes all buffered data to object storage. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
 // If Flush builds an object but fails to upload it to object storage, the
 // built object is cached and can be retried. [Builder.Reset] can be called to
 // discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(ctx context.Context) (string, error) {
+func (b *Builder) Flush(ctx context.Context) (FlushResult, error) {
 	_, err := b.FlushToBuffer()
 	if err != nil {
-		return "", err
+		return FlushResult{}, err
 	}
 
 	timer := prometheus.NewTimer(b.metrics.flushTime)
@@ -410,10 +422,28 @@ func (b *Builder) Flush(ctx context.Context) (string, error) {
 
 	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
 	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(b.flushBuffer.Bytes())); err != nil {
-		return "", fmt.Errorf("uploading object: %w", err)
+		return FlushResult{}, fmt.Errorf("uploading object: %w", err)
 	}
 
-	return objectPath, nil
+	minTimestamp, maxTimestamp := b.streams.GetMinMax()
+	streams := make([]StreamSummary, 0)
+	for s := range b.streams.Iter(ctx) {
+		stream := s.MustValue()
+		streams = append(streams, StreamSummary{
+			Labels:       stream.Labels,
+			MinTimestamp: stream.MinTimestamp,
+			MaxTimestamp: stream.MaxTimestamp,
+		})
+	}
+
+	b.Reset()
+
+	return FlushResult{
+		Path:         objectPath,
+		Streams:      streams,
+		MinTimestamp: minTimestamp,
+		MaxTimestamp: maxTimestamp,
+	}, nil
 }
 
 func (b *Builder) FlushToBuffer() (*bytes.Buffer, error) {
@@ -472,6 +502,7 @@ func (b *Builder) Reset() {
 	b.state = builderStateEmpty
 	b.flushBuffer.Reset()
 	b.metrics.sizeEstimate.Set(0)
+	b.currentSizeEstimate = 0
 }
 
 // RegisterMetrics registers metrics about builder to report to reg. All
