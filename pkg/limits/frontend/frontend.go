@@ -8,7 +8,6 @@ package frontend
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -103,20 +102,14 @@ type exceedsLimitsResponse struct {
 
 // ServeHTTP implements http.Handler.
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		level.Error(f.logger).Log("msg", "error reading request body", "err", err)
-		http.Error(w, "error reading request body", http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
 	var req exceedsLimitsRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		level.Error(f.logger).Log("msg", "error unmarshaling request body", "err", err)
 		http.Error(w, "error unmarshaling request body", http.StatusBadRequest)
 		return
 	}
+
+	defer r.Body.Close()
 
 	if req.TenantID == "" {
 		http.Error(w, "tenantID is required", http.StatusBadRequest)
