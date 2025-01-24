@@ -232,5 +232,24 @@ spec:
           requests:
             storage: {{ .size | quote }}
   {{- end }}
+  {{- range .Values.ingester.zoneAwareReplication.zoneB.persistence.claims }}
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: {{ .name }}
+        {{- with .annotations }}
+        annotations:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- with .storageClass }}
+        storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .size | quote }}
+  {{- end }}  
   {{- end }}
 {{- end }}
