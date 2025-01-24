@@ -409,7 +409,8 @@ func (b *bitpackBuffer) Flush(w streamio.Writer) error {
 	//
 	// To encode the width in 6 bits, we encode width-1. That reserves the bottom
 	// 7 bits for metadata, and the remaining 57 bits for the number of sets.
-	const maxSets = 1<<57 - 1
+	const intSize = 32 << (^uint(0) >> 63) // 32 or 64
+	const maxSets = 1<<(intSize-1-6) - 1   // MaxInt26 or MaxInt57 depending on intSize.
 
 	// Validate constraints for safety.
 	switch {
