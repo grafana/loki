@@ -87,7 +87,7 @@ func TestBuilder(t *testing.T) {
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		reader := newReader(bucket)
+		reader := newTestReader(bucket)
 
 		objects, err := result.Collect(reader.Objects(context.Background(), "fake"))
 		require.NoError(t, err)

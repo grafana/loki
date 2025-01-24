@@ -14,22 +14,22 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-// reader connects to an object storage bucket and supports basic reading from
-// data objects.
+// testReader connects to an object storage bucket and supports basic reading
+// from data objects.
 //
-// reader isn't exposed as a public API because it's insufficient for reading
+// testReader isn't exposed as a public API because it's insufficient for reading
 // at scale; more work is needed to support efficient reads and filtering data.
-// At the moment, reader is only used for tests.
-type reader struct {
+// At the moment, testReader is only used for tests.
+type testReader struct {
 	bucket objstore.Bucket
 }
 
-func newReader(bucket objstore.Bucket) *reader {
-	return &reader{bucket: bucket}
+func newTestReader(bucket objstore.Bucket) *testReader {
+	return &testReader{bucket: bucket}
 }
 
 // Objects returns an iterator over all data objects for the provided tenant.
-func (r *reader) Objects(ctx context.Context, tenant string) result.Seq[string] {
+func (r *testReader) Objects(ctx context.Context, tenant string) result.Seq[string] {
 	tenantPath := fmt.Sprintf("tenant-%s/objects/", tenant)
 
 	return result.Iter(func(yield func(string) bool) error {
@@ -55,7 +55,7 @@ func (r *reader) Objects(ctx context.Context, tenant string) result.Seq[string] 
 // provided object. Each emitted stream contains all logs for that stream in
 // ascending timestamp order. Streams are emitted in in the order they were
 // first appended to the data object.
-func (r *reader) Streams(ctx context.Context, object string) result.Seq[logproto.Stream] {
+func (r *testReader) Streams(ctx context.Context, object string) result.Seq[logproto.Stream] {
 	return result.Iter(func(yield func(logproto.Stream) bool) error {
 		dec := encoding.BucketDecoder(r.bucket, object)
 
