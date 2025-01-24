@@ -18,7 +18,7 @@ CGO_ENABLED=0 GOOS=linux go build -mod=vendor -gcflags "all=-N -l" -o "${SCRIPT_
 # ## install loki driver to send logs
 docker plugin install grafana/loki-docker-driver:latest --alias loki-compose --grant-all-permissions || true
 # build the compose image
-docker-compose -f "${SCRIPT_DIR}"/docker-compose.yml build distributor
+docker compose -f "${SCRIPT_DIR}"/docker-compose.yml build distributor
 # cleanup sources
 rm -Rf "${SRC_DEST}"
-docker-compose -f "${SCRIPT_DIR}"/docker-compose.yml up "$@"
+docker compose -f "${SCRIPT_DIR}"/docker-compose.yml up "$@"

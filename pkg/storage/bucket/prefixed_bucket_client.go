@@ -106,6 +106,11 @@ func (b *PrefixedBucketClient) IsAccessDeniedErr(err error) bool {
 	return b.bucket.IsAccessDeniedErr(err)
 }
 
+// Provider returns the provider of the bucket.
+func (b *PrefixedBucketClient) Provider() objstore.ObjProvider {
+	return b.bucket.Provider()
+}
+
 // ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
 // thanos_objstore_bucket_operation_failures_total metric.
 func (b *PrefixedBucketClient) WithExpectedErrs(fn objstore.IsOpFailureExpectedFunc) objstore.Bucket {

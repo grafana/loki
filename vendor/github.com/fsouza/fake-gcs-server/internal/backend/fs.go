@@ -253,6 +253,9 @@ func (s *storageFS) CreateObject(obj StreamingObject, conditions Conditions) (St
 	if obj.Etag == "" {
 		obj.Etag = obj.Md5Hash
 	}
+	if obj.StorageClass == "" {
+		obj.StorageClass = "STANDARD"
+	}
 
 	// TODO: Handle if metadata is not present more gracefully?
 	encoded, err := json.Marshal(obj.ObjectAttrs)
@@ -437,7 +440,7 @@ func concatObjectReaders(objects []StreamingObject) io.ReadSeekCloser {
 	return concatenatedContent{io.MultiReader(readers...)}
 }
 
-func (s *storageFS) ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string) (StreamingObject, error) {
+func (s *storageFS) ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string, contentDisposition string, contentLanguage string) (StreamingObject, error) {
 	var sourceObjects []StreamingObject
 	for _, n := range objectNames {
 		obj, err := s.GetObject(bucketName, n)
@@ -448,12 +451,16 @@ func (s *storageFS) ComposeObject(bucketName string, objectNames []string, desti
 		sourceObjects = append(sourceObjects, obj)
 	}
 
+	now := time.Now().Format(timestampFormat)
 	dest := StreamingObject{
 		ObjectAttrs: ObjectAttrs{
-			BucketName:  bucketName,
-			Name:        destinationName,
-			ContentType: contentType,
-			Created:     time.Now().String(),
+			BucketName:         bucketName,
+			Name:               destinationName,
+			ContentType:        contentType,
+			ContentDisposition: contentDisposition,
+			ContentLanguage:    contentLanguage,
+			Created:            now,
+			Updated:            now,
 		},
 	}
 
@@ -466,4 +473,13 @@ func (s *storageFS) ComposeObject(bucketName string, objectNames []string, desti
 	}
 
 	return result, nil
+}
+
+func (s *storageFS) DeleteAllFiles() error {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	if err := os.RemoveAll(s.rootDir); err != nil {
+		return err
+	}
+	return os.MkdirAll(s.rootDir, 0o700)
 }

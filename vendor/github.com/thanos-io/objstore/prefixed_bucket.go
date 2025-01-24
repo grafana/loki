@@ -39,6 +39,8 @@ func withPrefix(prefix, name string) string {
 	return prefix + DirDelim + name
 }
 
+func (p *PrefixedBucket) Provider() ObjProvider { return p.bkt.Provider() }
+
 func (p *PrefixedBucket) Close() error {
 	return p.bkt.Close()
 }
@@ -93,7 +95,7 @@ func (p *PrefixedBucket) IsAccessDeniedErr(err error) bool {
 }
 
 // Attributes returns information about the specified object.
-func (p PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
+func (p *PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	return p.bkt.Attributes(ctx, conditionalPrefix(p.prefix, name))
 }
 

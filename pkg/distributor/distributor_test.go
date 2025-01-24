@@ -426,6 +426,59 @@ func Test_IncrementTimestamp(t *testing.T) {
 	}
 }
 
+func Test_MissingEnforcedLabels(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	limits.EnforcedLabels = []string{"app", "env"}
+
+	distributors, _ := prepare(t, 1, 5, limits, nil)
+
+	// request with all required labels.
+	lbs := labels.FromMap(map[string]string{"app": "foo", "env": "prod"})
+	missing, missingLabels := distributors[0].missingEnforcedLabels(lbs, "test")
+	assert.False(t, missing)
+	assert.Empty(t, missingLabels)
+
+	// request missing the `app` label.
+	lbs = labels.FromMap(map[string]string{"env": "prod"})
+	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test")
+	assert.True(t, missing)
+	assert.EqualValues(t, []string{"app"}, missingLabels)
+
+	// request missing all required labels.
+	lbs = labels.FromMap(map[string]string{"pod": "distributor-abc"})
+	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test")
+	assert.True(t, missing)
+	assert.EqualValues(t, []string{"app", "env"}, missingLabels)
+}
+
+func Test_PushWithEnforcedLabels(t *testing.T) {
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	// makeWriteRequest only contains a `{foo="bar"}` label.
+	req := makeWriteRequest(100, 100)
+	limits.EnforcedLabels = []string{"app", "env"}
+	distributors, _ := prepare(t, 1, 3, limits, nil)
+	// enforced labels configured, but all labels are missing.
+	_, err := distributors[0].Push(ctx, req)
+	require.Error(t, err)
+	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test")
+	require.EqualError(t, err, expectedErr.Error())
+
+	// enforced labels, but all labels are present.
+	req = makeWriteRequestWithLabels(100, 100, []string{`{app="foo", env="prod"}`}, false, false, false)
+	_, err = distributors[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	// no enforced labels, so no errors.
+	limits.EnforcedLabels = []string{}
+	distributors, _ = prepare(t, 1, 3, limits, nil)
+	_, err = distributors[0].Push(ctx, req)
+	require.NoError(t, err)
+}
+
 func TestDistributorPushConcurrently(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
@@ -583,6 +636,8 @@ func TestDistributorPushToKafka(t *testing.T) {
 		require.Equal(t, 1, len(ingesters[0].pushed))
 		require.Equal(t, 1, len(ingesters[1].pushed))
 		require.Eventually(t, func() bool {
+			ingesters[2].mu.Lock()
+			defer ingesters[2].mu.Unlock()
 			return len(ingesters[2].pushed) == 1
 		}, time.Second, 10*time.Millisecond)
 	})

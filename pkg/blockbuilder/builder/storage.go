@@ -44,10 +44,11 @@ func NewMultiStore(
 		if err != nil {
 			return nil, fmt.Errorf("creating object client for period %s: %w ", periodicConfig.From, err)
 		}
+		prefixed := client.NewPrefixedObjectClient(objectClient, periodicConfig.IndexTables.PathPrefix)
 		store.stores = append(store.stores, &storeEntry{
 			start:        periodicConfig.From.Time,
 			cfg:          periodicConfig,
-			objectClient: objectClient,
+			objectClient: prefixed,
 		})
 	}
 	return store, nil

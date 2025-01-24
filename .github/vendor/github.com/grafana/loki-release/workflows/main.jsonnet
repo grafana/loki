@@ -83,11 +83,13 @@
     dockerUsername='grafanabot',
     getDockerCredsFromVault=false,
     imagePrefix='grafana',
+    pluginBuildDir='release/plugin-tmp-dir',
     publishBucket='',
     publishToGCS=false,
     releaseLibRef='main',
     releaseRepo='grafana/loki-release',
     useGitHubAppToken=true,
+    dockerPluginPath='clients/cmd/docker-driver',
                   ) {
     name: 'create release',
     on: {
@@ -119,7 +121,8 @@
       shouldRelease: $.release.shouldRelease,
       createRelease: $.release.createRelease,
       publishImages: $.release.publishImages(getDockerCredsFromVault, dockerUsername),
-      publishRelease: $.release.publishRelease,
+      publishDockerPlugins: $.release.publishDockerPlugins(pluginBuildDir, getDockerCredsFromVault, dockerUsername),
+      publishRelease: $.release.publishRelease(['createRelease', 'publishImages', 'publishDockerPlugins']),
     },
   },
   check: {

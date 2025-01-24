@@ -37,8 +37,7 @@ func NewEnvAWS() *Credentials {
 	return New(&EnvAWS{})
 }
 
-// Retrieve retrieves the keys from the environment.
-func (e *EnvAWS) Retrieve() (Value, error) {
+func (e *EnvAWS) retrieve() (Value, error) {
 	e.retrieved = false
 
 	id := os.Getenv("AWS_ACCESS_KEY_ID")
@@ -63,6 +62,16 @@ func (e *EnvAWS) Retrieve() (Value, error) {
 		SessionToken:    os.Getenv("AWS_SESSION_TOKEN"),
 		SignerType:      signerType,
 	}, nil
+}
+
+// Retrieve retrieves the keys from the environment.
+func (e *EnvAWS) Retrieve() (Value, error) {
+	return e.retrieve()
+}
+
+// RetrieveWithCredContext is like Retrieve (no-op input of Cred Context)
+func (e *EnvAWS) RetrieveWithCredContext(_ *CredContext) (Value, error) {
+	return e.retrieve()
 }
 
 // IsExpired returns if the credentials have been retrieved.

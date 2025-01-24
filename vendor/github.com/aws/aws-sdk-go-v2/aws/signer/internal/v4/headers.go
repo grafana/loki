@@ -7,6 +7,7 @@ var IgnoredHeaders = Rules{
 			"Authorization":   struct{}{},
 			"User-Agent":      struct{}{},
 			"X-Amzn-Trace-Id": struct{}{},
+			"Expect":          struct{}{},
 		},
 	},
 }
@@ -44,9 +45,9 @@ var RequiredSignedHeaders = Rules{
 			"X-Amz-Grant-Write-Acp":                                       struct{}{},
 			"X-Amz-Metadata-Directive":                                    struct{}{},
 			"X-Amz-Mfa":                                                   struct{}{},
-			"X-Amz-Request-Payer":                                         struct{}{},
 			"X-Amz-Server-Side-Encryption":                                struct{}{},
 			"X-Amz-Server-Side-Encryption-Aws-Kms-Key-Id":                 struct{}{},
+			"X-Amz-Server-Side-Encryption-Context":                        struct{}{},
 			"X-Amz-Server-Side-Encryption-Customer-Algorithm":             struct{}{},
 			"X-Amz-Server-Side-Encryption-Customer-Key":                   struct{}{},
 			"X-Amz-Server-Side-Encryption-Customer-Key-Md5":               struct{}{},

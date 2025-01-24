@@ -4,160 +4,209 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
 )
 
-func TestJobQueue_SyncJob(t *testing.T) {
-	t.Run("non-existent to in-progress", func(t *testing.T) {
-		q := NewJobQueue()
-		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
-		jobID := job.ID()
+func newTestQueue() *JobQueue {
+	return NewJobQueue(
+		JobQueueConfig{
+			LeaseDuration:            10 * time.Minute,
+			LeaseExpiryCheckInterval: time.Minute,
+		},
+		log.NewNopLogger(),
+		prometheus.NewRegistry(),
+	)
+}
 
-		beforeSync := time.Now()
-		q.SyncJob(jobID, job)
-		afterSync := time.Now()
+func TestJobQueue_TransitionState(t *testing.T) {
+	q := newTestQueue()
+	offsets := types.Offsets{Min: 0, Max: 100}
+	job := types.NewJob(1, offsets)
+	jobID := job.ID()
 
-		// Verify job is in in-progress map
-		jobMeta, ok := q.inProgress[jobID]
-		require.True(t, ok, "job should be in in-progress map")
-		require.Equal(t, types.JobStatusInProgress, jobMeta.Status)
-		require.True(t, jobMeta.StartTime.After(beforeSync) || jobMeta.StartTime.Equal(beforeSync))
-		require.True(t, jobMeta.StartTime.Before(afterSync) || jobMeta.StartTime.Equal(afterSync))
+	// Create initial job
+	prevState, existed, err := q.TransitionAny(jobID, types.JobStatusPending, func() (*JobWithMetadata, error) {
+		return NewJobWithMetadata(job, 1), nil
 	})
+	require.NoError(t, err)
+	require.False(t, existed)
+	require.Equal(t, types.JobStatusUnknown, prevState)
 
-	t.Run("pending to in-progress", func(t *testing.T) {
-		q := NewJobQueue()
-		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
+	// Test valid transition
+	ok, err := q.TransitionState(jobID, types.JobStatusPending, types.JobStatusInProgress)
+	require.NoError(t, err)
+	require.True(t, ok)
 
-		// Start with pending job
-		err := q.Enqueue(job, DefaultPriority)
+	// Test invalid transition (wrong 'from' state)
+	ok, err = q.TransitionState(jobID, types.JobStatusPending, types.JobStatusComplete)
+	require.Error(t, err)
+	require.False(t, ok)
+
+	// Test non-existent job
+	ok, err = q.TransitionState("non-existent", types.JobStatusPending, types.JobStatusInProgress)
+	require.Error(t, err)
+	require.False(t, ok)
+}
+
+func TestJobQueue_TransitionAny(t *testing.T) {
+	q := newTestQueue()
+	offsets := types.Offsets{Min: 0, Max: 100}
+	job := types.NewJob(1, offsets)
+	jobID := job.ID()
+
+	// Test creation of new job
+	prevState, existed, err := q.TransitionAny(jobID, types.JobStatusPending, func() (*JobWithMetadata, error) {
+		return NewJobWithMetadata(job, 1), nil
+	})
+	require.NoError(t, err)
+	require.False(t, existed)
+	require.Equal(t, types.JobStatusUnknown, prevState)
+
+	// Test transition of existing job
+	prevState, existed, err = q.TransitionAny(jobID, types.JobStatusInProgress, nil)
+	require.NoError(t, err)
+	require.True(t, existed)
+	require.Equal(t, types.JobStatusPending, prevState)
+
+	// Test transition with nil createFn for non-existent job
+	prevState, existed, err = q.TransitionAny("non-existent", types.JobStatusPending, nil)
+	require.Error(t, err)
+	require.False(t, existed)
+	require.Equal(t, types.JobStatusUnknown, prevState)
+
+	// Verify final status
+	status, exists := q.Exists(jobID)
+	require.True(t, exists)
+	require.Equal(t, types.JobStatusInProgress, status)
+}
+
+func TestJobQueue_Dequeue(t *testing.T) {
+	q := newTestQueue()
+
+	// Add jobs with different priorities
+	jobs := []struct {
+		partition int32
+		priority  int
+	}{
+		{1, 1},
+		{2, 3},
+		{3, 2},
+	}
+
+	var jobIDs []string
+	for _, j := range jobs {
+		job := types.NewJob(j.partition, types.Offsets{Min: 0, Max: 100})
+		jobIDs = append(jobIDs, job.ID())
+		_, _, err := q.TransitionAny(job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+			return NewJobWithMetadata(job, j.priority), nil
+		})
+		require.NoError(t, err)
+	}
+
+	// Dequeue should return highest priority job first
+	job, ok := q.Dequeue()
+	require.True(t, ok)
+	require.Equal(t, jobIDs[1], job.ID()) // Priority 3
+
+	job, ok = q.Dequeue()
+	require.True(t, ok)
+	require.Equal(t, jobIDs[2], job.ID()) // Priority 2
+
+	job, ok = q.Dequeue()
+	require.True(t, ok)
+	require.Equal(t, jobIDs[0], job.ID()) // Priority 1
+
+	// Queue should be empty now
+	job, ok = q.Dequeue()
+	require.False(t, ok)
+	require.Nil(t, job)
+}
+
+func TestJobQueue_Lists(t *testing.T) {
+	q := newTestQueue()
+
+	// Add jobs in different states
+	jobStates := map[int32]types.JobStatus{
+		1: types.JobStatusPending,
+		2: types.JobStatusPending,
+		3: types.JobStatusInProgress,
+		4: types.JobStatusInProgress,
+		5: types.JobStatusComplete,
+		6: types.JobStatusFailed,
+	}
+
+	for partition, status := range jobStates {
+		job := types.NewJob(partition, types.Offsets{Min: 0, Max: 100})
+		_, _, err := q.TransitionAny(job.ID(), types.JobStatusPending, func() (*JobWithMetadata, error) {
+			return NewJobWithMetadata(job, 1), nil
+		})
 		require.NoError(t, err)
 
-		beforeSync := time.Now()
-		q.SyncJob(job.ID(), job)
-		afterSync := time.Now()
+		if status != types.JobStatusPending {
+			_, _, err = q.TransitionAny(job.ID(), status, nil)
+			require.NoError(t, err)
+		}
+	}
 
-		// Verify job moved from pending to in-progress
-		_, ok := q.pending.Lookup(job.ID())
-		require.False(t, ok, "job should not be in pending queue")
+	// Test ListPendingJobs
+	pending := q.ListPendingJobs()
+	require.Len(t, pending, 2)
+	for _, j := range pending {
+		require.Equal(t, types.JobStatusPending, j.Status)
+	}
 
-		jobMeta, ok := q.inProgress[job.ID()]
-		require.True(t, ok, "job should be in in-progress map")
-		require.Equal(t, types.JobStatusInProgress, jobMeta.Status)
-		require.True(t, jobMeta.UpdateTime.After(beforeSync) || jobMeta.UpdateTime.Equal(beforeSync))
-		require.True(t, jobMeta.UpdateTime.Before(afterSync) || jobMeta.UpdateTime.Equal(afterSync))
-	})
+	// Test ListInProgressJobs
+	inProgress := q.ListInProgressJobs()
+	require.Len(t, inProgress, 2)
+	for _, j := range inProgress {
+		require.Equal(t, types.JobStatusInProgress, j.Status)
+	}
 
-	t.Run("already in-progress", func(t *testing.T) {
-		q := NewJobQueue()
-		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
-
-		// First sync to put in in-progress
-		q.SyncJob(job.ID(), job)
-		firstUpdate := q.inProgress[job.ID()].UpdateTime
-
-		time.Sleep(time.Millisecond) // Ensure time difference
-		beforeSecondSync := time.Now()
-		q.SyncJob(job.ID(), job)
-		afterSecondSync := time.Now()
-
-		jobMeta := q.inProgress[job.ID()]
-		require.True(t, jobMeta.UpdateTime.After(firstUpdate), "UpdateTime should be updated")
-		require.True(t, jobMeta.UpdateTime.After(beforeSecondSync) || jobMeta.UpdateTime.Equal(beforeSecondSync))
-		require.True(t, jobMeta.UpdateTime.Before(afterSecondSync) || jobMeta.UpdateTime.Equal(afterSecondSync))
-	})
+	// Test ListCompletedJobs
+	completed := q.ListCompletedJobs()
+	require.Len(t, completed, 2) // completed and failed
+	for _, j := range completed {
+		require.Contains(t, []types.JobStatus{types.JobStatusComplete, types.JobStatusFailed}, j.Status)
+	}
 }
 
-func TestJobQueue_MarkComplete(t *testing.T) {
-	t.Run("in-progress to complete", func(t *testing.T) {
-		q := NewJobQueue()
-		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
+func TestJobQueue_LeaseExpiry(t *testing.T) {
+	cfg := JobQueueConfig{
+		LeaseDuration:            100 * time.Millisecond,
+		LeaseExpiryCheckInterval: 10 * time.Millisecond,
+	}
+	q := NewJobQueue(cfg, log.NewNopLogger(), prometheus.NewRegistry())
 
-		// Start with in-progress job
-		q.SyncJob(job.ID(), job)
+	// Create and start a job
+	job := types.NewJob(1, types.Offsets{Min: 0, Max: 100})
+	jobID := job.ID()
 
-		beforeComplete := time.Now()
-		q.MarkComplete(job.ID(), types.JobStatusComplete)
-		afterComplete := time.Now()
-
-		// Verify job moved to completed buffer
-		var foundJob *JobWithMetadata
-		q.completed.Lookup(func(j *JobWithMetadata) bool {
-			if j.ID() == job.ID() {
-				foundJob = j
-				return true
-			}
-			return false
-		})
-		require.NotNil(t, foundJob, "job should be in completed buffer")
-		require.Equal(t, types.JobStatusComplete, foundJob.Status)
-		require.True(t, foundJob.UpdateTime.After(beforeComplete) || foundJob.UpdateTime.Equal(beforeComplete))
-		require.True(t, foundJob.UpdateTime.Before(afterComplete) || foundJob.UpdateTime.Equal(afterComplete))
-
-		// Verify removed from in-progress
-		_, ok := q.inProgress[job.ID()]
-		require.False(t, ok, "job should not be in in-progress map")
+	_, _, err := q.TransitionAny(jobID, types.JobStatusPending, func() (*JobWithMetadata, error) {
+		return NewJobWithMetadata(job, 1), nil
 	})
+	require.NoError(t, err)
 
-	t.Run("pending to complete", func(t *testing.T) {
-		q := NewJobQueue()
-		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
+	// Move to in progress
+	dequeued, ok := q.Dequeue()
+	require.True(t, ok)
+	require.Equal(t, jobID, dequeued.ID())
 
-		// Start with pending job
-		err := q.Enqueue(job, DefaultPriority)
-		require.NoError(t, err)
+	// Wait for lease to expire
+	time.Sleep(200 * time.Millisecond)
+	err = q.requeueExpiredJobs()
+	require.NoError(t, err)
 
-		q.MarkComplete(job.ID(), types.JobStatusComplete)
+	// Verify the job is back in pending
+	status, exists := q.Exists(jobID)
+	require.True(t, exists)
+	require.Equal(t, types.JobStatusPending, status)
 
-		// Verify job not in pending
-		_, ok := q.pending.Lookup(job.ID())
-		require.False(t, ok, "job should not be in pending queue")
-
-		// Verify job in completed buffer
-		var foundJob *JobWithMetadata
-		q.completed.Lookup(func(j *JobWithMetadata) bool {
-			if j.ID() == job.ID() {
-				foundJob = j
-				return true
-			}
-			return false
-		})
-		require.NotNil(t, foundJob, "job should be in completed buffer")
-		require.Equal(t, types.JobStatusComplete, foundJob.Status)
-	})
-
-	t.Run("non-existent job", func(t *testing.T) {
-		q := NewJobQueue()
-		logger := &testLogger{t: t}
-		q.logger = logger
-
-		q.MarkComplete("non-existent", types.JobStatusComplete)
-		// Should log error but not panic
-	})
-
-	t.Run("already completed job", func(t *testing.T) {
-		q := NewJobQueue()
-		logger := &testLogger{t: t}
-		q.logger = logger
-
-		job := types.NewJob(1, types.Offsets{Min: 100, Max: 200})
-		q.SyncJob(job.ID(), job)
-		q.MarkComplete(job.ID(), types.JobStatusComplete)
-
-		// Try to complete again
-		q.MarkComplete(job.ID(), types.JobStatusComplete)
-		// Should log error but not panic
-	})
-}
-
-// testLogger implements log.Logger for testing
-type testLogger struct {
-	t *testing.T
-}
-
-func (l *testLogger) Log(keyvals ...interface{}) error {
-	l.t.Log(keyvals...)
-	return nil
+	// Check that it went through expired state
+	completed := q.ListCompletedJobs()
+	require.Len(t, completed, 1)
+	require.Equal(t, types.JobStatusExpired, completed[0].Status)
 }

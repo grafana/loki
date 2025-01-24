@@ -25,19 +25,19 @@ func Test_recalculateOwnedStreams_newRecalculateOwnedStreamsIngester(t *testing.
 	}, 0)
 	strategy := newOwnedStreamsIngesterStrategy("test", mockRing, log.NewNopLogger())
 	service := newRecalculateOwnedStreamsSvc(mockInstancesSupplier.get, strategy, 50*time.Millisecond, log.NewNopLogger())
-	require.Equal(t, 0, mockRing.getAllHealthyCallsCount, "ring must be called only after service's start up")
+	require.Equal(t, int32(0), mockRing.getAllHealthyCallsCount.Load(), "ring must be called only after service's start up")
 	ctx := context.Background()
 	require.NoError(t, service.StartAsync(ctx))
 	require.NoError(t, service.AwaitRunning(ctx))
 	require.Eventually(t, func() bool {
-		return mockRing.getAllHealthyCallsCount >= 2
+		return mockRing.getAllHealthyCallsCount.Load() >= 2
 	}, 1*time.Second, 50*time.Millisecond, "expected at least two runs of the iteration")
 }
 
 func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) {
 	tests := map[string]struct {
 		featureEnabled              bool
-		expectedOwnedStreamCount    int
+		expectedOwnedStreamCount    int64
 		expectedNotOwnedStreamCount int
 	}{
 		"expected streams ownership to be recalculated": {
@@ -101,7 +101,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 			mockRing.addMapping(createStream(t, tenant, 100), true)
 			mockRing.addMapping(createStream(t, tenant, 250), true)
 
-			require.Equal(t, 7, tenant.ownedStreamsSvc.ownedStreamCount)
+			require.Equal(t, int64(7), tenant.ownedStreamsSvc.ownedStreamCount.Load())
 			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, 0)
 
 			mockTenantsSupplier := &mockTenantsSuplier{tenants: []*instance{tenant}}
@@ -116,7 +116,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 			if testData.featureEnabled {
 				require.Equal(t, 50, tenant.ownedStreamsSvc.getFixedLimit(), "fixed limit must be updated after recalculation")
 			}
-			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount)
+			require.Equal(t, testData.expectedOwnedStreamCount, tenant.ownedStreamsSvc.ownedStreamCount.Load())
 			require.Len(t, tenant.ownedStreamsSvc.notOwnedStreams, testData.expectedNotOwnedStreamCount)
 		})
 	}
