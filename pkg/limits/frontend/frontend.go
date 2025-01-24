@@ -109,8 +109,6 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer r.Body.Close()
-
 	if req.TenantID == "" {
 		http.Error(w, "tenantID is required", http.StatusBadRequest)
 		return
