@@ -6,7 +6,7 @@ import (
 )
 
 type Config struct {
-	ClientConfig ClientConfig `yaml:"client_config"`
+	ClientConfig BackendClientConfig `yaml:"client_config"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -15,8 +15,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 func (cfg *Config) Validate() error {
 	if err := cfg.ClientConfig.GRPCClientConfig.Validate(); err != nil {
-		return fmt.Errorf("client grpc config is invalid: %w", err)
+		return fmt.Errorf("invalid gRPC client config: %w", err)
 	}
-
 	return nil
 }
