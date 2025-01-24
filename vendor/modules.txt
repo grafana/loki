@@ -490,7 +490,7 @@ github.com/aws/smithy-go/transport/http/internal/io
 # github.com/axiomhq/hyperloglog v0.2.3
 ## explicit; go 1.23
 github.com/axiomhq/hyperloglog
-# github.com/baidubce/bce-sdk-go v0.9.214
+# github.com/baidubce/bce-sdk-go v0.9.215
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
@@ -1355,7 +1355,7 @@ github.com/opencontainers/go-digest
 ## explicit; go 1.18
 github.com/opencontainers/image-spec/specs-go
 github.com/opencontainers/image-spec/specs-go/v1
-# github.com/opentracing-contrib/go-grpc v0.1.0
+# github.com/opentracing-contrib/go-grpc v0.1.1
 ## explicit; go 1.22.7
 github.com/opentracing-contrib/go-grpc
 # github.com/opentracing-contrib/go-stdlib v1.1.0
@@ -2189,7 +2189,7 @@ google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry
 google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry/converter
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
-# google.golang.org/protobuf v1.36.3
+# google.golang.org/protobuf v1.36.4
 ## explicit; go 1.21
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
