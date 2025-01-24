@@ -107,7 +107,14 @@ func (s *IngestLimits) CheckReady(ctx context.Context) error {
 	if s.State() != services.Running && s.State() != services.Stopping {
 		return fmt.Errorf("ingest limits not ready: %v", s.State())
 	}
-	return s.lifecycler.CheckReady(ctx)
+
+	err := s.lifecycler.CheckReady(ctx)
+	if err != nil {
+		level.Error(s.logger).Log("msg", "ingest limits not ready", "err", err)
+		return err
+	}
+
+	return nil
 }
 
 // starting implements the Service interface's starting method.
