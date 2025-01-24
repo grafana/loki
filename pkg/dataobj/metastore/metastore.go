@@ -3,7 +3,6 @@ package metastore
 import (
 	"bytes"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"time"
@@ -22,7 +21,14 @@ const (
 )
 
 var (
-	metastoreWindowSizeFlag = flag.Duration("metastore.window-size", 12*time.Hour, "The size of the window to use for metastore updates.")
+	// Define our own builder config because metastore objects are significantly smaller.
+	metastoreBuilderCfg = dataobj.BuilderConfig{
+		SHAPrefixSize:     2,
+		TargetObjectSize:  128 * 1024 * 1024,
+		TargetPageSize:    4 * 1024 * 1024,
+		BufferSize:        32 * 1024 * 1024, // 8x page size
+		TargetSectionSize: 16 * 1024 * 1024, // object size / 8
+	}
 )
 
 type MetastoreManager struct {
@@ -34,8 +40,8 @@ type MetastoreManager struct {
 	backoff          *backoff.Backoff
 }
 
-func NewMetastoreManager(builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*MetastoreManager, error) {
-	metastoreBuilder, err := dataobj.NewBuilder(builderCfg, bucket, tenantID)
+func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*MetastoreManager, error) {
+	metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg, bucket, tenantID)
 	if err != nil {
 		return nil, err
 	}

@@ -25,20 +25,20 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 	warmupLabels := pprof.Labels("state", "warmup")
-	targetObjectSize := 1024 // MB
-	targetPageSize := 16     // MB
-	bufferSize := targetPageSize * 8
-	targetSectionSize := targetObjectSize / 8
+	/* 	targetObjectSize := 128 // MB
+	   	targetPageSize := 4     // MB
+	   	bufferSize := targetPageSize * 8
+	   	targetSectionSize := targetObjectSize / 8
 
-	builderCfg := dataobj.BuilderConfig{
-		SHAPrefixSize: 2,
-	}
-	_ = builderCfg.TargetObjectSize.Set(fmt.Sprintf("%dMB", targetObjectSize))
-	_ = builderCfg.TargetPageSize.Set(fmt.Sprintf("%dMB", targetPageSize))
-	_ = builderCfg.BufferSize.Set(fmt.Sprintf("%dMB", bufferSize))
-	_ = builderCfg.TargetSectionSize.Set(fmt.Sprintf("%dMB", targetSectionSize))
+	   	builderCfg := dataobj.BuilderConfig{
+	   		SHAPrefixSize: 2,
+	   	}
+	   	_ = builderCfg.TargetObjectSize.Set(fmt.Sprintf("%dMB", targetObjectSize))
+	   	_ = builderCfg.TargetPageSize.Set(fmt.Sprintf("%dMB", targetPageSize))
+	   	_ = builderCfg.BufferSize.Set(fmt.Sprintf("%dMB", bufferSize))
+	   	_ = builderCfg.TargetSectionSize.Set(fmt.Sprintf("%dMB", targetSectionSize)) */
 
-	m, err := NewMetastoreManager(builderCfg, bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
+	m, err := NewMetastoreManager(bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 
 	// Set limits for the test
@@ -57,7 +57,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 
 	scratchBuilder := labels.NewBuilder(baseLabels)
 
-	for i := 0; i < 100_000; i++ {
+	for i := 0; i < 1_000_000; i++ {
 		scratchBuilder.Set("__stream_shard__", fmt.Sprintf("%d", i))
 		labels := scratchBuilder.Labels()
 
