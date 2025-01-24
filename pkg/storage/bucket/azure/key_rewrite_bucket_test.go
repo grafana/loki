@@ -46,7 +46,7 @@ func (m *mockBucket) Delete(_ context.Context, name string) error {
 	return nil
 }
 
-func (m *mockBucket) Iter(_ context.Context, _ string, f func(string) error, options ...objstore.IterOption) error {
+func (m *mockBucket) Iter(_ context.Context, _ string, f func(string) error, _ ...objstore.IterOption) error {
 	for _, key := range m.iterKeys {
 		if err := f(key); err != nil {
 			return err
@@ -151,10 +151,11 @@ func TestKeyRewriteBucket_Iter(t *testing.T) {
 
 	var gotKeys []string
 	// keyRewriteBucket transparently returns the keys in the storage
-	bucket.Iter(context.Background(), "", func(name string) error {
+	err := bucket.Iter(context.Background(), "", func(name string) error {
 		gotKeys = append(gotKeys, name)
 		return nil
 	})
 
+	require.NoError(t, err)
 	require.EqualValues(t, iterKeys, gotKeys)
 }
