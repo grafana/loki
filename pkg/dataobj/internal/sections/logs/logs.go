@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/push"
@@ -15,7 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
 // A Record is an individual log record within the logs section.
@@ -26,7 +27,7 @@ type Record struct {
 	Line      string
 }
 
-// Options configures the behavior of the Logs section.
+// Options configures the behavior of the logs section.
 type Options struct {
 	// PageSizeHint is the size of pages to use when encoding the logs section.
 	PageSizeHint int
@@ -44,7 +45,31 @@ type Options struct {
 type Logs struct {
 	metrics *Metrics
 	opts    Options
-	builder *builder
+
+	// Sorting the entire set of logs is very expensive, so we need to break it
+	// up into smaller pieces:
+	//
+	// 1. Records are accumulated in memory up to BufferSize; the current size is
+	//    tracked by recordsSize.
+	//
+	// 2. Once the buffer is full, records are sorted and flushed to smaller
+	//    [table]s called stripes.
+	//
+	// 3. Once the set of stripes reaches SectionSize, they are merged together
+	//    into a final table that will be encoded as a single section.
+	//
+	// At the end of this process, there will be a set of sections that are
+	// encoded separately.
+
+	records     []Record // Buffered records to flush to a group.
+	recordsSize int
+
+	stripes      []*table // In-progress section; flushed with [mergeTables] into a single table.
+	stripeBuffer tableBuffer
+	stripesSize  int // Estimated byte size of all elements in stripes.
+
+	sections      []*table // Completed sections.
+	sectionBuffer tableBuffer
 }
 
 // Nwe creates a new Logs section. The pageSize argument specifies how large
@@ -57,7 +82,6 @@ func New(metrics *Metrics, opts Options) *Logs {
 	return &Logs{
 		metrics: metrics,
 		opts:    opts,
-		builder: newBuilder(opts),
 	}
 }
 
@@ -65,13 +89,85 @@ func New(metrics *Metrics, opts Options) *Logs {
 func (l *Logs) Append(entry Record) {
 	l.metrics.appendsTotal.Inc()
 
-	l.builder.Append(entry)
+	l.records = append(l.records, entry)
+	l.recordsSize += recordSize(entry)
+
+	if l.recordsSize >= l.opts.BufferSize {
+		l.flushRecords()
+	}
+
 	l.metrics.recordCount.Inc()
+}
+
+func recordSize(record Record) int {
+	var size int
+
+	size++    // One byte per stream ID (for uvarint).
+	size += 8 // Eight bytes for timestamp.
+	for _, metadata := range record.Metadata {
+		size += len(metadata.Value)
+	}
+	size += len(record.Line)
+
+	return size
+}
+
+func (l *Logs) flushRecords() {
+	if len(l.records) == 0 {
+		return
+	}
+
+	// Our stripes are intermediate tables that don't need to have the best
+	// compression. To maintain high throughput on appends, we use the fastest
+	// compression for a stripe. Better compression is then used for sections.
+	compressionOpts := dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
+	}
+
+	stripe := buildTable(&l.stripeBuffer, l.opts.PageSizeHint, compressionOpts, l.records)
+	l.stripes = append(l.stripes, stripe)
+	l.stripesSize += stripe.Size()
+
+	l.records = sliceclear.Clear(l.records)
+	l.recordsSize = 0
+
+	if l.stripesSize >= l.opts.SectionSize {
+		l.flushSection()
+	}
+}
+
+func (l *Logs) flushSection() {
+	if len(l.stripes) == 0 {
+		return
+	}
+
+	compressionOpts := dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
+	}
+
+	section, err := mergeTables(&l.sectionBuffer, l.opts.PageSizeHint, compressionOpts, l.stripes)
+	if err != nil {
+		// We control the input to mergeTables, so this should never happen.
+		panic(fmt.Sprintf("merging tables: %v", err))
+	}
+
+	l.sections = append(l.sections, section)
+
+	l.stripes = sliceclear.Clear(l.stripes)
+	l.stripesSize = 0
 }
 
 // EstimatedSize returns the estimated size of the Logs section in bytes.
 func (l *Logs) EstimatedSize() int {
-	return l.builder.EstimatedSize()
+	var size int
+
+	size += l.recordsSize
+	size += l.stripesSize
+	for _, section := range l.sections {
+		size += section.Size()
+	}
+
+	return size
 }
 
 // EncodeTo encodes the set of logs to the provided encoder. Before encoding,
@@ -87,10 +183,11 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 
 	defer l.Reset()
 
-	// Flush any remaining data in the builder.
-	l.builder.Flush()
+	// Flush any remaining buffered data.
+	l.flushRecords()
+	l.flushSection()
 
-	// TODO(rfratto): handle individual sections having oversized metadata. Thsi
+	// TODO(rfratto): handle individual sections having oversized metadata. This
 	// can happen when the number of columns is very wide, due to a lot of
 	// metadata columns.
 	//
@@ -98,7 +195,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	// for this is to aggregate the lowest cardinality columns into a combined
 	// column. This will reduce the number of columns in the section and thus the
 	// metadata size.
-	for _, section := range l.builder.sections {
+	for _, section := range l.sections {
 		if err := l.encodeSection(enc, section); err != nil {
 			return fmt.Errorf("encoding section: %w", err)
 		}
@@ -107,7 +204,7 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 	return nil
 }
 
-func (l *Logs) encodeSection(enc *encoding.Encoder, stripe *stripe) error {
+func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
 	logsEnc, err := enc.OpenLogs()
 	if err != nil {
 		return fmt.Errorf("opening logs section: %w", err)
@@ -118,23 +215,14 @@ func (l *Logs) encodeSection(enc *encoding.Encoder, stripe *stripe) error {
 		_ = logsEnc.Discard()
 	}()
 
-	dset := dataset.FromMemory(stripe.Columns())
-
-	dsetColumns, err := result.Collect(dset.ListColumns(context.Background())) // dset is in memory; "real" context not needed.
-	if err != nil {
-		return fmt.Errorf("listing columns: %w", err)
-	}
-
-	// Encode our columns. The slice order here *must* match the order in
-	// [Logs.buildDataset]!
 	{
-		errs := make([]error, 0, len(dsetColumns))
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, dsetColumns[0]))
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, dsetColumns[1]))
-		for _, mdCol := range dsetColumns[2 : len(dsetColumns)-1] {
-			errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_METADATA, mdCol))
+		errs := make([]error, 0, len(section.Metadatas)+3)
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
+		for _, md := range section.Metadatas {
+			errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_METADATA, md))
 		}
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_MESSAGE, dsetColumns[len(dsetColumns)-1]))
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -182,5 +270,14 @@ func encodeColumn(enc *encoding.LogsEncoder, columnType logsmd.ColumnType, colum
 // Reset resets all state, allowing Logs to be reused.
 func (l *Logs) Reset() {
 	l.metrics.recordCount.Set(0)
-	l.builder.Reset()
+
+	l.records = sliceclear.Clear(l.records)
+	l.recordsSize = 0
+
+	l.stripes = sliceclear.Clear(l.stripes)
+	l.stripeBuffer.Reset()
+	l.stripesSize = 0
+
+	l.sections = sliceclear.Clear(l.sections)
+	l.sectionBuffer.Reset()
 }

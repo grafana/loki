@@ -56,7 +56,7 @@ type BuilderConfig struct {
 	// TargetSectionSize configures the maximum size of data in a section. Sections
 	// which support this parameter will place overflow data into new sections of
 	// the same type.
-	TargetSectionSize flagext.Bytes `yaml:"section_size"`
+	TargetSectionSize flagext.Bytes `yaml:"target_section_size"`
 
 	// BufferSize configures the size of the buffer used to accumulate
 	// uncompressed logs in memory prior to sorting.

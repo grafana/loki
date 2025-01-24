@@ -281,20 +281,23 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 		if tenantsRetention != nil {
 			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
 		}
+		totalBytesReceived := int64(0)
+
 		for _, e := range s.Entries {
 			pushStats.NumLines++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[retentionPeriod] += int64(len(e.Line))
 			pushStats.StructuredMetadataBytes[retentionPeriod] += entryLabelsSize
-
-			if tracker != nil {
-				tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(len(e.Line)))
-				tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(entryLabelsSize))
-			}
+			totalBytesReceived += int64(len(e.Line))
+			totalBytesReceived += entryLabelsSize
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
 				pushStats.MostRecentEntryTimestamp = e.Timestamp
 			}
+		}
+
+		if tracker != nil {
+			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived))
 		}
 
 		req.Streams[i] = s

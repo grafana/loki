@@ -24,11 +24,14 @@ type BuilderOptions struct {
 	// Compression is the compression algorithm to use for values.
 	Compression datasetmd.CompressionType
 
-	// CompressionOptions configures the configured compression type.
+	// CompressionOptions holds optional configuration for compression.
 	CompressionOptions CompressionOptions
 }
 
+// CompressionOptions customizes the compressor used when building pages.
 type CompressionOptions struct {
+	// Zstd holds encoding options for Zstd compression. Only used for
+	// [datasetmd.COMPRESSION_TYPE_ZSTD].
 	Zstd []zstd.EOption
 }
 

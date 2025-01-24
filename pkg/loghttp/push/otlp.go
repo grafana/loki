@@ -185,6 +185,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 		labelsStr := streamLabels.String()
 
 		lbs := modelLabelsSetToLabelsList(streamLabels)
+		totalBytesReceived := int64(0)
 
 		if _, ok := pushRequestsByStream[labelsStr]; !ok {
 			pushRequestsByStream[labelsStr] = logproto.Stream{
@@ -197,9 +198,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
 
 		stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
-		if tracker != nil {
-			tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(resourceAttributesAsStructuredMetadataSize))
-		}
+		totalBytesReceived += int64(resourceAttributesAsStructuredMetadataSize)
 
 		stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
 
@@ -252,9 +251,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 
 			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata)
 			stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
-			if tracker != nil {
-				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(scopeAttributesAsStructuredMetadataSize))
-			}
+			totalBytesReceived += int64(scopeAttributesAsStructuredMetadataSize)
 
 			stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
 			for k := 0; k < logs.Len(); k++ {
@@ -279,16 +276,17 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				metadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
 				stats.StructuredMetadataBytes[retentionPeriodForUser] += metadataSize
 				stats.LogLinesBytes[retentionPeriodForUser] += int64(len(entry.Line))
-
-				if tracker != nil {
-					tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(len(entry.Line)))
-					tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(metadataSize))
-				}
+				totalBytesReceived += metadataSize
+				totalBytesReceived += int64(len(entry.Line))
 
 				stats.NumLines++
 				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {
 					stats.MostRecentEntryTimestamp = entry.Timestamp
 				}
+			}
+
+			if tracker != nil {
+				tracker.ReceivedBytesAdd(ctx, userID, retentionPeriodForUser, lbs, float64(totalBytesReceived))
 			}
 		}
 	}

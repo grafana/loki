@@ -12,20 +12,25 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
-// TODO(rfratto): current usage of the encoder package can very slowly grow in
-// memory as pooled buffers are kept alive. Each encoding pass has a different
-// number of elements, shuffling which elements of the encoding hierarchy get
-// which buffers.
+// TODO(rfratto): the memory footprint of [Encoder] can very slowly grow in
+// memory as [bytesBufferPool] is filled with buffers with increasing capacity:
+// each encoding pass has a different number of elements, shuffling which
+// elements of the hierarchy get which pooled buffers.
 //
-// This means that larger encoding elements will eventually cause all buffers
-// in the pool to have the same large capacity and be kept alive longer than
-// necessary.
+// This means that elements that require more bytes will grow the capacity of
+// the buffer and put the buffer back into the pool. Even if further encoding
+// passes don't need that many bytes, the buffer is kept alive with its larger
+// footprint. Given enough time, all buffers in the pool will have a large
+// capacity.
 //
-// The bufpool package provides a solution to this, but it requires providing
-// an estimate of how many bytes are needed.
+// The bufpool package provides a solution to this (bucketing pools by
+// capacity), but using bufpool properly requires knowing how many bytes are
+// needed.
 //
-// We can eventually move to the bufpool package by providing a rolling average
-// of encoding size per element across usages of an Encoder instance.
+// Encoder can eventually be moved to the bufpool package by calculating a
+// rolling maximum of encoding size used per element across usages of an
+// Encoder instance. This would then allow larger buffers to be eventually
+// reclaimed regardless of how often encoding is done.
 
 // Encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.

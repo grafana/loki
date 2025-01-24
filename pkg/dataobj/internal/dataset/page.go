@@ -90,38 +90,32 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 	}
 
 	var (
-		bitmapReader         = bytes.NewReader(p.Data[n : n+int(bitmapSize)])
-		compressedDataReader = bytes.NewReader(p.Data[n+int(bitmapSize):])
+		bitmapData           = p.Data[n : n+int(bitmapSize)]
+		compressedValuesData = p.Data[n+int(bitmapSize):]
+
+		bitmapReader           = bytes.NewReader(bitmapData)
+		compressedValuesReader = bytes.NewReader(compressedValuesData)
 	)
 
 	switch compression {
 	case datasetmd.COMPRESSION_TYPE_UNSPECIFIED, datasetmd.COMPRESSION_TYPE_NONE:
-		return bitmapReader, io.NopCloser(compressedDataReader), nil
+		return bitmapReader, io.NopCloser(compressedValuesReader), nil
 
 	case datasetmd.COMPRESSION_TYPE_SNAPPY:
 		sr := snappyPool.Get().(*snappy.Reader)
-		sr.Reset(compressedDataReader)
-		return bitmapReader, &closerFunc{Reader: sr, closeFunc: func() error {
+		sr.Reset(compressedValuesReader)
+		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
 			snappyPool.Put(sr)
 			return nil
 		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		return bitmapReader, &fixedZstdReader{
-			page: p,
-			data: p.Data[n+int(bitmapSize):],
-		}, nil
+		zr := &fixedZstdReader{page: p, data: compressedValuesData}
+		return bitmapReader, zr, nil
 	}
 
 	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
 }
-
-type closerFunc struct {
-	io.Reader
-	closeFunc func() error
-}
-
-func (cf *closerFunc) Close() error { return cf.closeFunc() }
 
 var snappyPool = sync.Pool{
 	New: func() interface{} {
@@ -129,6 +123,15 @@ var snappyPool = sync.Pool{
 	},
 }
 
+type closerFunc struct {
+	io.Reader
+	onClose func() error
+}
+
+func (c *closerFunc) Close() error { return c.onClose() }
+
+// globalZstdDecoder is a shared zstd decoder for [fixedZstdReader]. Concurrent
+// uses of globalZstdDecoder are only safe when using [zstd.Decoder.DecodeAll].
 var globalZstdDecoder = func() *zstd.Decoder {
 	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
 	if err != nil {
@@ -137,6 +140,8 @@ var globalZstdDecoder = func() *zstd.Decoder {
 	return d
 }()
 
+// fixedZstdReader is an [io.ReadCloser] that decompresses a zstd buffer in a
+// single pass.
 type fixedZstdReader struct {
 	page *MemPage
 	data []byte
@@ -154,6 +159,13 @@ func (r *fixedZstdReader) Read(p []byte) (int, error) {
 		return r.uncompressedBuf.Read(p)
 	}
 
+	// We decompress the entire buffer in a single pass. While a pooled zstd
+	// reader would require less memory and would allow us to stream values as we
+	// decompress, pooling zstd decoders is difficult to do properly, as it
+	// requires a finalizer to release resources, and the goroutines spawned by
+	// decoders prevent the finalizer from ever being called.
+	//
+	// To make efficient zstd decoding less error prone, we opt for this instead.
 	r.uncompressedBuf = bufpool.Get(r.page.Info.UncompressedSize)
 	r.uncompressedBuf.Reset()
 

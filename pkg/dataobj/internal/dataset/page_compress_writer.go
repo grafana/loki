@@ -20,10 +20,10 @@ type compressWriter struct {
 	w   io.WriteCloser // Compressing writer.
 	buf *bufio.Writer  // Buffered writer in front of w to be able to call WriteByte.
 
-	compression datasetmd.CompressionType // Compression type being used.
-	opts        CompressionOptions
-
 	rawBytes int // Number of uncompressed bytes written.
+
+	compression datasetmd.CompressionType // Compression type being used.
+	opts        CompressionOptions        // Options to customize compression.
 }
 
 var _ streamio.Writer = (*compressWriter)(nil)

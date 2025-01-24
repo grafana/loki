@@ -108,6 +108,8 @@ func decodeProto(r streamio.Reader, pb proto.Message) error {
 		return fmt.Errorf("read proto message size: %w", err)
 	}
 
+	// We know exactly how big of a buffer we need here, so we can get a bucketed
+	// buffer from bufpool.
 	buf := bufpool.Get(int(size))
 	defer bufpool.Put(buf)
 

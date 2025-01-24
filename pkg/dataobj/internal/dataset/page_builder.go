@@ -174,13 +174,19 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 		return nil, fmt.Errorf("no data to flush")
 	}
 
-	// Before we can build the page we need to finish flushing our encoders and writers.
+	// Before we can build the page we need to finish flushing our encoders and
+	// writers.
+	//
+	// We must call [compressWriter.Close] to ensure that Zstd writers write a
+	// proper EOF marker, otherwise synchronous decoding can't be used.
+	// compressWriters can continue to reset and reused after closing, so this is
+	// safe.
 	if err := b.presenceEnc.Flush(); err != nil {
 		return nil, fmt.Errorf("flushing presence encoder: %w", err)
 	} else if err := b.valuesEnc.Flush(); err != nil {
 		return nil, fmt.Errorf("flushing values encoder: %w", err)
 	} else if err := b.valuesWriter.Close(); err != nil {
-		return nil, fmt.Errorf("closing values writer: %w", err)
+		return nil, fmt.Errorf("flushing values writer: %w", err)
 	}
 
 	// The final data of our page is the combination of the presence bitmap and
