@@ -2,11 +2,13 @@ package distributor
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -16,14 +18,28 @@ import (
 
 // TenantTopicConfig configures the TenantTopicWriter
 type TenantTopicConfig struct {
+	Enabled bool
+
 	// TopicPrefix is prepended to tenant IDs to form the final topic name
 	TopicPrefix string
 	// MaxBufferedBytes is the maximum number of bytes that can be buffered before producing to Kafka
-	MaxBufferedBytes int64
+	MaxBufferedBytes flagext.Bytes
+
 	// BatchTimeout is the maximum amount of time to wait before sending a batch
 	BatchTimeout time.Duration
 	// MaxRecordSizeBytes is the maximum size of a single Kafka record
-	MaxRecordSizeBytes int
+	MaxRecordSizeBytes flagext.Bytes
+}
+
+// RegisterFlags adds the flags required to configure this flag set.
+func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "distributor.tenant-topic-tee.enabled", false, "Enable the tenant topic tee")
+	f.StringVar(&cfg.TopicPrefix, "distributor.tenant-topic-tee.topic-prefix", "loki.tenant.", "Prefix to prepend to tenant IDs to form the final Kafka topic name")
+	cfg.MaxBufferedBytes = 100 << 20 // 100MB
+	f.Var(&cfg.MaxBufferedBytes, "distributor.tenant-topic-tee.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka")
+	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
+	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
+	f.Var(&cfg.MaxRecordSizeBytes, "distributor.tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
 }
 
 // TenantTopicWriter implements the Tee interface by writing logs to Kafka topics
@@ -51,15 +67,13 @@ func NewTenantTopicWriter(
 		logger: logger,
 		producer: client.NewProducer(
 			kafkaClient,
-			cfg.MaxBufferedBytes,
+			int64(cfg.MaxBufferedBytes),
 			reg,
 		),
 		teeBatchSize: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name: "loki_distributor_tenant_topic_tee_batch_size_bytes",
-			Help: "Size in bytes of batches sent to Kafka by the tenant topic tee",
-			Buckets: []float64{
-				1024, 4096, 16384, 65536, 262144, 1048576, 4194304,
-			},
+			Name:    "loki_distributor_tenant_topic_tee_batch_size_bytes",
+			Help:    "Size in bytes of batches sent to Kafka by the tenant topic tee",
+			Buckets: prometheus.ExponentialBucketsRange(1<<10, 100<<20, 10),
 		}),
 		teeQueueLatency: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_distributor_tenant_topic_tee_queue_duration_seconds",
@@ -92,7 +106,7 @@ func (t *TenantTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
 		// TODO: improve partitioning
 		partitionID := int32(stream.HashKey % 32) // Use hash key for consistent partitioning
 
-		streamRecords, err := kafka.EncodeWithTopic(topic, partitionID, tenant, stream.Stream, t.cfg.MaxRecordSizeBytes)
+		streamRecords, err := kafka.EncodeWithTopic(topic, partitionID, tenant, stream.Stream, int(t.cfg.MaxRecordSizeBytes))
 		if err != nil {
 			level.Error(t.logger).Log(
 				"msg", "failed to encode stream",

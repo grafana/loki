@@ -99,6 +99,9 @@ type Config struct {
 	KafkaEnabled    bool         `yaml:"kafka_writes_enabled"`
 	IngesterEnabled bool         `yaml:"ingester_writes_enabled"`
 	KafkaConfig     kafka.Config `yaml:"-"`
+
+	// TODO: cleanup config
+	TenantTopic TenantTopicConfig `yaml:"tenant_topic"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -110,6 +113,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
+	cfg.TenantTopic.RegisterFlags(fs)
 }
 
 func (cfg *Config) Validate() error {
@@ -246,6 +250,16 @@ func New(
 		}
 		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		// TODO: cleanup/make independent of whether we write kafka as primary?
+		if cfg.TenantTopic.Enabled {
+			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, registerer, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to start tenant topic tee: %w", err)
+			}
+
+			tee = WrapTee(tee, w)
+		}
 	}
 
 	d := &Distributor{
