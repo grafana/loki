@@ -41,6 +41,38 @@ var (
 	LimitsRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 )
 
+type metrics struct {
+	tenantExceedsLimits         *prometheus.CounterVec
+	tenantActiveStreams         *prometheus.GaugeVec
+	tenantDuplicateStreamsFound *prometheus.CounterVec
+	tenantRejectedStreams       *prometheus.CounterVec
+}
+
+func newMetrics(reg prometheus.Registerer) *metrics {
+	return &metrics{
+		tenantExceedsLimits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_exceeds_limits_total",
+			Help:      "The total number of requests that exceeded limits per tenant.",
+		}, []string{"tenant"}),
+		tenantActiveStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_streams_active",
+			Help:      "The current number of active streams (seen within the window) per tenant.",
+		}, []string{"tenant"}),
+		tenantDuplicateStreamsFound: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_streams_duplicate_total",
+			Help:      "The total number of duplicate streams found per tenant.",
+		}, []string{"tenant"}),
+		tenantRejectedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_streams_rejected_total",
+			Help:      "The total number of rejected streams per tenant when the global limit is exceeded.",
+		}, []string{"tenant", "reason"}),
+	}
+}
+
 type ringFunc func(context.Context, logproto.IngestLimitsClient) (*logproto.GetStreamUsageResponse, error)
 
 // RingIngestLimitsService is an IngestLimitsService that uses the ring to read the responses
@@ -53,40 +85,17 @@ type RingIngestLimitsService struct {
 
 	limits Limits
 
-	// metrics
-	tenantExceedsLimits         *prometheus.CounterVec
-	tenantActiveStreams         *prometheus.GaugeVec
-	tenantDuplicateStreamsFound *prometheus.CounterVec
-	tenantRejectedStreams       *prometheus.CounterVec
+	metrics *metrics
 }
 
 // NewRingIngestLimitsService returns a new RingIngestLimitsClient.
 func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limits Limits, logger log.Logger, reg prometheus.Registerer) *RingIngestLimitsService {
 	return &RingIngestLimitsService{
-		logger: logger,
-		ring:   ring,
-		pool:   pool,
-		limits: limits,
-		tenantExceedsLimits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_exceeds_limits",
-			Help:      "The total number of exceeds limits requests per tenant.",
-		}, []string{"tenant"}),
-		tenantActiveStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_active_streams",
-			Help:      "The current number of active streams (seen within the window) per tenant.",
-		}, []string{"tenant"}),
-		tenantDuplicateStreamsFound: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_duplicate_streams_found",
-			Help:      "The total number of duplicate streams found per tenant.",
-		}, []string{"tenant"}),
-		tenantRejectedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_rejected_streams",
-			Help:      "The total number of rejected streams per tenant.",
-		}, []string{"tenant", "reason"}),
+		logger:  logger,
+		ring:    ring,
+		pool:    pool,
+		limits:  limits,
+		metrics: newMetrics(reg),
 	}
 }
 
@@ -153,11 +162,11 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		activeStreamsTotal += resp.Response.ActiveStreams - duplicates
 
 		if duplicates > 0 {
-			s.tenantDuplicateStreamsFound.WithLabelValues(req.Tenant).Inc()
+			s.metrics.tenantDuplicateStreamsFound.WithLabelValues(req.Tenant).Inc()
 		}
 	}
 
-	s.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
+	s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
 
 	if activeStreamsTotal < uint64(maxGlobalStreams) {
 		return &logproto.ExceedsLimitsResponse{
@@ -176,8 +185,8 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 	}
 
 	if len(rejectedStreams) > 0 {
-		s.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
-		s.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonExceedsGlobalLimit).Add(float64(len(rejectedStreams)))
+		s.metrics.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
+		s.metrics.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonExceedsGlobalLimit).Add(float64(len(rejectedStreams)))
 	}
 
 	return &logproto.ExceedsLimitsResponse{
