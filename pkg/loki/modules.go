@@ -67,6 +67,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/v3/pkg/querier/tail"
 	"github.com/grafana/loki/v3/pkg/ruler"
 	base_ruler "github.com/grafana/loki/v3/pkg/ruler/base"
 	"github.com/grafana/loki/v3/pkg/runtime"
@@ -405,7 +406,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer, logger)
+	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -555,8 +556,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
-	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
-	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(t.querierAPI.TailHandler)))
+	tailQuerier := tail.NewQuerier(t.ingesterQuerier, t.Querier, deleteStore, t.Overrides, t.Cfg.Querier.TailMaxDuration, tail.NewTailMetrics(prometheus.DefaultRegisterer), log.With(util_log.Logger, "component", "tail-querier"))
+	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
+	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
 
 	internalMiddlewares := []queryrangebase.Middleware{
 		serverutil.RecoveryMiddleware,
@@ -1936,7 +1938,7 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.Engine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil, logger)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}
