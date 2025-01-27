@@ -1091,6 +1091,16 @@ http_config:
   # CLI flag: -s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
 
+  # Maximum number of idle (keep-alive) connections across all hosts. Set to 0
+  # for no limit.
+  # CLI flag: -s3.http.max-idle-connections
+  [max_idle_connections: <int> | default = 200]
+
+  # Maximum number of idle (keep-alive) connections to keep per-host. Set to 0
+  # to use a built-in default value of 2.
+  # CLI flag: -s3.http.max-idle-connections-per-host
+  [max_idle_connections_per_host: <int> | default = 200]
+
   # If non-zero, specifies the amount of time to wait for a server's response
   # headers after fully writing the request.
   # CLI flag: -s3.http.response-header-timeout
@@ -5079,6 +5089,16 @@ http_config:
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # Maximum number of idle (keep-alive) connections across all hosts. Set to 0
+  # for no limit.
+  # CLI flag: -<prefix>.storage.s3.http.max-idle-connections
+  [max_idle_connections: <int> | default = 200]
+
+  # Maximum number of idle (keep-alive) connections to keep per-host. Set to 0
+  # to use a built-in default value of 2.
+  # CLI flag: -<prefix>.storage.s3.http.max-idle-connections-per-host
+  [max_idle_connections_per_host: <int> | default = 200]
 
   # If non-zero, specifies the amount of time to wait for a server's response
   # headers after fully writing the request.
