@@ -1,4 +1,3 @@
-// Package dataobj holds utilities for working with data objects.
 package dataobj
 
 import (
