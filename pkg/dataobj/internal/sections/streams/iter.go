@@ -81,6 +81,7 @@ func iterSection(ctx context.Context, dec encoding.StreamsDecoder, section *file
 
 func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row) (Stream, error) {
 	var stream Stream
+	stream.Labels = make(labels.Labels, 0, 15)
 
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {

@@ -36,6 +36,14 @@ type Stream struct {
 	Rows         int           // Number of rows in the stream.
 }
 
+func (s *Stream) Reset() {
+	s.ID = 0
+	s.Labels = nil
+	s.MinTimestamp = time.Time{}
+	s.MaxTimestamp = time.Time{}
+	s.Rows = 0
+}
+
 var streamPool = sync.Pool{
 	New: func() interface{} {
 		return &Stream{}
@@ -70,8 +78,8 @@ func New(metrics *Metrics, pageSize int) *Streams {
 	return &Streams{
 		metrics:  metrics,
 		pageSize: pageSize,
-		lookup:   make(map[uint64][]*Stream, 10000),
-		ordered:  make([]*Stream, 0, 10000),
+		lookup:   make(map[uint64][]*Stream, 32),
+		ordered:  make([]*Stream, 0, 32),
 	}
 }
 
@@ -96,7 +104,7 @@ func (s *Streams) Iter(ctx context.Context) result.Seq[Stream] {
 	})
 }
 
-func (s *Streams) GetMinMax() (time.Time, time.Time) {
+func (s *Streams) GetBounds() (time.Time, time.Time) {
 	return s.globalMinTimestamp, s.globalMaxTimestamp
 }
 
@@ -189,11 +197,9 @@ func (s *Streams) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 	}
 
 	newStream := streamPool.Get().(*Stream)
+	newStream.Reset()
 	newStream.ID = s.lastID.Add(1)
 	newStream.Labels = streamLabels
-	newStream.MinTimestamp = time.Time{}
-	newStream.MaxTimestamp = time.Time{}
-	newStream.Rows = 0
 
 	s.lookup[hash] = append(s.lookup[hash], newStream)
 	s.ordered = append(s.ordered, newStream)

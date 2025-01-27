@@ -20,8 +20,6 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/filemd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -143,6 +141,11 @@ const (
 	builderStateFlush
 )
 
+type FlushResult struct {
+	Path                       string
+	MinTimestamp, MaxTimestamp time.Time
+}
+
 // NewBuilder creates a new Builder which stores data objects for the specified
 // tenant in a bucket.
 //
@@ -192,60 +195,29 @@ func (b *Builder) FromExisting(f io.ReadSeeker) error {
 	}
 
 	dec := encoding.ReadSeekerDecoder(f)
-	sections, err := dec.Sections(context.Background())
-	if err != nil {
-		return err
-	}
 
-	var streamsSectionInfo *filemd.SectionInfo
-	for _, section := range sections {
-		if section.Type == filemd.SECTION_TYPE_STREAMS {
-			streamsSectionInfo = section
-			break
-		}
-	}
-	if streamsSectionInfo == nil {
-		return fmt.Errorf("no streams section found")
-	}
-
-	cols, err := dec.StreamsDecoder().Columns(context.Background(), streamsSectionInfo)
-	if err != nil {
-		return err
-	}
-	var totalStreams uint64
-	for _, col := range cols {
-		if col.Type == streamsmd.COLUMN_TYPE_STREAM_ID {
-			totalStreams = col.Info.RowsCount
-			break
-		}
-	}
-	var streamIDs = make([]*labels.Labels, totalStreams)
-
-	b.streams.Expand(int(totalStreams))
-
+	var streamIDs = make(map[int64]*labels.Labels, 32)
 	for result := range streams.Iter(context.Background(), dec) {
 		stream, err := result.Value()
 		if err != nil {
 			return err
 		}
 		sort.Sort(stream.Labels)
-		streamIDs[stream.ID-1] = &stream.Labels
+		streamIDs[stream.ID] = &stream.Labels
 	}
 
-	i := 0
 	for result := range logs.Iter(context.Background(), dec) {
 		record, err := result.Value()
 		if err != nil {
 			return err
 		}
-		streamLabels := streamIDs[record.StreamID-1]
+		streamLabels := streamIDs[record.StreamID]
 
 		b.streams.Record(*streamLabels, record.Timestamp)
 		b.logs.Append(record)
-		i++
 	}
-	b.state = builderStateDirty
 
+	b.state = builderStateDirty
 	return nil
 }
 
@@ -281,47 +253,6 @@ func (b *Builder) Append(stream logproto.Stream) error {
 
 	for _, entry := range stream.Entries {
 		streamID := b.streams.Record(ls, entry.Timestamp)
-
-		b.logs.Append(logs.Record{
-			StreamID:  streamID,
-			Timestamp: entry.Timestamp,
-			Metadata:  entry.StructuredMetadata,
-			Line:      entry.Line,
-		})
-	}
-
-	b.currentSizeEstimate = b.estimatedSize()
-	b.state = builderStateDirty
-	return nil
-}
-
-// Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBufferFull] if the
-// builder is full.
-//
-// Once a Builder is full, call [Builder.Flush] to flush the buffered data,
-// then call Append again with the same entry.
-func (b *Builder) AppendSummary(stream StreamSummary, entries []logproto.Entry) error {
-	// Don't allow appending to a builder that has data to be flushed.
-	if b.state == builderStateFlush {
-		return ErrBufferFull
-	}
-
-	// Check whether the buffer is full before a stream can be appended; this is
-	// tends to overestimate, but we may still go over our target size.
-	//
-	// Since this check only happens after the first call to Append,
-	// b.currentSizeEstimate will always be updated to reflect the size following
-	// the previous append.
-	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(stream.Labels)+entriesSizeEstimate(entries) > int(b.cfg.TargetObjectSize) {
-		return ErrBufferFull
-	}
-
-	timer := prometheus.NewTimer(b.metrics.appendTime)
-	defer timer.ObserveDuration()
-
-	for _, entry := range entries {
-		streamID := b.streams.Record(stream.Labels, entry.Timestamp)
 
 		b.logs.Append(logs.Record{
 			StreamID:  streamID,
@@ -390,32 +321,6 @@ func streamSizeEstimate(stream logproto.Stream) int {
 	return size
 }
 
-// streamSizeEstimate estimates the size of a stream in bytes.
-func entriesSizeEstimate(entries []logproto.Entry) int {
-	var size int
-	for _, entry := range entries {
-		// We only check the size of the line and metadata. Timestamps and IDs
-		// encode so well that they're unlikely to make a singificant impact on our
-		// size estimate.
-		size += len(entry.Line) / 2 // Line with 2x compression ratio
-		for _, md := range entry.StructuredMetadata {
-			size += len(md.Name) + len(md.Value)/2
-		}
-	}
-	return size
-}
-
-type FlushResult struct {
-	Path                       string
-	Streams                    []StreamSummary
-	MinTimestamp, MaxTimestamp time.Time
-}
-
-type StreamSummary struct {
-	Labels                     labels.Labels
-	MinTimestamp, MaxTimestamp time.Time
-}
-
 // Flush flushes all buffered data to object storage. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
@@ -439,22 +344,12 @@ func (b *Builder) Flush(ctx context.Context) (FlushResult, error) {
 		return FlushResult{}, fmt.Errorf("uploading object: %w", err)
 	}
 
-	minTimestamp, maxTimestamp := b.streams.GetMinMax()
-	streams := make([]StreamSummary, 0)
-	for s := range b.streams.Iter(ctx) {
-		stream := s.MustValue()
-		streams = append(streams, StreamSummary{
-			Labels:       stream.Labels,
-			MinTimestamp: stream.MinTimestamp,
-			MaxTimestamp: stream.MaxTimestamp,
-		})
-	}
+	minTimestamp, maxTimestamp := b.streams.GetBounds()
 
 	b.Reset()
 
 	return FlushResult{
 		Path:         objectPath,
-		Streams:      streams,
 		MinTimestamp: minTimestamp,
 		MaxTimestamp: maxTimestamp,
 	}, nil
@@ -474,15 +369,6 @@ func (b *Builder) FlushToBuffer() (*bytes.Buffer, error) {
 	return b.flushBuffer, nil
 }
 
-func (b *Builder) ForEachStream(f func(stream streams.Stream)) {
-	for stream := range b.streams.Iter(context.Background()) {
-		f(stream.MustValue())
-	}
-}
-
-func (b *Builder) GetStreamMinMax() (time.Time, time.Time) {
-	return b.streams.GetMinMax()
-}
 func (b *Builder) buildObject() error {
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()

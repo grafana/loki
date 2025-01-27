@@ -25,10 +25,10 @@ var (
 	// Define our own builder config because metastore objects are significantly smaller.
 	metastoreBuilderCfg = dataobj.BuilderConfig{
 		SHAPrefixSize:     2,
-		TargetObjectSize:  128 * 1024 * 1024,
+		TargetObjectSize:  32 * 1024 * 1024,
 		TargetPageSize:    4 * 1024 * 1024,
 		BufferSize:        32 * 1024 * 1024, // 8x page size
-		TargetSectionSize: 16 * 1024 * 1024, // object size / 8
+		TargetSectionSize: 4 * 1024 * 1024,  // object size / 8
 	}
 )
 
@@ -76,6 +76,7 @@ func (m *MetastoreManager) initBuilder() error {
 }
 
 func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult dataobj.FlushResult) error {
+	var err error
 	start := time.Now()
 	defer m.metrics.observeMetastoreProcessing(start)
 
@@ -94,7 +95,7 @@ func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult data
 		metastorePath := fmt.Sprintf("tenant-%s/metastore/%s.store", m.tenantID, metastoreWindow.Format(time.RFC3339))
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
-			err := m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.Reader, error) {
+			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.Reader, error) {
 				buf, err := io.ReadAll(existing)
 				if err != nil {
 					return nil, err
@@ -112,14 +113,16 @@ func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult data
 				}
 
 				encodingStart := time.Now()
-				for _, stream := range flushResult.Streams {
-					if stream.MinTimestamp.After(metastoreWindow.Add(metastoreWindowSize)) || stream.MaxTimestamp.Before(metastoreWindow) {
-						continue
-					}
-					m.metastoreBuilder.AppendSummary(stream, []logproto.Entry{{
-						Line: flushResult.Path,
-					}})
+
+				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), flushResult.Path)
+				err = m.metastoreBuilder.Append(logproto.Stream{
+					Labels:  ls,
+					Entries: []logproto.Entry{{Line: ""}},
+				})
+				if err != nil {
+					return nil, err
 				}
+
 				newMetastore, err := m.metastoreBuilder.FlushToBuffer()
 				if err != nil {
 					return nil, err
@@ -138,5 +141,5 @@ func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult data
 		// Reset at the end too so we don't leave our memory hanging around between calls.
 		m.metastoreBuilder.Reset()
 	}
-	return nil
+	return err
 }
