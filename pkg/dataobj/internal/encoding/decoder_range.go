@@ -93,8 +93,8 @@ type rangeStreamsDecoder struct {
 }
 
 func (rd *rangeStreamsDecoder) Columns(ctx context.Context, section *filemd.SectionInfo) ([]*streamsmd.ColumnDesc, error) {
-	if section.Type != filemd.SECTION_TYPE_STREAMS {
-		return nil, fmt.Errorf("unexpected section type: got=%d want=%d", section.Type, filemd.SECTION_TYPE_STREAMS)
+	if got, want := section.Type, filemd.SECTION_TYPE_STREAMS; got != want {
+		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
 
 	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
@@ -186,10 +186,9 @@ type rangeLogsDecoder struct {
 }
 
 func (rd *rangeLogsDecoder) Columns(ctx context.Context, section *filemd.SectionInfo) ([]*logsmd.ColumnDesc, error) {
-	if section.Type != filemd.SECTION_TYPE_LOGS {
-		return nil, fmt.Errorf("unexpected section type: got=%d want=%d", section.Type, filemd.SECTION_TYPE_STREAMS)
+	if got, want := section.Type, filemd.SECTION_TYPE_LOGS; got != want {
+		return nil, fmt.Errorf("unexpected section type: got=%s want=%s", got, want)
 	}
-
 	rc, err := rd.rr.ReadRange(ctx, int64(section.MetadataOffset), int64(section.MetadataSize))
 	if err != nil {
 		return nil, fmt.Errorf("reading streams section metadata: %w", err)
