@@ -1,8 +1,10 @@
-local common = import 'common.libsonnet';
-local job = common.job;
-local step = common.step;
-local releaseStep = common.releaseStep;
-local releaseLibStep = common.releaseLibStep;
+local common = import 'common.libsonnet',
+      job = common.job,
+      step = common.step,
+      releaseStep = common.releaseStep,
+      releaseLibStep = common.releaseLibStep;
+local runner = import 'runner.libsonnet',
+      r = runner.withDefaultMapping();
 
 {
   image: function(
@@ -11,16 +13,16 @@ local releaseLibStep = common.releaseLibStep;
     dockerfile='Dockerfile',
     context='release',
     platform=[
-      'linux/amd64',
-      'linux/arm64',
-      'linux/arm',
+      r.forPlatform('linux/amd64'),
+      r.forPlatform('linux/arm64'),
+      r.forPlatform('linux/arm'),
     ]
         )
-    job.new()
+    job.new('${{ matrix.runs_on }}')
     + job.withStrategy({
       'fail-fast': true,
       matrix: {
-        platform: platform,
+        include: platform,
       },
     })
     + job.withSteps([
@@ -29,17 +31,16 @@ local releaseLibStep = common.releaseLibStep;
       common.setupNode,
       common.googleAuth,
 
-      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
-      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
+      step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
 
-      releaseStep('parse image platform')
+      releaseStep('Parse image platform')
       + step.withId('platform')
       + step.withRun(|||
         mkdir -p images
 
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
       step.new('Build and export', 'docker/build-push-action@v6')
@@ -51,12 +52,12 @@ local releaseLibStep = common.releaseLibStep;
       + step.with({
         context: context,
         file: 'release/%s/%s' % [path, dockerfile],
-        platforms: '${{ matrix.platform }}',
+        platforms: '${{ matrix.arch }}',
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
         outputs: 'type=docker,dest=release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
         'build-args': 'IMAGE_TAG=${{ needs.version.outputs.version }}',
       }),
-      step.new('upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
+      step.new('Upload artifacts', 'google-github-actions/upload-cloud-storage@v2')
       + step.withIf('${{ fromJSON(needs.version.outputs.pr_created) }}')
       + step.with({
         path: 'release/images/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}.tar' % name,
@@ -72,37 +73,72 @@ local releaseLibStep = common.releaseLibStep;
     dockerfile='Dockerfile',
     context='release',
     platform=[
-      'linux/amd64',
-      'linux/arm64',
-      'linux/arm',
+      r.forPlatform('linux/amd64'),
+      r.forPlatform('linux/arm64'),
+      r.forPlatform('linux/arm'),
     ]
               )
-    job.new()
+    job.new('${{ matrix.runs_on }}')
+    + job.withStrategy({
+      'fail-fast': true,
+      matrix: {
+        include: platform,
+      },
+    })
+    + job.withOutputs({
+      image_name: '${{ steps.weekly-version.outputs.image_name }}',
+      image_tag: '${{ steps.weekly-version.outputs.image_version }}',
+      image_digest_linux_amd64: '${{ steps.digest.outputs.digest_linux_amd64 }}',
+      image_digest_linux_arm64: '${{ steps.digest.outputs.digest_linux_arm64 }}',
+      image_digest_linux_arm: '${{ steps.digest.outputs.digest_linux_arm }}',
+    })
     + job.withSteps([
       common.fetchReleaseLib,
       common.fetchReleaseRepo,
       common.setupNode,
 
-      step.new('Set up QEMU', 'docker/setup-qemu-action@v3'),
-      step.new('set up docker buildx', 'docker/setup-buildx-action@v3'),
-      step.new('Login to DockerHub (from vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
+      step.new('Set up Docker buildx', 'docker/setup-buildx-action@v3'),
+      step.new('Login to DockerHub (from Vault)', 'grafana/shared-workflows/actions/dockerhub-login@main'),
 
       releaseStep('Get weekly version')
       + step.withId('weekly-version')
       + step.withRun(|||
-        echo "version=$(./tools/image-tag)" >> $GITHUB_OUTPUT
+        version=$(./tools/image-tag)
+        echo "image_version=$version" >> $GITHUB_OUTPUT
+        echo "image_name=${{ env.IMAGE_PREFIX }}/%(name)s" >> $GITHUB_OUTPUT
+        echo "image_full_name=${{ env.IMAGE_PREFIX }}/%(name)s:$version" >> $GITHUB_OUTPUT
+      ||| % { name: name }),
+
+      releaseStep('Parse image platform')
+      + step.withId('platform')
+      + step.withRun(|||
+        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+        echo "platform=${platform}" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       |||),
 
       step.new('Build and push', 'docker/build-push-action@v6')
+      + step.withId('build-push')
       + step.withTimeoutMinutes('${{ fromJSON(env.BUILD_TIMEOUT) }}')
       + step.with({
         context: context,
-        file: 'release/%s/%s' % [path, dockerfile],
-        platforms: '%s' % std.join(',', platform),
-        push: true,
-        tags: '${{ env.IMAGE_PREFIX }}/%s:${{ steps.weekly-version.outputs.version }}' % [name],
-        'build-args': 'IMAGE_TAG=${{ steps.weekly-version.outputs.version }}',
+        file: '%s/%s/%s' % [context, path, dockerfile],
+        platforms: '${{ matrix.arch }}',
+        provenance: true,
+        outputs: 'push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true',
+        tags: '${{ steps.weekly-version.outputs.image_name }}',
+        'build-args': |||
+          IMAGE_TAG=${{ steps.weekly-version.outputs.image_version }}
+          GO_VERSION=${{ env.GO_VERSION }}
+        |||,
       }),
+
+      releaseStep('Process image digest')
+      + step.withId('digest')
+      + step.withRun(|||
+        arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
+      |||),
     ]),
 
   dockerPlugin: function(

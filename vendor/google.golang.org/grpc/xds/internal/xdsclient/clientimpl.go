@@ -25,7 +25,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"google.golang.org/grpc/internal/cache"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/xds/bootstrap"
@@ -63,14 +62,9 @@ type clientImpl struct {
 	// these channels, and forwards updates from the channels to each of these
 	// authorities.
 	//
-	// Once all references to a channel are dropped, the channel is moved to the
-	// idle cache where it lives for a configured duration before being closed.
-	// If the channel is required before the idle timeout fires, it is revived
-	// from the idle cache and used.
+	// Once all references to a channel are dropped, the channel is closed.
 	channelsMu        sync.Mutex
 	xdsActiveChannels map[string]*channelState // Map from server config to in-use xdsChannels.
-	xdsIdleChannels   *cache.TimeoutCache      // Map from server config to idle xdsChannels.
-	closeCond         *sync.Cond
 }
 
 // channelState represents the state of an xDS channel. It tracks the number of
@@ -173,21 +167,6 @@ func (c *clientImpl) close() {
 		c.close()
 	}
 
-	// Similarly, closing idle channels cannot be done with the lock held, for
-	// the same reason as described above.  So, we clear the idle cache in a
-	// goroutine and use a condition variable to wait on the condition that the
-	// idle cache has zero entries. The Wait() method on the condition variable
-	// releases the lock and blocks the goroutine until signaled (which happens
-	// when an idle channel is removed from the cache and closed), and grabs the
-	// lock before returning.
-	c.channelsMu.Lock()
-	c.closeCond = sync.NewCond(&c.channelsMu)
-	go c.xdsIdleChannels.Clear(true)
-	for c.xdsIdleChannels.Len() > 0 {
-		c.closeCond.Wait()
-	}
-	c.channelsMu.Unlock()
-
 	c.serializerClose()
 	<-c.serializer.Done()
 
@@ -289,23 +268,11 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 		c.logger.Infof("Received request for a reference to an xdsChannel for server config %q", serverConfig)
 	}
 
-	// Use an active channel, if one exists for this server config.
+	// Use an existing channel, if one exists for this server config.
 	if state, ok := c.xdsActiveChannels[serverConfig.String()]; ok {
 		if c.logger.V(2) {
-			c.logger.Infof("Reusing an active xdsChannel for server config %q", serverConfig)
+			c.logger.Infof("Reusing an existing xdsChannel for server config %q", serverConfig)
 		}
-		initLocked(state)
-		return state.channel, c.releaseChannel(serverConfig, state, deInitLocked), nil
-	}
-
-	// If an idle channel exists for this server config, remove it from the
-	// idle cache and add it to the map of active channels, and return it.
-	if s, ok := c.xdsIdleChannels.Remove(serverConfig.String()); ok {
-		if c.logger.V(2) {
-			c.logger.Infof("Reviving an xdsChannel from the idle cache for server config %q", serverConfig)
-		}
-		state := s.(*channelState)
-		c.xdsActiveChannels[serverConfig.String()] = state
 		initLocked(state)
 		return state.channel, c.releaseChannel(serverConfig, state, deInitLocked), nil
 	}
@@ -345,9 +312,7 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 }
 
 // releaseChannel is a function that is called when a reference to an xdsChannel
-// needs to be released. It handles the logic of moving the channel to an idle
-// cache if there are no other active references, and closing the channel if it
-// remains in the idle cache for the configured duration.
+// needs to be released. It handles closing channels with no active references.
 //
 // The function takes the following parameters:
 // - serverConfig: the server configuration for the xdsChannel
@@ -360,7 +325,6 @@ func (c *clientImpl) getOrCreateChannel(serverConfig *bootstrap.ServerConfig, in
 func (c *clientImpl) releaseChannel(serverConfig *bootstrap.ServerConfig, state *channelState, deInitLocked func(*channelState)) func() {
 	return grpcsync.OnceFunc(func() {
 		c.channelsMu.Lock()
-		defer c.channelsMu.Unlock()
 
 		if c.logger.V(2) {
 			c.logger.Infof("Received request to release a reference to an xdsChannel for server config %q", serverConfig)
@@ -372,40 +336,17 @@ func (c *clientImpl) releaseChannel(serverConfig *bootstrap.ServerConfig, state 
 			if c.logger.V(2) {
 				c.logger.Infof("xdsChannel %p has other active references", state.channel)
 			}
+			c.channelsMu.Unlock()
 			return
 		}
 
-		// Move the channel to the idle cache instead of closing
-		// immediately. If the channel remains in the idle cache for
-		// the configured duration, it will get closed.
 		delete(c.xdsActiveChannels, serverConfig.String())
 		if c.logger.V(2) {
-			c.logger.Infof("Moving xdsChannel [%p] for server config %s to the idle cache", state.channel, serverConfig)
+			c.logger.Infof("Closing xdsChannel [%p] for server config %s", state.channel, serverConfig)
 		}
+		channelToClose := state.channel
+		c.channelsMu.Unlock()
 
-		// The idle cache expiry timeout results in the channel getting
-		// closed in another serializer callback.
-		c.xdsIdleChannels.Add(serverConfig.String(), state, grpcsync.OnceFunc(func() {
-			c.channelsMu.Lock()
-			channelToClose := state.channel
-			c.channelsMu.Unlock()
-
-			if c.logger.V(2) {
-				c.logger.Infof("Idle cache expiry timeout fired for xdsChannel [%p] for server config %s", state.channel, serverConfig)
-			}
-			channelToClose.close()
-
-			// If the channel is being closed as a result of the xDS client
-			// being closed, closeCond is non-nil and we need to signal from
-			// here to unblock Close().  Holding the lock is not necessary
-			// to call Signal() on a condition variable. But the field
-			// `c.closeCond` needs to guarded by the lock, which is why we
-			// acquire it here.
-			c.channelsMu.Lock()
-			if c.closeCond != nil {
-				c.closeCond.Signal()
-			}
-			c.channelsMu.Unlock()
-		}))
+		channelToClose.close()
 	})
 }

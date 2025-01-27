@@ -1,6 +1,20 @@
 # Changes
 
 
+## [1.3.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.3.0...iam/v1.3.1) (2025-01-02)
+
+
+### Bug Fixes
+
+* **iam:** Update golang.org/x/net to v0.33.0 ([e9b0b69](https://github.com/googleapis/google-cloud-go/commit/e9b0b69644ea5b276cacff0a707e8a5e87efafc9))
+
+## [1.3.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.2...iam/v1.3.0) (2024-12-04)
+
+
+### Features
+
+* **iam:** Add ResourcePolicyMember to google/iam/v1 ([8dedb87](https://github.com/googleapis/google-cloud-go/commit/8dedb878c070cc1e92d62bb9b32358425e3ceffb))
+
 ## [1.2.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.2.1...iam/v1.2.2) (2024-10-23)
 
 

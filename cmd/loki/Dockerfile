@@ -1,10 +1,20 @@
 ARG GO_VERSION=1.23
-FROM golang:${GO_VERSION} AS build
 
+# UI build stage
+FROM node:20-alpine AS ui-builder
+RUN apk add --no-cache make
 COPY . /src/loki
+WORKDIR /src/loki
+RUN make -C pkg/dataobj/explorer/ui build
+
+# Go build stage
+FROM golang:${GO_VERSION} AS build
+COPY . /src/loki
+COPY --from=ui-builder /src/loki/pkg/dataobj/explorer/dist /src/loki/pkg/dataobj/explorer/dist
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki
 
+# Final stage
 FROM gcr.io/distroless/static:debug
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki

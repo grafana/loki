@@ -56,6 +56,13 @@ func SetAddrInfo(addr resolver.Address, addrInfo AddrInfo) resolver.Address {
 	return addr
 }
 
+// SetAddrInfoInEndpoint returns a copy of endpoint in which the Attributes
+// field is updated with addrInfo.
+func SetAddrInfoInEndpoint(endpoint resolver.Endpoint, addrInfo AddrInfo) resolver.Endpoint {
+	endpoint.Attributes = endpoint.Attributes.WithValue(attributeKey{}, addrInfo)
+	return endpoint
+}
+
 // GetAddrInfo returns the AddrInfo stored in the BalancerAttributes field of
 // addr.
 func GetAddrInfo(addr resolver.Address) AddrInfo {

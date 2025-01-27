@@ -664,7 +664,7 @@ func (s *StreamImpl) onError(err error, msgReceived bool) {
 	// connection hitting its max connection age limit.
 	// (see [gRFC A9](https://github.com/grpc/proposal/blob/master/A9-server-side-conn-mgt.md)).
 	if msgReceived {
-		err = xdsresource.NewErrorf(xdsresource.ErrTypeStreamFailedAfterRecv, err.Error())
+		err = xdsresource.NewErrorf(xdsresource.ErrTypeStreamFailedAfterRecv, "%s", err.Error())
 	}
 
 	s.eventHandler.OnADSStreamError(err)

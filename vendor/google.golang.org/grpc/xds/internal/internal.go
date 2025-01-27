@@ -86,6 +86,12 @@ func SetLocalityID(addr resolver.Address, l LocalityID) resolver.Address {
 	return addr
 }
 
+// SetLocalityIDInEndpoint sets locality ID in endpoint to l.
+func SetLocalityIDInEndpoint(endpoint resolver.Endpoint, l LocalityID) resolver.Endpoint {
+	endpoint.Attributes = endpoint.Attributes.WithValue(localityKey, l)
+	return endpoint
+}
+
 // ResourceTypeMapForTesting maps TypeUrl to corresponding ResourceType.
 var ResourceTypeMapForTesting map[string]any
 

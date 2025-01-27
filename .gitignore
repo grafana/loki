@@ -28,6 +28,7 @@ cmd/querytee/querytee
 dlv
 rootfs/
 dist
+!pkg/dataobj/explorer/dist
 *coverage.txt
 *test_results.txt
 .DS_Store
@@ -36,6 +37,8 @@ dist
 pkg/loki/wal
 tools/lambda-promtail/main
 tools/dev/kafka/data/
+pkg/dataobj/explorer/ui/node_modules/*
+pkg/dataobj/explorer/ui/.vite/*
 
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login

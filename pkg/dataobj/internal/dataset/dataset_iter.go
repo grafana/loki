@@ -2,7 +2,6 @@ package dataset
 
 import (
 	"context"
-	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
@@ -26,7 +25,7 @@ func Iter(ctx context.Context, columns []Column) result.Seq[Row] {
 	// more efficient implementation is needed for reading Datasets backed by
 	// object storage.
 
-	totalRows := math.MinInt64
+	var totalRows int
 	for _, col := range columns {
 		totalRows = max(totalRows, col.ColumnInfo().RowsCount)
 	}
