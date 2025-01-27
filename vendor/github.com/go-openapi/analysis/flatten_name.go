@@ -279,7 +279,7 @@ func nameFromRef(ref spec.Ref) string {
 
 // GenLocation indicates from which section of the specification (models or operations) a definition has been created.
 //
-// This is reflected in the output spec with a "x-go-gen-location" extension. At the moment, this is is provided
+// This is reflected in the output spec with a "x-go-gen-location" extension. At the moment, this is provided
 // for information only.
 func GenLocation(parts sortref.SplitKey) string {
 	switch {

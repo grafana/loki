@@ -1003,6 +1003,21 @@ func (m *Listener) validate(all bool) error {
 		}
 	}
 
+	if wrapper := m.GetMaxConnectionsToAcceptPerSocketEvent(); wrapper != nil {
+
+		if wrapper.GetValue() <= 0 {
+			err := ListenerValidationError{
+				field:  "MaxConnectionsToAcceptPerSocketEvent",
+				reason: "value must be greater than 0",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
 	if all {
 		switch v := interface{}(m.GetBindToPort()).(type) {
 		case interface{ ValidateAll() error }:
