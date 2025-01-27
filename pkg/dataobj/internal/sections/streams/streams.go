@@ -78,8 +78,8 @@ func New(metrics *Metrics, pageSize int) *Streams {
 	return &Streams{
 		metrics:  metrics,
 		pageSize: pageSize,
-		lookup:   make(map[uint64][]*Stream, 32),
-		ordered:  make([]*Stream, 0, 32),
+		lookup:   make(map[uint64][]*Stream, 1024),
+		ordered:  make([]*Stream, 0, 1024),
 	}
 }
 

@@ -181,9 +181,6 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		// Reset builder after flushing & storing in metastore
-		p.builder.Reset()
-
 		backoff.Reset()
 		for backoff.Ongoing() {
 			err = p.client.CommitRecords(p.ctx, record)
