@@ -90,6 +90,8 @@ type S3Config struct {
 type HTTPConfig struct {
 	Timeout               time.Duration `yaml:"timeout"`
 	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
+	MaxIdleConns          int           `yaml:"max_idle_connections"`
+	MaxIdleConnsPerHost   int           `yaml:"max_idle_connections_per_host"`
 	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
 	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
 	CAFile                string        `yaml:"ca_file"`
@@ -118,6 +120,8 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
+	f.IntVar(&cfg.HTTPConfig.MaxIdleConns, prefix+"s3.http.max-idle-connections", 200, "Maximum number of idle (keep-alive) connections across all hosts. Set to 0 for no limit.")
+	f.IntVar(&cfg.HTTPConfig.MaxIdleConnsPerHost, prefix+"s3.http.max-idle-connections-per-host", 200, "Maximum number of idle (keep-alive) connections to keep per-host. Set to 0 to use a built-in default value of 2.")
 	f.DurationVar(&cfg.HTTPConfig.Timeout, prefix+"s3.http.timeout", 0, "Timeout specifies a time limit for requests made by s3 Client.")
 	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
@@ -230,7 +234,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS
+		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify,
 	}
 
 	if cfg.HTTPConfig.CAFile != "" {
@@ -253,9 +257,9 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 			KeepAlive: 30 * time.Second,
 			DualStack: !cfg.DisableDualstack,
 		}).DialContext,
-		MaxIdleConns:          200,
+		MaxIdleConns:          cfg.HTTPConfig.MaxIdleConns,
 		IdleConnTimeout:       cfg.HTTPConfig.IdleConnTimeout,
-		MaxIdleConnsPerHost:   200,
+		MaxIdleConnsPerHost:   cfg.HTTPConfig.MaxIdleConnsPerHost,
 		TLSHandshakeTimeout:   3 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		ResponseHeaderTimeout: cfg.HTTPConfig.ResponseHeaderTimeout,
