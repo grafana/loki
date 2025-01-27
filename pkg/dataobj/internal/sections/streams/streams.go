@@ -83,16 +83,6 @@ func New(metrics *Metrics, pageSize int) *Streams {
 	}
 }
 
-func (s *Streams) Expand(n int) {
-	if len(s.ordered) > 0 {
-		panic("streams already expanded")
-	}
-	if cap(s.ordered) < n {
-		s.ordered = make([]*Stream, 0, n)
-		s.lookup = make(map[uint64][]*Stream, n)
-	}
-}
-
 func (s *Streams) Iter(ctx context.Context) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
 		for _, stream := range s.ordered {
