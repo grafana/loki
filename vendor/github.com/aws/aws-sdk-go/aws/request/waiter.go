@@ -256,8 +256,17 @@ func (a *WaiterAcceptor) match(name string, l aws.Logger, req *Request, err erro
 		s := a.Expected.(int)
 		result = s == req.HTTPResponse.StatusCode
 	case ErrorWaiterMatch:
-		if aerr, ok := err.(awserr.Error); ok {
-			result = aerr.Code() == a.Expected.(string)
+		switch ex := a.Expected.(type) {
+		case string:
+			if aerr, ok := err.(awserr.Error); ok {
+				result = aerr.Code() == ex
+			}
+		case bool:
+			if ex {
+				result = err != nil
+			} else {
+				result = err == nil
+			}
 		}
 	default:
 		waiterLogf(l, "WARNING: Waiter %s encountered unexpected matcher: %s",

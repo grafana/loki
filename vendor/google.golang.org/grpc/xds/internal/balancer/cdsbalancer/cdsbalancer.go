@@ -149,13 +149,6 @@ type ccUpdate struct {
 	err         error
 }
 
-// scUpdate wraps a subConn update received from gRPC. This is directly passed
-// on to the cluster_resolver balancer.
-type scUpdate struct {
-	subConn balancer.SubConn
-	state   balancer.SubConnState
-}
-
 type exitIdle struct{}
 
 // cdsBalancer implements a CDS based LB policy. It instantiates a
@@ -388,7 +381,7 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 
 	var sc serviceconfig.LoadBalancingConfig
 	if sc, err = b.crParser.ParseConfig(crLBCfgJSON); err != nil {
-		b.logger.Errorf("cds_balancer: cluster_resolver config generated %v is invalid: %v", crLBCfgJSON, err)
+		b.logger.Errorf("cds_balancer: cluster_resolver config generated %v is invalid: %v", string(crLBCfgJSON), err)
 		return
 	}
 
@@ -415,14 +408,6 @@ func (b *cdsBalancer) run() {
 			switch update := u.(type) {
 			case *ccUpdate:
 				b.handleClientConnUpdate(update)
-			case *scUpdate:
-				// SubConn updates are passthrough and are simply handed over to
-				// the underlying cluster_resolver balancer.
-				if b.childLB == nil {
-					b.logger.Errorf("Received SubConn update with no child policy: %+v", update)
-					break
-				}
-				b.childLB.UpdateSubConnState(update.subConn, update.state)
 			case exitIdle:
 				if b.childLB == nil {
 					b.logger.Errorf("Received ExitIdle with no child policy")
@@ -540,11 +525,7 @@ func (b *cdsBalancer) ResolverError(err error) {
 
 // UpdateSubConnState handles subConn updates from gRPC.
 func (b *cdsBalancer) UpdateSubConnState(sc balancer.SubConn, state balancer.SubConnState) {
-	if b.closed.HasFired() {
-		b.logger.Warningf("Received subConn update after close: {%v, %v}", sc, state)
-		return
-	}
-	b.updateCh.Put(&scUpdate{subConn: sc, state: state})
+	b.logger.Errorf("UpdateSubConnState(%v, %+v) called unexpectedly", sc, state)
 }
 
 // Close cancels the CDS watch, closes the child policy and closes the
@@ -580,6 +561,8 @@ func (ccw *ccWrapper) NewSubConn(addrs []resolver.Address, opts balancer.NewSubC
 	for i, addr := range addrs {
 		newAddrs[i] = xdsinternal.SetHandshakeInfo(addr, ccw.xdsHI)
 	}
+	// No need to override opts.StateListener; just forward all calls to the
+	// child that created the SubConn.
 	return ccw.ClientConn.NewSubConn(newAddrs, opts)
 }
 
