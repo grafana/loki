@@ -6,10 +6,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
@@ -49,15 +52,41 @@ type RingIngestLimitsService struct {
 	pool *ring_client.Pool
 
 	limits Limits
+
+	// metrics
+	tenantExceedsLimits         *prometheus.CounterVec
+	tenantActiveStreams         *prometheus.GaugeVec
+	tenantDuplicateStreamsFound *prometheus.CounterVec
+	tenantRejectedStreams       *prometheus.CounterVec
 }
 
 // NewRingIngestLimitsService returns a new RingIngestLimitsClient.
-func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limits Limits, logger log.Logger) *RingIngestLimitsService {
+func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limits Limits, logger log.Logger, reg prometheus.Registerer) *RingIngestLimitsService {
 	return &RingIngestLimitsService{
 		logger: logger,
 		ring:   ring,
 		pool:   pool,
 		limits: limits,
+		tenantExceedsLimits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_exceeds_limits",
+			Help:      "The total number of exceeds limits requests per tenant.",
+		}, []string{"tenant"}),
+		tenantActiveStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_active_streams",
+			Help:      "The current number of active streams (seen within the window) per tenant.",
+		}, []string{"tenant"}),
+		tenantDuplicateStreamsFound: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_duplicate_streams_found",
+			Help:      "The total number of duplicate streams found per tenant.",
+		}, []string{"tenant"}),
+		tenantRejectedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_frontend_rejected_streams",
+			Help:      "The total number of rejected streams per tenant.",
+		}, []string{"tenant", "reason"}),
 	}
 }
 
@@ -122,7 +151,13 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		}
 
 		activeStreamsTotal += resp.Response.ActiveStreams - duplicates
+
+		if duplicates > 0 {
+			s.tenantDuplicateStreamsFound.WithLabelValues(req.Tenant).Inc()
+		}
 	}
+
+	s.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
 
 	if activeStreamsTotal < uint64(maxGlobalStreams) {
 		return &logproto.ExceedsLimitsResponse{
@@ -138,6 +173,11 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 				Reason:     RejectedStreamReasonExceedsGlobalLimit,
 			})
 		}
+	}
+
+	if len(rejectedStreams) > 0 {
+		s.tenantExceedsLimits.WithLabelValues(req.Tenant).Inc()
+		s.tenantRejectedStreams.WithLabelValues(req.Tenant, RejectedStreamReasonExceedsGlobalLimit).Add(float64(len(rejectedStreams)))
 	}
 
 	return &logproto.ExceedsLimitsResponse{

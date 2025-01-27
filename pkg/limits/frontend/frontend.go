@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -37,7 +38,7 @@ type Frontend struct {
 }
 
 // New returns a new Frontend.
-func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger log.Logger) (*Frontend, error) {
+func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	var servs []services.Service
 
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
@@ -45,7 +46,7 @@ func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger 
 	})
 
 	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, ring, factory, logger)
-	limitsSrv := NewRingIngestLimitsService(ring, pool, limits, logger)
+	limitsSrv := NewRingIngestLimitsService(ring, pool, limits, logger, reg)
 
 	f := &Frontend{
 		cfg:    cfg,
