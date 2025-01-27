@@ -27,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/log"
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/querier/pattern"
@@ -658,8 +657,8 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
-	logFmtParser := logql_log.NewLogfmtParser(false, false)
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	logFmtParser := log.NewLogfmtParser(false, false)
 
 	for i := quantity; i > 0; i-- {
 		line := fmt.Sprintf(`message="line %d" count=%d fake=true`, i, i)
@@ -707,10 +706,6 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 	args := q.Called(ctx, req)
 	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 }
-
-// func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest, _ bool) (*Tailer, error) {
-// 	return nil, errors.New("querierMock.Tail() has not been mocked")
-// }
 
 func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*stats.Stats, error) {
 	return nil, nil
