@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -82,34 +83,35 @@ type Config struct {
 	HTTPPrefix   string                 `yaml:"http_prefix" doc:"hidden"`
 	BallastBytes int                    `yaml:"ballast_bytes"`
 
-	Server               server.Config              `yaml:"server,omitempty"`
-	InternalServer       internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
-	Distributor          distributor.Config         `yaml:"distributor,omitempty"`
-	Querier              querier.Config             `yaml:"querier,omitempty"`
-	QueryScheduler       scheduler.Config           `yaml:"query_scheduler"`
-	Frontend             lokifrontend.Config        `yaml:"frontend,omitempty"`
-	QueryRange           queryrange.Config          `yaml:"query_range,omitempty"`
-	Ruler                ruler.Config               `yaml:"ruler,omitempty"`
-	RulerStorage         rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
-	IngesterClient       ingester_client.Config     `yaml:"ingester_client,omitempty"`
-	Ingester             ingester.Config            `yaml:"ingester,omitempty"`
-	BlockBuilder         blockbuilder.Config        `yaml:"block_builder,omitempty"`
-	BlockScheduler       blockscheduler.Config      `yaml:"block_scheduler,omitempty"`
-	Pattern              pattern.Config             `yaml:"pattern_ingester,omitempty"`
-	IndexGateway         indexgateway.Config        `yaml:"index_gateway"`
-	BloomBuild           bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
-	BloomGateway         bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
-	StorageConfig        storage.Config             `yaml:"storage_config,omitempty"`
-	ChunkStoreConfig     config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
-	SchemaConfig         config.SchemaConfig        `yaml:"schema_config,omitempty"`
-	CompactorConfig      compactor.Config           `yaml:"compactor,omitempty"`
-	CompactorHTTPClient  compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
-	CompactorGRPCClient  compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
-	LimitsConfig         validation.Limits          `yaml:"limits_config"`
-	Worker               worker.Config              `yaml:"frontend_worker,omitempty"`
-	TableManager         index.TableManagerConfig   `yaml:"table_manager,omitempty"`
-	MemberlistKV         memberlist.KVConfig        `yaml:"memberlist"`
-	KafkaConfig          kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
+	Server              server.Config              `yaml:"server,omitempty"`
+	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
+	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
+	Querier             querier.Config             `yaml:"querier,omitempty"`
+	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
+	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
+	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
+	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
+	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
+	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
+	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
+	BlockBuilder        blockbuilder.Config        `yaml:"block_builder,omitempty"`
+	BlockScheduler      blockscheduler.Config      `yaml:"block_scheduler,omitempty"`
+	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
+	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
+	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
+	BloomGateway        bloomgateway.Config        `yaml:"bloom_gateway,omitempty" category:"experimental"`
+	StorageConfig       storage.Config             `yaml:"storage_config,omitempty"`
+	ChunkStoreConfig    config.ChunkStoreConfig    `yaml:"chunk_store_config,omitempty"`
+	SchemaConfig        config.SchemaConfig        `yaml:"schema_config,omitempty"`
+	CompactorConfig     compactor.Config           `yaml:"compactor,omitempty"`
+	CompactorHTTPClient compactorclient.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
+	CompactorGRPCClient compactorclient.GRPCConfig `yaml:"compactor_grpc_client,omitempty"`
+	LimitsConfig        validation.Limits          `yaml:"limits_config"`
+	Worker              worker.Config              `yaml:"frontend_worker,omitempty"`
+	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
+	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
+	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
+	DataObjExplorer     explorer.Config            `yaml:"dataobj_explorer,omitempty" category:"experimental"`
 	IngestLimits         limits.Config              `yaml:"ingest_limits,omitempty" category:"experimental"`
 	IngestLimitsFrontend limits_frontend.Config     `yaml:"ingest_limits_frontend,omitempty" category:"experimental"`
 
@@ -195,6 +197,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.BlockScheduler.RegisterFlags(f)
 	c.IngestLimits.RegisterFlags(f)
 	c.IngestLimitsFrontend.RegisterFlags(f)
+	c.DataObjExplorer.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -724,7 +727,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
 	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
-
+	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
 	mm.RegisterModule(Write, nil)
@@ -766,6 +769,7 @@ func (t *Loki) setupModuleManager() error {
 		MemberlistKV:             {Server},
 		BlockBuilder:             {PartitionRing, Store, Server},
 		BlockScheduler:           {Server},
+		DataObjExplorer:          {Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
