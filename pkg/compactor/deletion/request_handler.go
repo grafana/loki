@@ -67,7 +67,6 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	var shardByInterval time.Duration
-	var deleteRequests []DeleteRequest
 	// shard delete requests only when there are line filters
 	if parsedExpr.HasFilter() {
 		var err error
@@ -78,32 +77,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		}
 	}
 
-	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
-		shardByInterval = 0
-		deleteRequests = []DeleteRequest{
-			{
-				StartTime: startTime,
-				EndTime:   endTime,
-				Query:     query,
-				UserID:    userID,
-			},
-		}
-	} else {
-		deleteRequests = make([]DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
-		// although delete request end time is inclusive, setting endTimeInclusive to true would keep 1ms gap between the splits,
-		// which might make us miss deletion of some of the logs. We set it to false to have some overlap between the request to stay safe.
-		util.ForInterval(shardByInterval, startTime.Time(), endTime.Time(), false, func(start, end time.Time) {
-			deleteRequests = append(deleteRequests,
-				DeleteRequest{
-					StartTime: model.Time(start.UnixMilli()),
-					EndTime:   model.Time(end.UnixMilli()),
-					Query:     query,
-					UserID:    userID,
-				},
-			)
-		})
-	}
-
+	deleteRequests := buildRequests(shardByInterval, query, userID, startTime, endTime)
 	createdDeleteRequests, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
@@ -391,4 +365,36 @@ func timeFromInt(in string) (int64, error) {
 	}
 
 	return util.ParseTime(in)
+}
+
+func buildRequests(shardByInterval time.Duration, query, userID string, startTime, endTime model.Time) []DeleteRequest {
+	var deleteRequests []DeleteRequest
+
+	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
+		shardByInterval = 0
+		deleteRequests = []DeleteRequest{
+			{
+				StartTime: startTime,
+				EndTime:   endTime,
+				Query:     query,
+				UserID:    userID,
+			},
+		}
+	} else {
+		deleteRequests = make([]DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
+		// although delete request end time is inclusive, setting endTimeInclusive to true would keep 1ms gap between the splits,
+		// which might make us miss deletion of some of the logs. We set it to false to have some overlap between the request to stay safe.
+		util.ForInterval(shardByInterval, startTime.Time(), endTime.Time(), false, func(start, end time.Time) {
+			deleteRequests = append(deleteRequests,
+				DeleteRequest{
+					StartTime: model.Time(start.UnixMilli()),
+					EndTime:   model.Time(end.UnixMilli()),
+					Query:     query,
+					UserID:    userID,
+				},
+			)
+		})
+	}
+
+	return deleteRequests
 }

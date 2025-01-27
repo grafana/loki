@@ -93,13 +93,14 @@ func TestDeleteRequestsStore(t *testing.T) {
 	require.NoError(t, err)
 	compareRequests(t, tc.user2Requests, user2Requests)
 
+	// caches should not be invalidated when we mark delete request as processed
 	updateGenNumber, err := tc.store.GetCacheGenerationNumber(context.Background(), user1)
 	require.NoError(t, err)
-	require.NotEqual(t, createGenNumber, updateGenNumber)
+	require.Equal(t, createGenNumber, updateGenNumber)
 
 	updateGenNumber2, err := tc.store.GetCacheGenerationNumber(context.Background(), user2)
 	require.NoError(t, err)
-	require.NotEqual(t, createGenNumber2, updateGenNumber2)
+	require.Equal(t, createGenNumber2, updateGenNumber2)
 
 	// delete the requests from the store updated previously
 	var remainingRequests []DeleteRequest
@@ -238,8 +239,6 @@ func setup(t *testing.T) *testContext {
 
 	// build the store
 	tempDir := t.TempDir()
-	//tempDir := os.TempDir()
-	fmt.Println(tempDir)
 
 	workingDir := filepath.Join(tempDir, "working-dir")
 	objectStorePath := filepath.Join(tempDir, "object-store")
