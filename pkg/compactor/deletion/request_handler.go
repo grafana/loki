@@ -106,7 +106,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
 	qr := params.Get("max_interval")
 	if qr == "" {
-		return dm.intervalFromStartAndEnd(startTime, endTime)
+		return dm.maxInterval, nil
 	}
 
 	interval, err := time.ParseDuration(qr)
@@ -123,25 +123,6 @@ func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime m
 	}
 
 	return interval, nil
-}
-
-func (dm *DeleteRequestHandler) intervalFromStartAndEnd(startTime, endTime model.Time) (time.Duration, error) {
-	interval := endTime.Sub(startTime)
-	if interval < time.Second {
-		return 0, errors.New("difference between start time and end time must be at least one second")
-	}
-
-	if dm.maxInterval == 0 {
-		return interval, nil
-	}
-	return min(interval, dm.maxInterval), nil
-}
-
-func min(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests
@@ -339,8 +320,8 @@ func endTime(params url.Values, startTime model.Time) (model.Time, error) {
 		return 0, errors.New("deletes in the future are not allowed")
 	}
 
-	if int64(startTime) > endTime {
-		return 0, errors.New("start time can't be greater than end time")
+	if int64(startTime) >= endTime {
+		return 0, errors.New("start time can't be greater than or equal to end time")
 	}
 
 	return model.Time(endTime), nil
@@ -371,7 +352,6 @@ func buildRequests(shardByInterval time.Duration, query, userID string, startTim
 	var deleteRequests []DeleteRequest
 
 	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
-		shardByInterval = 0
 		deleteRequests = []DeleteRequest{
 			{
 				StartTime: startTime,
