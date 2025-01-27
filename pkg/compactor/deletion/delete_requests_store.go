@@ -338,9 +338,7 @@ func unmarshalDeleteRequestDetails(itr index.ReadBatchIterator, req DeleteReques
 		return DeleteRequest{}, nil
 	}
 
-	if err = requestWithDetails.SetQuery(string(itr.Value())); err != nil {
-		return DeleteRequest{}, err
-	}
+	requestWithDetails.Query = string(itr.Value())
 
 	return requestWithDetails, nil
 }

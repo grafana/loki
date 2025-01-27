@@ -160,7 +160,7 @@ func TestBatchCreateGet(t *testing.T) {
 		results, err := tc.store.GetDeleteRequestGroup(context.Background(), savedRequests[0].UserID, savedRequests[0].RequestID)
 		require.NoError(t, err)
 
-		require.Equal(t, savedRequests, results)
+		compareRequests(t, savedRequests, results)
 	})
 
 	t.Run("updates a single request with a new status", func(t *testing.T) {
@@ -204,7 +204,7 @@ func compareRequests(t *testing.T, expected []DeleteRequest, actual []DeleteRequ
 		return actual[i].RequestID < actual[j].RequestID
 	})
 	for i, deleteRequest := range actual {
-		require.Equal(t, expected[i], deleteRequest)
+		require.True(t, requestsAreEqual(expected[i], deleteRequest))
 	}
 }
 
