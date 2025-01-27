@@ -896,9 +896,9 @@ dataobj_explorer:
   # CLI flag: -dataobj-explorer.storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
 
-# The limits_config block configures global and per-tenant limits in Loki. The
-# values here can be overridden in the `overrides` section of the runtime_config
-# file
+# The limits_config block configures global and per-tenant limits and other
+# operational settings that can be changed at runtime. The values here can be
+# overridden at the `overrides` section of the `runtime_config` file.
 [limits_config: <limits_config>]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
@@ -3302,7 +3302,7 @@ pool_config:
 
 ### limits_config
 
-The `limits_config` block configures global and per-tenant limits in Loki. The values here can be overridden in the `overrides` section of the runtime_config file
+The `limits_config` block configures global and per-tenant limits and other operational settings that can be changed at runtime. The values here can be overridden at the `overrides` section of the `runtime_config` file.
 
 ```yaml
 # Whether the ingestion rate limit should be applied individually to each
