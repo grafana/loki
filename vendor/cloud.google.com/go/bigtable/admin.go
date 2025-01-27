@@ -47,6 +47,8 @@ import (
 const adminAddr = "bigtableadmin.googleapis.com:443"
 const mtlsAdminAddr = "bigtableadmin.mtls.googleapis.com:443"
 
+var errExpiryMissing = errors.New("WithExpiry is a required option")
+
 // ErrPartiallyUnavailable is returned when some locations (clusters) are
 // unavailable. Both partial results (retrieved from available locations)
 // and the error are returned when this exception occurred.
@@ -2150,13 +2152,68 @@ func (ac *AdminClient) RestoreTableFrom(ctx context.Context, sourceInstance, tab
 	return longrunning.InternalNewOperation(ac.lroClient, op).Wait(ctx, &resp)
 }
 
+type backupOptions struct {
+	backupType        *BackupType
+	hotToStandardTime *time.Time
+	expireTime        *time.Time
+}
+
+// BackupOption can be used to specify parameters for backup operations.
+type BackupOption func(*backupOptions)
+
+// WithHotToStandardBackup option can be used to create backup with
+// type [BackupTypeHot] and specify time at which the hot backup will be
+// converted to a standard backup. Once the 'hotToStandardTime' has passed,
+// Cloud Bigtable will convert the hot backup to a standard backup.
+// This value must be greater than the backup creation time by at least 24 hours
+func WithHotToStandardBackup(hotToStandardTime time.Time) BackupOption {
+	return func(bo *backupOptions) {
+		btHot := BackupTypeHot
+		bo.backupType = &btHot
+		bo.hotToStandardTime = &hotToStandardTime
+	}
+}
+
+// WithExpiry option can be used to create backup
+// that expires after time 'expireTime'.
+// Once the 'expireTime' has passed, Cloud Bigtable will delete the backup.
+func WithExpiry(expireTime time.Time) BackupOption {
+	return func(bo *backupOptions) {
+		bo.expireTime = &expireTime
+	}
+}
+
+// WithHotBackup option can be used to create backup
+// with type [BackupTypeHot]
+func WithHotBackup() BackupOption {
+	return func(bo *backupOptions) {
+		btHot := BackupTypeHot
+		bo.backupType = &btHot
+	}
+}
+
 // CreateBackup creates a new backup in the specified cluster from the
 // specified source table with the user-provided expire time.
 func (ac *AdminClient) CreateBackup(ctx context.Context, table, cluster, backup string, expireTime time.Time) error {
+	return ac.CreateBackupWithOptions(ctx, table, cluster, backup, WithExpiry(expireTime))
+}
+
+// CreateBackupWithOptions is similar to CreateBackup but lets the user specify additional options.
+func (ac *AdminClient) CreateBackupWithOptions(ctx context.Context, table, cluster, backup string, opts ...BackupOption) error {
 	ctx = mergeOutgoingMetadata(ctx, ac.md)
 	prefix := ac.instancePrefix()
 
-	parsedExpireTime := timestamppb.New(expireTime)
+	o := backupOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+
+	if o.expireTime == nil {
+		return errExpiryMissing
+	}
+	parsedExpireTime := timestamppb.New(*o.expireTime)
 
 	req := &btapb.CreateBackupRequest{
 		Parent:   prefix + "/clusters/" + cluster,
@@ -2167,6 +2224,12 @@ func (ac *AdminClient) CreateBackup(ctx context.Context, table, cluster, backup 
 		},
 	}
 
+	if o.backupType != nil {
+		req.Backup.BackupType = btapb.Backup_BackupType(*o.backupType)
+	}
+	if o.hotToStandardTime != nil {
+		req.Backup.HotToStandardTime = timestamppb.New(*o.hotToStandardTime)
+	}
 	op, err := ac.tClient.CreateBackup(ctx, req)
 	if err != nil {
 		return err
@@ -2263,17 +2326,29 @@ func newBackupInfo(backup *btapb.Backup) (*BackupInfo, error) {
 		return nil, fmt.Errorf("invalid expireTime: %v", err)
 	}
 	expireTime := backup.GetExpireTime().AsTime()
+
+	var htsTimePtr *time.Time
+	if backup.GetHotToStandardTime() != nil {
+		if err := backup.GetHotToStandardTime().CheckValid(); err != nil {
+			return nil, fmt.Errorf("invalid HotToStandardTime: %v", err)
+		}
+		htsTime := backup.GetHotToStandardTime().AsTime()
+		htsTimePtr = &htsTime
+	}
+
 	encryptionInfo := newEncryptionInfo(backup.EncryptionInfo)
 	bi := BackupInfo{
-		Name:           name,
-		SourceTable:    tableID,
-		SourceBackup:   backup.SourceBackup,
-		SizeBytes:      backup.SizeBytes,
-		StartTime:      startTime,
-		EndTime:        endTime,
-		ExpireTime:     expireTime,
-		State:          backup.State.String(),
-		EncryptionInfo: encryptionInfo,
+		Name:              name,
+		SourceTable:       tableID,
+		SourceBackup:      backup.SourceBackup,
+		SizeBytes:         backup.SizeBytes,
+		StartTime:         startTime,
+		EndTime:           endTime,
+		ExpireTime:        expireTime,
+		State:             backup.State.String(),
+		EncryptionInfo:    encryptionInfo,
+		BackupType:        BackupType(backup.GetBackupType()),
+		HotToStandardTime: htsTimePtr,
 	}
 
 	return &bi, nil
@@ -2303,6 +2378,25 @@ func (it *BackupIterator) Next() (*BackupInfo, error) {
 	return item, nil
 }
 
+// BackupType denotes the type of the backup.
+type BackupType int32
+
+const (
+	// BackupTypeUnspecified denotes that backup type has not been specified.
+	BackupTypeUnspecified BackupType = 0
+
+	// BackupTypeStandard is the default type for Cloud Bigtable managed backups. Supported for
+	// backups created in both HDD and SSD instances. Requires optimization when
+	// restored to a table in an SSD instance.
+	BackupTypeStandard BackupType = 1
+
+	// BackupTypeHot is a backup type with faster restore to SSD performance. Only supported for
+	// backups created in SSD instances. A new SSD table restored from a hot
+	// backup reaches production performance more quickly than a standard
+	// backup.
+	BackupTypeHot BackupType = 2
+)
+
 // BackupInfo contains backup metadata. This struct is read-only.
 type BackupInfo struct {
 	Name           string
@@ -2314,6 +2408,15 @@ type BackupInfo struct {
 	ExpireTime     time.Time
 	State          string
 	EncryptionInfo *EncryptionInfo
+	BackupType     BackupType
+
+	// The time at which the hot backup will be converted to a standard backup.
+	// Once the `hot_to_standard_time` has passed, Cloud Bigtable will convert the
+	// hot backup to a standard backup. This value must be greater than the backup
+	// creation time by at least 24 hours
+	//
+	// This field only applies for hot backups.
+	HotToStandardTime *time.Time
 }
 
 // BackupInfo gets backup metadata.
@@ -2367,6 +2470,38 @@ func (ac *AdminClient) UpdateBackup(ctx context.Context, cluster, backup string,
 		},
 		UpdateMask: updateMask,
 	}
+	_, err := ac.tClient.UpdateBackup(ctx, req)
+	return err
+}
+
+// UpdateBackupHotToStandardTime updates the HotToStandardTime of a hot backup.
+func (ac *AdminClient) UpdateBackupHotToStandardTime(ctx context.Context, cluster, backup string, hotToStandardTime time.Time) error {
+	return ac.updateBackupHotToStandardTime(ctx, cluster, backup, &hotToStandardTime)
+}
+
+// UpdateBackupRemoveHotToStandardTime removes the HotToStandardTime of a hot backup.
+func (ac *AdminClient) UpdateBackupRemoveHotToStandardTime(ctx context.Context, cluster, backup string) error {
+	return ac.updateBackupHotToStandardTime(ctx, cluster, backup, nil)
+}
+
+func (ac *AdminClient) updateBackupHotToStandardTime(ctx context.Context, cluster, backup string, hotToStandardTime *time.Time) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	backupPath := ac.backupPath(cluster, ac.instance, backup)
+
+	updateMask := &field_mask.FieldMask{}
+	updateMask.Paths = append(updateMask.Paths, "hot_to_standard_time")
+
+	req := &btapb.UpdateBackupRequest{
+		Backup: &btapb.Backup{
+			Name: backupPath,
+		},
+		UpdateMask: updateMask,
+	}
+
+	if hotToStandardTime != nil {
+		req.Backup.HotToStandardTime = timestamppb.New(*hotToStandardTime)
+	}
+
 	_, err := ac.tClient.UpdateBackup(ctx, req)
 	return err
 }
