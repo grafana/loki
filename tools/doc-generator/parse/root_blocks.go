@@ -137,7 +137,7 @@ var (
 		{
 			Name:       "limits_config",
 			StructType: []reflect.Type{reflect.TypeOf(runtime.Limits{})},
-			Desc:       "The limits_config block configures global and per-tenant limits and other operational settings that can be changed at runtime. The values here can be overridden at the `overrides` section of the `runtime_config` file.",
+			Desc:       "The limits_config block configures global and per-tenant limits and other operational settings that can be changed at runtime. The values here can be overridden in the `overrides` section of the `runtime_config` file.",
 		},
 		{
 			Name:       "frontend_worker",
