@@ -3812,19 +3812,10 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# Experimental. The shard size defines how many bloom gateways should be used by
-# a tenant for querying.
-# CLI flag: -bloom-gateway.shard-size
-[bloom_gateway_shard_size: <int> | default = 0]
-
 # Experimental. Whether to use the bloom gateway component in the read path to
 # filter chunks.
 # CLI flag: -bloom-gateway.enable-filtering
 [bloom_gateway_enable_filtering: <boolean> | default = false]
-
-# Experimental. Interval for computing the cache key in the Bloom Gateway.
-# CLI flag: -bloom-gateway.cache-key-interval
-[bloom_gateway_cache_key_interval: <duration> | default = 15m]
 
 # Experimental. Maximum number of builders to use when building blooms. 0 allows
 # unlimited builders.

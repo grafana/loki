@@ -204,9 +204,7 @@ type Limits struct {
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 
-	BloomGatewayShardSize        int           `yaml:"bloom_gateway_shard_size" json:"bloom_gateway_shard_size" category:"experimental"`
-	BloomGatewayEnabled          bool          `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
-	BloomGatewayCacheKeyInterval time.Duration `yaml:"bloom_gateway_cache_key_interval" json:"bloom_gateway_cache_key_interval" category:"experimental"`
+	BloomGatewayEnabled bool `yaml:"bloom_gateway_enable_filtering" json:"bloom_gateway_enable_filtering" category:"experimental"`
 
 	BloomBuildMaxBuilders       int           `yaml:"bloom_build_max_builders" json:"bloom_build_max_builders" category:"experimental"`
 	BloomBuildTaskMaxRetries    int           `yaml:"bloom_build_task_max_retries" json:"bloom_build_task_max_retries" category:"experimental"`
@@ -411,9 +409,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 
-	f.IntVar(&l.BloomGatewayShardSize, "bloom-gateway.shard-size", 0, "Experimental. The shard size defines how many bloom gateways should be used by a tenant for querying.")
 	f.BoolVar(&l.BloomGatewayEnabled, "bloom-gateway.enable-filtering", false, "Experimental. Whether to use the bloom gateway component in the read path to filter chunks.")
-	f.DurationVar(&l.BloomGatewayCacheKeyInterval, "bloom-gateway.cache-key-interval", 15*time.Minute, "Experimental. Interval for computing the cache key in the Bloom Gateway.")
 
 	f.StringVar(&l.BloomBlockEncoding, "bloom-build.block-encoding", "none", "Experimental. Compression algorithm for bloom block pages.")
 	f.BoolVar(&l.BloomPrefetchBlocks, "bloom-build.prefetch-blocks", false, "Experimental. Prefetch blocks on bloom gateways as soon as they are built.")
@@ -1054,14 +1050,6 @@ func (o *Overrides) VolumeMaxSeries(userID string) int {
 
 func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
-}
-
-func (o *Overrides) BloomGatewayShardSize(userID string) int {
-	return o.getOverridesForUser(userID).BloomGatewayShardSize
-}
-
-func (o *Overrides) BloomGatewayCacheKeyInterval(userID string) time.Duration {
-	return o.getOverridesForUser(userID).BloomGatewayCacheKeyInterval
 }
 
 func (o *Overrides) BloomGatewayEnabled(userID string) bool {
