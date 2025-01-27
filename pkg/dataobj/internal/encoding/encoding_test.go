@@ -81,7 +81,7 @@ func TestStreams(t *testing.T) {
 	})
 
 	t.Run("Metrics", func(t *testing.T) {
-		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf.Bytes()))
+		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 
 		metrics := encoding.NewMetrics()
 		require.NoError(t, metrics.Register(prometheus.NewRegistry()))
@@ -89,7 +89,7 @@ func TestStreams(t *testing.T) {
 	})
 
 	t.Run("Decode", func(t *testing.T) {
-		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf.Bytes()))
+		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 		sections, err := dec.Sections(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, sections, 1)
@@ -161,7 +161,7 @@ func TestLogs(t *testing.T) {
 	})
 
 	t.Run("Decode", func(t *testing.T) {
-		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf.Bytes()))
+		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 		sections, err := dec.Sections(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, sections, 1)

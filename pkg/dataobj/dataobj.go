@@ -333,7 +333,7 @@ func (b *Builder) buildObject() error {
 	// We pass context.Background() below to avoid allowing building an object to
 	// time out; timing out on build would discard anything we built and would
 	// cause data loss.
-	dec := encoding.ReadSeekerDecoder(bytes.NewReader(b.flushBuffer.Bytes()))
+	dec := encoding.ReaderAtDecoder(bytes.NewReader(b.flushBuffer.Bytes()), int64(b.flushBuffer.Len()))
 	return b.metrics.encoding.Observe(context.Background(), dec)
 }
 
