@@ -33,15 +33,15 @@ var (
 	}, []string{"operation", "status_code"})
 )
 
-// ClientConfig contains the config for an ingest-limits-frontend client.
-type ClientConfig struct {
+// Config contains the config for an ingest-limits-frontend client.
+type Config struct {
 	GRPCClientConfig             grpcclient.Config              `yaml:"grpc_client_config" doc:"description=Configures client gRPC connections to limits service."`
 	PoolConfig                   PoolConfig                     `yaml:"pool_config,omitempty" doc:"description=Configures client gRPC connections pool to limits service."`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
 }
 
-func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".limits-frontend-client", f)
 	cfg.PoolConfig.RegisterFlagsWithPrefix(prefix, f)
 }
@@ -68,7 +68,7 @@ type IngestLimitsFrontendClient struct {
 
 // NewIngestLimitsFrontendClient returns a new IngestLimitsFrontendClient for the
 // specified ingest-limits-frontend.
-func NewIngestLimitsFrontendClient(cfg ClientConfig, addr string) (*IngestLimitsFrontendClient, error) {
+func NewIngestLimitsFrontendClient(cfg Config, addr string) (*IngestLimitsFrontendClient, error) {
 	opts := []grpc.DialOption{
 		grpc.WithDefaultCallOptions(cfg.GRPCClientConfig.CallOptions()...),
 	}
@@ -89,8 +89,8 @@ func NewIngestLimitsFrontendClient(cfg ClientConfig, addr string) (*IngestLimits
 	}, nil
 }
 
-// getInterceptors returns the gRPC interceptors for the given ClientConfig.
-func getGRPCInterceptors(cfg *ClientConfig) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
+// getInterceptors returns the gRPC interceptors for the given Config.
+func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.StreamClientInterceptor) {
 	var (
 		unaryInterceptors  []grpc.UnaryClientInterceptor
 		streamInterceptors []grpc.StreamClientInterceptor
