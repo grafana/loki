@@ -229,7 +229,7 @@ type Limits struct {
 	BlockIngestionUntil      dskit_flagext.Time         `yaml:"block_ingestion_until" json:"block_ingestion_until"`
 	BlockIngestionStatusCode int                        `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	EnforcedLabels           []string                   `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
-	PolicyStreamMapping      map[string]*PriorityStream `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority."`
+	PolicyStreamMapping      map[string]*PriorityStream `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental."`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
