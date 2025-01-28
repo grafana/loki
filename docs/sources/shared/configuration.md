@@ -2368,6 +2368,29 @@ otlp_config:
 # Enable writes to Ingesters during Push requests. Defaults to true.
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
+
+tenant_topic:
+  # Enable the tenant topic tee
+  # CLI flag: -distributor.tenant-topic-tee.enabled
+  [enabled: <boolean> | default = false]
+
+  # Prefix to prepend to tenant IDs to form the final Kafka topic name
+  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
+  [topicprefix: <string> | default = "loki.tenant."]
+
+  # Maximum number of bytes that can be buffered before producing to Kafka
+  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
+  [maxbufferedbytes: <int> | default = 100MiB]
+
+  # Maximum amount of time to wait before sending a batch to Kafka
+  # CLI flag: -distributor.tenant-topic-tee.batch-timeout
+  [batchtimeout: <duration> | default = 1s]
+
+  # Maximum size of a single Kafka record in bytes
+  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
+  [maxrecordsizebytes: <int> | default = 15MiB249KiB]
+
+  [strategy: <string> | default = ""]
 ```
 
 ### etcd
