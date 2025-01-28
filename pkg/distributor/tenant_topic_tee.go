@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kadm"
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -76,9 +78,9 @@ func (r *SimplePartitionResolver) Resolve(_ context.Context, tenant string, stre
 // 4. Returns the topic name with partition 0 (since each topic has exactly one partition)
 type ShardedPartitionResolver struct {
 	sync.RWMutex
-	admin      *kadm.Client
+	admin       *kadm.Client
 	topicPrefix string
-	
+
 	// tenantShards maps tenant IDs to their active shards
 	// map[tenant]map[shard]struct{}
 	tenantShards map[string]map[int32]struct{}
@@ -87,8 +89,8 @@ type ShardedPartitionResolver struct {
 // NewShardedPartitionResolver creates a new ShardedPartitionResolver
 func NewShardedPartitionResolver(kafkaClient *kgo.Client, topicPrefix string) *ShardedPartitionResolver {
 	return &ShardedPartitionResolver{
-		admin:       kadm.NewClient(kafkaClient),
-		topicPrefix: topicPrefix,
+		admin:        kadm.NewClient(kafkaClient),
+		topicPrefix:  topicPrefix,
 		tenantShards: make(map[string]map[int32]struct{}),
 	}
 }
@@ -124,8 +126,24 @@ func (r *ShardedPartitionResolver) Resolve(ctx context.Context, tenant string, s
 // createShard creates a new topic for the given tenant and shard.
 // It handles the case where the topic already exists.
 func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant string, shard int32) error {
-	// TODO: implement topic creation with kadm client
-	
+	topic := r.topicName(tenant, shard)
+	replicationFactor := 2 // TODO: expose RF
+
+	// TODO(owen-d): ensure this only runs once
+	// at a time.
+	_, err := r.admin.CreateTopic(
+		ctx,
+		1,
+		int16(replicationFactor),
+		nil,
+		topic,
+	)
+
+	// Topic creation errors are returned in the response
+	if err != nil && !errors.Is(err, kerr.TopicAlreadyExists) {
+		return fmt.Errorf("failed to create topic %s: %w", topic, err)
+	}
+
 	// Update cache under write lock
 	r.Lock()
 	defer r.Unlock()
@@ -136,7 +154,7 @@ func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant strin
 		r.tenantShards[tenant] = shards
 	}
 	shards[shard] = struct{}{}
-	
+
 	return nil
 }
 
