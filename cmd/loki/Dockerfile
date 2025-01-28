@@ -1,4 +1,5 @@
 ARG GO_VERSION=1.23
+ARG IMAGE_TAG
 
 # UI build stage
 FROM node:20-alpine AS ui-builder
@@ -12,7 +13,7 @@ FROM golang:${GO_VERSION} AS build
 COPY . /src/loki
 COPY --from=ui-builder /src/loki/pkg/dataobj/explorer/dist /src/loki/pkg/dataobj/explorer/dist
 WORKDIR /src/loki
-RUN make clean && make BUILD_IN_CONTAINER=false loki
+RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} loki
 
 # Final stage
 FROM gcr.io/distroless/static:debug

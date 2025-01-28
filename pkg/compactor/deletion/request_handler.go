@@ -67,7 +67,6 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	var shardByInterval time.Duration
-	var deleteRequests []DeleteRequest
 	// shard delete requests only when there are line filters
 	if parsedExpr.HasFilter() {
 		var err error
@@ -78,32 +77,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 		}
 	}
 
-	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
-		shardByInterval = 0
-		deleteRequests = []DeleteRequest{
-			{
-				StartTime: startTime,
-				EndTime:   endTime,
-				Query:     query,
-				UserID:    userID,
-			},
-		}
-	} else {
-		deleteRequests = make([]DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
-		// although delete request end time is inclusive, setting endTimeInclusive to true would keep 1ms gap between the splits,
-		// which might make us miss deletion of some of the logs. We set it to false to have some overlap between the request to stay safe.
-		util.ForInterval(shardByInterval, startTime.Time(), endTime.Time(), false, func(start, end time.Time) {
-			deleteRequests = append(deleteRequests,
-				DeleteRequest{
-					StartTime: model.Time(start.UnixMilli()),
-					EndTime:   model.Time(end.UnixMilli()),
-					Query:     query,
-					UserID:    userID,
-				},
-			)
-		})
-	}
-
+	deleteRequests := buildRequests(shardByInterval, query, userID, startTime, endTime)
 	createdDeleteRequests, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
@@ -132,7 +106,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
 	qr := params.Get("max_interval")
 	if qr == "" {
-		return dm.intervalFromStartAndEnd(startTime, endTime)
+		return dm.maxInterval, nil
 	}
 
 	interval, err := time.ParseDuration(qr)
@@ -149,25 +123,6 @@ func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime m
 	}
 
 	return interval, nil
-}
-
-func (dm *DeleteRequestHandler) intervalFromStartAndEnd(startTime, endTime model.Time) (time.Duration, error) {
-	interval := endTime.Sub(startTime)
-	if interval < time.Second {
-		return 0, errors.New("difference between start time and end time must be at least one second")
-	}
-
-	if dm.maxInterval == 0 {
-		return interval, nil
-	}
-	return min(interval, dm.maxInterval), nil
-}
-
-func min(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // GetAllDeleteRequestsHandler handles get all delete requests
@@ -365,8 +320,8 @@ func endTime(params url.Values, startTime model.Time) (model.Time, error) {
 		return 0, errors.New("deletes in the future are not allowed")
 	}
 
-	if int64(startTime) > endTime {
-		return 0, errors.New("start time can't be greater than end time")
+	if int64(startTime) >= endTime {
+		return 0, errors.New("start time can't be greater than or equal to end time")
 	}
 
 	return model.Time(endTime), nil
@@ -391,4 +346,35 @@ func timeFromInt(in string) (int64, error) {
 	}
 
 	return util.ParseTime(in)
+}
+
+func buildRequests(shardByInterval time.Duration, query, userID string, startTime, endTime model.Time) []DeleteRequest {
+	var deleteRequests []DeleteRequest
+
+	if shardByInterval == 0 || shardByInterval >= endTime.Sub(startTime) {
+		deleteRequests = []DeleteRequest{
+			{
+				StartTime: startTime,
+				EndTime:   endTime,
+				Query:     query,
+				UserID:    userID,
+			},
+		}
+	} else {
+		deleteRequests = make([]DeleteRequest, 0, endTime.Sub(startTime)/shardByInterval)
+		// although delete request end time is inclusive, setting endTimeInclusive to true would keep 1ms gap between the splits,
+		// which might make us miss deletion of some of the logs. We set it to false to have some overlap between the request to stay safe.
+		util.ForInterval(shardByInterval, startTime.Time(), endTime.Time(), false, func(start, end time.Time) {
+			deleteRequests = append(deleteRequests,
+				DeleteRequest{
+					StartTime: model.Time(start.UnixMilli()),
+					EndTime:   model.Time(end.UnixMilli()),
+					Query:     query,
+					UserID:    userID,
+				},
+			)
+		})
+	}
+
+	return deleteRequests
 }

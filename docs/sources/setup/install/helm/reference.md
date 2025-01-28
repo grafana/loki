@@ -10823,7 +10823,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.29.0"
+"1.29.1"
 </pre>
 </td>
 		</tr>

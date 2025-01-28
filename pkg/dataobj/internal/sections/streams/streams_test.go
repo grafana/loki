@@ -51,7 +51,7 @@ func Test(t *testing.T) {
 		},
 	}
 
-	dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf))
+	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf), int64(len(buf)))
 
 	var actual []streams.Stream
 	for result := range streams.Iter(context.Background(), dec) {
