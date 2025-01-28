@@ -1,5 +1,6 @@
 ARG GO_VERSION=1.23
 ARG IMAGE_TAG
+
 FROM golang:${GO_VERSION}-bookworm as build
 
 COPY . /src/loki
