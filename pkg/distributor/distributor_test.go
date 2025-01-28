@@ -44,7 +44,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	fe "github.com/grafana/loki/v3/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
@@ -1227,7 +1226,6 @@ func BenchmarkShardStream(b *testing.B) {
 func Benchmark_SortLabelsOnPush(b *testing.B) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
-	retentionHours := util.RetentionHours(time.Duration(limits.RetentionPeriod))
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	d := distributors[0]
 	request := makeWriteRequest(10, 10)
@@ -1235,7 +1233,11 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
+<<<<<<< HEAD
 		_, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, retentionHours)
+=======
+		_, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream)
+>>>>>>> 7d526dd9e6ddd1e704080cfab6c1e66b94223ee1
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1275,7 +1277,6 @@ func TestParseStreamLabels(t *testing.T) {
 		},
 	} {
 		limits := tc.generateLimits()
-		retentionHours := util.RetentionHours(time.Duration(limits.RetentionPeriod))
 		distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 		d := distributors[0]
 
@@ -1283,8 +1284,9 @@ func TestParseStreamLabels(t *testing.T) {
 
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, _, hash, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			}, retentionHours)
+			})
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
