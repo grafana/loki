@@ -9,9 +9,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/efficientgo/core/errcapture"
+	"github.com/gofrs/flock"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 
@@ -270,24 +270,25 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) (err erro
 	return nil
 }
 
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.Reader, error)) error {
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
 	file := filepath.Join(b.rootDir, name)
-	var before time.Time
-	stat, err := os.Stat(file)
-	if err != nil && !os.IsNotExist(err) {
-		return errors.Wrapf(err, "stat %s", file)
-	} else if os.IsNotExist(err) {
-		before = time.Time{}
-	} else {
-		before = stat.ModTime()
+
+	// Acquire a file lock before modifiying as file-systems don't support conditional writes like cloud providers.
+	fileLock := flock.New(file + ".lock")
+	locked, err := fileLock.TryLock()
+	if err != nil {
+		return err
 	}
+	if !locked {
+		return errors.New("file is locked by another process")
+	}
+	defer fileLock.Unlock()
 
 	var r io.ReadCloser
-	if !before.IsZero() {
-		r, err = os.Open(file)
-		if err != nil {
-			return err
-		}
+	r, err = os.Open(file)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	} else if err == nil {
 		defer r.Close()
 	}
 
@@ -300,21 +301,6 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadC
 	if err != nil {
 		return err
 	}
-
-	var after time.Time
-	stat, err = os.Stat(file)
-	if err != nil && !os.IsNotExist(err) {
-		return errors.Wrapf(err, "stat %s", file)
-	} else if os.IsNotExist(err) {
-		after = time.Time{}
-	} else {
-		after = stat.ModTime()
-	}
-
-	if after.After(before) {
-		return errors.New("file might have changed")
-	}
-	// Race time: Write it quick
 
 	return os.WriteFile(file, content, 0600)
 }

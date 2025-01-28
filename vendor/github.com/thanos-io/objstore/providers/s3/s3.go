@@ -546,10 +546,10 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return b.upload(ctx, name, r, "")
+	return b.upload(ctx, name, r, "", false)
 }
 
-func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag string) error {
+func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag string, requireNewObject bool) error {
 	sse, err := b.getServerSideEncryption(ctx)
 	if err != nil {
 		return err
@@ -586,7 +586,11 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 		NumThreads: 4,
 	}
 	if etag != "" {
-		putOpts.SetMatchETag(etag)
+		if requireNewObject {
+			putOpts.SetMatchETagExcept(etag)
+		} else {
+			putOpts.SetMatchETag(etag)
+		}
 	}
 
 	if _, err := b.client.PutObject(
@@ -604,10 +608,13 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 }
 
 // Upload the contents of the reader as an object into the bucket.
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.Reader, error)) error {
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	var requireNewObject bool
 	originalContent, err := b.getRange(ctx, name, 0, -1)
 	if err != nil && !b.IsObjNotFoundErr(err) {
 		return err
+	} else if b.IsObjNotFoundErr(err) {
+		requireNewObject = true
 	}
 
 	// Call work function to get a new version of the file
@@ -621,7 +628,7 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadC
 		return err
 	}
 
-	return b.upload(ctx, name, newContent, stats.ETag)
+	return b.upload(ctx, name, newContent, stats.ETag, requireNewObject)
 }
 
 // Attributes returns information about the specified object.

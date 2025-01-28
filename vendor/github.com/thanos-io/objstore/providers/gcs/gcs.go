@@ -340,16 +340,19 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // Upload writes the file specified in src to remote GCS location specified as target.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	return b.upload(ctx, name, r, 0)
+	return b.upload(ctx, name, r, 0, false)
 }
 
 // Upload writes the file specified in src to remote GCS location specified as target.
-func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generation int64) error {
+func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generation int64, requireNewObject bool) error {
 	o := b.bkt.Object(name)
 
 	var w *storage.Writer
 	if generation != 0 {
 		o = o.If(storage.Conditions{GenerationMatch: generation})
+	}
+	if requireNewObject {
+		o = o.If(storage.Conditions{DoesNotExist: true})
 	}
 	w = o.NewWriter(ctx)
 
@@ -365,28 +368,31 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generatio
 	return w.Close()
 }
 
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.Reader, error)) error {
-	// Get the current object if it exists
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	var mustNotExist bool
+	var generation int64
+
+	// Get the current object
 	storageReader, err := b.get(ctx, name)
 	if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
 		return err
+	} else if errors.Is(err, storage.ErrObjectNotExist) {
+		mustNotExist = true
 	}
 
 	// If object exists, ensure we close the reader when done
-	var generation int64
 	if storageReader != nil {
 		generation = storageReader.Attrs.Generation
 		defer storageReader.Close()
 	}
 
-	// Call user function with wrapped reader - will be empty reader if object didn't exist
 	newContent, err := f(wrapReader(storageReader))
 	if err != nil {
 		return err
 	}
 
-	// Upload with generation=0 for new objects, or existing generation for updates
-	return b.upload(ctx, name, newContent, generation)
+	// Upload with the previous generation, or mustNotExist for new objects
+	return b.upload(ctx, name, newContent, generation, mustNotExist)
 }
 
 func wrapReader(r *storage.Reader) io.ReadCloser {

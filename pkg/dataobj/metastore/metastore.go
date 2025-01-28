@@ -95,7 +95,7 @@ func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult data
 		metastorePath := fmt.Sprintf("tenant-%s/metastore/%s.store", m.tenantID, metastoreWindow.Format(time.RFC3339))
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
-			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.Reader, error) {
+			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
 				buf, err := io.ReadAll(existing)
 				if err != nil {
 					return nil, err
