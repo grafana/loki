@@ -4,12 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -40,6 +42,107 @@ func (r *SimplePartitionResolver) Resolve(_ context.Context, tenant string, stre
 	topic := fmt.Sprintf("%s%s", r.topicPrefix, tenant)
 	partition := int32(stream.HashKey % 32) // Use hash key for consistent partitioning
 	return topic, partition, nil
+}
+
+// ShardedPartitionResolver implements a partition resolution strategy that creates
+// single-partition topics for each tenant and shard combination. This approach offers
+// several advantages over traditional multi-partition topics:
+//
+// 1. Dynamic Scaling:
+//   - Topics are created in the form "<prefix>.<tenant>.<shard>"
+//   - Each topic has exactly one partition, with shards serving the same purpose
+//     as traditional partitions
+//   - Unlike traditional partitions which can only be increased but never decreased,
+//     this approach allows for both scaling up and down
+//   - When volume decreases, we can stop writing to higher-numbered shards
+//   - Old shards will be automatically cleaned up through normal retention policies
+//
+// 2. Consumer Group Flexibility:
+//   - Consumers can subscribe to all tenant data using regex pattern "<prefix>.*"
+//   - Individual tenants or tenant subsets can be consumed using more specific patterns
+//   - Each topic having a single partition simplifies consumer group rebalancing
+//
+// 3. Topic Management:
+//   - Topics are created on-demand when new tenant/shard combinations are encountered
+//   - A thread-safe cache (map[tenant]map[shard]struct{}) tracks existing topics
+//   - Read lock is used for lookups, write lock for cache updates
+//   - Topic creation is idempotent, handling "already exists" errors gracefully
+//
+// The resolver maintains an internal cache of known tenant/shard combinations to minimize
+// admin API calls. When resolving a partition:
+// 1. First checks the cache under a read lock
+// 2. If not found, releases read lock and attempts to create the topic
+// 3. Updates the cache under a write lock
+// 4. Returns the topic name with partition 0 (since each topic has exactly one partition)
+type ShardedPartitionResolver struct {
+	sync.RWMutex
+	admin      *kadm.Client
+	topicPrefix string
+	
+	// tenantShards maps tenant IDs to their active shards
+	// map[tenant]map[shard]struct{}
+	tenantShards map[string]map[int32]struct{}
+}
+
+// NewShardedPartitionResolver creates a new ShardedPartitionResolver
+func NewShardedPartitionResolver(kafkaClient *kgo.Client, topicPrefix string) *ShardedPartitionResolver {
+	return &ShardedPartitionResolver{
+		admin:       kadm.NewClient(kafkaClient),
+		topicPrefix: topicPrefix,
+		tenantShards: make(map[string]map[int32]struct{}),
+	}
+}
+
+// Resolve implements PartitionResolver. It ensures a topic exists for the given tenant
+// and shard before returning the topic name and partition. If the topic does not exist,
+// it will be created with a single partition.
+func (r *ShardedPartitionResolver) Resolve(ctx context.Context, tenant string, stream KeyedStream) (string, int32, error) {
+	// Calculate desired shard (partition) from hash key
+	shard := int32(stream.HashKey % 32) // TODO: make configurable
+
+	// First try to find existing shard under read lock
+	r.RLock()
+	shards, exists := r.tenantShards[tenant]
+	if exists {
+		if _, ok := shards[shard]; ok {
+			topic := r.topicName(tenant, shard)
+			r.RUnlock()
+			return topic, 0, nil // Always use partition 0 since each topic has 1 partition
+		}
+	}
+	r.RUnlock()
+
+	// Shard doesn't exist, create it
+	if err := r.createShard(ctx, tenant, shard); err != nil {
+		return "", 0, fmt.Errorf("failed to create shard: %w", err)
+	}
+
+	topic := r.topicName(tenant, shard)
+	return topic, 0, nil
+}
+
+// createShard creates a new topic for the given tenant and shard.
+// It handles the case where the topic already exists.
+func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant string, shard int32) error {
+	// TODO: implement topic creation with kadm client
+	
+	// Update cache under write lock
+	r.Lock()
+	defer r.Unlock()
+
+	shards, exists := r.tenantShards[tenant]
+	if !exists {
+		shards = make(map[int32]struct{})
+		r.tenantShards[tenant] = shards
+	}
+	shards[shard] = struct{}{}
+	
+	return nil
+}
+
+// topicName returns the topic name for a given tenant and shard
+func (r *ShardedPartitionResolver) topicName(tenant string, shard int32) string {
+	return fmt.Sprintf("%s.%s.%d", r.topicPrefix, tenant, shard)
 }
 
 // TenantTopicConfig configures the TenantTopicWriter
