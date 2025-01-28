@@ -112,6 +112,7 @@ const (
 	IngestLimits             = "ingest-limits"
 	IngestLimitsRing         = "ingest-limits-ring"
 	IngestLimitsFrontend     = "ingest-limits-frontend"
+	IngestLimitsFrontendRing = "ingest-limits-frontend-ring"
 	Ingester                 = "ingester"
 	PatternIngester          = "pattern-ingester"
 	PatternRingClient        = "pattern-ring-client"
@@ -404,8 +405,8 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 
 	t.ingestLimitsRing, err = ring.New(
 		t.Cfg.IngestLimits.LifecyclerConfig.RingConfig,
-		limits.RingName,
-		limits.RingKey,
+		limits_frontend.RingName,
+		limits_frontend.RingKey,
 		util_log.Logger,
 		reg,
 	)
@@ -445,6 +446,38 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	t.Server.HTTP.Path("/ingest/limits").Methods("GET").Handler(ingestLimits)
 
 	return ingestLimits, nil
+}
+
+func (t *Loki) initIngestLimitsFrontendRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	// Members of the ring are expected to listen on their gRPC server port.
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	if t.ingestLimitsFrontendRing, err = ring.New(
+		t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig,
+		limits_frontend.RingName,
+		limits_frontend.RingKey,
+		util_log.Logger,
+		reg,
+	); err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits_frontend.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits-frontend/ring").
+			Methods("GET", "POST").
+			Handler(t.ingestLimitsFrontendRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits-frontend/ring").
+			Methods("GET", "POST").
+			Handler(t.ingestLimitsFrontendRing)
+	}
+
+	return t.ingestLimitsFrontendRing, nil
 }
 
 func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {

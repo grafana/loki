@@ -7,6 +7,7 @@ package frontend
 
 import (
 	"context"
+	"fmt"
 	"encoding/json"
 	"net/http"
 
@@ -16,11 +17,17 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+)
+
+const (
+	RingKey  = "ingest-limits-frontend"
+	RingName = "ingest-limits-frontend"
 )
 
 // Frontend is the limits-frontend service, and acts a service wrapper for
@@ -35,18 +42,21 @@ type Frontend struct {
 	subservicesWatcher *services.FailureWatcher
 
 	limits IngestLimitsService
+
+	lifecycler        *ring.Lifecycler
+	lifecyclerWatcher *services.FailureWatcher
 }
 
 // New returns a new Frontend.
-func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+func New(cfg Config, ringName string, readRing ring.ReadRing, limits Limits, logger log.Logger, reg prometheus.Registerer) (*Frontend, error) {
 	var servs []services.Service
 
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return NewIngestLimitsBackendClient(cfg.ClientConfig, addr)
 	})
 
-	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, ring, factory, logger)
-	limitsSrv := NewRingIngestLimitsService(ring, pool, limits, logger, reg)
+	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, readRing, factory, logger)
+	limitsSrv := NewRingIngestLimitsService(readRing, pool, limits, logger)
 
 	f := &Frontend{
 		cfg:    cfg,
@@ -54,6 +64,16 @@ func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger 
 		limits: limitsSrv,
 	}
 
+	var err error
+	f.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, f, RingName, RingKey, true, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
+	}
+	// Watch the lifecycler
+	f.lifecyclerWatcher = services.NewFailureWatcher()
+	f.lifecyclerWatcher.WatchService(f.lifecycler)
+
+	servs = append(servs, f.lifecycler)
 	servs = append(servs, pool)
 	mgr, err := services.NewManager(servs...)
 	if err != nil {
@@ -66,6 +86,14 @@ func New(cfg Config, ringName string, ring ring.ReadRing, limits Limits, logger 
 	f.Service = services.NewBasicService(f.starting, f.running, f.stopping)
 
 	return f, nil
+}
+
+// Flush implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
+func (s *Frontend) Flush() {}
+
+// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
+func (s *Frontend) TransferOut(_ context.Context) error {
+	return nil
 }
 
 // starting implements services.Service.
