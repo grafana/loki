@@ -73,7 +73,7 @@ func TestQuerier_Tail_QueryTimeoutConfigFlag(t *testing.T) {
 	}
 
 	// Create tail querier
-	tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletion.DeleteRequest{}), limits, 7*24*time.Hour, NewTailMetrics(nil), log.NewNopLogger())
+	tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletion.DeleteRequest{}), limits, 7*24*time.Hour, NewMetrics(nil), log.NewNopLogger())
 
 	// Run test
 	ctx := user.InjectOrgID(context.Background(), "test")
@@ -165,7 +165,7 @@ func TestQuerier_concurrentTailLimits(t *testing.T) {
 			}
 
 			// Create tail querier
-			tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletion.DeleteRequest{}), limits, 7*24*time.Hour, NewTailMetrics(nil), log.NewNopLogger())
+			tailQuerier := NewQuerier(ingester, logSelector, newMockDeleteGettter("test", []deletion.DeleteRequest{}), limits, 7*24*time.Hour, NewMetrics(nil), log.NewNopLogger())
 
 			// Run
 			_, err := tailQuerier.Tail(ctx, &request, false)

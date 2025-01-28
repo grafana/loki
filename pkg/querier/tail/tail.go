@@ -63,7 +63,7 @@ type Tailer struct {
 	// if we are not seeing any response from ingester,
 	// how long do we want to wait by going into sleep
 	waitEntryThrottle time.Duration
-	metrics           *TailMetrics
+	metrics           *Metrics
 	logger            log.Logger
 }
 
@@ -318,7 +318,7 @@ func newTailer(
 	tailMaxDuration time.Duration,
 	waitEntryThrottle time.Duration,
 	categorizeLabels bool,
-	m *TailMetrics,
+	m *Metrics,
 	logger log.Logger,
 ) *Tailer {
 	historicEntriesIter := historicEntries

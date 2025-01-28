@@ -164,7 +164,7 @@ func TestTailer(t *testing.T) {
 				tailClients["test"] = test.tailClient
 			}
 
-			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, false, NewTailMetrics(nil), log.NewNopLogger())
+			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil), log.NewNopLogger())
 			defer tailer.close()
 
 			test.tester(t, tailer, test.tailClient)
@@ -359,7 +359,7 @@ func TestCategorizedLabels(t *testing.T) {
 				tailClients[k] = v
 			}
 
-			tailer := newTailer(0, tailClients, tc.historicEntries, tailDisconnectedIngesters, timeout, throttle, tc.categorizeLabels, NewTailMetrics(nil), log.NewNopLogger())
+			tailer := newTailer(0, tailClients, tc.historicEntries, tailDisconnectedIngesters, timeout, throttle, tc.categorizeLabels, NewMetrics(nil), log.NewNopLogger())
 			defer tailer.close()
 
 			// Make tail clients receive their responses

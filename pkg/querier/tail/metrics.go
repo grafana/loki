@@ -5,14 +5,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-type TailMetrics struct {
+type Metrics struct {
 	tailsActive         prometheus.Gauge
 	tailedStreamsActive prometheus.Gauge
 	tailedBytesTotal    prometheus.Counter
 }
 
-func NewTailMetrics(r prometheus.Registerer) *TailMetrics {
-	return &TailMetrics{
+func NewMetrics(r prometheus.Registerer) *Metrics {
+	return &Metrics{
 		tailsActive: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "loki_querier_tail_active",
 			Help: "Number of active tailers",

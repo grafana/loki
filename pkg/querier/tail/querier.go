@@ -45,11 +45,11 @@ type Querier struct {
 	deleteGetter deletion.DeleteGetter
 
 	tailMaxDuration time.Duration
-	metrics         *TailMetrics
+	metrics         *Metrics
 	logger          log.Logger
 }
 
-func NewQuerier(ingester Ingester, store Store, deleteGetter deletion.DeleteGetter, limits querier_limits.Limits, tailMaxDuration time.Duration, metrics *TailMetrics, logger log.Logger) *Querier {
+func NewQuerier(ingester Ingester, store Store, deleteGetter deletion.DeleteGetter, limits querier_limits.Limits, tailMaxDuration time.Duration, metrics *Metrics, logger log.Logger) *Querier {
 	return &Querier{
 		ingester:        ingester,
 		store:           store,

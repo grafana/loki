@@ -19,7 +19,7 @@ func TestTailHandler(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
-	tailQuerier := NewQuerier(nil, nil, nil, limits, 1*time.Minute, NewTailMetrics(nil), log.NewNopLogger())
+	tailQuerier := NewQuerier(nil, nil, nil, limits, 1*time.Minute, NewMetrics(nil), log.NewNopLogger())
 
 	req, err := http.NewRequest("GET", `/`, nil)
 	require.NoError(t, err)

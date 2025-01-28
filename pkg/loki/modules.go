@@ -556,7 +556,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	// is standalone ALL routes are registered externally, and when it's in the same process as a frontend,
 	// we disable the proxying of the tail routes in initQueryFrontend() and we still want these routes regiestered
 	// on the external router.
-	tailQuerier := tail.NewQuerier(t.ingesterQuerier, t.Querier, deleteStore, t.Overrides, t.Cfg.Querier.TailMaxDuration, tail.NewTailMetrics(prometheus.DefaultRegisterer), log.With(util_log.Logger, "component", "tail-querier"))
+	tailQuerier := tail.NewQuerier(t.ingesterQuerier, t.Querier, deleteStore, t.Overrides, t.Cfg.Querier.TailMaxDuration, tail.NewMetrics(prometheus.DefaultRegisterer), log.With(util_log.Logger, "component", "tail-querier"))
 	t.Server.HTTP.Path("/loki/api/v1/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
 	t.Server.HTTP.Path("/api/prom/tail").Methods("GET", "POST").Handler(httpMiddleware.Wrap(http.HandlerFunc(tailQuerier.TailHandler)))
 
