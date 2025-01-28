@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/efficientgo/core/errcapture"
 	"github.com/pkg/errors"
@@ -267,6 +268,55 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) (err erro
 		return errors.Wrapf(err, "copy to %s", file)
 	}
 	return nil
+}
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.Reader, error)) error {
+	file := filepath.Join(b.rootDir, name)
+	var before time.Time
+	stat, err := os.Stat(file)
+	if err != nil && !os.IsNotExist(err) {
+		return errors.Wrapf(err, "stat %s", file)
+	} else if os.IsNotExist(err) {
+		before = time.Time{}
+	} else {
+		before = stat.ModTime()
+	}
+
+	var r io.ReadCloser
+	if !before.IsZero() {
+		r, err = os.Open(file)
+		if err != nil {
+			return err
+		}
+		defer r.Close()
+	}
+
+	newContent, err := f(r)
+	if err != nil {
+		return err
+	}
+
+	content, err := io.ReadAll(newContent)
+	if err != nil {
+		return err
+	}
+
+	var after time.Time
+	stat, err = os.Stat(file)
+	if err != nil && !os.IsNotExist(err) {
+		return errors.Wrapf(err, "stat %s", file)
+	} else if os.IsNotExist(err) {
+		after = time.Time{}
+	} else {
+		after = stat.ModTime()
+	}
+
+	if after.After(before) {
+		return errors.New("file might have changed")
+	}
+	// Race time: Write it quick
+
+	return os.WriteFile(file, content, 0600)
 }
 
 func isDirEmpty(name string) (ok bool, err error) {

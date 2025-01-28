@@ -9,6 +9,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"sort"
+	"time"
 
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -138,6 +141,11 @@ const (
 	builderStateFlush
 )
 
+type FlushResult struct {
+	Path                       string
+	MinTimestamp, MaxTimestamp time.Time
+}
+
 // NewBuilder creates a new Builder which stores data objects for the specified
 // tenant in a bucket.
 //
@@ -178,6 +186,39 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 		flushBuffer: flushBuffer,
 		encoder:     encoder,
 	}, nil
+}
+
+// FromExisting updates this builder with content from an existing data object, replicating all the state like stream IDs and logs.
+func (b *Builder) FromExisting(f io.ReadSeeker) error {
+	if b.currentSizeEstimate > 0 {
+		return fmt.Errorf("builder already has data, cannot use FromExisting")
+	}
+
+	dec := encoding.ReadSeekerDecoder(f)
+
+	var streamIDs = make(map[int64]*labels.Labels, 32)
+	for result := range streams.Iter(context.Background(), dec) {
+		stream, err := result.Value()
+		if err != nil {
+			return err
+		}
+		sort.Sort(stream.Labels)
+		streamIDs[stream.ID] = &stream.Labels
+	}
+
+	for result := range logs.Iter(context.Background(), dec) {
+		record, err := result.Value()
+		if err != nil {
+			return err
+		}
+		streamLabels := streamIDs[record.StreamID]
+
+		b.streams.Record(*streamLabels, record.Timestamp)
+		b.logs.Append(record)
+	}
+
+	b.state = builderStateDirty
+	return nil
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
@@ -286,15 +327,10 @@ func streamSizeEstimate(stream logproto.Stream) int {
 // If Flush builds an object but fails to upload it to object storage, the
 // built object is cached and can be retried. [Builder.Reset] can be called to
 // discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(ctx context.Context) error {
-	switch b.state {
-	case builderStateEmpty:
-		return nil // Nothing to flush
-	case builderStateDirty:
-		if err := b.buildObject(); err != nil {
-			return fmt.Errorf("building object: %w", err)
-		}
-		b.state = builderStateFlush
+func (b *Builder) Flush(ctx context.Context) (FlushResult, error) {
+	_, err := b.FlushToBuffer()
+	if err != nil {
+		return FlushResult{}, err
 	}
 
 	timer := prometheus.NewTimer(b.metrics.flushTime)
@@ -305,11 +341,32 @@ func (b *Builder) Flush(ctx context.Context) error {
 
 	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
 	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(b.flushBuffer.Bytes())); err != nil {
-		return err
+		return FlushResult{}, fmt.Errorf("uploading object: %w", err)
 	}
 
+	minTimestamp, maxTimestamp := b.streams.GetBounds()
+
 	b.Reset()
-	return nil
+
+	return FlushResult{
+		Path:         objectPath,
+		MinTimestamp: minTimestamp,
+		MaxTimestamp: maxTimestamp,
+	}, nil
+}
+
+func (b *Builder) FlushToBuffer() (*bytes.Buffer, error) {
+	switch b.state {
+	case builderStateEmpty:
+		return nil, nil // Nothing to flush
+	case builderStateDirty:
+		if err := b.buildObject(); err != nil {
+			return nil, fmt.Errorf("building object: %w", err)
+		}
+		b.state = builderStateFlush
+	}
+
+	return b.flushBuffer, nil
 }
 
 func (b *Builder) buildObject() error {
@@ -345,6 +402,7 @@ func (b *Builder) Reset() {
 	b.state = builderStateEmpty
 	b.flushBuffer.Reset()
 	b.metrics.sizeEstimate.Set(0)
+	b.currentSizeEstimate = 0
 }
 
 // RegisterMetrics registers metrics about builder to report to reg. All

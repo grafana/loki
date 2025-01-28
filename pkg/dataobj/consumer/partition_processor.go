@@ -15,6 +15,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
@@ -30,10 +31,10 @@ type partitionProcessor struct {
 	decoder *kafka.Decoder
 
 	// Builder initialization
-	builderOnce sync.Once
-	builderCfg  dataobj.BuilderConfig
-	bucket      objstore.Bucket
-
+	builderOnce      sync.Once
+	builderCfg       dataobj.BuilderConfig
+	bucket           objstore.Bucket
+	metastoreManager *metastore.MetastoreManager
 	// Metrics
 	metrics *partitionOffsetMetrics
 
@@ -60,20 +61,27 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
+	metastoreManager, err := metastore.NewMetastoreManager(bucket, tenantID, logger, reg)
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to create metastore manager", "err", err)
+		return nil
+	}
+
 	return &partitionProcessor{
-		client:     client,
-		logger:     log.With(logger, "topic", topic, "partition", partition),
-		topic:      topic,
-		partition:  partition,
-		records:    make(chan *kgo.Record, 1000),
-		ctx:        ctx,
-		cancel:     cancel,
-		decoder:    decoder,
-		reg:        reg,
-		builderCfg: builderCfg,
-		bucket:     bucket,
-		tenantID:   []byte(tenantID),
-		metrics:    metrics,
+		client:           client,
+		logger:           log.With(logger, "topic", topic, "partition", partition),
+		topic:            topic,
+		partition:        partition,
+		records:          make(chan *kgo.Record, 1000),
+		ctx:              ctx,
+		cancel:           cancel,
+		decoder:          decoder,
+		reg:              reg,
+		builderCfg:       builderCfg,
+		bucket:           bucket,
+		tenantID:         []byte(tenantID),
+		metrics:          metrics,
+		metastoreManager: metastoreManager,
 	}
 }
 
@@ -157,14 +165,20 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			MaxBackoff: 10 * time.Second,
 		})
 
+		var flushResult dataobj.FlushResult
 		for backoff.Ongoing() {
-			err = p.builder.Flush(p.ctx)
+			flushResult, err = p.builder.Flush(p.ctx)
 			if err == nil {
 				break
 			}
 			level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
 			p.metrics.incFlushFailures()
 			backoff.Wait()
+		}
+
+		if err := p.metastoreManager.UpdateMetastore(p.ctx, flushResult); err != nil {
+			level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
+			return
 		}
 
 		backoff.Reset()
