@@ -5,26 +5,41 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+type pushRetentionStats struct {
+	lineSize  int
+	lineCount int
+}
+
 type validationMetrics struct {
-	lineSizePerRetentionHours  map[string]int
-	lineCountPerRetentionHours map[string]int
-	lineSize                   int
-	lineCount                  int
-	tenantRetentionHours       string
+	policyPushStats      map[string]map[string]pushRetentionStats // policy -> retentionHours -> lineSize
+	tenantRetentionHours string
+	lineSize             int
+	lineCount            int
 }
 
 func newValidationMetrics(tenantRetentionHours string) validationMetrics {
 	return validationMetrics{
-		lineSizePerRetentionHours:  make(map[string]int),
-		lineCountPerRetentionHours: make(map[string]int),
-		tenantRetentionHours:       tenantRetentionHours,
+		policyPushStats:      make(map[string]map[string]pushRetentionStats),
+		tenantRetentionHours: tenantRetentionHours,
 	}
 }
 
-func (v *validationMetrics) compute(entry logproto.Entry, retentionHours string) {
+func (v *validationMetrics) compute(entry logproto.Entry, retentionHours string, policy string) {
+	if _, ok := v.policyPushStats[policy]; !ok {
+		v.policyPushStats[policy] = make(map[string]pushRetentionStats)
+	}
+
+	if _, ok := v.policyPushStats[policy][retentionHours]; !ok {
+		v.policyPushStats[policy][retentionHours] = pushRetentionStats{}
+	}
+
 	totalEntrySize := util.EntryTotalSize(&entry)
-	v.lineSizePerRetentionHours[retentionHours] += totalEntrySize
-	v.lineCountPerRetentionHours[retentionHours]++
+
 	v.lineSize += totalEntrySize
 	v.lineCount++
+
+	stats := v.policyPushStats[policy][retentionHours]
+	stats.lineCount++
+	stats.lineSize += totalEntrySize
+	v.policyPushStats[policy][retentionHours] = stats
 }

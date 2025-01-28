@@ -30,7 +30,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/validation"
+	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -197,7 +198,7 @@ type Limits struct {
 
 	ShardStreams shardstreams.Config `yaml:"shard_streams" json:"shard_streams" doc:"description=Define streams sharding behavior."`
 
-	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
+	BlockedQueries []*util_validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
 
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
@@ -229,6 +230,8 @@ type Limits struct {
 	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
 	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	EnforcedLabels           []string           `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	// TODO: Make this very similar to Stream Retention.
+	PolicyStreamMapping map[string]*PriorityStream `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -250,21 +253,17 @@ type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
-type StreamRetention struct {
-	Period   model.Duration    `yaml:"period" json:"period" doc:"description:Retention period applied to the log lines matching the selector."`
+type PriorityStream struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
 	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 
-func (r *StreamRetention) Matches(lbs labels.Labels) bool {
-	for _, matcher := range r.Matchers {
-		if !matcher.Matches(lbs.Get(matcher.Name)) {
-			return false
-		}
-	}
-
-	return true
+type StreamRetention struct {
+	Period   model.Duration    `yaml:"period" json:"period" doc:"description:Retention period applied to the log lines matching the selector."`
+	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
+	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
+	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 
 // LimitError are errors that do not comply with the limits specified.
@@ -516,6 +515,16 @@ func (l *Limits) Validate() error {
 			}
 			// populate matchers during validation
 			l.StreamRetention[i].Matchers = matchers
+		}
+	}
+
+	if l.PolicyStreamMapping != nil {
+		for policyName, policy := range l.PolicyStreamMapping {
+			matchers, err := syntax.ParseMatchers(policy.Selector, true)
+			if err != nil {
+				return fmt.Errorf("invalid labels matchers for policy stream mapping: %w", err)
+			}
+			l.PolicyStreamMapping[policyName].Matchers = matchers
 		}
 	}
 
@@ -981,7 +990,7 @@ func (o *Overrides) ShardStreams(userID string) shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
-func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*validation.BlockedQuery {
+func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*util_validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
 }
 
@@ -1113,6 +1122,10 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 
 func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
+}
+
+func (o *Overrides) PoliciesStreamMapping(userID string) map[string]*validation.PriorityStream {
+	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
 
 func (o *Overrides) ShardAggregations(userID string) []string {

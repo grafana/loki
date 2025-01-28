@@ -513,7 +513,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			d.truncateLines(validationContext, &stream)
 
 			var lbs labels.Labels
-			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream, tenantRetentionHours)
+			var policy string
+			lbs, stream.Labels, policy, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream, tenantRetentionHours)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -529,9 +530,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(discardedBytes))
 				continue
 			}
 
@@ -540,7 +541,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			prevTs := stream.Entries[0].Timestamp
 
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -595,7 +596,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				n++
-				validationContext.validationMetrics.compute(entry, retentionHours)
+				validationContext.validationMetrics.compute(entry, retentionHours, policy)
 				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
@@ -744,6 +745,39 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+func (d *Distributor) policyForStream(lbs labels.Labels, tenantID string) string {
+	// TODO: implement priority
+	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
+	if len(policyStreamMapping) == 0 {
+		// not configured.
+		return ""
+	}
+
+	for policy, streamSelector := range policyStreamMapping {
+		matchers, err := syntax.ParseMatchers(streamSelector, true)
+		if err != nil {
+			level.Error(d.logger).Log("msg", "failed to parse stream selector", "error", err, "stream_selector", streamSelector, "tenant_id", tenantID)
+			continue
+		}
+
+		// TODO: reuse code that check matchers.
+		if d.LabelMatchesMatchers(lbs, matchers) {
+			return policy
+		}
+	}
+
+	return ""
+}
+
+func (d *Distributor) LabelMatchesMatchers(lbs labels.Labels, matchers []*labels.Matcher) bool {
+	for _, matcher := range matchers {
+		if !matcher.Matches(lbs.Get(matcher.Name)) {
+			return false
+		}
+	}
+	return true
+}
+
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
@@ -773,14 +807,16 @@ func (d *Distributor) trackDiscardedData(
 	validationMetrics validationMetrics,
 	reason string,
 ) {
-	for retentionHours, count := range validationMetrics.lineCountPerRetentionHours {
-		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours).Add(float64(count))
-		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours).Add(float64(validationMetrics.lineSizePerRetentionHours[retentionHours]))
+	for policy, retentionToStats := range validationMetrics.policyPushStats {
+		for retentionHours, stats := range retentionToStats {
+			validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(stats.lineCount))
+			validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(stats.lineSize))
+		}
 	}
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, validationMetrics.tenantRetentionHours)
+			lbs, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, validationMetrics.tenantRetentionHours)
 			if err != nil {
 				continue
 			}
@@ -1159,24 +1195,26 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, tenantRetentionHours string) (labels.Labels, string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, tenantRetentionHours string) (labels.Labels, string, string, uint64, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		return val.ls, val.ls.String(), val.hash, nil
+		return val.ls, val.ls.String(), "", val.hash, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, tenantRetentionHours); err != nil {
-		return nil, "", 0, err
+	policy := d.policyForStream(ls, vContext.userID)
+
+	if err := d.validator.ValidateLabels(vContext, ls, stream, tenantRetentionHours, policy); err != nil {
+		return nil, "", policy, 0, err
 	}
 
 	lsHash := ls.Hash()
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, nil
+	return ls, ls.String(), policy, lsHash, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
