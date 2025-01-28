@@ -16,6 +16,32 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
+// PartitionResolver resolves the topic and partition for a given tenant and stream
+type PartitionResolver interface {
+	// Resolve returns the topic and partition for a given tenant and stream
+	Resolve(ctx context.Context, tenant string, stream KeyedStream) (topic string, partition int32, err error)
+}
+
+// SimplePartitionResolver is a basic implementation of PartitionResolver that
+// uses a prefix for topics and hash-based partitioning
+type SimplePartitionResolver struct {
+	topicPrefix string
+}
+
+// NewSimplePartitionResolver creates a new SimplePartitionResolver
+func NewSimplePartitionResolver(topicPrefix string) *SimplePartitionResolver {
+	return &SimplePartitionResolver{
+		topicPrefix: topicPrefix,
+	}
+}
+
+// Resolve implements PartitionResolver
+func (r *SimplePartitionResolver) Resolve(_ context.Context, tenant string, stream KeyedStream) (string, int32, error) {
+	topic := fmt.Sprintf("%s%s", r.topicPrefix, tenant)
+	partition := int32(stream.HashKey % 32) // Use hash key for consistent partitioning
+	return topic, partition, nil
+}
+
 // TenantTopicConfig configures the TenantTopicWriter
 type TenantTopicConfig struct {
 	Enabled bool
@@ -48,6 +74,7 @@ type TenantTopicWriter struct {
 	cfg      TenantTopicConfig
 	producer *client.Producer
 	logger   log.Logger
+	resolver PartitionResolver
 
 	// Metrics
 	teeBatchSize    prometheus.Histogram
@@ -70,6 +97,7 @@ func NewTenantTopicWriter(
 			int64(cfg.MaxBufferedBytes),
 			reg,
 		),
+		resolver: NewSimplePartitionResolver(cfg.TopicPrefix),
 		teeBatchSize: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_distributor_tenant_topic_tee_batch_size_bytes",
 			Help:    "Size in bytes of batches sent to Kafka by the tenant topic tee",
@@ -102,11 +130,18 @@ func (t *TenantTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
 	// Convert streams to Kafka records
 	records := make([]*kgo.Record, 0, len(streams))
 	for _, stream := range streams {
-		topic := fmt.Sprintf("%s%s", t.cfg.TopicPrefix, tenant)
-		// TODO: improve partitioning
-		partitionID := int32(stream.HashKey % 32) // Use hash key for consistent partitioning
+		topic, partition, err := t.resolver.Resolve(context.Background(), tenant, stream)
+		if err != nil {
+			level.Error(t.logger).Log(
+				"msg", "failed to resolve topic and partition",
+				"tenant", tenant,
+				"err", err,
+			)
+			t.teeErrors.WithLabelValues("resolve_error").Inc()
+			continue
+		}
 
-		streamRecords, err := kafka.EncodeWithTopic(topic, partitionID, tenant, stream.Stream, int(t.cfg.MaxRecordSizeBytes))
+		streamRecords, err := kafka.EncodeWithTopic(topic, partition, tenant, stream.Stream, int(t.cfg.MaxRecordSizeBytes))
 		if err != nil {
 			level.Error(t.logger).Log(
 				"msg", "failed to encode stream",
