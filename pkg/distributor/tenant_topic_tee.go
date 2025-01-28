@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 // PartitionResolver resolves the topic and partition for a given tenant and stream
 type PartitionResolver interface {
 	// Resolve returns the topic and partition for a given tenant and stream
-	Resolve(ctx context.Context, tenant string, stream KeyedStream) (topic string, partition int32, err error)
+	Resolve(ctx context.Context, tenant string, totalPartitions uint32, stream KeyedStream) (topic string, partition int32, err error)
 }
 
 // SimplePartitionResolver is a basic implementation of PartitionResolver that
@@ -40,9 +41,9 @@ func NewSimplePartitionResolver(topicPrefix string) *SimplePartitionResolver {
 }
 
 // Resolve implements PartitionResolver
-func (r *SimplePartitionResolver) Resolve(_ context.Context, tenant string, stream KeyedStream) (string, int32, error) {
+func (r *SimplePartitionResolver) Resolve(_ context.Context, tenant string, totalPartitions uint32, stream KeyedStream) (string, int32, error) {
 	topic := fmt.Sprintf("%s%s", r.topicPrefix, tenant)
-	partition := int32(stream.HashKey % 32) // Use hash key for consistent partitioning
+	partition := int32(stream.HashKey % totalPartitions)
 	return topic, partition, nil
 }
 
@@ -98,29 +99,29 @@ func NewShardedPartitionResolver(kafkaClient *kgo.Client, topicPrefix string) *S
 // Resolve implements PartitionResolver. It ensures a topic exists for the given tenant
 // and shard before returning the topic name and partition. If the topic does not exist,
 // it will be created with a single partition.
-func (r *ShardedPartitionResolver) Resolve(ctx context.Context, tenant string, stream KeyedStream) (string, int32, error) {
-	// Calculate desired shard (partition) from hash key
-	shard := int32(stream.HashKey % 32) // TODO: make configurable
+// NB(owen-d): We always use partition 0 since each topic has 1 partition
+func (r *ShardedPartitionResolver) Resolve(ctx context.Context, tenant string, totalPartitions uint32, stream KeyedStream) (string, int32, error) {
+	// Use the hash key modulo total partitions as the shard number
+	shard := int32(stream.HashKey % totalPartitions)
 
-	// First try to find existing shard under read lock
+	// Check cache under read lock
 	r.RLock()
 	shards, exists := r.tenantShards[tenant]
 	if exists {
-		if _, ok := shards[shard]; ok {
-			topic := r.topicName(tenant, shard)
+		_, shardExists := shards[shard]
+		if shardExists {
 			r.RUnlock()
-			return topic, 0, nil // Always use partition 0 since each topic has 1 partition
+			return r.topicName(tenant, shard), 0, nil
 		}
 	}
 	r.RUnlock()
 
-	// Shard doesn't exist, create it
+	// Create the shard if it doesn't exist
 	if err := r.createShard(ctx, tenant, shard); err != nil {
 		return "", 0, fmt.Errorf("failed to create shard: %w", err)
 	}
 
-	topic := r.topicName(tenant, shard)
-	return topic, 0, nil
+	return r.topicName(tenant, shard), 0, nil
 }
 
 // createShard creates a new topic for the given tenant and shard.
@@ -250,6 +251,7 @@ type TenantTopicWriter struct {
 	producer *client.Producer
 	logger   log.Logger
 	resolver PartitionResolver
+	limits   IngestionRateLimits
 
 	// Metrics
 	teeBatchSize    prometheus.Histogram
@@ -261,6 +263,7 @@ type TenantTopicWriter struct {
 func NewTenantTopicWriter(
 	cfg TenantTopicConfig,
 	kafkaClient *kgo.Client,
+	limits IngestionRateLimits,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*TenantTopicWriter, error) {
@@ -282,6 +285,7 @@ func NewTenantTopicWriter(
 	t := &TenantTopicWriter{
 		cfg:    cfg,
 		logger: logger,
+		limits: limits,
 		producer: client.NewProducer(
 			kafkaClient,
 			int64(cfg.MaxBufferedBytes),
@@ -311,16 +315,27 @@ func NewTenantTopicWriter(
 	return t, nil
 }
 
+func (t *TenantTopicWriter) partitionsForRateLimit(bytesRateLimit float64) uint32 {
+	targetThroughputPerPartition := float64(10 << 20) // 10 MB
+
+	target := uint32(math.Round(bytesRateLimit / targetThroughputPerPartition))
+
+	// Calculate partitions, ensuring at least 1
+	return max(target, 1)
+}
+
 // Duplicate implements the Tee interface
 func (t *TenantTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
 	if len(streams) == 0 {
 		return
 	}
 
+	totalPartitions := t.partitionsForRateLimit(t.limits.IngestionRateBytes(tenant))
+
 	// Convert streams to Kafka records
 	records := make([]*kgo.Record, 0, len(streams))
 	for _, stream := range streams {
-		topic, partition, err := t.resolver.Resolve(context.Background(), tenant, stream)
+		topic, partition, err := t.resolver.Resolve(context.Background(), tenant, totalPartitions, stream)
 		if err != nil {
 			level.Error(t.logger).Log(
 				"msg", "failed to resolve topic and partition",
@@ -376,4 +391,8 @@ func (t *TenantTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
 func (t *TenantTopicWriter) Close() error {
 	t.producer.Close()
 	return nil
+}
+
+type IngestionRateLimits interface {
+	IngestionRateBytes(userID string) float64
 }

@@ -256,7 +256,7 @@ func New(
 
 		// TODO: cleanup/make independent of whether we write kafka as primary?
 		if cfg.TenantTopic.Enabled {
-			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, registerer, logger)
+			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, overrides, registerer, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to start tenant topic tee: %w", err)
 			}
