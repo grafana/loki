@@ -398,6 +398,7 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 		return nil, nil
 	}
 
+	// Members of the ring are expected to listen on their gRPC server port.
 	t.Cfg.IngestLimits.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
 
 	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
@@ -410,10 +411,9 @@ func (t *Loki) initIngestLimitsRing() (_ services.Service, err error) {
 		reg,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s ring: %w", limits.RingName, err)
+		return nil, fmt.Errorf("failed to create %s ingest-limits ring: %w", limits.RingName, err)
 	}
 
-	t.Server.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
 	if t.Cfg.InternalServer.Enable {
 		t.InternalServer.HTTP.Path("/ingest-limits/ring").Methods("GET", "POST").Handler(t.ingestLimitsRing)
 	}
