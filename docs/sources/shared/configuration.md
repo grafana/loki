@@ -2384,7 +2384,7 @@ tenant_topic:
 
   # Maximum amount of time to wait before sending a batch to Kafka
   # CLI flag: -distributor.tenant-topic-tee.batch-timeout
-  [batchtimeout: <duration> | default = 1s]
+  [batchtimeout: <duration> | default = 10s]
 
   # Maximum size of a single Kafka record in bytes
   # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes

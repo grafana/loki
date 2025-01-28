@@ -236,7 +236,7 @@ func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.TopicPrefix, "distributor.tenant-topic-tee.topic-prefix", "loki.tenant.", "Prefix to prepend to tenant IDs to form the final Kafka topic name")
 	cfg.MaxBufferedBytes = 100 << 20 // 100MB
 	f.Var(&cfg.MaxBufferedBytes, "distributor.tenant-topic-tee.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka")
-	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
+	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", 10*time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
 	f.Var(&cfg.MaxRecordSizeBytes, "distributor.tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
 
