@@ -42,12 +42,15 @@ services:
       dockerfile: tools/streametagen/Dockerfile
     ports:
       - 9090:9090
+      - 7946:7946
     command:
       - --tenants=2
       - --streams=500
       - --qps=50
-      - --kafka.address=broker:29092
+      - --kafka.address=broker:9092
       - --kafka.topic=loki-ingest-metadata
-      - --streammetagen_store=inmemory
+      - --streammetagen_store=memberlist
     depends_on:
       - broker 
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'

@@ -14,14 +14,19 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/dns"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/codec"
+	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/netutil"
+	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/dskit/kv"
-	"github.com/grafana/dskit/ring"
-	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/kafka"
@@ -29,7 +34,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -46,6 +50,7 @@ type Config struct {
 	QPSPerTenant     int
 	StreamsPerTenant int
 
+	MemberlistKV        memberlist.KVConfig
 	Kafka               kafka.Config
 	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
 	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
@@ -59,6 +64,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	c.Kafka.RegisterFlags(f)
 	c.PartitionRingConfig.RegisterFlagsWithPrefix("streammetagen_", f)
 	c.LifecyclerConfig.RegisterFlagsWithPrefix("streammetagen_", f, logger)
+	c.MemberlistKV.RegisterFlags(f)
 }
 
 type streamMetaGen struct {
@@ -74,6 +80,7 @@ type streamMetaGen struct {
 	writer *client.Producer
 
 	// ring
+	memberlistKV         *memberlist.KVInitService
 	ring                 *ring.Ring
 	partitionRing        ring.PartitionRingReader
 	partitionRingWatcher *ring.PartitionRingWatcher
@@ -95,9 +102,26 @@ func newStreamMetaGen(cfg Config, writer *client.Producer, logger log.Logger, re
 		logger: logger,
 	}
 
-	var srvs []services.Service
+	var (
+		srvs []services.Service
+		err  error
+	)
 
-	var err error
+	cfg.MemberlistKV.Codecs = []codec.Codec{
+		ring.GetCodec(),
+		ring.GetPartitionRingCodec(),
+	}
+
+	cfg.MemberlistKV.AdvertiseAddr, err = netutil.GetFirstAddressOf(cfg.LifecyclerConfig.InfNames, logger, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance address: %w", err)
+	}
+
+	provider := dns.NewProvider(logger, reg, dns.GolangResolverType)
+	s.memberlistKV = memberlist.NewKVInitService(&cfg.MemberlistKV, logger, provider, reg)
+	srvs = append(srvs, s.memberlistKV)
+
+	cfg.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 
 	s.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, reg)
 	if err != nil {
