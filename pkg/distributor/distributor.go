@@ -511,8 +511,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			d.truncateLines(validationContext, &stream)
 
 			var lbs labels.Labels
-			var retentionHours string
-			lbs, stream.Labels, stream.Hash, retentionHours, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
+			var retentionHours, policy string
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -741,39 +741,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
-func (d *Distributor) policyForStream(lbs labels.Labels, tenantID string) string {
-	// TODO: implement priority
-	policyStreamMapping := d.validator.Limits.PolicyStreamMapping(tenantID)
-	if len(policyStreamMapping) == 0 {
-		// not configured.
-		return ""
-	}
-
-	for policy, streamSelector := range policyStreamMapping {
-		matchers, err := syntax.ParseMatchers(streamSelector, true)
-		if err != nil {
-			level.Error(d.logger).Log("msg", "failed to parse stream selector", "error", err, "stream_selector", streamSelector, "tenant_id", tenantID)
-			continue
-		}
-
-		// TODO: reuse code that check matchers.
-		if d.LabelMatchesMatchers(lbs, matchers) {
-			return policy
-		}
-	}
-
-	return ""
-}
-
-func (d *Distributor) LabelMatchesMatchers(lbs labels.Labels, matchers []*labels.Matcher) bool {
-	for _, matcher := range matchers {
-		if !matcher.Matches(lbs.Get(matcher.Name)) {
-			return false
-		}
-	}
-	return true
-}
-
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
@@ -812,7 +779,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				continue
 			}
@@ -1191,34 +1158,30 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
-		return val.ls, val.ls.String(), val.hash, retentionHours, nil
+		return val.ls, val.ls.String(), val.hash, retentionHours, "", nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return nil, "", "", 0, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
+		// TODO: check for global policy.
+		return nil, "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := d.policyForStream(ls, vContext.userID)
-
-	if err := d.validator.ValidateLabels(vContext, ls, stream, tenantRetentionHours, policy); err != nil {
-		tenantRetentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
-		return nil, "", 0, tenantRetentionHours, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
-	}
-
+	policy := d.tenantsRetention.PolicyFor(vContext.userID, ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours); err != nil {
-		return nil, "", 0, retentionHours, err
+	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
+		return nil, "", 0, retentionHours, policy, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	lsHash := ls.Hash()
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, retentionHours, nil
+	return ls, ls.String(), lsHash, retentionHours, policy, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
