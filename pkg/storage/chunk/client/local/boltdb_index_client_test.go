@@ -188,9 +188,9 @@ func TestBoltDB_Writes(t *testing.T) {
 		{
 			name:              "both puts and deletes",
 			initialPuts:       []string{"1", "2", "3", "4"},
-			testPuts:          []string{"5", "6"},
+			testPuts:          []string{"2", "5", "6"},
 			testDeletes:       []string{"1", "2"},
-			valuesAfterWrites: []string{"3", "4", "5", "6"},
+			valuesAfterWrites: []string{"2", "3", "4", "5", "6"},
 		},
 		{
 			name:        "deletes without initial writes",
