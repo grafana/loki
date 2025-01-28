@@ -39,7 +39,6 @@ type Limits interface {
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int
 	EnforcedLabels(userID string) []string
-	PolicyStreamMapping(userID string) map[string]string // map of policy name to stream matching regex.
 
 	IngestionPartitionsTenantShardSize(userID string) int
 }

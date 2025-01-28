@@ -1175,7 +1175,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
-		return nil, "", 0, retentionHours, policy, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", 0, retentionHours, policy, err
 	}
 
 	lsHash := ls.Hash()

@@ -1279,8 +1279,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, _, hash, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
-			lbs, lbsString, hash, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
 			})
 			if tc.expectedErr != nil {
