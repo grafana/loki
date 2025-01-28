@@ -21,6 +21,84 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
+// Strategy represents the topic creation strategy
+type Strategy uint8
+
+const (
+	SimpleStrategy Strategy = iota
+	AutomaticStrategy
+)
+
+func (s Strategy) String() string {
+	switch s {
+	case SimpleStrategy:
+		return "simple"
+	case AutomaticStrategy:
+		return "automatic"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseStrategy converts a string to a Strategy
+func ParseStrategy(s string) (Strategy, error) {
+	switch s {
+	case "simple":
+		return SimpleStrategy, nil
+	case "automatic":
+		return AutomaticStrategy, nil
+	default:
+		return SimpleStrategy, fmt.Errorf("invalid strategy %q, must be either 'simple' or 'automatic'", s)
+	}
+}
+
+// TenantTopicConfig configures the TenantTopicWriter
+type TenantTopicConfig struct {
+	Enabled bool
+
+	// TopicPrefix is prepended to tenant IDs to form the final topic name
+	TopicPrefix string
+	// MaxBufferedBytes is the maximum number of bytes that can be buffered before producing to Kafka
+	MaxBufferedBytes flagext.Bytes
+
+	// BatchTimeout is the maximum amount of time to wait before sending a batch
+	BatchTimeout time.Duration
+	// MaxRecordSizeBytes is the maximum size of a single Kafka record
+	MaxRecordSizeBytes flagext.Bytes
+
+	// Strategy determines how topics are created and partitioned
+	Strategy string `yaml:"strategy"`
+}
+
+// Validate ensures the config is valid
+func (cfg *TenantTopicConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	if cfg.TopicPrefix == "" {
+		return errors.New("distributor.tenant-topic-tee.topic-prefix must be set")
+	}
+
+	if _, err := ParseStrategy(cfg.Strategy); err != nil {
+		return fmt.Errorf("invalid strategy: %w", err)
+	}
+
+	return nil
+}
+
+// RegisterFlags adds the flags required to configure this flag set.
+func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enabled, "distributor.tenant-topic-tee.enabled", false, "Enable the tenant topic tee")
+	f.StringVar(&cfg.TopicPrefix, "distributor.tenant-topic-tee.topic-prefix", "loki.tenant.", "Prefix to prepend to tenant IDs to form the final Kafka topic name")
+	cfg.MaxBufferedBytes = 100 << 20 // 100MB
+	f.Var(&cfg.MaxBufferedBytes, "distributor.tenant-topic-tee.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka")
+	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", 10*time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
+	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
+	f.Var(&cfg.MaxRecordSizeBytes, "distributor.tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
+	f.StringVar(&cfg.Strategy, "distributor.tenant-topic-tee.strategy", "simple", "Topic strategy to use. Valid values are 'simple' or 'automatic'")
+}
+
 // PartitionResolver resolves the topic and partition for a given tenant and stream
 type PartitionResolver interface {
 	// Resolve returns the topic and partition for a given tenant and stream
@@ -162,86 +240,6 @@ func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant strin
 // topicName returns the topic name for a given tenant and shard
 func (r *ShardedPartitionResolver) topicName(tenant string, shard int32) string {
 	return fmt.Sprintf("%s.%s.%d", r.topicPrefix, tenant, shard)
-}
-
-// Strategy represents the topic creation strategy
-type Strategy uint8
-
-const (
-	SimpleStrategy Strategy = iota
-	AutomaticStrategy
-)
-
-func (s Strategy) String() string {
-	switch s {
-	case SimpleStrategy:
-		return "simple"
-	case AutomaticStrategy:
-		return "automatic"
-	default:
-		return "unknown"
-	}
-}
-
-// ParseStrategy converts a string to a Strategy
-func ParseStrategy(s string) (Strategy, error) {
-	switch s {
-	case "simple":
-		return SimpleStrategy, nil
-	case "automatic":
-		return AutomaticStrategy, nil
-	default:
-		return SimpleStrategy, fmt.Errorf("invalid strategy %q, must be either 'simple' or 'automatic'", s)
-	}
-}
-
-// TenantTopicConfig configures the TenantTopicWriter
-type TenantTopicConfig struct {
-	Enabled bool
-
-	// TopicPrefix is prepended to tenant IDs to form the final topic name
-	TopicPrefix string
-	// MaxBufferedBytes is the maximum number of bytes that can be buffered before producing to Kafka
-	MaxBufferedBytes flagext.Bytes
-
-	// BatchTimeout is the maximum amount of time to wait before sending a batch
-	BatchTimeout time.Duration
-	// MaxRecordSizeBytes is the maximum size of a single Kafka record
-	MaxRecordSizeBytes flagext.Bytes
-
-	// Strategy determines how topics are created and partitioned
-	Strategy string `yaml:"strategy"`
-}
-
-// Validate ensures the config is valid
-func (cfg *TenantTopicConfig) Validate() error {
-	if !cfg.Enabled {
-		return nil
-	}
-
-	if cfg.TopicPrefix == "" {
-		return errors.New("distributor.tenant-topic-tee.topic-prefix must be set")
-	}
-
-	if _, err := ParseStrategy(cfg.Strategy); err != nil {
-		return fmt.Errorf("invalid strategy: %w", err)
-	}
-
-	return nil
-}
-
-// RegisterFlags adds the flags required to configure this flag set.
-func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, "distributor.tenant-topic-tee.enabled", false, "Enable the tenant topic tee")
-	f.StringVar(&cfg.TopicPrefix, "distributor.tenant-topic-tee.topic-prefix", "loki.tenant.", "Prefix to prepend to tenant IDs to form the final Kafka topic name")
-	cfg.MaxBufferedBytes = 100 << 20 // 100MB
-	f.Var(&cfg.MaxBufferedBytes, "distributor.tenant-topic-tee.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka")
-	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", 10*time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
-	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
-	f.Var(&cfg.MaxRecordSizeBytes, "distributor.tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
-
-	var strategy string
-	f.StringVar(&strategy, "distributor.tenant-topic-tee.strategy", "simple", "Topic strategy to use. Valid values are 'simple' or 'automatic'")
 }
 
 // TenantTopicWriter implements the Tee interface by writing logs to Kafka topics
