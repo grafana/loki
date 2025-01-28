@@ -163,6 +163,37 @@ func (r *ShardedPartitionResolver) topicName(tenant string, shard int32) string 
 	return fmt.Sprintf("%s.%s.%d", r.topicPrefix, tenant, shard)
 }
 
+// Strategy represents the topic creation strategy
+type Strategy uint8
+
+const (
+	SimpleStrategy Strategy = iota
+	AutomaticStrategy
+)
+
+func (s Strategy) String() string {
+	switch s {
+	case SimpleStrategy:
+		return "simple"
+	case AutomaticStrategy:
+		return "automatic"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseStrategy converts a string to a Strategy
+func ParseStrategy(s string) (Strategy, error) {
+	switch s {
+	case "simple":
+		return SimpleStrategy, nil
+	case "automatic":
+		return AutomaticStrategy, nil
+	default:
+		return SimpleStrategy, fmt.Errorf("invalid strategy %q, must be either 'simple' or 'automatic'", s)
+	}
+}
+
 // TenantTopicConfig configures the TenantTopicWriter
 type TenantTopicConfig struct {
 	Enabled bool
@@ -176,6 +207,26 @@ type TenantTopicConfig struct {
 	BatchTimeout time.Duration
 	// MaxRecordSizeBytes is the maximum size of a single Kafka record
 	MaxRecordSizeBytes flagext.Bytes
+
+	// Strategy determines how topics are created and partitioned
+	Strategy string `yaml:"strategy"`
+}
+
+// Validate ensures the config is valid
+func (cfg *TenantTopicConfig) Validate() error {
+	if !cfg.Enabled {
+		return nil
+	}
+
+	if cfg.TopicPrefix == "" {
+		return errors.New("distributor.tenant-topic-tee.topic-prefix must be set")
+	}
+
+	if _, err := ParseStrategy(cfg.Strategy); err != nil {
+		return fmt.Errorf("invalid strategy: %w", err)
+	}
+
+	return nil
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -187,6 +238,9 @@ func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
 	f.Var(&cfg.MaxRecordSizeBytes, "distributor.tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
+
+	var strategy string
+	f.StringVar(&strategy, "distributor.tenant-topic-tee.strategy", "simple", "Topic strategy to use. Valid values are 'simple' or 'automatic'")
 }
 
 // TenantTopicWriter implements the Tee interface by writing logs to Kafka topics
@@ -210,6 +264,21 @@ func NewTenantTopicWriter(
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) (*TenantTopicWriter, error) {
+	strategy, err := ParseStrategy(cfg.Strategy)
+	if err != nil {
+		return nil, fmt.Errorf("invalid strategy: %w", err)
+	}
+
+	var resolver PartitionResolver
+	switch strategy {
+	case SimpleStrategy:
+		resolver = NewSimplePartitionResolver(cfg.TopicPrefix)
+	case AutomaticStrategy:
+		resolver = NewShardedPartitionResolver(kafkaClient, cfg.TopicPrefix)
+	default:
+		return nil, fmt.Errorf("unknown strategy %q", strategy.String())
+	}
+
 	t := &TenantTopicWriter{
 		cfg:    cfg,
 		logger: logger,
@@ -218,7 +287,7 @@ func NewTenantTopicWriter(
 			int64(cfg.MaxBufferedBytes),
 			reg,
 		),
-		resolver: NewSimplePartitionResolver(cfg.TopicPrefix),
+		resolver: resolver,
 		teeBatchSize: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "loki_distributor_tenant_topic_tee_batch_size_bytes",
 			Help:    "Size in bytes of batches sent to Kafka by the tenant topic tee",

@@ -120,6 +120,9 @@ func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
 	}
+	if err := cfg.TenantTopic.Validate(); err != nil {
+		return errors.Wrap(err, "validating tenant topic config")
+	}
 	return nil
 }
 
