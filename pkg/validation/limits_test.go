@@ -249,7 +249,7 @@ ruler_remote_write_headers:
 				},
 				OTLPConfig:          defaultOTLPConfig,
 				EnforcedLabels:      []string{},
-				PolicyStreamMapping: map[string]string{},
+				PolicyStreamMapping: map[string]*PriorityStream{},
 			},
 		},
 		{
@@ -274,7 +274,7 @@ retention_stream:
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 				OTLPConfig:              defaultOTLPConfig,
 				EnforcedLabels:          []string{},
-				PolicyStreamMapping:     map[string]string{},
+				PolicyStreamMapping:     map[string]*PriorityStream{},
 			},
 		},
 		{
@@ -298,7 +298,7 @@ reject_old_samples: true
 				},
 				OTLPConfig:          defaultOTLPConfig,
 				EnforcedLabels:      []string{},
-				PolicyStreamMapping: map[string]string{},
+				PolicyStreamMapping: map[string]*PriorityStream{},
 			},
 		},
 		{
@@ -323,7 +323,7 @@ query_timeout: 5m
 				},
 				OTLPConfig:          defaultOTLPConfig,
 				EnforcedLabels:      []string{},
-				PolicyStreamMapping: map[string]string{},
+				PolicyStreamMapping: map[string]*PriorityStream{},
 			},
 		},
 	} {

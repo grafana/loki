@@ -1233,7 +1233,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream)
+		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}

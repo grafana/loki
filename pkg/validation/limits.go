@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -1123,7 +1122,7 @@ func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
 }
 
-func (o *Overrides) PoliciesStreamMapping(userID string) map[string]*validation.PriorityStream {
+func (o *Overrides) PoliciesStreamMapping(userID string) map[string]*PriorityStream {
 	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
 
