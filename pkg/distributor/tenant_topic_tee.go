@@ -90,7 +90,7 @@ func (cfg *TenantTopicConfig) Validate() error {
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, "distributor.tenant-topic-tee.enabled", false, "Enable the tenant topic tee")
-	f.StringVar(&cfg.TopicPrefix, "distributor.tenant-topic-tee.topic-prefix", "loki.tenant.", "Prefix to prepend to tenant IDs to form the final Kafka topic name")
+	f.StringVar(&cfg.TopicPrefix, "distributor.tenant-topic-tee.topic-prefix", "loki.tenant", "Prefix to prepend to tenant IDs to form the final Kafka topic name")
 	cfg.MaxBufferedBytes = 100 << 20 // 100MB
 	f.Var(&cfg.MaxBufferedBytes, "distributor.tenant-topic-tee.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka")
 	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", 10*time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
@@ -120,7 +120,7 @@ func NewSimplePartitionResolver(topicPrefix string) *SimplePartitionResolver {
 
 // Resolve implements PartitionResolver
 func (r *SimplePartitionResolver) Resolve(_ context.Context, tenant string, totalPartitions uint32, stream KeyedStream) (string, int32, error) {
-	topic := fmt.Sprintf("%s%s", r.topicPrefix, tenant)
+	topic := fmt.Sprintf("%s.%s", r.topicPrefix, tenant)
 	partition := int32(stream.HashKey % totalPartitions)
 	return topic, partition, nil
 }
