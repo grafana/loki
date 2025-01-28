@@ -59,7 +59,6 @@ func (p *PipelineProcessor) Compile() error {
 
 // Process implements Transformer
 func (p *PipelineProcessor) Apply(ctx context.Context, result *model.StreamsBuilder) error {
-
 	var err error
 	for _, stage := range p.stages {
 		err = stage.Apply(ctx, result)
@@ -67,7 +66,6 @@ func (p *PipelineProcessor) Apply(ctx context.Context, result *model.StreamsBuil
 			return err
 		}
 	}
-
 	return nil
 }
 

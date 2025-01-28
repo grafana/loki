@@ -19,7 +19,7 @@ const (
 	ActionPromoteMetadataToLabel Action = "promote:metadata_to_label"
 	ActionPromoteFieldToLabel    Action = "promote:field_to_label"
 	ActionPromoteFieldToMetadata Action = "promote:field_to_metadata"
-	ActionDegrateLabelToMetadata Action = "degrate:label_to_metadata"
+	ActionDegrateLabelToMetadata Action = "degrade:label_to_metadata"
 	ActionDropLabel              Action = "drop:label"
 	ActionDropMetadata           Action = "drop:metadata"
 )

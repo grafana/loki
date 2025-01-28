@@ -29,14 +29,14 @@ func newContainer(s logproto.Stream) model.KeyedStream {
 
 func TestCompileStage(t *testing.T) {
 	stages := []Stage{
-		{Action: "parse_logfmt"},
-		{Action: "parse_json"},
-		{Action: "parse_pattern", Config: map[string]string{"pattern": "<_> cluster=<cluster> <_>"}},
-		{Action: "drop_label"},
-		{Action: "drop_metadata"},
-		{Action: "promote_metadata_to_label"},
-		{Action: "promote_field_to_label"},
-		{Action: "degrade_label_to_metadata"},
+		{Action: "parse:logfmt"},
+		{Action: "parse:json"},
+		{Action: "parse:pattern", Config: map[string]string{"pattern": "<_> cluster=<cluster> <_>"}},
+		{Action: "drop:label"},
+		{Action: "drop:metadata"},
+		{Action: "promote:metadata_to_label"},
+		{Action: "promote:field_to_label"},
+		{Action: "degrade:label_to_metadata"},
 	}
 
 	for _, st := range stages {
@@ -69,7 +69,7 @@ func TestStage_DropLabel(t *testing.T) {
 		}),
 	}
 	st := Stage{
-		Action: "drop_label",
+		Action: "drop:label",
 		Config: map[string]string{
 			"pod":       "",
 			"container": "",
@@ -124,7 +124,7 @@ func TestStage_DropMetadata(t *testing.T) {
 		}),
 	}
 	st := Stage{
-		Action: "drop_metadata",
+		Action: "drop:metadata",
 		Config: map[string]string{
 			"trace_id": "",
 			"traceID":  "",
@@ -205,7 +205,7 @@ func TestStage_PromoteMetadataToLabel(t *testing.T) {
 		}),
 	}
 	st := Stage{
-		Action: "promote_metadata_to_label",
+		Action: "promote:metadata_to_label",
 		Config: map[string]string{
 			"namespace": "environment",
 			"pod":       "",
@@ -278,7 +278,7 @@ func TestStage_DegradeLabelToMetadata(t *testing.T) {
 		}),
 	}
 	st := Stage{
-		Action: "degrade_label_to_metadata",
+		Action: "degrade:label_to_metadata",
 		Config: map[string]string{
 			"pod":       "pod_or_container",
 			"container": "pod_or_container",
