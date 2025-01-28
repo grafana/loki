@@ -89,7 +89,7 @@
   },
   "osvVulnerabilityAlerts": true,
   "prConcurrentLimit": 10,
-  "rebaseWhen": "conflicted",
+  "rebaseWhen": "auto",
   "branchPrefix": "deps-update/",
   "postUpdateOptions": [
     "gomodTidy"
