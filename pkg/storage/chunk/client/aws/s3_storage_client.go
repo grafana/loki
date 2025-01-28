@@ -121,7 +121,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
 	f.IntVar(&cfg.HTTPConfig.MaxIdleConns, prefix+"s3.http.max-idle-connections", 200, "Maximum number of idle (keep-alive) connections across all hosts. Set to 0 for no limit.")
-	f.IntVar(&cfg.HTTPConfig.MaxIdleConnsPerHost, prefix+"s3.http.max-idle-connections-per-host", 200, "Maximum number of idle (keep-alive) connections to keep per-host. Set to 0 to use a built-in default value of 2.")
+	f.IntVar(&cfg.HTTPConfig.MaxIdleConnsPerHost, prefix+"s3.http.max-idle-connections-per-host", 200, "The maximum number of idle (keep-alive) connections allowed per host. Setting this to 0 defaults to the S3 client's built-in value of 2.")
 	f.DurationVar(&cfg.HTTPConfig.Timeout, prefix+"s3.http.timeout", 0, "Timeout specifies a time limit for requests made by s3 Client.")
 	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")

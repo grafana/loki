@@ -1147,8 +1147,8 @@ http_config:
   # CLI flag: -s3.http.max-idle-connections
   [max_idle_connections: <int> | default = 200]
 
-  # Maximum number of idle (keep-alive) connections to keep per-host. Set to 0
-  # to use a built-in default value of 2.
+  # The maximum number of idle (keep-alive) connections allowed per host.
+  # Setting this to 0 defaults to the S3 client's built-in value of 2.
   # CLI flag: -s3.http.max-idle-connections-per-host
   [max_idle_connections_per_host: <int> | default = 200]
 
@@ -5170,8 +5170,8 @@ http_config:
   # CLI flag: -<prefix>.storage.s3.http.max-idle-connections
   [max_idle_connections: <int> | default = 200]
 
-  # Maximum number of idle (keep-alive) connections to keep per-host. Set to 0
-  # to use a built-in default value of 2.
+  # The maximum number of idle (keep-alive) connections allowed per host.
+  # Setting this to 0 defaults to the S3 client's built-in value of 2.
   # CLI flag: -<prefix>.storage.s3.http.max-idle-connections-per-host
   [max_idle_connections_per_host: <int> | default = 200]
 
