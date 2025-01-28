@@ -133,6 +133,41 @@ func NewTenantsRetention(l Limits) *TenantsRetention {
 	}
 }
 
+func (tr *TenantsRetention) PolicyFor(userID string, lbs labels.Labels) string {
+	policyStreamMapping := tr.limits.PoliciesStreamMapping(userID)
+	var (
+		matchedRule       *validation.PriorityStream
+		matchedPolicyName string
+		found             bool
+	)
+Outer:
+	for policyName, policyStream := range policyStreamMapping {
+		for _, m := range policyStream.Matchers {
+			if !m.Matches(lbs.Get(m.Name)) {
+				continue Outer
+			}
+		}
+		// the rule is matched.
+		if found {
+			// if the current matched rule has a higher priority we keep it.
+			if matchedRule.Priority > policyStream.Priority {
+				continue
+			}
+			// if priority is equal we keep the lowest retention.
+			if matchedRule.Priority == policyStream.Priority {
+				continue
+			}
+		}
+		found = true
+		matchedRule = policyStream
+		matchedPolicyName = policyName
+	}
+	if found {
+		return matchedPolicyName
+	}
+	return ""
+}
+
 func (tr *TenantsRetention) RetentionHoursFor(userID string, lbs labels.Labels) string {
 	period := tr.RetentionPeriodFor(userID, lbs)
 	return util.RetentionHours(period)

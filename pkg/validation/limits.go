@@ -227,11 +227,10 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	EnforcedLabels           []string           `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
-	// TODO: Make this very similar to Stream Retention.
-	PolicyStreamMapping map[string]*PriorityStream `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental"`
+	BlockIngestionUntil      dskit_flagext.Time         `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionStatusCode int                        `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	EnforcedLabels           []string                   `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	PolicyStreamMapping      map[string]*PriorityStream `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority."`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
