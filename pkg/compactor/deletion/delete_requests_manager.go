@@ -99,6 +99,12 @@ func (d *DeleteRequestsManager) mergeShardedRequests(ctx context.Context) error 
 	for _, req := range deleteRequests {
 		// do not consider requests which do not have an id. Request ID won't be set in some tests or there is a bug in our code for loading requests.
 		if req.RequestID == "" {
+			level.Error(util_log.Logger).Log("msg", "skipped considering request without an id for merging its shards",
+				"user_id", req.UserID,
+				"start_time", req.StartTime.Unix(),
+				"end_time", req.EndTime.Unix(),
+				"query", req.Query,
+			)
 			continue
 		}
 		// do not do anything if we are not done with processing all the shards or the number of shards is 1
