@@ -1,4 +1,4 @@
-#     ______           ____                     __          __   _ 
+#     ______           ____                     __          __   _
 #    / ____/________ _/ __/___ _____  ____ _   / /   ____  / /__(_)
 #   / / __/ ___/ __ `/ /_/ __ `/ __ \/ __ `/  / /   / __ \/ //_/ /
 #  / /_/ / /  / /_/ / __/ /_/ / / / / /_/ /  / /___/ /_/ / ,< / /
@@ -199,6 +199,8 @@ cmd/loki/loki:
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 
+ui-assets:
+	make -C pkg/dataobj/explorer/ui build
 ###############
 # Loki-Canary #
 ###############
@@ -836,7 +838,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
 endif
 
 .PHONY: release-workflows-check

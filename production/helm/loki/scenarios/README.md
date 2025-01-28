@@ -61,3 +61,9 @@ As the last step you need to run a diff between both files:
 ```shell
   diff current-manifest.yaml release-manifest.yaml
 ```
+
+### Known Issues
+
+* The Github Action won't be able to post the diff comment if the PR is coming from a fork, because of permissions the workflow run from a fork is not able to write in the PR content.
+
+  In this case, to review the output we recommend to download the artifacts in the workflow run and check the outputs.
