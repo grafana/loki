@@ -825,8 +825,13 @@ type IngestionLimitSpec struct {
 	PerStreamRateLimitBurst int32 `json:"perStreamRateLimitBurst,omitempty"`
 }
 
-// OTLPSpec defines which resource, scope and log attributes should be used as stream labels or
-// stored as structured metadata.
+// OTLPSpec defines which resource, scope and log attributes should be used as stream labels or dropped before storing.
+//
+// Attributes need to be listed by their "OpenTelemetry name" and not the representation used by Loki. Please consult
+// the documentation of the collector or application emitting the OpenTelemetry data to find out which attributes
+// are emitted.
+//
+// Attributes not listed as stream labels or to be dropped are stored as structured metadata in Loki.
 type OTLPSpec struct {
 	// StreamLabels configures which resource attributes are converted to Loki stream labels.
 	//

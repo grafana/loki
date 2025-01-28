@@ -2729,8 +2729,11 @@ bool
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LimitsTemplateSpec">LimitsTemplateSpec</a>, <a href="#loki-grafana-com-v1-PerTenantLimitsTemplateSpec">PerTenantLimitsTemplateSpec</a>)
 </p>
 <div>
-<p>OTLPSpec defines which resource, scope and log attributes should be used as stream labels or
-stored as structured metadata.</p>
+<p>OTLPSpec defines which resource, scope and log attributes should be used as stream labels or dropped before storing.</p>
+<p>Attributes need to be listed by their &ldquo;OpenTelemetry name&rdquo; and not the representation used by Loki. Please consult
+the documentation of the collector or application emitting the OpenTelemetry data to find out which attributes
+are emitted.</p>
+<p>Attributes not listed as stream labels or to be dropped are stored as structured metadata in Loki.</p>
 </div>
 <table>
 <thead>
