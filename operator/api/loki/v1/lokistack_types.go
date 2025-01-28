@@ -308,18 +308,16 @@ type OpenshiftTenantSpec struct {
 
 // OpenshiftOTLPConfig defines configuration specific to users using OTLP together with an OpenShift tenancy mode.
 type OpenshiftOTLPConfig struct {
-	// DisableRecommendedAttributes can be used to reduce the number of attributes used for stream labels and structured
-	// metadata.
+	// DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 	//
 	// Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-	// meta information to not be available as stream labels or structured metadata, potentially making queries more
-	// expensive and less performant.
+	// some stream labels to disappear from the index, potentially making queries more expensive and less performant.
 	//
 	// Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
 	// added to the configuration, even if this field is set to true.
 	//
-	// This option is supposed to be combined with a custom label configuration customizing the labels for the specific
-	// usecase.
+	// This option is supposed to be combined with a custom attribute configuration listing the stream labels that
+	// should continue to exist.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
