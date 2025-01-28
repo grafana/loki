@@ -3382,7 +3382,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>
@@ -7163,7 +7163,7 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>MaxEntriesLimitsPerQuery defines the maximum number of log entries
+<p>MaxEntriesLimitPerQuery defines the maximum number of log entries
 that will be returned for a query.</p>
 </td>
 </tr>
