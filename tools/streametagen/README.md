@@ -7,7 +7,7 @@ A utility to generate stream metadata for multiple tenants and push it into a Ka
 From the root of the Loki repository:
 
 ```bash
-go build -o stream-meta-gen ./tools/streametagen/stream_meta_gen.go
+docker build -t grafana/stream-meta-gen -f tools/streametagen/Dockerfile .
 ```
 
 ## Usage
@@ -47,7 +47,7 @@ The stream metadata generator supports various configuration options through com
 Run with default settings (1 tenant, 100 streams per tenant, 10 QPS):
 
 ```bash
-./stream-meta-gen
+docker run -p 9090:9090 grafana/stream-meta-gen
 ```
 
 ### Full Example
@@ -55,11 +55,12 @@ Run with default settings (1 tenant, 100 streams per tenant, 10 QPS):
 Run with custom settings:
 
 ```bash
-./stream-meta-gen \
+docker run -p 9091:9090 \
+  grafana/stream-meta-gen \
   --tenants=5 \
   --streams=1000 \
   --qps=100 \
-  --http.listen-addr=:9091 \
+  --http.listen-addr=:9090 \
   --kafka.addresses=kafka-1:9092,kafka-2:9092 \
   --kafka.topic=loki-metadata \
   --kafka.client-id=stream-meta-gen-1 \
@@ -77,7 +78,8 @@ Run with custom settings:
 For local development with the provided docker-compose setup:
 
 ```bash
-./stream-meta-gen \
+docker run --network=host \
+  grafana/stream-meta-gen \
   --tenants=2 \
   --streams=500 \
   --qps=50 \
@@ -92,7 +94,7 @@ For local development with the provided docker-compose setup:
 
 ## Metrics
 
-The generator exposes Prometheus metrics at `/metrics` on the configured HTTP address. All metrics are prefixed with `loki_streammetagen_`.
+The generator exposes Prometheus metrics at `/metrics` on port 9090. When running with Docker, make sure to expose this port with the `-p` flag if you need to access the metrics from outside the container.
 
 ## Labels
 
