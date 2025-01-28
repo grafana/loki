@@ -1,4 +1,5 @@
 ARG GO_VERSION=1.23
+ARG IMAGE_TAG
 
 # UI build stage
 FROM node:20-alpine AS ui-builder
