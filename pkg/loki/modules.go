@@ -469,8 +469,8 @@ func (t *Loki) initIngestLimitsFrontendRing() (_ services.Service, err error) {
 	}
 
 	t.Server.HTTP.Path("/ingest-limits-frontend/ring").
-			Methods("GET", "POST").
-			Handler(t.ingestLimitsFrontendRing)
+		Methods("GET", "POST").
+		Handler(t.ingestLimitsFrontendRing)
 	if t.Cfg.InternalServer.Enable {
 		t.InternalServer.HTTP.Path("/ingest-limits-frontend/ring").
 			Methods("GET", "POST").
