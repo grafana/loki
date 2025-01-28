@@ -226,10 +226,10 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time         `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                        `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	EnforcedLabels           []string                   `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
-	PolicyStreamMapping      map[string]*PriorityStream `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental."`
+	BlockIngestionUntil      dskit_flagext.Time  `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionStatusCode int                 `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	EnforcedLabels           []string            `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	PolicyStreamMapping      PolicyStreamMapping `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental."`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -251,9 +251,11 @@ type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
+type PolicyStreamMapping map[string]*PriorityStream
+
 type PriorityStream struct {
-	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
-	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
+	Priority int               `yaml:"priority" json:"priority" doc:"description=The larger the value, the higher the priority."`
+	Selector string            `yaml:"selector" json:"selector" doc:"description=Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 
@@ -517,12 +519,12 @@ func (l *Limits) Validate() error {
 	}
 
 	if l.PolicyStreamMapping != nil {
-		for policyName, policy := range l.PolicyStreamMapping {
+		for policyName, policy := range l.PolicyStreamMapping { // Add * to dereference
 			matchers, err := syntax.ParseMatchers(policy.Selector, true)
 			if err != nil {
 				return fmt.Errorf("invalid labels matchers for policy stream mapping: %w", err)
 			}
-			l.PolicyStreamMapping[policyName].Matchers = matchers
+			l.PolicyStreamMapping[policyName].Matchers = matchers // Add * when assigning back
 		}
 	}
 
@@ -1122,7 +1124,7 @@ func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
 }
 
-func (o *Overrides) PoliciesStreamMapping(userID string) map[string]*PriorityStream {
+func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {
 	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
 

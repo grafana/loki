@@ -33,7 +33,7 @@ func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
 	return f.perTenant[userID].retentionPeriod
 }
 
-func (f fakeLimits) PoliciesStreamMapping(_ string) map[string]*validation.PriorityStream {
+func (f fakeLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
 	return nil
 }
 
