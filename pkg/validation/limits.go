@@ -257,16 +257,6 @@ type StreamRetention struct {
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 
-func (r *StreamRetention) Matches(lbs labels.Labels) bool {
-	for _, matcher := range r.Matchers {
-		if !matcher.Matches(lbs.Get(matcher.Name)) {
-			return false
-		}
-	}
-
-	return true
-}
-
 // LimitError are errors that do not comply with the limits specified.
 type LimitError string
 
