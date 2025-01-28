@@ -228,7 +228,7 @@ ruler_remote_write_headers:
 				},
 				OTLPConfig:          defaultOTLPConfig,
 				EnforcedLabels:      []string{},
-				PolicyStreamMapping: map[string]string{},
+				PolicyStreamMapping: map[string]*PriorityStream{},
 			},
 		},
 		{
