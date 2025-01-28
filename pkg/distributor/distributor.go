@@ -492,8 +492,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}
 
-	tenantRetentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, nil)
-
 	func() {
 		sp := opentracing.SpanFromContext(ctx)
 		if sp != nil {
@@ -513,17 +511,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			d.truncateLines(validationContext, &stream)
 
 			var lbs labels.Labels
-			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream, tenantRetentionHours)
+			var retentionHours string
+			lbs, stream.Labels, stream.Hash, retentionHours, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, tenantRetentionHours).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, tenantRetentionHours).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours).Add(float64(discardedBytes))
 				continue
 			}
-
-			retentionHours := d.tenantsRetention.RetentionHoursFor(tenantID, lbs)
 
 			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
@@ -780,7 +777,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, validationMetrics.tenantRetentionHours)
+			lbs, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				continue
 			}
@@ -1159,24 +1156,28 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, tenantRetentionHours string) (labels.Labels, string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		return val.ls, val.ls.String(), val.hash, nil
+		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
+		return val.ls, val.ls.String(), val.hash, retentionHours, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		tenantRetentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
+		return nil, "", 0, tenantRetentionHours, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, tenantRetentionHours); err != nil {
-		return nil, "", 0, err
+	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+
+	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours); err != nil {
+		return nil, "", 0, retentionHours, err
 	}
 
 	lsHash := ls.Hash()
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, nil
+	return ls, ls.String(), lsHash, retentionHours, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
