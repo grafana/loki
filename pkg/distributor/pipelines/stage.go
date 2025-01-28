@@ -12,21 +12,33 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log"
 )
 
+const (
+	ActionParseLogfmt            Action = "parse:logfmt"
+	ActionParsePattern           Action = "parse:pattern"
+	ActionParseJSON              Action = "parse:json"
+	ActionPromoteMetadataToLabel Action = "promote:metadata_to_label"
+	ActionPromoteFieldToLabel    Action = "promote:field_to_label"
+	ActionPromoteFieldToMetadata Action = "promote:field_to_metadata"
+	ActionDegrateLabelToMetadata Action = "degrate:label_to_metadata"
+	ActionDropLabel              Action = "drop:label"
+	ActionDropMetadata           Action = "drop:metadata"
+)
+
 func (s Stage) Compile() (Transformer, error) {
 	switch s.Action {
-	case "parse_logfmt":
+	case ActionParseLogfmt:
 		return &Parser{
 			Stage:   s,
 			builder: log.NewBaseLabelsBuilder(),
 			decoder: log.NewLogfmtParser(true, false),
 		}, nil
-	case "parse_json":
+	case ActionParseJSON:
 		return &Parser{
 			Stage:   s,
 			builder: log.NewBaseLabelsBuilder(),
 			decoder: log.NewJSONParser(),
 		}, nil
-	case "parse_pattern":
+	case ActionParsePattern:
 		pattern, ok := s.Config["pattern"]
 		if !ok {
 			return nil, fmt.Errorf("missing configuration option 'pattern'")
@@ -40,17 +52,17 @@ func (s Stage) Compile() (Transformer, error) {
 			builder: log.NewBaseLabelsBuilder(),
 			decoder: dec,
 		}, nil
-	case "promote_metadata_to_label":
+	case ActionPromoteMetadataToLabel:
 		return &PromoteMetadataToLabel{Stage: s}, nil
-	case "promote_field_to_label":
+	case ActionPromoteFieldToLabel:
 		return &PromoteFieldToLabel{Stage: s}, nil
-	case "promote_field_to_metadata":
+	case ActionPromoteFieldToMetadata:
 		return &PromoteFieldToLabel{Stage: s}, nil
-	case "degrade_label_to_metadata":
+	case ActionDegrateLabelToMetadata:
 		return &DegradeLabelToMetadata{Stage: s}, nil
-	case "drop_label":
+	case ActionDropLabel:
 		return &DropLabel{Stage: s}, nil
-	case "drop_metadata":
+	case ActionDropMetadata:
 		return &DropMetadata{Stage: s}, nil
 	default:
 		return nil, fmt.Errorf("invalid action: %v", s.Action)
