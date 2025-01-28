@@ -7,8 +7,8 @@ package frontend
 
 import (
 	"context"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -17,7 +17,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
