@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -71,6 +72,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 			}, nil)
 			require.NoError(t, err)
 			limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(mockRing, 1), &TenantBasedStrategy{limits: limits})
+			tenantsRetention := retention.NewTenantsRetention(limits)
 
 			tenant, err := newInstance(
 				defaultConfig(),
@@ -87,6 +89,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 				NewStreamRateCalculator(),
 				nil,
 				nil,
+				tenantsRetention,
 			)
 			require.NoError(t, err)
 			require.Equal(t, 100, tenant.ownedStreamsSvc.getFixedLimit(), "MaxGlobalStreamsPerUser is 100 at this moment")
