@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	series_index "github.com/grafana/loki/v3/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -73,6 +74,10 @@ type IndexReaderWriter struct {
 	chunkFilterer    chunk.RequestChunkFilterer
 	chunkBatchSize   int
 	writeDedupeCache cache.Cache
+}
+
+func (c *IndexReaderWriter) UpdateSeriesStats(_ string, _ uint64, _ *index.StreamStats) {
+	level.Warn(util_log.Logger).Log("msg", "UpdateSeriesStats called on index gateway client store, but it does not support it")
 }
 
 func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.SeriesStoreSchema, index series_index.Client,
@@ -315,14 +320,15 @@ func (c *IndexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
+// todo(h11): Still incomplete
+func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
 	defer sp.Finish()
 
 	// Fetch the series IDs from the index
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sp.LogKV("series-ids", len(seriesIDs))
 
@@ -334,11 +340,11 @@ func (c *IndexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID 
 			return c.lookupLabelNamesByChunks(ctx, from, through, userID, seriesIDs)
 		}
 		sp.LogKV("msg", "lookupLabelNamesBySeries", "err", err)
-		return nil, err
+		return nil, nil, err
 	}
 	sp.LogKV("labelNames", len(labelNames))
 
-	return labelNames, nil
+	return labelNames, nil, nil
 }
 
 func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
@@ -661,7 +667,7 @@ func (c *IndexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 	return result.Strings(), nil
 }
 
-func (c *IndexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
+func (c *IndexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, []string, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesByChunks")
 	defer sp.Finish()
 
@@ -669,14 +675,14 @@ func (c *IndexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, 
 	chunkIDs, err := c.lookupChunksBySeries(ctx, from, through, userID, seriesIDs)
 	if err != nil {
 		sp.LogKV("msg", "lookupChunksBySeries", "err", err)
-		return nil, err
+		return nil, nil, err
 	}
 	sp.LogKV("chunk-ids", len(chunkIDs))
 
 	chunks, err := c.convertChunkIDsToChunks(ctx, userID, chunkIDs)
 	if err != nil {
 		sp.LogKV("err", "convertChunkIDsToChunks", "err", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Filter out chunks that are not in the selected time range and keep a single chunk per fingerprint
@@ -690,9 +696,10 @@ func (c *IndexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, 
 	allChunks, err := c.fetcher.FetchChunks(ctx, filtered)
 	if err != nil {
 		sp.LogKV("msg", "FetchChunks", "err", err)
-		return nil, err
+		return nil, nil, err
 	}
-	return labelNamesFromChunks(allChunks), nil
+	// todo(h11): Needs to be modified to return metadata labels
+	return labelNamesFromChunks(allChunks), nil, nil
 }
 
 func (c *IndexReaderWriter) lookupChunksBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {

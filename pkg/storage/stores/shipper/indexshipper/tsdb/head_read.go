@@ -85,15 +85,38 @@ func (h *headIndexReader) LabelValues(name string, matchers ...*labels.Matcher) 
 
 // LabelNames returns all the unique label names present in the head
 // that are within the time range mint to maxt.
-func (h *headIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+func (h *headIndexReader) LabelNames(matchers ...*labels.Matcher) ([]string, []string, error) {
 	if h.maxt < h.head.MinTime() || h.mint > h.head.MaxTime() {
-		return []string{}, nil
+		return []string{}, nil, nil
 	}
 
 	if len(matchers) == 0 {
 		labelNames := h.head.postings.LabelNames()
 		sort.Strings(labelNames)
-		return labelNames, nil
+
+		// On the file index we don't return the SM fields unless we pass some matchers.
+		// For consistency, we won't return them here.
+		// Here's the code that would return them:
+		//SMFieldNames := make(map[string]struct{})
+		//for _, s := range h.head.series.series {
+		//	s.RLock()
+		//	for _, ms := range s.m {
+		//		ms.RLock()
+		//		for ln := range ms.stats.StructuredMetadataFieldNames {
+		//			SMFieldNames[ln] = struct{}{}
+		//		}
+		//		ms.RUnlock()
+		//	}
+		//	s.RUnlock()
+		//}
+		//
+		//structuredMetadataFieldNames := make([]string, 0, len(SMFieldNames))
+		//for name := range SMFieldNames {
+		//	structuredMetadataFieldNames = append(structuredMetadataFieldNames, name)
+		//}
+		//sort.Strings(structuredMetadataFieldNames)
+
+		return labelNames, nil, nil
 	}
 
 	return labelNamesWithMatchers(h, matchers...)
@@ -122,7 +145,7 @@ func (h *headIndexReader) Postings(name string, fpFilter index.FingerprintFilter
 }
 
 // Series returns the series for the given reference.
-func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta) (uint64, error) {
+func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]index.ChunkMeta, stats **index.StreamStats) (uint64, error) {
 	s := h.head.series.getByID(uint64(ref))
 
 	if s == nil {
@@ -130,6 +153,10 @@ func (h *headIndexReader) Series(ref storage.SeriesRef, from int64, through int6
 		return 0, storage.ErrNotFound
 	}
 	*lbls = append((*lbls)[:0], s.ls...)
+
+	if stats != nil {
+		*stats = s.stats
+	}
 
 	queryBounds := newBounds(model.Time(from), model.Time(through))
 
@@ -196,21 +223,36 @@ func (h *headIndexReader) LabelValueFor(id storage.SeriesRef, label string) (str
 
 // LabelNamesFor returns all the label names for the series referred to by IDs.
 // The names returned are sorted.
-func (h *headIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
-	namesMap := make(map[string]struct{})
+func (h *headIndexReader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, error) {
+	SMNames := make(map[string]struct{})
+	streamLabelNamesMap := make(map[string]struct{})
 	for _, id := range ids {
 		memSeries := h.head.series.getByID(uint64(id))
 		if memSeries == nil {
-			return nil, storage.ErrNotFound
+			return nil, nil, storage.ErrNotFound
 		}
+
+		memSeries.RLock()
 		for _, lbl := range memSeries.ls {
-			namesMap[lbl.Name] = struct{}{}
+			streamLabelNamesMap[lbl.Name] = struct{}{}
 		}
+		for ln := range memSeries.stats.StructuredMetadataFieldNames {
+			SMNames[ln] = struct{}{}
+		}
+		memSeries.RUnlock()
 	}
-	names := make([]string, 0, len(namesMap))
-	for name := range namesMap {
-		names = append(names, name)
+
+	streamLabelNames := make([]string, 0, len(streamLabelNamesMap))
+	for name := range streamLabelNamesMap {
+		streamLabelNames = append(streamLabelNames, name)
 	}
-	sort.Strings(names)
-	return names, nil
+	sort.Strings(streamLabelNames)
+
+	structuredMetadataFieldNames := make([]string, 0, len(SMNames))
+	for name := range SMNames {
+		structuredMetadataFieldNames = append(structuredMetadataFieldNames, name)
+	}
+	sort.Strings(structuredMetadataFieldNames)
+
+	return streamLabelNames, structuredMetadataFieldNames, nil
 }

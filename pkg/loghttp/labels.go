@@ -15,8 +15,9 @@ import (
 
 // LabelResponse represents the http json response to a label query
 type LabelResponse struct {
-	Status string   `json:"status"`
-	Data   []string `json:"data,omitempty"`
+	Status             string   `json:"status"`
+	Data               []string `json:"data,omitempty"`
+	StructuredMetadata []string `json:"structured_metadata,omitempty"`
 }
 
 // LabelSet is a key/value pair mapping of labels

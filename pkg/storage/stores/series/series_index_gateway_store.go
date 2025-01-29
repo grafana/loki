@@ -14,6 +14,7 @@ import (
 	statscontext "github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 )
 
@@ -34,6 +35,10 @@ type GatewayClient interface {
 type IndexGatewayClientStore struct {
 	client GatewayClient
 	logger log.Logger
+}
+
+func (c *IndexGatewayClientStore) UpdateSeriesStats(_ string, _ uint64, _ *index.StreamStats) {
+	level.Warn(c.logger).Log("msg", "UpdateSeriesStats called on index gateway client store, but it does not support it")
 }
 
 func NewIndexGatewayClientStore(client GatewayClient, logger log.Logger) *IndexGatewayClientStore {
@@ -84,7 +89,7 @@ func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, _ string, from,
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
 	resp, err := c.client.LabelNamesForMetricName(ctx, &logproto.LabelNamesForMetricNameRequest{
 		MetricName: metricName,
 		From:       from,
@@ -92,9 +97,9 @@ func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _
 		Matchers:   (&syntax.MatchersExpr{Mts: matchers}).String(),
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return resp.Values, nil
+	return resp.Values, resp.StructuredMetadata, nil
 }
 
 func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {

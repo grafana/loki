@@ -248,7 +248,7 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 				tenant,
 				gap,
 				0, math.MaxInt64,
-				func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+				func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 					select {
 					case <-ctx.Done():
 						return true
@@ -281,7 +281,7 @@ func (s *ChunkSizeStrategy) sizedSeriesIter(
 						return false
 					}
 				},
-				labels.MustNewMatcher(labels.MatchEqual, "", ""),
+				nil, labels.MustNewMatcher(labels.MatchEqual, "", ""),
 			); err != nil {
 				return nil, 0, err
 			}

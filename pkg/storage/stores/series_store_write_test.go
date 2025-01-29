@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 type mockCache struct {
@@ -46,6 +47,8 @@ func (m *mockCache) GetCacheType() stats.CacheType { return stats.ChunkCache }
 type mockIndexWriter struct {
 	called int
 }
+
+func (m *mockIndexWriter) UpdateSeriesStats(_ string, _ uint64, _ *index.StreamStats) {}
 
 func (m *mockIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	m.called++

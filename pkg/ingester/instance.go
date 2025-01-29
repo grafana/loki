@@ -599,6 +599,7 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	labels := util.NewUniqueStrings(0)
+	smLabels := util.NewUniqueStrings(0)
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
@@ -607,6 +608,12 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 			}
 			if !req.Values {
 				labels.Add(label.Name)
+
+				if s.openStreamStats != nil {
+					for ln := range s.openStreamStats.StructuredMetadataFieldNames {
+						smLabels.Add(ln)
+					}
+				}
 			}
 		}
 		return nil
@@ -616,7 +623,8 @@ func (i *instance) label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	return &logproto.LabelResponse{
-		Values: labels.Strings(),
+		Values:             labels.Strings(),
+		StructuredMetadata: smLabels.Strings(),
 	}, nil
 }
 

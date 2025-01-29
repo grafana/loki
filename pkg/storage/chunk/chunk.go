@@ -44,12 +44,13 @@ type Chunk struct {
 	logproto.ChunkRef
 
 	Metric labels.Labels `json:"metric"`
-
 	// We never use Delta encoding (the zero value), so if this entry is
 	// missing, we default to DoubleDelta.
 	Encoding Encoding `json:"encoding"`
 	Data     Data     `json:"-"`
 
+	// each stream populates this series stats for all chunks pointing to the same instance
+	//seriesStats *SeriesStats
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded []byte
 }

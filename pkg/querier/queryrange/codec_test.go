@@ -1746,14 +1746,16 @@ func Test_codec_MergeResponse(t *testing.T) {
 			"loki labels",
 			[]queryrangebase.Response{
 				&LokiLabelNamesResponse{
-					Status:  "success",
-					Version: 1,
-					Data:    []string{"foo", "bar", "buzz"},
+					Status:             "success",
+					Version:            1,
+					Data:               []string{"foo", "bar", "buzz"},
+					StructuredMetadata: []string{"traceID"},
 				},
 				&LokiLabelNamesResponse{
-					Status:  "success",
-					Version: 1,
-					Data:    []string{"foo", "bar", "buzz"},
+					Status:             "success",
+					Version:            1,
+					Data:               []string{"foo", "bar", "buzz"},
+					StructuredMetadata: []string{"email"},
 				},
 				&LokiLabelNamesResponse{
 					Status:  "success",
@@ -1762,10 +1764,11 @@ func Test_codec_MergeResponse(t *testing.T) {
 				},
 			},
 			&LokiLabelNamesResponse{
-				Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
-				Status:     "success",
-				Version:    1,
-				Data:       []string{"foo", "bar", "buzz", "blip", "blop"},
+				Statistics:         stats.Result{Summary: stats.Summary{Splits: 3}},
+				Status:             "success",
+				Version:            1,
+				Data:               []string{"foo", "bar", "buzz", "blip", "blop"},
+				StructuredMetadata: []string{"traceID", "email"},
 			},
 			"",
 		},

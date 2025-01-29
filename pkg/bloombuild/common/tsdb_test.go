@@ -22,7 +22,8 @@ func (f forSeriesTestImpl) ForSeries(
 	_ index.FingerprintFilter,
 	_ model.Time,
 	_ model.Time,
-	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) bool,
+	fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool),
+	_ []string,
 	_ ...*labels.Matcher,
 ) error {
 	for i := range f {
@@ -35,7 +36,7 @@ func (f forSeriesTestImpl) ForSeries(
 			})
 		}
 
-		fn(nil, f[i].Fingerprint, unmapped)
+		fn(nil, f[i].Fingerprint, unmapped, nil)
 	}
 	return nil
 }

@@ -113,8 +113,8 @@ func Test_TenantHeads_Append(t *testing.T) {
 	found, err := h.GetChunkRefs(
 		context.Background(),
 		"fake",
-		0,
-		100,
+		0, 100,
+		nil,
 		nil, nil,
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 	)
@@ -168,8 +168,8 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 		found, err := h.GetChunkRefs(
 			context.Background(),
 			tenant.user,
-			0,
-			100,
+			0, 100,
+			nil,
 			nil, nil,
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 		)
@@ -258,6 +258,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
+			nil,
 			nil, nil,
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
@@ -313,6 +314,7 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
+			nil,
 			nil, nil,
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
@@ -389,6 +391,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
+			nil,
 			nil, nil,
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
@@ -424,6 +427,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 			context.Background(),
 			c.User,
 			0, math.MaxInt64,
+			nil,
 			nil, nil,
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
@@ -661,6 +665,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 							context.Background(),
 							fmt.Sprint(tenant),
 							0, math.MaxInt64,
+							nil,
 							res,
 							nil,
 							labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),

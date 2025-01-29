@@ -75,10 +75,11 @@ func (p labelsExtractor) Extract(_, _ int64, res resultscache.Response, _, _ int
 func (p labelsExtractor) ResponseWithoutHeaders(resp queryrangebase.Response) queryrangebase.Response {
 	labelsResp := resp.(*LokiLabelNamesResponse)
 	return &LokiLabelNamesResponse{
-		Status:     labelsResp.Status,
-		Data:       labelsResp.Data,
-		Version:    labelsResp.Version,
-		Statistics: labelsResp.Statistics,
+		Status:             labelsResp.Status,
+		Data:               labelsResp.Data,
+		StructuredMetadata: labelsResp.StructuredMetadata,
+		Version:            labelsResp.Version,
+		Statistics:         labelsResp.Statistics,
 	}
 }
 

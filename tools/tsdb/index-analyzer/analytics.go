@@ -58,6 +58,7 @@ func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants [
 					tenant,
 					model.Earliest,
 					model.Latest,
+					nil,
 					chunkRes, nil,
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)
@@ -73,7 +74,7 @@ func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants [
 					"", nil,
 					model.Earliest,
 					model.Latest,
-					func(_ labels.Labels, _ model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
+					func(_ labels.Labels, _ model.Fingerprint, chks []tsdb_index.ChunkMeta, _ *tsdb_index.StreamStats) (stop bool) {
 						if len(chks) > maxChunksPerSeries {
 							maxChunksPerSeries = len(chks)
 							if len(chks) > 1000 {
@@ -82,6 +83,7 @@ func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants [
 						}
 						return false
 					},
+					nil,
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
 				)
 

@@ -23,6 +23,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
@@ -270,7 +271,14 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		return nil
 	}
 
-	chunks, labels, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
+	// (h11) this should return the stats to pass down to the writer
+	// Each stream has a list of chunks (all closed but the last one.
+	// The stream should have two stats:
+	//  1. ClosedStats: stats ready to be flushed
+	//  2. UpdatableStats: stats with the most up to date data: includes stats for unclosed chunks.
+	// When a chunk is closed, we copy UpdatableStats into ClosedStats, and create a new UpdatableStats as a copy of ClosedStats
+	// That way, collectChunksToFlush can return ClosedStats, or we can use it right away
+	chunks, labels, stats, chunkMtx := i.collectChunksToFlush(instance, fp, immediate)
 	if len(chunks) < 1 {
 		return nil
 	}
@@ -298,7 +306,9 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		"total_comp", humanize.Bytes(uint64(totalCompressedSize)),
 		"avg_comp", humanize.Bytes(uint64(totalCompressedSize/len(chunks))),
 		"total_uncomp", humanize.Bytes(uint64(totalUncompressedSize)),
-		"avg_uncomp", humanize.Bytes(uint64(totalUncompressedSize/len(chunks))))
+		"avg_uncomp", humanize.Bytes(uint64(totalUncompressedSize/len(chunks))),
+		"metadata_fields", len(labels),
+	)
 	logValues = append(logValues, frc.Log()...)
 	logValues = append(logValues, "labels", lbs)
 	level.Info(i.logger).Log(logValues...)
@@ -311,16 +321,20 @@ func (i *Ingester) flushUserSeries(ctx context.Context, userID string, fp model.
 		return fmt.Errorf("failed to flush chunks: %w, num_chunks: %d, labels: %s", err, len(chunks), lbs)
 	}
 
+	if err := i.store.UpdateSeriesStats(ctx, 0, 0, userID, uint64(fp), stats); err != nil {
+		return fmt.Errorf("failed to update series stats: %w", err)
+	}
+
 	return nil
 }
 
-func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *sync.RWMutex) {
+func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint, immediate bool) ([]*chunkDesc, labels.Labels, *index.StreamStats, *sync.RWMutex) {
 	var stream *stream
 	var ok bool
 	stream, ok = instance.streams.LoadByFP(fp)
 
 	if !ok {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	stream.chunkMtx.Lock()
@@ -337,6 +351,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			// Ensure no more writes happen to this chunk.
 			if !stream.chunks[j].closed {
 				stream.chunks[j].closed = true
+				stream.cutSeriesStats()
 			}
 			// Flush this chunk if it hasn't already been successfully flushed.
 			if stream.chunks[j].flushed.IsZero() {
@@ -349,7 +364,7 @@ func (i *Ingester) collectChunksToFlush(instance *instance, fp model.Fingerprint
 			}
 		}
 	}
-	return result, stream.labels, &stream.chunkMtx
+	return result, stream.labels, stream.flushableSeriesStats(), &stream.chunkMtx
 }
 
 func (i *Ingester) shouldFlushChunk(chunk *chunkDesc) (bool, string) {

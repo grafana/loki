@@ -254,8 +254,13 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
+	// (h11): appends to tsdb head here - coming from PutOne eventually from the ingester (flush loop)
 	rec := m.activeHeads.Append(userID, ls, fprint, chks)
 	return m.active.Log(rec)
+}
+
+func (m *HeadManager) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+	m.activeHeads.updateSeriesStats(userID, fp, stats)
 }
 
 func (m *HeadManager) Start() error {
@@ -655,6 +660,7 @@ func newTenantHeads(start time.Time, shards int, metrics *Metrics, logger log.Lo
 	return res
 }
 
+// (h11) appends from the ingester
 func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chks index.ChunkMetas) *WALRecord {
 	var mint, maxt int64
 	for _, chk := range chks {
@@ -688,6 +694,11 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chk
 	}
 
 	return rec
+}
+
+func (t *tenantHeads) updateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+	head := t.getOrCreateTenantHead(userID)
+	head.updateSeriesStats(fp, stats)
 }
 
 func (t *tenantHeads) getOrCreateTenantHead(userID string) *Head {
@@ -747,12 +758,12 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, filterLabelNames []string, _ []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, nil, fpFilter, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, filterLabelNames, nil, fpFilter, matchers...)
 
 }
 
@@ -766,10 +777,10 @@ func (t *tenantHeads) Series(ctx context.Context, userID string, from, through m
 
 }
 
-func (t *tenantHeads) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (t *tenantHeads) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
 	return idx.LabelNames(ctx, userID, from, through, matchers...)
 
@@ -800,22 +811,22 @@ func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through m
 	return idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
-func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
+func (t *tenantHeads) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), _ []string, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+	return idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 }
 
 // helper only used in building TSDBs
-func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error) error {
+func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas, stats *index.StreamStats, head *Head) error) error {
 	for i, shard := range t.tenants {
 		t.locks[i].RLock()
 		defer t.locks[i].RUnlock()
 
-		for user, tenant := range shard {
-			idx := tenant.Index()
+		for tenant, head := range shard {
+			idx := head.Index()
 			ps, err := postingsForMatcher(idx, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			if err != nil {
 				return err
@@ -823,17 +834,18 @@ func (t *tenantHeads) forAll(fn func(user string, ls labels.Labels, fp uint64, c
 
 			for ps.Next() {
 				var (
-					ls   labels.Labels
-					chks []index.ChunkMeta
+					ls    labels.Labels
+					chks  []index.ChunkMeta
+					stats *index.StreamStats
 				)
 
-				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks)
+				fp, err := idx.Series(ps.At(), 0, math.MaxInt64, &ls, &chks, &stats)
 
 				if err != nil {
-					return errors.Wrapf(err, "iterating postings for tenant: %s", user)
+					return errors.Wrapf(err, "iterating postings for tenant: %s", tenant)
 				}
 
-				if err := fn(user, ls, fp, chks); err != nil {
+				if err := fn(tenant, ls, fp, chks, stats, head); err != nil {
 					return err
 				}
 			}

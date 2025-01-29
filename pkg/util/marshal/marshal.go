@@ -34,7 +34,7 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 	case *logproto.LabelResponse:
 		version := loghttp.GetVersion(r.RequestURI)
 		if version == loghttp.VersionV1 {
-			return WriteLabelResponseJSON(result.GetValues(), w)
+			return WriteLabelResponseJSON(result.GetValues(), result.GetStructuredMetadata(), w)
 		}
 
 		return marshal_legacy.WriteLabelResponseJSON(*result, w)
@@ -65,10 +65,11 @@ func WriteQueryResponseJSON(data parser.Value, warnings []string, statistics sta
 
 // WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON
 // and then writes it to the provided io.Writer.
-func WriteLabelResponseJSON(data []string, w io.Writer) error {
+func WriteLabelResponseJSON(data []string, smNames []string, w io.Writer) error {
 	v1Response := loghttp.LabelResponse{
-		Status: "success",
-		Data:   data,
+		Status:             "success",
+		Data:               data,
+		StructuredMetadata: smNames,
 	}
 
 	s := jsoniter.ConfigFastest.BorrowStream(w)

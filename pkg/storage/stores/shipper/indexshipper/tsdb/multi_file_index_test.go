@@ -67,7 +67,7 @@ func TestMultiIndex(t *testing.T) {
 	idx := NewMultiIndex(IndexSlice(indices))
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
-		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.Nil(t, err)
 
 		expected := []ChunkRef{
@@ -122,7 +122,7 @@ func TestMultiIndex(t *testing.T) {
 
 	t.Run("LabelNames", func(t *testing.T) {
 		// request data at the end of the tsdb range, but it should return all labels present
-		xs, err := idx.LabelNames(context.Background(), "fake", 8, 10)
+		xs, _, err := idx.LabelNames(context.Background(), "fake", 8, 10)
 		require.Nil(t, err)
 		expected := []string{"bazz", "bonk", "foo"}
 
@@ -131,7 +131,7 @@ func TestMultiIndex(t *testing.T) {
 
 	t.Run("LabelNamesWithMatchers", func(t *testing.T) {
 		// request data at the end of the tsdb range, but it should return all labels present
-		xs, err := idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		xs, _, err := idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
 		require.Nil(t, err)
 		expected := []string{"bazz", "foo"}
 

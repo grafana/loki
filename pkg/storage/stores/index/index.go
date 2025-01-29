@@ -25,7 +25,8 @@ type Filterable interface {
 type BaseReader interface {
 	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error)
+	// LabelNamesForMetricName returns the label names for the given metric name and the available structured metadata fields.
+	LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error)
 }
 
 type StatsReader interface {
@@ -53,6 +54,7 @@ type Reader interface {
 
 type Writer interface {
 	IndexChunk(ctx context.Context, from, through model.Time, chk chunk.Chunk) error
+	UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats)
 }
 
 type ReaderWriter interface {
@@ -63,6 +65,10 @@ type ReaderWriter interface {
 type MonitoredReaderWriter struct {
 	rw      ReaderWriter
 	metrics *metrics
+}
+
+func (m MonitoredReaderWriter) UpdateSeriesStats(userID string, fp uint64, stats *index.StreamStats) {
+	m.rw.UpdateSeriesStats(userID, fp, stats)
 }
 
 func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) *MonitoredReaderWriter {
@@ -112,17 +118,17 @@ func (m MonitoredReaderWriter) LabelValuesForMetricName(ctx context.Context, use
 	return values, nil
 }
 
-func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
-	var values []string
+func (m MonitoredReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+	var values, smLabels []string
 	if err := loki_instrument.TimeRequest(ctx, "label_names", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
-		values, err = m.rw.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
+		values, smLabels, err = m.rw.LabelNamesForMetricName(ctx, userID, from, through, metricName, matchers...)
 		return err
 	}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return values, nil
+	return values, smLabels, nil
 }
 
 func (m MonitoredReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
@@ -203,11 +209,12 @@ func (m MonitoredReaderWriter) HasForSeries(from, through model.Time) (sharding.
 					labels.Labels,
 					model.Fingerprint,
 					[]index.ChunkMeta,
+					*index.StreamStats,
 				) (stop bool),
 				matchers ...*labels.Matcher,
 			) error {
 				return loki_instrument.TimeRequest(ctx, "for_series", instrument.NewHistogramCollector(m.metrics.indexQueryLatency), instrument.ErrorCode, func(ctx context.Context) error {
-					return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...)
+					return impl.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...)
 				})
 			},
 		)

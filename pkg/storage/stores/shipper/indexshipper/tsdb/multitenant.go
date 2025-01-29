@@ -51,8 +51,8 @@ func (m *MultiTenantIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilter
 
 func (m *MultiTenantIndex) Close() error { return m.idx.Close() }
 
-func (m *MultiTenantIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	return m.idx.GetChunkRefs(ctx, userID, from, through, res, fpFilter, withTenantLabelMatcher(userID, matchers)...)
+func (m *MultiTenantIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, ln []string, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+	return m.idx.GetChunkRefs(ctx, userID, from, through, ln, res, fpFilter, withTenantLabelMatcher(userID, matchers)...)
 }
 
 func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]Series, error) {
@@ -66,19 +66,20 @@ func (m *MultiTenantIndex) Series(ctx context.Context, userID string, from, thro
 	return xs, nil
 }
 
-func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	res, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabelMatcher(userID, matchers)...)
+func (m *MultiTenantIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, []string, error) {
+	res, sm, err := m.idx.LabelNames(ctx, userID, from, through, withTenantLabelMatcher(userID, matchers)...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Strip out the tenant label in response.
 	i := sort.SearchStrings(res, TenantLabel)
 	if i == len(res) || res[i] != TenantLabel {
-		return res, nil
+		return res, sm, nil
 	}
+	res = append(res[:i], res[i+1:]...) // Skip tenant label
 
-	return append(res[:i], res[i+1:]...), nil
+	return res, sm, nil
 }
 
 func (m *MultiTenantIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
@@ -97,6 +98,6 @@ func (m *MultiTenantIndex) Volume(ctx context.Context, userID string, from, thro
 	return m.idx.Volume(ctx, userID, from, through, acc, fpFilter, shouldIncludeChunk, targetLabels, aggregateBy, withTenantLabelMatcher(userID, matchers)...)
 }
 
-func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta) (stop bool), matchers ...*labels.Matcher) error {
-	return m.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, withTenantLabelMatcher(userID, matchers)...)
+func (m *MultiTenantIndex) ForSeries(ctx context.Context, userID string, fpFilter index.FingerprintFilter, from model.Time, through model.Time, fn func(labels.Labels, model.Fingerprint, []index.ChunkMeta, *index.StreamStats) (stop bool), _ []string, matchers ...*labels.Matcher) error {
+	return m.idx.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, withTenantLabelMatcher(userID, matchers)...)
 }

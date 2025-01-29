@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
@@ -25,10 +27,17 @@ func Test_Build(t *testing.T) {
 			chunks: buildChunkMetas(1, 5),
 		}
 
+		stats := index.NewStreamStats()
+		stats.AddStructuredMetadata(logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+			"traceID", "123",
+			"spanID", "456",
+		)))
+
 		builder.AddSeries(
 			lbls1,
 			stream.fp,
 			stream.chunks,
+			stats,
 		)
 
 		return context.Background(), builder, tmpDir
@@ -87,7 +96,7 @@ func Test_Build(t *testing.T) {
 			symbolsList = append(symbolsList, symbols.At())
 		}
 
-		require.Equal(t, symbolsList, []string{"a", "b", "bar", "foo"})
+		require.Equal(t, []string{"a", "b", "bar", "foo", "spanID", "traceID"}, symbolsList)
 	})
 
 	t.Run("write index with correct version", func(t *testing.T) {

@@ -39,7 +39,7 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 		"label": {
 			method: "Label",
 			testFn: func(ingesterQuerier *IngesterQuerier) error {
-				_, err := ingesterQuerier.Label(context.Background(), nil)
+				_, _, err := ingesterQuerier.Label(context.Background(), nil)
 				return err
 			},
 			retVal: new(logproto.LabelResponse),
@@ -250,7 +250,7 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 		"label": {
 			method: "Label",
 			testFn: func(ingesterQuerier *IngesterQuerier) error {
-				_, err := ingesterQuerier.Label(ctx, nil)
+				_, _, err := ingesterQuerier.Label(ctx, nil)
 				return err
 			},
 			retVal: new(logproto.LabelResponse),

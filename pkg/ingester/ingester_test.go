@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/atomic"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
@@ -26,6 +24,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -49,6 +48,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	index2 "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -435,6 +435,10 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 type mockStore struct {
 	mtx    sync.Mutex
 	chunks map[string][]chunk.Chunk
+}
+
+func (s *mockStore) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index2.StreamStats) error {
+	return nil
 }
 
 func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {

@@ -25,6 +25,7 @@ import (
 
 type IndexWriter interface {
 	Append(userID string, ls labels.Labels, fprint uint64, chks tsdbindex.ChunkMetas) error
+	UpdateSeriesStats(userID string, fp uint64, stats *tsdbindex.StreamStats)
 }
 
 type store struct {
@@ -166,6 +167,7 @@ func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk ch
 			MaxTime:  int64(chk.ChunkRef.Through),
 			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
+			// set of fields chunk.data.structure metadata fields
 		},
 	}
 	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
@@ -174,13 +176,22 @@ func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk ch
 	return nil
 }
 
+func (s *store) UpdateSeriesStats(userID string, fp uint64, stats *tsdbindex.StreamStats) {
+	s.indexWriter.UpdateSeriesStats(userID, fp, stats)
+}
+
 type failingIndexWriter struct{}
 
 func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }
 
+func (f failingIndexWriter) UpdateSeriesStats(_ string, _ uint64, _ *tsdbindex.StreamStats) {
+}
+
 type noopIndexWriter struct{}
+
+func (f noopIndexWriter) UpdateSeriesStats(_ string, _ uint64, _ *tsdbindex.StreamStats) {}
 
 func (f noopIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
 	return nil

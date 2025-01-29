@@ -24,18 +24,18 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
-	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
-
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	logql_log "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/validation"
@@ -329,6 +329,11 @@ type storeMock struct {
 func newStoreMock() *storeMock {
 	return &storeMock{}
 }
+
+func (s *storeMock) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index.StreamStats) error {
+	return nil
+}
+
 func (s *storeMock) SetChunkFilterer(chunk.RequestChunkFilterer)    {}
 func (s *storeMock) SetExtractorWrapper(log.SampleExtractorWrapper) {}
 func (s *storeMock) SetPipelineWrapper(log.PipelineWrapper)         {}
@@ -372,9 +377,9 @@ func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string,
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, m ...*labels.Matcher) ([]string, error) {
+func (s *storeMock) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, m ...*labels.Matcher) ([]string, []string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, m)
-	return args.Get(0).([]string), args.Error(1)
+	return args.Get(0).([]string), nil, args.Error(1)
 }
 
 func (s *storeMock) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {

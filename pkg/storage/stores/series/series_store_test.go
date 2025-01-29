@@ -297,7 +297,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					labelNames1, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.matchers...)
+					labelNames1, _, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelNames1) {
@@ -305,7 +305,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					labelNames2, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.matchers...)
+					labelNames2, _, err := store.LabelNamesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelNames2) {
@@ -313,7 +313,7 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					labelNames3, err := store.LabelNamesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.matchers...)
+					labelNames3, _, err := store.LabelNamesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.matchers...)
 					require.NoError(t, err)
 					if len(labelNames3) != 0 {
 						t.Fatalf("%s: future query should yield empty resultset ... actually got %v label names: %#v",

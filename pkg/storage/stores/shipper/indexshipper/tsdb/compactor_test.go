@@ -128,6 +128,7 @@ func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string
 				withTenant,
 				stream.fp,
 				stream.chunks,
+				stream.stats,
 			)
 		}
 	}
@@ -161,6 +162,7 @@ func setupPerTenantIndex(t *testing.T, indexFormat int, streams []stream, destDi
 			stream.labels,
 			stream.fp,
 			stream.chunks,
+			stream.stats,
 		)
 	}
 
@@ -186,10 +188,18 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	if userLabel != "" {
 		lbls = labels.NewBuilder(lbls.Copy()).Set("user_id", userLabel).Labels()
 	}
+
+	stats := index.NewStreamStats()
+	stats.AddStructuredMetadata(logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+		"traceID", "123",
+		"spanID", "456",
+	)))
+
 	return stream{
 		labels: lbls,
 		fp:     model.Fingerprint(lbls.Hash()),
 		chunks: chunks,
+		stats:  stats,
 	}
 }
 
@@ -237,7 +247,7 @@ func TestCompactor_Compact(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		IndexTables: config.IndexPeriodicTableConfig{
 			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
-		Schema: "v12",
+		Schema: "v14",
 	}
 	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 
@@ -609,10 +619,17 @@ func TestCompactor_Compact(t *testing.T) {
 						require.NoError(t, err)
 
 						actualChunks = map[string]index.ChunkMetas{}
-						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+						err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta, stats *index.StreamStats) (stop bool) {
 							actualChunks[lbls.String()] = chks
+
+							require.NotNil(t, stats)
+							require.Len(t, stats.StructuredMetadataFieldNames, 2)
+							for _, k := range []string{"traceID", "spanID"} {
+								require.Contains(t, stats.StructuredMetadataFieldNames, k)
+							}
+
 							return false
-						}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+						}, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 						require.NoError(t, err)
 
 						require.Equal(t, expectedChunks, actualChunks)
@@ -824,10 +841,10 @@ func TestCompactedIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			foundChunks := map[string]index.ChunkMetas{}
-			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+			err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(context.Background(), "", nil, 0, math.MaxInt64, func(lbls labels.Labels, _ model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 				foundChunks[lbls.String()] = append(index.ChunkMetas{}, chks...)
 				return false
-			}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
+			}, nil, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 			require.NoError(t, err)
 
 			require.Equal(t, tc.finalExpectedChunks, foundChunks)
@@ -893,10 +910,10 @@ func setupCompactedIndex(t *testing.T) *testContext {
 		require.NoError(t, err)
 		builder := NewBuilder(indexFormat)
 		stream := buildStream(lbls1, buildChunkMetas(shiftTableStart(0), shiftTableStart(10)), "")
-		builder.AddSeries(stream.labels, stream.fp, stream.chunks)
+		builder.AddSeries(stream.labels, stream.fp, stream.chunks, stream.stats)
 
 		stream = buildStream(lbls2, buildChunkMetas(shiftTableStart(0), shiftTableStart(20)), "")
-		builder.AddSeries(stream.labels, stream.fp, stream.chunks)
+		builder.AddSeries(stream.labels, stream.fp, stream.chunks, stream.stats)
 
 		builder.FinalizeChunks()
 

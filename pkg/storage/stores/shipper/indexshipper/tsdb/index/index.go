@@ -29,6 +29,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/grafana/loki/pkg/push"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -55,6 +57,9 @@ const (
 	// FormatV3 represents 3 version of index. It adds support for
 	// paging through batches of chunks within a series
 	FormatV3 = 3
+	// FormatV4 represents 4 version of index. It adds support for
+	// structured metadata stats
+	FormatV4 = 4
 
 	IndexFilename = "index"
 
@@ -138,6 +143,7 @@ type Creator struct {
 	symbols     *Symbols
 	lastSymbol  string
 	symbolCache map[string]symbolCacheEntry
+	//smSymbolCache map[string]uint32
 
 	labelIndexes []labelIndexHashEntry // Label index offsets.
 	labelNames   map[string]uint64     // Label names, and their usage.
@@ -403,7 +409,7 @@ func (w *Creator) writeMeta() error {
 // fingerprint differs from what labels.Hash() produces. For example,
 // multitenant TSDBs embed a tenant label, but the actual series has no such
 // label and so the derived fingerprint differs.
-func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks ...ChunkMeta) error {
+func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.Fingerprint, chunks []ChunkMeta, stats *StreamStats) error {
 	if err := w.ensureStage(idxStageSeries); err != nil {
 		return err
 	}
@@ -463,6 +469,27 @@ func (w *Creator) AddSeries(ref storage.SeriesRef, lset labels.Labels, fp model.
 			}
 		}
 		w.buf2.PutUvarint32(valueIndex)
+	}
+
+	if w.Version >= FormatV4 {
+		var smFields map[string]struct{}
+		if stats != nil {
+			smFields = stats.StructuredMetadataFieldNames
+		}
+
+		w.buf2.PutUvarint(len(smFields))
+		for sm := range smFields {
+			var err error
+			cacheEntry, ok := w.symbolCache[sm]
+			nameIndex := cacheEntry.index
+			if !ok {
+				nameIndex, err = w.symbols.ReverseLookup(sm)
+				if err != nil {
+					return errors.Errorf("symbol entry for %q does not exist, %v", sm, err)
+				}
+			}
+			w.buf2.PutUvarint32(nameIndex)
+		}
 	}
 
 	w.addChunks(chunks, &w.buf2, &w.buf1, ChunkPageSize)
@@ -1281,7 +1308,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 	r.version = int(r.b.Range(4, 5)[0])
 
-	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 {
+	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 && r.version != FormatV4 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
@@ -1685,9 +1712,10 @@ func (r *Reader) LabelValues(name string, matchers ...*labels.Matcher) ([]string
 
 // LabelNamesFor returns all the label names for the series referred to by IDs.
 // The names returned are sorted.
-func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
+func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, []string, error) {
 	// Gather offsetsMap the name offsetsMap in the symbol table first
 	offsetsMap := make(map[uint32]struct{})
+	smOffsetsMap := make(map[uint32]struct{})
 	for _, id := range ids {
 		offset := id
 		// In version 2+ series IDs are no longer exact references but series are 16-byte padded
@@ -1697,17 +1725,23 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 		}
 
 		d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
-		buf := d.Get()
-		if d.Err() != nil {
-			return nil, errors.Wrap(d.Err(), "get buffer for series")
-		}
 
-		offsets, err := r.dec.LabelNamesOffsetsFor(buf)
+		offsets, err := r.dec.LabelNamesOffsetsFor(&d)
 		if err != nil {
-			return nil, errors.Wrap(err, "get label name offsets")
+			return nil, nil, errors.Wrap(err, "get label name offsets")
 		}
 		for _, off := range offsets {
 			offsetsMap[off] = struct{}{}
+		}
+
+		if r.version >= FormatV4 {
+			smOffset, err := r.dec.SmNamesOffsetsFor(&d)
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "get structured metadata offsets")
+			}
+			for _, off := range smOffset {
+				smOffsetsMap[off] = struct{}{}
+			}
 		}
 	}
 
@@ -1716,14 +1750,25 @@ func (r *Reader) LabelNamesFor(ids ...storage.SeriesRef) ([]string, error) {
 	for off := range offsetsMap {
 		name, err := r.lookupSymbol(off)
 		if err != nil {
-			return nil, errors.Wrap(err, "lookup symbol in LabelNamesFor")
+			return nil, nil, errors.Wrap(err, "lookup stream symbol in LabelNamesFor")
 		}
 		names = append(names, name)
 	}
-
 	sort.Strings(names)
 
-	return names, nil
+	// Lookup the unique structured metadata symbols.
+	// Note: empty if TSDB version is less than V4.
+	smNames := make([]string, 0, len(smOffsetsMap))
+	for o := range smOffsetsMap {
+		name, err := r.lookupSymbol(o)
+		if err != nil {
+			return nil, nil, errors.Wrap(err, "lookup structured metadata symbol in LabelNamesFor")
+		}
+		smNames = append(smNames, name)
+	}
+	sort.Strings(smNames)
+
+	return names, smNames, nil
 }
 
 // LabelValueFor returns label value for the given label name in the series referred to by ID.
@@ -1753,7 +1798,7 @@ func (r *Reader) LabelValueFor(id storage.SeriesRef, label string) (string, erro
 }
 
 // Series reads the series with the given ID and writes its labels and chunks into lbls and chks.
-func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
+func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats) (uint64, error) {
 	offset := id
 	// In version 2+ series IDs are no longer exact references but series are 16-byte padded
 	// and the ID is the multiple of 16 of the actual position.
@@ -1765,7 +1810,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 		return 0, d.Err()
 	}
 
-	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
+	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks, stats)
 	if err != nil {
 		return 0, errors.Wrap(err, "read series")
 	}
@@ -1899,9 +1944,9 @@ func (r *Reader) Size() int64 {
 
 // LabelNames returns all the unique label names present in the index.
 // TODO(twilkie) implement support for matchers
-func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
+func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, []string, error) {
 	if len(matchers) > 0 {
-		return nil, errors.Errorf("matchers parameter is not implemented: %+v", matchers)
+		return nil, nil, errors.Errorf("matchers parameter is not implemented: %+v", matchers)
 	}
 
 	labelNames := make([]string, 0, len(r.postings))
@@ -1913,7 +1958,7 @@ func (r *Reader) LabelNames(matchers ...*labels.Matcher) ([]string, error) {
 		labelNames = append(labelNames, name)
 	}
 	sort.Strings(labelNames)
-	return labelNames, nil
+	return labelNames, nil, nil
 }
 
 // NewStringListIter returns a StringIter for the given sorted list of strings.
@@ -2017,18 +2062,34 @@ func (dec *Decoder) Postings(b []byte) (int, Postings, error) {
 
 // LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
 // They are returned in the same order they're stored, which should be sorted lexicographically.
-func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
-	d := encoding.DecWrap(tsdb_enc.Decbuf{B: b})
+func (dec *Decoder) LabelNamesOffsetsFor(d *encoding.Decbuf) ([]uint32, error) {
 	_ = d.Be64() // skip fingerprint
 	k := d.Uvarint()
 
 	offsets := make([]uint32, k)
 	for i := 0; i < k; i++ {
-		offsets[i] = uint32(d.Uvarint())
-		_ = d.Uvarint() // skip the label value
+		offsets[i] = d.Uvarint32()
+		_ = d.Uvarint32() // skip the label value
 
 		if d.Err() != nil {
 			return nil, errors.Wrap(d.Err(), "read series label offsets")
+		}
+	}
+
+	return offsets, d.Err()
+}
+
+// LabelNamesOffsetsFor decodes the offsets of the name symbols for a given series.
+// They are returned in the same order they're stored, which should be sorted lexicographically.
+func (dec *Decoder) SmNamesOffsetsFor(d *encoding.Decbuf) ([]uint32, error) {
+	k := d.Uvarint()
+
+	offsets := make([]uint32, k)
+	for i := 0; i < k; i++ {
+		offsets[i] = d.Uvarint32()
+
+		if d.Err() != nil {
+			return nil, errors.Wrap(d.Err(), "read structured metadata label offsets")
 		}
 	}
 
@@ -2138,7 +2199,7 @@ func buildChunkSamples(d encoding.Decbuf, numChunks int, info *chunkSamples) err
 	return d.Err()
 }
 
-func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeries(version int, b []byte, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats) (*encoding.Decbuf, uint64, error) {
 	*lbls = (*lbls)[:0]
 	if chks != nil {
 		*chks = (*chks)[:0]
@@ -2168,14 +2229,61 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
+
+	if err := dec.readSeriesStats(version, &d, stats); err != nil {
+		return nil, 0, errors.Wrap(err, "read series stats")
+	}
+
 	return &d, fprint, nil
+}
+
+func (dec *Decoder) readSeriesStats(version int, d *encoding.Decbuf, stats **StreamStats) error {
+	// Even if < V4, we want to return up empty stats if requested
+	if stats != nil {
+		if *stats == nil {
+			*stats = NewStreamStats()
+		}
+	}
+	if version < FormatV4 {
+		return nil
+	}
+
+	// If stats are not requested (stats are nil), we can just skip through the stats
+	if stats == nil {
+		return dec.skipSeriesStats(d)
+	}
+
+	nSMFieldNames := d.Uvarint()
+
+	fields := make(map[string]struct{}, nSMFieldNames)
+	for i := 0; i < nSMFieldNames; i++ {
+		fieldName := uint32(d.Uvarint())
+
+		ln, err := dec.LookupSymbol(fieldName)
+		if err != nil {
+			return errors.Wrap(err, "lookup structured metadata field name")
+		}
+
+		fields[ln] = struct{}{}
+	}
+	(*stats).StructuredMetadataFieldNames = fields
+
+	return nil
+}
+
+func (dec *Decoder) skipSeriesStats(d *encoding.Decbuf) error {
+	nSMFieldNames := d.Uvarint()
+	for i := 0; i < nSMFieldNames; i++ {
+		_ = d.Uvarint()
+	}
+	return d.Err()
 }
 
 // prepSeriesBy returns series labels and chunks for a series and only returning selected `by` label names.
 // If `by` is empty, it returns all labels for the series.
-func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMeta, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
+func (dec *Decoder) prepSeriesBy(version int, b []byte, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats, by map[string]struct{}) (*encoding.Decbuf, uint64, error) {
 	if by == nil {
-		return dec.prepSeries(b, lbls, chks)
+		return dec.prepSeries(version, b, lbls, chks, stats)
 	}
 	*lbls = (*lbls)[:0]
 	if chks != nil {
@@ -2210,11 +2318,16 @@ func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMet
 
 		*lbls = append(*lbls, labels.Label{Name: ln, Value: lv})
 	}
+
+	if err := dec.readSeriesStats(version, &d, stats); err != nil {
+		return nil, 0, errors.Wrap(err, "read series stats")
+	}
+
 	return &d, fprint, nil
 }
 
 func (dec *Decoder) ChunkStats(version int, b []byte, seriesRef storage.SeriesRef, from, through int64, lbls *labels.Labels, by map[string]struct{}) (uint64, ChunkStats, error) {
-	d, fp, err := dec.prepSeriesBy(b, lbls, nil, by)
+	d, fp, err := dec.prepSeriesBy(version, b, lbls, nil, nil, by)
 	if err != nil {
 		return 0, ChunkStats{}, err
 	}
@@ -2357,8 +2470,8 @@ func (dec *Decoder) readChunkStatsPriorV3(d *encoding.Decbuf, seriesRef storage.
 }
 
 // Series decodes a series entry from the given byte slice into lset and chks.
-func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta) (uint64, error) {
-	d, fprint, err := dec.prepSeries(b, lbls, chks)
+func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, from int64, through int64, lbls *labels.Labels, chks *[]ChunkMeta, stats **StreamStats) (uint64, error) {
+	d, fprint, err := dec.prepSeries(version, b, lbls, chks, stats)
 	if err != nil {
 		return 0, err
 	}
@@ -2527,4 +2640,53 @@ func overlap(from, through, chkFrom, chkThrough int64) bool {
 	// note: chkThrough is inclusive as it represents the last
 	// sample timestamp in the chunk, whereas through is exclusive
 	return from <= chkThrough && through > chkFrom
+}
+
+type StreamStats struct {
+	mu                           sync.RWMutex
+	StructuredMetadataFieldNames map[string]struct{}
+}
+
+func NewStreamStats() *StreamStats {
+	return &StreamStats{
+		StructuredMetadataFieldNames: make(map[string]struct{}),
+	}
+}
+
+func (s *StreamStats) Copy() *StreamStats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := &StreamStats{
+		StructuredMetadataFieldNames: make(map[string]struct{}, len(s.StructuredMetadataFieldNames)),
+	}
+	for k := range s.StructuredMetadataFieldNames {
+		out.StructuredMetadataFieldNames[k] = struct{}{}
+	}
+	return out
+}
+
+func (s *StreamStats) Merge(other *StreamStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for k := range other.StructuredMetadataFieldNames {
+		s.StructuredMetadataFieldNames[k] = struct{}{}
+	}
+}
+
+func (s *StreamStats) AddStructuredMetadata(metadata push.LabelsAdapter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, l := range metadata {
+		s.StructuredMetadataFieldNames[l.Name] = struct{}{}
+	}
+}
+
+func (s *StreamStats) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.StructuredMetadataFieldNames = make(map[string]struct{}, len(s.StructuredMetadataFieldNames))
 }

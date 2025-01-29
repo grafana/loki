@@ -3,26 +3,28 @@ package tsdb
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/logql"
-	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
-
+	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
+	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
+	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 // implements stores.Index
@@ -122,8 +124,18 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
+	var filterLabelNames []string
+	filters := syntax.ExtractLabelFiltersBeforeParser(predicate.Plan().AST)
+	for _, f := range filters {
+		filterLabelNames = append(filterLabelNames, f.RequiredLabelNames()...)
+	}
+	if len(filterLabelNames) > 0 {
+		level.Debug(util_log.Logger).Log("msg", "filtering by label names", "label_names", strings.Join(filterLabelNames, ","))
+		// h11: dedup
+	}
+
 	// TODO(owen-d): use a pool to reduce allocs here
-	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, filterLabelNames, nil, shard, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +182,7 @@ func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, []string, error) {
 	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
@@ -285,12 +297,12 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 	var mtx sync.Mutex
 
 	m := make(map[model.Fingerprint]index.ChunkMetas, 1024)
-	if err := c.idx.ForSeries(ctx, userID, v1.FullBounds, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+	if err := c.idx.ForSeries(ctx, userID, v1.FullBounds, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 		mtx.Lock()
 		m[fp] = append(m[fp], chks...)
 		mtx.Unlock()
 		return false
-	}, predicate.Matchers...); err != nil {
+	}, nil, predicate.Matchers...); err != nil {
 		return nil, err
 	}
 

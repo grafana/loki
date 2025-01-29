@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	index2 "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
@@ -594,6 +595,10 @@ func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.
 }
 
 type failingChunkWriter struct{}
+
+func (f failingChunkWriter) UpdateSeriesStats(_ context.Context, _, _ model.Time, _ string, _ uint64, _ *index2.StreamStats) error {
+	return nil
+}
 
 func (f failingChunkWriter) Put(_ context.Context, _ []chunk.Chunk) error {
 	return errWritingChunkUnsupported

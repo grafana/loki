@@ -133,7 +133,7 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 		user,
 		bounds,
 		0, math.MaxInt64,
-		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
+		func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta, _ *index.StreamStats) (stop bool) {
 			select {
 			case <-ctx.Done():
 				return true
@@ -154,6 +154,7 @@ func NewTSDBSeriesIter(ctx context.Context, user string, f sharding.ForSeries, b
 				return false
 			}
 		},
+		nil,
 		labels.MustNewMatcher(labels.MatchEqual, "", ""),
 	); err != nil {
 		return nil, err

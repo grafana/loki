@@ -21,6 +21,7 @@ import (
 type ChunkWriter interface {
 	Put(ctx context.Context, chunks []chunk.Chunk) error
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
+	UpdateSeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64, stats *tsdb_index.StreamStats) error
 }
 
 type ChunkFetcherProvider interface {
@@ -106,6 +107,12 @@ func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	})
 }
 
+func (c CompositeStore) UpdateSeriesStats(ctx context.Context, from, through model.Time, userID string, fp uint64, stats *tsdb_index.StreamStats) error {
+	return c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
+		return store.UpdateSeriesStats(innerCtx, from, through, userID, fp, stats)
+	})
+}
+
 func (c CompositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	for _, store := range c.stores {
 		store.Store.SetChunkFilterer(chunkFilter)
@@ -149,17 +156,18 @@ func (c CompositeStore) LabelValuesForMetricName(ctx context.Context, userID str
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, error) {
-	var result util.UniqueStrings
+func (c CompositeStore) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, matchers ...*labels.Matcher) ([]string, []string, error) {
+	var result, smLabelResult util.UniqueStrings
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		labelNames, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName, matchers...)
+		labelNames, smLabels, err := store.LabelNamesForMetricName(innerCtx, userID, from, through, metricName, matchers...)
 		if err != nil {
 			return err
 		}
 		result.Add(labelNames...)
+		smLabelResult.Add(smLabels...)
 		return nil
 	})
-	return result.Strings(), err
+	return result.Strings(), smLabelResult.Strings(), err
 }
 
 func (c CompositeStore) GetChunks(
@@ -280,11 +288,12 @@ func (c CompositeStore) HasForSeries(from, through model.Time) (sharding.ForSeri
 				labels.Labels,
 				model.Fingerprint,
 				[]tsdb_index.ChunkMeta,
+				*tsdb_index.StreamStats,
 			) (stop bool),
 			matchers ...*labels.Matcher,
 		) error {
 			for _, impl := range impls {
-				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, matchers...); err != nil {
+				if err := impl.ForSeries(ctx, userID, fpFilter, from, through, fn, nil, matchers...); err != nil {
 					return err
 				}
 			}
