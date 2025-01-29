@@ -118,53 +118,53 @@ func GetRegionFromURL(endpointURL url.URL) string {
 	if endpointURL == sentinelURL {
 		return ""
 	}
-	if endpointURL.Host == "s3-external-1.amazonaws.com" {
+	if endpointURL.Hostname() == "s3-external-1.amazonaws.com" {
 		return ""
 	}
 
 	// if elb's are used we cannot calculate which region it may be, just return empty.
-	if elbAmazonRegex.MatchString(endpointURL.Host) || elbAmazonCnRegex.MatchString(endpointURL.Host) {
+	if elbAmazonRegex.MatchString(endpointURL.Hostname()) || elbAmazonCnRegex.MatchString(endpointURL.Hostname()) {
 		return ""
 	}
 
 	// We check for FIPS dualstack matching first to avoid the non-greedy
 	// regex for FIPS non-dualstack matching a dualstack URL
-	parts := amazonS3HostFIPSDualStack.FindStringSubmatch(endpointURL.Host)
+	parts := amazonS3HostFIPSDualStack.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
 
-	parts = amazonS3HostFIPS.FindStringSubmatch(endpointURL.Host)
+	parts = amazonS3HostFIPS.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
 
-	parts = amazonS3HostDualStack.FindStringSubmatch(endpointURL.Host)
+	parts = amazonS3HostDualStack.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
 
-	parts = amazonS3HostHyphen.FindStringSubmatch(endpointURL.Host)
+	parts = amazonS3HostHyphen.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
 
-	parts = amazonS3ChinaHost.FindStringSubmatch(endpointURL.Host)
+	parts = amazonS3ChinaHost.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
 
-	parts = amazonS3ChinaHostDualStack.FindStringSubmatch(endpointURL.Host)
+	parts = amazonS3ChinaHostDualStack.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
 
-	parts = amazonS3HostDot.FindStringSubmatch(endpointURL.Host)
+	parts = amazonS3HostDot.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}
 
-	parts = amazonS3HostPrivateLink.FindStringSubmatch(endpointURL.Host)
+	parts = amazonS3HostPrivateLink.FindStringSubmatch(endpointURL.Hostname())
 	if len(parts) > 1 {
 		return parts[1]
 	}

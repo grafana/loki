@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
@@ -62,6 +63,7 @@ func lokiReadRoutes(cfg Config) []querytee.Route {
 		Tolerance:         cfg.ProxyConfig.ValueComparisonTolerance,
 		UseRelativeError:  cfg.ProxyConfig.UseRelativeError,
 		SkipRecentSamples: cfg.ProxyConfig.SkipRecentSamples,
+		SkipSamplesBefore: time.Time(cfg.ProxyConfig.SkipSamplesBefore),
 	})
 
 	return []querytee.Route{

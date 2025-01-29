@@ -43,11 +43,13 @@ var ErrDeleteRequestNotFound = errors.New("could not find matching delete reques
 type DeleteRequestsStore interface {
 	AddDeleteRequestGroup(ctx context.Context, req []DeleteRequest) ([]DeleteRequest, error)
 	GetDeleteRequestsByStatus(ctx context.Context, status DeleteRequestStatus) ([]DeleteRequest, error)
+	GetAllDeleteRequests(ctx context.Context) ([]DeleteRequest, error)
 	GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error)
 	UpdateStatus(ctx context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error
 	GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error)
 	RemoveDeleteRequests(ctx context.Context, req []DeleteRequest) error
 	GetCacheGenerationNumber(ctx context.Context, userID string) (string, error)
+	MergeShardedRequests(ctx context.Context, requestToAdd DeleteRequest, requestsToRemove []DeleteRequest) error
 	Stop()
 	Name() string
 }
@@ -99,12 +101,25 @@ func (ds *deleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs [
 		results = append(results, newReq)
 		ds.writeDeleteRequest(newReq, writeBatch)
 	}
+	ds.updateCacheGen(reqs[0].UserID, writeBatch)
 
 	if err := ds.indexClient.BatchWrite(ctx, writeBatch); err != nil {
 		return nil, err
 	}
 
 	return results, nil
+}
+
+func (ds *deleteRequestsStore) MergeShardedRequests(ctx context.Context, requestToAdd DeleteRequest, requestsToRemove []DeleteRequest) error {
+	writeBatch := ds.indexClient.NewWriteBatch()
+
+	ds.writeDeleteRequest(requestToAdd, writeBatch)
+
+	for _, req := range requestsToRemove {
+		ds.removeRequest(req, writeBatch)
+	}
+
+	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
 
 func newRequest(req DeleteRequest, requestID []byte, createdAt model.Time, seqNumber int) (DeleteRequest, error) {
@@ -124,14 +139,15 @@ func (ds *deleteRequestsStore) writeDeleteRequest(req DeleteRequest, writeBatch 
 	// Add an entry with userID, requestID, and sequence number as range key and status as value to make it easy
 	// to manage and lookup status. We don't want to set anything in hash key here since we would want to find
 	// delete requests by just status
-	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(StatusReceived))
+	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(req.Status))
 
 	// Add another entry with additional details like creation time, time range of delete request and the logQL requests in value
-	rangeValue := fmt.Sprintf("%x:%x:%x", int64(ds.now()), int64(req.StartTime), int64(req.EndTime))
+	rangeValue := fmt.Sprintf("%x:%x:%x", int64(req.CreatedAt), int64(req.StartTime), int64(req.EndTime))
 	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID), []byte(rangeValue), []byte(req.Query))
+}
 
-	// create a gen number for this result
-	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, generateCacheGenNumber())
+func (ds *deleteRequestsStore) updateCacheGen(userID string, writeBatch index.WriteBatch) {
+	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, userID), []byte{}, generateCacheGenNumber())
 }
 
 // backwardCompatibleDeleteRequestHash generates the hash key for a delete request.
@@ -172,6 +188,14 @@ func (ds *deleteRequestsStore) GetDeleteRequestsByStatus(ctx context.Context, st
 	})
 }
 
+// GetAllDeleteRequests returns all the delete requests.
+func (ds *deleteRequestsStore) GetAllDeleteRequests(ctx context.Context) ([]DeleteRequest, error) {
+	return ds.queryDeleteRequests(ctx, index.Query{
+		TableName: DeleteRequestsTableName,
+		HashValue: string(deleteRequestID),
+	})
+}
+
 // GetAllDeleteRequestsForUser returns all delete requests for a user.
 func (ds *deleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
 	return ds.queryDeleteRequests(ctx, index.Query{
@@ -187,11 +211,6 @@ func (ds *deleteRequestsStore) UpdateStatus(ctx context.Context, req DeleteReque
 
 	writeBatch := ds.indexClient.NewWriteBatch()
 	writeBatch.Add(DeleteRequestsTableName, string(deleteRequestID), []byte(userIDAndRequestID), []byte(newStatus))
-
-	if newStatus == StatusProcessed {
-		// remove runtime filtering for deleted data
-		writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, generateCacheGenNumber())
-	}
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
@@ -319,20 +338,22 @@ func unmarshalDeleteRequestDetails(itr index.ReadBatchIterator, req DeleteReques
 		return DeleteRequest{}, nil
 	}
 
-	if err = requestWithDetails.SetQuery(string(itr.Value())); err != nil {
-		return DeleteRequest{}, err
-	}
+	requestWithDetails.Query = string(itr.Value())
 
 	return requestWithDetails, nil
 }
 
 // RemoveDeleteRequests the passed delete requests
 func (ds *deleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
+	if len(reqs) == 0 {
+		return nil
+	}
 	writeBatch := ds.indexClient.NewWriteBatch()
 
 	for _, r := range reqs {
 		ds.removeRequest(r, writeBatch)
 	}
+	ds.updateCacheGen(reqs[0].UserID, writeBatch)
 
 	return ds.indexClient.BatchWrite(ctx, writeBatch)
 }
@@ -344,9 +365,6 @@ func (ds *deleteRequestsStore) removeRequest(req DeleteRequest, writeBatch index
 	// Add another entry with additional details like creation time, time range of delete request and selectors in value
 	rangeValue := fmt.Sprintf("%x:%x:%x", int64(req.CreatedAt), int64(req.StartTime), int64(req.EndTime))
 	writeBatch.Delete(DeleteRequestsTableName, fmt.Sprintf("%s:%s", deleteRequestDetails, userIDAndRequestID), []byte(rangeValue))
-
-	// ensure caches are invalidated
-	writeBatch.Add(DeleteRequestsTableName, fmt.Sprintf("%s:%s", cacheGenNum, req.UserID), []byte{}, []byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
 }
 
 func (ds *deleteRequestsStore) Name() string {

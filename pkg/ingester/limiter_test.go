@@ -130,7 +130,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 
 			ownedStreamSvc := &ownedStreamService{
 				fixedLimit:       atomic.NewInt32(testData.fixedLimit),
-				ownedStreamCount: testData.ownedStreamCount,
+				ownedStreamCount: atomic.NewInt64(int64(testData.ownedStreamCount)),
 			}
 			strategy := &fixedStrategy{localLimit: testData.calculatedLocalLimit}
 			limiter := NewLimiter(limits, NilMetrics, strategy, &TenantBasedStrategy{limits: limits})
