@@ -133,7 +133,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	// the first time we use the field as label key.
 	if len(j.prefixBuffer) == 0 {
 		key, ok := j.keys.Get(key, func() (string, bool) {
-			field := sanitizeLabelKey(string(key), true)
+			field := SanitizeLabelKey(string(key), true)
 			if j.lbs.BaseHas(field) {
 				field = field + duplicateSuffix
 			}
@@ -263,7 +263,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 	for i, value := range r.regex.FindSubmatch(line) {
 		if name, ok := r.nameIndex[i]; ok {
 			key, ok := r.keys.Get(unsafeGetBytes(name), func() (string, bool) {
-				sanitize := sanitizeLabelKey(name, true)
+				sanitize := SanitizeLabelKey(name, true)
 				if len(sanitize) == 0 {
 					return "", false
 				}
@@ -328,7 +328,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 		}
 
 		key, ok := l.keys.Get(l.dec.Key(), func() (string, bool) {
-			sanitized := sanitizeLabelKey(string(l.dec.Key()), true)
+			sanitized := SanitizeLabelKey(string(l.dec.Key()), true)
 			if len(sanitized) == 0 {
 				return "", false
 			}
@@ -496,7 +496,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 
 		current = l.dec.Key()
 		key, ok := l.keys.Get(current, func() (string, bool) {
-			sanitized := sanitizeLabelKey(string(current), true)
+			sanitized := SanitizeLabelKey(string(current), true)
 			if len(sanitized) == 0 {
 				return "", false
 			}
@@ -744,7 +744,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, SanitizeLabelKey(key, true), unescapeJSONString(value))
 		default:
 			return nil
 		}

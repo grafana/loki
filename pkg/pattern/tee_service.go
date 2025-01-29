@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/user"
 
-	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/distributor/model"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -47,7 +47,7 @@ type TeeService struct {
 
 	bufferPool   *pool.Pool
 	buffersMutex *sync.Mutex
-	buffers      map[string][]distributor.KeyedStream
+	buffers      map[string][]model.KeyedStream
 }
 
 func NewTeeService(
@@ -95,7 +95,7 @@ func NewTeeService(
 
 		wg:           &sync.WaitGroup{},
 		buffersMutex: &sync.Mutex{},
-		buffers:      make(map[string][]distributor.KeyedStream),
+		buffers:      make(map[string][]model.KeyedStream),
 		flushQueue:   make(chan clientRequest, cfg.TeeConfig.FlushQueueSize),
 	}
 
@@ -176,7 +176,7 @@ func (ts *TeeService) flush() {
 	}
 
 	buffered := ts.buffers
-	ts.buffers = make(map[string][]distributor.KeyedStream)
+	ts.buffers = make(map[string][]model.KeyedStream)
 	ts.buffersMutex.Unlock()
 
 	batches := make([]map[string]map[string]*logproto.PushRequest, 0, len(buffered))
@@ -221,7 +221,7 @@ func (ts *TeeService) flush() {
 
 func (ts *TeeService) batchesForTenant(
 	tenant string,
-	streams []distributor.KeyedStream,
+	streams []model.KeyedStream,
 ) map[string]map[string]*logproto.PushRequest {
 	batches := map[string]map[string]*logproto.PushRequest{
 		tenant: make(map[string]*logproto.PushRequest),
@@ -419,7 +419,7 @@ func (ts *TeeService) sendBatch(ctx context.Context, clientRequest clientRequest
 }
 
 // Duplicate Implements distributor.Tee which is used to tee distributor requests to pattern ingesters.
-func (ts *TeeService) Duplicate(tenant string, streams []distributor.KeyedStream) {
+func (ts *TeeService) Duplicate(tenant string, streams []model.KeyedStream) {
 	if !ts.cfg.Enabled {
 		return
 	}

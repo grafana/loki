@@ -13,12 +13,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/prometheus/client_golang/prometheus/testutil"
-
-	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
-
-	"github.com/grafana/loki/pkg/push"
-
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -30,14 +24,18 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/push"
+	internal "github.com/grafana/loki/v3/pkg/distributor/model"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -45,7 +43,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	fe "github.com/grafana/loki/v3/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
@@ -120,7 +117,7 @@ func TestDistributor(t *testing.T) {
 			flagext.DefaultValues(limits)
 			limits.IngestionRateMB = ingestionRateLimitMB
 			limits.IngestionBurstSizeMB = ingestionRateLimitMB
-			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
+			limits.MaxLineSize = loki_flagext.ByteSize(tc.maxLineSize)
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
@@ -1233,7 +1230,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream)
+		_, _, _, err := d.parseStreamLabels(vCtx, stream)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1279,7 +1276,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, err := d.parseStreamLabels(vCtx, logproto.Stream{
 				Labels: tc.origLabels,
 			})
 			if tc.expectedErr != nil {
@@ -1958,11 +1955,11 @@ func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
 
 type mockTee struct {
 	mu         sync.Mutex
-	duplicated [][]KeyedStream
+	duplicated [][]internal.KeyedStream
 	tenant     string
 }
 
-func (mt *mockTee) Duplicate(tenant string, streams []KeyedStream) {
+func (mt *mockTee) Duplicate(tenant string, streams []internal.KeyedStream) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
 	mt.duplicated = append(mt.duplicated, streams)
@@ -2015,7 +2012,7 @@ func TestDistributorTee(t *testing.T) {
 		require.NoError(t, err)
 
 		for j, streams := range td.Streams {
-			assert.Equal(t, tee.duplicated[i][j].Stream.Entries, streams.Entries)
+			require.ElementsMatch(t, tee.duplicated[i][j].Stream.Entries, streams.Entries)
 		}
 
 		require.Equal(t, "test", tee.tenant)

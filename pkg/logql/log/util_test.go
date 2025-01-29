@@ -21,7 +21,7 @@ func Test_sanitizeLabelKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
-			if got := sanitizeLabelKey(tt.key, true); got != tt.want {
+			if got := SanitizeLabelKey(tt.key, true); got != tt.want {
 				t.Errorf("sanitizeKey() = %v, want %v", got, tt.want)
 			}
 		})
