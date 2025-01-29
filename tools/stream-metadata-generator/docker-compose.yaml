@@ -1,6 +1,8 @@
 services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
+    hostname: kafka-ui
+    container_name: kafka-ui
     ports:
       - 8080:8080
     environment:
@@ -46,6 +48,8 @@ services:
 
   loki:
     image: theperiklis/loki:feat-usage-tracker-293aed8
+    hostname: loki
+    container_name: loki
     user: root
     ports:
       - 3100:3100
@@ -65,6 +69,8 @@ services:
 
   generator:
     image: theperiklis/stream-metadata-generator:latest
+    hostname: generator
+    container_name: generator
     build:
       context: ../..
       dockerfile: tools/stream-metadata-generator/Dockerfile

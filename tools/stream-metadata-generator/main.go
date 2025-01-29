@@ -41,18 +41,15 @@ import (
 )
 
 const (
-	metricsNamespace = "loki_streammetagen_"
+	metricsNamespace = "loki_stream_metadata_generator_"
 	ingesterRingName = "ingester"
 )
 
-var (
-	streamLabels = []string{"cluster", "namespace", "job", "instance"}
-)
-
 type Config struct {
-	NumTenants       int `yaml:"num_tenants"`
-	QPSPerTenant     int `yaml:"qps_per_tenant"`
-	StreamsPerTenant int `yaml:"streams_per_tenant"`
+	NumTenants       int      `yaml:"num_tenants"`
+	QPSPerTenant     int      `yaml:"qps_per_tenant"`
+	StreamsPerTenant int      `yaml:"streams_per_tenant"`
+	StreamLabels     []string `yaml:"stream_labels"`
 
 	LogLevel       dskit_log.Level `yaml:"log_level"`
 	HttpListenPort int             `yaml:"http_listen_port"`
@@ -63,11 +60,30 @@ type Config struct {
 	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 }
 
+type streamLabelsFlag []string
+
+func (s *streamLabelsFlag) String() string {
+	return strings.Join(*s, ",")
+}
+
+func (s *streamLabelsFlag) Set(value string) error {
+	*s = strings.Split(value, ",")
+	return nil
+}
+
 func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.NumTenants, "tenants.total", 1, "Number of tenants to generate metadata for")
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
 	f.IntVar(&c.HttpListenPort, "http-listen-port", 3100, "HTTP Listener port")
+
+	// Set default stream labels
+	defaultLabels := []string{"cluster", "namespace", "job", "instance"}
+	c.StreamLabels = defaultLabels
+
+	// Create a custom flag for stream labels
+	streamLabels := (*streamLabelsFlag)(&c.StreamLabels)
+	f.Var(streamLabels, "stream.labels", fmt.Sprintf("The labels to generate for each stream (comma-separated) (default: %s)", strings.Join(defaultLabels, ",")))
 
 	c.LogLevel.RegisterFlags(f)
 	c.Kafka.RegisterFlags(f)
@@ -174,7 +190,7 @@ func (s *streamMetaGen) starting(ctx context.Context) error {
 	s.streams = make(map[string][]distributor.KeyedStream)
 	for i := 0; i < s.cfg.NumTenants; i++ {
 		tenantID := fmt.Sprintf("tenant-%d", i)
-		s.streams[tenantID] = generateStreamsForTenant(tenantID, s.cfg.StreamsPerTenant)
+		s.streams[tenantID] = generateStreamsForTenant(tenantID, s.cfg.StreamsPerTenant, s.cfg.StreamLabels)
 	}
 
 	return services.StartManagerAndAwaitHealthy(s.ctx, s.subservices)
@@ -278,11 +294,11 @@ func newKafkaWriter(cfg kafka.Config, logger log.Logger, reg prometheus.Register
 	}
 
 	// Create a producer with 100MB buffer limit
-	producer := client.NewProducer(kafkaClient, 100*1024*1024, reg)
+	producer := client.NewProducer(kafkaClient, cfg.ProducerMaxBufferedBytes, reg)
 	return producer, nil
 }
 
-func generateStreamsForTenant(tenantID string, streamsPerTenant int) []distributor.KeyedStream {
+func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabels []string) []distributor.KeyedStream {
 	streams := make([]distributor.KeyedStream, streamsPerTenant)
 
 	for i := 0; i < streamsPerTenant; i++ {
@@ -328,7 +344,7 @@ func main() {
 
 	logger = level.NewFilter(logger, cfg.LogLevel.Option)
 
-	if err := util.PrintConfig(os.Stdout, &cfg); err != nil {
+	if err := util.LogConfig(&cfg); err != nil {
 		logger.Log("msg", "Error printing config", "err", err)
 		os.Exit(1)
 	}
@@ -363,6 +379,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
+	mux.Handle("/memberlist", gen.memberlistKV)
 	mux.Handle("/ring", gen.ring)
 	mux.Handle("/partition-ring", ring.NewPartitionRingPageHandler(
 		gen.partitionRingWatcher,
