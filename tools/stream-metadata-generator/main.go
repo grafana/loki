@@ -53,9 +53,8 @@ type metrics struct {
 func newMetrics(reg prometheus.Registerer) *metrics {
 	return &metrics{
 		activeStreamsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: metricsNamespace,
-			Name:      "active_streams_total",
-			Help:      "The total number of active streams",
+			Name: "active_streams_total",
+			Help: "The total number of active streams",
 		}, []string{"tenant"}),
 	}
 }
