@@ -375,6 +375,32 @@ func TestLimitsValidation(t *testing.T) {
 	}
 }
 
+func TestPolicyStreamMapping(t *testing.T) {
+	// overrides := &Overrides{
+	// 	defaultLimits: &Limits{},
+	// 	tenantLimits: newMockTenantLimits(map[string]*Limits{
+	// 		"tenant-0": {
+	// 			PolicyStreamMapping: PolicyStreamMapping{
+	// 				"policy1": []*PriorityStream{
+	// 					{
+	// 						Selector: `{foo="bar"}`,
+	// 						Priority: 5,
+	// 					},
+	// 				},
+	// 			},
+	// 		},
+	// 	}),
+	// }
+
+	// tenantLimit := overrides.tenantLimits.TenantLimits("tenant-0")
+	// require.NotNil(t, tenantLimit)
+
+	// tenantsRetention := retention.NewTenantsRetention(overrides.tenantLimits)
+
+	// require.ElementsMatch(t, []string{"policy1"}, actual)
+
+}
+
 func Test_PatternIngesterTokenizableJSONFields(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

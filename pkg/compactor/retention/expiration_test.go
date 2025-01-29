@@ -13,8 +13,9 @@ import (
 )
 
 type retentionLimit struct {
-	retentionPeriod time.Duration
-	streamRetention []validation.StreamRetention
+	retentionPeriod     time.Duration
+	streamRetention     []validation.StreamRetention
+	policyStreamMapping validation.PolicyStreamMapping
 }
 
 func (r retentionLimit) convertToValidationLimit() *validation.Limits {
@@ -34,7 +35,7 @@ func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
 }
 
 func (f fakeLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
-	return nil
+	return f.perTenant["user0"].policyStreamMapping
 }
 
 func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
@@ -543,4 +544,41 @@ func TestExpirationChecker_IntervalMayHaveExpiredChunks(t *testing.T) {
 			require.Equal(t, tc.hasExpiredChunks, expirationChecker.IntervalMayHaveExpiredChunks(tc.interval, tc.userID))
 		})
 	}
+}
+
+func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
+	tr := NewTenantsRetention(fakeLimits{
+		defaultLimit: retentionLimit{},
+		perTenant: map[string]retentionLimit{
+			"user0": {
+				policyStreamMapping: validation.PolicyStreamMapping{
+					"policy1": []*validation.PriorityStream{
+						{
+							Selector: `{foo="bar"}`,
+							Priority: 2,
+							Matchers: []*labels.Matcher{
+								labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+					},
+					"policy2": []*validation.PriorityStream{
+						{
+							Selector: `{foo="bar", daz="baz"}`,
+							Priority: 1,
+							Matchers: []*labels.Matcher{
+								labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+								labels.MustNewMatcher(labels.MatchEqual, "daz", "baz"),
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	require.Equal(t, "policy1", tr.PolicyFor("user0", labels.FromStrings("foo", "bar", "env", "prod")))
+	// matches both policy2 and policy1 but policy1 has higher priority.
+	require.Equal(t, "policy1", tr.PolicyFor("user0", labels.FromStrings("foo", "bar", "daz", "baz", "env", "prod")))
+	// matches no policy.
+	require.Equal(t, "", tr.PolicyFor("user0", labels.FromStrings("foo", "fooz", "daz", "qux", "quux", "corge", "env", "prod")))
 }
