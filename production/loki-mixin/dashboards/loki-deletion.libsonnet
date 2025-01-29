@@ -67,10 +67,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
         ).addRow(
           g.row('List of deletion requests')
           .addPanel(
-            $.logPanel('In progress/finished', '{%s, %s} |~ "Started processing delete request|delete request for user marked as processed" | %s | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % [$.namespaceMatcher(), compactor_matcher,$._config.log_format]),
+            $.logPanel('In progress/finished', '{%s, %s} |~ "Started processing delete request|delete request for user marked as processed" | %s | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % [$.namespaceMatcher(), compactor_matcher, $._config.log_format]),
           )
           .addPanel(
-            $.logPanel('Requests', '{%s, %s} |~ "delete request for user added" | %s | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % [$.namespaceMatcher(), compactor_matcher,$._config.log_format]),
+            $.logPanel('Requests', '{%s, %s} |~ "delete request for user added" | %s | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % [$.namespaceMatcher(), compactor_matcher, $._config.log_format]),
           )
         ),
     },
