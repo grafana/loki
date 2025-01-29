@@ -2,7 +2,7 @@ ARG GO_VERSION=1.23
 ARG IMAGE_TAG
 
 # UI build stage
-FROM node:20-alpine AS ui-builder
+FROM node:22-alpine AS ui-builder
 RUN apk add --no-cache make
 COPY . /src/loki
 WORKDIR /src/loki
