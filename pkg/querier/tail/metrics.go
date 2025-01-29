@@ -1,4 +1,4 @@
-package querier
+package tail
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
