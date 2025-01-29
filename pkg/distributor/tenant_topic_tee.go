@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -61,8 +60,6 @@ type TenantTopicConfig struct {
 	// MaxBufferedBytes is the maximum number of bytes that can be buffered before producing to Kafka
 	MaxBufferedBytes flagext.Bytes
 
-	// BatchTimeout is the maximum amount of time to wait before sending a batch
-	BatchTimeout time.Duration
 	// MaxRecordSizeBytes is the maximum size of a single Kafka record
 	MaxRecordSizeBytes flagext.Bytes
 
@@ -89,11 +86,10 @@ func (cfg *TenantTopicConfig) Validate() error {
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *TenantTopicConfig) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enabled, "distributor.tenant-topic-tee.enabled", false, "Enable the tenant topic tee")
+	f.BoolVar(&cfg.Enabled, "distributor.tenant-topic-tee.enabled", false, "Enable the tenant topic tee, which writes logs to Kafka topics based on tenant IDs instead of using multitenant topics/partitions.")
 	f.StringVar(&cfg.TopicPrefix, "distributor.tenant-topic-tee.topic-prefix", "loki.tenant", "Prefix to prepend to tenant IDs to form the final Kafka topic name")
 	cfg.MaxBufferedBytes = 100 << 20 // 100MB
 	f.Var(&cfg.MaxBufferedBytes, "distributor.tenant-topic-tee.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka")
-	f.DurationVar(&cfg.BatchTimeout, "distributor.tenant-topic-tee.batch-timeout", 10*time.Second, "Maximum amount of time to wait before sending a batch to Kafka")
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
 	f.Var(&cfg.MaxRecordSizeBytes, "distributor.tenant-topic-tee.max-record-size-bytes", "Maximum size of a single Kafka record in bytes")
 	f.StringVar(&cfg.Strategy, "distributor.tenant-topic-tee.strategy", "simple", "Topic strategy to use. Valid values are 'simple' or 'automatic'")
@@ -363,10 +359,7 @@ func (t *TenantTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
 	}
 
 	// Send records to Kafka
-	ctx, cancel := context.WithTimeout(context.Background(), t.cfg.BatchTimeout)
-	defer cancel()
-
-	results := t.producer.ProduceSync(ctx, records)
+	results := t.producer.ProduceSync(context.TODO(), records)
 	if results.FirstErr() != nil {
 		level.Error(t.logger).Log(
 			"msg", "failed to write records to kafka",

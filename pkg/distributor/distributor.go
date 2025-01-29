@@ -101,7 +101,7 @@ type Config struct {
 	KafkaConfig     kafka.Config `yaml:"-"`
 
 	// TODO: cleanup config
-	TenantTopic TenantTopicConfig `yaml:"tenant_topic"`
+	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.

@@ -2370,7 +2370,8 @@ otlp_config:
 [ingester_writes_enabled: <boolean> | default = true]
 
 tenant_topic:
-  # Enable the tenant topic tee
+  # Enable the tenant topic tee, which writes logs to Kafka topics based on
+  # tenant IDs instead of using multitenant topics/partitions.
   # CLI flag: -distributor.tenant-topic-tee.enabled
   [enabled: <boolean> | default = false]
 
@@ -2381,10 +2382,6 @@ tenant_topic:
   # Maximum number of bytes that can be buffered before producing to Kafka
   # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
   [maxbufferedbytes: <int> | default = 100MiB]
-
-  # Maximum amount of time to wait before sending a batch to Kafka
-  # CLI flag: -distributor.tenant-topic-tee.batch-timeout
-  [batchtimeout: <duration> | default = 10s]
 
   # Maximum size of a single Kafka record in bytes
   # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
