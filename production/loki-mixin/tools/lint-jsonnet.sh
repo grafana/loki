@@ -5,7 +5,7 @@ source "$(pwd)/tools/includes/utils.sh"
 source "./tools/includes/logging.sh"
 
 # output the heading
-heading "LogQL Jsonnet" "Performing Jsonnet Linting using jsonnet-lint"
+heading "Loki Mixin" "Performing Jsonnet Linting using jsonnet-lint"
 
 # check to see if remark is installed
 if [[ "$(command -v jsonnet-lint)" = "" ]]; then

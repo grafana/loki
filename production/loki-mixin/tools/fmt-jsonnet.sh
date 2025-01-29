@@ -5,11 +5,11 @@ source "$(pwd)/tools/includes/utils.sh"
 source "./tools/includes/logging.sh"
 
 # output the heading
-heading "LogQL Jsonnet" "Performing Jsonnet Linting using jsonnet-lint"
+heading "Loki Mixin" "Performing Jsonnet Formatting using jsonnet-fmt"
 
 # check to see if remark is installed
-if [[ "$(command -v jsonnet-lint)" = "" ]]; then
-  emergency "jsonnet-lint command is required, see: (https://github.com/google/go-jsonnet/blob/master/linter/README.md) or run: go install github.com/google/go-jsonnet/cmd/jsonnet-lint@latest";
+if [[ "$(command -v jsonnet-fmt)" = "" ]]; then
+  emergency "jsonnet-fmt command is required, see: (https://github.com/google/go-jsonnet/blob/master/linter/README.md) or run: go install github.com/google/go-jsonnet/cmd/jsonnet-fmt@latest";
 fi
 
 # determine whether or not the script is called directly or sourced
@@ -18,7 +18,7 @@ fi
 statusCode=0
 
 while read -r file; do
-    JSONNET_PATH=$(pwd)/vendor jsonnet-lint "$file"
+    JSONNET_PATH=$(pwd)/vendor jsonnet-fmt "$file"
     currentCode="$?"
     # if the current code is 0, output the file name for logging purposes
     if [[ "$currentCode" == 0 ]]; then
