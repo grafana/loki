@@ -2,7 +2,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 local selector = (import '../selectors.libsonnet').new;
 
 local selectors = {
-  cortexGw: selector().cortexGateway(),
+  cortexGateway: selector().cortexGateway(),
   queryFrontend: selector().queryFrontend(),
   querier: selector().querier(),
   ingester: selector().ingester(),
@@ -14,7 +14,7 @@ local selectors = {
 
 // Available HTTP routes can be collected with the following instant query:
 // count by (route) (loki_request_duration_seconds_count{route!~"/.*"})
-local http_routes = '(%s)' % std.join('|', [
+local http_routes = [
   'api_prom_rules',
   'api_prom_rules_namespace_groupname',
   'api_v1_rules',
@@ -31,11 +31,11 @@ local http_routes = '(%s)' % std.join('|', [
   'loki_api_v1_query_range',
   'loki_api_v1_series',
   'prometheus_api_v1_rules',
-]);
+];
 
 // Available GRPC routes can be collected with the following instant query:
 // count by (route) (loki_request_duration_seconds_count{route=~"/.*"})
-local grpc_routes = '(%s)' % std.join('|', [
+local grpc_routes = [
   '/base.Ruler/Rules',
   '/indexgatewaypb.IndexGateway/GetChunkRef',
   '/indexgatewaypb.IndexGateway/GetSeries',
@@ -56,11 +56,10 @@ local grpc_routes = '(%s)' % std.join('|', [
   '/logproto.Querier/QuerySample',
   '/logproto.Querier/Series',
   '/logproto.StreamData/GetStreamRates',
-]);
+];
 
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
-    local dashboards = self,
     local showBigTable = false,
     'loki-reads.json':
       $.dashboard('Loki / Reads', uid='reads')
@@ -72,20 +71,20 @@ local grpc_routes = '(%s)' % std.join('|', [
         $.row('Frontend (cortex_gw)')
         .addPanel(
           $.newQueryPanel('QPS') +
-          $.newQpsPanel('loki_request_duration_seconds_count{%s}' % selectors.cortexGw.route(http_routes).build())
+          $.newQpsPanel('loki_request_duration_seconds_count{%s}' % selectors.cortexGateway.route(http_routes).build())
         )
         .addPanel(
           $.newQueryPanel('Latency', 'ms') +
           utils.latencyRecordingRulePanel(
             'loki_request_duration_seconds',
-            selectors.cortexGw.route(http_routes).list(),
+            selectors.cortexGateway.route(http_routes).list(),
             sum_by=['route']
           )
         )
         .addPanel(
           $.p99LatencyByPod(
             'loki_request_duration_seconds',
-            selectors.cortexGw.route(http_routes).build(brackets=true),
+            selectors.cortexGateway.route(http_routes).build(brackets=true),
           )
         )
       )
@@ -156,7 +155,7 @@ local grpc_routes = '(%s)' % std.join('|', [
       )
       // todo: add row iff multi zone ingesters are enabled
       .addRowIf(
-        !$._config.ssd.enabled,
+        !$._config.ssd.enabled && $._config.components['ingester-zone'].enabled,
         $.row('Ingester - Zone Aware')
         .addPanel(
           $.newQueryPanel('QPS') +
@@ -258,7 +257,7 @@ local grpc_routes = '(%s)' % std.join('|', [
         )
       )
       .addRowIf(
-        !$._config.ssd.enabled,
+        !$._config.ssd.enabled && $._config.operational.boltDB,
         $.row('BoltDB Index')
         .addPanel(
           $.newQueryPanel('QPS') +

@@ -1,21 +1,31 @@
+local selector = (import '../selectors.libsonnet').new;
+
+local jobSelectors = {
+  bloomGateway: selector().job('bloom-gateway').build(),
+  cortexGateway: selector().job('cortex-gateway').build(),
+  indexGateway: selector().job('index-gateway').build(),
+  ingester: selector().job(['ingester', 'partition-ingester']).build(),
+  queryFrontend: selector().job('query-frontend').build(),
+  queryScheduler: selector().job('query-scheduler').build(),
+  querier: selector().job('querier').build(),
+  ruler: selector().job('ruler').build(),
+};
+
+local containerSelectors = {
+  bloomGateway: selector().container('bloom-gateway').build(),
+  cortexGateway: selector().container('cortex-gateway').build(),
+  indexGateway: selector().container('index-gateway').build(),
+  ingester: selector().container(['ingester', 'partition-ingester']).build(),
+  queryFrontend: selector().container('query-frontend').build(),
+  queryScheduler: selector().container('query-scheduler').build(),
+  querier: selector().container('querier').build(),
+  ruler: selector().container('ruler').build(),
+};
+
 (import 'dashboard-utils.libsonnet') {
-  local index_gateway_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|index-gateway", pod=~"(index-gateway.*|loki-single-binary)"'
-  else 'container="index-gateway"',
-  local index_gateway_job_matcher = if $._config.meta_monitoring.enabled
-  then '(index-gateway.*|loki-single-binary)'
-  else 'index-gateway',
-
-  local ingester_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|ingester|partition-ingester", pod=~"(ingester.*|partition-ingester.*|loki-single-binary)"'
-  else 'container=~"ingester|partition-ingester"',
-  local ingester_job_matcher = if $._config.meta_monitoring.enabled
-  then '%s(ingester.*|partition-ingester.*|loki-single-binary)' % $._config.meta_monitoring.job_prefix
-  else '(ingester|partition-ingester).*',
-
   grafanaDashboards+:: if $._config.ssd.enabled then {} else {
     'loki-reads-resources.json':
-      ($.dashboard('Loki / Reads Resources', uid='reads-resources'))
+      $.dashboard('Loki / Reads Resources', uid='reads-resources')
       .addCluster()
       .addNamespace()
       .addTag()
@@ -23,54 +33,60 @@
         $._config.internal_components,
         $.row('Gateway')
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'cortex-gw(-internal)?'),
+          $.CPUUsagePanel('CPU', containerSelectors.cortexGateway),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw(-internal)?'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.cortexGateway),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw(-internal)?'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.cortexGateway),
         )
       )
       .addRow(
         $.row('Query Frontend')
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'query-frontend'),
+          $.CPUUsagePanel('CPU', containerSelectors.queryFrontend),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-frontend'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.queryFrontend),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'query-frontend'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.queryFrontend),
         )
       )
       .addRow(
         $.row('Query Scheduler')
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'query-scheduler'),
+          $.CPUUsagePanel('CPU', containerSelectors.queryScheduler),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'query-scheduler'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.queryScheduler),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'query-scheduler'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.queryScheduler),
         )
       )
       .addRow(
         $.row('Querier')
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'querier'),
+          $.CPUUsagePanel('CPU', containerSelectors.querier),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'querier'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.querier),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'querier'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.querier),
         )
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('querier')],
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_written_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.querier) },
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -78,7 +94,13 @@
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s,device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('querier')],
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_read_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.querier) },
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -91,18 +113,24 @@
       .addRow(
         $.row('Index Gateway')
         .addPanel(
-          $.CPUUsagePanel('CPU', index_gateway_pod_matcher),
+          $.CPUUsagePanel('CPU', containerSelectors.indexGateway),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', index_gateway_pod_matcher),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.indexGateway),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', index_gateway_job_matcher),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.indexGateway),
         )
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(index_gateway_pod_matcher)],
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_written_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.indexGateway) },
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -110,30 +138,42 @@
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(index_gateway_pod_matcher)],
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_read_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.indexGateway) },
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
         )
         .addPanel(
-          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', index_gateway_job_matcher),
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'index-gateway'),
         )
       )
       .addRow(
         $.row('Bloom Gateway')
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'bloom-gateway'),
+          $.CPUUsagePanel('CPU', containerSelectors.bloomGateway),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'bloom-gateway'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.bloomGateway),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'bloom-gateway'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.bloomGateway),
         )
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('bloom-gateway')],
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_written_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.bloomGateway) },
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -141,7 +181,13 @@
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDiskContainer('bloom-gateway')],
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_read_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.bloomGateway) },
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -153,13 +199,13 @@
       .addRow(
         $.row('Ingester')
         .addPanel(
-          $.CPUUsagePanel('CPU', ingester_pod_matcher),
+          $.CPUUsagePanel('CPU', containerSelectors.ingester),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', ingester_pod_matcher),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.ingester),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', ingester_job_matcher),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.ingester),
         )
       )
       .addRow(
@@ -167,18 +213,26 @@
         .addPanel(
           $.newQueryPanel('Rules') +
           $.queryPanel(
-            'sum by(%(label)s) (loki_prometheus_rule_group_rules{%(matcher)s}) or sum by(%(label)s) (cortex_prometheus_rule_group_rules{%(matcher)s})' % { label: $._config.per_instance_label, matcher: $.jobMatcher('ruler') },
+            |||
+              sum by(%(label)s) (
+                loki_prometheus_rule_group_rules{%(matcher)s}
+              )
+              or
+              sum by(%(label)s) (
+                cortex_prometheus_rule_group_rules{%(matcher)s}
+              )
+            ||| % { label: $._config.per_instance_label, matcher: jobSelectors.ruler },
             '{{%s}}' % $._config.per_instance_label
           ),
         )
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'ruler'),
+          $.CPUUsagePanel('CPU', containerSelectors.ruler),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'ruler'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.ruler),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'ruler'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.ruler),
         )
       ),
   },

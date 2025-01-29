@@ -1,11 +1,24 @@
-(import 'dashboard-utils.libsonnet') {
-  local ingester_pod_matcher = if $._config.meta_monitoring.enabled
-  then 'container=~"loki|ingester|partition-ingester", pod=~"(ingester.*|partition-ingester.*|loki-single-binary)"'
-  else 'container=~"ingester|partition-ingester"',
-  local ingester_job_matcher = if $._config.meta_monitoring.enabled
-  then '%s(ingester.*|partition-ingester.*|loki-single-binary)' % $._config.meta_monitoring.job_prefix
-  else '(ingester.*|partition-ingester.*)',
+local selector = (import '../selectors.libsonnet').new;
 
+local jobSelectors = {
+  cortexGateway: selector().job('cortex-gateway').build(),
+  distributor: selector().job('distributor').build(),
+  ingester: selector().job(['ingester', 'partition-ingester']).build(),
+};
+
+local containerSelectors = {
+  cortexGateway: selector().container('cortex-gateway').build(),
+  distributor: selector().container('distributor').build(),
+  ingester: selector().container(['ingester', 'partition-ingester']).build(),
+};
+
+local podSelectors = {
+  cortexGateway: selector().container('cortex-gateway').pod('cortex-gateway').build(),
+  distributor: selector().container('distributor').pod('distributor').build(),
+  ingester: selector().container(['ingester', 'partition-ingester']).pod(['ingester', 'partition-ingester']).build(),
+};
+
+(import 'dashboard-utils.libsonnet') {
   grafanaDashboards+:: if $._config.ssd.enabled then {} else {
     'loki-writes-resources.json':
       ($.dashboard('Loki / Writes Resources', uid='writes-resources'))
@@ -16,25 +29,25 @@
         $._config.internal_components,
         $.row('Gateway')
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'cortex-gw(-internal)?'),
+          $.CPUUsagePanel('CPU', containerSelectors.cortexGateway),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw(-internal)?'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.cortexGateway),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw(-internal)?'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.cortexGateway),
         )
       )
       .addRow(
         $.row('Distributor')
         .addPanel(
-          $.containerCPUUsagePanel('CPU', 'distributor'),
+          $.CPUUsagePanel('CPU', containerSelectors.distributor),
         )
         .addPanel(
-          $.containerMemoryWorkingSetPanel('Memory (workingset)', 'distributor'),
+          $.memoryWorkingSetPanel('Memory (workingset)', containerSelectors.distributor),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', 'distributor'),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.distributor),
         )
       )
       .addRow(
@@ -42,7 +55,11 @@
         .addPanel(
           $.newQueryPanel('In-memory streams') +
           $.queryPanel(
-            'sum by(%s) (loki_ingester_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(ingester_job_matcher)],
+            |||
+              sum by(%s) (
+                loki_ingester_memory_streams{%s}
+              )
+            ||| % [$._config.per_instance_label, jobSelectors.ingester],
             '{{%s}}' % $._config.per_instance_label
           ) +
           {
@@ -50,18 +67,22 @@
           },
         )
         .addPanel(
-          $.CPUUsagePanel('CPU', ingester_pod_matcher),
+          $.CPUUsagePanel('CPU', podSelectors.ingester),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', ingester_pod_matcher),
+          $.memoryWorkingSetPanel('Memory (workingset)', podSelectors.ingester),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', ingester_job_matcher),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.ingester),
         )
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(ingester_pod_matcher)],
+            |||
+              sum by(%s, device) (
+                rate(node_disk_written_bytes_total[$__rate_interval])
+              ) + %s
+            ||| % [$._config.per_node_label, $.filterNodeDisk(podSelectors.ingester)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
@@ -69,13 +90,17 @@
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(ingester_pod_matcher)],
+            |||
+              sum by(%s, device) (
+                rate(node_disk_read_bytes_total[$__rate_interval])
+              ) + %s
+            ||| % [$._config.per_node_label, $.filterNodeDisk(podSelectors.ingester)],
             '{{%s}} - {{device}}' % $._config.per_instance_label
           ) +
           $.withStacking,
         )
         .addPanel(
-          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', ingester_job_matcher),
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', jobSelectors.ingester),
         )
       ),
   },

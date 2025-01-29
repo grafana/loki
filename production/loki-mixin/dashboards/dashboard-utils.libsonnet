@@ -1,4 +1,4 @@
-local utils = import 'mixin-utils/utils.libsonnet';
+local selector = (import '../selectors.libsonnet').new;
 
 (import 'grafana-builder/grafana.libsonnet') {
   // Override the dashboard constructor to add:
@@ -81,40 +81,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
           .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
     },
 
-  jobMatcher(job)::
-    $._config.per_cluster_label + '=~"$cluster", job=~"%s"' % self.componentMatcher(job),
-
-  namespaceMatcher()::
-    $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
-
-  componentMatcher(component, path=null)::
-    local _getComponentKey(component, key) = (
-      // if the component is an array, look up the key for each component and join with |
-      if std.isArray(component) then
-        std.join(
-          '|', std.uniq(
-            std.map(
-              function(c)
-                if std.objectHas($._config.components, c) && std.objectHas($._config.components[c], key) then $._config.components[c][key]
-                else null,
-              component
-            )
-          )
-        )
-      // otherwise look up the key for the single component
-      else if std.objectHas($._config.components, component) && std.objectHas($._config.components[component], key) then $._config.components[component][key]
-      else if key == 'pattern' then component
-      else ''
-    );
-    // get the component path(s) (read, write, etc)
-    local componentPaths = _getComponentKey(component, 'path');
-
-    // get the component patterns if they exist in the config, otherwise use the component
-    local componentPattern = _getComponentKey(component, 'pattern');
-
-    // join the component pattern and component and paths
-    '($namespace)/((loki|enterprise-logs)-)?(%s)' % [std.join('|', [componentPattern, componentPaths, 'single-binary'])],
-
   logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
     type: 'logs',
@@ -126,7 +92,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
     ],
   },
-  fromNowPanel(title, metric_name)::
+
+  fromNowPanel(title, query)::
     $.panel(title) +
     {
       type: 'stat',
@@ -152,7 +119,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
       targets: [
         {
-          expr: '%s{%s} * 1e3' % [metric_name, $.namespaceMatcher()],
+          expr: '%s * 1e3' % query,
           refId: 'A',
           instant: true,
           format: 'time_series',
@@ -175,12 +142,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
       datasource: '$datasource',
     },
+
   CPUUsagePanel(title, matcher)::
     $.newQueryPanel(title) +
     $.queryPanel([
-      'sum by(pod) (rate(container_cpu_usage_seconds_total{%s, %s}[$__rate_interval]))' % [$.namespaceMatcher(), matcher],
-      'min(kube_pod_container_resource_requests{%s, %s, resource="cpu"} > 0)' % [$.namespaceMatcher(), matcher],
-      'min(container_spec_cpu_quota{%s, %s} / container_spec_cpu_period{%s, %s})' % [$.namespaceMatcher(), matcher, $.namespaceMatcher(), matcher],
+      'sum by(pod) (rate(container_cpu_usage_seconds_total{%s}[$__rate_interval]))' % [matcher],
+      'min(kube_pod_container_resource_requests{%s, resource="cpu"} > 0)' % [matcher],
+      'min(container_spec_cpu_quota{%(matcher)s} / container_spec_cpu_period{%(matcher)s})' % { matcher: matcher },
     ], ['{{pod}}', 'request', 'limit']) +
     {
       tooltip: { sort: 2 },  // Sort descending.
@@ -206,17 +174,27 @@ local utils = import 'mixin-utils/utils.libsonnet';
         ],
       },
     },
-  containerCPUUsagePanel(title, containerName)::
-    self.CPUUsagePanel(title, 'container=~"%s"' % containerName),
 
   memoryWorkingSetPanel(title, matcher)::
     $.newQueryPanel(title, 'bytes') +
     $.queryPanel([
       // We use "max" instead of "sum" otherwise during a rolling update of a statefulset we will end up
       // summing the memory of the old pod (whose metric will be stale for 5m) to the new pod.
-      'max by(pod) (container_memory_working_set_bytes{%s, %s})' % [$.namespaceMatcher(), matcher],
-      'min(kube_pod_container_resource_requests{%s, %s, resource="memory"} > 0)' % [$.namespaceMatcher(), matcher],
-      'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
+      |||
+        max by (pod) (
+          container_memory_working_set_bytes{%s}
+        )
+      ||| % [matcher],
+      |||
+        min(
+          kube_pod_container_resource_requests{%s, resource="memory"} > 0
+        )
+      ||| % [matcher],
+      |||
+        min(
+          container_spec_memory_limit_bytes{%s}
+        ) > 0
+      ||| % [matcher],
     ], ['{{pod}}', 'request', 'limit']) +
     {
       tooltip: { sort: 2 },  // Sort descending.
@@ -242,13 +220,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
         ],
       },
     },
-  containerMemoryWorkingSetPanel(title, containerName)::
-    self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
-  goHeapInUsePanel(title, jobName)::
+  goHeapInUsePanel(title, selector)::
     $.newQueryPanel(title, 'bytes') +
     $.queryPanel(
-      'sum by(%s) (go_memstats_heap_inuse_bytes{%s})' % [$._config.per_instance_label, $.jobMatcher(jobName)],
+      |||
+        sum by(%s) (
+          go_memstats_heap_inuse_bytes{%s}
+        )
+      ||| % [$._config.per_instance_label, selector],
       '{{%s}}' % $._config.per_instance_label
     ) +
     {
@@ -257,10 +237,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
   filterNodeDisk(matcher)::
     |||
-      ignoring(%s) group_right() (label_replace(count by(%s, %s, device) (container_fs_writes_bytes_total{%s, %s, device!~".*sda.*"}), "device", "$1", "device", "/dev/(.*)") * 0)
-    ||| % [$._config.per_instance_label, $._config.per_node_label, $._config.per_instance_label, $.namespaceMatcher(), matcher],
-  filterNodeDiskContainer(containerName)::
-    self.filterNodeDisk('container="%s"' % containerName),
+      ignoring(%(per_instance_label)s) group_right() (
+        label_replace(
+          count by (%(per_node_label)s, %(per_instance_label)s, device) (
+            container_fs_writes_bytes_total{%(matcher)s, device!~".*sda.*"}
+          ),
+          "device", "$1", "device", "/dev/(.*)"
+        )
+        * 0
+      )
+    ||| % { per_instance_label: $._config.per_instance_label, per_node_label: $._config.per_node_label, matcher: matcher },
 
   newQueryPanel(title, unit='short')::
     super.timeseriesPanel(title) + {
@@ -350,9 +336,20 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
     },
 
-  containerDiskSpaceUtilizationPanel(title, containerName)::
+  containerDiskSpaceUtilizationPanel(title, container)::
+    local matcher = selector(false).cluster().namespace().build();
+    local containerMatcher = selector(false).container(container).value();
     $.newQueryPanel(title, 'percentunit') +
-    $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s, persistentvolumeclaim=~".*%s.*"} / kubelet_volume_stats_capacity_bytes{%s, persistentvolumeclaim=~".*%s.*"})' % [$.namespaceMatcher(), containerName, $.namespaceMatcher(), containerName], '{{persistentvolumeclaim}}'),
+    $.queryPanel(
+      |||
+        max by (persistentvolumeclaim) (
+          kubelet_volume_stats_used_bytes{%(matcher)s, persistentvolumeclaim=~".*%(container)s.*"}
+          /
+          kubelet_volume_stats_capacity_bytes{%(matcher)s, persistentvolumeclaim=~".*%(container)s.*"}
+        )
+      ||| % { matcher: matcher, container: containerMatcher },
+      '{{persistentvolumeclaim}}'
+    ),
 
   local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
     nullPointMode: 'null as zero',

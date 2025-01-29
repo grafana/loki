@@ -3,6 +3,14 @@ local vendor_utils = import 'github.com/grafana/mimir/operations/mimir-mixin/das
 local g = import 'grafana-builder/grafana.libsonnet';
 local grafana = import 'grafonnet/grafana.libsonnet';
 
+
+local selector = (import '../selectors.libsonnet').new;
+
+local selectors = {
+  base: selector(false).cluster().namespace().build(),
+  cluster: selector(false).cluster().build(),
+};
+
 {
   _config+:: {
     canary+: {
@@ -25,7 +33,7 @@ local grafana = import 'grafonnet/grafana.libsonnet';
       dashboard.dashboard('Canary')
       // We can't make use of simplified template selectors from the loki dashboard utils until we port the cortex dashboard utils panel/grid functionality.
       .addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-      .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+      .addTemplate('namespace', 'loki_build_info{%s}' % selectors.cluster, 'namespace')
       + {
         // This dashboard uses the new grid system in order to place panels (using gridPos).
         // Because of this we can't use the mixin's addRow() and addPanel().
@@ -49,60 +57,118 @@ local grafana = import 'grafonnet/grafana.libsonnet';
         panels: [
           // grid row 1
           dashboard.panel('Canary Entries Total') +
-          dashboard.newStatPanel('sum(count(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"}))', unit='short') +
+          dashboard.newStatPanel('sum(count(loki_canary_entries_total{%s}))' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 0, y: 0 } },
 
           dashboard.panel('Canary Logs Total') +
-          dashboard.newStatPanel('sum(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))', unit='short') +
+          dashboard.newStatPanel('sum(increase(loki_canary_entries_total{%s}[$__range]))' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 3, y: 0 } },
 
           dashboard.panel('Missing') +
-          dashboard.newStatPanel('sum(increase(loki_canary_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))', unit='short') +
+          dashboard.newStatPanel('sum(increase(loki_canary_missing_entries_total{%s}[$__range]))' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 6, y: 0 } },
 
           dashboard.panel('Spotcheck Missing') +
-          dashboard.newStatPanel('sum(increase(loki_canary_spot_check_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))', unit='short') +
+          dashboard.newStatPanel('sum(increase(loki_canary_spot_check_missing_entries_total{%s}[$__range]))' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 9, y: 0 } },
 
           // grid row 2
           dashboard.panel('Spotcheck Total') +
-          dashboard.newStatPanel('sum(increase(loki_canary_spot_check_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))', unit='short') +
+          dashboard.newStatPanel('sum(increase(loki_canary_spot_check_entries_total{%s}[$__range]))' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 0, y: 4 } },
 
           dashboard.panel('Metric Test Error %') +
-          dashboard.newStatPanel('((sum(loki_canary_metric_test_expected{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}) - sum(loki_canary_metric_test_actual{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}))/(sum(loki_canary_metric_test_actual{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}))) * 100') +
+          dashboard.newStatPanel(
+            |||
+              (
+                (
+                  sum(loki_canary_metric_test_expected{%s})
+                  -
+                  sum(loki_canary_metric_test_actual{%s})
+                )
+                /
+                sum(loki_canary_metric_test_actual{%s})
+              )
+              * 100
+            ||| % selectors.base,
+            unit='short',
+          ) +
           { gridPos: { h: 4, w: 3, x: 3, y: 4 } },
 
           dashboard.panel('Missing %') +
-          dashboard.newStatPanel('(sum(increase(loki_canary_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))/sum(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range])))*100') +
+          dashboard.newStatPanel(
+            |||
+              (
+                sum(increase(loki_canary_missing_entries_total{%s}[$__range]))
+                /
+                sum(increase(loki_canary_entries_total{%s}[$__range]))
+              )
+              * 100
+            ||| % selectors.base,
+            unit='short',
+          ) +
           { gridPos: { h: 4, w: 3, x: 6, y: 4 } },
 
           dashboard.panel('Spotcheck Missing %') +
-          dashboard.newStatPanel('(sum(increase(loki_canary_spot_check_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))/sum(increase(loki_canary_spot_check_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))) * 100') +
+          dashboard.newStatPanel(
+            |||
+              (
+                sum(increase(loki_canary_spot_check_missing_entries_total{%s}[$__range]))
+                /
+                sum(increase(loki_canary_spot_check_entries_total{%s}[$__range]))
+              )
+              * 100
+            ||| % selectors.base,
+            unit='short',
+          ) +
           { gridPos: { h: 4, w: 3, x: 9, y: 4 } },
 
           // grid row 3
           dashboard.panel('Metric Test Expected') +
-          dashboard.newStatPanel('sum(loki_canary_metric_test_expected{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"})', unit='short') +
+          dashboard.newStatPanel('sum(loki_canary_metric_test_expected{%s})' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 0, y: 8 } },
 
           dashboard.panel('Metric Test Actual') +
-          dashboard.newStatPanel('sum(loki_canary_metric_test_actual{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"})', unit='short') +
+          dashboard.newStatPanel('sum(loki_canary_metric_test_actual{%s})' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 3, y: 8 } },
 
           dashboard.panel('Websocket Missing') +
-          dashboard.newStatPanel('sum(increase(loki_canary_websocket_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))', unit='short') +
+          dashboard.newStatPanel('sum(increase(loki_canary_websocket_missing_entries_total{%s}[$__range]))' % selectors.base, unit='short') +
           { gridPos: { h: 4, w: 3, x: 6, y: 8 } },
 
           dashboard.panel('Websocket Missing %') +
-          dashboard.newStatPanel('(sum(increase(loki_canary_websocket_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range]))/sum(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__range])))*100') +
+          dashboard.newStatPanel(
+            |||
+              (
+                sum(increase(loki_canary_websocket_missing_entries_total{%s}[$__range]))
+                /
+                sum(increase(loki_canary_entries_total{%s}[$__range]))
+              )
+              * 100
+            ||| % selectors.base,
+            unit='short',
+          ) +
           { gridPos: { h: 4, w: 3, x: 9, y: 8 } },
           // end of grid
 
           dashboard.panel('Log Write to read Latency Percentiles') +
           dashboard.queryPanel([
-            'histogram_quantile(0.95, sum(rate(loki_canary_response_latency_seconds_bucket{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval])) by (le))',
-            'histogram_quantile(0.50, sum(rate(loki_canary_response_latency_seconds_bucket{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval])) by (le))',
+            |||
+              histogram_quantile(
+                0.95,
+                sum by (le) (
+                  rate(loki_canary_response_latency_seconds_bucket{%s}[$__rate_interval])
+                )
+              )
+            ||| % selectors.base,
+            |||
+              histogram_quantile(
+                0.50,
+                sum by (le) (
+                  rate(loki_canary_response_latency_seconds_bucket{%s}[$__rate_interval])
+                )
+              )
+            ||| % selectors.base,
           ], ['p95', 'p50']) +
           { gridPos: { h: 6, w: 12, x: 12, y: 0 } },
 
@@ -112,10 +178,15 @@ local grafana = import 'grafonnet/grafana.libsonnet';
             tooltip_showHistogram=true,
             color_colorScheme='interpolateReds',
             legend_show=false,
-          ).addTargets(
+          )
+          .addTargets(
             [
               grafana.prometheus.target(
-                'sum(rate(loki_canary_response_latency_seconds_bucket{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval])) by (le)',
+                |||
+                  sum by (le) (
+                    rate(loki_canary_response_latency_seconds_bucket{%s}[$__rate_interval])
+                  )
+                ||| % selectors.base,
                 legendFormat='{{le}}',
                 format='heatmap',
               ),
@@ -125,24 +196,94 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 
           dashboard.panel('Spot Check Query') +
           dashboard.queryPanel([
-            'histogram_quantile(0.99, sum(rate(loki_canary_spot_check_request_duration_seconds_bucket{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval])) by (le))',
-            'histogram_quantile(0.50, sum(rate(loki_canary_spot_check_request_duration_seconds_bucket{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval])) by (le))',
+            |||
+              histogram_quantile(
+                0.99,
+                sum by (le) (
+                  rate(loki_canary_spot_check_request_duration_seconds_bucket{%s}[$__rate_interval])
+                )
+              )
+            ||| % selectors.base,
+            |||
+              histogram_quantile(
+                0.50,
+                sum by (le) (
+                  rate(loki_canary_spot_check_request_duration_seconds_bucket{%s}[$__rate_interval])
+                )
+              )
+            ||| % selectors.base,
           ], ['p99', 'p95']) +
           { gridPos: { h: 6, w: 12, x: 0, y: 14 } },
 
           dashboard.panel('Metric Test Query') +
           dashboard.queryPanel([
-            'histogram_quantile(0.99, sum(rate(loki_canary_metric_test_request_duration_seconds_bucket{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[15m])) by (le))',
-            'histogram_quantile(0.50, sum(rate(loki_canary_metric_test_request_duration_seconds_bucket{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[15m])) by (le))',
+            |||
+              histogram_quantile(
+                0.99,
+                sum by (le) (
+                  rate(loki_canary_metric_test_request_duration_seconds_bucket{%s}[15m])
+                )
+              )
+            ||| % selectors.base,
+            |||
+              histogram_quantile(
+                0.50,
+                sum by (le) (
+                  rate(loki_canary_metric_test_request_duration_seconds_bucket{%s}[15m])
+                )
+              )
+            ||| % selectors.base,
           ], ['p99', 'p95'],) +
           { gridPos: { h: 6, w: 12, x: 12, y: 14 } },
 
           dashboard.panel('Spot Check Missing %') +
-          dashboard.queryPanel('topk(20, (sum by (' + $._config.per_cluster_label + ', pod) (increase(loki_canary_spot_check_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval]))/sum by (' + $._config.per_cluster_label + ', pod) (increase(loki_canary_spot_check_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval])) * 100)) > 0', '') +
+          dashboard.queryPanel(
+            |||
+              topk(
+                20,
+                (
+                  sum by (%(per_cluster_label)s, %(per_instance_label)s) (
+                    increase(loki_canary_spot_check_missing_entries_total{%(matcher)s}[$__rate_interval])
+                  )
+                  /
+                  sum by (%(per_cluster_label)s, %(per_instance_label)s) (
+                    increase(loki_canary_spot_check_entries_total{%(matcher)s}[$__rate_interval])
+                  )
+                  * 100
+                )
+              ) > 0
+            ||| % {
+              per_cluster_label: $._config.per_cluster_label,
+              per_instance_label: $._config.per_instance_label,
+              matcher: selectors.base,
+            },
+            ''
+          ) +
           { gridPos: { h: 6, w: 12, x: 0, y: 20 } },
 
           g.panel('Missing logs') +
-          g.queryPanel('topk(20,(sum by (' + $._config.per_cluster_label + ', pod)(increase(loki_canary_missing_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval]))/sum by (' + $._config.per_cluster_label + ', pod)(increase(loki_canary_entries_total{' + $._config.per_cluster_label + '=~"$cluster",namespace=~"$namespace"}[$__rate_interval])))*100) > 0', 'Missing {{ ' + $._config.per_cluster_label + ' }} {{ pod }}') +
+          g.queryPanel(
+            |||
+              topk(
+                20,
+                (
+                  sum by (%(per_cluster_label)s, %(per_instance_label)s) (
+                    increase(loki_canary_missing_entries_total{%(matcher)s}[$__rate_interval])
+                  )
+                  /
+                  sum by (%(per_cluster_label)s, %(per_instance_label)s) (
+                    increase(loki_canary_entries_total{%(matcher)s}[$__rate_interval])
+                  )
+                  * 100
+                )
+              ) > 0
+            ||| % {
+              per_cluster_label: $._config.per_cluster_label,
+              per_instance_label: $._config.per_instance_label,
+              matcher: selectors.base,
+            },
+            'Missing {{ ' + $._config.per_cluster_label + ' }} {{ pod }}'
+          ) +
           { gridPos: { h: 6, w: 12, x: 12, y: 20 } },
 
         ],
