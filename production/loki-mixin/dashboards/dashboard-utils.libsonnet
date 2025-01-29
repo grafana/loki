@@ -29,15 +29,15 @@ local selector = (import '../selectors.libsonnet').new;
 
       addCluster(multi=false)::
         if multi then
-          self.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+          self.addMultiTemplate('cluster', 'loki_build_info', $._config.labels.cluster)
         else
-          self.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label),
+          self.addTemplate('cluster', 'loki_build_info', $._config.labels.cluster),
 
       addNamespace(multi=false)::
         if multi then
-          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace')
         else
-          self.addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          self.addTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace'),
 
       addTag()::
         self + {
@@ -74,11 +74,11 @@ local selector = (import '../selectors.libsonnet').new;
         };
 
         if multi then
-          d.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          d.addMultiTemplate('cluster', 'loki_build_info', $._config.labels.cluster)
+          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace')
         else
-          d.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          d.addTemplate('cluster', 'loki_build_info', $._config.labels.cluster)
+          .addTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace'),
     },
 
   logPanel(title, selector, datasource='$loki_datasource'):: {
@@ -228,8 +228,8 @@ local selector = (import '../selectors.libsonnet').new;
         sum by(%s) (
           go_memstats_heap_inuse_bytes{%s}
         )
-      ||| % [$._config.per_instance_label, selector],
-      '{{%s}}' % $._config.per_instance_label
+      ||| % [$._config.labels.per_instance, selector],
+      '{{%s}}' % $._config.labels.per_instance
     ) +
     {
       tooltip: { sort: 2 },  // Sort descending.
@@ -246,7 +246,7 @@ local selector = (import '../selectors.libsonnet').new;
         )
         * 0
       )
-    ||| % { per_instance_label: $._config.per_instance_label, per_node_label: $._config.per_node_label, matcher: matcher },
+    ||| % { per_instance_label: $._config.labels.per_instance, per_node_label: $._config.labels.node, matcher: matcher },
 
   newQueryPanel(title, unit='short')::
     super.timeseriesPanel(title) + {
@@ -384,13 +384,13 @@ local selector = (import '../selectors.libsonnet').new;
         std.strReplace(
           expr,
           'cluster=~"$cluster"',
-          $._config.per_cluster_label + '=~"$cluster"'
+          $._config.labels.cluster + '=~"$cluster"'
         ),
         'cluster="$cluster"',
-        $._config.per_cluster_label + '="$cluster"'
+        $._config.labels.cluster + '="$cluster"'
       ),
       'cluster_job',
-      $._config.per_cluster_label + '_job'
+      $._config.labels.cluster + '_job'
     ),
 
   replaceJobMatchers(expr)::
@@ -402,10 +402,10 @@ local selector = (import '../selectors.libsonnet').new;
         std.strReplace(
           expr,
           'job=~"$namespace/',
-          $._config.per_job_label + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
+          $._config.labels.job + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
         ),
         'job="$namespace/',
-        $._config.per_job_label + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
+        $._config.labels.job + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
       )
     else
       expr,

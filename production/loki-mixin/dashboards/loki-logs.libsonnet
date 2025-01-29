@@ -62,7 +62,7 @@ local logTemplate =
                             targets: [
                               e {
                                 expr: if dashboards['loki-logs.json'].showMultiCluster
-                                then std.strReplace(super.expr, 'cluster="$cluster"', $._config.per_cluster_label + '="$cluster"')
+                                then std.strReplace(super.expr, 'cluster="$cluster"', $._config.labels.cluster + '="$cluster"')
                                 else std.strReplace(super.expr, 'cluster="$cluster", ', ''),
                               }
                               for e in p.targets

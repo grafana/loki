@@ -86,8 +86,8 @@ local containerSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.querier) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(containerSelectors.querier) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -100,8 +100,8 @@ local containerSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.querier) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(containerSelectors.querier) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -130,8 +130,8 @@ local containerSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.indexGateway) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(containerSelectors.indexGateway) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -144,8 +144,8 @@ local containerSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.indexGateway) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(containerSelectors.indexGateway) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -173,8 +173,8 @@ local containerSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.bloomGateway) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(containerSelectors.bloomGateway) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -187,8 +187,8 @@ local containerSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(containerSelectors.bloomGateway) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(containerSelectors.bloomGateway) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -221,8 +221,8 @@ local containerSelectors = {
               sum by(%(label)s) (
                 cortex_prometheus_rule_group_rules{%(matcher)s}
               )
-            ||| % { label: $._config.per_instance_label, matcher: jobSelectors.ruler },
-            '{{%s}}' % $._config.per_instance_label
+            ||| % { label: $._config.labels.per_instance, matcher: jobSelectors.ruler },
+            '{{%s}}' % $._config.labels.per_instance
           ),
         )
         .addPanel(

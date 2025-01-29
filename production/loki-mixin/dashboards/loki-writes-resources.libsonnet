@@ -59,8 +59,8 @@ local podSelectors = {
               sum by(%s) (
                 loki_ingester_memory_streams{%s}
               )
-            ||| % [$._config.per_instance_label, jobSelectors.ingester],
-            '{{%s}}' % $._config.per_instance_label
+            ||| % [$._config.labels.per_instance, jobSelectors.ingester],
+            '{{%s}}' % $._config.labels.per_instance
           ) +
           {
             tooltip: { sort: 2 },  // Sort descending.
@@ -82,8 +82,8 @@ local podSelectors = {
               sum by(%s, device) (
                 rate(node_disk_written_bytes_total[$__rate_interval])
               ) + %s
-            ||| % [$._config.per_node_label, $.filterNodeDisk(podSelectors.ingester)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % [$._config.labels.node, $.filterNodeDisk(podSelectors.ingester)],
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -94,8 +94,8 @@ local podSelectors = {
               sum by(%s, device) (
                 rate(node_disk_read_bytes_total[$__rate_interval])
               ) + %s
-            ||| % [$._config.per_node_label, $.filterNodeDisk(podSelectors.ingester)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % [$._config.labels.node, $.filterNodeDisk(podSelectors.ingester)],
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )

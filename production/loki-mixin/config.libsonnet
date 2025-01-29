@@ -6,27 +6,34 @@
     // Tags for dashboards.
     tags: ['loki'],
 
-    // The label used to differentiate between different application instances (i.e. 'pod' in a kubernetes install).
-    per_instance_label: 'pod',
-
-    // The label used to differentiate between different nodes (i.e. servers).
-    per_node_label: 'instance',
-
-    // The label used to differentiate between different clusters.
-    per_cluster_label: 'cluster',
-    per_namespace_label: 'namespace',
-    per_job_label: 'job',
+    // labels
+    labels: {
+      // the label to use to differentiate between different clusters
+      cluster: 'cluster',
+      // the label to use to differentiate between different containers
+      container: 'container',
+      // the label to use to differentiate between different components
+      component: 'component',
+      // the label to use to differentiate between different jobs
+      job: 'job',
+      // the label to use to differentiate between different namespaces
+      namespace: 'namespace',
+      // the label to use to differentiate between different nodes
+      node: 'instance',
+      // the label to use to differentiate between different pods
+      pod: 'pod',
+      // The label used to differentiate between different application instances (i.e. 'pod' in a kubernetes install).
+      per_instance: 'pod',
+    },
 
     // Grouping labels, to uniquely identify and group by {jobs, clusters}
-    job_labels: [$._config.per_cluster_label, $._config.per_namespace_label, $._config.per_job_label],
-    cluster_labels: [$._config.per_cluster_label, $._config.per_namespace_label],
+    job_labels: [$._config.labels.cluster, $._config.labels.namespace, $._config.labels.job],
+    cluster_labels: [$._config.labels.cluster, $._config.labels.namespace],
 
     // Each group prefix is composed of `_`-separated labels
     group_prefix_jobs: makePrefix($._config.job_labels),
-    group_prefix_clusters: makePrefix($._config.cluster_labels),
 
     // Each group-by label list is `, `-separated and unique identifies
-    group_by_job: makeGroupBy($._config.job_labels),
     group_by_cluster: makeGroupBy($._config.cluster_labels),
 
     // Enable dashboard and panels for Grafana Labs internal components.
@@ -58,7 +65,7 @@
       // Whether or not to include azure blob in the operational dashboard
       azureBlob: true,
       // Whether or not to include bolt db in the operational dashboard
-      boltDB: true,
+      boltDB: false,
     },
 
     // Enable TSDB specific dashboards
@@ -68,24 +75,6 @@
     // Set to at least twice the scrape interval; otherwise, recording rules will output no data.
     // Set to four times the scrape interval to account for edge cases: https://www.robustperception.io/what-range-should-i-use-with-rate/
     recording_rules_range_interval: '1m',
-
-    // labels
-    labels: {
-      // the label to use to differentiate between different clusters
-      cluster: 'cluster',
-      // the label to use to differentiate between different containers
-      container: 'container',
-      // the label to use to differentiate between different components
-      component: 'component',
-      // the label to use to differentiate between different jobs
-      job: 'job',
-      // the label to use to differentiate between different namespaces
-      namespace: 'namespace',
-      // the label to use to differentiate between different nodes
-      node: 'instance',
-      // the label to use to differentiate between different pods
-      pod: 'pod',
-    },
 
     // components
     // component schema: {
@@ -119,6 +108,8 @@
         pattern: 'ingester.*',
       },
       'ingester-zone': {
+        // allows ingester-zone rows/panels to be enabled/disabled
+        enabled: true,
         ssd_path: 'write',
         pattern: 'ingester-zone.*',
       },
@@ -146,9 +137,6 @@
     ssd: {
       // Support Loki SSD mode on dashboards.
       enabled: false,
-
-      // The prefix used to match the write and read pods on SSD mode.
-      pod_prefix_matcher: '(loki.*|enterprise-logs)',
     },
 
     // Meta-monitoring related configuration

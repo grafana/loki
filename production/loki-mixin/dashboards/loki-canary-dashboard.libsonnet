@@ -32,7 +32,7 @@ local selectors = {
       // This logic is inherited from mimir-mixin.
       dashboard.dashboard('Canary')
       // We can't make use of simplified template selectors from the loki dashboard utils until we port the cortex dashboard utils panel/grid functionality.
-      .addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+      .addTemplate('cluster', 'loki_build_info', $._config.labels.cluster)
       .addTemplate('namespace', 'loki_build_info{%s}' % selectors.cluster, 'namespace')
       + {
         // This dashboard uses the new grid system in order to place panels (using gridPos).
@@ -253,8 +253,8 @@ local selectors = {
                 )
               ) > 0
             ||| % {
-              per_cluster_label: $._config.per_cluster_label,
-              per_instance_label: $._config.per_instance_label,
+              per_cluster_label: $._config.labels.cluster,
+              per_instance_label: $._config.labels.per_instance,
               matcher: selectors.base,
             },
             ''
@@ -278,11 +278,11 @@ local selectors = {
                 )
               ) > 0
             ||| % {
-              per_cluster_label: $._config.per_cluster_label,
-              per_instance_label: $._config.per_instance_label,
+              per_cluster_label: $._config.labels.cluster,
+              per_instance_label: $._config.labels.per_instance,
               matcher: selectors.base,
             },
-            'Missing {{ ' + $._config.per_cluster_label + ' }} {{ pod }}'
+            'Missing {{ ' + $._config.labels.cluster + ' }} {{ pod }}'
           ) +
           { gridPos: { h: 6, w: 12, x: 12, y: 20 } },
 

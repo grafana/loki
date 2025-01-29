@@ -46,8 +46,8 @@ local jobSelectors = {
               sum by(%s) (
                 loki_write_memory_streams{%s}
               )
-            ||| % [$._config.per_instance_label, jobSelectors.write],
-            '{{%s}}' % $._config.per_instance_label
+            ||| % [$._config.labels.per_instance, jobSelectors.write],
+            '{{%s}}' % $._config.labels.per_instance
           ) +
           {
             tooltip: { sort: 2 },  // Sort descending.
@@ -74,8 +74,8 @@ local jobSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(podSelectors.write) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.write) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -88,8 +88,8 @@ local jobSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(podSelectors.write) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.write) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -120,8 +120,8 @@ local jobSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(podSelectors.backend) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.backend) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
@@ -134,8 +134,8 @@ local jobSelectors = {
               )
               +
               %(container_disk)s
-            ||| % { per_node_label: $._config.per_node_label, container_disk: $.filterNodeDisk(podSelectors.backend) },
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.backend) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )

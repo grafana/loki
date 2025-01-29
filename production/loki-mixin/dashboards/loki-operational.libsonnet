@@ -78,26 +78,26 @@ local podSelectors = {
                                      std.strReplace(
                                        expr,
                                        'cluster=~"$cluster"',
-                                       $._config.per_cluster_label + '=~"$cluster"'
+                                       $._config.labels.cluster + '=~"$cluster"'
                                      ),
                                      'cluster="$cluster"',
-                                     $._config.per_cluster_label + '="$cluster"'
+                                     $._config.labels.cluster + '="$cluster"'
                                    ),
                                    'cluster_job',
-                                   $._config.per_cluster_label + '_job'
+                                   $._config.labels.cluster + '_job'
                                  )
                                  else
                                    std.strReplace(
                                      std.strReplace(
                                        std.strReplace(
                                          expr,
-                                         ', ' + $._config.per_cluster_label + '="$cluster"',
+                                         ', ' + $._config.labels.cluster + '="$cluster"',
                                          ''
                                        ),
-                                       ', ' + $._config.per_cluster_label + '=~"$cluster"',
+                                       ', ' + $._config.labels.cluster + '=~"$cluster"',
                                        ''
                                      ),
-                                     $._config.per_cluster_label + '="$cluster",',
+                                     $._config.labels.cluster + '="$cluster",',
                                      ''
                                    ),
 
