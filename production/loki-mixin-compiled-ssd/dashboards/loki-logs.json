@@ -1005,7 +1005,7 @@
                "multi": false,
                "name": "container",
                "options": [ ],
-               "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$pod\", pod=~\"$deployment.*\"}, container)",
+               "query": "label_values(kube_pod_container_info{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"$pod\"}, container)",
                "refresh": 0,
                "regex": "",
                "sort": 1,
