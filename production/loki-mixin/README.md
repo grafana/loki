@@ -23,6 +23,18 @@ jb install
 * On your Grafana instance create an API key with role 'Admin' under Configuration > API keys.
 Copy this key for the next step.
 
+### Building dashboards
+
+To build the mixin locally, in directory `production/loki-mixin` run the command:
+
+```shell
+JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor mixtool generate all mixin.libsonnet
+```
+
+```shell
+JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor grr export --only-spec --output json grr.libsonnet grizzly_output
+```
+
 ### Testing dashboards
 
 To simply test the dashboard layout
