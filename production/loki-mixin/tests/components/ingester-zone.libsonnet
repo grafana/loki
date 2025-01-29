@@ -1,11 +1,11 @@
 {
-  name: 'Ingester Zone Aware Selector Tests',
+  name: 'ingester-zone Selector Tests',
   tests: [
     {
       name: 'job selector tests',
       cases: [
         {
-          name: 'supports building a ingester-zone job selector from a string using the wrapper',
+          name: 'supports building a ingester-zone job selector from a string',
           test:
             local selector = (import '../../selectors.libsonnet').new;
             selector().job('ingester-zone').build(),
@@ -15,7 +15,7 @@
           name: 'supports building a ingester-zone job selector from a string using the shorthand wrapper',
           test:
             local selector = (import '../../selectors.libsonnet').new;
-            selector().ingesterZone().build(),
+            selector().ingesterZone(label='job').build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(ingester-zone.*)", namespace="$namespace"',
         },
         {
@@ -50,7 +50,7 @@
               },
             }.new;
             selector().job('ingester-zone').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*|single-binary|write)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*|loki|single-binary|write)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone job selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -64,7 +64,7 @@
               },
             }.new;
             selector().job('ingester-zone').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*|write)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*|loki|write)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone job selector with meta-monitoring enabled and paths disabled',
@@ -78,7 +78,7 @@
               },
             }.new;
             selector().job('ingester-zone').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone job selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -93,7 +93,7 @@
               },
             }.new;
             selector().job('ingester-zone').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(ingester-zone.*|loki)", namespace="$namespace"',
         },
       ],
     },
@@ -146,7 +146,7 @@
               },
             }.new;
             selector().pod('ingester-zone').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*|single-binary|write)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*|loki|single-binary|write)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a ingester-zone pod selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -160,7 +160,7 @@
               },
             }.new;
             selector().pod('ingester-zone').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*|write)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*|loki|write)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a ingester-zone pod selector with meta-monitoring enabled and paths disabled',
@@ -174,7 +174,7 @@
               },
             }.new;
             selector().pod('ingester-zone').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*|loki|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a ingester-zone pod selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -189,7 +189,7 @@
               },
             }.new;
             selector().pod('ingester-zone').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((ingester-zone.*|loki)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
       ],
     },
@@ -242,7 +242,7 @@
               },
             }.new;
             selector().container('ingester-zone').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*|single-binary|write)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki|single-binary|write)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone container selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -256,7 +256,7 @@
               },
             }.new;
             selector().container('ingester-zone').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*|write)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki|write)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone container selector with meta-monitoring enabled and paths disabled',
@@ -270,7 +270,7 @@
               },
             }.new;
             selector().container('ingester-zone').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone container selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -285,7 +285,7 @@
               },
             }.new;
             selector().container('ingester-zone').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki)", namespace="$namespace"',
         },
       ],
     },
@@ -338,7 +338,7 @@
               },
             }.new;
             selector().component('ingester-zone').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*|single-binary|write)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki|single-binary|write)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone component selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -352,7 +352,7 @@
               },
             }.new;
             selector().component('ingester-zone').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*|write)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki|write)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone component selector with meta-monitoring enabled and paths disabled',
@@ -366,7 +366,7 @@
               },
             }.new;
             selector().component('ingester-zone').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a ingester-zone component selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -381,7 +381,7 @@
               },
             }.new;
             selector().component('ingester-zone').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(ingester-zone.*|loki)", namespace="$namespace"',
         },
       ],
     },

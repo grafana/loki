@@ -134,15 +134,9 @@
         {
           name: 'supports changing the pod operator',
           test:
-            local selector = (import '../selectors.libsonnet') {
-              _config+:: {
-                labels+: {
-                  pod: 'k8s_pod',
-                },
-              },
-            }.new;
-            selector(false).pod(pods='distributor', op='!~').build(),
-          expected: 'k8s_pod!~"((distributor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+            local selector = (import '../selectors.libsonnet').new;
+            selector(false).label('app').eq('foo').pod(pods='distributor', op='!~').build(),
+          expected: 'app="foo", pod!~"((distributor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports changing the pod label and operator',
@@ -154,8 +148,8 @@
                 },
               },
             }.new;
-            selector(false).pod(pods='distributor', op='!~').build(),
-          expected: 'k8s_pod!~"((distributor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+            selector(false).label('app').eq('foo').pod(pods='distributor', op='!~').build(),
+          expected: 'app="foo", k8s_pod!~"((distributor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
       ],
     },
@@ -178,15 +172,9 @@
         {
           name: 'supports changing the job operator',
           test:
-            local selector = (import '../selectors.libsonnet') {
-              _config+:: {
-                labels+: {
-                  job: 'k8s_job',
-                },
-              },
-            }.new;
-            selector(false).job(jobs='distributor', op='!~').build(),
-          expected: 'k8s_job!~"($namespace)/(distributor)"',
+            local selector = (import '../selectors.libsonnet').new;
+            selector(false).label('app').eq('foo').job(jobs='distributor', op='!~').build(),
+          expected: 'app="foo", job!~"($namespace)/(distributor)"',
         },
         {
           name: 'supports changing the job label and operator',
@@ -198,8 +186,8 @@
                 },
               },
             }.new;
-            selector(false).job(jobs='distributor', op='!~').build(),
-          expected: 'k8s_job!~"($namespace)/(distributor)"',
+            selector(false).label('app').eq('foo').job(jobs='distributor', op='!~').build(),
+          expected: 'app="foo", k8s_job!~"($namespace)/(distributor)"',
         },
       ],
     },
@@ -222,15 +210,9 @@
         {
           name: 'supports changing the container operator',
           test:
-            local selector = (import '../selectors.libsonnet') {
-              _config+:: {
-                labels+: {
-                  container: 'k8s_container',
-                },
-              },
-            }.new;
-            selector(false).container(containers='distributor', op='!~').build(),
-          expected: 'k8s_container!~"(distributor)"',
+            local selector = (import '../selectors.libsonnet').new;
+            selector(false).label('app').eq('foo').container(containers='distributor', op='!~').build(),
+          expected: 'app="foo", container!~"(distributor)"',
         },
         {
           name: 'supports changing the container label and operator',
@@ -242,8 +224,8 @@
                 },
               },
             }.new;
-            selector(false).container(containers='distributor', op='!~').build(),
-          expected: 'k8s_container!~"(distributor)"',
+            selector(false).label('app').eq('foo').container(containers='distributor', op='!~').build(),
+          expected: 'app="foo", k8s_container!~"(distributor)"',
         },
       ],
     },
@@ -266,15 +248,9 @@
         {
           name: 'supports changing the component operator',
           test:
-            local selector = (import '../selectors.libsonnet') {
-              _config+:: {
-                labels+: {
-                  component: 'k8s_component',
-                },
-              },
-            }.new;
-            selector(false).component(components='distributor', op='!~').build(),
-          expected: 'k8s_component!~"(distributor)"',
+            local selector = (import '../selectors.libsonnet').new;
+            selector(false).label('app').eq('foo').component(components='distributor', op='!~').build(),
+          expected: 'app="foo", component!~"(distributor)"',
         },
         {
           name: 'supports changing the component label and operator',
@@ -286,8 +262,8 @@
                 },
               },
             }.new;
-            selector(false).component(components='distributor', op='!~').build(),
-          expected: 'k8s_component!~"(distributor)"',
+            selector(false).label('app').eq('foo').component(components='distributor', op='!~').build(),
+          expected: 'app="foo", k8s_component!~"(distributor)"',
         },
       ],
     },
@@ -310,15 +286,9 @@
         {
           name: 'supports changing the node operator',
           test:
-            local selector = (import '../selectors.libsonnet') {
-              _config+:: {
-                labels+: {
-                  node: 'k8s_node',
-                },
-              },
-            }.new;
-            selector(false).node(op='!~').build(),
-          expected: 'k8s_node!~"$node"',
+            local selector = (import '../selectors.libsonnet').new;
+            selector(false).label('app').eq('foo').node(op='!~').build(),
+          expected: 'app="foo", instance!~"$node"',
         },
         {
           name: 'supports specifying a node value',
@@ -343,8 +313,8 @@
                 },
               },
             }.new;
-            selector(false).node(op='!~', value='my-node').build(),
-          expected: 'k8s_node!~"my-node"',
+            selector(false).label('app').eq('foo').node(op='!~', value='my-node').build(),
+          expected: 'app="foo", k8s_node!~"my-node"',
         },
       ],
     },

@@ -1,5 +1,5 @@
 {
-  name: 'Partition Ingester Selector Tests',
+  name: 'partition-ingester Selector Tests',
   tests: [
     {
       name: 'job selector tests',
@@ -38,6 +38,62 @@
             local selector = (import '../../selectors.libsonnet').new;
             selector().job(['partition-ingester']).build(),
           expected: 'cluster="$cluster", job=~"($namespace)/(partition-ingester.*)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester job selector with meta-monitoring enabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                },
+              },
+            }.new;
+            selector().job('partition-ingester').build(),
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(loki|partition-ingester.*|single-binary)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester job selector with meta-monitoring enabled and loki-single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().job('partition-ingester').build(),
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(loki|partition-ingester.*)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester job selector with meta-monitoring enabled and paths disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                },
+              },
+            }.new;
+            selector().job('partition-ingester').build(),
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(loki|partition-ingester.*|single-binary)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester job selector with meta-monitoring enabled and both paths and single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().job('partition-ingester').build(),
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(loki|partition-ingester.*)", namespace="$namespace"',
         },
       ],
     },
@@ -79,6 +135,62 @@
             selector().pod(['partition-ingester']).build(),
           expected: 'cluster="$cluster", namespace="$namespace", pod=~"((partition-ingester.*)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
+        {
+          name: 'supports building a partition-ingester pod selector with meta-monitoring enabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                },
+              },
+            }.new;
+            selector().pod('partition-ingester').build(),
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((loki|partition-ingester.*|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+        },
+        {
+          name: 'supports building a partition-ingester pod selector with meta-monitoring enabled and loki-single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().pod('partition-ingester').build(),
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((loki|partition-ingester.*)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+        },
+        {
+          name: 'supports building a partition-ingester pod selector with meta-monitoring enabled and paths disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                },
+              },
+            }.new;
+            selector().pod('partition-ingester').build(),
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((loki|partition-ingester.*|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+        },
+        {
+          name: 'supports building a partition-ingester pod selector with meta-monitoring enabled and both paths and single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().pod('partition-ingester').build(),
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((loki|partition-ingester.*)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+        },
       ],
     },
     {
@@ -119,6 +231,62 @@
             selector().container(['partition-ingester']).build(),
           expected: 'cluster="$cluster", container=~"(partition-ingester.*)", namespace="$namespace"',
         },
+        {
+          name: 'supports building a partition-ingester container selector with meta-monitoring enabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                },
+              },
+            }.new;
+            selector().container('partition-ingester').build(),
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*|single-binary)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester container selector with meta-monitoring enabled and loki-single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().container('partition-ingester').build(),
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester container selector with meta-monitoring enabled and paths disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                },
+              },
+            }.new;
+            selector().container('partition-ingester').build(),
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*|single-binary)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester container selector with meta-monitoring enabled and both paths and single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().container('partition-ingester').build(),
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*)", namespace="$namespace"',
+        },
       ],
     },
     {
@@ -158,6 +326,62 @@
             local selector = (import '../../selectors.libsonnet').new;
             selector().component(['partition-ingester']).build(),
           expected: 'cluster="$cluster", component=~"(partition-ingester.*)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester component selector with meta-monitoring enabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                },
+              },
+            }.new;
+            selector().component('partition-ingester').build(),
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*|single-binary)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester component selector with meta-monitoring enabled and loki-single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().component('partition-ingester').build(),
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester component selector with meta-monitoring enabled and paths disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                },
+              },
+            }.new;
+            selector().component('partition-ingester').build(),
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*|single-binary)", namespace="$namespace"',
+        },
+        {
+          name: 'supports building a partition-ingester component selector with meta-monitoring enabled and both paths and single-binary disabled',
+          test:
+            local selector = (import '../../selectors.libsonnet') {
+              _config+:: {
+                meta_monitoring+: {
+                  enabled: true,
+                  include_path: false,
+                  include_sb: false,
+                },
+              },
+            }.new;
+            selector().component('partition-ingester').build(),
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(loki|partition-ingester.*)", namespace="$namespace"',
         },
       ],
     },

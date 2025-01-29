@@ -1,5 +1,5 @@
 {
-  name: 'Admin API Selector Tests',
+  name: 'admin-api Selector Tests',
   tests: [
     {
       name: 'job selector tests',
@@ -50,7 +50,7 @@
               },
             }.new;
             selector().job('admin-api').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api|backend|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api|backend|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api job selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -64,7 +64,7 @@
               },
             }.new;
             selector().job('admin-api').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api|backend)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api|backend|loki)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api job selector with meta-monitoring enabled and paths disabled',
@@ -78,7 +78,7 @@
               },
             }.new;
             selector().job('admin-api').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api job selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -93,7 +93,7 @@
               },
             }.new;
             selector().job('admin-api').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(admin-api|loki)", namespace="$namespace"',
         },
       ],
     },
@@ -146,7 +146,7 @@
               },
             }.new;
             selector().pod('admin-api').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api|backend|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api|backend|loki|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a admin-api pod selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -160,7 +160,7 @@
               },
             }.new;
             selector().pod('admin-api').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api|backend)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api|backend|loki)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a admin-api pod selector with meta-monitoring enabled and paths disabled',
@@ -174,7 +174,7 @@
               },
             }.new;
             selector().pod('admin-api').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api|loki|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a admin-api pod selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -189,7 +189,7 @@
               },
             }.new;
             selector().pod('admin-api').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((admin-api|loki)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
       ],
     },
@@ -242,7 +242,7 @@
               },
             }.new;
             selector().container('admin-api').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api|backend|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api|backend|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api container selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -256,7 +256,7 @@
               },
             }.new;
             selector().container('admin-api').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api|backend)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api|backend|loki)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api container selector with meta-monitoring enabled and paths disabled',
@@ -270,7 +270,7 @@
               },
             }.new;
             selector().container('admin-api').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api container selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -285,7 +285,7 @@
               },
             }.new;
             selector().container('admin-api').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(admin-api|loki)", namespace="$namespace"',
         },
       ],
     },
@@ -338,7 +338,7 @@
               },
             }.new;
             selector().component('admin-api').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api|backend|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api|backend|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api component selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -352,7 +352,7 @@
               },
             }.new;
             selector().component('admin-api').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api|backend)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api|backend|loki)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api component selector with meta-monitoring enabled and paths disabled',
@@ -366,7 +366,7 @@
               },
             }.new;
             selector().component('admin-api').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a admin-api component selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -381,7 +381,7 @@
               },
             }.new;
             selector().component('admin-api').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(admin-api|loki)", namespace="$namespace"',
         },
       ],
     },

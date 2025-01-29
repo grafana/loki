@@ -1,5 +1,5 @@
 {
-  name: 'Index Gateway Selector Tests',
+  name: 'index-gateway Selector Tests',
   tests: [
     {
       name: 'job selector tests',
@@ -50,7 +50,7 @@
               },
             }.new;
             selector().job('index-gateway').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(backend|index-gateway|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(backend|index-gateway|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway job selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -64,7 +64,7 @@
               },
             }.new;
             selector().job('index-gateway').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(backend|index-gateway)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(backend|index-gateway|loki)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway job selector with meta-monitoring enabled and paths disabled',
@@ -78,7 +78,7 @@
               },
             }.new;
             selector().job('index-gateway').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(index-gateway|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(index-gateway|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway job selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -93,7 +93,7 @@
               },
             }.new;
             selector().job('index-gateway').build(),
-          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(index-gateway)", namespace="$namespace"',
+          expected: 'cluster="$cluster", job=~"($namespace)/((loki|enterprise-logs)-)?(index-gateway|loki)", namespace="$namespace"',
         },
       ],
     },
@@ -146,7 +146,7 @@
               },
             }.new;
             selector().pod('index-gateway').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((backend|index-gateway|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((backend|index-gateway|loki|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a index-gateway pod selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -160,7 +160,7 @@
               },
             }.new;
             selector().pod('index-gateway').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((backend|index-gateway)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((backend|index-gateway|loki)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a index-gateway pod selector with meta-monitoring enabled and paths disabled',
@@ -174,7 +174,7 @@
               },
             }.new;
             selector().pod('index-gateway').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((index-gateway|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((index-gateway|loki|single-binary)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
         {
           name: 'supports building a index-gateway pod selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -189,7 +189,7 @@
               },
             }.new;
             selector().pod('index-gateway').build(),
-          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((index-gateway)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
+          expected: 'cluster="$cluster", namespace="$namespace", pod=~"((loki|enterprise-logs)-)?((index-gateway|loki)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))"',
         },
       ],
     },
@@ -242,7 +242,7 @@
               },
             }.new;
             selector().container('index-gateway').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(backend|index-gateway|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(backend|index-gateway|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway container selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -256,7 +256,7 @@
               },
             }.new;
             selector().container('index-gateway').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(backend|index-gateway)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(backend|index-gateway|loki)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway container selector with meta-monitoring enabled and paths disabled',
@@ -270,7 +270,7 @@
               },
             }.new;
             selector().container('index-gateway').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(index-gateway|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(index-gateway|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway container selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -285,7 +285,7 @@
               },
             }.new;
             selector().container('index-gateway').build(),
-          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(index-gateway)", namespace="$namespace"',
+          expected: 'cluster="$cluster", container=~"((loki|enterprise-logs)-)?(index-gateway|loki)", namespace="$namespace"',
         },
       ],
     },
@@ -338,7 +338,7 @@
               },
             }.new;
             selector().component('index-gateway').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(backend|index-gateway|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(backend|index-gateway|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway component selector with meta-monitoring enabled and loki-single-binary disabled',
@@ -352,7 +352,7 @@
               },
             }.new;
             selector().component('index-gateway').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(backend|index-gateway)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(backend|index-gateway|loki)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway component selector with meta-monitoring enabled and paths disabled',
@@ -366,7 +366,7 @@
               },
             }.new;
             selector().component('index-gateway').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(index-gateway|single-binary)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(index-gateway|loki|single-binary)", namespace="$namespace"',
         },
         {
           name: 'supports building a index-gateway component selector with meta-monitoring enabled and both paths and single-binary disabled',
@@ -381,7 +381,7 @@
               },
             }.new;
             selector().component('index-gateway').build(),
-          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(index-gateway)", namespace="$namespace"',
+          expected: 'cluster="$cluster", component=~"((loki|enterprise-logs)-)?(index-gateway|loki)", namespace="$namespace"',
         },
       ],
     },

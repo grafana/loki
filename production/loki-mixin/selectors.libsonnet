@@ -32,38 +32,76 @@
         else if op == 'neq' || op == '!=' then '!='
         else '=',
 
-      // You can also use the label() method directly
-      // label('tenant').re('$tenant')
+      // Normalizes operator based on value type - converts equality operators to regex operators when value is an array
+      _normalizeOperator(op, value)::
+        local normalizedOp = self._handleOperator(op);
+        if std.isArray(value) then
+          if normalizedOp == '=' then '=~'
+          else if normalizedOp == '!=' then '!~'
+          else normalizedOp
+        else normalizedOp,
+
+      // Normalizes value - flattens arrays and joins with | for regex matching
+      _normalizeValue(value)::
+        if !std.isString(value) && !std.isArray(value) then
+          error '_normalizeValue: Value must be a string or array, got: %s' % std.type(value)
+        else if std.isArray(value) then
+          std.join('|', std.flattenArrays([value]))
+        else value,
 
       // Adds cluster label selector using the configured cluster variable
       // shorthand for selector().label('cluster').eq('$cluster')
       cluster(value='$cluster', op='=')::
-        self.withLabel(cfg._config.labels.cluster, op, value),
+        self.withLabel(
+          cfg._config.labels.cluster,
+          self._normalizeOperator(op, value),
+          self._normalizeValue(value)
+        ),
 
       // Adds namespace label selector using the configured namespace variable
       // shorthand for selector().label('namespace').eq('$namespace')
       namespace(value='$namespace', op='=')::
-        self.withLabel(cfg._config.labels.namespace, op, value),
+        self.withLabel(
+          cfg._config.labels.namespace,
+          self._normalizeOperator(op, value),
+          self._normalizeValue(value)
+        ),
 
       // Adds node label selector using the configured node variable
       // shorthand for selector().label('node').re('$node')
       node(value='$node', op='=~')::
-        self.withLabel(cfg._config.labels.node, op, value),
+        self.withLabel(
+          cfg._config.labels.node,
+          self._normalizeOperator(op, value),
+          self._normalizeValue(value)
+        ),
 
       // Adds tenant label selector using the configured tenant variable
       // shorthand for selector().label('tenant').eq('$tenant')
       tenant(value='$tenant', op='=')::
-        self.withLabel('tenant', op, value),
+        self.withLabel(
+          'tenant',
+          self._normalizeOperator(op, value),
+          self._normalizeValue(value)
+        ),
 
       // Adds user label selector using the configured tenant variable
       // shorthand for selector().label('user').eq('$user')
       user(value='$user', op='=')::
-        self.withLabel('user', op, value),
+        self.withLabel(
+          'user',
+          self._normalizeOperator(op, value),
+          self._normalizeValue(value)
+        ),
 
       // Adds route label selector using the configured route variable
       // shorthand for selector().label('route').eq('$route')
       route(value='$route', op='=~')::
-        self.withLabel('route', op, value),
+        self.withLabel(
+          'route',
+          self._normalizeOperator(op, value),
+          self._normalizeValue(value)
+        ),
 
       // Combines cluster and namespace selectors for common base filtering
       base()::
@@ -126,6 +164,12 @@
               // merge the component pattern, component path (if meta-monitoring is enabled and include_path is true)
               // and single-binary (if meta-monitoring is enabled and include_sb is true)
               [componentPattern]
+              + (
+                if cfg._config.meta_monitoring.enabled then
+                  ['loki']
+                else
+                  []
+              )
               + (
                 // if meta-monitoring is enabled and include_path is true and the component is not cortex-gateway, add the component path
                 if cfg._config.meta_monitoring.enabled && cfg._config.meta_monitoring.include_path && !std.member(mergedComponents, 'cortex-gateway') then
@@ -201,10 +245,7 @@
       // Creates a container matcher for a specific Loki component with optional operator
       container(containers, op='=~')::
         local formattedMatchers = self._formatBaseMatcher(components=containers, label='container');
-        local formattedSelector = self._formatMatcher(
-          matcher=formattedMatchers,
-          pattern='%(prefix)s(%(matcher)s)',
-        );
+        local formattedSelector = self._formatMatcher(matcher=formattedMatchers);
         self.withLabel(
           label=self._getLabelMapping(label='container'),
           op=self._handleOperator(op),
@@ -217,10 +258,7 @@
       // Creates a component matcher for a specific Loki component with optional operator
       component(components, op='=~')::
         local formattedMatchers = self._formatBaseMatcher(components=components, label='component');
-        local formattedSelector = self._formatMatcher(
-          matcher=formattedMatchers,
-          pattern='%(prefix)s(%(matcher)s)',
-        );
+        local formattedSelector = self._formatMatcher(matcher=formattedMatchers);
         self.withLabel(
           label=self._getLabelMapping(label='component'),
           op=self._handleOperator(op),
@@ -351,6 +389,27 @@
           '{' + selectorString + '}'
         else
           selectorString,
+
+      // Gets just the value string for the current selector
+      value()::
+        if self._labels == [] then
+          ''
+        else
+          // build the selector string
+          std.join(
+            ', ',
+            // remove duplicates
+            std.uniq(
+              // sort the labels
+              std.sort(
+                // loop over each of the labels and build the matcher string
+                [
+                  std.format('%(value)s', l)
+                  for l in self.list()
+                ]
+              )
+            )
+          ),
     };
 
     // Return either base-initialized or empty selector
