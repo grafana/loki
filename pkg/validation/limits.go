@@ -251,7 +251,7 @@ type FieldDetectorConfig struct {
 	Fields map[string][]string `yaml:"fields,omitempty" json:"fields,omitempty"`
 }
 
-type PolicyStreamMapping map[string]*PriorityStream
+type PolicyStreamMapping map[string][]*PriorityStream
 
 type PriorityStream struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description=The larger the value, the higher the priority."`
@@ -519,12 +519,14 @@ func (l *Limits) Validate() error {
 	}
 
 	if l.PolicyStreamMapping != nil {
-		for policyName, policy := range l.PolicyStreamMapping { // Add * to dereference
-			matchers, err := syntax.ParseMatchers(policy.Selector, true)
-			if err != nil {
-				return fmt.Errorf("invalid labels matchers for policy stream mapping: %w", err)
+		for policyName, policyStreams := range l.PolicyStreamMapping {
+			for idx, policyStream := range policyStreams {
+				matchers, err := syntax.ParseMatchers(policyStream.Selector, true)
+				if err != nil {
+					return fmt.Errorf("invalid labels matchers for policy stream mapping: %w", err)
+				}
+				l.PolicyStreamMapping[policyName][idx].Matchers = matchers
 			}
-			l.PolicyStreamMapping[policyName].Matchers = matchers // Add * when assigning back
 		}
 	}
 

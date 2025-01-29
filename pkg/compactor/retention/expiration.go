@@ -141,26 +141,28 @@ func (tr *TenantsRetention) PolicyFor(userID string, lbs labels.Labels) string {
 		found             bool
 	)
 Outer:
-	for policyName, policyStream := range policyStreamMapping {
-		for _, m := range policyStream.Matchers {
-			if !m.Matches(lbs.Get(m.Name)) {
-				continue Outer
+	for policyName, policyStreams := range policyStreamMapping {
+		for _, policyStream := range policyStreams {
+			for _, m := range policyStream.Matchers {
+				if !m.Matches(lbs.Get(m.Name)) {
+					continue Outer
+				}
 			}
+			// the rule is matched.
+			if found {
+				// if the current matched rule has a higher priority we keep it.
+				if matchedRule.Priority > policyStream.Priority {
+					continue
+				}
+				// if priority is equal we keep the lowest retention.
+				if matchedRule.Priority == policyStream.Priority {
+					continue
+				}
+			}
+			found = true
+			matchedRule = policyStream
+			matchedPolicyName = policyName
 		}
-		// the rule is matched.
-		if found {
-			// if the current matched rule has a higher priority we keep it.
-			if matchedRule.Priority > policyStream.Priority {
-				continue
-			}
-			// if priority is equal we keep the lowest retention.
-			if matchedRule.Priority == policyStream.Priority {
-				continue
-			}
-		}
-		found = true
-		matchedRule = policyStream
-		matchedPolicyName = policyName
 	}
 	if found {
 		return matchedPolicyName
