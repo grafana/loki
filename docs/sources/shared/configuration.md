@@ -3928,7 +3928,7 @@ otlp_config:
 [enforced_labels: <list of strings> | default = []]
 
 # Map of policies to stream selectors with a priority. Experimental.
-[policy_stream_mapping: <map of string to PriorityStream>]
+[policy_stream_mapping: <map of string to list of PriorityStreams>]
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
