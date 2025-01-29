@@ -235,15 +235,20 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				CheckInterval:      0,
 				HealthCheckEnabled: false,
 			}
-			mockPool := ring_client.NewPool("test", poolCfg, ring_client.NewRingServiceDiscovery(mockRing), &mockFactory{clients: mockClients}, prometheus.NewGauge(prometheus.GaugeOpts{}), log.NewNopLogger())
+			mockPool := ring_client.NewPool(
+				"test",
+				poolCfg,
+				ring_client.NewRingServiceDiscovery(mockRing),
+				&mockFactory{clients: mockClients},
+				prometheus.NewGauge(prometheus.GaugeOpts{}),
+				log.NewNopLogger(),
+			)
 
-			service := &RingIngestLimitsService{
-				ring: mockRing,
-				pool: mockPool,
-				limits: &mockLimits{
-					maxGlobalStreams: tt.maxGlobalStreams,
-				},
+			mockLimits := &mockLimits{
+				maxGlobalStreams: tt.maxGlobalStreams,
 			}
+
+			service := NewRingIngestLimitsService(mockRing, mockPool, mockLimits, log.NewNopLogger(), prometheus.NewRegistry())
 
 			req := &logproto.ExceedsLimitsRequest{
 				Tenant:  tt.tenant,

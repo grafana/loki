@@ -458,6 +458,7 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		t.ingestLimitsRing,
 		t.Overrides,
 		util_log.Logger,
+		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
 		return nil, err

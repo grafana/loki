@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/plugin/kprom"
 
@@ -20,12 +21,39 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
 )
+
+type metrics struct {
+	tenantCurrentRecordedStreams *prometheus.GaugeVec
+	tenantStreamEvictionsTotal   *prometheus.CounterVec
+	tenantActiveStreams          *prometheus.GaugeVec
+}
+
+func newMetrics(reg prometheus.Registerer) *metrics {
+	return &metrics{
+		tenantCurrentRecordedStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_recorded_streams",
+			Help:      "The current number of recorded streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		tenantStreamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_stream_evictions_total",
+			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+		tenantActiveStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_active_streams",
+			Help:      "The current number of active streams (seen within the window) per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		}, []string{"tenant"}),
+	}
+}
 
 // IngestLimits is a service that manages stream metadata limits.
 type IngestLimits struct {
@@ -37,6 +65,9 @@ type IngestLimits struct {
 
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
+
+	// metrics
+	metrics *metrics
 
 	// Track stream metadata
 	mtx      sync.RWMutex
@@ -59,6 +90,7 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 		cfg:      cfg,
 		logger:   logger,
 		metadata: make(map[string]map[uint64]int64),
+		metrics:  newMetrics(reg),
 	}
 
 	// Initialize lifecycler
@@ -198,14 +230,33 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 			s.mtx.Lock()
 			cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 			for tenant, streams := range s.metadata {
+				streamsBefore := len(streams)
+				evictedCount := 0
+				activeCount := 0
 				for hash, lastSeen := range streams {
 					if lastSeen < cutoff {
 						delete(s.metadata[tenant], hash)
+						evictedCount++
+					} else {
+						activeCount++
 					}
 				}
-				// Clean up empty tenant maps
+				// Update eviction counter if any streams were evicted
+				if evictedCount > 0 {
+					s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evictedCount))
+				}
+				// Clean up empty tenant maps and update gauges
 				if len(s.metadata[tenant]) == 0 {
 					delete(s.metadata, tenant)
+					s.metrics.tenantCurrentRecordedStreams.DeleteLabelValues(tenant)
+					s.metrics.tenantActiveStreams.DeleteLabelValues(tenant)
+				} else {
+					if len(streams) != streamsBefore {
+						// Only update recorded streams gauge if the number changed
+						s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(len(streams)))
+					}
+					// Always update active streams as they can change even if total count doesn't
+					s.metrics.tenantActiveStreams.WithLabelValues(tenant).Set(float64(activeCount))
 				}
 			}
 			s.mtx.Unlock()
@@ -228,6 +279,19 @@ func (s *IngestLimits) updateMetadata(metadata *logproto.StreamMetadata, tenant 
 	recordTime := lastSeenAt.UnixNano()
 	if current, ok := s.metadata[tenant][metadata.StreamHash]; !ok || recordTime > current {
 		s.metadata[tenant][metadata.StreamHash] = recordTime
+
+		// Count active streams (within window)
+		cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+		activeCount := 0
+		for _, lastSeen := range s.metadata[tenant] {
+			if lastSeen >= cutoff {
+				activeCount++
+			}
+		}
+
+		// Update gauges
+		s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(len(s.metadata[tenant])))
+		s.metrics.tenantActiveStreams.WithLabelValues(tenant).Set(float64(activeCount))
 	}
 }
 
