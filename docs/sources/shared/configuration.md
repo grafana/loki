@@ -109,6 +109,42 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the server of the launched module(s).
 [server: <server>]
 
+ui:
+  # Name to use for this node in the cluster.
+  # CLI flag: -ui.node-name
+  [node_name: <string> | default = "9cc92b342678"]
+
+  # IP address to advertise in the cluster.
+  # CLI flag: -ui.advertise-addr
+  [advertise_addr: <string> | default = ""]
+
+  # Name of network interface to read address from.
+  # CLI flag: -ui.interface
+  [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # How frequently to rejoin the cluster to address split brain issues.
+  # CLI flag: -ui.rejoin-interval
+  [rejoin_interval: <duration> | default = 15s]
+
+  # Number of initial peers to join from the discovered set.
+  # CLI flag: -ui.cluster-max-join-peers
+  [cluster_max_join_peers: <int> | default = 3]
+
+  # Name to prevent nodes without this identifier from joining the cluster.
+  # CLI flag: -ui.cluster-name
+  [cluster_name: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -ui.enable-ipv6
+  [enable_ipv6: <boolean> | default = false]
+
+  discovery:
+    # List of peers to join the cluster. Supports multiple values separated by
+    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
+    # and SRV records).
+    # CLI flag: -ui.discovery.join-peers
+    [join_peers: <list of strings> | default = []]
+
 # Configures the distributor.
 [distributor: <distributor>]
 

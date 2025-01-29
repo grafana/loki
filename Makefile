@@ -201,6 +201,7 @@ cmd/loki/loki-debug:
 
 ui-assets:
 	make -C pkg/dataobj/explorer/ui build
+	make -C pkg/ui/frontend build
 ###############
 # Loki-Canary #
 ###############

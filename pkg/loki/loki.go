@@ -64,6 +64,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 	"github.com/grafana/loki/v3/pkg/tracing"
+	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/fakeauth"
@@ -83,6 +84,7 @@ type Config struct {
 
 	Server              server.Config              `yaml:"server,omitempty"`
 	InternalServer      internalserver.Config      `yaml:"internal_server,omitempty" doc:"hidden"`
+	UI                  ui.Config                  `yaml:"ui,omitempty"`
 	Distributor         distributor.Config         `yaml:"distributor,omitempty"`
 	Querier             querier.Config             `yaml:"querier,omitempty"`
 	QueryScheduler      scheduler.Config           `yaml:"query_scheduler"`
@@ -192,6 +194,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.BlockBuilder.RegisterFlags(f)
 	c.BlockScheduler.RegisterFlags(f)
 	c.DataObjExplorer.RegisterFlags(f)
+	c.UI.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -312,6 +315,10 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
 	}
 
+	if err := c.UI.Validate(); err != nil {
+		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ui config"))
+	}
+
 	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
 	errs = append(errs, validateBackendAndLegacyReadMode(c)...)
@@ -356,6 +363,7 @@ type Loki struct {
 
 	Server                    *server.Server
 	InternalServer            *server.Server
+	UI                        *ui.Service
 	ring                      *ring.Ring
 	Overrides                 limiter.CombinedLimits
 	tenantConfigs             *runtime.TenantConfigs
@@ -705,6 +713,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
 	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
+	mm.RegisterModule(UI, t.initUI)
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
 	mm.RegisterModule(Write, nil)
@@ -717,6 +726,7 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
+		UI:                       {Server},
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
@@ -749,7 +759,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:   {Ingester, Distributor, PatternIngester},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, UI},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

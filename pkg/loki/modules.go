@@ -34,6 +34,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/thanos-io/objstore"
 
@@ -85,6 +87,7 @@ import (
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
@@ -142,6 +145,7 @@ const (
 	BlockBuilder             = "block-builder"
 	BlockScheduler           = "block-scheduler"
 	DataObjExplorer          = "dataobj-explorer"
+	UI                       = "ui"
 
 	All     = "all"
 	Read    = "read"
@@ -202,6 +206,7 @@ func (t *Loki) initServer() (services.Service, error) {
 	}(t.Server.HTTPServer.Handler)
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
+	t.Server.HTTPServer.Handler = h2c.NewHandler(t.Server.HTTPServer.Handler, &http2.Server{})
 
 	if t.Cfg.Server.HTTPListenPort == 0 {
 		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
@@ -1901,6 +1906,16 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 
 	t.Server.HTTP.PathPrefix("/dataobj/explorer/").Handler(explorer.Handler())
 	return explorer, nil
+}
+
+func (t *Loki) initUI() (services.Service, error) {
+	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
+	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"))
+	if err != nil {
+		return nil, err
+	}
+	t.UI = svc
+	return svc, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
