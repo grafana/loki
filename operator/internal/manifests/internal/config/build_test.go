@@ -6164,16 +6164,16 @@ limits_config:
         attributes:
         - res.foo.bar
         - res.bar.baz
-      - action: structured_metadata
+      - action: drop
         attributes:
         - res.service.env
     scope_attributes:
-    - action: structured_metadata
+    - action: drop
       attributes:
       - scope.foo.bar
       - scope.bar.baz
     log_attributes:
-    - action: structured_metadata
+    - action: drop
       attributes:
       - log.foo.bar
       - log.bar.baz
@@ -6313,16 +6313,16 @@ overrides:
           attributes:
           - res.foo.bar
           - res.bar.baz
-        - action: structured_metadata
+        - action: drop
           attributes:
           - res.service.env
       scope_attributes:
-      - action: structured_metadata
+      - action: drop
         attributes:
         - scope.foo.bar
         - scope.bar.baz
       log_attributes:
-      - action: structured_metadata
+      - action: drop
         attributes:
         - log.foo.bar
         - log.bar.baz
@@ -6499,7 +6499,7 @@ overrides:
 						},
 					},
 					{
-						Action: OTLPAttributeActionMetadata,
+						Action: OTLPAttributeActionDrop,
 						Names: []string{
 							"res.service.env",
 						},
@@ -6507,7 +6507,7 @@ overrides:
 				},
 				ScopeAttributes: []OTLPAttribute{
 					{
-						Action: OTLPAttributeActionMetadata,
+						Action: OTLPAttributeActionDrop,
 						Names: []string{
 							"scope.foo.bar",
 							"scope.bar.baz",
@@ -6516,7 +6516,7 @@ overrides:
 				},
 				LogAttributes: []OTLPAttribute{
 					{
-						Action: OTLPAttributeActionMetadata,
+						Action: OTLPAttributeActionDrop,
 						Names: []string{
 							"log.foo.bar",
 							"log.bar.baz",
@@ -6535,7 +6535,7 @@ overrides:
 							},
 						},
 						{
-							Action: OTLPAttributeActionMetadata,
+							Action: OTLPAttributeActionDrop,
 							Names: []string{
 								"res.service.env",
 							},
@@ -6543,7 +6543,7 @@ overrides:
 					},
 					ScopeAttributes: []OTLPAttribute{
 						{
-							Action: OTLPAttributeActionMetadata,
+							Action: OTLPAttributeActionDrop,
 							Names: []string{
 								"scope.foo.bar",
 								"scope.bar.baz",
@@ -6552,7 +6552,7 @@ overrides:
 					},
 					LogAttributes: []OTLPAttribute{
 						{
-							Action: OTLPAttributeActionMetadata,
+							Action: OTLPAttributeActionDrop,
 							Names: []string{
 								"log.foo.bar",
 								"log.bar.baz",

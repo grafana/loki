@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -304,6 +305,7 @@ func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 type MergeFirstOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	offset      time.Duration
 }
 
 func (e MergeFirstOverTimeExpr) String() string {
@@ -332,6 +334,7 @@ func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
 type MergeLastOverTimeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
+	offset      time.Duration
 }
 
 func (e MergeLastOverTimeExpr) String() string {
@@ -590,7 +593,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			}
 		}
 
-		return NewMergeFirstOverTimeStepEvaluator(params, xs), nil
+		return NewMergeFirstOverTimeStepEvaluator(params, xs, e.offset), nil
 	case *MergeLastOverTimeExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
@@ -625,7 +628,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 				return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 			}
 		}
-		return NewMergeLastOverTimeStepEvaluator(params, xs), nil
+		return NewMergeLastOverTimeStepEvaluator(params, xs, e.offset), nil
 	case *CountMinSketchEvalExpr:
 		queries := make([]DownstreamQuery, len(e.downstreams))
 
