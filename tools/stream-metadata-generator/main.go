@@ -93,6 +93,7 @@ type streamMetaGen struct {
 	ring                 *ring.Ring
 	partitionRing        ring.PartitionRingReader
 	partitionRingWatcher *ring.PartitionRingWatcher
+	partitionRingKV      kv.Client
 
 	// service
 	subservices        *services.Manager
@@ -139,13 +140,13 @@ func newStreamMetaGen(cfg Config, writer *client.Producer, logger log.Logger, re
 
 	// Init KVStore client
 	regKV := kv.RegistererWithKVName(reg, ingester.PartitionRingName+"-watcher")
-	kvClient, err := kv.NewClient(cfg.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), regKV, logger)
+	s.partitionRingKV, err = kv.NewClient(cfg.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), regKV, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}
 
 	// Init Partition Ring and Watcher
-	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, logger, reg)
+	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, s.partitionRingKV, logger, reg)
 	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ring, cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Init services
@@ -362,6 +363,14 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
+	mux.Handle("/ring", gen.ring)
+	mux.Handle("/partition-ring", ring.NewPartitionRingPageHandler(
+		gen.partitionRingWatcher,
+		ring.NewPartitionRingEditor(
+			ingester.PartitionRingKey,
+			gen.partitionRingKV,
+		),
+	))
 
 	server := &http.Server{
 		Addr:    httpListenAddr,

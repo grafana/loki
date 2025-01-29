@@ -63,26 +63,26 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
 
-  stream-meta-gen:
-    image: theperiklis/stream-meta-gen:latest
+  generator:
+    image: theperiklis/stream-metadata-generator:latest
     build:
       context: ../..
-      dockerfile: tools/streametagen/Dockerfile
+      dockerfile: tools/stream-metadata-generator/Dockerfile
     ports:
-      - 9090:9090
+      - 3101:3100
       - 7947:7947
     command:
       - --log.level=debug
-      - --tenants=2
-      - --streams=500
-      - --qps=50
+      - --tenants.total=2
+      - --tenants.streams.total=500
+      - --tenants.qps=50
       - --memberlist.bind-port=7947
       - --memberlist.advertise-port=7947
       - --memberlist.join=loki:7946
       - --kafka.address=broker:29094
       - --kafka.topic=loki
       - --kafka.auto-create-topic-default-partitions=1000
-      - --streammetagen_store=memberlist
+      - --stream-metadata-generator.store=memberlist
     depends_on:
       - broker 
       - loki

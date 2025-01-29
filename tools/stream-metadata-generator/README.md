@@ -7,7 +7,7 @@ A utility to generate stream metadata for multiple tenants and push it into a Ka
 From the root of the Loki repository:
 
 ```bash
-docker build -t grafana/stream-meta-gen -f tools/streametagen/Dockerfile .
+docker build -t grafana/stream-metadata-generator -f tools/stream-metadata-generator/Dockerfile .
 ```
 
 ## Usage
@@ -16,10 +16,10 @@ The stream metadata generator supports various configuration options through com
 
 ### Basic Configuration
 
-- `--tenants`: Number of tenants to generate metadata for (default: 1)
-- `--streams`: Number of streams per tenant (default: 100)
-- `--qps`: Number of queries per second per tenant (default: 10)
-- `--http.listen-addr`: HTTP server listen address for metrics (default: ":9090")
+- `--tenants.total`: Number of tenants to generate metadata for (default: 1)
+- `--tenants.streams.total`: Number of streams per tenant (default: 100)
+- `--tenants.qps`: Number of queries per second per tenant (default: 10)
+- `--http-listen-port`: HTTP server listen address for metrics (default: ":9090")
 
 ### Kafka Configuration
 
@@ -47,7 +47,7 @@ The stream metadata generator supports various configuration options through com
 Run with default settings (1 tenant, 100 streams per tenant, 10 QPS):
 
 ```bash
-docker run -p 9090:9090 grafana/stream-meta-gen
+docker run -p 9090:9090 grafana/stream-metadata-generator
 ```
 
 ### Full Example
@@ -56,21 +56,21 @@ Run with custom settings:
 
 ```bash
 docker run -p 9091:9090 \
-  grafana/stream-meta-gen \
-  --tenants=5 \
-  --streams=1000 \
-  --qps=100 \
-  --http.listen-addr=:9090 \
-  --kafka.addresses=kafka-1:9092,kafka-2:9092 \
-  --kafka.topic=loki-metadata \
+  grafana/stream-metadata-generator \
+  --tenants.total=5 \
+  --tenants.streams.total=1000 \
+  --tenants.qps=100 \
+  --http-listen-port=3100 \
+  --kafka.address=kafka-1:9092 \
+  --kafka.topic=loki \
   --kafka.client-id=stream-meta-gen-1 \
   --kafka.sasl.enabled=true \
   --kafka.sasl.mechanism=PLAIN \
   --kafka.sasl.username=loki \
   --kafka.sasl.password=secret123 \
-  --streammetagen_ring.store=consul \
-  --streammetagen_ring.replication-factor=3 \
-  --streammetagen_ring.kvstore.consul.hostname=consul:8500
+  --stream-metadata-generator.store=consul \
+  --stream-metadata-generator.replication-factor=3 \
+  --stream-metadata-generator.kvstore.consul.hostname=consul:8500
 ```
 
 ### Local Development Example
@@ -79,22 +79,22 @@ For local development with the provided docker-compose setup:
 
 ```bash
 docker run --network=host \
-  grafana/stream-meta-gen \
-  --tenants=2 \
-  --streams=500 \
-  --qps=50 \
-  --kafka.addresses=localhost:9092 \
-  --kafka.topic=loki-ingest-metadata \
+  grafana/stream-metadata-generator \
+  --tenants.total=2 \
+  --tenants.streams.total=500 \
+  --tenants.qps=50 \
+  --kafka.address=localhost:9092 \
+  --kafka.topic=loki \
   --kafka.sasl.enabled=true \
   --kafka.sasl.mechanism=PLAIN \
   --kafka.sasl.username=loki \
   --kafka.sasl.password=secret123 \
-  --streammetagen_ring.store=inmemory
+  --stream-metadata-generator.store=inmemory
 ```
 
 ## Metrics
 
-The generator exposes Prometheus metrics at `/metrics` on port 9090. When running with Docker, make sure to expose this port with the `-p` flag if you need to access the metrics from outside the container.
+The generator exposes Prometheus metrics at `/metrics` on port 3100. When running with Docker, make sure to expose this port with the `-p` flag if you need to access the metrics from outside the container.
 
 ## Labels
 
