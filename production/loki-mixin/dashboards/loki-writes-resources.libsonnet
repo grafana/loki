@@ -100,7 +100,7 @@ local podSelectors = {
           $.withStacking,
         )
         .addPanel(
-          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', jobSelectors.ingester),
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', 'ingester'),
         )
       ),
   },
