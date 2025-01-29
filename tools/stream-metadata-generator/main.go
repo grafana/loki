@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -45,19 +46,33 @@ const (
 	ingesterRingName = "ingester"
 )
 
-type Config struct {
+type metrics struct {
+	activeStreamsTotal *prometheus.CounterVec
+}
+
+func newMetrics(reg prometheus.Registerer) *metrics {
+	return &metrics{
+		activeStreamsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsNamespace,
+			Name:      "active_streams_total",
+			Help:      "The total number of active streams",
+		}, []string{"tenant"}),
+	}
+}
+
+type config struct {
 	NumTenants       int      `yaml:"num_tenants"`
 	QPSPerTenant     int      `yaml:"qps_per_tenant"`
 	StreamsPerTenant int      `yaml:"streams_per_tenant"`
 	StreamLabels     []string `yaml:"stream_labels"`
 
-	LogLevel       dskit_log.Level `yaml:"log_level"`
-	HttpListenPort int             `yaml:"http_listen_port"`
+	LogLevel       dskit_log.Level `yaml:"log_level,omitempty"`
+	HttpListenPort int             `yaml:"http_listen_port,omitempty"`
 
-	MemberlistKV        memberlist.KVConfig   `yaml:"memberlist"`
-	Kafka               kafka.Config          `yaml:"kafka"`
-	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
-	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
+	MemberlistKV        memberlist.KVConfig   `yaml:"memberlist,omitempty"`
+	Kafka               kafka.Config          `yaml:"kafka,omitempty"`
+	PartitionRingConfig partitionring.Config  `yaml:"partition_ring,omitempty"`
+	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 }
 
 type streamLabelsFlag []string
@@ -71,7 +86,7 @@ func (s *streamLabelsFlag) Set(value string) error {
 	return nil
 }
 
-func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
+func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.NumTenants, "tenants.total", 1, "Number of tenants to generate metadata for")
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
@@ -92,11 +107,12 @@ func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	c.MemberlistKV.RegisterFlags(f)
 }
 
-type streamMetaGen struct {
+type generator struct {
 	services.Service
 
-	cfg    Config
-	logger log.Logger
+	cfg     config
+	logger  log.Logger
+	metrics *metrics
 
 	// payload
 	streams map[string][]distributor.KeyedStream
@@ -121,11 +137,12 @@ type streamMetaGen struct {
 	cancel context.CancelFunc
 }
 
-func newStreamMetaGen(cfg Config, writer *client.Producer, logger log.Logger, reg prometheus.Registerer) (*streamMetaGen, error) {
-	s := &streamMetaGen{
-		cfg:    cfg,
-		writer: writer,
-		logger: logger,
+func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, reg prometheus.Registerer) (*generator, error) {
+	s := &generator{
+		cfg:     cfg,
+		writer:  writer,
+		logger:  logger,
+		metrics: newMetrics(reg),
 	}
 
 	var err error
@@ -183,7 +200,7 @@ func newStreamMetaGen(cfg Config, writer *client.Producer, logger log.Logger, re
 	return s, nil
 }
 
-func (s *streamMetaGen) starting(ctx context.Context) error {
+func (s *generator) starting(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
 	// Generate streams for each tenant
@@ -196,7 +213,7 @@ func (s *streamMetaGen) starting(ctx context.Context) error {
 	return services.StartManagerAndAwaitHealthy(s.ctx, s.subservices)
 }
 
-func (s *streamMetaGen) running(ctx context.Context) error {
+func (s *generator) running(ctx context.Context) error {
 	// Create error channel to collect errors from goroutines
 	errCh := make(chan error, s.cfg.NumTenants)
 
@@ -205,6 +222,8 @@ func (s *streamMetaGen) running(ctx context.Context) error {
 		s.wg.Add(1)
 		go func(tenantID string, streams []distributor.KeyedStream) {
 			defer s.wg.Done()
+
+			s.metrics.activeStreamsTotal.WithLabelValues(tenantID).Inc()
 
 			// Create a ticker for rate limiting based on QPSPerTenant
 			ticker := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
@@ -241,13 +260,13 @@ func (s *streamMetaGen) running(ctx context.Context) error {
 	case <-ctx.Done():
 		return nil
 	case err := <-s.subservicesWatcher.Chan():
-		return errors.Wrap(err, "streammetagen subservice failed")
+		return errors.Wrap(err, "stream-metadata-generator subservice failed")
 	case err := <-errCh:
 		return err
 	}
 }
 
-func (s *streamMetaGen) sendStreamsToKafka(ctx context.Context, streams []distributor.KeyedStream, tenant string) error {
+func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributor.KeyedStream, tenant string) error {
 	for _, stream := range streams {
 		partitionID, err := s.partitionRing.PartitionRing().ActivePartitionForKey(stream.RingToken)
 		if err != nil {
@@ -271,7 +290,7 @@ func (s *streamMetaGen) sendStreamsToKafka(ctx context.Context, streams []distri
 	return nil
 }
 
-func (s *streamMetaGen) stopping(_ error) error {
+func (s *generator) stopping(_ error) error {
 	s.cancel()
 	s.wg.Wait()
 
@@ -338,7 +357,7 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int, streamLabel
 func main() {
 	logger := log.NewLogfmtLogger(os.Stdout)
 
-	cfg := Config{}
+	cfg := config{}
 	cfg.RegisterFlags(flag.CommandLine, logger)
 	flag.Parse()
 
