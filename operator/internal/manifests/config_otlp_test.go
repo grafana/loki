@@ -7,7 +7,7 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/openshift/otlp"
 )
 
 func TestOtlpAttributeConfig(t *testing.T) {
@@ -81,36 +81,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			},
 		},
 		{
-			desc: "global metadata",
-			spec: lokiv1.LokiStackSpec{
-				Limits: &lokiv1.LimitsSpec{
-					Global: &lokiv1.LimitsTemplateSpec{
-						OTLP: &lokiv1.OTLPSpec{
-							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
-								ResourceAttributes: []lokiv1.OTLPAttributeReference{
-									{
-										Name: "metadata",
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			wantConfig: config.OTLPAttributeConfig{
-				RemoveDefaultLabels: true,
-				Global: &config.OTLPTenantAttributeConfig{
-					ResourceAttributes: []config.OTLPAttribute{
-						{
-							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"metadata"},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc: "global combined",
+			desc: "global with drop",
 			spec: lokiv1.LokiStackSpec{
 				Limits: &lokiv1.LimitsSpec{
 					Global: &lokiv1.LimitsTemplateSpec{
@@ -120,38 +91,12 @@ func TestOtlpAttributeConfig(t *testing.T) {
 									{
 										Name: "stream.label",
 									},
-									{
-										Name:  "stream\\.label\\.regex\\..+",
-										Regex: true,
-									},
 								},
 							},
-							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+							Drop: &lokiv1.OTLPMetadataSpec{
 								ResourceAttributes: []lokiv1.OTLPAttributeReference{
 									{
-										Name: "resource.metadata",
-									},
-									{
-										Name:  "resource.metadata\\.other\\..+",
-										Regex: true,
-									},
-								},
-								ScopeAttributes: []lokiv1.OTLPAttributeReference{
-									{
-										Name: "scope.metadata",
-									},
-									{
-										Name:  "scope.metadata\\.other\\..+",
-										Regex: true,
-									},
-								},
-								LogAttributes: []lokiv1.OTLPAttributeReference{
-									{
-										Name: "log.metadata",
-									},
-									{
-										Name:  "log.metadata\\.other\\..+",
-										Regex: true,
+										Name: "drop.attribute",
 									},
 								},
 							},
@@ -164,40 +109,16 @@ func TestOtlpAttributeConfig(t *testing.T) {
 				Global: &config.OTLPTenantAttributeConfig{
 					ResourceAttributes: []config.OTLPAttribute{
 						{
-							Action: config.OTLPAttributeActionStreamLabel,
-							Names:  []string{"stream.label"},
+							Action: config.OTLPAttributeActionDrop,
+							Names: []string{
+								"drop.attribute",
+							},
 						},
 						{
 							Action: config.OTLPAttributeActionStreamLabel,
-							Regex:  "stream\\.label\\.regex\\..+",
-						},
-						{
-							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"resource.metadata"},
-						},
-						{
-							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "resource.metadata\\.other\\..+",
-						},
-					},
-					ScopeAttributes: []config.OTLPAttribute{
-						{
-							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"scope.metadata"},
-						},
-						{
-							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "scope.metadata\\.other\\..+",
-						},
-					},
-					LogAttributes: []config.OTLPAttribute{
-						{
-							Action: config.OTLPAttributeActionMetadata,
-							Names:  []string{"log.metadata"},
-						},
-						{
-							Action: config.OTLPAttributeActionMetadata,
-							Regex:  "log.metadata\\.other\\..+",
+							Names: []string{
+								"stream.label",
+							},
 						},
 					},
 				},
@@ -271,40 +192,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 			},
 		},
 		{
-			desc: "tenant metadata",
-			spec: lokiv1.LokiStackSpec{
-				Limits: &lokiv1.LimitsSpec{
-					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
-						"test-tenant": {
-							OTLP: &lokiv1.OTLPSpec{
-								StructuredMetadata: &lokiv1.OTLPMetadataSpec{
-									ResourceAttributes: []lokiv1.OTLPAttributeReference{
-										{
-											Name: "tenant.metadata",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-			wantConfig: config.OTLPAttributeConfig{
-				RemoveDefaultLabels: true,
-				Tenants: map[string]*config.OTLPTenantAttributeConfig{
-					"test-tenant": {
-						ResourceAttributes: []config.OTLPAttribute{
-							{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.metadata"},
-							},
-						},
-					},
-				},
-			},
-		},
-		{
-			desc: "tenant combined",
+			desc: "tenant with drop",
 			spec: lokiv1.LokiStackSpec{
 				Limits: &lokiv1.LimitsSpec{
 					Tenants: map[string]lokiv1.PerTenantLimitsTemplateSpec{
@@ -313,40 +201,14 @@ func TestOtlpAttributeConfig(t *testing.T) {
 								StreamLabels: &lokiv1.OTLPStreamLabelSpec{
 									ResourceAttributes: []lokiv1.OTLPAttributeReference{
 										{
-											Name: "tenant.stream.label",
-										},
-										{
-											Name:  `tenant\.stream\.label\.regex\..+`,
-											Regex: true,
+											Name: "stream.label",
 										},
 									},
 								},
-								StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+								Drop: &lokiv1.OTLPMetadataSpec{
 									ResourceAttributes: []lokiv1.OTLPAttributeReference{
 										{
-											Name: "tenant.resource.metadata",
-										},
-										{
-											Name:  `tenant\.resource.metadata\.other\..+`,
-											Regex: true,
-										},
-									},
-									ScopeAttributes: []lokiv1.OTLPAttributeReference{
-										{
-											Name: "tenant.scope.metadata",
-										},
-										{
-											Name:  `tenant\.scope\.metadata\.other\..+`,
-											Regex: true,
-										},
-									},
-									LogAttributes: []lokiv1.OTLPAttributeReference{
-										{
-											Name: "tenant.log.metadata",
-										},
-										{
-											Name:  `tenant\.log\.metadata\.other\..+`,
-											Regex: true,
+											Name: "drop.attribute",
 										},
 									},
 								},
@@ -361,40 +223,16 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					"test-tenant": {
 						ResourceAttributes: []config.OTLPAttribute{
 							{
-								Action: config.OTLPAttributeActionStreamLabel,
-								Names:  []string{"tenant.stream.label"},
+								Action: config.OTLPAttributeActionDrop,
+								Names: []string{
+									"drop.attribute",
+								},
 							},
 							{
 								Action: config.OTLPAttributeActionStreamLabel,
-								Regex:  "tenant\\.stream\\.label\\.regex\\..+",
-							},
-							{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.resource.metadata"},
-							},
-							{
-								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.resource.metadata\.other\..+`,
-							},
-						},
-						ScopeAttributes: []config.OTLPAttribute{
-							{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.scope.metadata"},
-							},
-							{
-								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.scope\.metadata\.other\..+`,
-							},
-						},
-						LogAttributes: []config.OTLPAttribute{
-							{
-								Action: config.OTLPAttributeActionMetadata,
-								Names:  []string{"tenant.log.metadata"},
-							},
-							{
-								Action: config.OTLPAttributeActionMetadata,
-								Regex:  `tenant\.log\.metadata\.other\..+`,
+								Names: []string{
+									"stream.label",
+								},
 							},
 						},
 					},
@@ -473,7 +311,17 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					Mode: lokiv1.OpenshiftLogging,
 				},
 			},
-			wantConfig: openshift.DefaultOTLPAttributes(false),
+			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
+				Global: &config.OTLPTenantAttributeConfig{
+					ResourceAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Names:  otlp.DefaultOTLPAttributes(false),
+						},
+					},
+				},
+			},
 		},
 		{
 			desc: "openshift-logging defaults without recommended",
@@ -487,10 +335,20 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					},
 				},
 			},
-			wantConfig: openshift.DefaultOTLPAttributes(true),
+			wantConfig: config.OTLPAttributeConfig{
+				RemoveDefaultLabels: true,
+				Global: &config.OTLPTenantAttributeConfig{
+					ResourceAttributes: []config.OTLPAttribute{
+						{
+							Action: config.OTLPAttributeActionStreamLabel,
+							Names:  otlp.DefaultOTLPAttributes(true),
+						},
+					},
+				},
+			},
 		},
 		{
-			desc: "openshift-logging defaults with additional custom attributes",
+			desc: "openshift-logging defaults with drop",
 			spec: lokiv1.LokiStackSpec{
 				Limits: &lokiv1.LimitsSpec{
 					Global: &lokiv1.LimitsTemplateSpec{
@@ -502,7 +360,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 									},
 								},
 							},
-							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+							Drop: &lokiv1.OTLPMetadataSpec{
 								LogAttributes: []lokiv1.OTLPAttributeReference{
 									{
 										Name: "custom.log.metadata",
@@ -554,7 +412,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					},
 					LogAttributes: []config.OTLPAttribute{
 						{
-							Action: config.OTLPAttributeActionMetadata,
+							Action: config.OTLPAttributeActionDrop,
 							Names:  []string{"custom.log.metadata"},
 						},
 					},
@@ -579,7 +437,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 						},
 						LogAttributes: []config.OTLPAttribute{
 							{
-								Action: config.OTLPAttributeActionMetadata,
+								Action: config.OTLPAttributeActionDrop,
 								Names:  []string{"custom.log.metadata"},
 							},
 						},
@@ -603,7 +461,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 									},
 								},
 							},
-							StructuredMetadata: &lokiv1.OTLPMetadataSpec{
+							Drop: &lokiv1.OTLPMetadataSpec{
 								LogAttributes: []lokiv1.OTLPAttributeReference{
 									{
 										Name: "custom.log.metadata",
@@ -642,7 +500,7 @@ func TestOtlpAttributeConfig(t *testing.T) {
 					},
 					LogAttributes: []config.OTLPAttribute{
 						{
-							Action: config.OTLPAttributeActionMetadata,
+							Action: config.OTLPAttributeActionDrop,
 							Names:  []string{"custom.log.metadata"},
 						},
 					},
@@ -672,20 +530,8 @@ func TestSortOTLPAttributes(t *testing.T) {
 			desc: "sort",
 			attrs: []config.OTLPAttribute{
 				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.a"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.c",
-				},
-				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Names:  []string{"test.b"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
 				},
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
@@ -700,18 +546,6 @@ func TestSortOTLPAttributes(t *testing.T) {
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Regex:  "test.regex.b",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.a"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.c",
 				},
 			},
 		},
@@ -746,24 +580,12 @@ func TestSortOTLPAttributes(t *testing.T) {
 					Names:  []string{"test.c"},
 				},
 				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.d", "test.e"},
-				},
-				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Names:  []string{"test.b"},
 				},
 				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.f"},
-				},
-				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Regex:  "test.regex.b",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
 				},
 			},
 			wantAttrs: []config.OTLPAttribute{
@@ -774,14 +596,6 @@ func TestSortOTLPAttributes(t *testing.T) {
 				{
 					Action: config.OTLPAttributeActionStreamLabel,
 					Regex:  "test.regex.b",
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Names:  []string{"test.d", "test.e", "test.f"},
-				},
-				{
-					Action: config.OTLPAttributeActionMetadata,
-					Regex:  "test.regex.a",
 				},
 			},
 		},

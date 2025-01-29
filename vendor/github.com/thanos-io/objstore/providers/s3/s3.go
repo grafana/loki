@@ -192,7 +192,7 @@ type overrideSignerType struct {
 }
 
 func (s *overrideSignerType) Retrieve() (credentials.Value, error) {
-	v, err := s.Provider.Retrieve()
+	v, err := s.RetrieveWithCredContext(nil)
 	if err != nil {
 		return v, err
 	}

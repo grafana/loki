@@ -72,8 +72,8 @@ var (
 	// errMethodNotSupported indicates that the method called is not currently supported by the client.
 	// TODO: Export this error when launching the transport-agnostic client.
 	errMethodNotSupported = errors.New("storage: method is not currently supported")
-	// errMethodNotValid indicates that given HTTP method is not valid.
-	errMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
+	// errSignedURLMethodNotValid indicates that given HTTP method is not valid.
+	errSignedURLMethodNotValid = fmt.Errorf("storage: HTTP method should be one of %v", reflect.ValueOf(signedURLMethods).MapKeys())
 )
 
 var userAgent = fmt.Sprintf("gcloud-golang-storage/%s", internal.Version)
@@ -689,7 +689,7 @@ func validateOptions(opts *SignedURLOptions, now time.Time) error {
 	}
 	opts.Method = strings.ToUpper(opts.Method)
 	if _, ok := signedURLMethods[opts.Method]; !ok {
-		return errMethodNotValid
+		return errSignedURLMethodNotValid
 	}
 	if opts.Expires.IsZero() {
 		return errors.New("storage: missing required expires option")
@@ -937,6 +937,9 @@ func signedURLV2(bucket, name string, opts *SignedURLOptions) (string, error) {
 	return u.String(), nil
 }
 
+// ReadHandle associated with the object. This is periodically refreshed.
+type ReadHandle []byte
+
 // ObjectHandle provides operations on an object in a Google Cloud Storage bucket.
 // Use BucketHandle.Object to get a handle.
 type ObjectHandle struct {
@@ -952,6 +955,23 @@ type ObjectHandle struct {
 	retry             *retryConfig
 	overrideRetention *bool
 	softDeleted       bool
+	readHandle        ReadHandle
+}
+
+// ReadHandle returns a new ObjectHandle that uses the ReadHandle to open the objects.
+//
+// Objects that have already been opened can be opened an additional time,
+// using a read handle returned in the response, at lower latency.
+// This produces the exact same object and generation and does not check if
+// the generation is still the newest one.
+// Note that this will be a noop unless it's set on a gRPC client on buckets with
+// bi-directional read API access.
+// Also note that you can get a ReadHandle only via calling reader.ReadHandle() on a
+// previous read of the same object.
+func (o *ObjectHandle) ReadHandle(r ReadHandle) *ObjectHandle {
+	o2 := *o
+	o2.readHandle = r
+	return &o2
 }
 
 // ACL provides access to the object's access control list.
@@ -2304,7 +2324,7 @@ type withBackoff struct {
 }
 
 func (wb *withBackoff) apply(config *retryConfig) {
-	config.backoff = gaxBackoffFromStruct(&wb.backoff)
+	config.backoff = &wb.backoff
 }
 
 // WithMaxAttempts configures the maximum number of times an API call can be made
@@ -2395,58 +2415,8 @@ func (wef *withErrorFunc) apply(config *retryConfig) {
 	config.shouldRetry = wef.shouldRetry
 }
 
-type backoff interface {
-	Pause() time.Duration
-
-	SetInitial(time.Duration)
-	SetMax(time.Duration)
-	SetMultiplier(float64)
-
-	GetInitial() time.Duration
-	GetMax() time.Duration
-	GetMultiplier() float64
-}
-
-func gaxBackoffFromStruct(bo *gax.Backoff) *gaxBackoff {
-	if bo == nil {
-		return nil
-	}
-	b := &gaxBackoff{}
-	b.Backoff = *bo
-	return b
-}
-
-// gaxBackoff is a gax.Backoff that implements the backoff interface
-type gaxBackoff struct {
-	gax.Backoff
-}
-
-func (b *gaxBackoff) SetInitial(i time.Duration) {
-	b.Initial = i
-}
-
-func (b *gaxBackoff) SetMax(m time.Duration) {
-	b.Max = m
-}
-
-func (b *gaxBackoff) SetMultiplier(m float64) {
-	b.Multiplier = m
-}
-
-func (b *gaxBackoff) GetInitial() time.Duration {
-	return b.Initial
-}
-
-func (b *gaxBackoff) GetMax() time.Duration {
-	return b.Max
-}
-
-func (b *gaxBackoff) GetMultiplier() float64 {
-	return b.Multiplier
-}
-
 type retryConfig struct {
-	backoff     backoff
+	backoff     *gax.Backoff
 	policy      RetryPolicy
 	shouldRetry func(err error) bool
 	maxAttempts *int
@@ -2456,22 +2426,22 @@ func (r *retryConfig) clone() *retryConfig {
 	if r == nil {
 		return nil
 	}
-	newConfig := &retryConfig{
-		backoff:     nil,
+
+	var bo *gax.Backoff
+	if r.backoff != nil {
+		bo = &gax.Backoff{
+			Initial:    r.backoff.Initial,
+			Max:        r.backoff.Max,
+			Multiplier: r.backoff.Multiplier,
+		}
+	}
+
+	return &retryConfig{
+		backoff:     bo,
 		policy:      r.policy,
 		shouldRetry: r.shouldRetry,
 		maxAttempts: r.maxAttempts,
 	}
-
-	if r.backoff != nil {
-		bo := &gaxBackoff{}
-		bo.Initial = r.backoff.GetInitial()
-		bo.Max = r.backoff.GetMax()
-		bo.Multiplier = r.backoff.GetMultiplier()
-		newConfig.backoff = bo
-	}
-
-	return newConfig
 }
 
 // composeSourceObj wraps a *raw.ComposeRequestSourceObjects, but adds the methods

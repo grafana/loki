@@ -31,7 +31,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -454,8 +453,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
-	validatedLineSize := 0
-	validatedLineCount := 0
 
 	var validationErrors util.GroupedErrors
 
@@ -514,13 +511,24 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			d.truncateLines(validationContext, &stream)
 
 			var lbs labels.Labels
-			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
+			var retentionHours string
+			lbs, stream.Labels, stream.Hash, retentionHours, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours).Add(float64(discardedBytes))
+				continue
+			}
+
+			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours).Add(float64(discardedBytes))
 				continue
 			}
 
@@ -529,7 +537,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			prevTs := stream.Entries[0].Timestamp
 
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -584,8 +592,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				n++
-				validatedLineSize += util.EntryTotalSize(&entry)
-				validatedLineCount++
+				validationContext.validationMetrics.compute(entry, retentionHours)
 				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
@@ -609,7 +616,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.BlockedIngestion)
 
 		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -623,10 +630,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.lineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited)
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.lineCount, validationContext.validationMetrics.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
@@ -701,9 +708,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		for ingester, streams := range streamsByIngester {
 			func(ingester ring.InstanceDesc, samples []*streamTracker) {
-				// Use a background context to make sure all ingesters get samples even if we return early
-				localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
-				localCtx = user.InjectOrgID(localCtx, tenantID)
+				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
+				// This is to make sure all ingesters get samples even if we return early
+				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
 				if sp := opentracing.SpanFromContext(ctx); sp != nil {
 					localCtx = opentracing.ContextWithSpan(localCtx, sp)
 				}
@@ -734,21 +741,43 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+// missingEnforcedLabels returns true if the stream is missing any of the required labels.
+//
+// It also returns the first label that is missing if any (for the case of multiple labels missing).
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
+	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
+	if len(requiredLbs) == 0 {
+		// no enforced labels configured.
+		return false, []string{}
+	}
+
+	missingLbs := []string{}
+
+	for _, lb := range requiredLbs {
+		if !lbs.Has(lb) {
+			missingLbs = append(missingLbs, lb)
+		}
+	}
+
+	return len(missingLbs) > 0, missingLbs
+}
+
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
 	req *logproto.PushRequest,
 	validationContext validationContext,
 	tenantID string,
-	validatedLineCount int,
-	validatedLineSize int,
+	validationMetrics validationMetrics,
 	reason string,
 ) {
-	validation.DiscardedSamples.WithLabelValues(reason, tenantID).Add(float64(validatedLineCount))
-	validation.DiscardedBytes.WithLabelValues(reason, tenantID).Add(float64(validatedLineSize))
+	for retentionHours, count := range validationMetrics.lineCountPerRetentionHours {
+		validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours).Add(float64(count))
+		validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours).Add(float64(validationMetrics.lineSizePerRetentionHours[retentionHours]))
+	}
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			lbs, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				continue
 			}
@@ -1127,24 +1156,28 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
-		return val.ls, val.ls.String(), val.hash, nil
+		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
+		return val.ls, val.ls.String(), val.hash, retentionHours, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		tenantRetentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
+		return nil, "", 0, tenantRetentionHours, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
-		return nil, "", 0, err
+	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+
+	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours); err != nil {
+		return nil, "", 0, retentionHours, err
 	}
 
 	lsHash := ls.Hash()
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, nil
+	return ls, ls.String(), lsHash, retentionHours, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.

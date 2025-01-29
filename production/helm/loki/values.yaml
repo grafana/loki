@@ -3017,12 +3017,82 @@ ruler:
   #         - alert: HighThroughputLogStreams
   #           expr: sum by(container) (rate({job=~"loki-dev/.*"}[1m])) > 1000
   #           for: 2m
+
+# -- Configuration for the overrides-exporter
+overridesExporter:
+  # -- The overrides-exporter component is optional and can be disabled if desired.
+  enabled: false
+  # -- Number of replicas for the overrides-exporter
+  replicas: 0
+  # -- hostAliases to add
+  hostAliases: []
+  #  - ip: 1.2.3.4
+  #    hostnames:
+  #      - domain.tld
+  image:
+    # -- The Docker registry for the overrides-exporter image. Overrides `loki.image.registry`
+    registry: null
+    # -- Docker image repository for the overrides-exporter image. Overrides `loki.image.repository`
+    repository: null
+    # -- Docker image tag for the overrides-exporter image. Overrides `loki.image.tag`
+    tag: null
+  # -- Command to execute instead of defined in Docker image
+  command: null
+  # -- The name of the PriorityClass for overrides-exporter pods
+  priorityClassName: null
+  # -- Labels for overrides-exporter pods
+  podLabels: {}
+  # -- Annotations for overrides-exporter pods
+  podAnnotations: {}
+  # -- Labels for overrides-exporter service
+  serviceLabels: {}
+  # -- Annotations for overrides-exporter service
+  serviceAnnotations: {}
+  # -- Additional CLI args for the overrides-exporter
+  extraArgs: []
+  # -- Environment variables to add to the overrides-exporter pods
+  extraEnv: []
+  # -- Environment variables from secrets or configmaps to add to the overrides-exporter pods
+  extraEnvFrom: []
+  # -- Volume mounts to add to the overrides-exporter pods
+  extraVolumeMounts: []
+  # -- Volumes to add to the overrides-exporter pods
+  extraVolumes: []
+  # -- Resource requests and limits for the overrides-exporter
+  resources: {}
+  # -- Containers to add to the overrides-exporter pods
+  extraContainers: []
+  # -- Init containers to add to the overrides-exporter pods
+  initContainers: []
+  # -- Grace period to allow the overrides-exporter to shutdown before it is killed
+  terminationGracePeriodSeconds: 300
+  # -- Affinity for overrides-exporter pods.
+  # @default -- Hard node anti-affinity
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: overrides-exporter
+          topologyKey: kubernetes.io/hostname
+  # -- Pod Disruption Budget maxUnavailable
+  maxUnavailable: null
+  # -- Node selector for overrides-exporter pods
+  nodeSelector: {}
+  # -- Topology Spread Constraints for overrides-exporter pods
+  topologySpreadConstraints: []
+  # -- Tolerations for overrides-exporter pods
+  tolerations: []
+  # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
+  appProtocol:
+    grpc: ""
+
 memcached:
   image:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.33-alpine
+    tag: 1.6.34-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3302,8 +3372,16 @@ minio:
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide
   # Since we only have 1 replica, that means 2 drives must be used.
   drivesPerNode: 2
-  rootUser: enterprise-logs
-  rootPassword: supersecret
+  # root user; not used for GEL authentication
+  rootUser: root-user
+  rootPassword: supersecretpassword
+  # The first user in the list below is used for Loki/GEL authentication.
+  # You can add additional users if desired; they will not impact Loki/GEL.
+  # `accessKey` = username, `secretKey` = password
+  users:
+    - accessKey: logs-user
+      secretKey: supersecretpassword
+      policy: readwrite
   buckets:
     - name: chunks
       policy: none
@@ -3360,7 +3438,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.28.0
+    tag: 1.29.1
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -3374,7 +3452,12 @@ sidecar:
   #     cpu: 50m
   #     memory: 50Mi
   # -- The SecurityContext for the sidecar.
-  securityContext: {}
+  securityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    allowPrivilegeEscalation: false
   # -- Set to true to skip tls verification for kube api calls.
   skipTlsVerify: false
   # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.

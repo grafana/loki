@@ -1,6 +1,30 @@
 # Changes
 
 
+## [1.50.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.49.0...storage/v1.50.0) (2025-01-09)
+
+
+### Features
+
+* **storage/internal:** Add new appendable Object to BidiWrite API ([2e4feb9](https://github.com/googleapis/google-cloud-go/commit/2e4feb938ce9ab023c8aa6bd1dbdf36fe589213a))
+* **storage/internal:** Add new preview BidiReadObject API ([2e4feb9](https://github.com/googleapis/google-cloud-go/commit/2e4feb938ce9ab023c8aa6bd1dbdf36fe589213a))
+* **storage:** Add support for gRPC bi-directional multi-range reads. This API is in private preview and not generally and is not yet available for general use. ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+* **storage:** Add support for ReadHandle, a gRPC feature that allows for accelerated resumption of streams when one is interrupted. ReadHandle requires the bi-directional read API, which is in private preview and is not yet available for general use. ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+* **storage:** Support appendable semantics for writes in gRPC. This API is in preview. ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+* **storage:** Refactor gRPC writer flow ([#11377](https://github.com/googleapis/google-cloud-go/issues/11377)) ([b4d86a5](https://github.com/googleapis/google-cloud-go/commit/b4d86a52bd319a602115cdb710a743c71494a88b))
+
+
+### Bug Fixes
+
+* **storage:** Add mutex around uses of mrd variables ([#11405](https://github.com/googleapis/google-cloud-go/issues/11405)) ([54bfc32](https://github.com/googleapis/google-cloud-go/commit/54bfc32db7a0ff40a493de4d466f21ad624de04e))
+* **storage:** Return the appropriate error for method not supported ([#11416](https://github.com/googleapis/google-cloud-go/issues/11416)) ([56d704e](https://github.com/googleapis/google-cloud-go/commit/56d704e3037840aeb87b22cc83f2b6088c79bcee))
+
+
+### Documentation
+
+* **storage/internal:** Add IAM information to RPC comments for reference documentation ([2e4feb9](https://github.com/googleapis/google-cloud-go/commit/2e4feb938ce9ab023c8aa6bd1dbdf36fe589213a))
+* **storage:** Add preview comment to NewMultiRangeDownloader ([#11420](https://github.com/googleapis/google-cloud-go/issues/11420)) ([4ec1d66](https://github.com/googleapis/google-cloud-go/commit/4ec1d66ee180e800606568e8693a282645ec7369))
+
 ## [1.49.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.48.0...storage/v1.49.0) (2024-12-21)
 
 

@@ -118,8 +118,8 @@ type ListenerResourceData struct {
 	Resource ListenerUpdate
 }
 
-// Equal returns true if other is equal to l.
-func (l *ListenerResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to l.
+func (l *ListenerResourceData) RawEqual(other ResourceData) bool {
 	if l == nil && other == nil {
 		return true
 	}

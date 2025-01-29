@@ -52,38 +52,30 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		h := NewDeleteRequestHandler(store, 0, nil)
 
-		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
-		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
+		now := model.Now()
+		from := model.TimeFromUnix(now.Add(-3 * time.Hour).Unix())
+		to := model.TimeFromUnix(now.Unix())
+		maxInterval := time.Hour
 
 		req := buildRequest("org-id", `{foo="bar"} |= "foo"`, unixString(from), unixString(to))
 		params := req.URL.Query()
-		params.Set("max_interval", "1h")
+		params.Set("max_interval", maxInterval.String())
 		req.URL.RawQuery = params.Encode()
 
 		w := httptest.NewRecorder()
 		h.AddDeleteRequestHandler(w, req)
 
 		require.Equal(t, w.Code, http.StatusNoContent)
-		require.Len(t, store.addReqs, 3)
-
-		for i, req := range store.addReqs {
-			startTime := from.Add(time.Duration(i)*time.Hour) + model.Time(i)
-			endTime := from.Add(time.Duration(i+1)*time.Hour) + model.Time(i)
-			if endTime.After(to) {
-				endTime = to
-			}
-
-			require.Equal(t, startTime, req.StartTime)
-			require.Equal(t, endTime, req.EndTime)
-		}
+		verifyRequestSplits(t, from, to, maxInterval, store.addReqs)
 	})
 
 	t.Run("it uses the default for sharding when the query param isn't present", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
 		h := NewDeleteRequestHandler(store, time.Hour, nil)
 
-		from := model.TimeFromUnix(model.Now().Add(-3 * time.Hour).Unix())
-		to := model.TimeFromUnix(from.Add(3 * time.Hour).Unix())
+		now := model.Now()
+		from := model.TimeFromUnix(now.Add(-3 * time.Hour).Unix())
+		to := model.TimeFromUnix(now.Unix())
 
 		req := buildRequest("org-id", `{foo="bar"} |= "foo"`, unixString(from), unixString(to))
 
@@ -91,18 +83,7 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 		h.AddDeleteRequestHandler(w, req)
 
 		require.Equal(t, w.Code, http.StatusNoContent)
-		require.Len(t, store.addReqs, 3)
-
-		for i, req := range store.addReqs {
-			startTime := from.Add(time.Duration(i)*time.Hour) + model.Time(i)
-			endTime := from.Add(time.Duration(i+1)*time.Hour) + model.Time(i)
-			if endTime.After(to) {
-				endTime = to
-			}
-
-			require.Equal(t, startTime, req.StartTime)
-			require.Equal(t, endTime, req.EndTime)
-		}
+		verifyRequestSplits(t, from, to, time.Hour, store.addReqs)
 	})
 
 	t.Run("it does not shard deletes without line filter", func(t *testing.T) {
@@ -184,12 +165,12 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "", "invalid start time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "", "invalid end time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "", "deletes in the future are not allowed\n"},
-			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than end time\n"},
+			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than or equal to end time\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "not-a-duration", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "1ms", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "1h", "max_interval can't be greater than 1m0s\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "30s", "max_interval can't be greater than the interval to be deleted (1s)\n"},
-			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000000", "", "difference between start time and end time must be at least one second\n"},
+			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000000", "", "start time can't be greater than or equal to end time\n"},
 		} {
 			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
 				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)
@@ -483,4 +464,36 @@ func unixString(t model.Time) string {
 func toTime(t string) model.Time {
 	modelTime, _ := util.ParseTime(t)
 	return model.Time(modelTime)
+}
+
+func verifyRequestSplits(t *testing.T, from, to model.Time, shardInterval time.Duration, reqs []DeleteRequest) {
+	numExpectedRequests := 3
+	shardAlignedStart := model.TimeFromUnixNano(time.Unix(0, from.UnixNano()-from.UnixNano()%shardInterval.Nanoseconds()).UnixNano())
+	if !from.Equal(shardAlignedStart) {
+		numExpectedRequests++
+	}
+
+	require.Len(t, reqs, numExpectedRequests)
+	for i := 0; i < numExpectedRequests; i++ {
+		if i == 0 {
+			// start of first request should be same as the start time in original request
+			require.Equal(t, from, reqs[i].StartTime)
+			// end of first request should be shard interval aligned start + shardInterval
+			expectedEnd := shardAlignedStart.Add(shardInterval)
+			if expectedEnd.After(to) {
+				expectedEnd = to
+			}
+			require.Equal(t, expectedEnd, reqs[i].EndTime)
+		} else {
+			// start of this request should be equal to end of last request
+			require.Equal(t, reqs[i-1].EndTime, reqs[i].StartTime)
+			// if this is not last request then end of this split should be start + interval
+			// if this is last request then end should be equal end of original request
+			expectedEnd := reqs[i].StartTime.Add(shardInterval)
+			if i == numExpectedRequests-1 {
+				expectedEnd = to
+			}
+			require.Equal(t, expectedEnd, reqs[i].EndTime)
+		}
+	}
 }
