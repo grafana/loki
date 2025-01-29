@@ -61,7 +61,9 @@ Whether you choose to map an attribute to a stream label or to structured metada
 
 Structured metadata on the other hand is just saved together with the log entries and only read when querying for logs, so it's more suitable to store "any data". Both stream labels and structured metadata can be used to filter log entries during a query.
 
-**Note:** Attributes that are not mapped to either a stream label or structured metadata will not be stored into Loki.
+If the OpenTelemetry data sent to Loki includes attributes that should not be stored, it is also possible to "drop" them from the entry before storing them into Loki. This is possible for all types of attributes (resource, scope and log).
+
+**Note:** Attributes that are not explicitly set as stream labels or dropped from the entry are saved as structured metadata by default.
 
 ### Loki Operator Defaults
 
@@ -89,7 +91,7 @@ spec:
         otlp: {} # OTLP Attribute Configuration for tenant "example-tenant"
 ```
 
-Both global and per-tenant OTLP configurations can map attributes to stream-labels or structured-metadata. At least _one stream-label_ is needed for successfully saving a log entry to Loki storage, so the configuration should account for that.
+Both global and per-tenant OTLP configurations can map attributes to stream-labels. At least _one stream-label_ is needed for successfully saving a log entry to Loki storage, so the configuration should account for that.
 
 Stream labels can only be generated from resource-level attributes, which is mirrored in the data structure of the `LokiStack` resource:
 
@@ -106,7 +108,7 @@ spec:
           - name: "k8s.container.name"
 ```
 
-Structured metadata on the other hand can be generated from all types of attributes (resource, scope and log):
+The "drop" configuration for dropping attributes from the log entry is possible for all three types of attributes (resource, scope and log):
 
 ```yaml
 # [...]
@@ -116,7 +118,7 @@ spec:
       otlp:
         streamLabels:
           # [...]
-        structuredMetadata:
+        drop:
           resourceAttributes:
           - name: "process.command_line"
           - name: "k8s\\.pod\\.labels\\..+"
@@ -129,15 +131,15 @@ spec:
 
 The previous example also shows that the attribute names can be expressed as _regular expressions_ by setting `regex: true`.
 
-Using a regular expression makes sense when there are many attributes with similar names that should be mapped into Loki. It is not recommended to be used for stream labels, as it can potentially create a lot of data.
+Using a regular expression makes sense when there are many attributes with similar names for which a configuration should apply. It is not recommended to use regular expressions for stream labels, as it can potentially apply to a lot of attributes and create lots of labels.
 
 ### Customizing OpenShift Defaults
 
-The `openshift-logging` tenancy mode contains its own set of default attributes. Some of these attributes (called "required attributes") can not be removed by applying a custom configuration, because they are needed for other OpenShift components to function properly. Other attributes (called "recommended attributes") are provided but can be disabled in case they influence performance negatively. The complete set of attributes is documented in the [data model](rhobs-data-model) repository.
+The `openshift-logging` tenancy mode contains its own set of default attributes. Some of these attributes (called "required attributes") can not be removed by applying a custom configuration, because they are needed for other OpenShift components to function properly. Other attributes (called "recommended attributes") are provided but can be disabled in case they influence performance negatively. The complete set of attributes is documented in the [data model](rhobs-data-model) repository. The default configuration only lists the stream labels of the data model, because the mapping to structured metadata is Loki's default.
 
 Because the OpenShift attribute configuration is applied based on the tenancy mode, the simplest configuration is to just set the tenancy mode and not apply any custom attributes. This will provide instant compatibility with the other OpenShift tools.
 
-In case additional attributes are needed, either as stream labels or structured metadata, the normal custom attribute configuration mentioned above can be used. Attributes defined in the custom configuration will be **merged** with the default configuration.
+In case additional stream labels are needed, the normal custom attribute configuration mentioned above can be used. Attributes defined in the custom configuration will be **merged** with the default configuration. The same approach can be used to drop attributes, as long as they are not part of the set of required attributes.
 
 #### Removing Recommended Attributes
 
