@@ -5,12 +5,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
+type pushRetentionStats struct {
+	lineSize  int
+	lineCount int
+}
+
 type validationMetrics struct {
-	lineSizePerRetentionHours  map[string]int
-	lineCountPerRetentionHours map[string]int
-	lineSize                   int
-	lineCount                  int
-	tenantRetentionHours       string
+	policyPushStats      map[string]map[string]pushRetentionStats // policy -> retentionHours -> lineSize
+	tenantRetentionHours string
+	lineSize             int
+	lineCount            int
 }
 
 func newValidationMetrics(tenantRetentionHours string) validationMetrics {
