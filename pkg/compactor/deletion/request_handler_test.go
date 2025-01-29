@@ -165,12 +165,12 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 			{"org-id", `{foo="bar"}`, "0000000000000", "0000000001", "", "invalid start time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", "0000000000001", "", "invalid end time: require unix seconds or RFC3339 format\n"},
 			{"org-id", `{foo="bar"}`, "0000000000", fmt.Sprint(time.Now().Add(time.Hour).Unix())[:10], "", "deletes in the future are not allowed\n"},
-			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than end time\n"},
+			{"org-id", `{foo="bar"}`, "0000000001", "0000000000", "", "start time can't be greater than or equal to end time\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "not-a-duration", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "1ms", "invalid max_interval: valid time units are 's', 'm', 'h'\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "1h", "max_interval can't be greater than 1m0s\n"},
 			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000001", "30s", "max_interval can't be greater than the interval to be deleted (1s)\n"},
-			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000000", "", "difference between start time and end time must be at least one second\n"},
+			{"org-id", `{foo="bar"} |= "foo"`, "0000000000", "0000000000", "", "start time can't be greater than or equal to end time\n"},
 		} {
 			t.Run(strings.TrimSpace(tc.error), func(t *testing.T) {
 				req := buildRequest(tc.orgID, tc.query, tc.startTime, tc.endTime)

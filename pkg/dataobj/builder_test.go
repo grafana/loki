@@ -1,10 +1,9 @@
 package dataobj
 
 import (
-	"cmp"
 	"context"
 	"errors"
-	"slices"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -16,10 +15,19 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-func Test(t *testing.T) {
+var testBuilderConfig = BuilderConfig{
+	SHAPrefixSize: 2,
+
+	TargetPageSize:    2048,
+	TargetObjectSize:  4096,
+	TargetSectionSize: 4096,
+
+	BufferSize: 2048 * 8,
+}
+
+func TestBuilder(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 
 	streams := []logproto.Stream{
@@ -67,16 +75,7 @@ func Test(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		// Create a tiny builder which flushes a lot of objects and pages to properly
-		// test the builder.
-		builderConfig := BuilderConfig{
-			SHAPrefixSize: 2,
-
-			TargetPageSize:   1_500_000,
-			TargetObjectSize: 10_000_000,
-		}
-
-		builder, err := NewBuilder(builderConfig, bucket, "fake")
+		builder, err := NewBuilder(testBuilderConfig, bucket, "fake")
 		require.NoError(t, err)
 
 		for _, entry := range streams {
@@ -86,39 +85,27 @@ func Test(t *testing.T) {
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		reader := newReader(bucket)
-
-		objects, err := result.Collect(reader.Objects(context.Background(), "fake"))
+		objects, err := result.Collect(listObjects(context.Background(), bucket, "fake"))
 		require.NoError(t, err)
 		require.Len(t, objects, 1)
 
-		actual, err := result.Collect(reader.Streams(context.Background(), objects[0]))
+		obj := FromBucket(bucket, objects[0])
+		md, err := obj.Metadata(context.Background())
 		require.NoError(t, err)
-
-		// TODO(rfratto): reenable once sorting is reintroduced.
-		_ = actual
-		// require.Equal(t, sortStreams(t, streams), actual)
+		require.Equal(t, 1, md.StreamsSections)
+		require.Equal(t, 1, md.LogsSections)
 	})
 }
 
-// Test_Builder_Append ensures that appending to the buffer eventually reports
+// TestBuilder_Append ensures that appending to the buffer eventually reports
 // that the buffer is full.
-func Test_Builder_Append(t *testing.T) {
+func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
 	bucket := objstore.NewInMemBucket()
 
-	// Create a tiny builder which flushes a lot of objects and pages to properly
-	// test the builder.
-	builderConfig := BuilderConfig{
-		SHAPrefixSize: 2,
-
-		TargetPageSize:   2048,
-		TargetObjectSize: 4096,
-	}
-
-	builder, err := NewBuilder(builderConfig, bucket, "fake")
+	builder, err := NewBuilder(testBuilderConfig, bucket, "fake")
 	require.NoError(t, err)
 
 	for {
@@ -138,43 +125,24 @@ func Test_Builder_Append(t *testing.T) {
 	}
 }
 
-// sortStreams returns a new slice of streams where entries in individual
-// streams are sorted by timestamp and structured metadata are sorted by key.
-// The order of streams is preserved.
-func sortStreams(t *testing.T, streams []logproto.Stream) []logproto.Stream {
-	t.Helper()
+func listObjects(ctx context.Context, bucket objstore.Bucket, tenant string) result.Seq[string] {
+	tenantPath := fmt.Sprintf("tenant-%s/objects/", tenant)
 
-	res := make([]logproto.Stream, len(streams))
-	for i, in := range streams {
-		labels, err := syntax.ParseLabels(in.Labels)
-		require.NoError(t, err)
+	return result.Iter(func(yield func(string) bool) error {
+		errIterationStopped := errors.New("iteration stopped")
 
-		res[i] = logproto.Stream{
-			Labels:  labels.String(),
-			Entries: slices.Clone(in.Entries),
-			Hash:    labels.Hash(),
-		}
-
-		for j, ent := range res[i].Entries {
-			res[i].Entries[j].StructuredMetadata = slices.Clone(ent.StructuredMetadata)
-			slices.SortFunc(res[i].Entries[j].StructuredMetadata, func(i, j push.LabelAdapter) int {
-				return cmp.Compare(i.Name, j.Name)
-			})
-		}
-
-		slices.SortFunc(res[i].Entries, func(i, j push.Entry) int {
-			switch {
-			case i.Timestamp.Before(j.Timestamp):
-				return -1
-
-			case i.Timestamp.After(j.Timestamp):
-				return 1
-
-			default:
-				return 0
+		err := bucket.Iter(ctx, tenantPath, func(name string) error {
+			if !yield(name) {
+				return errIterationStopped
 			}
-		})
-	}
+			return nil
+		}, objstore.WithRecursiveIter())
 
-	return res
+		switch {
+		case errors.Is(err, errIterationStopped):
+			return nil
+		default:
+			return err
+		}
+	})
 }
