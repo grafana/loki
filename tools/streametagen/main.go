@@ -14,10 +14,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/dns"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
 	"github.com/grafana/dskit/kv/memberlist"
+	dskit_log "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -27,12 +29,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -50,6 +54,8 @@ type Config struct {
 	QPSPerTenant     int
 	StreamsPerTenant int
 
+	LogLevel dskit_log.Level `yaml:"log_level"`
+
 	MemberlistKV        memberlist.KVConfig
 	Kafka               kafka.Config
 	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
@@ -61,6 +67,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.QPSPerTenant, "qps", 10, "Number of QPS per tenant")
 	f.IntVar(&c.StreamsPerTenant, "streams", 100, "Number of streams per tenant")
 
+	c.LogLevel.RegisterFlags(f)
 	c.Kafka.RegisterFlags(f)
 	c.PartitionRingConfig.RegisterFlagsWithPrefix("streammetagen_", f)
 	c.LifecyclerConfig.RegisterFlagsWithPrefix("streammetagen_", f, logger)
@@ -102,13 +109,11 @@ func newStreamMetaGen(cfg Config, writer *client.Producer, logger log.Logger, re
 		logger: logger,
 	}
 
-	var (
-		srvs []services.Service
-		err  error
-	)
+	var err error
 
 	cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
+		analytics.JSONCodec,
 		ring.GetPartitionRingCodec(),
 	}
 
@@ -117,32 +122,41 @@ func newStreamMetaGen(cfg Config, writer *client.Producer, logger log.Logger, re
 		return nil, fmt.Errorf("failed to get instance address: %w", err)
 	}
 
+	// Init Memberlist KV
 	provider := dns.NewProvider(logger, reg, dns.GolangResolverType)
 	s.memberlistKV = memberlist.NewKVInitService(&cfg.MemberlistKV, logger, provider, reg)
-	srvs = append(srvs, s.memberlistKV)
 
 	cfg.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
+	cfg.PartitionRingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 
+	// Init Ring
 	s.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating ring: %w", err)
 	}
-	srvs = append(srvs, s.ring)
 
+	// Init KVStore client
 	regKV := kv.RegistererWithKVName(reg, ingester.PartitionRingName+"-watcher")
 	kvClient, err := kv.NewClient(cfg.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), regKV, logger)
 	if err != nil {
 		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
 	}
 
+	// Init Partition Ring and Watcher
 	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, kvClient, logger, reg)
 	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ring, cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout)
-	srvs = append(srvs, s.partitionRingWatcher)
 
+	// Init services
+	srvs := []services.Service{
+		s.memberlistKV,
+		s.ring,
+		s.partitionRingWatcher,
+	}
 	s.subservices, err = services.NewManager(srvs...)
 	if err != nil {
 		return nil, fmt.Errorf("creating subservices: %w", err)
 	}
+
 	s.subservicesWatcher = services.NewFailureWatcher()
 	s.subservicesWatcher.WatchManager(s.subservices)
 
@@ -313,8 +327,16 @@ func main() {
 	cfg.RegisterFlags(flag.CommandLine, logger)
 	flag.Parse()
 
+	logger = level.NewFilter(logger, cfg.LogLevel.Option)
+
+	if err := util.PrintConfig(os.Stdout, &cfg); err != nil {
+		logger.Log("msg", "Error printing config", "err", err)
+		os.Exit(1)
+	}
+
 	// Create a new registry for Kafka metrics
-	reg := prometheus.WrapRegistererWithPrefix(metricsNamespace, prometheus.NewRegistry())
+	promReg := prometheus.NewRegistry()
+	reg := prometheus.WrapRegistererWithPrefix(metricsNamespace, promReg)
 
 	// Create the Kafka writer
 	writer, err := newKafkaWriter(cfg.Kafka, logger, reg)
@@ -339,10 +361,7 @@ func main() {
 
 	// Create HTTP server for metrics
 	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(
-		reg.(*prometheus.Registry),
-		promhttp.HandlerOpts{},
-	))
+	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 
 	server := &http.Server{
 		Addr:    httpListenAddr,
