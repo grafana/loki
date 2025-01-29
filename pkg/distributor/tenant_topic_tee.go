@@ -15,6 +15,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
@@ -156,6 +157,7 @@ type ShardedPartitionResolver struct {
 	admin       *kadm.Client
 	topicPrefix string
 
+	sflight singleflight.Group // for topic creation
 	// tenantShards maps tenant IDs to their active shards
 	// map[tenant]map[shard]struct{}
 	tenantShards map[string]map[int32]struct{}
@@ -204,15 +206,15 @@ func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant strin
 	topic := r.topicName(tenant, shard)
 	replicationFactor := 2 // TODO: expose RF
 
-	// TODO(owen-d): ensure this only runs once
-	// at a time.
-	_, err := r.admin.CreateTopic(
-		ctx,
-		1,
-		int16(replicationFactor),
-		nil,
-		topic,
-	)
+	_, err, _ := r.sflight.Do(topic, func() (interface{}, error) {
+		return r.admin.CreateTopic(
+			ctx,
+			1,
+			int16(replicationFactor),
+			nil,
+			topic,
+		)
+	})
 
 	// Topic creation errors are returned in the response
 	if err != nil && !errors.Is(err, kerr.TopicAlreadyExists) {
@@ -320,6 +322,10 @@ func (t *TenantTopicWriter) partitionsForRateLimit(bytesRateLimit float64) uint3
 
 // Duplicate implements the Tee interface
 func (t *TenantTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
+	go t.write(tenant, streams)
+}
+
+func (t *TenantTopicWriter) write(tenant string, streams []KeyedStream) {
 	if len(streams) == 0 {
 		return
 	}
