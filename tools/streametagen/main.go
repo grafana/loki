@@ -64,10 +64,10 @@ type Config struct {
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
-	f.IntVar(&c.NumTenants, "num_tenants", 1, "Number of tenants to generate metadata for")
-	f.IntVar(&c.QPSPerTenant, "qps_per_tenant", 10, "Number of QPS per tenant")
-	f.IntVar(&c.StreamsPerTenant, "streams_per_tenant", 100, "Number of streams per tenant")
-	f.IntVar(&c.HttpListenPort, "http_listen_port", 3100, "HTTP Listener port")
+	f.IntVar(&c.NumTenants, "tenants.total", 1, "Number of tenants to generate metadata for")
+	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
+	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
+	f.IntVar(&c.HttpListenPort, "http-listen-port", 3100, "HTTP Listener port")
 
 	c.LogLevel.RegisterFlags(f)
 	c.Kafka.RegisterFlags(f)
