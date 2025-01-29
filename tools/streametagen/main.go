@@ -50,27 +50,29 @@ var (
 )
 
 type Config struct {
-	NumTenants       int
-	QPSPerTenant     int
-	StreamsPerTenant int
+	NumTenants       int `yaml:"num_tenants"`
+	QPSPerTenant     int `yaml:"qps_per_tenant"`
+	StreamsPerTenant int `yaml:"streams_per_tenant"`
 
-	LogLevel dskit_log.Level `yaml:"log_level"`
+	LogLevel       dskit_log.Level `yaml:"log_level"`
+	HttpListenPort int             `yaml:"http_listen_port"`
 
-	MemberlistKV        memberlist.KVConfig
-	Kafka               kafka.Config
+	MemberlistKV        memberlist.KVConfig   `yaml:"memberlist"`
+	Kafka               kafka.Config          `yaml:"kafka"`
 	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
 	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty" doc:"description=Configures how the lifecycle of the ingester will operate and where it will register for discovery."`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
-	f.IntVar(&c.NumTenants, "tenants", 1, "Number of tenants to generate metadata for")
-	f.IntVar(&c.QPSPerTenant, "qps", 10, "Number of QPS per tenant")
-	f.IntVar(&c.StreamsPerTenant, "streams", 100, "Number of streams per tenant")
+	f.IntVar(&c.NumTenants, "num_tenants", 1, "Number of tenants to generate metadata for")
+	f.IntVar(&c.QPSPerTenant, "qps_per_tenant", 10, "Number of QPS per tenant")
+	f.IntVar(&c.StreamsPerTenant, "streams_per_tenant", 100, "Number of streams per tenant")
+	f.IntVar(&c.HttpListenPort, "http_listen_port", 3100, "HTTP Listener port")
 
 	c.LogLevel.RegisterFlags(f)
 	c.Kafka.RegisterFlags(f)
-	c.PartitionRingConfig.RegisterFlagsWithPrefix("streammetagen_", f)
-	c.LifecyclerConfig.RegisterFlagsWithPrefix("streammetagen_", f, logger)
+	c.PartitionRingConfig.RegisterFlagsWithPrefix("", f)
+	c.LifecyclerConfig.RegisterFlagsWithPrefix("stream-metadata-generator.", f, logger)
 	c.MemberlistKV.RegisterFlags(f)
 }
 
@@ -319,10 +321,6 @@ func generateStreamsForTenant(tenantID string, streamsPerTenant int) []distribut
 func main() {
 	logger := log.NewLogfmtLogger(os.Stdout)
 
-	// Add HTTP server flags
-	var httpListenAddr string
-	flag.StringVar(&httpListenAddr, "http.listen-addr", ":9090", "HTTP server listen address for metrics")
-
 	cfg := Config{}
 	cfg.RegisterFlags(flag.CommandLine, logger)
 	flag.Parse()
@@ -360,6 +358,8 @@ func main() {
 	}
 
 	// Create HTTP server for metrics
+	httpListenAddr := fmt.Sprintf(":%d", cfg.HttpListenPort)
+
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 
