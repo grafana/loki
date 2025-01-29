@@ -103,7 +103,6 @@ const (
 	Ring                     = "ring"
 	Overrides                = "overrides"
 	OverridesExporter        = "overrides-exporter"
-	TenantConfigs            = "tenant-configs"
 	Server                   = "server"
 	InternalServer           = "internal-server"
 	Distributor              = "distributor"
@@ -144,7 +143,8 @@ const (
 	BlockScheduler           = "block-scheduler"
 	DataObjExplorer          = "dataobj-explorer"
 
-	All     = "all"
+	All = "all"
+
 	Read    = "read"
 	Write   = "write"
 	Backend = "backend"
@@ -280,8 +280,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	t.Cfg.RuntimeConfig.Loader = loadRuntimeConfig
 
 	// make sure to set default limits before we start loading configuration into memory
-	validation.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
-	runtime.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.OperationalConfig)
+	runtime.SetDefaultLimitsForYAMLUnmarshalling(t.Cfg.LimitsConfig)
 
 	var err error
 	t.runtimeConfig, err = runtimeconfig.New(t.Cfg.RuntimeConfig, "loki", prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer), util_log.Logger)
@@ -306,7 +305,7 @@ func (t *Loki) initOverrides() (_ services.Service, err error) {
 	if t.Cfg.LimitsConfig.IndexGatewayShardSize == 0 {
 		t.Cfg.LimitsConfig.IndexGatewayShardSize = t.Cfg.IndexGateway.Ring.ReplicationFactor
 	}
-	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
+	t.Overrides, err = runtime.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides are not a service, since they don't have any operational state.
 	return nil, err
 }
@@ -325,12 +324,6 @@ func (t *Loki) initOverridesExporter() (services.Service, error) {
 	return nil, nil
 }
 
-func (t *Loki) initTenantConfigs() (_ services.Service, err error) {
-	t.tenantConfigs, err = runtime.NewTenantConfigs(newTenantConfigProvider(t.runtimeConfig))
-	// tenantConfigs are not a service, since they don't have any operational state.
-	return nil, err
-}
-
 func (t *Loki) initDistributor() (services.Service, error) {
 	t.Cfg.Distributor.KafkaConfig = t.Cfg.KafkaConfig
 
@@ -344,7 +337,6 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Cfg.Distributor,
 		t.Cfg.Ingester,
 		t.Cfg.IngesterClient,
-		t.tenantConfigs,
 		t.ring,
 		t.partitionRing,
 		t.Overrides,
@@ -601,7 +593,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring, t.partitionRingWatcher)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging, t.Cfg.MetricsNamespace, logger, t.UsageTracker, t.ring, t.partitionRingWatcher)
 	if err != nil {
 		return
 	}
@@ -683,7 +675,6 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 		t.Cfg.Pattern,
 		t.Overrides,
 		t.PatternRingClient,
-		t.tenantConfigs,
 		t.Cfg.MetricsNamespace,
 		prometheus.DefaultRegisterer,
 		logger,

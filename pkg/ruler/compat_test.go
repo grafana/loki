@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logql"
 	rulerbase "github.com/grafana/loki/v3/pkg/ruler/base"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // TestInvalidRuleGroup tests that a validation error is raised when rule group is invalid
@@ -101,7 +101,7 @@ func TestInvalidRemoteWriteConfig(t *testing.T) {
 // TestNonMetricQuery tests that only metric queries can be executed in the query function,
 // as both alert and recording rules rely on metric queries being run
 func TestNonMetricQuery(t *testing.T) {
-	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	overrides, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.Nil(t, err)
 
 	log := log.Logger

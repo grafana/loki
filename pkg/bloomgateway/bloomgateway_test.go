@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -29,7 +30,6 @@ import (
 	bloomshipperconfig "github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper/config"
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/mempool"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func stringSlice[T fmt.Stringer](s []T) []string {
@@ -53,12 +53,12 @@ func groupRefs(t *testing.T, chunkRefs []*logproto.ChunkRef) []*logproto.Grouped
 	return grouped
 }
 
-func newLimits() *validation.Overrides {
-	limits := validation.Limits{}
+func newLimits() *runtime.Overrides {
+	limits := runtime.Limits{}
 	flagext.DefaultValues(&limits)
 	limits.BloomGatewayEnabled = true
 
-	overrides, _ := validation.NewOverrides(limits, nil)
+	overrides, _ := runtime.NewOverrides(limits, nil)
 	return overrides
 }
 

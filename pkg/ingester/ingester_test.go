@@ -51,12 +51,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/sharding"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -65,7 +64,7 @@ func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
 
 	mockRing := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockRing, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, mockRing, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -81,7 +80,7 @@ func TestPrepareShutdown(t *testing.T) {
 	ingesterConfig.WAL.Enabled = true
 	ingesterConfig.WAL.Dir = tempDir
 	ingesterConfig.LifecyclerConfig.UnregisterOnShutdown = false
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -90,7 +89,7 @@ func TestPrepareShutdown(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -144,7 +143,7 @@ func TestPrepareShutdown(t *testing.T) {
 
 func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -153,7 +152,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -178,7 +177,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 
 func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 	ingesterConfig := defaultIngesterTestConfig(b)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 
 	store := &mockStore{
@@ -186,7 +185,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 	}
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(b, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -203,7 +202,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 
 func TestIngester(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -212,7 +211,7 @@ func TestIngester(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -389,7 +388,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
 	defaultLimits.MaxLocalStreamsPerUser = 1
-	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	overrides, err := runtime.NewOverrides(defaultLimits, nil)
 
 	require.NoError(t, err)
 
@@ -399,7 +398,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -535,8 +534,8 @@ func (m *mockQuerierServer) Context() context.Context {
 	return m.ctx
 }
 
-func defaultLimitsTestConfig() validation.Limits {
-	limits := validation.Limits{}
+func defaultLimitsTestConfig() runtime.Limits {
+	limits := runtime.Limits{}
 	flagext.DefaultValues(&limits)
 	return limits
 }
@@ -812,7 +811,7 @@ func TestValidate(t *testing.T) {
 
 func Test_InMemoryLabels(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -821,7 +820,7 @@ func Test_InMemoryLabels(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -869,14 +868,14 @@ func TestIngester_GetDetectedLabels(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -933,14 +932,14 @@ func TestIngester_GetDetectedLabelsWithQuery(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	store := &mockStore{
 		chunks: map[string][]chunk.Chunk{},
 	}
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -1304,11 +1303,11 @@ func Test_DedupeIngesterParser(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1332,11 +1331,11 @@ func TestStats(t *testing.T) {
 
 func TestVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1412,11 +1411,11 @@ func createIngesterSets(t *testing.T, config Config, count int) ([]ingesterClien
 
 func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, func()) {
 	t.Helper()
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	listener := bufconn.Listen(1024 * 1024)
@@ -1629,11 +1628,11 @@ func mockReadRingWithOneActiveIngester() *readRingMock {
 
 func TestUpdateOwnedStreams(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)

@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
@@ -53,7 +53,7 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 type limit struct {
 	deletionMode    string
 	retentionPeriod time.Duration
-	streamRetention []validation.StreamRetention
+	streamRetention []runtime.StreamRetention
 }
 
 type fakeLimits struct {
@@ -78,6 +78,6 @@ func (f *fakeLimits) RetentionPeriod(userID string) time.Duration {
 	return f.getLimitForUser(userID).retentionPeriod
 }
 
-func (f *fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
+func (f *fakeLimits) StreamRetention(userID string) []runtime.StreamRetention {
 	return f.getLimitForUser(userID).streamRetention
 }

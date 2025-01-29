@@ -344,6 +344,10 @@ type fakeLimits struct {
 	metricAggregationEnabled bool
 }
 
+func (f *fakeLimits) LogPushRequestStreams(_ string) bool {
+	return false
+}
+
 func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
 }

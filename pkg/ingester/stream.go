@@ -23,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -80,8 +79,6 @@ type stream struct {
 
 	chunkFormat          byte
 	chunkHeadBlockFormat chunkenc.HeadBlockFmt
-
-	configs *runtime.TenantConfigs
 }
 
 type chunkDesc struct {
@@ -111,7 +108,6 @@ func newStream(
 	streamRateCalculator *StreamRateCalculator,
 	metrics *ingesterMetrics,
 	writeFailures *writefailures.Manager,
-	configs *runtime.TenantConfigs,
 ) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
@@ -131,8 +127,6 @@ func newStream(
 		writeFailures:        writeFailures,
 		chunkFormat:          chunkFormat,
 		chunkHeadBlockFormat: headBlockFmt,
-
-		configs: configs,
 	}
 }
 
@@ -369,13 +363,13 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 }
 
 func (s *stream) handleLoggingOfDuplicateEntry(entry logproto.Entry) {
-	if s.configs == nil {
+	if s.writeFailures == nil {
 		return
 	}
-	if s.configs.LogDuplicateMetrics(s.tenant) {
+	if s.writeFailures.LogDuplicateMetrics(s.tenant) {
 		s.metrics.duplicateLogBytesTotal.WithLabelValues(s.tenant).Add(float64(len(entry.Line)))
 	}
-	if s.configs.LogDuplicateStreamInfo(s.tenant) {
+	if s.writeFailures.LogDuplicateStreamInfo(s.tenant) {
 		errMsg := fmt.Sprintf("duplicate log entry with size=%d at timestamp %s for stream %s", len(entry.Line), entry.Timestamp.Format(time.RFC3339), s.labelsString)
 		dupErr := errors.New(errMsg)
 		s.writeFailures.Log(s.tenant, dupErr)

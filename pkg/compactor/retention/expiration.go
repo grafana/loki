@@ -8,9 +8,9 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // IntervalFilter contains the interval to delete
@@ -37,10 +37,9 @@ type expirationChecker struct {
 }
 
 type Limits interface {
+	runtime.ExportedLimits
 	RetentionPeriod(userID string) time.Duration
-	StreamRetention(userID string) []validation.StreamRetention
-	AllByUserID() map[string]*validation.Limits
-	DefaultLimits() *validation.Limits
+	StreamRetention(userID string) []runtime.StreamRetention
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {
@@ -135,7 +134,7 @@ func (tr *TenantsRetention) RetentionPeriodFor(userID string, lbs labels.Labels)
 	streamRetentions := tr.limits.StreamRetention(userID)
 	globalRetention := tr.limits.RetentionPeriod(userID)
 	var (
-		matchedRule validation.StreamRetention
+		matchedRule runtime.StreamRetention
 		found       bool
 	)
 Outer:

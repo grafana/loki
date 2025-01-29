@@ -137,7 +137,6 @@ type Distributor struct {
 	ingesterCfg      ingester.Config
 	logger           log.Logger
 	clientCfg        client.Config
-	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
 	ingestersRing    ring.ReadRing
 	validator        *Validator
@@ -193,7 +192,6 @@ func New(
 	cfg Config,
 	ingesterCfg ingester.Config,
 	clientCfg client.Config,
-	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
 	partitionRing ring.PartitionRingReader,
 	overrides Limits,
@@ -228,7 +226,7 @@ func New(
 
 	var servs []services.Service
 
-	rateLimitStrat := validation.LocalIngestionRateStrategy
+	rateLimitStrat := runtime.LocalIngestionRateStrategy
 	labelCache, err := lru.New[string, labelData](maxLabelCacheSize)
 	if err != nil {
 		return nil, err
@@ -253,7 +251,6 @@ func New(
 		ingesterCfg:           ingesterCfg,
 		logger:                logger,
 		clientCfg:             clientCfg,
-		tenantConfigs:         configs,
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
@@ -315,13 +312,13 @@ func New(
 			Help:      "The number of records a single per-partition write request has been split into.",
 			Buckets:   prometheus.ExponentialBuckets(1, 2, 8),
 		}),
-		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
+		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, overrides, "distributor"),
 		kafkaWriter:          kafkaWriter,
 		partitionRing:        partitionRing,
 	}
 
-	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
+	if overrides.IngestionRateStrategy() == runtime.GlobalIngestionRateStrategy {
+		d.rateLimitStrat = runtime.GlobalIngestionRateStrategy
 
 		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, logger, registerer, metricsNamespace)
 		if err != nil {

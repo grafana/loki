@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -26,7 +27,6 @@ import (
 	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func dayFromTime(t model.Time) config.DayTime {
@@ -219,7 +219,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 
 	defer func() {
 	}()
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	limits, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.NoError(t, err)
 
 	require.NoError(t, schemaCfg.Validate())

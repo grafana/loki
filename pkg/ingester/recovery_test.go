@@ -3,7 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
-	"runtime"
+	rt "runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -21,10 +21,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type MemoryWALReader struct {
@@ -127,7 +126,7 @@ func NewMemRecoverer() *MemRecoverer {
 	}
 }
 
-func (r *MemRecoverer) NumWorkers() int { return runtime.GOMAXPROCS(0) }
+func (r *MemRecoverer) NumWorkers() int { return rt.GOMAXPROCS(0) }
 
 func (r *MemRecoverer) Series(_ *Series) error { return nil }
 
@@ -221,7 +220,7 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 
 func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -230,7 +229,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -264,7 +263,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err = New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	// recover the checkpointed series
@@ -306,7 +305,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 
 func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
 	store := &mockStore{
@@ -315,7 +314,7 @@ func TestRecoveryWritesContinuesEntryCountAfterWALReplay(t *testing.T) {
 
 	readRingMock := mockReadRingWithOneActiveIngester()
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, nil, writefailures.Cfg{}, constants.Loki, log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 
 	var (

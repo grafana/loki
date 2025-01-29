@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -25,15 +26,15 @@ var (
 )
 
 type fakeLimits struct {
-	limits *validation.Limits
+	limits *runtime.Limits
 }
 
-func (f fakeLimits) TenantLimits(_ string) *validation.Limits {
+func (f fakeLimits) TenantLimits(_ string) *runtime.Limits {
 	return f.limits
 }
 
 // unused, but satisfies interface
-func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+func (f fakeLimits) AllByUserID() map[string]*runtime.Limits {
 	return nil
 }
 
@@ -41,7 +42,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 	tests := []struct {
 		name      string
 		userID    string
-		overrides validation.TenantLimits
+		overrides runtime.TenantLimits
 		entry     logproto.Entry
 		expected  error
 	}{
@@ -56,7 +57,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"test too old",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					RejectOldSamples:       true,
 					RejectOldSamplesMaxAge: model.Duration(1 * time.Hour),
 				},
@@ -79,7 +80,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"line too long",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					MaxLineSize: 10,
 				},
 			},
@@ -90,7 +91,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"disallowed structured metadata",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					AllowStructuredMetadata: false,
 				},
 			},
@@ -101,7 +102,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"structured metadata too big",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					AllowStructuredMetadata:   true,
 					MaxStructuredMetadataSize: 4,
 				},
@@ -113,7 +114,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"structured metadata too many",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					AllowStructuredMetadata:           true,
 					MaxStructuredMetadataEntriesCount: 1,
 				},
@@ -124,9 +125,9 @@ func TestValidator_ValidateEntry(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := &validation.Limits{}
+			l := &runtime.Limits{}
 			flagext.DefaultValues(l)
-			o, err := validation.NewOverrides(*l, tt.overrides)
+			o, err := runtime.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
@@ -141,7 +142,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 	tests := []struct {
 		name      string
 		userID    string
-		overrides validation.TenantLimits
+		overrides runtime.TenantLimits
 		labels    string
 		expected  error
 	}{
@@ -163,7 +164,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"test too many labels",
 			"test",
 			fakeLimits{
-				&validation.Limits{MaxLabelNamesPerSeries: 2},
+				&runtime.Limits{MaxLabelNamesPerSeries: 2},
 			},
 			"{foo=\"bar\",food=\"bars\",fed=\"bears\"}",
 			fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, "{foo=\"bar\",food=\"bars\",fed=\"bears\"}", 3, 2),
@@ -172,7 +173,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"label name too long",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					MaxLabelNamesPerSeries: 2,
 					MaxLabelNameLength:     5,
 				},
@@ -184,7 +185,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"label value too long",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					MaxLabelNamesPerSeries: 2,
 					MaxLabelNameLength:     5,
 					MaxLabelValueLength:    5,
@@ -197,7 +198,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"duplicate label",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					MaxLabelNamesPerSeries: 2,
 					MaxLabelNameLength:     5,
 					MaxLabelValueLength:    5,
@@ -210,7 +211,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			"label value contains %",
 			"test",
 			fakeLimits{
-				&validation.Limits{
+				&runtime.Limits{
 					MaxLabelNamesPerSeries: 2,
 					MaxLabelNameLength:     5,
 					MaxLabelValueLength:    5,
@@ -222,9 +223,9 @@ func TestValidator_ValidateLabels(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := &validation.Limits{}
+			l := &runtime.Limits{}
 			flagext.DefaultValues(l)
-			o, err := validation.NewOverrides(*l, tt.overrides)
+			o, err := runtime.NewOverrides(*l, tt.overrides)
 			assert.NoError(t, err)
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)

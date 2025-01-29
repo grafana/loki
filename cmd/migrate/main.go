@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -26,7 +27,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type syncRange struct {
@@ -111,7 +111,7 @@ func main() {
 	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
 	sourceConfig.LimitsConfig.CardinalityLimit = 1e9
 	sourceConfig.LimitsConfig.MaxQueryLength = 0
-	limits, err := validation.NewOverrides(sourceConfig.LimitsConfig, nil)
+	limits, err := runtime.NewOverrides(sourceConfig.LimitsConfig, nil)
 	if err != nil {
 		log.Println("Failed to create limit overrides:", err)
 		os.Exit(1)

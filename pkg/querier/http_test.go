@@ -8,23 +8,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
-	"github.com/grafana/loki/v3/pkg/validation"
-
-	"github.com/go-kit/log"
-	"github.com/grafana/dskit/user"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/require"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 func TestInstantQueryHandler(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	t.Run("log selector expression not allowed for instant queries", func(t *testing.T) {
@@ -53,7 +52,7 @@ func TestInstantQueryHandler(t *testing.T) {
 
 func TestTailHandler(t *testing.T) {
 	defaultLimits := defaultLimitsTestConfig()
-	limits, err := validation.NewOverrides(defaultLimits, nil)
+	limits, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
@@ -111,7 +110,7 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 		defaultLimits := defaultLimitsTestConfig()
 		defaultLimits.QueryTimeout = model.Duration(time.Millisecond * 10)
 
-		limits, err := validation.NewOverrides(defaultLimits, nil)
+		limits, err := runtime.NewOverrides(defaultLimits, nil)
 		require.NoError(t, err)
 
 		// request timeout is 5ms but it sleeps for 100ms, so timeout injected in the request is expected.
@@ -150,7 +149,7 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 		defaultLimits := defaultLimitsTestConfig()
 		defaultLimits.QueryTimeout = model.Duration(shortestTimeout)
 
-		limits, err := validation.NewOverrides(defaultLimits, nil)
+		limits, err := runtime.NewOverrides(defaultLimits, nil)
 		require.NoError(t, err)
 
 		connSimulator := &slowConnectionSimulator{

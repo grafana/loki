@@ -27,10 +27,10 @@ import (
 	ingesterclient "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type mockChunkClient struct {
@@ -133,7 +133,7 @@ func Test_Retention(t *testing.T) {
 				perTenant: map[string]retentionLimit{
 					"1": {
 						retentionPeriod: 10 * time.Hour,
-						streamRetention: []validation.StreamRetention{
+						streamRetention: []runtime.StreamRetention{
 							{Period: model.Duration(5 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "buzz")}},
 						},
 					},

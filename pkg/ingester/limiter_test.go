@@ -12,7 +12,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
 
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 type fixedStrategy struct {
@@ -121,7 +121,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits, err := runtime.NewOverrides(runtime.Limits{
 				MaxLocalStreamsPerUser:  testData.maxLocalStreamsPerUser,
 				MaxGlobalStreamsPerUser: testData.maxGlobalStreamsPerUser,
 				UseOwnedStreamCount:     testData.useOwnedStreamService,

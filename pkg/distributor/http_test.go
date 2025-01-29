@@ -8,19 +8,17 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
-
-	"github.com/grafana/dskit/flagext"
-	"github.com/stretchr/testify/require"
-
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 func TestDistributorRingHandler(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 
 	runServer := func() *httptest.Server {
@@ -32,7 +30,7 @@ func TestDistributorRingHandler(t *testing.T) {
 	}
 
 	t.Run("renders ring status for global rate limiting", func(t *testing.T) {
-		limits.IngestionRateStrategy = validation.GlobalIngestionRateStrategy
+		limits.IngestionRateStrategy = runtime.GlobalIngestionRateStrategy
 		svr := runServer()
 		defer svr.Close()
 
@@ -47,7 +45,7 @@ func TestDistributorRingHandler(t *testing.T) {
 	})
 
 	t.Run("doesn't return ring status for local rate limiting", func(t *testing.T) {
-		limits.IngestionRateStrategy = validation.LocalIngestionRateStrategy
+		limits.IngestionRateStrategy = runtime.LocalIngestionRateStrategy
 		svr := runServer()
 		defer svr.Close()
 
@@ -63,7 +61,7 @@ func TestDistributorRingHandler(t *testing.T) {
 }
 
 func TestRequestParserWrapping(t *testing.T) {
-	limits := &validation.Limits{}
+	limits := &runtime.Limits{}
 	flagext.DefaultValues(limits)
 	limits.RejectOldSamples = false
 	distributors, _ := prepare(t, 1, 3, limits, nil)

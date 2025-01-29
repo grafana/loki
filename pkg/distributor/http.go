@@ -8,13 +8,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
 
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
@@ -39,10 +39,10 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
-	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
+	logPushRequestStreams := d.validator.LogPushRequestStreams(tenantID)
 	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, logPushRequestStreams)
 	if err != nil {
-		if d.tenantConfigs.LogPushRequest(tenantID) {
+		if d.validator.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusBadRequest,
@@ -68,7 +68,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 
 	_, err = d.Push(r.Context(), req)
 	if err == nil {
-		if d.tenantConfigs.LogPushRequest(tenantID) {
+		if d.validator.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request successful",
 			)
@@ -80,7 +80,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)
-		if d.tenantConfigs.LogPushRequest(tenantID) {
+		if d.validator.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", resp.Code,
@@ -89,7 +89,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 		errorWriter(w, body, int(resp.Code), logger)
 	} else {
-		if d.tenantConfigs.LogPushRequest(tenantID) {
+		if d.validator.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
 				"code", http.StatusInternalServerError,
@@ -105,7 +105,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 // If the rate limiting strategy is local instead of global, no ring is used by
 // the distributor and as such, no ring status is returned from this function.
 func (d *Distributor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if d.rateLimitStrat == validation.GlobalIngestionRateStrategy {
+	if d.rateLimitStrat == runtime.GlobalIngestionRateStrategy {
 		d.distributorsLifecycler.ServeHTTP(w, r)
 		return
 	}

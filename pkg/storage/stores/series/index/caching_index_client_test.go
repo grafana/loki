@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var ctx = user.InjectOrgID(context.Background(), "1")
@@ -473,9 +473,9 @@ func yoloString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf)))
 }
 
-func defaultLimits() (*validation.Overrides, error) {
-	var defaults validation.Limits
+func defaultLimits() (*runtime.Overrides, error) {
+	var defaults runtime.Limits
 	flagext.DefaultValues(&defaults)
 	defaults.CardinalityLimit = 5
-	return validation.NewOverrides(defaults, nil)
+	return runtime.NewOverrides(defaults, nil)
 }

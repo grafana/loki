@@ -6,18 +6,21 @@ import (
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/pattern"
 	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	queryrange_limits "github.com/grafana/loki/v3/pkg/querier/queryrange/limits"
 	"github.com/grafana/loki/v3/pkg/ruler"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	scheduler_limits "github.com/grafana/loki/v3/pkg/scheduler/limits"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
 type CombinedLimits interface {
+	runtime.ExportedLimits
 	compactor.Limits
 	distributor.Limits
 	ingester.Limits
@@ -32,4 +35,5 @@ type CombinedLimits interface {
 	bloombuilder.Limits
 	pattern.Limits
 	bucket.SSEConfigProvider
+	writefailures.Limits
 }

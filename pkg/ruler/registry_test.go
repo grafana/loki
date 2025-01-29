@@ -21,8 +21,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/ruler/storage/instance"
 	"github.com/grafana/loki/v3/pkg/ruler/util"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/test"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const enabledRWTenant = "enabled"
@@ -164,7 +164,7 @@ var cfg = Config{
 
 func newFakeLimitsBackwardCompat() fakeLimits {
 	return fakeLimits{
-		limits: map[string]*validation.Limits{
+		limits: map[string]*runtime.Limits{
 			enabledRWTenant: {
 				RulerRemoteWriteQueueCapacity: 987,
 			},
@@ -172,7 +172,7 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 				RulerRemoteWriteDisabled: true,
 			},
 			additionalHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{
+				RulerRemoteWriteHeaders: runtime.NewOverwriteMarshalingStringMap(map[string]string{
 					user.OrgIDHeaderName:                         "overridden",
 					fmt.Sprintf("   %s  ", user.OrgIDHeaderName): "overridden",
 					strings.ToLower(user.OrgIDHeaderName):        "overridden-lower",
@@ -181,7 +181,7 @@ func newFakeLimitsBackwardCompat() fakeLimits {
 				}),
 			},
 			noHeadersRWTenant: {
-				RulerRemoteWriteHeaders: validation.NewOverwriteMarshalingStringMap(map[string]string{}),
+				RulerRemoteWriteHeaders: runtime.NewOverwriteMarshalingStringMap(map[string]string{}),
 			},
 			customRelabelsTenant: {
 				RulerRemoteWriteRelabelConfigs: []*util.RelabelConfig{
@@ -223,7 +223,7 @@ func newFakeLimits() fakeLimits {
 	regex, _ := relabel.NewRegexp(".+:.+")
 	regexCluster, _ := relabel.NewRegexp("__cluster__")
 	return fakeLimits{
-		limits: map[string]*validation.Limits{
+		limits: map[string]*runtime.Limits{
 			enabledRWTenant: {
 				RulerRemoteWriteConfig: map[string]config.RemoteWriteConfig{
 					remote1: {
@@ -320,7 +320,7 @@ func setupRegistry(t *testing.T, cfg Config, limits fakeLimits) *walRegistry {
 		Dir: walDir,
 	}
 
-	overrides, err := validation.NewOverrides(validation.Limits{}, limits)
+	overrides, err := runtime.NewOverrides(runtime.Limits{}, limits)
 	require.NoError(t, err)
 
 	reg := newWALRegistry(log.NewNopLogger(), nil, cfg, overrides)
@@ -897,7 +897,7 @@ func TestRelabelConfigOverridesWithErrors(t *testing.T) {
 }
 
 func TestWALRegistryCreation(t *testing.T) {
-	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
+	overrides, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.NoError(t, err)
 
 	regEnabled := newWALRegistry(log.NewNopLogger(), nil, Config{
@@ -957,18 +957,18 @@ func TestStorageSetupWithRemoteWriteDisabled(t *testing.T) {
 }
 
 type fakeLimits struct {
-	limits map[string]*validation.Limits
+	limits map[string]*runtime.Limits
 }
 
-func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
+func (f fakeLimits) TenantLimits(userID string) *runtime.Limits {
 	limits, ok := f.limits[userID]
 	if !ok {
-		return &validation.Limits{}
+		return &runtime.Limits{}
 	}
 
 	return limits
 }
 
-func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+func (f fakeLimits) AllByUserID() map[string]*runtime.Limits {
 	return f.limits
 }

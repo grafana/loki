@@ -7,6 +7,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/queue"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/strategies"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 )
 
 // Config configures the bloom-planner component.
@@ -50,7 +51,7 @@ func (cfg *Config) Validate() error {
 }
 
 type Limits interface {
-	RetentionLimits
+	retention.Limits
 	strategies.Limits
 	BloomCreationEnabled(tenantID string) bool
 	BloomBuildMaxBuilders(tenantID string) int

@@ -15,12 +15,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const indexTablePrefix = "table_"
@@ -54,11 +54,11 @@ func setupTestCompactor(t *testing.T, objectClients map[config.DayTime]client.Ob
 
 	require.NoError(t, cfg.Validate())
 
-	defaultLimits := validation.Limits{}
+	defaultLimits := runtime.Limits{}
 	flagext.DefaultValues(&defaultLimits)
 	require.NoError(t, defaultLimits.RetentionPeriod.Set("30d"))
 
-	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	overrides, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 
 	c, err := NewCompactor(cfg, objectClients, objectClients[periodConfigs[len(periodConfigs)-1].From], config.SchemaConfig{

@@ -15,28 +15,45 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/flagext"
 )
 
+type mockTenantLimits struct {
+	providerFn func(string) *runtime.Limits
+}
+
+// AllByUserID implements runtime.TenantLimits.
+func (m mockTenantLimits) AllByUserID() map[string]*runtime.Limits {
+	panic("unimplemented")
+}
+
+// TenantLimits implements runtime.TenantLimits.
+func (m mockTenantLimits) TenantLimits(userID string) *runtime.Limits {
+	return m.providerFn(userID)
+}
+
+var _ runtime.TenantLimits = mockTenantLimits{}
+
 func TestWriteFailuresLogging(t *testing.T) {
 	t.Run("it only logs for the configured tenants and is disabled by default", func(t *testing.T) {
 		buf := bytes.NewBuffer(nil)
 		logger := log.NewLogfmtLogger(buf)
 
-		f := &providerMock{
-			tenantConfig: func(tenantID string) *runtime.Config {
-				if tenantID == "good-tenant" {
-					return &runtime.Config{
+		tenantLimits := &mockTenantLimits{
+			providerFn: func(tenantID string) *runtime.Limits {
+				switch tenantID {
+				case "good-tenant":
+					return &runtime.Limits{
 						LimitedLogPushErrors: true,
 					}
-				}
-				if tenantID == "bad-tenant" {
-					return &runtime.Config{
+				case "bad-tenant":
+					return &runtime.Limits{
 						LimitedLogPushErrors: false,
 					}
+				default:
+					return &runtime.Limits{}
 				}
-				return &runtime.Config{}
 			},
 		}
 
-		runtimeCfg, err := runtime.NewTenantConfigs(f)
+		runtimeCfg, err := runtime.NewOverrides(runtime.Limits{}, tenantLimits)
 		require.NoError(t, err)
 
 		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "ingester")
@@ -57,14 +74,15 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	logger := log.NewLogfmtLogger(buf)
 
-	provider := &providerMock{
-		tenantConfig: func(_ string) *runtime.Config {
-			return &runtime.Config{
+	tenantLimits := &mockTenantLimits{
+		providerFn: func(_ string) *runtime.Limits {
+			return &runtime.Limits{
 				LimitedLogPushErrors: true,
 			}
 		},
 	}
-	runtimeCfg, err := runtime.NewTenantConfigs(provider)
+
+	runtimeCfg, err := runtime.NewOverrides(runtime.Limits{}, tenantLimits)
 	require.NoError(t, err)
 
 	t.Run("with zero rate limiting", func(t *testing.T) {
@@ -130,7 +148,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	})
 
 	t.Run("limit is per-tenant", func(t *testing.T) {
-		runtimeCfg, err := runtime.NewTenantConfigs(provider)
+		runtimeCfg, err := runtime.NewOverrides(runtime.Limits{}, tenantLimits)
 		require.NoError(t, err)
 		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "ingester")
 
@@ -164,12 +182,4 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 		require.Contains(t, content, "1y")
 		require.Contains(t, content, "3z")
 	})
-}
-
-type providerMock struct {
-	tenantConfig func(string) *runtime.Config
-}
-
-func (m *providerMock) TenantConfig(userID string) *runtime.Config {
-	return m.tenantConfig(userID)
 }

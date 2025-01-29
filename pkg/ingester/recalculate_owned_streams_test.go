@@ -15,7 +15,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/runtime"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func Test_recalculateOwnedStreams_newRecalculateOwnedStreamsIngester(t *testing.T) {
@@ -65,7 +64,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 				},
 			}
 
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits, err := runtime.NewOverrides(runtime.Limits{
 				MaxGlobalStreamsPerUser: 100,
 				UseOwnedStreamCount:     testData.featureEnabled,
 			}, nil)
@@ -77,7 +76,6 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 				defaultPeriodConfigs,
 				tenantName,
 				limiter,
-				runtime.DefaultTenantConfigs(),
 				noopWAL{},
 				NilMetrics,
 				nil,
@@ -85,7 +83,7 @@ func Test_recalculateOwnedStreams_recalculateWithIngesterStrategy(t *testing.T) 
 				nil,
 				nil,
 				NewStreamRateCalculator(),
-				nil,
+				newWriteFailuresManager(limits),
 				nil,
 			)
 			require.NoError(t, err)

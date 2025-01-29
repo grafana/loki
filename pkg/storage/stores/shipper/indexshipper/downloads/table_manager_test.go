@@ -11,11 +11,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -412,10 +412,10 @@ type mockLimits struct {
 	volumeMaxSeries               int
 }
 
-func (m *mockLimits) AllByUserID() map[string]*validation.Limits {
-	allByUserID := map[string]*validation.Limits{}
+func (m *mockLimits) AllByUserID() map[string]*runtime.Limits {
+	allByUserID := map[string]*runtime.Limits{}
 	for userID := range m.queryReadyIndexNumDaysByUser {
-		allByUserID[userID] = &validation.Limits{
+		allByUserID[userID] = &runtime.Limits{
 			QueryReadyIndexNumDays: m.queryReadyIndexNumDaysByUser[userID],
 		}
 	}
@@ -423,8 +423,8 @@ func (m *mockLimits) AllByUserID() map[string]*validation.Limits {
 	return allByUserID
 }
 
-func (m *mockLimits) DefaultLimits() *validation.Limits {
-	return &validation.Limits{
+func (m *mockLimits) DefaultLimits() *runtime.Limits {
+	return &runtime.Limits{
 		QueryReadyIndexNumDays: m.queryReadyIndexNumDaysDefault,
 	}
 }

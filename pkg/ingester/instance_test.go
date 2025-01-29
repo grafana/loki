@@ -4,38 +4,37 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"runtime"
+	rt "runtime"
 	"sort"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/storage/types"
-	"github.com/grafana/loki/v3/pkg/util/httpreq"
-
-	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
-
-	"github.com/grafana/loki/v3/pkg/logql/log"
-
+	gokitlog "github.com/go-kit/log"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier/astmapper"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
-	loki_runtime "github.com/grafana/loki/v3/pkg/runtime"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
 func defaultConfig() *Config {
@@ -76,11 +75,12 @@ var defaultPeriodConfigs = []config.PeriodConfig{
 var NilMetrics = newIngesterMetrics(nil, constants.Loki)
 
 func TestLabelsCollisions(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
-	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 	require.Nil(t, err)
 
 	// avoid entries from the future.
@@ -104,11 +104,12 @@ func TestLabelsCollisions(t *testing.T) {
 }
 
 func TestConcurrentPushes(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 	require.Nil(t, err)
 
 	const (
@@ -156,11 +157,12 @@ func TestConcurrentPushes(t *testing.T) {
 }
 
 func TestGetStreamRates(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 	require.NoError(t, err)
 
 	const (
@@ -243,9 +245,10 @@ func labelHashNoShard(l labels.Labels) uint64 {
 }
 
 func TestSyncPeriod(t *testing.T) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
 	const (
 		syncPeriod = 1 * time.Minute
@@ -254,7 +257,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 	require.Nil(t, err)
 
 	lbls := makeRandomLabels()
@@ -288,9 +291,11 @@ func TestSyncPeriod(t *testing.T) {
 
 func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	t.Helper()
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
+
 	indexShards := 2
 
 	// just some random values
@@ -299,7 +304,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	cfg.SyncMinUtilization = 0.20
 	cfg.IndexShards = indexShards
 
-	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 	require.Nil(t, err)
 
 	currentTime := time.Now()
@@ -315,7 +320,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil, nil).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -505,11 +510,12 @@ func makeRandomLabels() labels.Labels {
 }
 
 func Benchmark_PushInstance(b *testing.B) {
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
-	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
@@ -547,13 +553,14 @@ func Benchmark_PushInstance(b *testing.B) {
 func Benchmark_instance_addNewTailer(b *testing.B) {
 	l := defaultLimitsTestConfig()
 	l.MaxLocalStreamsPerUser = 100000
-	limits, err := validation.NewOverrides(l, nil)
+	limits, err := runtime.NewOverrides(l, nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
 	ctx := context.Background()
 
-	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
+	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 	expr, err := syntax.ParseLogSelector(`{namespace="foo",pod="bar",instance=~"10.*"}`, true)
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, nil, 10)
@@ -575,13 +582,13 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
 		}
 	})
 }
 
 func Benchmark_OnceSwitch(b *testing.B) {
-	threads := runtime.GOMAXPROCS(0)
+	threads := rt.GOMAXPROCS(0)
 
 	// limit threads
 	if threads > 4 {
@@ -1043,10 +1050,10 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 }
 
 type fakeLimits struct {
-	limits map[string]*validation.Limits
+	limits map[string]*runtime.Limits
 }
 
-func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
+func (f fakeLimits) TenantLimits(userID string) *runtime.Limits {
 	limits, ok := f.limits[userID]
 	if !ok {
 		return nil
@@ -1055,16 +1062,16 @@ func (f fakeLimits) TenantLimits(userID string) *validation.Limits {
 	return limits
 }
 
-func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
+func (f fakeLimits) AllByUserID() map[string]*runtime.Limits {
 	return f.limits
 }
 
 func TestStreamShardingUsage(t *testing.T) {
-	setupCustomTenantLimit := func(perStreamLimit string) *validation.Limits {
+	setupCustomTenantLimit := func(perStreamLimit string) *runtime.Limits {
 		shardStreamsCfg := shardstreams.Config{Enabled: true, LoggingEnabled: true}
 		shardStreamsCfg.DesiredRate.Set("6MB") //nolint:errcheck
 
-		customTenantLimits := &validation.Limits{}
+		customTenantLimits := &runtime.Limits{}
 		flagext.DefaultValues(customTenantLimits)
 
 		customTenantLimits.PerStreamRateLimit.Set(perStreamLimit)      //nolint:errcheck
@@ -1078,7 +1085,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	customTenant2 := "my-org2"
 
 	limitsDefinition := &fakeLimits{
-		limits: make(map[string]*validation.Limits),
+		limits: make(map[string]*runtime.Limits),
 	}
 	// testing with 1 because although 1 is enough to accept at least the
 	// first line entry, because per-stream sharding is enabled,
@@ -1086,10 +1093,11 @@ func TestStreamShardingUsage(t *testing.T) {
 	limitsDefinition.limits[customTenant1] = setupCustomTenantLimit("1")
 	limitsDefinition.limits[customTenant2] = setupCustomTenantLimit("4")
 
-	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
+	limits, err := runtime.NewOverrides(defaultLimitsTestConfig(), limitsDefinition)
 	require.NoError(t, err)
 
 	limiter := NewLimiter(limits, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: limits})
+	wfm := newWriteFailuresManager(limits)
 
 	defaultShardStreamsCfg := limiter.limits.ShardStreams("fake")
 	tenantShardStreamsCfg := limiter.limits.ShardStreams(customTenant1)
@@ -1108,10 +1116,9 @@ func TestStreamShardingUsage(t *testing.T) {
 
 	t.Run("invalid push returns error", func(t *testing.T) {
 		tracker := &mockUsageTracker{}
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant1, limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, tracker)
 
-		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, tracker)
 		ctx := context.Background()
-
 		err = i.Push(ctx, &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -1129,9 +1136,9 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 
 	t.Run("valid push returns no error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil)
-		ctx := context.Background()
+		i, _ := newInstance(&Config{IndexShards: 1, OwnedStreamsCheckInterval: 1 * time.Second}, defaultPeriodConfigs, customTenant2, limiter, noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), wfm, nil)
 
+		ctx := context.Background()
 		err = i.Push(ctx, &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -1448,14 +1455,13 @@ func TestGetStats(t *testing.T) {
 func defaultInstance(t *testing.T) *instance {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
-	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	overrides, err := runtime.NewOverrides(defaultLimits, nil)
 	require.NoError(t, err)
 	instance, err := newInstance(
 		&ingesterConfig,
 		defaultPeriodConfigs,
 		"fake",
 		NewLimiter(overrides, NilMetrics, newIngesterRingLimiterStrategy(&ringCountMock{count: 1}, 1), &TenantBasedStrategy{limits: overrides}),
-		loki_runtime.DefaultTenantConfigs(),
 		noopWAL{},
 		NilMetrics,
 		nil,
@@ -1463,7 +1469,7 @@ func defaultInstance(t *testing.T) *instance {
 		nil,
 		nil,
 		NewStreamRateCalculator(),
-		nil,
+		newWriteFailuresManager(overrides),
 		nil,
 	)
 	require.Nil(t, err)
@@ -1563,4 +1569,8 @@ func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ stri
 
 // ReceivedBytesAdd implements push.UsageTracker.
 func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64) {
+}
+
+func newWriteFailuresManager(limits *runtime.Overrides) *writefailures.Manager {
+	return writefailures.NewManager(gokitlog.NewNopLogger(), prometheus.NewPedanticRegistry(), writefailures.Cfg{}, limits, "ingester")
 }

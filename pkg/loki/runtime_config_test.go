@@ -18,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func Test_LoadRetentionRules(t *testing.T) {
@@ -47,10 +46,10 @@ overrides:
 `)
 	require.Equal(t, time.Duration(0), overrides.RetentionPeriod("1"))   // default
 	require.Equal(t, 2*30*24*time.Hour, overrides.RetentionPeriod("29")) // overrides
-	require.Equal(t, []validation.StreamRetention(nil), overrides.StreamRetention("1"))
+	require.Equal(t, []runtime.StreamRetention(nil), overrides.StreamRetention("1"))
 
 	actual := overrides.StreamRetention("29")
-	expected := []validation.StreamRetention{
+	expected := []runtime.StreamRetention{
 		{Period: model.Duration(48 * time.Hour), Priority: 10, Selector: `{app="foo"}`, Matchers: []*labels.Matcher{
 			labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 		}},
@@ -63,8 +62,8 @@ overrides:
 	require.Equal(t, removeFastRegexMatcher(expected), removeFastRegexMatcher(actual))
 }
 
-func removeFastRegexMatcher(configs []validation.StreamRetention) []validation.StreamRetention {
-	result := make([]validation.StreamRetention, 0, len(configs))
+func removeFastRegexMatcher(configs []runtime.StreamRetention) []runtime.StreamRetention {
+	result := make([]runtime.StreamRetention, 0, len(configs))
 	for _, config := range configs {
 		config.Matchers = syntax.RemoveFastRegexMatchers(config.Matchers)
 	}
@@ -97,39 +96,7 @@ overrides:
 	require.Equal(t, "invalid override for tenant 29: retention period must be >= 24h was 5h", err.Error())
 }
 
-func Test_DefaultConfig(t *testing.T) {
-	runtimeGetter := newTestRuntimeconfig(t,
-		`
-configs:
-    "1":
-        log_push_request: false
-        limited_log_push_errors: false
-        log_duplicate_metrics: false
-        log_duplicate_stream_info: false
-    "2":
-        log_push_request: true
-        log_duplicate_metrics: true
-        log_duplicate_stream_info: true
-`)
-
-	tenantConfigs, err := runtime.NewTenantConfigs(runtimeGetter)
-	require.NoError(t, err)
-
-	require.Equal(t, false, tenantConfigs.LogPushRequest("1"))
-	require.Equal(t, false, tenantConfigs.LimitedLogPushErrors("1"))
-	require.Equal(t, false, tenantConfigs.LimitedLogPushErrors("2"))
-	require.Equal(t, true, tenantConfigs.LogPushRequest("2"))
-	require.Equal(t, true, tenantConfigs.LimitedLogPushErrors("3"))
-	require.Equal(t, false, tenantConfigs.LogPushRequest("3"))
-	require.Equal(t, false, tenantConfigs.LogDuplicateMetrics("1"))
-	require.Equal(t, true, tenantConfigs.LogDuplicateMetrics("2"))
-	require.Equal(t, false, tenantConfigs.LogDuplicateMetrics("3"))
-	require.Equal(t, false, tenantConfigs.LogDuplicateStreamInfo("1"))
-	require.Equal(t, true, tenantConfigs.LogDuplicateStreamInfo("2"))
-	require.Equal(t, false, tenantConfigs.LogDuplicateStreamInfo("3"))
-}
-
-func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvider {
+func newTestOverrides(t *testing.T, yaml string) *runtime.Overrides {
 	t.Helper()
 	f, err := os.CreateTemp(t.TempDir(), "bar")
 	require.NoError(t, err)
@@ -144,12 +111,10 @@ func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvide
 		LoadPath:     []string{path},
 	}
 	flagset := flag.NewFlagSet("", flag.PanicOnError)
-	var defaults validation.Limits
-	var operations runtime.Config
+	var defaults runtime.Limits
 	defaults.RegisterFlags(flagset)
-	operations.RegisterFlags(flagset)
-	runtime.SetDefaultLimitsForYAMLUnmarshalling(operations)
 	require.NoError(t, flagset.Parse(nil))
+	runtime.SetDefaultLimitsForYAMLUnmarshalling(defaults)
 
 	reg := prometheus.NewPedanticRegistry()
 	runtimeConfig, err := runtimeconfig.New(cfg, "test", prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
@@ -162,41 +127,7 @@ func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvide
 		require.NoError(t, runtimeConfig.AwaitTerminated(context.Background()))
 	}()
 
-	return newTenantConfigProvider(runtimeConfig)
-}
-
-func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
-	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "bar")
-	require.NoError(t, err)
-	path := f.Name()
-	// fake loader to load from string instead of file.
-	loader := func(_ io.Reader) (interface{}, error) {
-		return loadRuntimeConfig(strings.NewReader(yaml))
-	}
-	cfg := runtimeconfig.Config{
-		ReloadPeriod: 1 * time.Second,
-		Loader:       loader,
-		LoadPath:     []string{path},
-	}
-	flagset := flag.NewFlagSet("", flag.PanicOnError)
-	var defaults validation.Limits
-	defaults.RegisterFlags(flagset)
-	require.NoError(t, flagset.Parse(nil))
-	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
-
-	reg := prometheus.NewPedanticRegistry()
-	runtimeConfig, err := runtimeconfig.New(cfg, "test", prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
-	require.NoError(t, err)
-
-	require.NoError(t, runtimeConfig.StartAsync(context.Background()))
-	require.NoError(t, runtimeConfig.AwaitRunning(context.Background()))
-	defer func() {
-		runtimeConfig.StopAsync()
-		require.NoError(t, runtimeConfig.AwaitTerminated(context.Background()))
-	}()
-
-	overrides, err := validation.NewOverrides(defaults, newtenantLimitsFromRuntimeConfig(runtimeConfig))
+	overrides, err := runtime.NewOverrides(defaults, newtenantLimitsFromRuntimeConfig(runtimeConfig))
 	require.NoError(t, err)
 	return overrides
 }
@@ -204,11 +135,11 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 func Test_NoOverrides(t *testing.T) {
 	flagset := flag.NewFlagSet("", flag.PanicOnError)
 
-	var defaults validation.Limits
+	var defaults runtime.Limits
 	defaults.RegisterFlags(flagset)
 	require.NoError(t, flagset.Parse(nil))
-	validation.SetDefaultLimitsForYAMLUnmarshalling(defaults)
-	overrides, err := validation.NewOverrides(defaults, newtenantLimitsFromRuntimeConfig(nil))
+	runtime.SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	overrides, err := runtime.NewOverrides(defaults, newtenantLimitsFromRuntimeConfig(nil))
 	require.NoError(t, err)
 	require.Equal(t, time.Duration(defaults.QuerySplitDuration), overrides.QuerySplitDuration("foo"))
 }

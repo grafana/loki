@@ -9,16 +9,16 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/validation"
+	"github.com/grafana/loki/v3/pkg/runtime"
 )
 
 type retentionLimit struct {
 	retentionPeriod time.Duration
-	streamRetention []validation.StreamRetention
+	streamRetention []runtime.StreamRetention
 }
 
-func (r retentionLimit) convertToValidationLimit() *validation.Limits {
-	return &validation.Limits{
+func (r retentionLimit) convertToValidationLimit() *runtime.Limits {
+	return &runtime.Limits{
 		RetentionPeriod: model.Duration(r.retentionPeriod),
 		StreamRetention: r.streamRetention,
 	}
@@ -33,41 +33,41 @@ func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
 	return f.perTenant[userID].retentionPeriod
 }
 
-func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
+func (f fakeLimits) StreamRetention(userID string) []runtime.StreamRetention {
 	return f.perTenant[userID].streamRetention
 }
 
-func (f fakeLimits) DefaultLimits() *validation.Limits {
+func (f fakeLimits) DefaultLimits() *runtime.Limits {
 	return f.defaultLimit.convertToValidationLimit()
 }
 
-func (f fakeLimits) AllByUserID() map[string]*validation.Limits {
-	res := make(map[string]*validation.Limits)
+func (f fakeLimits) AllByUserID() map[string]*runtime.Limits {
+	res := make(map[string]*runtime.Limits)
 	for userID, ret := range f.perTenant {
 		res[userID] = ret.convertToValidationLimit()
 	}
 	return res
 }
 
-func defaultLimitsTestConfig() validation.Limits {
-	limits := validation.Limits{}
+func defaultLimitsTestConfig() runtime.Limits {
+	limits := runtime.Limits{}
 	flagext.DefaultValues(&limits)
 	return limits
 }
 
-func overridesTestConfig(defaultLimits validation.Limits, tenantLimits validation.TenantLimits) (*validation.Overrides, error) {
-	return validation.NewOverrides(defaultLimits, tenantLimits)
+func overridesTestConfig(defaultLimits runtime.Limits, tenantLimits runtime.TenantLimits) (*runtime.Overrides, error) {
+	return runtime.NewOverrides(defaultLimits, tenantLimits)
 }
 
 type fakeOverrides struct {
-	tenantLimits map[string]*validation.Limits
+	tenantLimits map[string]*runtime.Limits
 }
 
-func (f fakeOverrides) TenantLimits(userID string) *validation.Limits {
+func (f fakeOverrides) TenantLimits(userID string) *runtime.Limits {
 	return f.tenantLimits[userID]
 }
 
-func (f fakeOverrides) AllByUserID() map[string]*validation.Limits {
+func (f fakeOverrides) AllByUserID() map[string]*runtime.Limits {
 	//TODO implement me
 	panic("implement me")
 }
@@ -81,19 +81,19 @@ func Test_expirationChecker_Expired(t *testing.T) {
 	// Override tenant 1 and tenant 2
 	t1 := defaultLimitsTestConfig()
 	t1.RetentionPeriod = model.Duration(time.Hour)
-	t1.StreamRetention = []validation.StreamRetention{
+	t1.StreamRetention = []runtime.StreamRetention{
 		{Period: model.Duration(2 * time.Hour), Priority: 10, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		{Period: model.Duration(2 * time.Hour), Priority: 1, Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.+")}},
 	}
 	t2 := defaultLimitsTestConfig()
 	t2.RetentionPeriod = model.Duration(24 * time.Hour)
-	t2.StreamRetention = []validation.StreamRetention{
+	t2.StreamRetention = []runtime.StreamRetention{
 		{Period: model.Duration(1 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")}},
 		{Period: model.Duration(2 * time.Hour), Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "foo", "ba.")}},
 	}
 
 	f := fakeOverrides{
-		tenantLimits: map[string]*validation.Limits{
+		tenantLimits: map[string]*runtime.Limits{
 			"1": &t1,
 			"2": &t2,
 		},
@@ -133,7 +133,7 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 	dur, _ := model.ParseDuration("24h")
 	tl.RetentionPeriod = dur
 	f := fakeOverrides{
-		tenantLimits: map[string]*validation.Limits{
+		tenantLimits: map[string]*runtime.Limits{
 			"2": &tl,
 		},
 	}
@@ -176,7 +176,7 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 	t3.RetentionPeriod = dur
 
 	f := fakeOverrides{
-		tenantLimits: map[string]*validation.Limits{
+		tenantLimits: map[string]*runtime.Limits{
 			"2": &t2,
 			"3": &t3,
 		},
@@ -213,7 +213,7 @@ func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
 	dur, _ := model.ParseDuration("24h")
 	tl.RetentionPeriod = dur
 	f := fakeOverrides{
-		tenantLimits: map[string]*validation.Limits{
+		tenantLimits: map[string]*runtime.Limits{
 			"2": &tl,
 		},
 	}
@@ -267,7 +267,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 			limit: fakeLimits{
 				defaultLimit: retentionLimit{
 					retentionPeriod: 7 * dayDuration,
-					streamRetention: []validation.StreamRetention{
+					streamRetention: []runtime.StreamRetention{
 						{
 							Period: model.Duration(10 * dayDuration),
 						},
@@ -292,7 +292,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 			limit: fakeLimits{
 				defaultLimit: retentionLimit{
 					retentionPeriod: 7 * dayDuration,
-					streamRetention: []validation.StreamRetention{
+					streamRetention: []runtime.StreamRetention{
 						{
 							Period: model.Duration(3 * dayDuration),
 						},
@@ -317,7 +317,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 			limit: fakeLimits{
 				defaultLimit: retentionLimit{
 					retentionPeriod: 7 * dayDuration,
-					streamRetention: []validation.StreamRetention{
+					streamRetention: []runtime.StreamRetention{
 						{
 							Period: model.Duration(10 * dayDuration),
 						},
@@ -326,7 +326,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 				perTenant: map[string]retentionLimit{
 					"0": {
 						retentionPeriod: 20 * dayDuration,
-						streamRetention: []validation.StreamRetention{
+						streamRetention: []runtime.StreamRetention{
 							{
 								Period: model.Duration(10 * dayDuration),
 							},
@@ -334,7 +334,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 					"1": {
 						retentionPeriod: 5 * dayDuration,
-						streamRetention: []validation.StreamRetention{
+						streamRetention: []runtime.StreamRetention{
 							{
 								Period: model.Duration(15 * dayDuration),
 							},
@@ -356,7 +356,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 			limit: fakeLimits{
 				defaultLimit: retentionLimit{
 					retentionPeriod: 7 * dayDuration,
-					streamRetention: []validation.StreamRetention{
+					streamRetention: []runtime.StreamRetention{
 						{
 							Period: model.Duration(10 * dayDuration),
 						},
@@ -365,7 +365,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 				perTenant: map[string]retentionLimit{
 					"0": {
 						retentionPeriod: 20 * dayDuration,
-						streamRetention: []validation.StreamRetention{
+						streamRetention: []runtime.StreamRetention{
 							{
 								Period: model.Duration(10 * dayDuration),
 							},
@@ -373,7 +373,7 @@ func TestFindLatestRetentionStartTime(t *testing.T) {
 					},
 					"1": {
 						retentionPeriod: 15 * dayDuration,
-						streamRetention: []validation.StreamRetention{
+						streamRetention: []runtime.StreamRetention{
 							{
 								Period: model.Duration(2 * dayDuration),
 							},

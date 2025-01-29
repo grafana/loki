@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
@@ -21,7 +22,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 func TestFactoryStop(t *testing.T) {
@@ -29,7 +29,7 @@ func TestFactoryStop(t *testing.T) {
 		cfg          Config
 		storeConfig  config.ChunkStoreConfig
 		schemaConfig config.SchemaConfig
-		defaults     validation.Limits
+		defaults     runtime.Limits
 	)
 	flagext.DefaultValues(&cfg, &storeConfig, &schemaConfig, &defaults)
 	schemaConfig.Configs = []config.PeriodConfig{
@@ -46,7 +46,7 @@ func TestFactoryStop(t *testing.T) {
 		},
 	}
 
-	limits, err := validation.NewOverrides(defaults, nil)
+	limits, err := runtime.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger(), constants.Loki)
 	require.NoError(t, err)
@@ -79,12 +79,12 @@ func TestCassandraInMultipleSchemas(t *testing.T) {
 	var (
 		cfg         Config
 		storeConfig config.ChunkStoreConfig
-		defaults    validation.Limits
+		defaults    runtime.Limits
 	)
 	flagext.DefaultValues(&cfg, &storeConfig, &defaults)
 	cfg.CassandraStorageConfig = cassandraCfg
 
-	limits, err := validation.NewOverrides(defaults, nil)
+	limits, err := runtime.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 
 	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger(), constants.Loki)
@@ -132,7 +132,7 @@ func TestNamedStores(t *testing.T) {
 		},
 	}
 
-	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	limits, err := runtime.NewOverrides(runtime.Limits{}, nil)
 	require.NoError(t, err)
 
 	t.Run("period config referring to configured named store", func(t *testing.T) {

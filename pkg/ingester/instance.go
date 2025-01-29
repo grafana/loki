@@ -36,7 +36,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
@@ -106,8 +105,6 @@ type instance struct {
 	streamCountLimiter *streamCountLimiter
 	ownedStreamsSvc    *ownedStreamService
 
-	configs *runtime.TenantConfigs
-
 	wal WAL
 
 	// Denotes whether the ingester should flush on shutdown.
@@ -133,7 +130,6 @@ func newInstance(
 	periodConfigs []config.PeriodConfig,
 	instanceID string,
 	limiter *Limiter,
-	configs *runtime.TenantConfigs,
 	wal WAL,
 	metrics *ingesterMetrics,
 	flushOnShutdownSwitch *OnceSwitch,
@@ -165,7 +161,6 @@ func newInstance(
 		limiter:            limiter,
 		streamCountLimiter: newStreamCountLimiter(instanceID, streams.Len, limiter, ownedStreamsSvc),
 		ownedStreamsSvc:    ownedStreamsSvc,
-		configs:            configs,
 
 		wal:                   wal,
 		metrics:               metrics,
@@ -279,7 +274,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
 	if err != nil {
-		if i.configs.LogStreamCreation(i.instanceID) {
+		if i.writeFailures.LogStreamCreation(i.instanceID) {
 			level.Debug(util_log.Logger).Log(
 				"msg", "failed to create stream, failed to parse labels",
 				"org_id", i.instanceID,
@@ -307,7 +302,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -326,7 +321,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 }
 
 func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels) (*stream, error) {
-	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
+	if i.writeFailures.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
 		l := level.Debug(util_log.Logger)
 
 		if i.cfg.KafkaIngestion.Enabled {
@@ -358,7 +353,7 @@ func (i *instance) onStreamCreated(s *stream) {
 	streamsCountStats.Add(1)
 	// we count newly created stream as owned
 	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
-	if i.configs.LogStreamCreation(i.instanceID) {
+	if i.writeFailures.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
 			"org_id", i.instanceID,
@@ -375,7 +370,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.onStreamCreated(s)
 

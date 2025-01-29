@@ -12,10 +12,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
+	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 type RetentionConfig struct {
@@ -39,16 +40,9 @@ func (cfg *RetentionConfig) Validate() error {
 	return nil
 }
 
-type RetentionLimits interface {
-	RetentionPeriod(userID string) time.Duration
-	StreamRetention(userID string) []validation.StreamRetention
-	AllByUserID() map[string]*validation.Limits
-	DefaultLimits() *validation.Limits
-}
-
 type RetentionManager struct {
 	cfg        RetentionConfig
-	limits     RetentionLimits
+	limits     retention.Limits
 	bloomStore bloomshipper.StoreBase
 	metrics    *Metrics
 	logger     log.Logger
@@ -60,7 +54,7 @@ type RetentionManager struct {
 
 func NewRetentionManager(
 	cfg RetentionConfig,
-	limits RetentionLimits,
+	limits retention.Limits,
 	bloomStore bloomshipper.StoreBase,
 	metrics *Metrics,
 	logger log.Logger,
@@ -198,12 +192,12 @@ func (r *RetentionManager) reportTenantsExceedingLookback(retentionByTenant map[
 	r.metrics.retentionTenantsExceedingLookback.Set(float64(tenantsExceedingLookback))
 }
 
-func findLongestRetention(globalRetention time.Duration, streamRetention []validation.StreamRetention) time.Duration {
+func findLongestRetention(globalRetention time.Duration, streamRetention []runtime.StreamRetention) time.Duration {
 	if len(streamRetention) == 0 {
 		return globalRetention
 	}
 
-	maxStreamRetention := slices.MaxFunc(streamRetention, func(a, b validation.StreamRetention) int {
+	maxStreamRetention := slices.MaxFunc(streamRetention, func(a, b runtime.StreamRetention) int {
 		return int(a.Period - b.Period)
 	})
 
@@ -213,7 +207,7 @@ func findLongestRetention(globalRetention time.Duration, streamRetention []valid
 	return globalRetention
 }
 
-func retentionByTenant(limits RetentionLimits) map[string]time.Duration {
+func retentionByTenant(limits retention.Limits) map[string]time.Duration {
 	all := limits.AllByUserID()
 	if len(all) == 0 {
 		return nil
