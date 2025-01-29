@@ -364,7 +364,7 @@ type bitpackBuffer struct {
 
 	width int
 
-	sets int    // Number of encoded sets. Each set has 8 elements.
+	sets uint64 // Number of encoded sets. Each set has 8 elements.
 	data []byte // Total amount of data.
 }
 
@@ -409,7 +409,7 @@ func (b *bitpackBuffer) Flush(w streamio.Writer) error {
 	//
 	// To encode the width in 6 bits, we encode width-1. That reserves the bottom
 	// 7 bits for metadata, and the remaining 57 bits for the number of sets.
-	const maxSets = 1<<57 - 1
+	const maxSets uint64 = 1<<57 - 1
 
 	// Validate constraints for safety.
 	switch {
@@ -423,7 +423,7 @@ func (b *bitpackBuffer) Flush(w streamio.Writer) error {
 
 	// Width can be between 1 and 64. To pack it into 6 bits, we subtract 1 from
 	// the value.
-	header := (uint64(b.sets) << 7) | (uint64(b.width-1) << 1) | 1
+	header := (b.sets << 7) | (uint64(b.width-1) << 1) | 1
 	if err := streamio.WriteUvarint(w, header); err != nil {
 		return err
 	}

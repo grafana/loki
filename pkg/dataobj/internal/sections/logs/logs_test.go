@@ -15,8 +15,6 @@ import (
 )
 
 func Test(t *testing.T) {
-	t.Skip("Disabled until sorting is reimplemented")
-
 	records := []logs.Record{
 		{
 			StreamID:  1,
@@ -44,7 +42,13 @@ func Test(t *testing.T) {
 		},
 	}
 
-	tracker := logs.New(nil, 1024)
+	opts := logs.Options{
+		PageSizeHint: 1024,
+		BufferSize:   256,
+		SectionSize:  4096,
+	}
+
+	tracker := logs.New(nil, opts)
 	for _, record := range records {
 		tracker.Append(record)
 	}
@@ -81,7 +85,7 @@ func Test(t *testing.T) {
 		},
 	}
 
-	dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf))
+	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf), int64(len(buf)))
 
 	var actual []logs.Record
 	for result := range logs.Iter(context.Background(), dec) {

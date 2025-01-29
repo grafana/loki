@@ -1115,8 +1115,8 @@ func (in *OTLPSpec) DeepCopyInto(out *OTLPSpec) {
 		*out = new(OTLPStreamLabelSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	if in.StructuredMetadata != nil {
-		in, out := &in.StructuredMetadata, &out.StructuredMetadata
+	if in.Drop != nil {
+		in, out := &in.Drop, &out.Drop
 		*out = new(OTLPMetadataSpec)
 		(*in).DeepCopyInto(*out)
 	}

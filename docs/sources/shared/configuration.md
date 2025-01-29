@@ -895,6 +895,12 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+dataobj_explorer:
+  # Prefix to use when exploring the bucket. If set, only objects under this
+  # prefix will be visible.
+  # CLI flag: -dataobj-explorer.storage-bucket-prefix
+  [storage_bucket_prefix: <string> | default = "dataobj/"]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
@@ -3739,7 +3745,7 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -store.retention
 [retention_period: <duration> | default = 0s]
 
-# Per-stream retention to apply, if the retention is enable on the compactor
+# Per-stream retention to apply, if the retention is enabled on the compactor
 # side.
 # Example:
 #  retention_stream:
@@ -3750,7 +3756,7 @@ ruler_remote_write_sigv4_config:
 #  priority: 1
 #  period: 744h
 # Selector is a Prometheus labels matchers that will apply the 'period'
-# retention only if the stream is matching. In case multiple stream are
+# retention only if the stream is matching. In case multiple streams are
 # matching, the highest priority will be picked. If no rule is matched the
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
