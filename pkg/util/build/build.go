@@ -1,6 +1,8 @@
 package build
 
 import (
+	"runtime"
+
 	"github.com/prometheus/common/version"
 	prom "github.com/prometheus/prometheus/web/api/v1"
 )
@@ -19,18 +21,12 @@ var (
 )
 
 func init() {
-	// version.Version = Version
-	// version.Revision = Revision
-	// version.Branch = Branch
-	// version.BuildUser = BuildUser
-	// version.BuildDate = BuildDate
-	// version.GoVersion = runtime.Version()
-	Version = "v0.0.0"
-	Revision = "v0.0.0"
-	Branch = "v0.0.0"
-	BuildUser = "v0.0.0"
-	BuildDate = "v0.0.0"
-	GoVersion = "v0.0.0"
+	version.Version = Version
+	version.Revision = Revision
+	version.Branch = Branch
+	version.BuildUser = BuildUser
+	version.BuildDate = BuildDate
+	version.GoVersion = runtime.Version()
 }
 
 func GetVersion() prom.PrometheusVersion {
