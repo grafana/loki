@@ -162,12 +162,6 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 		Statistics:  cb.buildStats(),
 	}
 
-	// TODO(rfratto): Should we compute column-wide statistics if they're
-	// available in pages?
-	//
-	// That would potentially work for min/max values, but not for count
-	// distinct, unless we had a way to pass sketches around.
-
 	for _, page := range cb.pages {
 		info.RowsCount += page.Info.RowCount
 		info.ValuesCount += page.Info.ValuesCount
