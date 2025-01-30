@@ -2063,3 +2063,62 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
 	}
 }
+
+func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
+	baselineLimits := &validation.Limits{}
+	flagext.DefaultValues(baselineLimits)
+	lbs := `{foo="bar", env="prod", daz="baz", container="loki", pod="loki-0"}`
+
+	b.Run("push without policies", func(b *testing.B) {
+		limits := baselineLimits
+		limits.PolicyStreamMapping = make(validation.PolicyStreamMapping)
+		distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
+		req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			distributors[0].Push(ctx, req)
+		}
+	})
+
+	for numPolicies := 1; numPolicies <= 100; numPolicies *= 10 {
+		b.Run(fmt.Sprintf("push with %d policies", numPolicies), func(b *testing.B) {
+			limits := baselineLimits
+			limits.PolicyStreamMapping = make(validation.PolicyStreamMapping)
+			for i := 1; i <= numPolicies; i++ {
+				limits.PolicyStreamMapping[fmt.Sprintf("policy%d", i)] = []*validation.PriorityStream{
+					{
+						Selector: `{foo="bar"}`, Priority: i,
+					},
+				}
+			}
+
+			req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
+			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				distributors[0].Push(ctx, req)
+			}
+		})
+	}
+
+	for numMatchers := 1; numMatchers <= 100; numMatchers *= 10 {
+		b.Run(fmt.Sprintf("push with %d matchers", numMatchers), func(b *testing.B) {
+			limits := baselineLimits
+			limits.PolicyStreamMapping = make(validation.PolicyStreamMapping)
+			for i := 1; i <= numMatchers; i++ {
+				limits.PolicyStreamMapping["policy0"] = append(limits.PolicyStreamMapping["policy0"], &validation.PriorityStream{
+					Selector: `{foo="bar"}`,
+					Matchers: []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")},
+					Priority: i,
+				})
+			}
+
+			req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
+			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				distributors[0].Push(ctx, req)
+			}
+		})
+	}
+}
