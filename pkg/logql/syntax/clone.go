@@ -66,7 +66,7 @@ func (v *cloneVisitor) VisitVectorAggregation(e *VectorAggregationExpr) {
 
 func (v *cloneVisitor) VisitRangeAggregation(e *RangeAggregationExpr) {
 	copied := &RangeAggregationExpr{
-		Left:      MustClone[*LogRange](e.Left),
+		Left:      MustClone[*LogRangeExpr](e.Left),
 		Operation: e.Operation,
 	}
 
@@ -95,8 +95,8 @@ func (v *cloneVisitor) VisitVector(e *VectorExpr) {
 	v.cloned = &VectorExpr{Val: e.Val}
 }
 
-func (v *cloneVisitor) VisitLogRange(e *LogRange) {
-	copied := &LogRange{
+func (v *cloneVisitor) VisitLogRange(e *LogRangeExpr) {
+	copied := &LogRangeExpr{
 		Left:     MustClone[LogSelectorExpr](e.Left),
 		Interval: e.Interval,
 		Offset:   e.Offset,
@@ -159,8 +159,8 @@ func (v *cloneVisitor) VisitDropLabels(e *DropLabelsExpr) {
 	v.cloned = copied
 }
 
-func (v *cloneVisitor) VisitJSONExpressionParser(e *JSONExpressionParser) {
-	copied := &JSONExpressionParser{
+func (v *cloneVisitor) VisitJSONExpressionParser(e *JSONExpressionParserExpr) {
+	copied := &JSONExpressionParserExpr{
 		Expressions: make([]log.LabelExtractionExpr, len(e.Expressions)),
 	}
 	copy(copied.Expressions, e.Expressions)
@@ -251,8 +251,8 @@ func (v *cloneVisitor) VisitLabelFmt(e *LabelFmtExpr) {
 	v.cloned = copied
 }
 
-func (v *cloneVisitor) VisitLabelParser(e *LabelParserExpr) {
-	v.cloned = &LabelParserExpr{
+func (v *cloneVisitor) VisitLabelParser(e *ParserExpr) {
+	v.cloned = &ParserExpr{
 		Op:    e.Op,
 		Param: e.Param,
 	}
@@ -283,8 +283,8 @@ func (v *cloneVisitor) VisitLineFmt(e *LineFmtExpr) {
 	v.cloned = &LineFmtExpr{Value: e.Value}
 }
 
-func (v *cloneVisitor) VisitLogfmtExpressionParser(e *LogfmtExpressionParser) {
-	copied := &LogfmtExpressionParser{
+func (v *cloneVisitor) VisitLogfmtExpressionParser(e *LogfmtExpressionParserExpr) {
+	copied := &LogfmtExpressionParserExpr{
 		Expressions: make([]log.LabelExtractionExpr, len(e.Expressions)),
 		Strict:      e.Strict,
 		KeepEmpty:   e.KeepEmpty,

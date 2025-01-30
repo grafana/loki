@@ -838,7 +838,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 							},
@@ -854,7 +854,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
-							Left: &syntax.LogRange{
+							Left: &syntax.LogRangeExpr{
 								Left: &syntax.MatchersExpr{
 									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 								},
@@ -870,7 +870,7 @@ func TestFormat_ShardedExpr(t *testing.T) {
 							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
+								Left: &syntax.LogRangeExpr{
 									Left: &syntax.MatchersExpr{
 										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 									},
