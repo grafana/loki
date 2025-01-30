@@ -131,6 +131,14 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [ruler: <ruler>]
 
 ruler_storage:
+  # The thanos_storage_config block configures the connection to object storage.
+  # It uses thanos-io/objstore clients for connecting to object storage
+  # backends. This will become the default way of configuring object store
+  # clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  [<thanos_object_store_config>]
+
   # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
   # filesystem.
   # CLI flag: -ruler-storage.backend
@@ -670,6 +678,9 @@ pattern_ingester:
 [compactor: <compactor>]
 
 compactor_grpc_client:
+  # The grpc_client block configures the gRPC client used to communicate between
+  # a client and server component in Loki.
+  [<grpc_client>]
 
 # The limits_config block configures global and per-tenant limits in Loki. The
 # values here can be overridden in the `overrides` section of the runtime_config
@@ -972,6 +983,10 @@ dynamodb:
   # owned KMS key if not provided.
   # CLI flag: -dynamodb.kms-key-id
   [kms_key_id: <string> | default = ""]
+
+# The s3_storage_config block configures the connection to Amazon S3 object
+# storage backend.
+[<s3_storage_config>]
 ```
 
 ### azure_storage_config
@@ -1328,6 +1343,9 @@ memcached_client:
   # Enable connecting to Memcached with TLS.
   # CLI flag: -<prefix>.memcached.tls-enabled
   [tls_enabled: <boolean> | default = false]
+
+  # The TLS configuration.
+  [<tls_config>]
 
 redis:
   # Redis Server or Cluster configuration endpoint to use for caching. A
@@ -2124,6 +2142,9 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
+# The TLS configuration.
+[<tls_config>]
+
 # Etcd username.
 # CLI flag: -<prefix>.etcd.username
 [username: <string> | default = ""]
@@ -2401,6 +2422,9 @@ backoff_config:
 # used.
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
+
+# The TLS configuration.
+[<tls_config>]
 
 # The maximum amount of time to establish a connection. A value of 0 means
 # default gRPC client connect timeout and backoff.
@@ -3714,6 +3738,9 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 # Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled
 [tls_enabled: <boolean> | default = false]
+
+# The TLS configuration.
+[<tls_config>]
 ```
 
 ### named_stores_config
@@ -4277,6 +4304,9 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
+  # The TLS configuration.
+  [<tls_config>]
+
   # HTTP Basic authentication username. It overrides the username set in the URL
   # (if any).
   # CLI flag: -ruler.alertmanager-client.basic-auth-username
@@ -4496,6 +4526,9 @@ evaluation:
     # Set to true if query-frontend connection requires TLS.
     # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
     [tls_enabled: <boolean> | default = false]
+
+    # The TLS configuration.
+    [<tls_config>]
 ```
 
 ### runtime_config
@@ -5196,6 +5229,14 @@ congestion_control:
 [use_thanos_objstore: <boolean> | default = false]
 
 object_store:
+  # The thanos_storage_config block configures the connection to object storage.
+  # It uses thanos-io/objstore clients for connecting to object storage
+  # backends. This will become the default way of configuring object store
+  # clients in future releases.
+  # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+  # is set to true.
+  [<thanos_object_store_config>]
+
   named_stores:
     [azure: <map of string to NamedAzureStorageConfig>]
 

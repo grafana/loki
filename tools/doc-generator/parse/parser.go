@@ -65,10 +65,11 @@ const (
 )
 
 const (
-	KindBlock EntryKind = "block"
-	KindField EntryKind = "field"
-	KindSlice EntryKind = "slice"
-	KindMap   EntryKind = "map"
+	KindBlock   EntryKind = "block"
+	KindField   EntryKind = "field"
+	KindSlice   EntryKind = "slice"
+	KindMap     EntryKind = "map"
+	KindRootRef EntryKind = "root_ref"
 )
 
 type ConfigEntry struct {
@@ -236,6 +237,15 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 						Desc: getFieldDescription(cfg, field, rootDesc),
 					}
 					blocks = append(blocks, subBlock)
+
+					// Add a field entry that references the root block
+					block.Add(&ConfigEntry{
+						Kind:      KindRootRef,
+						Name:      fieldName,
+						Required:  isFieldRequired(field),
+						FieldDesc: getFieldDescription(cfg, field, rootDesc),
+						FieldType: rootName,
+					})
 				} else {
 					subBlock = block
 				}

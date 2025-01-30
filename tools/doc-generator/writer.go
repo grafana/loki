@@ -95,6 +95,15 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) (written
 		}
 	}
 
+	if e.Kind == parse.KindRootRef {
+		// Description
+		w.writeComment(e.Description(), indent, 0)
+		w.writeFlag(e.FieldFlag, indent)
+
+		// For root references, we just write the reference without any default value
+		w.out.WriteString(pad(indent) + "[<" + e.FieldType + ">]\n")
+	}
+
 	return written
 }
 
