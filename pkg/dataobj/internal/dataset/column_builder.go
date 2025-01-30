@@ -26,6 +26,10 @@ type BuilderOptions struct {
 
 	// CompressionOptions holds optional configuration for compression.
 	CompressionOptions CompressionOptions
+
+	// StoreRangeStats indicates whether to store value range statistics for the
+	// column and pages.
+	StoreRangeStats bool
 }
 
 // CompressionOptions customizes the compressor used when building pages.
@@ -155,6 +159,7 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 		Type: cb.opts.Value,
 
 		Compression: cb.opts.Compression,
+		Statistics:  cb.buildStats(),
 	}
 
 	// TODO(rfratto): Should we compute column-wide statistics if they're
@@ -177,6 +182,53 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 
 	cb.Reset()
 	return column, nil
+}
+
+func (cb *ColumnBuilder) buildStats() *datasetmd.Statistics {
+	if !cb.opts.StoreRangeStats {
+		return nil
+	}
+
+	var stats datasetmd.Statistics
+
+	var minValue, maxValue Value
+
+	for i, page := range cb.pages {
+		if page.Info.Stats == nil {
+			// This should never hit; if cb.opts.StoreRangeStats is true, then
+			// page.Info.Stats will be populated.
+			panic("ColumnBuilder.buildStats: page missing stats")
+		}
+
+		var pageMin, pageMax Value
+
+		if err := pageMin.UnmarshalBinary(page.Info.Stats.MinValue); err != nil {
+			panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to unmarshal min value: %s", err))
+		} else if err := pageMax.UnmarshalBinary(page.Info.Stats.MaxValue); err != nil {
+			panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to unmarshal max value: %s", err))
+		}
+
+		if i == 0 {
+			minValue, maxValue = pageMin, pageMax
+			continue
+		}
+
+		if CompareValues(pageMin, minValue) < 0 {
+			minValue = pageMin
+		}
+		if CompareValues(pageMax, maxValue) > 0 {
+			maxValue = pageMax
+		}
+	}
+
+	var err error
+	if stats.MinValue, err = minValue.MarshalBinary(); err != nil {
+		panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to marshal min value: %s", err))
+	}
+	if stats.MaxValue, err = maxValue.MarshalBinary(); err != nil {
+		panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to marshal max value: %s", err))
+	}
+	return &stats
 }
 
 func (cb *ColumnBuilder) flushPage() {
