@@ -1,5 +1,5 @@
 import { GitHubLink } from "./github-link";
-import { ThemeToggle } from "../components/theme-toggle";
+import { ThemeToggle } from "../features/theme";
 
 export function HeaderActions() {
   return (

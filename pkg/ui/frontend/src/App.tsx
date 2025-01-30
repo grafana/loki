@@ -3,7 +3,7 @@ import { AppLayout } from "./layout/layout";
 import Nodes from "./pages/nodes";
 import NodeDetails from "./pages/node-details";
 import ComingSoon from "./pages/coming-soon";
-import { ThemeProvider } from "./components/theme-provider";
+import { ThemeProvider } from "./features/theme";
 import { ClusterProvider } from "./contexts/cluster-provider";
 
 const App = () => {

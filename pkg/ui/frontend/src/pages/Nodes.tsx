@@ -4,7 +4,7 @@ import NodeList from "@/components/nodes/node-list";
 import { TargetDistributionChart } from "@/components/nodes/target-distribution-chart";
 import { Member, NodeState, ALL_VALUES_TARGET } from "../types/cluster";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import { ErrorBoundary } from "@/components/error-boundary";
+import { ErrorBoundary } from "@/components/shared/errors/error-boundary";
 import { useCluster } from "@/contexts/use-cluster";
 
 const NodesPage = () => {

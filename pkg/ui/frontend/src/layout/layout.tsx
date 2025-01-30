@@ -1,6 +1,6 @@
 import React from "react";
 import { HeaderActions } from "./header-actions";
-import { BreadcrumbNav } from "../components/breadcrumb-nav";
+import { BreadcrumbNav } from "@/components/shared/breadcrumb-nav";
 import { AppSidebar } from "./sidebar";
 import {
   SidebarInset,

@@ -1,7 +1,7 @@
 import {
   NodeBreadcrumb,
   RingBreadcrumb,
-} from "@/components/breadcrumbs/route-breadcrumbs";
+} from "@/components/shared/route-breadcrumbs";
 
 // Routes configuration for breadcrumbs
 export const routes = [

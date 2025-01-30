@@ -8,7 +8,7 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "./ui/breadcrumb";
+} from "@/components/ui/breadcrumb";
 import { routes } from "@/config/routes";
 
 export function BreadcrumbNav() {

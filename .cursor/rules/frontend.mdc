@@ -23,7 +23,6 @@ Break down complex UIs into smaller, more manageable parts, which can be easily 
 
 Avoid large components with nested rendering functions
 
-DON'T modify shadcn component directly they are stored in  src/components/ui/*
 
 # State
 
@@ -51,19 +50,31 @@ DON'T modify shadcn component directly they are stored in  src/components/ui/*
 - Use arrow functions for improving code readability and reducing verbosity, especially for smaller functions like event handlers or callback functions.
 - Avoid using inline styles
 
-# Folder structure
+## Project Structure
 
 Colocate things as close as possible to where it's being used
 
-- Frontend code will be store in src/
-- reusable component in src/component/
-- shacnd component need to be installed and will be in src/component/ui
-- page wide component in src/pages
-- layout and it's component in src/layout
-- typescript types in src/types/
-- utility and library should be in /src/lib
-- hook
-- Place test files next to their corresponding source files
+```
+src/
+├── components/           # React components
+│   ├── ui/              # Shadcn UI components
+│   │   ├── errors/      # Error handling components
+│   │   └── breadcrumbs/ # Navigation breadcrumbs
+│   ├── shared/          # Shared components used across pages
+│   │   └── {pagename}/  # Page-specific components
+│   ├── common/          # Truly reusable components
+│   └── features/        # Complex feature modules
+│       └── theme/       # Theme-related components and logic
+├── pages/               # Page components and routes
+├── layout/              # Layout components
+├── hooks/               # Custom React hooks
+├── contexts/            # React context providers
+├── lib/                # Utility functions and constants
+└── types/              # TypeScript type definitions
+```
+
+DON'T modify shadcn component directly they are stored in  src/components/ui/*
+
 
 # UI and Styling
 

@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
-import { ErrorBoundary } from "@/components/error-boundary";
+import { ErrorBoundary } from "@/components/shared/errors/error-boundary";
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodeBlock } from "@/components/ui/code-block";
@@ -11,7 +11,7 @@ import { ServiceStateDistribution } from "@/components/nodes/service-state-distr
 import { ServiceTable } from "@/components/nodes/service-table";
 import { StorageTypeIndicator } from "@/components/nodes/storage-type-indicator";
 import { Label } from "@/components/ui/label";
-import { LogLevelSelect } from "@/components/log-level-select";
+import { LogLevelSelect } from "@/components/nodes/log-level-select";
 import { Switch } from "@/components/ui/switch";
 import { VersionInformation } from "@/components/nodes/version-information";
 import { NodeStatusIndicator } from "@/components/nodes/node-status-indicator";
