@@ -895,6 +895,36 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+dataobj_consumer:
+  builderconfig:
+    # The size of the SHA prefix to use for the data object builder.
+    # CLI flag: -dataobj-consumer.sha-prefix-size
+    [sha_prefix_size: <int> | default = 2]
+
+    # The size of the target page to use for the data object builder.
+    # CLI flag: -dataobj-consumer.target-page-size
+    [target_page_size: <int> | default = 2MiB]
+
+    # The size of the target object to use for the data object builder.
+    # CLI flag: -dataobj-consumer.target-object-size
+    [target_object_size: <int> | default = 1GiB]
+
+    # Configures a maximum size for sections, for sections that support it.
+    # CLI flag: -dataobj-consumer.target-section-size
+    [target_section_size: <int> | default = 128MiB]
+
+    # The size of the buffer to use for sorting logs.
+    # CLI flag: -dataobj-consumer.buffer-size
+    [buffer_size: <int> | default = 16MiB]
+
+  # The tenant ID to use for the data object builder.
+  # CLI flag: -dataobj-consumer.tenant-id
+  [tenant_id: <string> | default = "fake"]
+
+  # The prefix to use for the storage bucket.
+  # CLI flag: -dataobj-consumer.storage-bucket-prefix
+  [storage_bucket_prefix: <string> | default = "dataobj/"]
+
 dataobj_explorer:
   # Prefix to use when exploring the bucket. If set, only objects under this
   # prefix will be visible.
