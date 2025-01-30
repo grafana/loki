@@ -228,7 +228,17 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 					blocks = append(blocks, subBlock)
 				}
 			} else {
-				subBlock = block
+				// For inline fields, we still want to add them to the root blocks list if they are root blocks
+				// but we don't want to create a new block entry in the current block
+				if isRoot {
+					subBlock = &ConfigBlock{
+						Name: rootName,
+						Desc: getFieldDescription(cfg, field, rootDesc),
+					}
+					blocks = append(blocks, subBlock)
+				} else {
+					subBlock = block
+				}
 			}
 
 			if field.Type.Kind() == reflect.Ptr {
