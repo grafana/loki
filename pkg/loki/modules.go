@@ -485,12 +485,13 @@ func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 		return nil, nil
 	}
 
+	logger := log.With(util_log.Logger, "component", "ingest-limits-frontend")
 	ingestLimitsFrontend, err := limits_frontend.New(
 		t.Cfg.IngestLimitsFrontend,
 		limits.RingName,
 		t.ingestLimitsRing,
 		t.Overrides,
-		util_log.Logger,
+		logger,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
