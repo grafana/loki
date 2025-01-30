@@ -1086,11 +1086,15 @@ func (t *Topic) initBundler() {
 			for _, m := range bmsgs {
 				m.batcherSpan.End()
 				m.createSpan.AddEvent(eventPublishStart, trace.WithAttributes(semconv.MessagingBatchMessageCount(len(bmsgs))))
-				defer m.createSpan.End()
-				defer m.createSpan.AddEvent(eventPublishEnd)
 			}
 		}
 		t.publishMessageBundle(ctx, bmsgs)
+		if t.enableTracing {
+			for _, m := range bmsgs {
+				m.createSpan.AddEvent(eventPublishEnd)
+				m.createSpan.End()
+			}
+		}
 	})
 	t.scheduler.DelayThreshold = t.PublishSettings.DelayThreshold
 	t.scheduler.BundleCountThreshold = t.PublishSettings.CountThreshold
