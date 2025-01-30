@@ -265,20 +265,24 @@ func maxRangeVectorAndOffsetDurationFromQueryString(q string) (time.Duration, ti
 
 // maxRangeVectorAndOffsetDuration returns the maximum range vector and offset duration within a LogQL query.
 func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Duration, error) {
+
 	if _, ok := expr.(syntax.SampleExpr); !ok {
 		return 0, 0, nil
 	}
 
 	var maxRVDuration, maxOffset time.Duration
-	expr.Walk(func(e syntax.Expr) {
-		if r, ok := e.(*syntax.LogRange); ok {
-			if r.Interval > maxRVDuration {
-				maxRVDuration = r.Interval
+	syntax.Walk(func(node syntax.Walkable) (bool, error) {
+		switch e := node.(type) {
+		case *syntax.LogRange:
+			if e.Interval > maxRVDuration {
+				maxRVDuration = e.Interval
 			}
-			if r.Offset > maxOffset {
-				maxOffset = r.Offset
+			if e.Offset > maxOffset {
+				maxOffset = e.Offset
 			}
+			return false, nil
 		}
-	})
+		return true, nil
+	}, expr)
 	return maxRVDuration, maxOffset, nil
 }

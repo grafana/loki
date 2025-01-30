@@ -22,7 +22,7 @@ func Test_Walkable(t *testing.T) {
 		{
 			desc: "bin op query",
 			expr: `(sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])) / sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])))`,
-			want: 16,
+			want: 17,
 		},
 	}
 	for _, test := range tests {
@@ -31,7 +31,11 @@ func Test_Walkable(t *testing.T) {
 			require.Nil(t, err)
 
 			var cnt int
-			expr.Walk(func(_ Expr) { cnt++ })
+			Walk(func(n Walkable) (bool, error) {
+				t.Logf("walk node: %v", n)
+				cnt++
+				return true, nil
+			}, expr)
 			require.Equal(t, test.want, cnt)
 		})
 	}
@@ -75,14 +79,13 @@ func Test_AppendMatchers(t *testing.T) {
 			expr, err := ParseExpr(test.expr)
 			require.NoError(t, err)
 
-			expr.Walk(func(e Expr) {
-				switch me := e.(type) {
+			Walk(func(n Walkable) (bool, error) {
+				switch me := n.(type) {
 				case *MatchersExpr:
 					me.AppendMatchers(test.matchers)
-				default:
-					// Do nothing
 				}
-			})
+				return true, nil
+			}, expr)
 			require.Equal(t, test.want, expr.String())
 		})
 	}

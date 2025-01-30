@@ -139,7 +139,9 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 	return s
 }
 
-func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
+func (d DownstreamSampleExpr) Visit(f syntax.WalkFn) error {
+	return nil
+}
 
 var defaultMaxDepth = 4
 
@@ -171,9 +173,11 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamSampleExpr.String(), c.next.string(maxDepth-1))
 }
 
-func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
-	f(c)
-	f(c.next)
+func (c *ConcatSampleExpr) Visit(f syntax.WalkFn) error {
+	if c == nil {
+		return nil
+	}
+	return syntax.Walk(f, c.DownstreamSampleExpr, c.next)
 }
 
 // ConcatSampleExpr has no LogQL repretenstation. It is expressed in in the
@@ -269,9 +273,11 @@ func (e QuantileSketchEvalExpr) String() string {
 	return fmt.Sprintf("quantileSketchEval<%s>", e.quantileMergeExpr.String())
 }
 
-func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	e.quantileMergeExpr.Walk(f)
+func (e *QuantileSketchEvalExpr) Visit(f syntax.WalkFn) error {
+	if e == nil {
+		return nil
+	}
+	return syntax.Walk(f, e.quantileMergeExpr)
 }
 
 type QuantileSketchMergeExpr struct {
@@ -295,11 +301,11 @@ func (e QuantileSketchMergeExpr) String() string {
 	return fmt.Sprintf("quantileSketchMerge<%s>", sb.String())
 }
 
-func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	for _, d := range e.downstreams {
-		d.Walk(f)
+func (e *QuantileSketchMergeExpr) Visit(f syntax.WalkFn) error {
+	if e == nil {
+		return nil
 	}
+	return syntax.Walk(f, syntax.ConvertToWalkables(e.downstreams)...)
 }
 
 type MergeFirstOverTimeExpr struct {
@@ -324,11 +330,11 @@ func (e MergeFirstOverTimeExpr) String() string {
 	return fmt.Sprintf("MergeFirstOverTime<%s>", sb.String())
 }
 
-func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	for _, d := range e.downstreams {
-		d.Walk(f)
+func (e *MergeFirstOverTimeExpr) Visit(f syntax.WalkFn) error {
+	if e == nil {
+		return nil
 	}
+	return syntax.Walk(f, syntax.ConvertToWalkables(e.downstreams)...)
 }
 
 type MergeLastOverTimeExpr struct {
@@ -353,11 +359,11 @@ func (e MergeLastOverTimeExpr) String() string {
 	return fmt.Sprintf("MergeLastOverTime<%s>", sb.String())
 }
 
-func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	for _, d := range e.downstreams {
-		d.Walk(f)
+func (e *MergeLastOverTimeExpr) Visit(f syntax.WalkFn) error {
+	if e == nil {
+		return nil
 	}
+	return syntax.Walk(f, syntax.ConvertToWalkables(e.downstreams)...)
 }
 
 type CountMinSketchEvalExpr struct {
@@ -381,11 +387,11 @@ func (e CountMinSketchEvalExpr) String() string {
 	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
 }
 
-func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	for _, d := range e.downstreams {
-		d.Walk(f)
+func (e *CountMinSketchEvalExpr) Visit(f syntax.WalkFn) error {
+	if e == nil {
+		return nil
 	}
+	return syntax.Walk(f, syntax.ConvertToWalkables(e.downstreams)...)
 }
 
 type Downstreamable interface {

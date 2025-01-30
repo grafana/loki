@@ -113,21 +113,21 @@ func withoutOffset(query logql.DownstreamQuery) (string, time.Time, time.Time) {
 		newStart = query.Params.Start()
 		newEnd   = query.Params.End()
 	)
-	expr.Walk(func(e syntax.Expr) {
+	syntax.Walk(func(e syntax.Walkable) (bool, error) {
 		switch rng := e.(type) {
 		case *syntax.RangeAggregationExpr:
 			off := rng.Left.Offset
-
 			if off != 0 {
 				rng.Left.Offset = 0 // remove offset
 
 				// adjust start and end time
 				newEnd = newEnd.Add(-off)
 				newStart = newStart.Add(-off)
-
 			}
+			return false, nil
 		}
-	})
+		return true, nil
+	}, expr)
 	return expr.String(), newStart, newEnd
 }
 

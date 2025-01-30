@@ -1,6 +1,7 @@
 package syntax
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -117,7 +118,7 @@ func TestCloneParseTestCases(t *testing.T) {
 		if tc.err == nil {
 			t.Run(tc.in, func(t *testing.T) {
 				ast, err := ParseExpr(tc.in)
-				require.NoError(t, err)
+				require.NoError(t, err, fmt.Sprintf(`expression '%s' could not be parsed`, tc.in))
 				if strings.Contains(tc.in, "KiB") {
 					t.Skipf("Byte roundtrip conversion is broken. '%s' vs '%s'", tc.in, ast.String())
 				}

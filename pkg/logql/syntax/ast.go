@@ -21,16 +21,23 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-// Expr is the root expression which can be a SampleExpr or LogSelectorExpr
+// Expr is an expression node in the AST of the parsed LogQL query.
+// The root expression can be a SampleExpr or LogSelectorExpr.
 //
 //sumtype:decl
 type Expr interface {
-	logQLExpr()                   // ensure it's not implemented accidentally
-	Shardable(topLevel bool) bool // A recursive check on the AST to see if it's shardable.
+	// Marker function to ensure it's not implemented accidentally
+	logQLExpr() // ensure it's not implemented accidentally
+	// Check recursively on the expression and its child expressions to see if it is shardable.
+	Shardable(topLevel bool) bool
+	// Allow expression nodes to be traversed using Walk().
+	// Works also with expressions that are not represented in the LogQL syntax.
 	Walkable
-	fmt.Stringer
+	// Allow expression nodes to be traversed using the visitor pattern.
+	// Works only on expressions that are represented in the LogQL syntax.
 	AcceptVisitor
-
+	// String representation of the expression node
+	fmt.Stringer
 	// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
 	Pretty(level int) string
 }
@@ -289,7 +296,7 @@ func (e *MatchersExpr) AppendMatchers(m []*labels.Matcher) {
 
 func (e *MatchersExpr) Shardable(_ bool) bool { return true }
 
-func (e *MatchersExpr) Walk(f WalkFn) { f(e) }
+func (e *MatchersExpr) Visit(f WalkFn) error { return nil }
 
 func (e *MatchersExpr) Accept(v RootVisitor) { v.VisitMatchers(e) }
 
@@ -338,11 +345,9 @@ func (e *PipelineExpr) Shardable(topLevel bool) bool {
 	return true
 }
 
-func (e *PipelineExpr) Walk(f WalkFn) {
-	f(e)
-
-	if e.Left == nil {
-		return
+func (e *PipelineExpr) Visit(f WalkFn) error {
+	if e == nil {
+		return nil
 	}
 
 	xs := make([]Walkable, 0, len(e.MultiStages)+1)
@@ -350,7 +355,7 @@ func (e *PipelineExpr) Walk(f WalkFn) {
 	for _, p := range e.MultiStages {
 		xs = append(xs, p)
 	}
-	walkAll(f, xs...)
+	return Walk(f, xs...)
 }
 
 func (e *PipelineExpr) Accept(v RootVisitor) { v.VisitPipeline(e) }
@@ -499,12 +504,11 @@ func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineF
 
 func (*LineFilterExpr) isStageExpr() {}
 
-func (e *LineFilterExpr) Walk(f WalkFn) {
-	f(e)
-	if e.Left == nil {
-		return
+func (e *LineFilterExpr) Visit(f WalkFn) error {
+	if e == nil || (e.Left == nil && e.Or == nil) {
+		return nil
 	}
-	e.Left.Walk(f)
+	return Walk(f, e.Left, e.Or)
 }
 
 func (e *LineFilterExpr) Accept(v RootVisitor) {
@@ -650,7 +654,7 @@ func (*LogfmtParserExpr) isStageExpr() {}
 
 func (e *LogfmtParserExpr) Shardable(_ bool) bool { return true }
 
-func (e *LogfmtParserExpr) Walk(f WalkFn) { f(e) }
+func (e *LogfmtParserExpr) Visit(f WalkFn) error { return nil }
 
 func (e *LogfmtParserExpr) Accept(v RootVisitor) { v.VisitLogfmtParser(e) }
 
@@ -707,7 +711,7 @@ func (*LabelParserExpr) isStageExpr() {}
 
 func (e *LabelParserExpr) Shardable(_ bool) bool { return true }
 
-func (e *LabelParserExpr) Walk(f WalkFn) { f(e) }
+func (e *LabelParserExpr) Visit(f WalkFn) error { return nil }
 
 func (e *LabelParserExpr) Accept(v RootVisitor) { v.VisitLabelParser(e) }
 
@@ -756,7 +760,7 @@ func (*LabelFilterExpr) isStageExpr() {}
 
 func (e *LabelFilterExpr) Shardable(_ bool) bool { return true }
 
-func (e *LabelFilterExpr) Walk(f WalkFn) { f(e) }
+func (e *LabelFilterExpr) Visit(f WalkFn) error { return nil }
 
 func (e *LabelFilterExpr) Accept(v RootVisitor) { v.VisitLabelFilter(e) }
 
@@ -804,7 +808,7 @@ func (e *DecolorizeExpr) Stage() (log.Stage, error) {
 func (e *DecolorizeExpr) String() string {
 	return fmt.Sprintf("%s %s", OpPipe, OpDecolorize)
 }
-func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
+func (e *DecolorizeExpr) Visit(f WalkFn) error { return nil }
 
 func (e *DecolorizeExpr) Accept(v RootVisitor) { v.VisitDecolorize(e) }
 
@@ -847,7 +851,7 @@ func (e *DropLabelsExpr) String() string {
 	str := sb.String()
 	return str
 }
-func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
+func (e *DropLabelsExpr) Visit(f WalkFn) error { return nil }
 
 func (e *DropLabelsExpr) Accept(v RootVisitor) { v.VisitDropLabels(e) }
 
@@ -891,7 +895,7 @@ func (e *KeepLabelsExpr) String() string {
 	return str
 }
 
-func (e *KeepLabelsExpr) Walk(f WalkFn) { f(e) }
+func (e *KeepLabelsExpr) Visit(f WalkFn) error { return nil }
 
 func (e *KeepLabelsExpr) Accept(v RootVisitor) { v.VisitKeepLabel(e) }
 
@@ -899,7 +903,7 @@ func (*LineFmtExpr) isStageExpr() {}
 
 func (e *LineFmtExpr) Shardable(_ bool) bool { return true }
 
-func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
+func (e *LineFmtExpr) Visit(f WalkFn) error { return nil }
 
 func (e *LineFmtExpr) Accept(v RootVisitor) { v.VisitLineFmt(e) }
 
@@ -930,7 +934,7 @@ func (e *LabelFmtExpr) Shardable(_ bool) bool {
 	return true
 }
 
-func (e *LabelFmtExpr) Walk(f WalkFn) { f(e) }
+func (e *LabelFmtExpr) Visit(f WalkFn) error { return nil }
 
 func (e *LabelFmtExpr) Accept(v RootVisitor) { v.VisitLabelFmt(e) }
 
@@ -974,7 +978,7 @@ func (*JSONExpressionParser) isStageExpr() {}
 
 func (j *JSONExpressionParser) Shardable(_ bool) bool { return true }
 
-func (j *JSONExpressionParser) Walk(f WalkFn) { f(j) }
+func (j *JSONExpressionParser) Visit(f WalkFn) error { return nil }
 
 func (j *JSONExpressionParser) Accept(v RootVisitor) { v.VisitJSONExpressionParser(j) }
 
@@ -1030,7 +1034,7 @@ func (*LogfmtExpressionParser) isStageExpr() {}
 
 func (l *LogfmtExpressionParser) Shardable(_ bool) bool { return true }
 
-func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
+func (l *LogfmtExpressionParser) Visit(f WalkFn) error { return nil }
 
 func (l *LogfmtExpressionParser) Accept(v RootVisitor) { v.VisitLogfmtExpressionParser(l) }
 
@@ -1151,12 +1155,11 @@ func (r LogRange) String() string {
 
 func (r *LogRange) Shardable(topLevel bool) bool { return r.Left.Shardable(topLevel) }
 
-func (r *LogRange) Walk(f WalkFn) {
-	f(r)
-	if r.Left == nil {
-		return
+func (r *LogRange) Visit(f WalkFn) error {
+	if r == nil {
+		return nil
 	}
-	r.Left.Walk(f)
+	return Walk(f, r.Left)
 }
 
 func (r *LogRange) Accept(v RootVisitor) {
@@ -1474,12 +1477,11 @@ func (e *RangeAggregationExpr) Shardable(topLevel bool) bool {
 	return shardableOps[e.Operation] && e.Left.Shardable(topLevel)
 }
 
-func (e *RangeAggregationExpr) Walk(f WalkFn) {
-	f(e)
-	if e.Left == nil {
-		return
+func (e *RangeAggregationExpr) Visit(f WalkFn) error {
+	if e == nil {
+		return nil
 	}
-	e.Left.Walk(f)
+	return Walk(f, e.Left)
 }
 
 func (e *RangeAggregationExpr) Accept(v RootVisitor) { v.VisitRangeAggregation(e) }
@@ -1684,12 +1686,11 @@ func (e *VectorAggregationExpr) Shardable(topLevel bool) bool {
 	return true
 }
 
-func (e *VectorAggregationExpr) Walk(f WalkFn) {
-	f(e)
-	if e.Left == nil {
-		return
+func (e *VectorAggregationExpr) Visit(f WalkFn) error {
+	if e == nil {
+		return nil
 	}
-	e.Left.Walk(f)
+	return Walk(f, e.Left)
 }
 
 func (e *VectorAggregationExpr) Accept(v RootVisitor) { v.VisitVectorAggregation(e) }
@@ -1805,8 +1806,11 @@ func (e *BinOpExpr) Shardable(topLevel bool) bool {
 	return shardableOps[e.Op] && e.SampleExpr.Shardable(topLevel) && e.RHS.Shardable(topLevel)
 }
 
-func (e *BinOpExpr) Walk(f WalkFn) {
-	walkAll(f, e.SampleExpr, e.RHS)
+func (e *BinOpExpr) Visit(f WalkFn) error {
+	if e == nil {
+		return nil
+	}
+	return Walk(f, e.SampleExpr, e.RHS)
 }
 
 func (e *BinOpExpr) Accept(v RootVisitor) { v.VisitBinOp(e) }
@@ -2143,7 +2147,7 @@ func (e *LiteralExpr) isLogSelectorExpr()                      {}
 func (e *LiteralExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *LiteralExpr) HasFilter() bool                         { return false }
 func (e *LiteralExpr) Shardable(_ bool) bool                   { return true }
-func (e *LiteralExpr) Walk(f WalkFn)                           { f(e) }
+func (e *LiteralExpr) Visit(f WalkFn) error                    { return nil }
 func (e *LiteralExpr) Accept(v RootVisitor)                    { v.VisitLiteral(e) }
 func (e *LiteralExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *LiteralExpr) Matchers() []*labels.Matcher             { return nil }
@@ -2233,12 +2237,11 @@ func (e *LabelReplaceExpr) Shardable(_ bool) bool {
 	return false
 }
 
-func (e *LabelReplaceExpr) Walk(f WalkFn) {
-	f(e)
-	if e.Left == nil {
-		return
+func (e *LabelReplaceExpr) Visit(f WalkFn) error {
+	if e == nil {
+		return nil
 	}
-	e.Left.Walk(f)
+	return Walk(f, e.Left)
 }
 
 func (e *LabelReplaceExpr) Accept(v RootVisitor) { v.VisitLabelReplace(e) }
@@ -2374,7 +2377,7 @@ func (e *VectorExpr) Value() (float64, error) {
 func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *VectorExpr) HasFilter() bool                         { return false }
 func (e *VectorExpr) Shardable(_ bool) bool                   { return false }
-func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
+func (e *VectorExpr) Visit(f WalkFn) error                    { return nil }
 func (e *VectorExpr) Accept(v RootVisitor)                    { v.VisitVector(e) }
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
@@ -2382,8 +2385,8 @@ func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.er
 func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
 
 func ReducesLabels(e Expr) (conflict bool) {
-	e.Walk(func(e Expr) {
-		switch expr := e.(type) {
+	Walk(func(node Walkable) (bool, error) {
+		switch expr := node.(type) {
 		case *RangeAggregationExpr:
 			if groupingReducesLabels(expr.Grouping) {
 				conflict = true
@@ -2411,11 +2414,10 @@ func ReducesLabels(e Expr) (conflict bool) {
 					break
 				}
 			}
-		default:
-			return
 		}
-	})
-	return
+		return true, nil
+	}, e)
+	return conflict
 }
 
 func groupingReducesLabels(grp *Grouping) bool {

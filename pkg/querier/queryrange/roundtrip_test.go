@@ -1392,6 +1392,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 
 type fakeLimits struct {
 	maxQueryLength              time.Duration
+	maxQueryRange               time.Duration
 	maxQueryParallelism         int
 	tsdbMaxQueryParallelism     int
 	maxQueryLookback            time.Duration
@@ -1464,7 +1465,10 @@ func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryRange(context.Context, string) time.Duration {
-	return time.Second
+	if f.maxQueryRange == 0 {
+		return time.Second
+	}
+	return f.maxQueryRange
 }
 
 func (f fakeLimits) MaxQueryParallelism(context.Context, string) int {

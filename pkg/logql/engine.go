@@ -487,15 +487,14 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 
 func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
 	var err error
-	expr.Walk(func(e syntax.Expr) {
-		switch e := e.(type) {
-		case *syntax.RangeAggregationExpr:
-			if e.Left == nil || e.Left.Interval <= limit {
-				return
+	v := &syntax.DepthFirstTraversal{
+		VisitLogRangeFn: func(v syntax.RootVisitor, e *syntax.LogRange) {
+			if e.Interval > limit {
+				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
-			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Left.Interval), model.Duration(limit))
-		}
-	})
+		},
+	}
+	expr.Accept(v)
 	return err
 }
 

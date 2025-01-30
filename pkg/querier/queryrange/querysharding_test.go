@@ -208,16 +208,17 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 	}{
 		{
 			desc:                "Non shardable query",
-			query:               `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			query:               `quantile_over_time(0.99, {app="foo"} |= "foo" | unwrap foo [1h])`,
 			maxQuerierBytesSize: 100,
 
 			err:                      noErr,
 			expectedStatsHandlerHits: 1,
 		},
 		{
-			desc:                     "Non shardable query too big",
-			query:                    `avg_over_time({job="foo"} | json busy="utilization" | unwrap busy [5m])`,
-			maxQuerierBytesSize:      10,
+			desc:                "Non shardable query too big",
+			query:               `quantile_over_time(0.99, {app="foo"} | json busy="utilization" | unwrap busy [1h])`,
+			maxQuerierBytesSize: 10,
+
 			err:                      fmt.Sprintf(limErrQuerierTooManyBytesUnshardableTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
 		},
@@ -275,6 +276,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 					if strings.Contains(casted.Matchers, `app="bar"`) {
 						bytes = 500
 					}
+					t.Logf("return %d bytes for selector %v", bytes, casted.Matchers)
 
 					return &IndexStatsResponse{
 						Response: &logproto.IndexStatsResponse{
@@ -329,8 +331,12 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				AST: syntax.MustParseExpr(tc.query),
 			}
 			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), req)
-			if err != nil {
+			t.Log("expected: ", tc.err)
+			t.Log("got:      ", err)
+			if tc.err != noErr {
 				require.ErrorContains(t, err, tc.err)
+			} else {
+				require.NoError(t, err)
 			}
 
 			require.Equal(t, tc.expectedStatsHandlerHits, statsCalled)
