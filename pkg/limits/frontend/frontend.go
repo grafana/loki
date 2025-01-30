@@ -72,7 +72,7 @@ func New(cfg Config, ringName string, readRing ring.ReadRing, limits Limits, log
 	f.lifecyclerWatcher = services.NewFailureWatcher()
 	f.lifecyclerWatcher.WatchService(f.lifecycler)
 
-	servs = append(servs, f.lifecycler)
+	// servs = append(servs, f.lifecycler)
 	servs = append(servs, pool)
 	mgr, err := services.NewManager(servs...)
 	if err != nil {
@@ -96,7 +96,26 @@ func (f *Frontend) TransferOut(_ context.Context) error {
 }
 
 // starting implements services.Service.
-func (f *Frontend) starting(ctx context.Context) error {
+func (f *Frontend) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err != nil {
+			// if starting() fails for any reason (e.g., context canceled),
+			// the lifecycler must be stopped.
+			_ = services.StopAndAwaitTerminated(context.Background(), f.lifecycler)
+		}
+	}()
+
+	// pass new context to lifecycler, so that it doesn't stop automatically when IngestLimits's service context is done
+	err = f.lifecycler.StartAsync(context.Background())
+	if err != nil {
+		return err
+	}
+
+	err = f.lifecycler.AwaitRunning(ctx)
+	if err != nil {
+		return err
+	}
+
 	return services.StartManagerAndAwaitHealthy(ctx, f.subservices)
 }
 
