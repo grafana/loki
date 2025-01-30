@@ -88,6 +88,9 @@
       topology_spread_max_skew: 1,
     },
 
+    // Use thanos object store clients
+    use_thanos_objstore: false,
+
     // Bigtable variables
     bigtable_instance: error 'must specify bigtable instance',
     bigtable_project: error 'must specify bigtable project',
@@ -106,6 +109,7 @@
     s3_secret_access_key: '',
     s3_address: error 'must specify s3_address',
     s3_bucket_name: error 'must specify s3_bucket_name',
+    s3_bucket_region: '',
     s3_path_style: false,
 
     // Dynamodb variables
@@ -152,6 +156,22 @@
         bucket_name: $._config.gcs_bucket_name,
       },
     },
+
+    object_store:
+      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
+         gcs: {
+           bucket_name: $._config.gcs_bucket_name,
+         },
+       } else {}) +
+      (if std.count($._config.enabledBackends, 's3') > 0 then {
+         s3: {
+           bucket_name: $._config.s3_bucket_name,
+           endpoint: $._config.s3_address,
+           region: $._config.s3_bucket_region,
+           access_key_id: $._config.s3_access_key,
+           secret_access_key: $._config.s3_secret_access_key,
+         },
+       } else {}),
 
     // December 11 is when we first launched to the public.
     // Assume we can ingest logs that are 5months old.
@@ -323,7 +343,14 @@
                        } else {}) +
                       (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
                          aws+: $._config.client_configs.dynamo,
-                       } else {}),
+                       } else {}) +
+                      (
+                        if $._config.use_thanos_objstore then {
+                          use_thanos_objstore: true,
+                          object_store: $._config.object_store,
+                        } else {}
+                      ),
+
 
       chunk_store_config: {
         chunk_cache_config: {
