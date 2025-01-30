@@ -54,15 +54,15 @@ func ParseStrategy(s string) (Strategy, error) {
 
 // TenantTopicConfig configures the TenantTopicWriter
 type TenantTopicConfig struct {
-	Enabled bool
+	Enabled bool `yaml:"enabled"`
 
 	// TopicPrefix is prepended to tenant IDs to form the final topic name
-	TopicPrefix string
+	TopicPrefix string `yaml:"topic_prefix"`
 	// MaxBufferedBytes is the maximum number of bytes that can be buffered before producing to Kafka
-	MaxBufferedBytes flagext.Bytes
+	MaxBufferedBytes flagext.Bytes `yaml:"max_buffered_bytes"`
 
 	// MaxRecordSizeBytes is the maximum size of a single Kafka record
-	MaxRecordSizeBytes flagext.Bytes
+	MaxRecordSizeBytes flagext.Bytes `yaml:"max_record_size_bytes"`
 
 	// Strategy determines how topics are created and partitioned
 	Strategy string `yaml:"strategy"`
@@ -322,14 +322,14 @@ func (t *TenantTopicWriter) partitionsForRateLimit(bytesRateLimit float64) uint3
 
 // Duplicate implements the Tee interface
 func (t *TenantTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
-	go t.write(tenant, streams)
-}
-
-func (t *TenantTopicWriter) write(tenant string, streams []KeyedStream) {
 	if len(streams) == 0 {
 		return
 	}
 
+	go t.write(tenant, streams)
+}
+
+func (t *TenantTopicWriter) write(tenant string, streams []KeyedStream) {
 	totalPartitions := t.partitionsForRateLimit(t.limits.IngestionRateBytes(tenant))
 
 	// Convert streams to Kafka records
