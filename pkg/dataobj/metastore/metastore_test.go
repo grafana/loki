@@ -11,8 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
 func BenchmarkWriteMetastores(t *testing.B) {
