@@ -89,7 +89,7 @@ type Config struct {
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
-	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
+	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	BlockBuilder        blockbuilder.Config        `yaml:"block_builder,omitempty"`
