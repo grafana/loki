@@ -23,6 +23,8 @@ Break down complex UIs into smaller, more manageable parts, which can be easily 
 
 Avoid large components with nested rendering functions
 
+DON'T modify shadcn component directly they are stored in  src/components/ui/*
+
 # State
 
 - useState - for simpler states that are independent

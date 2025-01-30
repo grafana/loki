@@ -122,6 +122,20 @@ const data = {
   ],
 };
 
+// Custom wrapper for SidebarRail to handle theme-specific styling
+function CustomSidebarRail(props: React.ComponentProps<typeof SidebarRail>) {
+  return (
+    <SidebarRail
+      {...props}
+      className={cn(
+        "after:bg-border/40 hover:after:bg-border",
+        "hover:bg-muted/50",
+        props.className
+      )}
+    />
+  );
+}
+
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const basename = getBasename();
   const location = useLocation();
@@ -233,7 +247,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarGroup>
         </SidebarContent>
       </ScrollArea>
-      <SidebarRail />
+      <CustomSidebarRail />
     </Sidebar>
   );
 }
