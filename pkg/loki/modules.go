@@ -112,6 +112,7 @@ const (
 	IngestLimits             = "ingest-limits"
 	IngestLimitsRing         = "ingest-limits-ring"
 	IngestLimitsFrontend     = "ingest-limits-frontend"
+	IngestLimitsFrontendRing = "ingest-limits-frontend-ring"
 	Ingester                 = "ingester"
 	PatternIngester          = "pattern-ingester"
 	PatternRingClient        = "pattern-ring-client"
@@ -445,17 +446,50 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 	return ingestLimits, nil
 }
 
+func (t *Loki) initIngestLimitsFrontendRing() (_ services.Service, err error) {
+	if !t.Cfg.IngestLimits.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	if t.ingestLimitsFrontendRing, err = ring.New(
+		t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig,
+		limits_frontend.RingName,
+		limits_frontend.RingKey,
+		util_log.Logger,
+		reg,
+	); err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", limits_frontend.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/ingest-limits-frontend/ring").
+		Methods("GET", "POST").
+		Handler(t.ingestLimitsFrontendRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ingest-limits-frontend/ring").
+			Methods("GET", "POST").
+			Handler(t.ingestLimitsFrontendRing)
+	}
+
+	return t.ingestLimitsFrontendRing, nil
+}
+
 func (t *Loki) initIngestLimitsFrontend() (services.Service, error) {
 	if !t.Cfg.IngestLimits.Enabled {
 		return nil, nil
 	}
 
+	// Members of the ring are expected to listen on their gRPC server port.
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	logger := log.With(util_log.Logger, "component", "ingest-limits-frontend")
 	ingestLimitsFrontend, err := limits_frontend.New(
 		t.Cfg.IngestLimitsFrontend,
 		limits.RingName,
 		t.ingestLimitsRing,
 		t.Overrides,
-		util_log.Logger,
+		logger,
 		prometheus.DefaultRegisterer,
 	)
 	if err != nil {
@@ -1508,6 +1542,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Pattern.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV

@@ -373,6 +373,7 @@ type Loki struct {
 	ingestLimits              *limits.IngestLimits
 	ingestLimitsRing          *ring.Ring
 	ingestLimitsFrontend      *limits_frontend.Frontend
+	ingestLimitsFrontendRing  *ring.Ring
 	Ingester                  ingester.Interface
 	PatternIngester           *pattern.Ingester
 	PatternRingClient         pattern.RingClient
@@ -692,6 +693,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(MemberlistKV, t.initMemberlistKV, modules.UserInvisibleModule)
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IngestLimitsRing, t.initIngestLimitsRing, modules.UserInvisibleModule)
+	mm.RegisterModule(IngestLimitsFrontendRing, t.initIngestLimitsFrontendRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
 	mm.RegisterModule(TenantConfigs, t.initTenantConfigs, modules.UserInvisibleModule)
@@ -740,10 +742,11 @@ func (t *Loki) setupModuleManager() error {
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing},
 		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:             {MemberlistKV, Server},
-		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server},
+		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server, MemberlistKV},
+		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing},
 		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
