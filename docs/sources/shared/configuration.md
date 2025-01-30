@@ -2377,15 +2377,15 @@ tenant_topic:
 
   # Prefix to prepend to tenant IDs to form the final Kafka topic name
   # CLI flag: -distributor.tenant-topic-tee.topic-prefix
-  [topicprefix: <string> | default = "loki.tenant"]
+  [topic_prefix: <string> | default = "loki.tenant"]
 
   # Maximum number of bytes that can be buffered before producing to Kafka
   # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
-  [maxbufferedbytes: <int> | default = 100MiB]
+  [max_buffered_bytes: <int> | default = 100MiB]
 
   # Maximum size of a single Kafka record in bytes
   # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
-  [maxrecordsizebytes: <int> | default = 15MiB249KiB]
+  [max_record_size_bytes: <int> | default = 15MiB249KiB]
 
   # Topic strategy to use. Valid values are 'simple' or 'automatic'
   # CLI flag: -distributor.tenant-topic-tee.strategy
