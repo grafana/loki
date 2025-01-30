@@ -72,7 +72,7 @@ func New(cfg Config, ringName string, readRing ring.ReadRing, limits Limits, log
 	f.lifecyclerWatcher = services.NewFailureWatcher()
 	f.lifecyclerWatcher.WatchService(f.lifecycler)
 
-	// servs = append(servs, f.lifecycler)
+	servs = append(servs, f.lifecycler)
 	servs = append(servs, pool)
 	mgr, err := services.NewManager(servs...)
 	if err != nil {
@@ -98,25 +98,21 @@ func (f *Frontend) TransferOut(_ context.Context) error {
 // starting implements services.Service.
 func (f *Frontend) starting(ctx context.Context) (err error) {
 	defer func() {
-		if err != nil {
-			// if starting() fails for any reason (e.g., context canceled),
-			// the lifecycler must be stopped.
-			_ = services.StopAndAwaitTerminated(context.Background(), f.lifecycler)
+		if err == nil {
+			return
+		}
+		stopErr := services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
+		if stopErr != nil {
+			level.Error(f.logger).Log("msg", "failed to stop ingest-limits-frontend subservices", "err", stopErr)
 		}
 	}()
 
-	// pass new context to lifecycler, so that it doesn't stop automatically when IngestLimits's service context is done
-	err = f.lifecycler.StartAsync(context.Background())
-	if err != nil {
-		return err
+	level.Info(f.logger).Log("msg", "starting ingest-limits-frontend subservices")
+	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
+		return fmt.Errorf("failed to start ingest-limits-frontend subservices: %w", err)
 	}
 
-	err = f.lifecycler.AwaitRunning(ctx)
-	if err != nil {
-		return err
-	}
-
-	return services.StartManagerAndAwaitHealthy(ctx, f.subservices)
+	return nil
 }
 
 // running implements services.Service.
