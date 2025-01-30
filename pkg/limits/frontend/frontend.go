@@ -55,7 +55,7 @@ func New(cfg Config, ringName string, readRing ring.ReadRing, limits Limits, log
 	})
 
 	pool := NewIngestLimitsClientPool(ringName, cfg.ClientConfig.PoolConfig, readRing, factory, logger)
-	limitsSrv := NewRingIngestLimitsService(readRing, pool, limits, logger)
+	limitsSrv := NewRingIngestLimitsService(readRing, pool, limits, logger, reg)
 
 	f := &Frontend{
 		cfg:    cfg,
