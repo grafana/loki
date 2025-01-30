@@ -32,7 +32,7 @@ var (
 	}
 )
 
-type MetastoreManager struct {
+type Manager struct {
 	metastoreBuilder *dataobj.Builder
 	tenantID         string
 	metrics          *metastoreMetrics
@@ -43,13 +43,13 @@ type MetastoreManager struct {
 	builderOnce sync.Once
 }
 
-func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*MetastoreManager, error) {
+func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*Manager, error) {
 	metrics := newMetastoreMetrics()
 	if err := metrics.register(reg); err != nil {
 		return nil, err
 	}
 
-	return &MetastoreManager{
+	return &Manager{
 		bucket:   bucket,
 		metrics:  metrics,
 		logger:   logger,
@@ -62,7 +62,7 @@ func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Log
 	}, nil
 }
 
-func (m *MetastoreManager) initBuilder() error {
+func (m *Manager) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
 		metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg, m.bucket, m.tenantID)
@@ -75,7 +75,7 @@ func (m *MetastoreManager) initBuilder() error {
 	return initErr
 }
 
-func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult dataobj.FlushResult) error {
+func (m *Manager) UpdateMetastore(ctx context.Context, flushResult dataobj.FlushResult) error {
 	var err error
 	start := time.Now()
 	defer m.metrics.observeMetastoreProcessing(start)
@@ -144,7 +144,7 @@ func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult data
 	return err
 }
 
-func (m *MetastoreManager) readFromExisting(ctx context.Context, object *dataobj.Object) error {
+func (m *Manager) readFromExisting(ctx context.Context, object *dataobj.Object) error {
 	// Fetch sections
 	si, err := object.Metadata(ctx)
 	if err != nil {

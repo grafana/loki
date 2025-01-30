@@ -3,7 +3,6 @@
 package streams
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -83,7 +82,7 @@ func New(metrics *Metrics, pageSize int) *Streams {
 	}
 }
 
-func (s *Streams) Iter(ctx context.Context) result.Seq[Stream] {
+func (s *Streams) Iter() result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
 		for _, stream := range s.ordered {
 			if !yield(*stream) {

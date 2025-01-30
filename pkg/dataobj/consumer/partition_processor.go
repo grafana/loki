@@ -34,7 +34,7 @@ type partitionProcessor struct {
 	builderOnce      sync.Once
 	builderCfg       dataobj.BuilderConfig
 	bucket           objstore.Bucket
-	metastoreManager *metastore.MetastoreManager
+	metastoreManager *metastore.Manager
 	// Metrics
 	metrics *partitionOffsetMetrics
 
@@ -64,6 +64,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 	metastoreManager, err := metastore.NewMetastoreManager(bucket, tenantID, logger, reg)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create metastore manager", "err", err)
+		cancel()
 		return nil
 	}
 
