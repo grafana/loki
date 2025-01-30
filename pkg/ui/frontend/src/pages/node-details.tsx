@@ -1,16 +1,12 @@
 import { useParams } from "react-router-dom";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { useCluster } from "@/hooks/use-cluster";
+import { useCluster } from "@/contexts/cluster-provider";
 import { useEffect } from "react";
 
 function NodeDetailsPage() {
   const { nodeName } = useParams();
-  const { cluster, error, isLoading, fetchCluster } = useCluster();
-
-  useEffect(() => {
-    fetchCluster();
-  }, [fetchCluster]);
+  const { cluster, error, isLoading } = useCluster();
 
   const node = cluster?.members[nodeName ?? ""];
   console.log(nodeName);

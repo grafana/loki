@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getBasename } from "../util";
+import { VersionDisplay } from "@/components/version-display";
 
 import {
   Sidebar,
@@ -121,7 +122,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <a href={basename} className="flex items-center gap-4 px-6 py-2">
+              <div className="flex items-center gap-4 px-6 py-2">
                 <img
                   src="https://grafana.com/media/docs/loki/logo-grafana-loki.png"
                   alt="Loki Logo"
@@ -129,9 +130,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 />
                 <div className="flex flex-col justify-center gap-0.5">
                   <span className="text-base font-semibold">Grafana Loki</span>
-                  <span className="text-sm text-muted-foreground">v1.0.0</span>
+                  <VersionDisplay />
                 </div>
-              </a>
+              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

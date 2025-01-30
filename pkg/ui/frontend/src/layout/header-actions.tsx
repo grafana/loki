@@ -1,4 +1,3 @@
-import React from "react";
 import { GitHubLink } from "./github-link";
 import { ThemeToggle } from "../components/theme-toggle";
 

@@ -1,16 +1,14 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import NodeFilters from "@/components/nodes/node-filters";
 import NodeList from "@/components/nodes/node-list";
 import { TargetDistributionChart } from "@/components/nodes/target-distribution-chart";
 import { Member, NodeState, ALL_VALUES_TARGET } from "../types/cluster";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { useCluster } from "@/hooks/use-cluster";
-import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { useCluster } from "@/contexts/cluster-provider";
 
 const NodesPage = () => {
-  const { cluster, error, fetchCluster, isLoading } = useCluster();
+  const { cluster, error, refresh, isLoading } = useCluster();
   const [nameFilter, setNameFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
   const [selectedStates, setSelectedStates] = useState<NodeState[]>([
@@ -26,10 +24,6 @@ const NodesPage = () => {
   >("name");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
-  useEffect(() => {
-    fetchCluster();
-  }, [fetchCluster]);
-
   const handleSort = (field: "name" | "target" | "version" | "buildDate") => {
     if (field === sortField) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
@@ -39,7 +33,7 @@ const NodesPage = () => {
     }
   };
 
-  const filterNodes = useCallback(() => {
+  const filterNodes = () => {
     if (!cluster) return {};
 
     return Object.entries(cluster.members).reduce((acc, [name, node]) => {
@@ -65,16 +59,16 @@ const NodesPage = () => {
       }
       return acc;
     }, {} as { [key: string]: Member });
-  }, [cluster, nameFilter, targetFilter, selectedStates]);
+  };
 
-  const getAvailableTargets = useCallback(() => {
+  const getAvailableTargets = () => {
     if (!cluster) return [];
     const targets = new Set<string>();
     Object.values(cluster.members).forEach((node) => {
       if (node.target) targets.add(node.target);
     });
     return Array.from(targets).sort();
-  }, [cluster]);
+  };
 
   return (
     <div className="p-6">
@@ -96,7 +90,7 @@ const NodesPage = () => {
                 onNameFilterChange={setNameFilter}
                 onTargetFilterChange={setTargetFilter}
                 onStatesChange={setSelectedStates}
-                onRefresh={fetchCluster}
+                onRefresh={refresh}
                 availableTargets={getAvailableTargets()}
                 isLoading={isLoading}
               />

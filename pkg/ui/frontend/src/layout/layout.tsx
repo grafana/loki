@@ -17,7 +17,6 @@ import {
   SidebarTrigger,
 } from "../components/ui/sidebar";
 import { Separator } from "../components/ui/separator";
-import { Button } from "../components/ui/button";
 
 interface AppLayoutProps {
   children: React.ReactNode;

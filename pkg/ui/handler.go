@@ -12,15 +12,17 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/grafana/loki/v3/pkg/analytics"
 )
 
 const (
-	proxyScheme  = "http"
-	prefixPath   = "/ui/"
-	proxyPath    = prefixPath + "api/v1/proxy/{nodename}/"
-	clusterPath  = prefixPath + "api/v1/cluster"
-	notFoundPath = prefixPath + "api/v1/404"
-
+	proxyScheme     = "http"
+	prefixPath      = "/ui/"
+	proxyPath       = prefixPath + "api/v1/proxy/{nodename}/"
+	clusterPath     = prefixPath + "api/v1/cluster/nodes"
+	clusterSelfPath = prefixPath + "api/v1/cluster/nodes/self/details"
+	analyticsPath   = prefixPath + "api/v1/analytics"
+	notFoundPath    = prefixPath + "api/v1/404"
 	contentTypeJSON = "application/json"
 )
 
@@ -33,9 +35,13 @@ func (s *Service) RegisterHandler() {
 	route, handler := s.node.Handler()
 	s.router.PathPrefix(route).Handler(handler)
 
-	s.router.PathPrefix(clusterPath).Handler(s.clusterMembersHandler())
+	s.router.Path(analyticsPath).Handler(analytics.Handler())
+	s.router.Path(clusterPath).Handler(s.clusterMembersHandler())
+	s.router.Path(clusterSelfPath).Handler(s.clusterSelfHandler())
+
 	s.router.PathPrefix(proxyPath).Handler(s.clusterProxyHandler())
 	s.router.PathPrefix(notFoundPath).Handler(s.notFoundHandler())
+
 	fsHandler := http.FileServer(http.FS(s.uiFS))
 	s.router.PathPrefix(prefixPath).Handler(http.StripPrefix(prefixPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := s.uiFS.Open(strings.TrimPrefix(r.URL.Path, "/")); err != nil {
@@ -114,6 +120,23 @@ func (s *Service) clusterMembersHandler() http.Handler {
 		w.Header().Set("Content-Type", contentTypeJSON)
 		if err := json.NewEncoder(w).Encode(state); err != nil {
 			level.Error(s.logger).Log("msg", "failed to encode cluster state", "err", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+			return
+		}
+	})
+}
+
+func (s *Service) clusterSelfHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state, err := s.fetchSelfDetails(r.Context())
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to fetch node details", "err", err)
+			s.writeJSONError(w, http.StatusInternalServerError, "failed to fetch node details")
+			return
+		}
+		w.Header().Set("Content-Type", contentTypeJSON)
+		if err := json.NewEncoder(w).Encode(state); err != nil {
+			level.Error(s.logger).Log("msg", "failed to encode node details", "err", err)
 			s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
 			return
 		}

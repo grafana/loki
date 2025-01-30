@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/grafana/ckit/peer"
+	"github.com/grafana/loki/v3/pkg/analytics"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
 )
@@ -27,6 +28,8 @@ type Member struct {
 	Services []ServiceState `json:"services"`
 	Build    BuildInfo      `json:"build"`
 	Error    error          `json:"error,omitempty"`
+
+	configBody string
 }
 
 // ServiceState represents the current state of a service running on a member.
@@ -84,6 +87,7 @@ func (s *Service) fetchMemberState(ctx context.Context, peer peer.Peer) (Member,
 	if err != nil {
 		return member, fmt.Errorf("fetching config: %w", err)
 	}
+	member.configBody = config
 	member.Target = parseTargetFromConfig(config)
 
 	services, err := s.fetchServices(ctx, peer)
@@ -103,6 +107,7 @@ func (s *Service) fetchMemberState(ctx context.Context, peer peer.Peer) (Member,
 
 // buildProxyPath constructs the proxy URL path for a given peer and endpoint.
 func (s *Service) buildProxyPath(peer peer.Peer, endpoint string) string {
+	// todo support configured server prefix.
 	return fmt.Sprintf("http://%s/ui/api/v1/proxy/%s%s", s.localAddr, peer.Name, endpoint)
 }
 
@@ -113,6 +118,7 @@ func readResponseError(resp *http.Response, operation string) error {
 		return fmt.Errorf("%s: no response received", operation)
 	}
 	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("%s failed: %s, error reading body: %v", operation, resp.Status, err)
@@ -120,6 +126,79 @@ func readResponseError(resp *http.Response, operation string) error {
 		return fmt.Errorf("%s failed: %s, response: %s", operation, resp.Status, string(body))
 	}
 	return nil
+}
+
+// NodeDetails contains the details of a node in the cluster.
+// It adds on top of Member the config, build, clusterID, clusterSeededAt, os, arch, edition and registered analytics metrics.
+type NodeDetails struct {
+	Member
+	Config          string                 `json:"config"`
+	ClusterID       string                 `json:"clusterID"`
+	ClusterSeededAt int64                  `json:"clusterSeededAt"`
+	OS              string                 `json:"os"`
+	Arch            string                 `json:"arch"`
+	Edition         string                 `json:"edition"`
+	Metrics         map[string]interface{} `json:"metrics"`
+}
+
+func (s *Service) fetchSelfDetails(ctx context.Context) (NodeDetails, error) {
+	peer, ok := s.getSelfPeer()
+	if !ok {
+		return NodeDetails{}, fmt.Errorf("self peer not found")
+	}
+
+	report, err := s.fetchAnalytics(ctx, peer)
+	if err != nil {
+		return NodeDetails{}, fmt.Errorf("fetching analytics: %w", err)
+	}
+
+	member, err := s.fetchMemberState(ctx, peer)
+	if err != nil {
+		return NodeDetails{}, fmt.Errorf("fetching member state: %w", err)
+	}
+
+	return NodeDetails{
+		Member:          member,
+		Config:          member.configBody,
+		Metrics:         report.Metrics,
+		ClusterID:       report.ClusterID,
+		ClusterSeededAt: report.CreatedAt.UnixMilli(),
+		OS:              report.Os,
+		Arch:            report.Arch,
+		Edition:         report.Edition,
+	}, nil
+}
+
+func (s *Service) getSelfPeer() (peer.Peer, bool) {
+	for _, peer := range s.node.Peers() {
+		if peer.Self {
+			return peer, true
+		}
+	}
+	return peer.Peer{}, false
+}
+
+func (s *Service) fetchAnalytics(ctx context.Context, peer peer.Peer) (analytics.Report, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.buildProxyPath(peer, "/ui/api/v1/analytics"), nil)
+	if err != nil {
+		return analytics.Report{}, fmt.Errorf("creating request: %w", err)
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return analytics.Report{}, fmt.Errorf("sending request: %w", err)
+	}
+
+	if err := readResponseError(resp, "fetch build info"); err != nil {
+		return analytics.Report{}, err
+	}
+	defer resp.Body.Close()
+
+	var report analytics.Report
+	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+		return analytics.Report{}, fmt.Errorf("decoding response: %w", err)
+	}
+	return report, nil
 }
 
 // fetchConfig retrieves the configuration of a cluster member.
@@ -133,11 +212,11 @@ func (s *Service) fetchConfig(ctx context.Context, peer peer.Peer) (string, erro
 	if err != nil {
 		return "", fmt.Errorf("sending request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if err := readResponseError(resp, "fetch config"); err != nil {
 		return "", err
 	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -157,11 +236,11 @@ func (s *Service) fetchServices(ctx context.Context, peer peer.Peer) ([]ServiceS
 	if err != nil {
 		return nil, fmt.Errorf("sending request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if err := readResponseError(resp, "fetch services"); err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -181,11 +260,11 @@ func (s *Service) fetchBuild(ctx context.Context, peer peer.Peer) (BuildInfo, er
 	if err != nil {
 		return BuildInfo{}, fmt.Errorf("sending request: %w", err)
 	}
-	defer resp.Body.Close()
 
 	if err := readResponseError(resp, "fetch build info"); err != nil {
 		return BuildInfo{}, err
 	}
+	defer resp.Body.Close()
 
 	var build BuildInfo
 	if err := json.NewDecoder(resp.Body).Decode(&build); err != nil {
