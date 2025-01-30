@@ -1,15 +1,16 @@
 package consumer
 
 import (
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
 
 type partitionOffsetMetrics struct {
 	currentOffset prometheus.GaugeFunc
-	lastOffset    int64
+	lastOffset    atomic.Int64
 
 	// Error counters
 	flushFailures  prometheus.Counter
@@ -56,7 +57,7 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 }
 
 func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
-	return float64(atomic.LoadInt64(&p.lastOffset))
+	return float64(p.lastOffset.Load())
 }
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
@@ -93,7 +94,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 }
 
 func (p *partitionOffsetMetrics) updateOffset(offset int64) {
-	atomic.StoreInt64(&p.lastOffset, offset)
+	p.lastOffset.Store(offset)
 }
 
 func (p *partitionOffsetMetrics) incFlushFailures() {
