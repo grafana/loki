@@ -112,6 +112,12 @@ func (d *DeleteRequestsManager) mergeShardedRequests(ctx context.Context) error 
 			continue
 		}
 
+		level.Info(util_log.Logger).Log("msg", "merging sharded request",
+			"request_id", req.RequestID,
+			"num_shards", len(deletesPerRequest),
+			"start_time", req.StartTime.Unix(),
+			"end_time", req.EndTime.Unix(),
+		)
 		if err := d.deleteRequestsStore.MergeShardedRequests(ctx, req, deletesPerRequest[req.RequestID]); err != nil {
 			return err
 		}
