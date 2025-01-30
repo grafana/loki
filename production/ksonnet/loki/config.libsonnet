@@ -93,6 +93,9 @@
     s3_bucket_name: error 'must specify s3_bucket_name',
     s3_path_style: false,
 
+    azure_container_name: error 'must specify azure_container_name',
+    azure_account_name: error 'must specify azure_account_name',
+
     // DNS Resolver
     dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
 
@@ -108,6 +111,10 @@
       ),
       gcs: {
         bucket_name: $._config.gcs_bucket_name,
+      },
+      azure: {
+        container_name: $._config.azure_container_name,
+        account_name: $._config.azure_account_name,
       },
     },
 
@@ -274,6 +281,11 @@
         (
           if $._config.storage_backend == 's3' then {
             aws: $._config.client_configs.s3,
+          } else {}
+        ) +
+        (
+          if $._config.storage_backend == 'azure' then {
+            azure: $._config.client_configs.azure,
           } else {}
         ),
 
