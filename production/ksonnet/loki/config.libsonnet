@@ -267,13 +267,13 @@
             },
           },
         } + (
-          if std.member($._config.storage_backend, 'gcs') then {
+          if $._config.storage_backend == 'gcs' then {
             gcs: $._config.client_configs.gcs,
           } else {}
         ) +
         (
-          if std.member($._config.storage_backend, 's3') then {
-            aws+: $._config.client_configs.s3,
+          if $._config.storage_backend == 's3' then {
+            aws: $._config.client_configs.s3,
           } else {}
         ),
 
