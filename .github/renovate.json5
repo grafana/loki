@@ -32,6 +32,11 @@
       "enabled": false
     },
     {
+      // Disable updates driven by Kustomize, used by the operator
+      "matchManagers": ["kustomize"],
+      "enabled": false
+    },
+    {
       // Don't automatically merge GitHub Actions updates
       "matchManagers": ["github-actions"],
       "enabled": true,
@@ -89,7 +94,7 @@
   },
   "osvVulnerabilityAlerts": true,
   "prConcurrentLimit": 10,
-  "rebaseWhen": "conflicted",
+  "rebaseWhen": "auto",
   "branchPrefix": "deps-update/",
   "postUpdateOptions": [
     "gomodTidy"

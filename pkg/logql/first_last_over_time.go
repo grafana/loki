@@ -16,6 +16,15 @@ func newFirstWithTimestampIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
 ) RangeVectorIterator {
+	// forces at least one step.
+	if step == 0 {
+		step = 1
+	}
+	if offset != 0 {
+		start = start - offset
+		end = end - offset
+	}
+
 	inner := &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -70,6 +79,15 @@ func newLastWithTimestampIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64,
 ) RangeVectorIterator {
+	// forces at least one step.
+	if step == 0 {
+		step = 1
+	}
+	if offset != 0 {
+		start = start - offset
+		end = end - offset
+	}
+
 	inner := &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -127,6 +145,7 @@ type mergeOverTimeStepEvaluator struct {
 	step           time.Duration
 	matrices       []promql.Matrix
 	merge          func(promql.Vector, int, int, promql.Series) promql.Vector
+	offset         time.Duration
 }
 
 // Next returns the first or last element within one step of each matrix.
@@ -170,6 +189,10 @@ func (e *mergeOverTimeStepEvaluator) pop(r, s int) {
 
 // inRange returns true if t is in step range of ts.
 func (e *mergeOverTimeStepEvaluator) inRange(t, ts int64) bool {
+	// The time stamp needs to be adjusted because the original datapoint at t is
+	// from a shifted query.
+	ts -= e.offset.Milliseconds()
+
 	// special case instant queries
 	if e.step.Milliseconds() == 0 {
 		return true
@@ -181,7 +204,7 @@ func (*mergeOverTimeStepEvaluator) Close() error { return nil }
 
 func (*mergeOverTimeStepEvaluator) Error() error { return nil }
 
-func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEvaluator {
+func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix, offset time.Duration) StepEvaluator {
 	if len(m) == 0 {
 		return EmptyEvaluator[SampleVector]{}
 	}
@@ -199,6 +222,7 @@ func NewMergeFirstOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEv
 		step:     step,
 		matrices: m,
 		merge:    mergeFirstOverTime,
+		offset:   offset,
 	}
 }
 
@@ -218,7 +242,7 @@ func mergeFirstOverTime(vec promql.Vector, pos int, nSeries int, series promql.S
 	return vec
 }
 
-func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEvaluator {
+func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix, offset time.Duration) StepEvaluator {
 	if len(m) == 0 {
 		return EmptyEvaluator[SampleVector]{}
 	}
@@ -236,6 +260,7 @@ func NewMergeLastOverTimeStepEvaluator(params Params, m []promql.Matrix) StepEva
 		step:     step,
 		matrices: m,
 		merge:    mergeLastOverTime,
+		offset:   offset,
 	}
 }
 

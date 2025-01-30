@@ -252,6 +252,9 @@
         "memcache": {
             "component": "memcache"
         },
+        "memorystore": {
+            "component": "memorystore"
+        },
         "metastore": {
             "component": "metastore"
         },

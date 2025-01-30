@@ -129,7 +129,7 @@ func (d *picker) Pick(info balancer.PickInfo) (balancer.PickResult, error) {
 			if d.loadStore != nil {
 				d.loadStore.CallDropped("")
 			}
-			return balancer.PickResult{}, status.Errorf(codes.Unavailable, err.Error())
+			return balancer.PickResult{}, status.Error(codes.Unavailable, err.Error())
 		}
 	}
 

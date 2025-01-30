@@ -10,6 +10,14 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
+func (d *noOpDeleteRequestsStore) GetAllDeleteRequests(_ context.Context) ([]DeleteRequest, error) {
+	return nil, nil
+}
+
+func (d *noOpDeleteRequestsStore) MergeShardedRequests(_ context.Context, _ DeleteRequest, _ []DeleteRequest) error {
+	return nil
+}
+
 func (d *noOpDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, _ []DeleteRequest) ([]DeleteRequest, error) {
 	return nil, nil
 }
