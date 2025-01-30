@@ -2076,7 +2076,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 		req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			distributors[0].Push(ctx, req)
+			distributors[0].Push(ctx, req) //nolint:errcheck
 		}
 	})
 
@@ -2096,7 +2096,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				distributors[0].Push(ctx, req)
+				distributors[0].Push(ctx, req) //nolint:errcheck
 			}
 		})
 	}
@@ -2117,7 +2117,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				distributors[0].Push(ctx, req)
+				distributors[0].Push(ctx, req) //nolint:errcheck
 			}
 		})
 	}
