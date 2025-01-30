@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -50,6 +52,35 @@ func ParseStrategy(s string) (Strategy, error) {
 	default:
 		return SimpleStrategy, fmt.Errorf("invalid strategy %q, must be either 'simple' or 'automatic'", s)
 	}
+}
+
+// codec for `<prefix>.<tenant>.<shard>` topics
+type TenantPrefixCodec string
+
+func (c TenantPrefixCodec) Encode(tenant string, shard int32) string {
+	return fmt.Sprintf("%s.%s.%d", c, tenant, shard)
+}
+
+func (c TenantPrefixCodec) Decode(s string) (tenant string, shard int32, err error) {
+	suffix, ok := strings.CutPrefix(s, string(c)+".")
+	if !ok {
+		return "", 0, fmt.Errorf("invalid format: %s", s)
+	}
+
+	rem := strings.Split(suffix, ".")
+
+	if len(rem) < 2 {
+		return "", 0, fmt.Errorf("invalid format: %s", s)
+	}
+
+	n, err := strconv.Atoi(rem[len(rem)-1])
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid format: %s", s)
+	}
+
+	tenant = strings.Join(rem[:len(rem)-1], ".")
+
+	return tenant, int32(n), nil
 }
 
 // TenantTopicConfig configures the TenantTopicWriter
@@ -154,8 +185,8 @@ func (r *SimplePartitionResolver) Resolve(_ context.Context, tenant string, tota
 // 4. Returns the topic name with partition 0 (since each topic has exactly one partition)
 type ShardedPartitionResolver struct {
 	sync.RWMutex
-	admin       *kadm.Client
-	topicPrefix string
+	admin *kadm.Client
+	codec TenantPrefixCodec
 
 	sflight singleflight.Group // for topic creation
 	// tenantShards maps tenant IDs to their active shards
@@ -167,7 +198,7 @@ type ShardedPartitionResolver struct {
 func NewShardedPartitionResolver(kafkaClient *kgo.Client, topicPrefix string) *ShardedPartitionResolver {
 	return &ShardedPartitionResolver{
 		admin:        kadm.NewClient(kafkaClient),
-		topicPrefix:  topicPrefix,
+		codec:        TenantPrefixCodec(topicPrefix),
 		tenantShards: make(map[string]map[int32]struct{}),
 	}
 }
@@ -187,7 +218,7 @@ func (r *ShardedPartitionResolver) Resolve(ctx context.Context, tenant string, t
 		_, shardExists := shards[shard]
 		if shardExists {
 			r.RUnlock()
-			return r.topicName(tenant, shard), 0, nil
+			return r.codec.Encode(tenant, shard), 0, nil
 		}
 	}
 	r.RUnlock()
@@ -197,13 +228,13 @@ func (r *ShardedPartitionResolver) Resolve(ctx context.Context, tenant string, t
 		return "", 0, fmt.Errorf("failed to create shard: %w", err)
 	}
 
-	return r.topicName(tenant, shard), 0, nil
+	return r.codec.Encode(tenant, shard), 0, nil
 }
 
 // createShard creates a new topic for the given tenant and shard.
 // It handles the case where the topic already exists.
 func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant string, shard int32) error {
-	topic := r.topicName(tenant, shard)
+	topic := r.codec.Encode(tenant, shard)
 	replicationFactor := 2 // TODO: expose RF
 
 	_, err, _ := r.sflight.Do(topic, func() (interface{}, error) {
@@ -233,11 +264,6 @@ func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant strin
 	shards[shard] = struct{}{}
 
 	return nil
-}
-
-// topicName returns the topic name for a given tenant and shard
-func (r *ShardedPartitionResolver) topicName(tenant string, shard int32) string {
-	return fmt.Sprintf("%s.%s.%d", r.topicPrefix, tenant, shard)
 }
 
 // TenantTopicWriter implements the Tee interface by writing logs to Kafka topics
