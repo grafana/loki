@@ -293,14 +293,9 @@ func streamSizeEstimate(stream logproto.Stream) int {
 // built object is cached and can be retried. [Builder.Reset] can be called to
 // discard any pending data and allow new data to be appended.
 func (b *Builder) Flush(ctx context.Context) (FlushResult, error) {
-	switch b.state {
-	case builderStateEmpty:
-		return FlushResult{}, nil // Nothing to flush
-	case builderStateDirty:
-		if err := b.buildObject(); err != nil {
-			return FlushResult{}, fmt.Errorf("building object: %w", err)
-		}
-		b.state = builderStateFlush
+	buf, err := b.FlushToBuffer()
+	if err != nil {
+		return FlushResult{}, fmt.Errorf("flushing buffer: %w", err)
 	}
 
 	timer := prometheus.NewTimer(b.metrics.flushTime)
@@ -310,7 +305,7 @@ func (b *Builder) Flush(ctx context.Context) (FlushResult, error) {
 	sumStr := hex.EncodeToString(sum[:])
 
 	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
-	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(b.flushBuffer.Bytes())); err != nil {
+	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(buf.Bytes())); err != nil {
 		return FlushResult{}, fmt.Errorf("uploading object: %w", err)
 	}
 
@@ -322,6 +317,20 @@ func (b *Builder) Flush(ctx context.Context) (FlushResult, error) {
 		MinTimestamp: minTime,
 		MaxTimestamp: maxTime,
 	}, nil
+}
+
+func (b *Builder) FlushToBuffer() (*bytes.Buffer, error) {
+	switch b.state {
+	case builderStateEmpty:
+		return nil, nil // Nothing to flush
+	case builderStateDirty:
+		if err := b.buildObject(); err != nil {
+			return nil, fmt.Errorf("building object: %w", err)
+		}
+		b.state = builderStateFlush
+	}
+
+	return b.flushBuffer, nil
 }
 
 func (b *Builder) buildObject() error {

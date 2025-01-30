@@ -105,8 +105,8 @@ func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult data
 
 				if len(buf) > 0 {
 					replayStart := time.Now()
-					err = m.metastoreBuilder.FromExisting(bytes.NewReader(buf))
-					if err != nil {
+					object := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
+					if err := m.readFromExisting(ctx, object); err != nil {
 						return nil, err
 					}
 					m.metrics.observeMetastoreReplay(replayStart)
@@ -142,4 +142,33 @@ func (m *MetastoreManager) UpdateMetastore(ctx context.Context, flushResult data
 		m.metastoreBuilder.Reset()
 	}
 	return err
+}
+
+func (m *MetastoreManager) readFromExisting(ctx context.Context, object *dataobj.Object) error {
+	// Fetch sections
+	si, err := object.Metadata(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Read streams from existing metastore object and write them to the builder for the new object
+	streams := make([]dataobj.Stream, 100)
+	for i := 0; i < si.StreamsSections; i++ {
+		streamsReader := dataobj.NewStreamsReader(object, i)
+		for n, err := streamsReader.Read(ctx, streams); n > 0; n, err = streamsReader.Read(ctx, streams) {
+			if err != nil && err != io.EOF {
+				return err
+			}
+			for _, stream := range streams[:n] {
+				err = m.metastoreBuilder.Append(logproto.Stream{
+					Labels:  stream.Labels.String(),
+					Entries: []logproto.Entry{{Line: ""}},
+				})
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

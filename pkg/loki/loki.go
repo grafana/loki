@@ -38,8 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
-	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
+	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -713,7 +713,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
 	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
-	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
+	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
+	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
