@@ -44,7 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/ingester/client"
+	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -136,7 +136,7 @@ type Distributor struct {
 	cfg              Config
 	ingesterCfg      ingester.Config
 	logger           log.Logger
-	clientCfg        client.Config
+	clientCfg        ingester_client.Config
 	tenantConfigs    *runtime.TenantConfigs
 	tenantsRetention *retention.TenantsRetention
 	ingestersRing    ring.ReadRing
@@ -192,7 +192,7 @@ type Distributor struct {
 func New(
 	cfg Config,
 	ingesterCfg ingester.Config,
-	clientCfg client.Config,
+	clientCfg ingester_client.Config,
 	configs *runtime.TenantConfigs,
 	ingestersRing ring.ReadRing,
 	partitionRing ring.PartitionRingReader,
@@ -206,14 +206,14 @@ func New(
 	factory := cfg.factory
 	if factory == nil {
 		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-			return client.New(clientCfg, addr)
+			return ingester_client.New(clientCfg, addr)
 		})
 	}
 
 	internalFactory := func(addr string) (ring_client.PoolClient, error) {
 		internalCfg := clientCfg
 		internalCfg.Internal = true
-		return client.New(internalCfg, addr)
+		return ingester_client.New(internalCfg, addr)
 	}
 
 	validator, err := NewValidator(overrides, usageTracker)
