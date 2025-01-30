@@ -88,10 +88,10 @@ func New(cfg Config, ringName string, readRing ring.ReadRing, limits Limits, log
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
-func (s *Frontend) Flush() {}
+func (f *Frontend) Flush() {}
 
 // TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
-func (s *Frontend) TransferOut(_ context.Context) error {
+func (f *Frontend) TransferOut(_ context.Context) error {
 	return nil
 }
 
