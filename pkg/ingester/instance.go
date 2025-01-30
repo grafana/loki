@@ -297,7 +297,8 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
-	policy := i.tenantsRetention.PolicyFor(i.instanceID, labels)
+	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
+	policy := mapping.PolicyFor(labels)
 	if record != nil {
 		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
 	}

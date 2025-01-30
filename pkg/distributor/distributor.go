@@ -1159,19 +1159,21 @@ type labelData struct {
 }
 
 func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, string, error) {
+	mapping := d.validator.Limits.PoliciesStreamMapping(vContext.userID)
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
-		return val.ls, val.ls.String(), val.hash, retentionHours, "", nil
+		policy := mapping.PolicyFor(val.ls)
+		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
 		// TODO: check for global policy.
-		return nil, "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", 0, retentionHours, mapping.PolicyFor(nil), fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := d.tenantsRetention.PolicyFor(vContext.userID, ls)
+	policy := mapping.PolicyFor(ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
