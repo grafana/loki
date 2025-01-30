@@ -103,13 +103,13 @@ func (f *Frontend) starting(ctx context.Context) (err error) {
 		}
 		stopErr := services.StopManagerAndAwaitStopped(context.Background(), f.subservices)
 		if stopErr != nil {
-			level.Error(f.logger).Log("msg", "failed to stop ingest-limits-frontend subservices", "err", stopErr)
+			level.Error(f.logger).Log("msg", "failed to stop subservices", "err", stopErr)
 		}
 	}()
 
-	level.Info(f.logger).Log("msg", "starting ingest-limits-frontend subservices")
+	level.Info(f.logger).Log("msg", "starting subservices")
 	if err := services.StartManagerAndAwaitHealthy(ctx, f.subservices); err != nil {
-		return fmt.Errorf("failed to start ingest-limits-frontend subservices: %w", err)
+		return fmt.Errorf("failed to start subservices: %w", err)
 	}
 
 	return nil
