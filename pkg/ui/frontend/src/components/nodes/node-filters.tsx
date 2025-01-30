@@ -48,46 +48,59 @@ const NodeFilters: React.FC<NodeFiltersProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Input
-        className="w-[225px]"
-        value={nameFilter}
-        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-          onNameFilterChange(e.target.value)
-        }
-        placeholder="Filter by node name..."
-      />
-      <Select value={targetFilter} onValueChange={onTargetFilterChange}>
-        <SelectTrigger className="w-[200px]">
-          <SelectValue placeholder="All Targets" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem key={ALL_VALUES_TARGET} value={ALL_VALUES_TARGET}>
-            All Targets
-          </SelectItem>
-          {availableTargets.map((target) => (
-            <SelectItem key={target} value={target}>
-              {target}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <div className="flex-1">
+    <div className="grid grid-cols-[auto_1fr_auto] gap-x-4 gap-y-2">
+      <div className="space-y-2">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-muted-foreground">
+            Node filters
+          </label>
+          <Input
+            value={nameFilter}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              onNameFilterChange(e.target.value)
+            }
+            placeholder="Filter by node name..."
+            className="w-[300px]"
+          />
+          <Select value={targetFilter} onValueChange={onTargetFilterChange}>
+            <SelectTrigger className="w-[300px]">
+              <SelectValue placeholder="All Targets" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem key={ALL_VALUES_TARGET} value={ALL_VALUES_TARGET}>
+                All Targets
+              </SelectItem>
+              {availableTargets.map((target) => (
+                <SelectItem key={target} value={target}>
+                  {target}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="space-y-1.5 self-end">
+        <label className="text-sm font-medium text-muted-foreground">
+          Service states
+        </label>
         <MultiSelect
           options={stateOptions}
           defaultValue={selectedStates}
           onValueChange={handleStateChange}
-          placeholder="Select states..."
+          placeholder="Filter nodes by service states..."
+          className="w-full min-w-[300px]"
         />
       </div>
-      <Button
-        onClick={onRefresh}
-        size="icon"
-        variant="outline"
-        className="h-9 w-9 shrink-0 bg-background"
-      >
-        <RefreshCw className="h-4 w-4" />
-      </Button>
+      <div className="self-end">
+        <Button
+          onClick={onRefresh}
+          size="sm"
+          variant="outline"
+          className="h-9 w-9"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 };

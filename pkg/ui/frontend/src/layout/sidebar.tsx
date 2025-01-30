@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { getBasename } from "../util";
 
 import {
   Sidebar,
@@ -20,97 +21,107 @@ const data = {
   navMain: [
     {
       title: "Cluster",
-      url: "#",
+      url: "/nodes",
       items: [
         {
           title: "Nodes",
           url: "/nodes",
         },
         {
-          title: "Rollouts",
-          url: "/rollouts",
+          title: "Rollouts & Versions",
+          url: "/versions",
         },
       ],
     },
     {
       title: "Rings",
-      url: "#",
+      url: "/rings",
+      // loop through static components supporting ring pages.
+      // reuse the list for fetching ring details.
+      // TODO: add ring details page.
+      // TODO: only shows rings pages that are available in the cluster.
       items: [
         {
           title: "Ingester",
-          url: "#",
+          url: "/rings/ingester",
         },
         {
           title: "Partition Ingester",
-          url: "#",
+          url: "/rings/partition-ingester",
         },
         {
           title: "Distributor",
-          url: "#",
+          url: "/rings/distributor",
           isActive: true,
         },
         {
           title: "Pattern Ingester",
-          url: "#",
+          url: "/rings/pattern-ingester",
         },
         {
           title: "Scheduler",
-          url: "#",
+          url: "/rings/scheduler",
         },
         {
           title: "Compactor",
-          url: "#",
+          url: "/rings/compactor",
         },
         {
           title: "Ruler",
-          url: "#",
+          url: "/rings/ruler",
         },
         {
           title: "Index Gateway",
-          url: "#",
+          url: "/rings/index-gateway",
         },
       ],
     },
     {
       title: "Storage",
-      url: "#",
+      url: "/storage",
       items: [
         {
+          title: "Object Storage",
+          url: "/storage/object",
+        },
+        {
           title: "Data Objects",
-          url: "#",
+          url: "/storage/data",
         },
       ],
     },
     {
       title: "Tenants",
-      url: "#",
+      url: "/tenants",
       items: [
         {
           title: "Limits",
-          url: "#",
+          url: "/tenants/limits",
         },
         {
           title: "Labels",
-          url: "#",
+          url: "/tenants/labels",
         },
       ],
     },
     {
       title: "Rules",
-      url: "#",
+      url: "/rules",
       items: [],
     },
   ],
 };
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const basename = getBasename();
+
   return (
     <Sidebar {...props}>
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <a href="#" className="flex items-center gap-4 px-6 py-2">
+              <a href={basename} className="flex items-center gap-4 px-6 py-2">
                 <img
                   src="https://grafana.com/media/docs/loki/logo-grafana-loki.png"
                   alt="Loki Logo"
@@ -132,7 +143,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               {data.navMain.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
-                    <a href={item.url} className="font-medium">
+                    <a
+                      href={
+                        item.url === "#"
+                          ? "#"
+                          : `${basename}${item.url.slice(1)}`
+                      }
+                      className="font-medium"
+                    >
                       {item.title}
                     </a>
                   </SidebarMenuButton>
@@ -144,7 +162,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             asChild
                             isActive={item.isActive}
                           >
-                            <a href={item.url}>{item.title}</a>
+                            <a
+                              href={
+                                item.url === "#"
+                                  ? "#"
+                                  : `${basename}${item.url.slice(1)}`
+                              }
+                            >
+                              {item.title}
+                            </a>
                           </SidebarMenuSubButton>
                         </SidebarMenuSubItem>
                       ))}

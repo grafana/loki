@@ -16,7 +16,7 @@ export function useCluster(): UseClusterReturn {
   const fetchCluster = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch("/ui/api/v1/cluster");
+      const response = await fetch("/ui/api/v1/cluster/nodes");
       if (!response.ok) {
         throw new Error(`Failed to fetch cluster data: ${response.statusText}`);
       }

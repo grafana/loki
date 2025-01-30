@@ -3,6 +3,9 @@ import { formatDistanceToNow, parseISO, isValid } from "date-fns";
 import { Member } from "@/types/cluster";
 import StatusBadge from "@/components/nodes/status-badge";
 import { DataTableColumnHeader } from "@/components/nodes/data-table-column-header";
+import { Button } from "@/components/ui/button";
+import { ArrowRightCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   Table,
   TableBody,
@@ -25,6 +28,8 @@ const NodeList: React.FC<NodeListProps> = ({
   sortDirection,
   onSort,
 }) => {
+  const navigate = useNavigate();
+
   const formatBuildDate = (dateStr: string) => {
     try {
       const date = parseISO(dateStr);
@@ -67,11 +72,11 @@ const NodeList: React.FC<NodeListProps> = ({
   });
 
   return (
-    <div className="rounded-md border">
+    <div className="rounded-md border bg-card">
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-[300px]">
               <DataTableColumnHeader
                 title="Node Name"
                 field="name"
@@ -80,7 +85,7 @@ const NodeList: React.FC<NodeListProps> = ({
                 onSort={onSort}
               />
             </TableHead>
-            <TableHead>
+            <TableHead className="w-[200px]">
               <DataTableColumnHeader
                 title="Target"
                 field="target"
@@ -89,7 +94,7 @@ const NodeList: React.FC<NodeListProps> = ({
                 onSort={onSort}
               />
             </TableHead>
-            <TableHead>
+            <TableHead className="w-[200px]">
               <DataTableColumnHeader
                 title="Version"
                 field="version"
@@ -98,7 +103,7 @@ const NodeList: React.FC<NodeListProps> = ({
                 onSort={onSort}
               />
             </TableHead>
-            <TableHead>
+            <TableHead className="w-[200px]">
               <DataTableColumnHeader
                 title="Build Date"
                 field="buildDate"
@@ -107,21 +112,49 @@ const NodeList: React.FC<NodeListProps> = ({
                 onSort={onSort}
               />
             </TableHead>
-            <TableHead>Status</TableHead>
+            <TableHead className="w-[150px]">Status</TableHead>
+            <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {sortedNodes.map(([name, node]) => (
-            <TableRow key={name}>
+            <TableRow
+              key={name}
+              className="hover:bg-muted/50 cursor-pointer"
+              onClick={() => navigate(`/nodes/${name}`)}
+            >
               <TableCell className="font-medium">{name}</TableCell>
               <TableCell>{node.target}</TableCell>
-              <TableCell>{node.build.version}</TableCell>
+              <TableCell className="font-mono text-sm">
+                {node.build.version}
+              </TableCell>
               <TableCell>{formatBuildDate(node.build.buildDate)}</TableCell>
               <TableCell>
                 <StatusBadge services={node.services} error={node.error} />
               </TableCell>
+              <TableCell>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/nodes/${name}`);
+                  }}
+                >
+                  <ArrowRightCircle className="h-4 w-4" />
+                  <span className="sr-only">View details</span>
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
+          {sortedNodes.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="h-24 text-center">
+                <div className="text-muted-foreground">No nodes found</div>
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>

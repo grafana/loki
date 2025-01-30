@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import NodeFilters from "@/components/nodes/node-filters";
 import NodeList from "@/components/nodes/node-list";
+import { TargetDistributionChart } from "@/components/nodes/target-distribution-chart";
 import { Member, NodeState, ALL_VALUES_TARGET } from "../types/cluster";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useCluster } from "@/hooks/use-cluster";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 const NodesPage = () => {
   const { cluster, error, fetchCluster, isLoading } = useCluster();
@@ -75,29 +78,38 @@ const NodesPage = () => {
 
   return (
     <div className="p-6">
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Nodes</h2>
+          <div className="grid grid-cols-[1fr_auto] gap-8">
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-3xl font-semibold tracking-tight">Nodes</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  View and manage Loki nodes in your cluster with their current
+                  status and configuration
+                </p>
+              </div>
+              <NodeFilters
+                nameFilter={nameFilter}
+                targetFilter={targetFilter}
+                selectedStates={selectedStates}
+                onNameFilterChange={setNameFilter}
+                onTargetFilterChange={setTargetFilter}
+                onStatesChange={setSelectedStates}
+                onRefresh={fetchCluster}
+                availableTargets={getAvailableTargets()}
+                isLoading={isLoading}
+              />
+            </div>
+            <div className="flex items-center">
+              <div className="w-[250px]">
+                <TargetDistributionChart nodes={filterNodes()} />
+              </div>
+            </div>
           </div>
-          <p className="text-muted-foreground">
-            This page shows nodes and their current status
-          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <NodeFilters
-              nameFilter={nameFilter}
-              targetFilter={targetFilter}
-              selectedStates={selectedStates}
-              onNameFilterChange={setNameFilter}
-              onTargetFilterChange={setTargetFilter}
-              onStatesChange={setSelectedStates}
-              onRefresh={fetchCluster}
-              availableTargets={getAvailableTargets()}
-              isLoading={isLoading}
-            />
-
             {error && (
               <div className="bg-red-50 dark:bg-red-900 border-l-4 border-red-400 p-4">
                 <div className="flex">
@@ -132,12 +144,14 @@ const NodesPage = () => {
               </div>
             )}
 
-            <NodeList
-              nodes={filterNodes()}
-              sortField={sortField}
-              sortDirection={sortDirection}
-              onSort={handleSort}
-            />
+            {!isLoading && !error && (
+              <NodeList
+                nodes={filterNodes()}
+                sortField={sortField}
+                sortDirection={sortDirection}
+                onSort={handleSort}
+              />
+            )}
           </div>
         </CardContent>
       </Card>
