@@ -203,14 +203,14 @@ func New(
 	usageTracker push.UsageTracker,
 	logger log.Logger,
 ) (*Distributor, error) {
-	factory := cfg.factory
-	if factory == nil {
-		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+	ingesterClientFactory := cfg.factory
+	if ingesterClientFactory == nil {
+		ingesterClientFactory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 			return ingester_client.New(clientCfg, addr)
 		})
 	}
 
-	internalFactory := func(addr string) (ring_client.PoolClient, error) {
+	internalIngesterClientFactory := func(addr string) (ring_client.PoolClient, error) {
 		internalCfg := clientCfg
 		internalCfg.Internal = true
 		return ingester_client.New(internalCfg, addr)
@@ -257,7 +257,7 @@ func New(
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		ingesterClients:       clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, logger, metricsNamespace),
+		ingesterClients:       clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, ingesterClientFactory, logger, metricsNamespace),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
@@ -349,7 +349,7 @@ func New(
 			"rate-store",
 			clientCfg.PoolConfig,
 			ingestersRing,
-			ring_client.PoolAddrFunc(internalFactory),
+			ring_client.PoolAddrFunc(internalIngesterClientFactory),
 			logger,
 			metricsNamespace,
 		),
