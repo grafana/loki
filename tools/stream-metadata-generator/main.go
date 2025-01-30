@@ -222,8 +222,6 @@ func (s *generator) running(ctx context.Context) error {
 		go func(tenantID string, streams []distributor.KeyedStream) {
 			defer s.wg.Done()
 
-			s.metrics.activeStreamsTotal.WithLabelValues(tenantID).Inc()
-
 			// Create a ticker for rate limiting based on QPSPerTenant
 			ticker := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
 			defer ticker.Stop()
@@ -236,8 +234,9 @@ func (s *generator) running(ctx context.Context) error {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					if streamIdx >= len(streams) {
-						// Reset index to start over when we've gone through all streams
+					// Check if we need to reset the stream index
+					needsReset := streamIdx >= len(streams)
+					if needsReset {
 						streamIdx = 0
 					}
 
@@ -246,6 +245,12 @@ func (s *generator) running(ctx context.Context) error {
 					if err != nil {
 						errCh <- errors.Wrapf(err, "failed to send stream for tenant %s", tenantID)
 						return
+					}
+
+					// Only increment the counter if we're not resetting the index
+					// This avoids double-counting streams when we wrap around
+					if !needsReset {
+						s.metrics.activeStreamsTotal.WithLabelValues(tenantID).Inc()
 					}
 
 					streamIdx++
