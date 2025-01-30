@@ -148,22 +148,13 @@ func (b *pageBuilder) updateMinMax(value Value) {
 		return
 	}
 
-	// We want our statistics to track the minimum and maximum non-NULL values
-	// here, so we initialize minValue/maxValue to the first non-NULL value we
-	// see (using b.values instead of b.rows).
-	//
-	// If we tracked NULL values, then minValue would always be NULL, since NULL
-	// sorts first based on [CompareValues].
-	if b.values == 0 {
-		b.minValue = value
-		b.maxValue = value
-		return
-	}
-
-	if CompareValues(value, b.minValue) < 0 {
+	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
+	// This allows us to only avoid comparing against NULL values, which would lead to
+	// NULL always being the min.
+	if b.values == 0 || CompareValues(value, b.minValue) < 0 {
 		b.minValue = value
 	}
-	if CompareValues(value, b.maxValue) > 0 {
+	if b.values == 0 || CompareValues(value, b.maxValue) > 0 {
 		b.maxValue = value
 	}
 }

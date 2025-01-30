@@ -202,15 +202,10 @@ func (cb *ColumnBuilder) buildStats() *datasetmd.Statistics {
 			panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to unmarshal max value: %s", err))
 		}
 
-		if i == 0 {
-			minValue, maxValue = pageMin, pageMax
-			continue
-		}
-
-		if CompareValues(pageMin, minValue) < 0 {
+		if i == 0 || CompareValues(pageMin, minValue) < 0 {
 			minValue = pageMin
 		}
-		if CompareValues(pageMax, maxValue) > 0 {
+		if i == 0 || CompareValues(pageMax, maxValue) > 0 {
 			maxValue = pageMax
 		}
 	}
