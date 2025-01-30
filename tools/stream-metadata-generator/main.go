@@ -226,18 +226,18 @@ func (s *generator) running(ctx context.Context) error {
 			ticker := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
 			defer ticker.Stop()
 
-			// Keep track of current stream index
+			// Keep track of current stream index and whether we've completed first pass
 			streamIdx := 0
+			firstPassComplete := false
 
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					// Check if we need to reset the stream index
-					needsReset := streamIdx >= len(streams)
-					if needsReset {
+					if streamIdx >= len(streams) {
 						streamIdx = 0
+						firstPassComplete = true
 					}
 
 					// Send single stream to Kafka
@@ -247,9 +247,8 @@ func (s *generator) running(ctx context.Context) error {
 						return
 					}
 
-					// Only increment the counter if we're not resetting the index
-					// This avoids double-counting streams when we wrap around
-					if !needsReset {
+					// Only increment during the first pass
+					if !firstPassComplete {
 						s.metrics.activeStreamsTotal.WithLabelValues(tenantID).Inc()
 					}
 
