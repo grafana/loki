@@ -2,6 +2,15 @@ import * as React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { getBasename } from "../util";
 import { VersionDisplay } from "@/components/version-display";
+import { useLocation } from "react-router-dom";
+import {
+  ChevronDown,
+  CircleDot,
+  Database,
+  GaugeCircle,
+  LayoutDashboard,
+  Users,
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -16,13 +25,14 @@ import {
   SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
 
-// This is sample data.
 const data = {
   navMain: [
     {
       title: "Cluster",
       url: "/nodes",
+      icon: <LayoutDashboard className="h-4 w-4" />,
       items: [
         {
           title: "Nodes",
@@ -37,10 +47,7 @@ const data = {
     {
       title: "Rings",
       url: "/rings",
-      // loop through static components supporting ring pages.
-      // reuse the list for fetching ring details.
-      // TODO: add ring details page.
-      // TODO: only shows rings pages that are available in the cluster.
+      icon: <CircleDot className="h-4 w-4" />,
       items: [
         {
           title: "Ingester",
@@ -53,7 +60,6 @@ const data = {
         {
           title: "Distributor",
           url: "/rings/distributor",
-          isActive: true,
         },
         {
           title: "Pattern Ingester",
@@ -80,6 +86,7 @@ const data = {
     {
       title: "Storage",
       url: "/storage",
+      icon: <Database className="h-4 w-4" />,
       items: [
         {
           title: "Object Storage",
@@ -94,6 +101,7 @@ const data = {
     {
       title: "Tenants",
       url: "/tenants",
+      icon: <Users className="h-4 w-4" />,
       items: [
         {
           title: "Limits",
@@ -108,6 +116,7 @@ const data = {
     {
       title: "Rules",
       url: "/rules",
+      icon: <GaugeCircle className="h-4 w-4" />,
       items: [],
     },
   ],
@@ -115,21 +124,50 @@ const data = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const basename = getBasename();
+  const location = useLocation();
+  const currentPath = location.pathname.replace(basename, "/");
+  const [openSections, setOpenSections] = React.useState<
+    Record<string, boolean>
+  >(
+    data.navMain.reduce(
+      (acc, item) => ({
+        ...acc,
+        [item.title]: true,
+      }),
+      {}
+    )
+  );
+
+  const isActive = (url: string) => {
+    if (url === "/") {
+      return currentPath === "/";
+    }
+    return currentPath.startsWith(url);
+  };
+
+  const toggleSection = (title: string) => {
+    setOpenSections((prev) => ({
+      ...prev,
+      [title]: !prev[title],
+    }));
+  };
 
   return (
     <Sidebar {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="py-4">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <div className="flex items-center gap-4 px-6 py-2">
+              <div className="flex items-center gap-3 px-6 py-4">
                 <img
                   src="https://grafana.com/media/docs/loki/logo-grafana-loki.png"
                   alt="Loki Logo"
-                  className="h-10 w-10"
+                  className="h-7 w-7"
                 />
-                <div className="flex flex-col justify-center gap-0.5">
-                  <span className="text-base font-semibold">Grafana Loki</span>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold leading-none">
+                    Grafana Loki
+                  </span>
                   <VersionDisplay />
                 </div>
               </div>
@@ -142,42 +180,54 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroup>
             <SidebarMenu>
               {data.navMain.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <a
-                      href={
-                        item.url === "#"
-                          ? "#"
-                          : `${basename}${item.url.slice(1)}`
-                      }
-                      className="font-medium"
+                <React.Fragment key={item.title}>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive(item.url)}
+                      onClick={() => toggleSection(item.title)}
                     >
-                      {item.title}
-                    </a>
-                  </SidebarMenuButton>
-                  {item.items?.length ? (
-                    <SidebarMenuSub>
-                      {item.items.map((item) => (
-                        <SidebarMenuSubItem key={item.title}>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={item.isActive}
-                          >
-                            <a
-                              href={
-                                item.url === "#"
-                                  ? "#"
-                                  : `${basename}${item.url.slice(1)}`
-                              }
+                      <div className="flex items-center justify-between font-medium">
+                        <div className="flex items-center gap-2">
+                          {item.icon}
+                          {item.title}
+                        </div>
+                        {item.items?.length > 0 && (
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 transition-transform duration-200",
+                              openSections[item.title]
+                                ? "rotate-0"
+                                : "-rotate-90"
+                            )}
+                          />
+                        )}
+                      </div>
+                    </SidebarMenuButton>
+                    {item.items?.length > 0 && openSections[item.title] && (
+                      <SidebarMenuSub>
+                        {item.items.map((subItem) => (
+                          <SidebarMenuSubItem key={subItem.title}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={isActive(subItem.url)}
                             >
-                              {item.title}
-                            </a>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  ) : null}
-                </SidebarMenuItem>
+                              <a
+                                href={
+                                  subItem.url === "#"
+                                    ? "#"
+                                    : `${basename}${subItem.url.slice(1)}`
+                                }
+                              >
+                                {subItem.title}
+                              </a>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    )}
+                  </SidebarMenuItem>
+                </React.Fragment>
               ))}
             </SidebarMenu>
           </SidebarGroup>

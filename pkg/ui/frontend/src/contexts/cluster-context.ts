@@ -1,6 +1,12 @@
 import { createContext } from "react";
 import { ClusterContextValue } from "./types";
 
-export const ClusterContext = createContext<ClusterContextValue | undefined>(
-  undefined
-);
+const initialContextValue: ClusterContextValue = {
+  cluster: null,
+  error: null,
+  isLoading: true,
+  refresh: () => Promise.resolve(),
+};
+
+export const ClusterContext =
+  createContext<ClusterContextValue>(initialContextValue);

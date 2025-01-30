@@ -6,3 +6,13 @@ export interface ClusterContextValue {
   isLoading: boolean;
   refresh: () => Promise<void>;
 }
+
+export interface BreadcrumbItem {
+  title: string;
+  path: string;
+}
+
+export interface BreadcrumbContextType {
+  items: BreadcrumbItem[];
+  setBreadcrumb: (items: BreadcrumbItem[]) => void;
+}

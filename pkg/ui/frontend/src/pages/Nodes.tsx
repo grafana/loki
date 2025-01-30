@@ -5,7 +5,7 @@ import { TargetDistributionChart } from "@/components/nodes/target-distribution-
 import { Member, NodeState, ALL_VALUES_TARGET } from "../types/cluster";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { useCluster } from "@/contexts/cluster-provider";
+import { useCluster } from "@/contexts/use-cluster";
 
 const NodesPage = () => {
   const { cluster, error, refresh, isLoading } = useCluster();

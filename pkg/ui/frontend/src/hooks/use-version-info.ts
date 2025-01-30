@@ -1,4 +1,4 @@
-import { useCluster } from "@/contexts/cluster-provider";
+import { useCluster } from "@/contexts/use-cluster";
 import { useEffect, useState } from "react";
 
 interface VersionInfo {

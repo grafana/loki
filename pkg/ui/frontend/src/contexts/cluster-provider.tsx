@@ -1,13 +1,5 @@
-import {
-  useContext,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  ReactNode,
-} from "react";
+import { useState, useCallback, useRef, useEffect, ReactNode } from "react";
 import { Cluster } from "@/types/cluster";
-import { ClusterContextValue } from "./types";
 import { ClusterContext } from "./cluster-context";
 
 interface ClusterProviderProps {
@@ -21,7 +13,6 @@ export function ClusterProvider({ children }: ClusterProviderProps) {
   const isFetchingRef = useRef(false);
 
   const fetchCluster = useCallback(async () => {
-    // If already fetching, don't start another fetch
     if (isFetchingRef.current) {
       return;
     }
@@ -51,7 +42,6 @@ export function ClusterProvider({ children }: ClusterProviderProps) {
     await fetchCluster();
   }, [fetchCluster]);
 
-  // Fetch only once when the provider mounts
   useEffect(() => {
     fetchCluster();
   }, [fetchCluster]);
@@ -61,12 +51,4 @@ export function ClusterProvider({ children }: ClusterProviderProps) {
       {children}
     </ClusterContext.Provider>
   );
-}
-
-export function useCluster(): ClusterContextValue {
-  const context = useContext(ClusterContext);
-  if (context === undefined) {
-    throw new Error("useCluster must be used within a ClusterProvider");
-  }
-  return context;
 }
