@@ -86,10 +86,11 @@ type Limits struct {
 	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
 
 	// Metadata field extraction
-	DiscoverGenericFields FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
-	DiscoverServiceName   []string            `yaml:"discover_service_name" json:"discover_service_name"`
-	DiscoverLogLevels     bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
-	LogLevelFields        []string            `yaml:"log_level_fields" json:"log_level_fields"`
+	DiscoverGenericFields    FieldDetectorConfig `yaml:"discover_generic_fields" json:"discover_generic_fields" doc:"description=Experimental: Detect fields from stream labels, structured metadata, or json/logfmt formatted log line and put them into structured metadata of the log entry."`
+	DiscoverServiceName      []string            `yaml:"discover_service_name" json:"discover_service_name"`
+	DiscoverLogLevels        bool                `yaml:"discover_log_levels" json:"discover_log_levels"`
+	LogLevelFields           []string            `yaml:"log_level_fields" json:"log_level_fields"`
+	LogLevelFromJSONMaxDepth int                 `yaml:"log_level_from_json_max_depth" json:"log_level_from_json_max_depth"`
 
 	// Ingester enforced limits.
 	UseOwnedStreamCount     bool             `yaml:"use_owned_stream_count" json:"use_owned_stream_count"`
@@ -186,7 +187,7 @@ type Limits struct {
 
 	// Global and per tenant retention
 	RetentionPeriod model.Duration    `yaml:"retention_period" json:"retention_period"`
-	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty" doc:"description=Per-stream retention to apply, if the retention is enable on the compactor side.\nExample:\n retention_stream:\n - selector: '{namespace=\"dev\"}'\n priority: 1\n period: 24h\n- selector: '{container=\"nginx\"}'\n priority: 1\n period: 744h\nSelector is a Prometheus labels matchers that will apply the 'period' retention only if the stream is matching. In case multiple stream are matching, the highest priority will be picked. If no rule is matched the 'retention_period' is used."`
+	StreamRetention []StreamRetention `yaml:"retention_stream,omitempty" json:"retention_stream,omitempty" doc:"description=Per-stream retention to apply, if the retention is enabled on the compactor side.\nExample:\n retention_stream:\n - selector: '{namespace=\"dev\"}'\n priority: 1\n period: 24h\n- selector: '{container=\"nginx\"}'\n priority: 1\n period: 744h\nSelector is a Prometheus labels matchers that will apply the 'period' retention only if the stream is matching. In case multiple streams are matching, the highest priority will be picked. If no rule is matched the 'retention_period' is used."`
 
 	// Config for overrides, convenient if it goes here.
 	PerTenantOverrideConfig string         `yaml:"per_tenant_override_config" json:"per_tenant_override_config"`
@@ -297,6 +298,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
 	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl"}
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
+	f.IntVar(&l.LogLevelFromJSONMaxDepth, "validation.log-level-from-json-max-depth", 2, "Maximum depth to search for log level fields in JSON logs. A value of 0 or less means unlimited depth. Default is 2 which searches the first 2 levels of the JSON object.")
 
 	_ = l.RejectOldSamplesMaxAge.Set("7d")
 	f.Var(&l.RejectOldSamplesMaxAge, "validation.reject-old-samples.max-age", "Maximum accepted sample age before rejecting.")
@@ -1014,6 +1016,10 @@ func (o *Overrides) DiscoverLogLevels(userID string) bool {
 
 func (o *Overrides) LogLevelFields(userID string) []string {
 	return o.getOverridesForUser(userID).LogLevelFields
+}
+
+func (o *Overrides) LogLevelFromJSONMaxDepth(userID string) int {
+	return o.getOverridesForUser(userID).LogLevelFromJSONMaxDepth
 }
 
 // VolumeEnabled returns whether volume endpoints are enabled for a user.

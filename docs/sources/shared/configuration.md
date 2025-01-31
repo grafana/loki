@@ -895,6 +895,12 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+dataobj_explorer:
+  # Prefix to use when exploring the bucket. If set, only objects under this
+  # prefix will be visible.
+  # CLI flag: -dataobj-explorer.storage-bucket-prefix
+  [storage_bucket_prefix: <string> | default = "dataobj/"]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
@@ -2362,6 +2368,28 @@ otlp_config:
 # Enable writes to Ingesters during Push requests. Defaults to true.
 # CLI flag: -distributor.ingester-writes-enabled
 [ingester_writes_enabled: <boolean> | default = true]
+
+tenant_topic:
+  # Enable the tenant topic tee, which writes logs to Kafka topics based on
+  # tenant IDs instead of using multitenant topics/partitions.
+  # CLI flag: -distributor.tenant-topic-tee.enabled
+  [enabled: <boolean> | default = false]
+
+  # Prefix to prepend to tenant IDs to form the final Kafka topic name
+  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
+  [topic_prefix: <string> | default = "loki.tenant"]
+
+  # Maximum number of bytes that can be buffered before producing to Kafka
+  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
+  [max_buffered_bytes: <int> | default = 100MiB]
+
+  # Maximum size of a single Kafka record in bytes
+  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
+  [max_record_size_bytes: <int> | default = 15MiB249KiB]
+
+  # Topic strategy to use. Valid values are 'simple' or 'automatic'
+  # CLI flag: -distributor.tenant-topic-tee.strategy
+  [strategy: <string> | default = "simple"]
 ```
 
 ### etcd
@@ -3404,6 +3432,12 @@ discover_generic_fields:
 # CLI flag: -validation.log-level-fields
 [log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
 
+# Maximum depth to search for log level fields in JSON logs. A value of 0 or
+# less means unlimited depth. Default is 2 which searches the first 2 levels of
+# the JSON object.
+# CLI flag: -validation.log-level-from-json-max-depth
+[log_level_from_json_max_depth: <int> | default = 2]
+
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.
 # CLI flag: -ingester.use-owned-stream-count
@@ -3739,7 +3773,7 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -store.retention
 [retention_period: <duration> | default = 0s]
 
-# Per-stream retention to apply, if the retention is enable on the compactor
+# Per-stream retention to apply, if the retention is enabled on the compactor
 # side.
 # Example:
 #  retention_stream:
@@ -3750,7 +3784,7 @@ ruler_remote_write_sigv4_config:
 #  priority: 1
 #  period: 744h
 # Selector is a Prometheus labels matchers that will apply the 'period'
-# retention only if the stream is matching. In case multiple stream are
+# retention only if the stream is matching. In case multiple streams are
 # matching, the highest priority will be picked. If no rule is matched the
 # 'retention_period' is used.
 [retention_stream: <list of StreamRetentions>]
