@@ -93,8 +93,10 @@
     s3_bucket_name: error 'must specify s3_bucket_name',
     s3_path_style: false,
 
+    // Azure variables
     azure_container_name: error 'must specify azure_container_name',
     azure_account_name: error 'must specify azure_account_name',
+    azure_account_key: '',  // secret access key, recommend setting this using environment variable
 
     // DNS Resolver
     dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
@@ -115,7 +117,11 @@
       azure: {
         container_name: $._config.azure_container_name,
         account_name: $._config.azure_account_name,
-      },
+      } + (
+        if $._config.azure_account_key != '' then {
+          account_key: $._config.azure_account_key,
+        } else {}
+      ),
     },
 
     // December 11 is when we first launched to the public.
