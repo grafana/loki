@@ -46,7 +46,7 @@ func TestRecordingRuleTenantLabels(t *testing.T) {
 								{
 									Record: "record",
 									Labels: map[string]string{
-										opaDefaultLabelMatcher:    "test-ns",
+										opaDefaultLabelMatchers:   "test-ns",
 										ocpMonitoringGroupByLabel: "test-ns",
 									},
 								},

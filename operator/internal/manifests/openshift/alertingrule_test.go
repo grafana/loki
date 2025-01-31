@@ -46,7 +46,7 @@ func TestAlertingRuleTenantLabels(t *testing.T) {
 								{
 									Alert: "alert",
 									Labels: map[string]string{
-										opaDefaultLabelMatcher:    "test-ns",
+										opaDefaultLabelMatchers:   "test-ns",
 										ocpMonitoringGroupByLabel: "test-ns",
 									},
 								},

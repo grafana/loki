@@ -6,7 +6,7 @@ func RecordingRuleTenantLabels(r *lokiv1.RecordingRule) {
 	switch r.Spec.TenantID {
 	case tenantApplication:
 		appendRecordingRuleLabels(r, map[string]string{
-			opaDefaultLabelMatcher:    r.Namespace,
+			opaDefaultLabelMatchers:   r.Namespace,
 			ocpMonitoringGroupByLabel: r.Namespace,
 		})
 	case tenantInfrastructure, tenantAudit, tenantNetwork:
