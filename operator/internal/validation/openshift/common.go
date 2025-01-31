@@ -19,6 +19,7 @@ const (
 	descriptionAnnotationName = "description"
 
 	namespaceLabelName        = "kubernetes_namespace_name"
+	namespaceOTLPLabelName    = "k8s_namespace_name"
 	namespaceOpenshiftLogging = "openshift-logging"
 
 	tenantAudit          = "audit"
@@ -73,7 +74,7 @@ func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 
 func validateIncludesNamespace(namespace string, matchers []*labels.Matcher) bool {
 	for _, m := range matchers {
-		if m.Name == namespaceLabelName && m.Type == labels.MatchEqual && m.Value == namespace {
+		if (m.Name == namespaceLabelName || m.Name == namespaceOTLPLabelName) && m.Type == labels.MatchEqual && m.Value == namespace {
 			return true
 		}
 	}
