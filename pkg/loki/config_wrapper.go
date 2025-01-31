@@ -278,6 +278,22 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IngestLimits.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 	}
 
+	// IngestLimitsFrontend
+	if mergeWithExisting || reflect.DeepEqual(r.IngestLimitsFrontend.LifecyclerConfig.RingConfig, defaults.IngestLimitsFrontend.LifecyclerConfig.RingConfig) {
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.IngestLimitsFrontend.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.IngestLimitsFrontend.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.IngestLimitsFrontend.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.IngestLimitsFrontend.LifecyclerConfig.ID = rc.InstanceID
+		r.IngestLimitsFrontend.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.IngestLimitsFrontend.LifecyclerConfig.Port = rc.InstancePort
+		r.IngestLimitsFrontend.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.IngestLimitsFrontend.LifecyclerConfig.Zone = rc.InstanceZone
+		r.IngestLimitsFrontend.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.IngestLimitsFrontend.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+	}
+
 	// Distributor
 	if mergeWithExisting || reflect.DeepEqual(r.Distributor.DistributorRing, defaults.Distributor.DistributorRing) {
 		r.Distributor.DistributorRing.HeartbeatTimeout = rc.HeartbeatTimeout
