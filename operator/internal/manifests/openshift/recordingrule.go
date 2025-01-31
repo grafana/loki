@@ -9,7 +9,8 @@ import (
 func RecordingRuleTenantLabels(r *lokiv1.RecordingRule) {
 	switch r.Spec.TenantID {
 	case tenantApplication:
-		labels := map[string]string{
+		appendRecordingRuleLabels(r, map[string]string{
+			opaDefaultLabelMatchers:   r.Namespace,
 			ocpMonitoringGroupByLabel: r.Namespace,
 		}
 		labelMatchers := strings.Split(opaDefaultLabelMatchers, ",")
