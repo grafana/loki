@@ -130,13 +130,12 @@
 
     object_store:
       (
-        if std.count($._config.enabledBackends, 'gcs') > 0 then {
+        if $._config.storage_backend == 'gcs' then {
           gcs: $._config.client_configs.gcs,
-        }
-        else {}
+        } else {}
       ) +
       (
-        if std.count($._config.enabledBackends, 's3') > 0 then {
+        if $._config.storage_backend == 's3' then {
           s3: {
             bucket_name: $._config.s3_bucket_name,
             endpoint: $._config.s3_address,
@@ -155,7 +154,7 @@
         } else {}
       ) +
       (
-        if std.count($._config.enabledBackends, 'azure') > 0 then {
+        if $._config.storage_backend == 'azure' then {
           azure: $._config.client_configs.azure,
         } else {}
       ),
