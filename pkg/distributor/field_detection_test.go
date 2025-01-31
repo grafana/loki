@@ -406,8 +406,14 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 }
 
 func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
-	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
-
+	tests := map[string]string{
+		"level field at start":      `{"level": "error", "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"level field in middle":     `{"field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "level": "error", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"level field at end":        `{"field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9", "level": "error"}`,
+		"no level field":            `{"field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"nested level field":        `{"metadata": {"level": "error"}, "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"deeply nested level field": `{"a": {"b": {"c": {"level": "error"}}}, "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+	}
 	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
@@ -415,9 +421,13 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
 		})
 
-	for i := 0; i < b.N; i++ {
-		level := ld.extractLogLevelFromLogLine(logLine)
-		require.Equal(b, constants.LogLevelError, level)
+	for name, logLine := range tests {
+		b.Run(name, func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = ld.extractLogLevelFromLogLine(logLine)
+			}
+		})
 	}
 }
 
@@ -602,6 +612,101 @@ func Test_DetectGenericFields(t *testing.T) {
 				}
 			}
 			require.ElementsMatch(t, tc.expected, extracted)
+		})
+	}
+}
+
+func TestGetLevelUsingJsonParser(t *testing.T) {
+	tests := []struct {
+		name               string
+		json               string
+		allowedLevelFields map[string]struct{}
+		maxDepth           int
+		want               string
+	}{
+		{
+			name:               "simple top level field",
+			json:               `{"level": "error"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "error",
+		},
+		{
+			name:               "nested field one level deep",
+			json:               `{"a": {"level": "info"}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "info",
+		},
+		{
+			name:               "deeply nested field",
+			json:               `{"a": {"b": {"c": {"level": "warn"}}}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "warn",
+		},
+		{
+			name:               "multiple allowed fields picks first",
+			json:               `{"severity": "error", "level": "info"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}, "severity": {}},
+			want:               "error",
+		},
+		{
+			name:               "multiple nested fields picks first",
+			json:               `{"a": {"level": "error"}, "b": {"level": "info"}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "error",
+		},
+		{
+			name:               "array values are ignored",
+			json:               `{"arr": [{"level": "debug"}], "level": "info"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "info",
+		},
+		{
+			name:               "non-string values are ignored",
+			json:               `{"level": 123, "severity": "warn"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}, "severity": {}},
+			want:               "warn",
+		},
+		{
+			name:               "empty when no match",
+			json:               `{"foo": "bar"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "",
+		},
+		{
+			name:               "empty for invalid json",
+			json:               `{"foo": "bar"`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "",
+		},
+		{
+			name:               "custom field names",
+			json:               `{"custom_level": "error", "log_severity": "warn"}`,
+			allowedLevelFields: map[string]struct{}{"custom_level": {}, "log_severity": {}},
+			want:               "error",
+		},
+		// Adding depth-specific test cases
+		{
+			name:               "depth limited - only top level",
+			json:               `{"a": {"level": "debug"}, "level": "info"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			maxDepth:           1,
+			want:               "info",
+		},
+		{
+			name:               "depth limited - no match",
+			json:               `{"a": {"level": "debug"}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			maxDepth:           1,
+			want:               "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getLevelUsingJSONParser([]byte(tt.json), tt.allowedLevelFields, tt.maxDepth)
+			if string(got) != tt.want {
+				t.Errorf("getLevelUsingJsonParser() = %v, want %v", string(got), tt.want)
+			}
 		})
 	}
 }
