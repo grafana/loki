@@ -47,12 +47,10 @@ export function VersionInformation({
               <Label>Version</Label>
               <p className="text-sm">{build.version}</p>
             </div>
-            {build.branch && (
-              <div className="space-y-2">
-                <Label>Branch</Label>
-                <p className="text-sm">{build.branch}</p>
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label>Branch</Label>
+              <p className="text-sm">{build.branch}</p>
+            </div>
             <div className="space-y-2">
               <Label>Go Version</Label>
               <p className="text-sm">{build.goVersion}</p>

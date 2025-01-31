@@ -2,6 +2,7 @@ import {
   NodeBreadcrumb,
   RingBreadcrumb,
 } from "@/components/shared/route-breadcrumbs";
+import { NotFound } from "@/components/shared/errors/not-found";
 
 // Routes configuration for breadcrumbs
 export const routes = [
@@ -17,4 +18,6 @@ export const routes = [
   { path: "/tenants/limits", breadcrumb: "Limits" },
   { path: "/tenants/labels", breadcrumb: "Labels" },
   { path: "/rules", breadcrumb: "Rules" },
+  { path: "/404", breadcrumb: "404", element: <NotFound /> },
+  { path: "*", breadcrumb: "404", element: <NotFound /> },
 ];

@@ -5,6 +5,7 @@ import NodeDetails from "./pages/node-details";
 import ComingSoon from "./pages/coming-soon";
 import { ThemeProvider } from "./features/theme";
 import { ClusterProvider } from "./contexts/cluster-provider";
+import { NotFound } from "./components/shared/errors/not-found";
 
 const App = () => {
   return (
@@ -21,6 +22,7 @@ const App = () => {
             <Route path="/storage/*" element={<ComingSoon />} />
             <Route path="/tenants/*" element={<ComingSoon />} />
             <Route path="/rules" element={<ComingSoon />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </AppLayout>
       </ClusterProvider>

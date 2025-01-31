@@ -59,7 +59,14 @@ export function NodeStatusIndicator({
 
   return (
     <div className={cn("flex items-center gap-2", className)}>
-      <span className="text-sm text-muted-foreground">{status.message}</span>
+      <span
+        className={cn(
+          "text-sm",
+          status.isReady ? "text-muted-foreground" : "text-red-500"
+        )}
+      >
+        {status.message}
+      </span>
       <div
         className={cn(
           "h-2.5 w-2.5 rounded-full transition-opacity duration-150",
