@@ -106,70 +106,54 @@
     dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
 
     object_store_config:
-      (
-        if $._config.storage_backend == 'gcs' then {
-          gcs: {
-            bucket_name: $._config.gcs_bucket_name,
-          },
-        } else {}
-      ) +
-      (
-        if $._config.storage_backend == 's3' then {
-          aws: {
-            s3forcepathstyle: $._config.s3_path_style,
-          } + (
-            if $._config.s3_access_key != '' then {
-              s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
-            } else {
-              s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
-            }
-          ),
-        } else {}
-      ) +
-      (
-        if $._config.storage_backend == 'azure' then {
-          azure: {
-            container_name: $._config.azure_container_name,
-            account_name: $._config.azure_account_name,
-          } + (
-            if $._config.azure_account_key != '' then {
-              account_key: $._config.azure_account_key,
-            } else {}
-          ),
-        } else {}
-      ),
+      if $._config.storage_backend == 'gcs' then {
+        gcs: {
+          bucket_name: $._config.gcs_bucket_name,
+        },
+      } else if $._config.storage_backend == 's3' then {
+        aws: {
+          s3forcepathstyle: $._config.s3_path_style,
+        } + (
+          if $._config.s3_access_key != '' then {
+            s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+          } else {
+            s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+          }
+        ),
+      } else if $._config.storage_backend == 'azure' then {
+        azure: {
+          container_name: $._config.azure_container_name,
+          account_name: $._config.azure_account_name,
+        } + (
+          if $._config.azure_account_key != '' then {
+            account_key: $._config.azure_account_key,
+          } else {}
+        ),
+      } else {},
 
     // thanos object store config
     thanos_object_store_config:
-      (
-        if $._config.storage_backend == 'gcs' then {
-          gcs: $._config.object_store_config.gcs,
-        } else {}
-      ) +
-      (
-        if $._config.storage_backend == 's3' then {
-          s3: {
-            bucket_name: $._config.s3_bucket_name,
-            endpoint: $._config.s3_address,
-          } + (
-            if $._config.s3_access_key != '' && $._config.s3_secret_access_key != '' then {
-              access_key_id: $._config.s3_access_key,
-              secret_access_key: $._config.s3_secret_access_key,
-            }
-            else {}
-          ) + (
-            if $._config.s3_bucket_region != '' then {
-              region: $._config.s3_bucket_region,
-            }
-            else {}
-          ),
-        } else {}
-      ) +
-      (
-        if $._config.storage_backend == 'azure' then {
-          azure: $._config.object_store_config.azure,
-        } else {}
-      ),
+      if $._config.storage_backend == 'gcs' then {
+        gcs: $._config.object_store_config.gcs,
+      } else if $._config.storage_backend == 's3' then {
+        s3: {
+          bucket_name: $._config.s3_bucket_name,
+          endpoint: $._config.s3_address,
+        } + (
+          if $._config.s3_access_key != '' && $._config.s3_secret_access_key != '' then {
+            access_key_id: $._config.s3_access_key,
+            secret_access_key: $._config.s3_secret_access_key,
+          }
+          else {}
+        ) + (
+          if $._config.s3_bucket_region != '' then {
+            region: $._config.s3_bucket_region,
+          }
+          else {}
+        ),
+      } else if $._config.storage_backend == 'azure' then {
+        azure: $._config.object_store_config.azure,
+      } else {},
 
     // December 11 is when we first launched to the public.
     // Assume we can ingest logs that are 5months old.
