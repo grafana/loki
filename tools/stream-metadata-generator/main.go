@@ -79,11 +79,21 @@ type config struct {
 	LogLevel       dskit_log.Level `yaml:"log_level,omitempty"`
 	HttpListenPort int             `yaml:"http_listen_port,omitempty"`
 
-	MemberlistKV        memberlist.KVConfig                `yaml:"memberlist,omitempty"`
-	Kafka               kafka.Config                       `yaml:"kafka,omitempty"`
-	PartitionRingConfig partitionring.Config               `yaml:"partition_ring,omitempty"`
-	LifecyclerConfig    ring.LifecyclerConfig              `yaml:"lifecycler,omitempty"`
-	ClientConfig        limitsfrontend.BackendClientConfig `yaml:"client_config,omitempty"`
+	// Memberlist config
+	MemberlistKV memberlist.KVConfig `yaml:"memberlist,omitempty"`
+
+	// Kafka & partition ring config
+	Kafka               kafka.Config         `yaml:"kafka,omitempty"`
+	PartitionRingConfig partitionring.Config `yaml:"partition_ring,omitempty"`
+
+	// Ingester ring config
+	IngesterLifecyclerConfig ring.LifecyclerConfig `yaml:"ingester_lifecycler,omitempty"`
+
+	// Ingest Limits ring config
+	IngestLimitsLifecyclerConfig ring.LifecyclerConfig `yaml:"ingest_limits_lifecycler,omitempty"`
+
+	// Ingest Limits client config
+	ClientConfig limitsfrontend.BackendClientConfig `yaml:"client_config,omitempty"`
 }
 
 type streamLabelsFlag []string
@@ -115,9 +125,10 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	c.LogLevel.RegisterFlags(f)
 	c.Kafka.RegisterFlags(f)
 	c.PartitionRingConfig.RegisterFlagsWithPrefix("", f)
-	c.LifecyclerConfig.RegisterFlagsWithPrefix("stream-metadata-generator.", f, logger)
+	c.IngesterLifecyclerConfig.RegisterFlagsWithPrefix("partition-ingester.ring.", f, logger)
+	c.IngestLimitsLifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.ring.", f, logger)
 	c.MemberlistKV.RegisterFlags(f)
-	c.ClientConfig.RegisterFlagsWithPrefix("stream-metadata-generator", f)
+	c.ClientConfig.RegisterFlagsWithPrefix("ingest-limits.client.", f)
 }
 
 type generator struct {
@@ -131,14 +142,15 @@ type generator struct {
 	streams map[string][]distributor.KeyedStream
 
 	// kafka
-	writer *client.Producer
-
-	// ring
-	memberlistKV         *memberlist.KVInitService
-	ring                 *ring.Ring
+	writer               *client.Producer
 	partitionRing        ring.PartitionRingReader
 	partitionRingWatcher *ring.PartitionRingWatcher
 	partitionRingKV      kv.Client
+
+	// ring
+	memberlistKV     *memberlist.KVInitService
+	ingesterRing     *ring.Ring
+	ingestLimitsRing *ring.Ring
 
 	// limits
 	limitsSrv limitsfrontend.IngestLimitsService
@@ -169,7 +181,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 		ring.GetPartitionRingCodec(),
 	}
 
-	cfg.MemberlistKV.AdvertiseAddr, err = netutil.GetFirstAddressOf(cfg.LifecyclerConfig.InfNames, logger, false)
+	cfg.MemberlistKV.AdvertiseAddr, err = netutil.GetFirstAddressOf(cfg.IngesterLifecyclerConfig.InfNames, logger, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get instance address: %w", err)
 	}
@@ -178,13 +190,20 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	provider := dns.NewProvider(logger, reg, dns.GolangResolverType)
 	s.memberlistKV = memberlist.NewKVInitService(&cfg.MemberlistKV, logger, provider, reg)
 
-	cfg.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
+	cfg.IngesterLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
+	cfg.IngestLimitsLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 	cfg.PartitionRingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 
 	// Init Ring
-	s.ring, err = ring.New(cfg.LifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, reg)
+	s.ingesterRing, err = ring.New(cfg.IngesterLifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating ring: %w", err)
+	}
+
+	ingestLimitsRingReg := prometheus.WrapRegistererWithPrefix("ingest_limits_ring_", reg)
+	s.ingestLimitsRing, err = ring.New(cfg.IngestLimitsLifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, ingestLimitsRingReg)
+	if err != nil {
+		return nil, fmt.Errorf("creating ingest limits ring: %w", err)
 	}
 
 	// Init KVStore client
@@ -196,7 +215,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 
 	// Init Partition Ring and Watcher
 	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, s.partitionRingKV, logger, reg)
-	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ring, cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout)
+	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ingesterRing, cfg.IngesterLifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Init limits service
 	limits := &limits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
@@ -204,13 +223,13 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 		return limitsfrontend.NewIngestLimitsBackendClient(s.cfg.ClientConfig, addr)
 	})
 
-	pool := limitsfrontend.NewIngestLimitsClientPool(ingesterRingName, s.cfg.ClientConfig.PoolConfig, s.ring, factory, logger)
-	s.limitsSrv = limitsfrontend.NewRingIngestLimitsService(s.ring, pool, limits, logger, reg)
+	pool := limitsfrontend.NewIngestLimitsClientPool(ingesterRingName, s.cfg.ClientConfig.PoolConfig, s.ingesterRing, factory, logger)
+	s.limitsSrv = limitsfrontend.NewRingIngestLimitsService(s.ingesterRing, pool, limits, logger, reg)
 
 	// Init services
 	srvs := []services.Service{
 		s.memberlistKV,
-		s.ring,
+		s.ingesterRing,
 		s.partitionRingWatcher,
 		pool,
 	}
@@ -457,7 +476,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 	mux.Handle("/memberlist", gen.memberlistKV)
-	mux.Handle("/ring", gen.ring)
+	mux.Handle("/ring", gen.ingesterRing)
+	mux.Handle("/ingest-limits-ring", gen.ingestLimitsRing)
 	mux.Handle("/partition-ring", ring.NewPartitionRingPageHandler(
 		gen.partitionRingWatcher,
 		ring.NewPartitionRingEditor(
