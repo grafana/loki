@@ -79,6 +79,9 @@
     ruler_enabled: false,
 
     distributor: {
+      // use_no_constraints is false by default allowing either TopologySpreadConstraints or pod antiAffinity to be configured.
+      // If no_schedule_constraints is set to true, neither of the pod constraints will be applied.
+      no_schedule_constraints: false,
       use_topology_spread: true,
       topology_spread_max_skew: 1,
     },

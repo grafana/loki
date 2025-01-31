@@ -3432,6 +3432,12 @@ discover_generic_fields:
 # CLI flag: -validation.log-level-fields
 [log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl]]
 
+# Maximum depth to search for log level fields in JSON logs. A value of 0 or
+# less means unlimited depth. Default is 2 which searches the first 2 levels of
+# the JSON object.
+# CLI flag: -validation.log-level-from-json-max-depth
+[log_level_from_json_max_depth: <int> | default = 2]
+
 # When true an ingester takes into account only the streams that it owns
 # according to the ring while applying the stream limit.
 # CLI flag: -ingester.use-owned-stream-count
