@@ -88,9 +88,9 @@ spec:
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.overridesExporter.extraEnvFrom }}
+          {{- if or .Values.global.extraEnvFrom .Values.overridesExporter.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
+            {{- coalesce .Values.overridesExporter.extraEnvFrom .values.global.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
