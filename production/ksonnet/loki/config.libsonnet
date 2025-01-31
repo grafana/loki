@@ -129,20 +129,36 @@
     },
 
     object_store:
-      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
-         gcs: {
-           bucket_name: $._config.gcs_bucket_name,
-         },
-       } else {}) +
-      (if std.count($._config.enabledBackends, 's3') > 0 then {
-         s3: {
-           bucket_name: $._config.s3_bucket_name,
-           endpoint: $._config.s3_address,
-           region: $._config.s3_bucket_region,
-           access_key_id: $._config.s3_access_key,
-           secret_access_key: $._config.s3_secret_access_key,
-         },
-       } else {}),
+      (
+        if std.count($._config.enabledBackends, 'gcs') > 0 then {
+          gcs: $._config.client_configs.gcs,
+        }
+        else {}
+      ) +
+      (
+        if std.count($._config.enabledBackends, 's3') > 0 then {
+          s3: {
+            bucket_name: $._config.s3_bucket_name,
+            endpoint: $._config.s3_address,
+          } + (
+            if $._config.s3_access_key != '' && $._config.s3_secret_access_key != '' then {
+              access_key_id: $._config.s3_access_key,
+              secret_access_key: $._config.s3_secret_access_key,
+            }
+            else {}
+          ) + (
+            if $._config.s3_bucket_region != '' then {
+              region: $._config.s3_bucket_region,
+            }
+            else {}
+          ),
+        } else {}
+      ) +
+      (
+        if std.count($._config.enabledBackends, 'azure') > 0 then {
+          azure: $._config.client_configs.azure,
+        } else {}
+      ),
 
     // December 11 is when we first launched to the public.
     // Assume we can ingest logs that are 5months old.
