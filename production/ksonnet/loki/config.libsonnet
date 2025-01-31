@@ -393,8 +393,11 @@
           },
         },
         storage+: {
-          type: $._config.storage_backend,
-        } + $._config.object_store_config,
+          type: 'gcs',
+          gcs+: {
+            bucket_name: '%(cluster)s-%(namespace)s-ruler' % $._config,
+          },
+        },
       } else {},
 
       ruler_storage: if $._config.ruler_enabled then {
