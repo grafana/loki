@@ -141,7 +141,7 @@ type Distributor struct {
 	tenantsRetention *retention.TenantsRetention
 	ingestersRing    ring.ReadRing
 	validator        *Validator
-	pool             *ring_client.Pool
+	ingesterClients  *ring_client.Pool
 	tee              Tee
 
 	rateStore    RateStore
@@ -203,14 +203,14 @@ func New(
 	usageTracker push.UsageTracker,
 	logger log.Logger,
 ) (*Distributor, error) {
-	factory := cfg.factory
-	if factory == nil {
-		factory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+	ingesterClientFactory := cfg.factory
+	if ingesterClientFactory == nil {
+		ingesterClientFactory = ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 			return ingester_client.New(clientCfg, addr)
 		})
 	}
 
-	internalFactory := func(addr string) (ring_client.PoolClient, error) {
+	internalIngesterClientFactory := func(addr string) (ring_client.PoolClient, error) {
 		internalCfg := clientCfg
 		internalCfg.Internal = true
 		return ingester_client.New(internalCfg, addr)
@@ -257,7 +257,7 @@ func New(
 		tenantsRetention:      retention.NewTenantsRetention(overrides),
 		ingestersRing:         ingestersRing,
 		validator:             validator,
-		pool:                  clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, factory, logger, metricsNamespace),
+		ingesterClients:       clientpool.NewPool("ingester", clientCfg.PoolConfig, ingestersRing, ingesterClientFactory, logger, metricsNamespace),
 		labelCache:            labelCache,
 		shardTracker:          NewShardTracker(),
 		healthyInstancesCount: atomic.NewUint32(0),
@@ -349,7 +349,7 @@ func New(
 			"rate-store",
 			clientCfg.PoolConfig,
 			ingestersRing,
-			ring_client.PoolAddrFunc(internalFactory),
+			ring_client.PoolAddrFunc(internalIngesterClientFactory),
 			logger,
 			metricsNamespace,
 		),
@@ -358,7 +358,7 @@ func New(
 	)
 	d.rateStore = rs
 
-	servs = append(servs, d.pool, rs)
+	servs = append(servs, d.ingesterClients, rs)
 	d.subservices, err = services.NewManager(servs...)
 	if err != nil {
 		return nil, errors.Wrap(err, "services manager")
@@ -1067,7 +1067,7 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.InstanceDesc, streams []*streamTracker) error {
-	c, err := d.pool.GetClientFor(ingester.Addr)
+	c, err := d.ingesterClients.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
 	}
