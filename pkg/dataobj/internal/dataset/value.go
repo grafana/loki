@@ -2,6 +2,7 @@ package dataset
 
 import (
 	"cmp"
+	"encoding/binary"
 	"fmt"
 	"unsafe"
 
@@ -123,6 +124,73 @@ func (v Value) String() string {
 		return unsafe.String(sp, v.num)
 	}
 	return v.Type().String()
+}
+
+// MarshalBinary encodes v into a binary representation. Non-NULL values encode
+// first with the type (encoded as uvarint), followed by an encoded value,
+// where:
+//
+//   - [datasetmd.VALUE_TYPE_INT64] encodes as a varint.
+//   - [datasetmd.VALUE_TYPE_UINT64] encodes as a uvarint.
+//   - [datasetmd.VALUE_TYPE_STRING] encodes the string as a sequence of bytes.
+//
+// NULL values encode as nil.
+func (v Value) MarshalBinary() (data []byte, err error) {
+	if v.IsNil() {
+		return nil, nil
+	}
+
+	buf := binary.AppendUvarint(nil, uint64(v.Type()))
+
+	switch v.Type() {
+	case datasetmd.VALUE_TYPE_INT64:
+		buf = binary.AppendVarint(buf, v.Int64())
+	case datasetmd.VALUE_TYPE_UINT64:
+		buf = binary.AppendUvarint(buf, v.Uint64())
+	case datasetmd.VALUE_TYPE_STRING:
+		str := v.String()
+		buf = append(buf, unsafe.Slice(unsafe.StringData(str), len(str))...)
+	default:
+		return nil, fmt.Errorf("dataset.Value.MarshalBinary: unsupported type %s", v.Type())
+	}
+
+	return buf, nil
+}
+
+// UnmarshalBinary decodes a Value from a binary representation. See
+// [Value.MarshalBinary] for the encoding format.
+func (v *Value) UnmarshalBinary(data []byte) error {
+	if len(data) == 0 {
+		*v = Value{} // NULL
+		return nil
+	}
+
+	typ, n := binary.Uvarint(data)
+	if n <= 0 {
+		return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid type")
+	}
+
+	switch vtyp := datasetmd.ValueType(typ); vtyp {
+	case datasetmd.VALUE_TYPE_INT64:
+		val, n := binary.Varint(data[n:])
+		if n <= 0 {
+			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid int64 value")
+		}
+		*v = Int64Value(val)
+	case datasetmd.VALUE_TYPE_UINT64:
+		val, n := binary.Uvarint(data[n:])
+		if n <= 0 {
+			return fmt.Errorf("dataset.Value.UnmarshalBinary: invalid uint64 value")
+		}
+		*v = Uint64Value(val)
+	case datasetmd.VALUE_TYPE_STRING:
+		str := string(data[n:])
+		*v = StringValue(str)
+	default:
+		return fmt.Errorf("dataset.Value.UnmarshalBinary: unsupported type %s", vtyp)
+	}
+
+	return nil
 }
 
 // CompareValues returns -1 if a<b, 0 if a==b, or 1 if a>b. CompareValues
