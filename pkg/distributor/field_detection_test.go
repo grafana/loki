@@ -406,8 +406,14 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 }
 
 func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
-	logLine := `{"msg": "something" , "level": "error", "id": "1"}`
-
+	tests := map[string]string{
+		"level field at start":      `{"level": "error", "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"level field in middle":     `{"field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "level": "error", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"level field at end":        `{"field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9", "level": "error"}`,
+		"no level field":            `{"field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"nested level field":        `{"metadata": {"level": "error"}, "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+		"deeply nested level field": `{"a": {"b": {"c": {"level": "error"}}}, "field1": "value1", "field2": "value2", "field3": "value3", "field4": "value4", "field5": "value5", "field6": "value6", "field7": "value7", "field8": "value8", "field9": "value9"}`,
+	}
 	ld := newFieldDetector(
 		validationContext{
 			discoverLogLevels:       true,
@@ -415,9 +421,13 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
 		})
 
-	for i := 0; i < b.N; i++ {
-		level := ld.extractLogLevelFromLogLine(logLine)
-		require.Equal(b, constants.LogLevelError, level)
+	for name, logLine := range tests {
+		b.Run(name, func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = ld.extractLogLevelFromLogLine(logLine)
+			}
+		})
 	}
 }
 
