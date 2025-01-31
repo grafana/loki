@@ -605,3 +605,98 @@ func Test_DetectGenericFields(t *testing.T) {
 		})
 	}
 }
+
+func TestGetLevelUsingJsonParser(t *testing.T) {
+	tests := []struct {
+		name               string
+		json               string
+		allowedLevelFields map[string]struct{}
+		maxDepth           int
+		want               string
+	}{
+		{
+			name:               "simple top level field",
+			json:               `{"level": "error"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "error",
+		},
+		{
+			name:               "nested field one level deep",
+			json:               `{"a": {"level": "info"}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "info",
+		},
+		{
+			name:               "deeply nested field",
+			json:               `{"a": {"b": {"c": {"level": "warn"}}}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "warn",
+		},
+		{
+			name:               "multiple allowed fields picks first",
+			json:               `{"severity": "error", "level": "info"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}, "severity": {}},
+			want:               "error",
+		},
+		{
+			name:               "multiple nested fields picks first",
+			json:               `{"a": {"level": "error"}, "b": {"level": "info"}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "error",
+		},
+		{
+			name:               "array values are ignored",
+			json:               `{"arr": [{"level": "debug"}], "level": "info"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "info",
+		},
+		{
+			name:               "non-string values are ignored",
+			json:               `{"level": 123, "severity": "warn"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}, "severity": {}},
+			want:               "warn",
+		},
+		{
+			name:               "empty when no match",
+			json:               `{"foo": "bar"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "",
+		},
+		{
+			name:               "empty for invalid json",
+			json:               `{"foo": "bar"`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			want:               "",
+		},
+		{
+			name:               "custom field names",
+			json:               `{"custom_level": "error", "log_severity": "warn"}`,
+			allowedLevelFields: map[string]struct{}{"custom_level": {}, "log_severity": {}},
+			want:               "error",
+		},
+		// Adding depth-specific test cases
+		{
+			name:               "depth limited - only top level",
+			json:               `{"a": {"level": "debug"}, "level": "info"}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			maxDepth:           1,
+			want:               "info",
+		},
+		{
+			name:               "depth limited - no match",
+			json:               `{"a": {"level": "debug"}}`,
+			allowedLevelFields: map[string]struct{}{"level": {}},
+			maxDepth:           1,
+			want:               "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getLevelUsingJSONParser([]byte(tt.json), tt.allowedLevelFields, tt.maxDepth)
+			if string(got) != tt.want {
+				t.Errorf("getLevelUsingJsonParser() = %v, want %v", string(got), tt.want)
+			}
+		})
+	}
+}
