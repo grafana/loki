@@ -35,7 +35,7 @@ type StageExprVisitor interface {
 	VisitKeepLabel(*KeepLabelsExpr)
 	VisitLabelFilter(*LabelFilterExpr)
 	VisitLabelFmt(*LabelFmtExpr)
-	VisitLabelParser(*ParserExpr)
+	VisitLabelParser(*LineParserExpr)
 	VisitLineFilter(*LineFilterExpr)
 	VisitLineFmt(*LineFmtExpr)
 	VisitLogfmtExpressionParser(*LogfmtExpressionParserExpr)
@@ -52,7 +52,7 @@ type DepthFirstTraversal struct {
 	VisitKeepLabelFn              func(v RootVisitor, e *KeepLabelsExpr)
 	VisitLabelFilterFn            func(v RootVisitor, e *LabelFilterExpr)
 	VisitLabelFmtFn               func(v RootVisitor, e *LabelFmtExpr)
-	VisitLabelParserFn            func(v RootVisitor, e *ParserExpr)
+	VisitLabelParserFn            func(v RootVisitor, e *LineParserExpr)
 	VisitLabelReplaceFn           func(v RootVisitor, e *LabelReplaceExpr)
 	VisitLineFilterFn             func(v RootVisitor, e *LineFilterExpr)
 	VisitLineFmtFn                func(v RootVisitor, e *LineFmtExpr)
@@ -141,7 +141,7 @@ func (v *DepthFirstTraversal) VisitLabelFmt(e *LabelFmtExpr) {
 }
 
 // VisitLabelParser implements RootVisitor.
-func (v *DepthFirstTraversal) VisitLabelParser(e *ParserExpr) {
+func (v *DepthFirstTraversal) VisitLabelParser(e *LineParserExpr) {
 	if e == nil {
 		return
 	}

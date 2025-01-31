@@ -44,7 +44,7 @@ func (VectorAggregationExpr) isExpr()      {}
 func (LiteralExpr) isExpr()                {}
 func (VectorExpr) isExpr()                 {}
 func (LabelReplaceExpr) isExpr()           {}
-func (ParserExpr) isExpr()                 {}
+func (LineParserExpr) isExpr()             {}
 func (LogfmtParserExpr) isExpr()           {}
 func (LineFilterExpr) isExpr()             {}
 func (LabelFilterExpr) isExpr()            {}
@@ -73,7 +73,7 @@ func (LiteralExpr) isSampleExpr()           {}
 func (VectorExpr) isSampleExpr()            {}
 func (LabelReplaceExpr) isSampleExpr()      {}
 
-func (ParserExpr) isStageExpr()                 {}
+func (LineParserExpr) isStageExpr()             {}
 func (LogfmtParserExpr) isStageExpr()           {}
 func (LineFilterExpr) isStageExpr()             {}
 func (LabelFilterExpr) isStageExpr()            {}
@@ -145,7 +145,7 @@ func ExtractLabelFiltersBeforeParser(e Expr) []*LabelFilterExpr {
 		// misbehave.
 
 		VisitLogfmtParserFn:           func(_ RootVisitor, _ *LogfmtParserExpr) { foundParseStage = true },
-		VisitLabelParserFn:            func(_ RootVisitor, _ *ParserExpr) { foundParseStage = true },
+		VisitLabelParserFn:            func(_ RootVisitor, _ *LineParserExpr) { foundParseStage = true },
 		VisitJSONExpressionParserFn:   func(_ RootVisitor, _ *JSONExpressionParserExpr) { foundParseStage = true },
 		VisitLogfmtExpressionParserFn: func(_ RootVisitor, _ *LogfmtExpressionParserExpr) { foundParseStage = true },
 		VisitLabelFmtFn:               func(_ RootVisitor, _ *LabelFmtExpr) { foundParseStage = true },
@@ -258,7 +258,7 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 			notLineFilters = append(notLineFilters, f)
 
 			combineFilters()
-		case *ParserExpr:
+		case *LineParserExpr:
 			notLineFilters = append(notLineFilters, f)
 
 			// unpack modifies the contents of the line so any line filter
@@ -707,12 +707,12 @@ func (e *LogfmtParserExpr) String() string {
 	return sb.String()
 }
 
-type ParserExpr struct {
+type LineParserExpr struct {
 	Op    string
 	Param string
 }
 
-func newLabelParserExpr(op, param string) *ParserExpr {
+func newLabelParserExpr(op, param string) *LineParserExpr {
 	if op == OpParserTypeRegexp {
 		_, err := log.NewRegexpParser(param)
 		if err != nil {
@@ -726,19 +726,19 @@ func newLabelParserExpr(op, param string) *ParserExpr {
 		}
 	}
 
-	return &ParserExpr{
+	return &LineParserExpr{
 		Op:    op,
 		Param: param,
 	}
 }
 
-func (e *ParserExpr) Shardable(_ bool) bool { return true }
+func (e *LineParserExpr) Shardable(_ bool) bool { return true }
 
-func (e *ParserExpr) Walk(f WalkFn) { f(e) }
+func (e *LineParserExpr) Walk(f WalkFn) { f(e) }
 
-func (e *ParserExpr) Accept(v RootVisitor) { v.VisitLabelParser(e) }
+func (e *LineParserExpr) Accept(v RootVisitor) { v.VisitLabelParser(e) }
 
-func (e *ParserExpr) Stage() (log.Stage, error) {
+func (e *LineParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
 		return log.NewJSONParser(), nil
@@ -753,7 +753,7 @@ func (e *ParserExpr) Stage() (log.Stage, error) {
 	}
 }
 
-func (e *ParserExpr) String() string {
+func (e *LineParserExpr) String() string {
 	var sb strings.Builder
 	sb.WriteString(OpPipe)
 	sb.WriteString(" ")

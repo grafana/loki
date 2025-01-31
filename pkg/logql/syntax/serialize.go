@@ -312,7 +312,7 @@ func (*JSONSerializer) VisitJSONExpressionParser(*JSONExpressionParserExpr)     
 func (*JSONSerializer) VisitKeepLabel(*KeepLabelsExpr)                          {}
 func (*JSONSerializer) VisitLabelFilter(*LabelFilterExpr)                       {}
 func (*JSONSerializer) VisitLabelFmt(*LabelFmtExpr)                             {}
-func (*JSONSerializer) VisitLabelParser(*ParserExpr)                            {}
+func (*JSONSerializer) VisitLabelParser(*LineParserExpr)                        {}
 func (*JSONSerializer) VisitLineFilter(*LineFilterExpr)                         {}
 func (*JSONSerializer) VisitLineFmt(*LineFmtExpr)                               {}
 func (*JSONSerializer) VisitLogfmtExpressionParser(*LogfmtExpressionParserExpr) {}

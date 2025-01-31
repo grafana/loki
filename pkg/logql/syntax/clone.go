@@ -251,8 +251,8 @@ func (v *cloneVisitor) VisitLabelFmt(e *LabelFmtExpr) {
 	v.cloned = copied
 }
 
-func (v *cloneVisitor) VisitLabelParser(e *ParserExpr) {
-	v.cloned = &ParserExpr{
+func (v *cloneVisitor) VisitLabelParser(e *LineParserExpr) {
+	v.cloned = &LineParserExpr{
 		Op:    e.Op,
 		Param: e.Param,
 	}

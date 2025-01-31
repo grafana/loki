@@ -887,7 +887,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var e *ParserExpr
+			var e *LineParserExpr
 			if tt.wantPanic {
 				require.Panics(t, func() { e = newLabelParserExpr(tt.op, tt.param) })
 				return
@@ -923,7 +923,7 @@ func Test_parserExpr_String(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := ParserExpr{
+			l := LineParserExpr{
 				Op:    tt.op,
 				Param: tt.param,
 			}

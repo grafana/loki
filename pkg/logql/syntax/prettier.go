@@ -109,7 +109,7 @@ func (e *LogfmtParserExpr) Pretty(level int) string {
 // `| regexp`
 // `| pattern`
 // `| unpack`
-func (e *ParserExpr) Pretty(level int) string {
+func (e *LineParserExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
