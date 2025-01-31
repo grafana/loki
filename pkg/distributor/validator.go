@@ -48,6 +48,7 @@ type validationContext struct {
 	discoverGenericFields        map[string][]string
 	discoverLogLevels            bool
 	logLevelFields               []string
+	logLevelFromJSONMaxDepth     int
 
 	allowStructuredMetadata    bool
 	maxStructuredMetadataSize  int
@@ -79,6 +80,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		discoverServiceName:          v.DiscoverServiceName(userID),
 		discoverLogLevels:            v.DiscoverLogLevels(userID),
 		logLevelFields:               v.LogLevelFields(userID),
+		logLevelFromJSONMaxDepth:     v.LogLevelFromJSONMaxDepth(userID),
 		discoverGenericFields:        v.DiscoverGenericFields(userID),
 		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 		maxStructuredMetadataSize:    v.MaxStructuredMetadataSize(userID),

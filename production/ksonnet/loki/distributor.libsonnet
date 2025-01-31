@@ -35,7 +35,8 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     ) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxSurge(5) +
     deployment.mixin.spec.strategy.rollingUpdate.withMaxUnavailable(1) +
-    if $._config.distributor.use_topology_spread then
+    if $._config.distributor.no_schedule_constraints then {}
+    else if $._config.distributor.use_topology_spread then
       deployment.spec.template.spec.withTopologySpreadConstraints(
         // Evenly spread queriers among available nodes.
         topologySpreadConstraints.labelSelector.withMatchLabels({ name: 'distributor' }) +
