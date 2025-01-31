@@ -30,6 +30,7 @@ local rolloutOperator = import 'rollout-operator.libsonnet';
     // If use_topology_spread is false, ingesters will not be scheduled on nodes already running ingesters.
     multi_zone_ingester_use_topology_spread: false,
     multi_zone_ingester_topology_spread_max_skew: 1,
+    multi_zone_ingester_topology_spread_when_unsatisfiable: 'ScheduleAnyway',
 
     node_selector: null,
   },
@@ -116,7 +117,7 @@ local rolloutOperator = import 'rollout-operator.libsonnet';
           // Evenly spread queriers among available nodes.
           topologySpreadConstraints.labelSelector.withMatchLabels({ name: name }) +
           topologySpreadConstraints.withTopologyKey('kubernetes.io/hostname') +
-          topologySpreadConstraints.withWhenUnsatisfiable('ScheduleAnyway') +
+          topologySpreadConstraints.withWhenUnsatisfiable($._config.multi_zone_ingester_topology_spread_when_unsatisfiable) +
           topologySpreadConstraints.withMaxSkew($._config.multi_zone_ingester_topology_spread_max_skew),
         )
       else {}
