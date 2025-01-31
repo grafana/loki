@@ -15,6 +15,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
@@ -33,13 +34,14 @@ type Service struct {
 
 	cfg    Config
 	bucket objstore.Bucket
+	codec  distributor.TenantPrefixCodec
 
 	// Partition management
 	partitionMtx      sync.RWMutex
 	partitionHandlers map[string]map[int32]*partitionProcessor
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
 	if cfg.StorageBucketPrefix != "" {
 		bucket = objstore.NewPrefixedBucket(bucket, cfg.StorageBucketPrefix)
 	}
@@ -47,6 +49,7 @@ func New(kafkaCfg kafka.Config, cfg Config, bucket objstore.Bucket, instanceID s
 		logger:            log.With(logger, "component", groupName),
 		cfg:               cfg,
 		bucket:            bucket,
+		codec:             distributor.TenantPrefixCodec(topicPrefix),
 		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
 		reg:               reg,
 	}
@@ -80,12 +83,19 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 	defer s.partitionMtx.Unlock()
 
 	for topic, parts := range partitions {
+		tenant, virtualShard, err := s.codec.Decode(topic)
+		// TODO: should propage more effectively
+		if err != nil {
+			level.Error(s.logger).Log("msg", "failed to decode topic", "topic", topic, "err", err)
+			continue
+		}
+
 		if _, ok := s.partitionHandlers[topic]; !ok {
 			s.partitionHandlers[topic] = make(map[int32]*partitionProcessor)
 		}
 
 		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.bucket, s.cfg.TenantID, topic, partition, s.logger, s.reg)
+			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg)
 			s.partitionHandlers[topic][partition] = processor
 			processor.start()
 		}

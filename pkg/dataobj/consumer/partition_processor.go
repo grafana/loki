@@ -46,14 +46,16 @@ type partitionProcessor struct {
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
+func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, virtualShard int32, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		panic(err)
 	}
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
+		"shard":     strconv.Itoa(int(virtualShard)),
 		"partition": strconv.Itoa(int(partition)),
+		"topic":     topic,
 	}, reg)
 
 	metrics := newPartitionOffsetMetrics()
@@ -70,7 +72,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 
 	return &partitionProcessor{
 		client:           client,
-		logger:           log.With(logger, "topic", topic, "partition", partition),
+		logger:           log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
 		topic:            topic,
 		partition:        partition,
 		records:          make(chan *kgo.Record, 1000),
@@ -146,6 +148,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 	// todo: handle multi-tenant
 	if !bytes.Equal(record.Key, p.tenantID) {
+		level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
 		return
 	}
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
