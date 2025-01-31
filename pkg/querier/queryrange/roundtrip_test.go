@@ -1464,7 +1464,7 @@ func (f fakeLimits) MaxQueryLength(context.Context, string) time.Duration {
 }
 
 func (f fakeLimits) MaxQueryRange(context.Context, string) time.Duration {
-	return time.Second
+	return time.Hour
 }
 
 func (f fakeLimits) MaxQueryParallelism(context.Context, string) int {
