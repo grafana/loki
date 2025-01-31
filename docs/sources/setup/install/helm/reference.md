@@ -4605,6 +4605,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>global.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to all pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>global.image.registry</td>
 			<td>string</td>
 			<td>Overrides the Docker registry globally for all images</td>
