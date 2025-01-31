@@ -835,7 +835,9 @@ replace:
 
 The `journal` block configures reading from the systemd journal from
 Promtail. Requires a build of Promtail that has journal support _enabled_. If
-using the AMD64 Docker image, this is enabled by default.
+using the AMD64 Docker image, this is enabled by default. On some systems a 
+permission is needed for the user promtail to access journal logs.
+For Ubuntu (24.04) you need to add `promtail` to the group `systemd-journal` with `sudo usermod -a -G systemd-journal promtail`.
 
 ```yaml
 # When true, log messages from the journal are passed through the
