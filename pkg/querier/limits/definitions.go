@@ -1,4 +1,4 @@
-package limists
+package limits
 
 import (
 	"context"

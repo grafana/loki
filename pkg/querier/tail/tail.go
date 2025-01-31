@@ -1,4 +1,4 @@
-package querier
+package tail
 
 import (
 	"context"

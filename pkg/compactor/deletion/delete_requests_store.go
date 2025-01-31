@@ -252,7 +252,6 @@ func (ds *deleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, use
 		}
 		return false
 	})
-
 	if err != nil {
 		return "", err
 	}

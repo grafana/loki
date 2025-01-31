@@ -1,20 +1,19 @@
-package querier
+package tail
 
 import (
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	gokitlog "github.com/go-kit/log"
+	"gotest.tools/assert"
 
 	"github.com/grafana/loki/v3/pkg/iter"
 	loghttp "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/querier/testutil"
 )
 
 const (
@@ -31,23 +30,23 @@ func TestTailer(t *testing.T) {
 		tester          func(t *testing.T, tailer *Tailer, tailClient *tailClientMock)
 	}{
 		"tail logs from historic entries only (no tail clients provided)": {
-			historicEntries: mockStreamIterator(1, 2),
+			historicEntries: testutil.NewFakeStreamIterator(1, 2),
 			tailClient:      nil,
 			tester: func(t *testing.T, tailer *Tailer, _ *tailClientMock) {
 				responses, err := readFromTailer(tailer, 2)
 				require.NoError(t, err)
 
 				actual := flattenStreamsFromResponses(responses)
-
-				assert.Equal(t, []logproto.Stream{
-					mockStream(1, 1),
-					mockStream(2, 1),
-				}, actual)
+				expected := []logproto.Stream{
+					testutil.NewFakeStream(1, 1),
+					testutil.NewFakeStream(2, 1),
+				}
+				compareStreams(t, expected, actual)
 			},
 		},
 		"tail logs from tail clients only (no historic entries provided)": {
-			historicEntries: mockStreamIterator(0, 0),
-			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(mockStream(1, 1))),
+			historicEntries: testutil.NewFakeStreamIterator(0, 0),
+			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(testutil.NewFakeStream(1, 1))),
 			tester: func(t *testing.T, tailer *Tailer, tailClient *tailClientMock) {
 				tailClient.triggerRecv()
 
@@ -55,15 +54,15 @@ func TestTailer(t *testing.T) {
 				require.NoError(t, err)
 
 				actual := flattenStreamsFromResponses(responses)
-
-				assert.Equal(t, []logproto.Stream{
-					mockStream(1, 1),
-				}, actual)
+				expected := []logproto.Stream{
+					testutil.NewFakeStream(1, 1),
+				}
+				compareStreams(t, expected, actual)
 			},
 		},
 		"tail logs both from historic entries and tail clients": {
-			historicEntries: mockStreamIterator(1, 2),
-			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(mockStream(3, 1))),
+			historicEntries: testutil.NewFakeStreamIterator(1, 2),
+			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(testutil.NewFakeStream(3, 1))),
 			tester: func(t *testing.T, tailer *Tailer, tailClient *tailClientMock) {
 				tailClient.triggerRecv()
 
@@ -71,16 +70,16 @@ func TestTailer(t *testing.T) {
 				require.NoError(t, err)
 
 				actual := flattenStreamsFromResponses(responses)
-
-				assert.Equal(t, []logproto.Stream{
-					mockStream(1, 1),
-					mockStream(2, 1),
-					mockStream(3, 1),
-				}, actual)
+				expected := []logproto.Stream{
+					testutil.NewFakeStream(1, 1),
+					testutil.NewFakeStream(2, 1),
+					testutil.NewFakeStream(3, 1),
+				}
+				compareStreams(t, expected, actual)
 			},
 		},
 		"honor max entries per tail response": {
-			historicEntries: mockStreamIterator(1, maxEntriesPerTailResponse+1),
+			historicEntries: testutil.NewFakeStreamIterator(1, maxEntriesPerTailResponse+1),
 			tailClient:      nil,
 			tester: func(t *testing.T, tailer *Tailer, _ *tailClientMock) {
 				responses, err := readFromTailer(tailer, maxEntriesPerTailResponse+1)
@@ -93,8 +92,8 @@ func TestTailer(t *testing.T) {
 			},
 		},
 		"honor max buffered tail responses": {
-			historicEntries: mockStreamIterator(1, (maxEntriesPerTailResponse*maxBufferedTailResponses)+5),
-			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(mockStream(1, 1))),
+			historicEntries: testutil.NewFakeStreamIterator(1, (maxEntriesPerTailResponse*maxBufferedTailResponses)+5),
+			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(testutil.NewFakeStream(1, 1))),
 			tester: func(t *testing.T, tailer *Tailer, tailClient *tailClientMock) {
 				err := waitUntilTailerOpenStreamsHaveBeenConsumed(tailer)
 				require.NoError(t, err)
@@ -123,8 +122,8 @@ func TestTailer(t *testing.T) {
 			},
 		},
 		"honor max dropped entries per tail response": {
-			historicEntries: mockStreamIterator(1, (maxEntriesPerTailResponse*maxBufferedTailResponses)+maxDroppedEntriesPerTailResponse+5),
-			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(mockStream(1, 1))),
+			historicEntries: testutil.NewFakeStreamIterator(1, (maxEntriesPerTailResponse*maxBufferedTailResponses)+maxDroppedEntriesPerTailResponse+5),
+			tailClient:      newTailClientMock().mockRecvWithTrigger(mockTailResponse(testutil.NewFakeStream(1, 1))),
 			tester: func(t *testing.T, tailer *Tailer, tailClient *tailClientMock) {
 				err := waitUntilTailerOpenStreamsHaveBeenConsumed(tailer)
 				require.NoError(t, err)
@@ -165,7 +164,7 @@ func TestTailer(t *testing.T) {
 				tailClients["test"] = test.tailClient
 			}
 
-			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil), gokitlog.NewNopLogger())
+			tailer := newTailer(0, tailClients, test.historicEntries, tailDisconnectedIngesters, timeout, throttle, false, NewMetrics(nil), log.NewNopLogger())
 			defer tailer.close()
 
 			test.tester(t, tailer, test.tailClient)
@@ -463,4 +462,20 @@ func flattenStreamsFromResponses(responses []*loghttp.TailResponse) []logproto.S
 	}
 
 	return result
+}
+
+// compareStreams compares two slices of logproto.Stream
+func compareStreams(t *testing.T, expected, actual []logproto.Stream) {
+	t.Helper()
+	require.Equal(t, len(expected), len(actual), "number of streams mismatch")
+
+	for i := range expected {
+		require.Equal(t, expected[i].Labels, actual[i].Labels, "labels mismatch at index %d", i)
+		require.Equal(t, len(expected[i].Entries), len(actual[i].Entries), "number of entries mismatch at index %d", i)
+
+		for j := range expected[i].Entries {
+			require.Equal(t, expected[i].Entries[j].Line, actual[i].Entries[j].Line, "entry line mismatch at index %d,%d", i, j)
+			require.Equal(t, expected[i].Entries[j].Timestamp.Unix(), actual[i].Entries[j].Timestamp.Unix(), "entry timestamp mismatch at index %d,%d", i, j)
+		}
+	}
 }

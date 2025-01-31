@@ -257,13 +257,6 @@ func (s *rateStore) aggregateByShard(ctx context.Context, streamRates map[string
 	return rates
 }
 
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 func (s *rateStore) getRates(ctx context.Context, clients []ingesterClient) map[string]map[uint64]*logproto.StreamRate {
 	if s.debug {
 		if sp := opentracing.SpanFromContext(ctx); sp != nil {
