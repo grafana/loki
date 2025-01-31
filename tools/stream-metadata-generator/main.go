@@ -22,6 +22,7 @@ import (
 	dskit_log "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
+	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
+	limitsfrontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
@@ -59,19 +61,29 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
+type limits struct {
+	maxGlobalStreamsPerUser int
+}
+
+func (l *limits) MaxGlobalStreamsPerUser(_ string) int {
+	return l.maxGlobalStreamsPerUser
+}
+
 type config struct {
-	NumTenants       int      `yaml:"num_tenants"`
-	QPSPerTenant     int      `yaml:"qps_per_tenant"`
-	StreamsPerTenant int      `yaml:"streams_per_tenant"`
-	StreamLabels     []string `yaml:"stream_labels"`
+	NumTenants                int      `yaml:"num_tenants"`
+	QPSPerTenant              int      `yaml:"qps_per_tenant"`
+	StreamsPerTenant          int      `yaml:"streams_per_tenant"`
+	StreamLabels              []string `yaml:"stream_labels"`
+	MaxGlobalStreamsPerTenant int      `yaml:"max_global_streams_per_tenant"`
 
 	LogLevel       dskit_log.Level `yaml:"log_level,omitempty"`
 	HttpListenPort int             `yaml:"http_listen_port,omitempty"`
 
-	MemberlistKV        memberlist.KVConfig   `yaml:"memberlist,omitempty"`
-	Kafka               kafka.Config          `yaml:"kafka,omitempty"`
-	PartitionRingConfig partitionring.Config  `yaml:"partition_ring,omitempty"`
-	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
+	MemberlistKV        memberlist.KVConfig                `yaml:"memberlist,omitempty"`
+	Kafka               kafka.Config                       `yaml:"kafka,omitempty"`
+	PartitionRingConfig partitionring.Config               `yaml:"partition_ring,omitempty"`
+	LifecyclerConfig    ring.LifecyclerConfig              `yaml:"lifecycler,omitempty"`
+	ClientConfig        limitsfrontend.BackendClientConfig `yaml:"client_config,omitempty"`
 }
 
 type streamLabelsFlag []string
@@ -89,6 +101,7 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.NumTenants, "tenants.total", 1, "Number of tenants to generate metadata for")
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
+	f.IntVar(&c.MaxGlobalStreamsPerTenant, "tenants.max-global-streams", 1000, "Maximum number of global streams per tenant")
 	f.IntVar(&c.HttpListenPort, "http-listen-port", 3100, "HTTP Listener port")
 
 	// Set default stream labels
@@ -104,6 +117,7 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	c.PartitionRingConfig.RegisterFlagsWithPrefix("", f)
 	c.LifecyclerConfig.RegisterFlagsWithPrefix("stream-metadata-generator.", f, logger)
 	c.MemberlistKV.RegisterFlags(f)
+	c.ClientConfig.RegisterFlagsWithPrefix("stream-metadata-generator", f)
 }
 
 type generator struct {
@@ -125,6 +139,9 @@ type generator struct {
 	partitionRing        ring.PartitionRingReader
 	partitionRingWatcher *ring.PartitionRingWatcher
 	partitionRingKV      kv.Client
+
+	// limits
+	limitsSrv limitsfrontend.IngestLimitsService
 
 	// service
 	subservices        *services.Manager
@@ -181,11 +198,21 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, s.partitionRingKV, logger, reg)
 	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ring, cfg.LifecyclerConfig.RingConfig.HeartbeatTimeout)
 
+	// Init limits service
+	limits := &limits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
+	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		return limitsfrontend.NewIngestLimitsBackendClient(s.cfg.ClientConfig, addr)
+	})
+
+	pool := limitsfrontend.NewIngestLimitsClientPool(ingesterRingName, s.cfg.ClientConfig.PoolConfig, s.ring, factory, logger)
+	s.limitsSrv = limitsfrontend.NewRingIngestLimitsService(s.ring, pool, limits, logger, reg)
+
 	// Init services
 	srvs := []services.Service{
 		s.memberlistKV,
 		s.ring,
 		s.partitionRingWatcher,
+		pool,
 	}
 	s.subservices, err = services.NewManager(srvs...)
 	if err != nil {
@@ -240,8 +267,36 @@ func (s *generator) running(ctx context.Context) error {
 						firstPassComplete = true
 					}
 
+					var streamMetadata []*logproto.StreamMetadataWithSize
+					for _, stream := range streams[streamIdx : streamIdx+1] {
+						streamMetadata = append(streamMetadata, &logproto.StreamMetadataWithSize{
+							StreamHash: stream.HashNoShard,
+						})
+					}
+
+					req := &logproto.ExceedsLimitsRequest{
+						Tenant:  tenantID,
+						Streams: streamMetadata,
+					}
+
+					// Check if the stream exceeds limits
+					resp, err := s.limitsSrv.ExceedsLimits(ctx, req)
+					if err != nil {
+						errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
+						return
+					}
+
+					if len(resp.RejectedStreams) > 0 {
+						var rejectedStreamsMsg string
+						for _, rejectedStream := range resp.RejectedStreams {
+							rejectedStreamsMsg += fmt.Sprintf("%d (%s), ", rejectedStream.StreamHash, rejectedStream.Reason)
+						}
+
+						level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "stream", streamIdx, "rejected", rejectedStreamsMsg)
+					}
+
 					// Send single stream to Kafka
-					err := s.sendStreamsToKafka(ctx, streams[streamIdx:streamIdx+1], tenantID)
+					err = s.sendStreamsToKafka(ctx, streams[streamIdx:streamIdx+1], tenantID)
 					if err != nil {
 						errCh <- errors.Wrapf(err, "failed to send stream for tenant %s", tenantID)
 						return
@@ -367,7 +422,7 @@ func main() {
 	logger = level.NewFilter(logger, cfg.LogLevel.Option)
 
 	if err := util.LogConfig(&cfg); err != nil {
-		logger.Log("msg", "Error printing config", "err", err)
+		level.Error(logger).Log("msg", "Error printing config", "err", err)
 		os.Exit(1)
 	}
 
@@ -378,7 +433,7 @@ func main() {
 	// Create the Kafka writer
 	writer, err := newKafkaWriter(cfg.Kafka, logger, reg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating Kafka writer: %v\n", err)
+		level.Error(logger).Log("msg", "Error creating Kafka writer", "err", err)
 		os.Exit(1)
 	}
 	defer writer.Close()
@@ -386,13 +441,13 @@ func main() {
 	// Create and start the stream metadata generator service
 	gen, err := newStreamMetaGen(cfg, writer, logger, reg)
 	if err != nil {
-		logger.Log("msg", "Error creating stream metadata generator", "err", err)
+		level.Error(logger).Log("msg", "Error creating stream metadata generator", "err", err)
 		os.Exit(1)
 	}
 
 	// Start the service and wait for it to be ready
 	if err := services.StartAndAwaitRunning(context.Background(), gen); err != nil {
-		logger.Log("msg", "Error starting stream metadata generator", "err", err)
+		level.Error(logger).Log("msg", "Error starting stream metadata generator", "err", err)
 		os.Exit(1)
 	}
 
@@ -419,12 +474,12 @@ func main() {
 	// Start HTTP server in a goroutine
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Log("msg", "Error starting metrics server", "err", err)
+			level.Error(logger).Log("msg", "Error starting metrics server", "err", err)
 			os.Exit(1)
 		}
 	}()
 
-	logger.Log("msg", "Started metrics server", "addr", httpListenAddr)
+	level.Info(logger).Log("msg", "Started metrics server", "addr", httpListenAddr)
 
 	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
@@ -435,12 +490,12 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Log("msg", "Error shutting down metrics server", "err", err)
+		level.Error(logger).Log("msg", "Error shutting down metrics server", "err", err)
 	}
 
 	// Stop the service gracefully
 	if err := services.StopAndAwaitTerminated(context.Background(), gen); err != nil {
-		logger.Log("msg", "Error stopping stream metadata generator", "err", err)
+		level.Error(logger).Log("msg", "Error stopping stream metadata generator", "err", err)
 		os.Exit(1)
 	}
 }
