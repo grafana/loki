@@ -105,33 +105,45 @@
     // DNS Resolver
     dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
 
-    client_configs: {
-      s3: {
-        s3forcepathstyle: $._config.s3_path_style,
-      } + (
-        if $._config.s3_access_key != '' then {
-          s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
-        } else {
-          s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
-        }
-      ),
-      gcs: {
-        bucket_name: $._config.gcs_bucket_name,
-      },
-      azure: {
-        container_name: $._config.azure_container_name,
-        account_name: $._config.azure_account_name,
-      } + (
-        if $._config.azure_account_key != '' then {
-          account_key: $._config.azure_account_key,
-        } else {}
-      ),
-    },
-
-    object_store:
+    object_store_config:
       (
         if $._config.storage_backend == 'gcs' then {
-          gcs: $._config.client_configs.gcs,
+          gcs: {
+            bucket_name: $._config.gcs_bucket_name,
+          },
+        } else {}
+      ) +
+      (
+        if $._config.storage_backend == 's3' then {
+          aws: {
+            s3forcepathstyle: $._config.s3_path_style,
+          } + (
+            if $._config.s3_access_key != '' then {
+              s3: 's3://' + $._config.s3_access_key + ':' + $._config.s3_secret_access_key + '@' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+            } else {
+              s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
+            }
+          ),
+        } else {}
+      ) +
+      (
+        if $._config.storage_backend == 'azure' then {
+          azure: {
+            container_name: $._config.azure_container_name,
+            account_name: $._config.azure_account_name,
+          } + (
+            if $._config.azure_account_key != '' then {
+              account_key: $._config.azure_account_key,
+            } else {}
+          ),
+        } else {}
+      ),
+
+    // thanos object store config
+    thanos_object_store_config:
+      (
+        if $._config.storage_backend == 'gcs' then {
+          gcs: $._config.object_store_config.gcs,
         } else {}
       ) +
       (
@@ -155,7 +167,7 @@
       ) +
       (
         if $._config.storage_backend == 'azure' then {
-          azure: $._config.client_configs.azure,
+          azure: $._config.object_store_config.azure,
         } else {}
       ),
 
@@ -314,25 +326,11 @@
               consistent_hash: true,
             },
           },
-        } + (
-          if $._config.storage_backend == 'gcs' then {
-            gcs: $._config.client_configs.gcs,
-          } else {}
-        ) +
-        (
-          if $._config.storage_backend == 's3' then {
-            aws: $._config.client_configs.s3,
-          } else {}
-        ) +
-        (
-          if $._config.storage_backend == 'azure' then {
-            azure: $._config.client_configs.azure,
-          } else {}
-        ) +
+        } + $._config.object_store_config +
         (
           if $._config.use_thanos_objstore then {
             use_thanos_objstore: true,
-            object_store: $._config.object_store,
+            object_store: $._config.thanos_object_store_config,
           } else {}
         ),
 
@@ -395,12 +393,13 @@
           },
         },
         storage+: {
-          type: 'gcs',
-          gcs+: {
-            bucket_name: '%(cluster)s-%(namespace)s-ruler' % $._config,
-          },
-        },
+          type: $._config.storage_backend,
+        } + $._config.object_store_config,
       } else {},
+
+      ruler_storage: if $._config.ruler_enabled then {
+        backend: $._config.storage_backend,
+      } + $._config.thanos_object_store_config else {},
 
     },
   },
