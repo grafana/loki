@@ -102,6 +102,7 @@ func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHead
 	if err != nil {
 		return nil, errors.Wrap(err, "getting decompressor")
 	}
+	defer b.opts.Schema.DecompressorPool().PutReader(decompressor)
 
 	decompressed := make([]byte, header.DecompressedLen)
 	if _, err = io.ReadFull(decompressor, decompressed); err != nil {
