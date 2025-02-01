@@ -85,8 +85,8 @@ const NodeFilters: React.FC<NodeFiltersProps> = ({
         </label>
         <MultiSelect
           options={stateOptions}
-          defaultValue={selectedStates}
-          onValueChange={handleStateChange}
+          selected={selectedStates}
+          onChange={handleStateChange}
           placeholder="Filter nodes by service states..."
           className="w-full min-w-[300px]"
         />

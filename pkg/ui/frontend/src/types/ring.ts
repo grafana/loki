@@ -1,0 +1,57 @@
+export interface RingInstance {
+  id: string;
+  state: string;
+  address: string;
+  timestamp: string;
+  registered_timestamp: string;
+  read_only: boolean;
+  read_only_updated_timestamp: string;
+  zone: string;
+  tokens: number[];
+  ownership: string;
+}
+
+export interface RingResponse {
+  shards: RingInstance[];
+  now: string;
+}
+
+export type RingType =
+  | "ingester"
+  | "partition-ingester"
+  | "distributor"
+  | "pattern-ingester"
+  | "scheduler"
+  | "compactor"
+  | "ruler"
+  | "index-gateway";
+
+export interface PartitionInstance {
+  id: number;
+  corrupted: boolean;
+  state: number;
+  state_timestamp: string;
+  owner_ids: string[];
+  tokens: number[];
+  owner_id?: string;
+  zone?: string;
+  uncompressedRate?: number;
+  compressedRate?: number;
+  previousUncompressedRate?: number;
+  previousCompressedRate?: number;
+}
+
+export interface PartitionRingResponse {
+  partitions: PartitionInstance[];
+  now: string;
+}
+
+export const PartitionStates = {
+  0: "Unknown",
+  1: "Pending",
+  2: "Active",
+  3: "Leaving",
+  4: "Left",
+} as const;
+
+export type PartitionState = keyof typeof PartitionStates;

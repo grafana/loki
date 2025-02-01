@@ -2,7 +2,7 @@ import React from "react";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
 import { Member } from "@/types/cluster";
 import StatusBadge from "@/components/nodes/status-badge";
-import { DataTableColumnHeader } from "@/components/nodes/data-table-column-header";
+import { DataTableColumnHeader } from "@/components/common/data-table-column-header";
 import { Button } from "@/components/ui/button";
 import { ArrowRightCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -15,11 +15,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+type NodeSortField = "name" | "target" | "version" | "buildDate";
+
 interface NodeListProps {
   nodes: { [key: string]: Member };
-  sortField: "name" | "target" | "version" | "buildDate";
+  sortField: NodeSortField;
   sortDirection: "asc" | "desc";
-  onSort: (field: "name" | "target" | "version" | "buildDate") => void;
+  onSort: (field: NodeSortField) => void;
 }
 
 const NodeList: React.FC<NodeListProps> = ({
@@ -77,7 +79,7 @@ const NodeList: React.FC<NodeListProps> = ({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="w-[300px]">
-              <DataTableColumnHeader
+              <DataTableColumnHeader<NodeSortField>
                 title="Node Name"
                 field="name"
                 sortField={sortField}
@@ -86,7 +88,7 @@ const NodeList: React.FC<NodeListProps> = ({
               />
             </TableHead>
             <TableHead className="w-[200px]">
-              <DataTableColumnHeader
+              <DataTableColumnHeader<NodeSortField>
                 title="Target"
                 field="target"
                 sortField={sortField}
@@ -95,7 +97,7 @@ const NodeList: React.FC<NodeListProps> = ({
               />
             </TableHead>
             <TableHead className="w-[200px]">
-              <DataTableColumnHeader
+              <DataTableColumnHeader<NodeSortField>
                 title="Version"
                 field="version"
                 sortField={sortField}
@@ -104,7 +106,7 @@ const NodeList: React.FC<NodeListProps> = ({
               />
             </TableHead>
             <TableHead className="w-[200px]">
-              <DataTableColumnHeader
+              <DataTableColumnHeader<NodeSortField>
                 title="Build Date"
                 field="buildDate"
                 sortField={sortField}

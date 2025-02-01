@@ -17,12 +17,12 @@ import (
 
 const (
 	proxyScheme     = "http"
-	prefixPath      = "/ui/"
-	proxyPath       = prefixPath + "api/v1/proxy/{nodename}/"
-	clusterPath     = prefixPath + "api/v1/cluster/nodes"
-	clusterSelfPath = prefixPath + "api/v1/cluster/nodes/self/details"
-	analyticsPath   = prefixPath + "api/v1/analytics"
-	notFoundPath    = prefixPath + "api/v1/404"
+	prefixPath      = "/ui"
+	proxyPath       = prefixPath + "/api/v1/proxy/{nodename}/"
+	clusterPath     = prefixPath + "/api/v1/cluster/nodes"
+	clusterSelfPath = prefixPath + "/api/v1/cluster/nodes/self/details"
+	analyticsPath   = prefixPath + "/api/v1/analytics"
+	notFoundPath    = prefixPath + "/api/v1/404"
 	contentTypeJSON = "application/json"
 )
 
@@ -43,12 +43,24 @@ func (s *Service) RegisterHandler() {
 	s.router.PathPrefix(notFoundPath).Handler(s.notFoundHandler())
 
 	fsHandler := http.FileServer(http.FS(s.uiFS))
-	s.router.PathPrefix(prefixPath).Handler(http.StripPrefix(prefixPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := s.uiFS.Open(strings.TrimPrefix(r.URL.Path, "/")); err != nil {
+	s.router.PathPrefix(prefixPath + "/").Handler(http.StripPrefix(prefixPath+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		// Don't redirect for root UI path
+		if path == "" || path == "/" || path == "404" {
 			r.URL.Path = "/"
+			fsHandler.ServeHTTP(w, r)
+			return
+		}
+		if _, err := s.uiFS.Open(path); err != nil {
+			r.URL.Path = "/"
+			fsHandler.ServeHTTP(w, r)
+			return
 		}
 		fsHandler.ServeHTTP(w, r)
 	})))
+	s.router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/404?path="+r.URL.Path, http.StatusTemporaryRedirect)
+	})
 }
 
 func (s *Service) initUIFs() error {
