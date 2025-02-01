@@ -29,10 +29,8 @@ import (
   filter log.LineMatchType
   lineFilterExpr *LineFilterExpr
   binOpts *BinOpOptions
-  dropLabel log.DropLabel
-  dropLabels []log.DropLabel
-  keepLabel log.KeepLabel
-  keepLabels []log.KeepLabel
+  namedMatcher log.NamedLabelMatcher
+  namedMatchers []log.NamedLabelMatcher
   labelFormat log.LabelFmt
   labelsFormat []log.LabelFmt
   grouping *Grouping
@@ -61,10 +59,8 @@ import (
 %type <str> vector
 %type <strs> labels parserFlags
 %type <binOpts> binOpModifier boolModifier onOrIgnoringModifier
-%type <dropLabels> dropLabels
-%type <dropLabel> dropLabel
-%type <keepLabels> keepLabels
-%type <keepLabel> keepLabel
+%type <namedMatcher> namedMatcher
+%type <namedMatchers> namedMatchers
 %type <labelFormat> labelFormat
 %type <labelsFormat> labelsFormat
 %type <grouping> grouping
@@ -354,27 +350,18 @@ numberFilter:
     | IDENTIFIER CMP_EQ literalExpr  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
     ;
 
-dropLabel:
-      IDENTIFIER { $$ = log.NewDropLabel(nil, $1) }
-    | matcher { $$ = log.NewDropLabel($1, "") }
+namedMatcher:
+      IDENTIFIER { $$ = log.NewNamedLabelMatcher(nil, $1) }
+    | matcher { $$ = log.NewNamedLabelMatcher($1, "") }
 
-dropLabels:
-      dropLabel                  { $$ = []log.DropLabel{$1}}
-    | dropLabels COMMA dropLabel { $$ = append($1, $3) }
+namedMatchers:
+      namedMatcher { $$ = []log.NamedLabelMatcher{$1} }
+    | namedMatchers COMMA namedMatcher { $$ = append($1, $3) }
     ;
 
-dropLabelsExpr: DROP dropLabels { $$ = newDropLabelsExpr($2) }
+dropLabelsExpr: DROP namedMatchers { $$ = newDropLabelsExpr($2) }
 
-keepLabel:
-      IDENTIFIER { $$ = log.NewKeepLabel(nil, $1) }
-    | matcher { $$ = log.NewKeepLabel($1, "") }
-
-keepLabels:
-      keepLabel                  { $$ = []log.KeepLabel{$1}}
-    | keepLabels COMMA keepLabel { $$ = append($1, $3) }
-    ;
-
-keepLabelsExpr: KEEP keepLabels { $$ = newKeepLabelsExpr($2) }
+keepLabelsExpr: KEEP namedMatchers { $$ = newKeepLabelsExpr($2) }
 
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:

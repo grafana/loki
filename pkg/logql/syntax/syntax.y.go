@@ -31,10 +31,8 @@ type syntaxSymType struct {
 	filter                        log.LineMatchType
 	lineFilterExpr                *LineFilterExpr
 	binOpts                       *BinOpOptions
-	dropLabel                     log.DropLabel
-	dropLabels                    []log.DropLabel
-	keepLabel                     log.KeepLabel
-	keepLabels                    []log.KeepLabel
+	namedMatcher                  log.NamedLabelMatcher
+	namedMatchers                 []log.NamedLabelMatcher
 	labelFormat                   log.LabelFmt
 	labelsFormat                  []log.LabelFmt
 	grouping                      *Grouping
@@ -251,154 +249,153 @@ var syntaxExca = [...]int{
 
 const syntaxPrivate = 57344
 
-const syntaxLast = 661
+const syntaxLast = 656
 
 var syntaxAct = [...]int{
 
-	288, 228, 85, 4, 215, 65, 183, 127, 205, 190,
-	77, 201, 198, 64, 237, 5, 153, 188, 78, 2,
+	284, 225, 85, 4, 212, 65, 183, 127, 201, 190,
+	77, 198, 234, 64, 200, 5, 153, 188, 78, 2,
 	57, 81, 49, 50, 51, 58, 59, 62, 63, 60,
 	61, 52, 53, 54, 55, 56, 57, 10, 50, 51,
 	58, 59, 62, 63, 60, 61, 52, 53, 54, 55,
 	56, 57, 58, 59, 62, 63, 60, 61, 52, 53,
 	54, 55, 56, 57, 52, 53, 54, 55, 56, 57,
-	110, 283, 140, 291, 116, 54, 55, 56, 57, 266,
-	296, 221, 16, 293, 265, 167, 168, 216, 157, 149,
-	151, 152, 365, 262, 162, 220, 16, 141, 261, 155,
-	73, 75, 165, 166, 217, 338, 95, 385, 70, 71,
-	72, 164, 208, 151, 152, 169, 170, 171, 172, 173,
-	174, 175, 176, 177, 178, 179, 180, 181, 182, 281,
-	292, 137, 16, 68, 280, 365, 230, 278, 195, 305,
-	16, 192, 277, 203, 207, 355, 293, 185, 264, 73,
-	75, 380, 131, 255, 143, 291, 219, 70, 71, 72,
-	239, 150, 260, 235, 143, 17, 18, 86, 87, 229,
-	74, 293, 231, 232, 142, 84, 240, 86, 87, 17,
-	18, 224, 315, 214, 209, 212, 213, 210, 211, 305,
-	305, 248, 249, 250, 275, 354, 353, 16, 272, 274,
-	111, 16, 373, 271, 305, 252, 330, 186, 184, 137,
-	352, 137, 239, 372, 224, 17, 18, 269, 370, 74,
-	16, 362, 268, 17, 18, 185, 358, 185, 286, 289,
-	131, 295, 131, 298, 313, 110, 301, 116, 302, 300,
-	339, 290, 155, 287, 348, 299, 263, 267, 270, 273,
-	276, 279, 282, 239, 329, 137, 239, 224, 305, 309,
-	311, 314, 316, 317, 307, 239, 203, 207, 324, 319,
-	323, 185, 338, 305, 292, 312, 131, 378, 310, 306,
-	17, 18, 225, 303, 17, 18, 184, 241, 327, 368,
-	331, 345, 333, 335, 239, 337, 110, 341, 342, 343,
-	336, 347, 332, 17, 18, 110, 294, 154, 349, 137,
-	243, 73, 75, 293, 233, 293, 238, 13, 13, 70,
-	71, 72, 145, 346, 144, 326, 156, 156, 325, 284,
-	131, 186, 184, 359, 360, 247, 246, 245, 110, 361,
-	244, 218, 161, 160, 159, 363, 364, 230, 91, 90,
-	83, 369, 383, 379, 351, 253, 304, 259, 227, 16,
-	258, 147, 256, 73, 75, 375, 242, 376, 377, 13,
-	234, 70, 71, 72, 226, 297, 257, 146, 6, 381,
-	148, 74, 21, 22, 23, 36, 45, 46, 37, 39,
-	40, 38, 41, 42, 43, 44, 47, 24, 25, 230,
-	254, 82, 367, 366, 344, 163, 334, 26, 27, 28,
-	29, 30, 31, 32, 80, 321, 322, 33, 34, 35,
-	48, 19, 236, 294, 191, 89, 384, 251, 73, 75,
-	88, 191, 13, 74, 189, 382, 70, 71, 72, 371,
-	357, 6, 17, 18, 356, 21, 22, 23, 36, 45,
-	46, 37, 39, 40, 38, 41, 42, 43, 44, 47,
-	24, 25, 3, 328, 230, 320, 318, 308, 199, 76,
-	26, 27, 28, 29, 30, 31, 32, 285, 223, 222,
-	33, 34, 35, 48, 19, 158, 227, 221, 220, 196,
-	194, 73, 75, 193, 374, 13, 350, 206, 74, 70,
-	71, 72, 202, 191, 6, 17, 18, 137, 21, 22,
-	23, 36, 45, 46, 37, 39, 40, 38, 41, 42,
-	43, 44, 47, 24, 25, 82, 199, 230, 131, 197,
-	204, 200, 94, 26, 27, 28, 29, 30, 31, 32,
-	93, 137, 187, 33, 34, 35, 48, 19, 20, 79,
-	123, 124, 122, 69, 132, 134, 296, 73, 75, 128,
-	129, 74, 131, 138, 130, 70, 71, 72, 17, 18,
-	139, 15, 125, 340, 126, 14, 66, 92, 121, 120,
-	133, 135, 136, 119, 123, 124, 122, 118, 132, 134,
-	73, 75, 117, 230, 115, 114, 113, 112, 70, 71,
-	72, 12, 11, 9, 8, 7, 125, 1, 126, 0,
-	0, 0, 0, 291, 133, 135, 136, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 67, 74, 96, 97,
-	98, 99, 100, 101, 102, 103, 104, 105, 106, 107,
-	108, 109, 0, 0, 0, 0, 0, 0, 0, 0,
+	110, 279, 140, 287, 116, 54, 55, 56, 57, 262,
+	213, 218, 16, 292, 261, 149, 151, 152, 157, 289,
+	258, 141, 217, 16, 162, 257, 167, 168, 214, 155,
+	277, 165, 166, 16, 68, 276, 360, 205, 151, 152,
+	360, 164, 95, 357, 221, 169, 170, 171, 172, 173,
+	174, 175, 176, 177, 178, 179, 180, 181, 182, 274,
+	287, 380, 16, 137, 273, 86, 87, 271, 195, 325,
+	16, 192, 270, 203, 203, 334, 137, 143, 260, 185,
+	268, 204, 321, 16, 131, 267, 216, 150, 143, 256,
+	333, 375, 185, 232, 368, 17, 18, 131, 142, 226,
+	288, 111, 228, 229, 237, 236, 17, 18, 211, 206,
+	209, 210, 207, 208, 367, 265, 17, 18, 16, 301,
+	264, 245, 246, 247, 301, 350, 137, 311, 73, 75,
+	349, 289, 336, 337, 338, 249, 70, 71, 72, 186,
+	184, 289, 185, 365, 353, 17, 18, 131, 84, 320,
+	86, 87, 343, 17, 18, 282, 285, 324, 291, 236,
+	294, 299, 110, 297, 116, 298, 17, 18, 286, 155,
+	283, 333, 295, 259, 263, 266, 269, 272, 275, 278,
+	240, 309, 288, 301, 305, 307, 310, 312, 363, 348,
+	313, 290, 221, 203, 319, 315, 73, 75, 74, 340,
+	230, 17, 18, 184, 70, 71, 72, 301, 341, 301,
+	145, 236, 289, 347, 322, 303, 326, 296, 328, 330,
+	236, 332, 110, 289, 224, 236, 331, 342, 327, 73,
+	75, 110, 227, 308, 344, 236, 221, 70, 71, 72,
+	301, 293, 306, 154, 144, 13, 302, 238, 137, 280,
+	244, 137, 243, 13, 156, 242, 378, 235, 354, 355,
+	374, 222, 156, 110, 356, 227, 74, 185, 241, 131,
+	358, 359, 131, 252, 215, 161, 364, 160, 159, 91,
+	90, 83, 346, 290, 16, 250, 147, 300, 73, 75,
+	370, 255, 371, 372, 13, 253, 70, 71, 72, 74,
+	239, 231, 146, 6, 376, 148, 223, 21, 22, 23,
+	36, 45, 46, 37, 39, 40, 38, 41, 42, 43,
+	44, 47, 24, 25, 227, 254, 82, 186, 184, 251,
+	373, 329, 26, 27, 28, 29, 30, 31, 32, 80,
+	362, 361, 33, 34, 35, 48, 19, 233, 224, 339,
+	317, 318, 191, 73, 75, 248, 191, 13, 74, 189,
+	163, 70, 71, 72, 89, 88, 6, 17, 18, 379,
+	21, 22, 23, 36, 45, 46, 37, 39, 40, 38,
+	41, 42, 43, 44, 47, 24, 25, 3, 377, 227,
+	366, 352, 351, 323, 76, 26, 27, 28, 29, 30,
+	31, 32, 314, 304, 281, 33, 34, 35, 48, 19,
+	158, 316, 220, 219, 199, 369, 73, 75, 218, 217,
+	13, 196, 194, 74, 70, 71, 72, 193, 345, 6,
+	17, 18, 137, 21, 22, 23, 36, 45, 46, 37,
+	39, 40, 38, 41, 42, 43, 44, 47, 24, 25,
+	202, 191, 227, 131, 82, 199, 197, 94, 26, 27,
+	28, 29, 30, 31, 32, 93, 137, 187, 33, 34,
+	35, 48, 19, 20, 79, 123, 124, 122, 69, 132,
+	134, 292, 73, 75, 128, 129, 74, 131, 138, 130,
+	70, 71, 72, 17, 18, 139, 15, 125, 335, 126,
+	14, 66, 92, 121, 120, 133, 135, 136, 119, 123,
+	124, 122, 118, 132, 134, 73, 75, 117, 227, 115,
+	114, 113, 112, 70, 71, 72, 12, 11, 9, 8,
+	7, 125, 1, 126, 0, 0, 0, 0, 287, 133,
+	135, 136, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 67, 74, 96, 97, 98, 99, 100, 101, 102,
+	103, 104, 105, 106, 107, 108, 109, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	74,
+	0, 0, 0, 0, 0, 74,
 }
 var syntaxPact = [...]int{
 
-	352, -1000, -59, -1000, -1000, 575, 352, -1000, -1000, -1000,
-	-1000, -1000, -1000, 396, 324, 149, -1000, 423, 418, 323,
-	322, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	347, -1000, -59, -1000, -1000, 570, 347, -1000, -1000, -1000,
+	-1000, -1000, -1000, 391, 325, 192, -1000, 428, 427, 324,
+	323, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
 	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 59,
-	59, 59, 59, 59, 59, 59, 59, 59, 59, 59,
-	59, 59, 59, 59, 575, -1000, 134, 536, -9, 91,
-	-1000, -1000, -1000, -1000, -1000, -1000, 297, 295, -59, 359,
-	-1000, -1000, 76, 300, 478, 318, 317, 316, -1000, -1000,
-	352, 398, 352, 28, 9, -1000, 352, 352, 352, 352,
-	352, 352, 352, 352, 352, 352, 352, 352, 352, 352,
-	-1000, -9, -1000, -1000, -1000, -1000, 250, -1000, -1000, -1000,
-	-1000, -1000, 426, 498, 487, -1000, 484, -1000, -1000, -1000,
-	-1000, 304, 483, -1000, 521, 497, 492, 99, -1000, -1000,
-	81, -1000, 315, -1000, -1000, -1000, -1000, -1000, 520, 482,
-	481, 473, 472, 255, 353, 476, 301, 287, 349, 415,
-	289, 260, 345, 283, -44, 314, 311, 310, 309, -32,
+	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 65,
+	65, 65, 65, 65, 65, 65, 65, 65, 65, 65,
+	65, 65, 65, 65, 570, -1000, 183, 531, -9, 85,
+	-1000, -1000, -1000, -1000, -1000, -1000, 287, 253, -59, 354,
+	-1000, -1000, 72, 306, 473, 322, 321, 319, -1000, -1000,
+	347, 423, 347, 27, 20, -1000, 347, 347, 347, 347,
+	347, 347, 347, 347, 347, 347, 347, 347, 347, 347,
+	-1000, -9, -1000, -1000, -1000, -1000, 128, -1000, -1000, -1000,
+	-1000, -1000, 421, 516, 491, -1000, 486, -1000, -1000, -1000,
+	-1000, 313, 485, -1000, 520, 515, 515, 94, -1000, -1000,
+	74, -1000, 318, -1000, -1000, -1000, -1000, -1000, 519, 483,
+	482, 477, 476, 304, 355, 408, 298, 243, 350, 410,
+	300, 290, 349, 223, -44, 312, 299, 296, 294, -32,
 	-32, -17, -17, -75, -75, -75, -75, -26, -26, -26,
-	-26, -26, -26, 250, 304, 304, 304, 419, 334, -1000,
-	-1000, 387, 334, -1000, -1000, 126, -1000, 341, -1000, 363,
-	339, -1000, 76, -1000, 336, -1000, 76, -1000, 89, 75,
-	213, 194, 190, 133, 125, -1000, -10, 303, 471, -1000,
-	-1000, -1000, -1000, -1000, -1000, 139, 301, 542, 120, 413,
-	502, 348, 212, 139, 352, 256, 335, 252, -1000, -1000,
-	237, -1000, 461, -1000, 251, 248, 207, 155, 206, 250,
-	204, -1000, 334, 498, 460, -1000, 463, 410, 497, 492,
-	302, -1000, -1000, -1000, 299, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
-	-1000, -1000, -1000, 81, 457, 227, -1000, 179, 85, 32,
-	85, 397, 2, 304, 2, 95, 235, 394, 264, 296,
-	-1000, -1000, 217, -1000, 352, 491, -1000, -1000, 333, 183,
-	-1000, 169, -1000, -1000, 168, -1000, 118, -1000, -1000, -1000,
-	-1000, -1000, -1000, -1000, -1000, 438, 434, -1000, 199, -1000,
-	139, 32, 85, 32, -1000, -1000, 250, -1000, 2, -1000,
-	195, -1000, -1000, -1000, 84, 393, 392, 262, 139, 191,
-	-1000, 433, -1000, -1000, -1000, -1000, 186, 175, -1000, -1000,
-	32, -1000, 489, 41, 32, 26, 2, 2, 267, -1000,
-	-1000, 332, -1000, -1000, 124, 32, -1000, -1000, 2, 429,
-	-1000, -1000, 331, 420, 80, -1000,
+	-26, -26, -26, 128, 313, 313, 313, 417, 334, -1000,
+	-1000, 386, 334, -1000, -1000, 316, -1000, 344, -1000, 382,
+	340, -1000, 72, -1000, 340, 86, 75, 181, 146, 133,
+	125, 96, -1000, -10, 293, 468, -1000, -1000, -1000, -1000,
+	-1000, -1000, 107, 298, 537, 160, 343, 497, 284, 260,
+	107, 347, 204, 336, 289, -1000, -1000, 258, -1000, 467,
+	-1000, 285, 276, 224, 170, 141, 128, 191, -1000, 334,
+	516, 466, -1000, 479, 415, 515, 193, -1000, -1000, -1000,
+	126, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	-1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, -1000, 74,
+	457, 200, -1000, 112, 471, 38, 471, 392, 2, 313,
+	2, 150, 140, 409, 242, 251, -1000, -1000, 195, -1000,
+	347, 493, -1000, -1000, 331, 256, -1000, 232, -1000, -1000,
+	173, -1000, 168, -1000, -1000, -1000, -1000, -1000, -1000, -1000,
+	456, 455, -1000, 187, -1000, 107, 38, 471, 38, -1000,
+	-1000, 128, -1000, 2, -1000, 87, -1000, -1000, -1000, 59,
+	401, 400, 231, 107, 186, -1000, 454, -1000, -1000, -1000,
+	-1000, 157, 137, -1000, -1000, 38, -1000, 480, 55, 38,
+	29, 2, 2, 390, -1000, -1000, 309, -1000, -1000, 134,
+	38, -1000, -1000, 2, 452, -1000, -1000, 305, 433, 104,
+	-1000,
 }
 var syntaxPgo = [...]int{
 
-	0, 607, 18, 462, 3, 605, 604, 603, 602, 601,
-	5, 597, 596, 595, 594, 592, 587, 583, 579, 578,
-	13, 133, 576, 4, 575, 573, 571, 104, 570, 564,
-	563, 6, 560, 559, 553, 7, 549, 15, 548, 14,
-	542, 577, 540, 532, 531, 11, 530, 8, 12, 529,
-	2, 16, 37, 9, 17, 1, 0,
+	0, 602, 18, 457, 3, 600, 599, 598, 597, 596,
+	5, 592, 591, 590, 589, 587, 582, 578, 574, 573,
+	13, 104, 571, 4, 570, 568, 566, 98, 565, 559,
+	558, 6, 555, 554, 548, 7, 544, 15, 543, 12,
+	537, 572, 535, 527, 8, 14, 11, 526, 2, 16,
+	37, 9, 17, 1, 0,
 }
 var syntaxR1 = [...]int{
 
 	0, 1, 2, 2, 3, 3, 3, 4, 4, 4,
-	4, 4, 4, 4, 51, 51, 51, 51, 51, 51,
-	51, 51, 51, 51, 51, 51, 51, 51, 51, 51,
-	51, 51, 51, 51, 51, 51, 51, 51, 51, 51,
-	55, 55, 55, 25, 25, 25, 5, 5, 5, 5,
+	4, 4, 4, 4, 49, 49, 49, 49, 49, 49,
+	49, 49, 49, 49, 49, 49, 49, 49, 49, 49,
+	49, 49, 49, 49, 49, 49, 49, 49, 49, 49,
+	53, 53, 53, 25, 25, 25, 5, 5, 5, 5,
 	6, 6, 6, 6, 6, 6, 8, 37, 37, 37,
 	36, 36, 35, 35, 35, 35, 20, 20, 10, 10,
 	10, 10, 10, 10, 10, 10, 10, 10, 10, 34,
 	34, 34, 34, 34, 34, 27, 23, 23, 23, 21,
 	21, 21, 22, 22, 40, 40, 11, 11, 12, 12,
-	12, 12, 13, 14, 14, 15, 16, 48, 48, 49,
-	49, 49, 17, 31, 31, 31, 31, 31, 31, 31,
-	31, 31, 53, 53, 54, 54, 33, 33, 32, 32,
+	12, 12, 13, 14, 14, 15, 16, 46, 46, 47,
+	47, 47, 17, 31, 31, 31, 31, 31, 31, 31,
+	31, 31, 51, 51, 52, 52, 33, 33, 32, 32,
 	30, 30, 30, 30, 30, 30, 30, 28, 28, 28,
 	28, 28, 28, 28, 29, 29, 29, 29, 29, 29,
-	29, 45, 45, 44, 44, 18, 47, 47, 46, 46,
-	19, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 42, 42, 43, 43,
-	43, 43, 41, 41, 41, 41, 41, 41, 41, 41,
-	52, 52, 52, 9, 38, 26, 26, 26, 26, 26,
-	26, 26, 26, 26, 26, 26, 26, 24, 24, 24,
-	24, 24, 24, 24, 24, 24, 24, 24, 24, 24,
-	24, 24, 56, 39, 39, 50, 50, 50, 50,
+	29, 44, 44, 45, 45, 18, 19, 7, 7, 7,
+	7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
+	7, 7, 42, 42, 43, 43, 43, 43, 41, 41,
+	41, 41, 41, 41, 41, 41, 50, 50, 50, 9,
+	38, 26, 26, 26, 26, 26, 26, 26, 26, 26,
+	26, 26, 26, 24, 24, 24, 24, 24, 24, 24,
+	24, 24, 24, 24, 24, 24, 24, 24, 54, 39,
+	39, 48, 48, 48, 48,
 }
 var syntaxR2 = [...]int{
 
@@ -417,98 +414,98 @@ var syntaxR2 = [...]int{
 	3, 3, 3, 1, 1, 3, 6, 6, 1, 1,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
 	3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-	3, 1, 1, 1, 3, 2, 1, 1, 1, 3,
-	2, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-	4, 4, 4, 4, 4, 4, 0, 1, 5, 4,
-	5, 4, 1, 1, 2, 4, 5, 2, 4, 5,
-	1, 2, 2, 4, 1, 1, 1, 1, 1, 1,
+	3, 1, 1, 1, 3, 2, 2, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 0, 1, 5, 4, 5, 4, 1, 1,
+	2, 4, 5, 2, 4, 5, 1, 2, 2, 4,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 	1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-	1, 1, 2, 1, 3, 4, 4, 3, 3,
+	1, 1, 1, 1, 1, 1, 1, 1, 2, 1,
+	3, 4, 4, 3, 3,
 }
 var syntaxChk = [...]int{
 
 	-1000, -1, -2, -3, -4, -37, 26, -5, -6, -7,
-	-52, -8, -9, 17, -24, -26, 7, 90, 91, 69,
+	-50, -8, -9, 17, -24, -26, 7, 90, 91, 69,
 	-38, 30, 31, 32, 45, 46, 55, 56, 57, 58,
 	59, 60, 61, 65, 66, 67, 33, 36, 39, 37,
 	38, 40, 41, 42, 43, 34, 35, 44, 68, 81,
 	82, 83, 90, 91, 92, 93, 94, 95, 84, 85,
 	88, 89, 86, 87, -20, -10, -22, 51, -21, -34,
 	23, 24, 25, 15, 85, 16, -3, -4, -2, -36,
-	18, -35, 5, 26, 26, -50, 28, 29, 7, 7,
+	18, -35, 5, 26, 26, -48, 28, 29, 7, 7,
 	26, 26, -41, -42, -43, 47, -41, -41, -41, -41,
 	-41, -41, -41, -41, -41, -41, -41, -41, -41, -41,
 	-10, -21, -11, -12, -13, -14, -31, -15, -16, -17,
 	-18, -19, 50, 48, 49, 70, 72, -35, -33, -32,
 	-29, 26, 52, 78, 53, 79, 80, 5, -30, -28,
 	81, 6, -27, 73, 27, 27, 18, 2, 21, 13,
-	85, 14, 15, -51, 7, -37, 26, -4, 7, 26,
+	85, 14, 15, -49, 7, -37, 26, -4, 7, 26,
 	26, 26, -4, 7, -2, 74, 75, 76, 77, -2,
 	-2, -2, -2, -2, -2, -2, -2, -2, -2, -2,
-	-2, -2, -2, -31, 82, 21, 81, -40, -54, 8,
-	-53, 5, -54, 6, 6, -31, 6, -49, -48, 5,
-	-44, -45, 5, -35, -46, -47, 5, -35, 13, 85,
-	88, 89, 86, 87, 84, -23, 6, -27, 26, -35,
-	6, 6, 6, 6, 2, 27, 21, 10, -55, -20,
-	51, -37, -51, 27, 21, -4, 7, -39, 27, 5,
-	-39, 27, 21, 27, 26, 26, 26, 26, -31, -31,
-	-31, 8, -54, 21, 13, 27, 21, 13, 21, 21,
-	73, 9, 4, -52, 73, 9, 4, -52, 9, 4,
-	-52, 9, 4, -52, 9, 4, -52, 9, 4, -52,
-	9, 4, -52, 81, 26, 6, -50, -51, -56, -55,
-	-20, 71, 10, 51, 10, -55, 54, 27, -55, -20,
-	27, -50, -4, 27, 21, 21, 27, 27, 6, -39,
-	27, -39, 27, 27, -39, 27, -39, -53, 6, -48,
-	2, 5, 6, -45, -47, 26, 26, -23, 6, 27,
-	27, -55, -20, -55, 9, -56, -31, -56, 10, 5,
-	-25, 62, 63, 64, 10, 27, 27, -55, 27, -4,
-	5, 21, 27, 27, 27, 27, 6, 6, 27, -50,
-	-55, -56, 26, -56, -55, 51, 10, 10, 27, -50,
-	27, 6, 27, 27, 5, -55, -56, -56, 10, 21,
-	27, -56, 6, 21, 6, 27,
+	-2, -2, -2, -31, 82, 21, 81, -40, -52, 8,
+	-51, 5, -52, 6, 6, -31, 6, -47, -46, 5,
+	-45, -44, 5, -35, -45, 13, 85, 88, 89, 86,
+	87, 84, -23, 6, -27, 26, -35, 6, 6, 6,
+	6, 2, 27, 21, 10, -53, -20, 51, -37, -49,
+	27, 21, -4, 7, -39, 27, 5, -39, 27, 21,
+	27, 26, 26, 26, 26, -31, -31, -31, 8, -52,
+	21, 13, 27, 21, 13, 21, 73, 9, 4, -50,
+	73, 9, 4, -50, 9, 4, -50, 9, 4, -50,
+	9, 4, -50, 9, 4, -50, 9, 4, -50, 81,
+	26, 6, -48, -49, -54, -53, -20, 71, 10, 51,
+	10, -53, 54, 27, -53, -20, 27, -48, -4, 27,
+	21, 21, 27, 27, 6, -39, 27, -39, 27, 27,
+	-39, 27, -39, -51, 6, -46, 2, 5, 6, -44,
+	26, 26, -23, 6, 27, 27, -53, -20, -53, 9,
+	-54, -31, -54, 10, 5, -25, 62, 63, 64, 10,
+	27, 27, -53, 27, -4, 5, 21, 27, 27, 27,
+	27, 6, 6, 27, -48, -53, -54, 26, -54, -53,
+	51, 10, 10, 27, -48, 27, 6, 27, 27, 5,
+	-53, -54, -54, 10, 21, 27, -54, 6, 21, 6,
+	27,
 }
 var syntaxDef = [...]int{
 
 	0, -2, 1, 2, 3, 4, 0, 7, 8, 9,
-	10, 11, 12, 0, 0, 0, 190, 0, 0, 0,
-	0, 207, 208, 209, 210, 211, 212, 213, 214, 215,
-	216, 217, 218, 219, 220, 221, 195, 196, 197, 198,
-	199, 200, 201, 202, 203, 204, 205, 206, 194, 176,
-	176, 176, 176, 176, 176, 176, 176, 176, 176, 176,
-	176, 176, 176, 176, 5, 66, 68, 0, 92, 0,
+	10, 11, 12, 0, 0, 0, 186, 0, 0, 0,
+	0, 203, 204, 205, 206, 207, 208, 209, 210, 211,
+	212, 213, 214, 215, 216, 217, 191, 192, 193, 194,
+	195, 196, 197, 198, 199, 200, 201, 202, 190, 172,
+	172, 172, 172, 172, 172, 172, 172, 172, 172, 172,
+	172, 172, 172, 172, 5, 66, 68, 0, 92, 0,
 	79, 80, 81, 82, 83, 84, 2, 3, 0, 0,
-	59, 60, 0, 0, 0, 0, 0, 0, 191, 192,
-	0, 0, 0, 182, 183, 177, 0, 0, 0, 0,
+	59, 60, 0, 0, 0, 0, 0, 0, 187, 188,
+	0, 0, 0, 178, 179, 173, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	67, 93, 69, 70, 71, 72, 73, 74, 75, 76,
 	77, 78, 96, 98, 0, 100, 0, 113, 114, 115,
 	116, 0, 0, 106, 0, 0, 0, 0, 128, 129,
 	0, 89, 0, 85, 6, 13, 57, 58, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 3, 190, 0,
-	0, 0, 3, 0, 161, 0, 0, 184, 187, 162,
-	163, 164, 165, 166, 167, 168, 169, 170, 171, 172,
-	173, 174, 175, 118, 0, 0, 0, 97, 104, 94,
+	0, 0, 0, 0, 0, 0, 0, 3, 186, 0,
+	0, 0, 3, 0, 157, 0, 0, 180, 183, 158,
+	159, 160, 161, 162, 163, 164, 165, 166, 167, 168,
+	169, 170, 171, 118, 0, 0, 0, 97, 104, 94,
 	124, 123, 102, 99, 101, 0, 105, 112, 109, 0,
-	155, 153, 151, 152, 160, 158, 156, 157, 0, 0,
-	0, 0, 0, 0, 0, 91, 86, 0, 0, 61,
-	62, 63, 64, 65, 39, 46, 0, 14, 0, 0,
-	0, 0, 0, 50, 0, 3, 190, 0, 227, 223,
-	0, 228, 0, 193, 0, 0, 0, 0, 119, 120,
-	121, 95, 103, 0, 0, 117, 0, 0, 0, 0,
-	0, 135, 142, 149, 0, 134, 141, 148, 130, 137,
-	144, 131, 138, 145, 132, 139, 146, 133, 140, 147,
-	136, 143, 150, 0, 0, 0, 48, 0, 15, 18,
-	34, 0, 22, 0, 26, 0, 0, 0, 0, 0,
-	38, 52, 3, 51, 0, 0, 225, 226, 0, 0,
-	179, 0, 181, 185, 0, 188, 0, 125, 122, 110,
-	111, 107, 108, 154, 159, 0, 0, 87, 0, 90,
-	47, 19, 35, 36, 222, 23, 42, 27, 30, 40,
-	0, 43, 44, 45, 16, 0, 0, 0, 53, 3,
-	224, 0, 178, 180, 186, 189, 0, 0, 88, 49,
-	37, 31, 0, 17, 20, 0, 24, 28, 0, 54,
-	55, 0, 126, 127, 0, 21, 25, 29, 32, 0,
-	41, 33, 0, 0, 0, 56,
+	155, 153, 151, 152, 156, 0, 0, 0, 0, 0,
+	0, 0, 91, 86, 0, 0, 61, 62, 63, 64,
+	65, 39, 46, 0, 14, 0, 0, 0, 0, 0,
+	50, 0, 3, 186, 0, 223, 219, 0, 224, 0,
+	189, 0, 0, 0, 0, 119, 120, 121, 95, 103,
+	0, 0, 117, 0, 0, 0, 0, 135, 142, 149,
+	0, 134, 141, 148, 130, 137, 144, 131, 138, 145,
+	132, 139, 146, 133, 140, 147, 136, 143, 150, 0,
+	0, 0, 48, 0, 15, 18, 34, 0, 22, 0,
+	26, 0, 0, 0, 0, 0, 38, 52, 3, 51,
+	0, 0, 221, 222, 0, 0, 175, 0, 177, 181,
+	0, 184, 0, 125, 122, 110, 111, 107, 108, 154,
+	0, 0, 87, 0, 90, 47, 19, 35, 36, 218,
+	23, 42, 27, 30, 40, 0, 43, 44, 45, 16,
+	0, 0, 0, 53, 3, 220, 0, 174, 176, 182,
+	185, 0, 0, 88, 49, 37, 31, 0, 17, 20,
+	0, 24, 28, 0, 54, 55, 0, 126, 127, 0,
+	21, 25, 29, 32, 0, 41, 33, 0, 0, 0,
+	56,
 }
 var syntaxTok1 = [...]int{
 
@@ -1608,401 +1605,381 @@ syntaxdefault:
 	case 151:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.dropLabel = log.NewDropLabel(nil, syntaxDollar[1].str)
+			syntaxVAL.namedMatcher = log.NewNamedLabelMatcher(nil, syntaxDollar[1].str)
 		}
 	case 152:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.dropLabel = log.NewDropLabel(syntaxDollar[1].matcher, "")
+			syntaxVAL.namedMatcher = log.NewNamedLabelMatcher(syntaxDollar[1].matcher, "")
 		}
 	case 153:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
-			syntaxVAL.dropLabels = []log.DropLabel{syntaxDollar[1].dropLabel}
+			syntaxVAL.namedMatchers = []log.NamedLabelMatcher{syntaxDollar[1].namedMatcher}
 		}
 	case 154:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
-			syntaxVAL.dropLabels = append(syntaxDollar[1].dropLabels, syntaxDollar[3].dropLabel)
+			syntaxVAL.namedMatchers = append(syntaxDollar[1].namedMatchers, syntaxDollar[3].namedMatcher)
 		}
 	case 155:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
-			syntaxVAL.stage = newDropLabelsExpr(syntaxDollar[2].dropLabels)
+			syntaxVAL.stage = newDropLabelsExpr(syntaxDollar[2].namedMatchers)
 		}
 	case 156:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.keepLabel = log.NewKeepLabel(nil, syntaxDollar[1].str)
-		}
-	case 157:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.keepLabel = log.NewKeepLabel(syntaxDollar[1].matcher, "")
-		}
-	case 158:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
-		{
-			syntaxVAL.keepLabels = []log.KeepLabel{syntaxDollar[1].keepLabel}
-		}
-	case 159:
-		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
-		{
-			syntaxVAL.keepLabels = append(syntaxDollar[1].keepLabels, syntaxDollar[3].keepLabel)
-		}
-	case 160:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
-			syntaxVAL.stage = newKeepLabelsExpr(syntaxDollar[2].keepLabels)
+			syntaxVAL.stage = newKeepLabelsExpr(syntaxDollar[2].namedMatchers)
 		}
-	case 161:
+	case 157:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("or", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 162:
+	case 158:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("and", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 163:
+	case 159:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("unless", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 164:
+	case 160:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("+", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 165:
+	case 161:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("-", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 166:
+	case 162:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("*", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 167:
+	case 163:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("/", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 168:
+	case 164:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("%", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 169:
+	case 165:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("^", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 170:
+	case 166:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("==", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 171:
+	case 167:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("!=", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 172:
+	case 168:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr(">", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 173:
+	case 169:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr(">=", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 174:
+	case 170:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("<", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 175:
+	case 171:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = mustNewBinOpExpr("<=", syntaxDollar[3].binOpts, syntaxDollar[1].expr, syntaxDollar[4].expr)
 		}
-	case 176:
+	case 172:
 		syntaxDollar = syntaxS[syntaxpt-0 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}}
 		}
-	case 177:
+	case 173:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = &BinOpOptions{VectorMatching: &VectorMatching{Card: CardOneToOne}, ReturnBool: true}
 		}
-	case 178:
+	case 174:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.On = true
 			syntaxVAL.binOpts.VectorMatching.MatchingLabels = syntaxDollar[4].strs
 		}
-	case 179:
+	case 175:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.On = true
 		}
-	case 180:
+	case 176:
 		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
 			syntaxVAL.binOpts.VectorMatching.MatchingLabels = syntaxDollar[4].strs
+		}
+	case 177:
+		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
+		{
+			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+		}
+	case 178:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+		}
+	case 179:
+		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		{
+			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+		}
+	case 180:
+		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
+		{
+			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
 		}
 	case 181:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
 		}
 	case 182:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
+			syntaxVAL.binOpts.VectorMatching.Include = syntaxDollar[4].strs
 		}
 	case 183:
-		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
+			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
 		}
 	case 184:
-		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
+			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
 		}
 	case 185:
-		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
+		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
 		{
 			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
+			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
+			syntaxVAL.binOpts.VectorMatching.Include = syntaxDollar[4].strs
 		}
 	case 186:
-		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
-		{
-			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.Card = CardManyToOne
-			syntaxVAL.binOpts.VectorMatching.Include = syntaxDollar[4].strs
-		}
-	case 187:
-		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
-		{
-			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
-		}
-	case 188:
-		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
-		{
-			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
-		}
-	case 189:
-		syntaxDollar = syntaxS[syntaxpt-5 : syntaxpt+1]
-		{
-			syntaxVAL.binOpts = syntaxDollar[1].binOpts
-			syntaxVAL.binOpts.VectorMatching.Card = CardOneToMany
-			syntaxVAL.binOpts.VectorMatching.Include = syntaxDollar[4].strs
-		}
-	case 190:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.literalExpr = mustNewLiteralExpr(syntaxDollar[1].str, false)
 		}
-	case 191:
+	case 187:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.literalExpr = mustNewLiteralExpr(syntaxDollar[2].str, false)
 		}
-	case 192:
+	case 188:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.literalExpr = mustNewLiteralExpr(syntaxDollar[2].str, true)
 		}
-	case 193:
+	case 189:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.metricExpr = NewVectorExpr(syntaxDollar[3].str)
 		}
-	case 194:
+	case 190:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.str = OpTypeVector
 		}
-	case 195:
+	case 191:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeSum
 		}
-	case 196:
+	case 192:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeAvg
 		}
-	case 197:
+	case 193:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeCount
 		}
-	case 198:
+	case 194:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeMax
 		}
-	case 199:
+	case 195:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeMin
 		}
-	case 200:
+	case 196:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeStddev
 		}
-	case 201:
+	case 197:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeStdvar
 		}
-	case 202:
+	case 198:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeBottomK
 		}
-	case 203:
+	case 199:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeTopK
 		}
-	case 204:
+	case 200:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeSort
 		}
-	case 205:
+	case 201:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeSortDesc
 		}
-	case 206:
+	case 202:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpTypeApproxTopK
 		}
-	case 207:
+	case 203:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeCount
 		}
-	case 208:
+	case 204:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeRate
 		}
-	case 209:
+	case 205:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeRateCounter
 		}
-	case 210:
+	case 206:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeBytes
 		}
-	case 211:
+	case 207:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeBytesRate
 		}
-	case 212:
+	case 208:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeAvg
 		}
-	case 213:
+	case 209:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeSum
 		}
-	case 214:
+	case 210:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeMin
 		}
-	case 215:
+	case 211:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeMax
 		}
-	case 216:
+	case 212:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeStdvar
 		}
-	case 217:
+	case 213:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeStddev
 		}
-	case 218:
+	case 214:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeQuantile
 		}
-	case 219:
+	case 215:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeFirst
 		}
-	case 220:
+	case 216:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeLast
 		}
-	case 221:
+	case 217:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.op = OpRangeTypeAbsent
 		}
-	case 222:
+	case 218:
 		syntaxDollar = syntaxS[syntaxpt-2 : syntaxpt+1]
 		{
 			syntaxVAL.offsetExpr = newOffsetExpr(syntaxDollar[2].dur)
 		}
-	case 223:
+	case 219:
 		syntaxDollar = syntaxS[syntaxpt-1 : syntaxpt+1]
 		{
 			syntaxVAL.strs = []string{syntaxDollar[1].str}
 		}
-	case 224:
+	case 220:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.strs = append(syntaxDollar[1].strs, syntaxDollar[3].str)
 		}
-	case 225:
+	case 221:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: false, Groups: syntaxDollar[3].strs}
 		}
-	case 226:
+	case 222:
 		syntaxDollar = syntaxS[syntaxpt-4 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: true, Groups: syntaxDollar[3].strs}
 		}
-	case 227:
+	case 223:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: false, Groups: nil}
 		}
-	case 228:
+	case 224:
 		syntaxDollar = syntaxS[syntaxpt-3 : syntaxpt+1]
 		{
 			syntaxVAL.grouping = &Grouping{Without: true, Groups: nil}

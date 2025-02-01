@@ -829,10 +829,10 @@ func (e *DecolorizeExpr) Walk(f WalkFn) { f(e) }
 func (e *DecolorizeExpr) Accept(v RootVisitor) { v.VisitDecolorize(e) }
 
 type DropLabelsExpr struct {
-	dropLabels []log.DropLabel
+	dropLabels []log.NamedLabelMatcher
 }
 
-func newDropLabelsExpr(dropLabels []log.DropLabel) *DropLabelsExpr {
+func newDropLabelsExpr(dropLabels []log.NamedLabelMatcher) *DropLabelsExpr {
 	return &DropLabelsExpr{dropLabels: dropLabels}
 }
 
@@ -869,10 +869,10 @@ func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
 func (e *DropLabelsExpr) Accept(v RootVisitor) { v.VisitDropLabels(e) }
 
 type KeepLabelsExpr struct {
-	keepLabels []log.KeepLabel
+	keepLabels []log.NamedLabelMatcher
 }
 
-func newKeepLabelsExpr(keepLabels []log.KeepLabel) *KeepLabelsExpr {
+func newKeepLabelsExpr(keepLabels []log.NamedLabelMatcher) *KeepLabelsExpr {
 	return &KeepLabelsExpr{keepLabels: keepLabels}
 }
 

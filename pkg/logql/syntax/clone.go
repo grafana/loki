@@ -146,14 +146,14 @@ func (v *cloneVisitor) VisitDecolorize(*DecolorizeExpr) {
 
 func (v *cloneVisitor) VisitDropLabels(e *DropLabelsExpr) {
 	copied := &DropLabelsExpr{
-		dropLabels: make([]log.DropLabel, len(e.dropLabels)),
+		dropLabels: make([]log.NamedLabelMatcher, len(e.dropLabels)),
 	}
 	for i, l := range e.dropLabels {
 		var matcher *labels.Matcher
 		if l.Matcher != nil {
 			matcher = labels.MustNewMatcher(l.Matcher.Type, l.Matcher.Name, l.Matcher.Value)
 		}
-		copied.dropLabels[i] = log.NewDropLabel(matcher, l.Name)
+		copied.dropLabels[i] = log.NewNamedLabelMatcher(matcher, l.Name)
 	}
 
 	v.cloned = copied
@@ -170,10 +170,10 @@ func (v *cloneVisitor) VisitJSONExpressionParser(e *JSONExpressionParserExpr) {
 
 func (v *cloneVisitor) VisitKeepLabel(e *KeepLabelsExpr) {
 	copied := &KeepLabelsExpr{
-		keepLabels: make([]log.KeepLabel, len(e.keepLabels)),
+		keepLabels: make([]log.NamedLabelMatcher, len(e.keepLabels)),
 	}
 	for i, k := range e.keepLabels {
-		copied.keepLabels[i] = log.KeepLabel{
+		copied.keepLabels[i] = log.NamedLabelMatcher{
 			Name: k.Name,
 		}
 		if k.Matcher != nil {
