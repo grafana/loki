@@ -22,6 +22,7 @@ import {
 import { RingStateDistributionChart } from "@/components/ring/ring-state-distribution-chart";
 import { RefreshLoop } from "@/components/common/refresh-loop";
 import { BaseRing } from "./base-ring";
+import { useToast } from "@/hooks/use-toast";
 
 interface RegularRingProps {
   ringName: RingType;
@@ -46,7 +47,6 @@ export function RegularRing({ ringName }: RegularRingProps) {
     isLoading,
     fetchRing,
     forgetInstances,
-    instancesByState,
     uniqueStates,
     uniqueZones,
     isTokenBased,
@@ -85,6 +85,8 @@ export function RegularRing({ ringName }: RegularRingProps) {
     });
   }, []);
 
+  const { toast } = useToast();
+
   // Handle forget instances
   const handleForget = useCallback(async () => {
     if (selectedInstances.size === 0) return;
@@ -102,10 +104,18 @@ export function RegularRing({ ringName }: RegularRingProps) {
       }
 
       if (success < total) {
-        throw new Error(`Failed to forget ${total - success} instance(s)`);
+        toast({
+          title: "Failed to forget instances",
+          description: `Failed to forget ${total - success} instance(s)`,
+          variant: "destructive",
+        });
       }
     } catch (err) {
-      console.error("Error forgetting instances:", err);
+      toast({
+        title: "Failed to forget instances",
+        description: `${error}`,
+        variant: "destructive",
+      });
     } finally {
       setIsForgetLoading(false);
       setIsForgetDialogOpen(false);

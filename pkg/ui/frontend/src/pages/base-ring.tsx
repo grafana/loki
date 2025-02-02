@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "react-router-dom";
-import { CircleDot } from "lucide-react";
+import { AlertCircle, CircleDot } from "lucide-react";
 import { AVAILABLE_RINGS } from "@/hooks/use-ring";
 import { RingType } from "@/types/ring";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 interface BaseRingProps {
   error?: string;
@@ -13,16 +14,11 @@ export function BaseRing({ error, ringName }: BaseRingProps) {
   // Show error state if there is an error
   if (error) {
     return (
-      <div className="p-4">
-        <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-destructive">{error}</p>
-          </CardContent>
-        </Card>
-      </div>
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
     );
   }
 

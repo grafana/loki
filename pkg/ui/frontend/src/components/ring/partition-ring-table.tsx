@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DataTableColumnHeader } from "@/components/common/data-table-column-header";
+import { RateWithTrend } from "./rate-with-trend";
 
 export type SortField =
   | "id"
@@ -145,19 +146,7 @@ export function PartitionRingTable({
   sortField,
   sortDirection,
   onSort,
-  previousPartitions = [],
 }: PartitionRingTableProps) {
-  // Create a map of previous values for quick lookup
-  const previousValues = useMemo(() => {
-    const values = previousPartitions.reduce((acc, partition) => {
-      const key = `${partition.owner_id}-${partition.id}`;
-      acc[key] = partition;
-      return acc;
-    }, {} as Record<string, PartitionInstance>);
-
-    return values;
-  }, [previousPartitions]);
-
   // Sort partitions according to the current sort field
   const sortedPartitions = useMemo(() => {
     return [...partitions].sort((a, b) => {
@@ -340,26 +329,16 @@ export function PartitionRingTable({
                   </span>
                 </TableCell>
                 <TableCell>
-                  <span className="text-muted-foreground inline-flex items-center">
-                    {formatBytes(partition.uncompressedRate || 0)}/s
-                    <TrendIndicator
-                      trend={getRateTrend(
-                        partition.uncompressedRate,
-                        partition.previousUncompressedRate
-                      )}
-                    />
-                  </span>
+                  <RateWithTrend
+                    currentRate={partition.uncompressedRate || 0}
+                    className="text-muted-foreground inline-flex items-center"
+                  />
                 </TableCell>
                 <TableCell>
-                  <span className="text-muted-foreground inline-flex items-center">
-                    {formatBytes(partition.compressedRate || 0)}/s
-                    <TrendIndicator
-                      trend={getRateTrend(
-                        partition.compressedRate,
-                        partition.previousCompressedRate
-                      )}
-                    />
-                  </span>
+                  <RateWithTrend
+                    currentRate={partition.compressedRate || 0}
+                    className="text-muted-foreground inline-flex items-center"
+                  />
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">

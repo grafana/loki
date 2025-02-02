@@ -9,6 +9,7 @@ import {
 } from "../components/ui/sidebar";
 import { Separator } from "../components/ui/separator";
 import { ScrollToTop } from "../components/ui/scroll-to-top";
+import { Toaster } from "@/components/ui/toaster";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -29,6 +30,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </div>
           </header>
           <main className="flex flex-1 flex-col">{children}</main>
+          <Toaster />
           <ScrollToTop />
         </SidebarInset>
       </SidebarProvider>

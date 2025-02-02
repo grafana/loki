@@ -60,6 +60,7 @@ export function usePartitionRing({
     if (!firstNodeName) {
       setState((prev) => ({
         ...prev,
+        partitions: [],
         error: "No cluster members available",
         isLoading: false,
       }));

@@ -50,8 +50,8 @@ export const PartitionStates = {
   0: "Unknown",
   1: "Pending",
   2: "Active",
-  3: "Leaving",
-  4: "Left",
+  3: "Inactive",
+  4: "Deleted",
 } as const;
 
 export type PartitionState = keyof typeof PartitionStates;

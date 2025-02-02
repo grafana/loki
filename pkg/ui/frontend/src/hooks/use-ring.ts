@@ -259,7 +259,6 @@ export interface UseRingResult {
   forgetInstances: (
     instanceIds: string[]
   ) => Promise<{ success: number; total: number }>;
-  instancesByState: Record<string, number>;
   uniqueStates: string[];
   uniqueZones: string[];
   isTokenBased: boolean;
@@ -292,6 +291,7 @@ export function useRing({
     }
 
     if (!firstNodeName) {
+      setError("No cluster members available");
       return;
     }
 
@@ -320,7 +320,8 @@ export function useRing({
 
       const jsonData: RingResponse = await jsonResponse.json();
       if (!jsonData || !jsonData.shards) {
-        throw new Error("Invalid ring data received");
+        setRing(null);
+        return;
       }
 
       // Then fetch text/plain data to get ownership information
@@ -377,9 +378,14 @@ export function useRing({
 
       for (const instanceId of instanceIds) {
         try {
+          const formData = new FormData();
+          formData.append("forget", instanceId);
           const response = await fetch(
-            `${getRingProxyPath(firstNodeName, ringName)}/${instanceId}/forget`,
-            { method: "POST" }
+            `${getRingProxyPath(firstNodeName, ringName)}`,
+            {
+              method: "POST",
+              body: formData,
+            }
           );
           if (response.ok) {
             success++;
@@ -395,9 +401,9 @@ export function useRing({
   );
 
   // Calculate instance statistics
-  const { instancesByState, uniqueStates, uniqueZones } = useMemo(() => {
+  const { uniqueStates, uniqueZones } = useMemo(() => {
     if (!ring?.shards) {
-      return { instancesByState: {}, uniqueStates: [], uniqueZones: [] };
+      return { uniqueStates: [], uniqueZones: [] };
     }
 
     const states = new Set<string>();
@@ -416,7 +422,6 @@ export function useRing({
     });
 
     return {
-      instancesByState: byState,
       uniqueStates: Array.from(states).sort(),
       uniqueZones: Array.from(zones).sort(),
     };
@@ -454,7 +459,6 @@ export function useRing({
     isLoading,
     fetchRing,
     forgetInstances,
-    instancesByState,
     uniqueStates,
     uniqueZones,
     isTokenBased,

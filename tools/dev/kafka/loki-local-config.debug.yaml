@@ -15,7 +15,6 @@ common:
       rules_directory: /tmp/loki/rules
   replication_factor: 1
   ring:
-    instance_id: local
     kvstore:
       store: inmemory
 
