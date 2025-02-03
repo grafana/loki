@@ -44,6 +44,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester"
+	limits_frontend_client "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	ingester_client "github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	kafka_client "github.com/grafana/loki/v3/pkg/kafka/client"
@@ -177,6 +178,10 @@ type Distributor struct {
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
 
+	// Will succeed usage tracker in future.
+	limitsFrontendRing ring.ReadRing
+	limitsFrontends *ring_client.Pool
+
 	// kafka
 	kafkaWriter   KafkaProducer
 	partitionRing ring.PartitionRingReader
@@ -201,6 +206,8 @@ func New(
 	metricsNamespace string,
 	tee Tee,
 	usageTracker push.UsageTracker,
+	limitsFrontendCfg limits_frontend_client.Config,
+	limitsFrontendRing ring.ReadRing,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -220,6 +227,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+
+	limitsFrontendClientFactory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		return limits_frontend_client.New(limitsFrontendCfg, addr)
+	})
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
@@ -318,6 +329,14 @@ func New(
 		writeFailuresManager: writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:          kafkaWriter,
 		partitionRing:        partitionRing,
+		limitsFrontendRing:   limitsFrontendRing,
+		limitsFrontends: limits_frontend_client.NewPool(
+			"ingest-limits-frontend",
+			limitsFrontendCfg.PoolConfig,
+			limitsFrontendRing,
+			limitsFrontendClientFactory,
+			logger,
+		),
 	}
 
 	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
@@ -448,6 +467,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// Return early if request does not contain any streams
 	if len(req.Streams) == 0 {
 		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusUnprocessableEntity, validation.MissingStreamsErrorMsg)
+	}
+
+	exceedsLimits, err := d.exceedsLimits(ctx, tenantID, req.Streams)
+	if err != nil {
+		level.Error(d.logger).Log("msg", "failed to check if request exceeds limits", "err", err)
+	} else if len(exceedsLimits.RejectedStreams) > 0 {
+		level.Error(d.logger).Log("msg", "tenant request exceeded limits", "tenant", tenantID)
+	} else {
+		level.Info(d.logger).Log("msg", "within limits", "tenant", tenantID)
 	}
 
 	// First we flatten out the request into a list of samples.
@@ -1063,6 +1091,38 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 			task.pushTracker.doneWithResult(nil)
 		}
 	}
+}
+
+func (d *Distributor) exceedsLimits(ctx context.Context, tenantID string, streams []logproto.Stream) (*logproto.ExceedsLimitsResponse, error) {
+	streamsWithSize := make([]*logproto.StreamMetadataWithSize, 0, len(streams))
+	for _, stream := range streams {
+		streamsWithSize = append(streamsWithSize, &logproto.StreamMetadataWithSize{
+			StreamHash: stream.Hash,
+		})
+	}
+	req := logproto.ExceedsLimitsRequest{
+		Tenant: tenantID,
+		Streams: streamsWithSize,
+	}
+
+	var key uint32
+	var descs [5]ring.InstanceDesc
+	rs, err := d.limitsFrontendRing.Get(key, limits_frontend_client.LimitsRead, descs[0:], nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(rs.Instances) == 0 {
+
+	}
+
+	instance := rs.Instances[0]
+	c, err := d.limitsFrontends.GetClientFor(instance.Addr)
+	if err != nil {
+		return nil, err
+	}
+	client := c.(logproto.IngestLimitsFrontendClient)
+	return client.ExceedsLimits(ctx, &req)
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
