@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
+	"github.com/grafana/loki/v3/pkg/limits"
 	limitsfrontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
@@ -61,11 +62,11 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
-type limits struct {
+type streamMetadataLimits struct {
 	maxGlobalStreamsPerUser int
 }
 
-func (l *limits) MaxGlobalStreamsPerUser(_ string) int {
+func (l *streamMetadataLimits) MaxGlobalStreamsPerUser(_ string) int {
 	return l.maxGlobalStreamsPerUser
 }
 
@@ -201,7 +202,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	}
 
 	ingestLimitsRingReg := prometheus.WrapRegistererWithPrefix("ingest_limits_ring_", reg)
-	s.ingestLimitsRing, err = ring.New(cfg.IngestLimitsLifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, ingestLimitsRingReg)
+	s.ingestLimitsRing, err = ring.New(cfg.IngestLimitsLifecyclerConfig.RingConfig, limits.RingName, limits.RingKey, logger, ingestLimitsRingReg)
 	if err != nil {
 		return nil, fmt.Errorf("creating ingest limits ring: %w", err)
 	}
@@ -218,7 +219,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ingesterRing, cfg.IngesterLifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Init limits service
-	limits := &limits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
+	limits := &streamMetadataLimits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return limitsfrontend.NewIngestLimitsBackendClient(s.cfg.ClientConfig, addr)
 	})
