@@ -80,6 +80,7 @@ type ConfigEntry struct {
 	Block     *ConfigBlock
 	BlockDesc string
 	Root      bool
+	Inline    bool
 
 	// In case the Kind is KindField
 	FieldFlag    string
@@ -228,7 +229,25 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 					blocks = append(blocks, subBlock)
 				}
 			} else {
-				subBlock = block
+				// For inline fields, we still want to add them to the root blocks list
+				if isRoot {
+					subBlock = &ConfigBlock{
+						Name: rootName,
+						Desc: getFieldDescription(cfg, field, rootDesc),
+					}
+					blocks = append(blocks, subBlock)
+
+					// Add a field entry that references the root block
+					block.Add(&ConfigEntry{
+						Kind:      KindBlock,
+						Block:     subBlock,
+						BlockDesc: subBlock.Desc,
+						Root:      true,
+						Inline:    true,
+					})
+				} else {
+					subBlock = block
+				}
 			}
 
 			if field.Type.Kind() == reflect.Ptr {
