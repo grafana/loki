@@ -446,6 +446,7 @@
       "IMAGE_PREFIX": "public.ecr.aws/grafana"
       "RELEASE_LIB_REF": "main"
       "RELEASE_REPO": "grafana/loki"
+      "REPO": "loki"
     "needs":
     - "check"
     "outputs":
@@ -483,6 +484,12 @@
       "uses": "aws-actions/amazon-ecr-login@v2"
       "with":
         "registry-type": "public"
+    - "id": "get-secrets"
+      "uses": "grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0"
+      "with":
+        "repo_secrets": |
+          ECR_ACCESS_KEY=aws-credentials:access_key_id
+          ECR_SECRET_KEY=aws-credentials:secret_access_key"
     - "id": "weekly-version"
       "name": "Get weekly version"
       "run": |
