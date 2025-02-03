@@ -30,7 +30,7 @@ export function FileList({ current, parent, files, folders }: FileListProps) {
 
   const handleFileClick = (file: ExplorerFile) => {
     navigate(
-      `/storage/dataobj/metadata/${encodeURIComponent(
+      `/storage/dataobj/metadata?path=${encodeURIComponent(
         current + "/" + file.name
       )}`
     );
@@ -48,11 +48,11 @@ export function FileList({ current, parent, files, folders }: FileListProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {parent && parent !== current && (
+          {parent !== current && (
             <TableRow
               key="parent"
               className="h-12 cursor-pointer hover:bg-muted/50"
-              onClick={() => handleNavigate(parent)}
+              onClick={() => handleNavigate(parent || "")}
             >
               <TableCell className="font-medium">
                 <div className="flex items-center">

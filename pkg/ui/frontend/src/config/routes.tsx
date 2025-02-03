@@ -3,79 +3,94 @@ import {
   RingBreadcrumb,
 } from "@/components/shared/route-breadcrumbs";
 import { NotFound } from "@/components/shared/errors/not-found";
-import * as React from "react";
+import Ring from "@/pages/ring";
 import { RouteObject } from "react-router-dom";
 import { DataObjectsPage } from "@/pages/data-objects";
 import { FileMetadataPage } from "@/pages/file-metadata";
+import Nodes from "@/pages/nodes";
+import { BreadcrumbComponentType } from "use-react-router-breadcrumbs";
+import NodeDetails from "@/pages/node-details";
+import ComingSoon from "@/pages/coming-soon";
+
+type RouteObjectWithBreadcrumb = Omit<RouteObject, "children"> & {
+  breadcrumb: string | BreadcrumbComponentType;
+};
 
 // Routes configuration for breadcrumbs
-export const routes: RouteObject[] = [
+export const routes: RouteObjectWithBreadcrumb[] = [
   {
     path: "/",
-    handle: { breadcrumb: "Home" },
+    breadcrumb: "Home",
+    element: <Nodes />,
   },
   {
     path: "/nodes",
-    handle: { breadcrumb: "Nodes" },
+    breadcrumb: "Nodes",
+    element: <Nodes />,
   },
   {
     path: "/nodes/:nodeName",
-    handle: { breadcrumb: NodeBreadcrumb },
+    breadcrumb: NodeBreadcrumb,
+    element: <NodeDetails />,
+  },
+  {
+    path: "/versions",
+    breadcrumb: "Versions",
+    element: <ComingSoon />,
   },
   {
     path: "/rings",
-    handle: { breadcrumb: "Rings" },
+    breadcrumb: "Rings",
+    element: <Ring />,
   },
   {
     path: "/rings/:ringName",
-    handle: { breadcrumb: RingBreadcrumb },
+    breadcrumb: RingBreadcrumb,
+    element: <Ring />,
   },
   {
     path: "/storage",
-    handle: { breadcrumb: "Storage" },
+    breadcrumb: "Storage",
+    element: <ComingSoon />,
   },
   {
     path: "/storage/object",
-    handle: { breadcrumb: "Object Storage" },
-  },
-  {
-    path: "/storage/data",
-    handle: { breadcrumb: "Data Objects" },
+    breadcrumb: "Object Storage",
+    element: <ComingSoon />,
   },
   {
     path: "/storage/dataobj",
+    breadcrumb: "Data Objects",
     element: <DataObjectsPage />,
-    handle: { breadcrumb: "Data Objects" },
   },
   {
-    path: "/storage/dataobj/metadata/:filePath",
+    path: "/storage/dataobj/metadata",
+    breadcrumb: "File Metadata",
     element: <FileMetadataPage />,
-    handle: { breadcrumb: "File Metadata" },
   },
   {
     path: "/tenants",
-    handle: { breadcrumb: "Tenants" },
+    breadcrumb: "Tenants",
+    element: <ComingSoon />,
   },
   {
     path: "/tenants/limits",
-    handle: { breadcrumb: "Limits" },
+    breadcrumb: "Limits",
+    element: <ComingSoon />,
   },
   {
     path: "/tenants/labels",
-    handle: { breadcrumb: "Labels" },
+    breadcrumb: "Labels",
+    element: <ComingSoon />,
   },
   {
     path: "/rules",
-    handle: { breadcrumb: "Rules" },
+    breadcrumb: "Rules",
+    element: <ComingSoon />,
   },
   {
     path: "/404",
-    handle: { breadcrumb: "404" },
-    element: <NotFound />,
-  },
-  {
-    path: "*",
-    handle: { breadcrumb: "404" },
+    breadcrumb: "404",
     element: <NotFound />,
   },
 ];

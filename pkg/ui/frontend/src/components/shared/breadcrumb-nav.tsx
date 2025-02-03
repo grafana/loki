@@ -1,5 +1,6 @@
 import * as React from "react";
-import { useMatches, Link } from "react-router-dom";
+import useBreadcrumbs from "use-react-router-breadcrumbs";
+import { Link } from "react-router-dom";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -8,38 +9,28 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-
-interface BreadcrumbHandle {
-  breadcrumb: React.ReactNode;
-}
+import { routes } from "@/config/routes";
 
 export function BreadcrumbNav() {
-  const matches = useMatches();
+  const breadcrumbs = useBreadcrumbs(routes, {
+    disableDefaults: true,
+  });
 
-  const crumbs = matches
-    .filter((match) => Boolean((match.handle as BreadcrumbHandle)?.breadcrumb))
-    .map((match) => ({
-      path: match.pathname,
-      breadcrumb: (match.handle as BreadcrumbHandle).breadcrumb,
-    }));
-
-  if (crumbs.length <= 1) return null;
-  console.log(crumbs);
   return (
     <Breadcrumb>
       <BreadcrumbList>
-        {crumbs.map((crumb, index) => (
-          <React.Fragment key={crumb.path}>
+        {breadcrumbs.map(({ match, breadcrumb }, index) => (
+          <React.Fragment key={match.pathname}>
             <BreadcrumbItem className={index === 0 ? "hidden md:block" : ""}>
-              {index === crumbs.length - 1 ? (
-                <BreadcrumbPage>{crumb.breadcrumb}</BreadcrumbPage>
+              {index === breadcrumbs.length - 1 ? (
+                <BreadcrumbPage>{breadcrumb}</BreadcrumbPage>
               ) : (
                 <BreadcrumbLink asChild>
-                  <Link to={crumb.path}>{crumb.breadcrumb}</Link>
+                  <Link to={match.pathname}>{breadcrumb}</Link>
                 </BreadcrumbLink>
               )}
             </BreadcrumbItem>
-            {index < crumbs.length - 1 && (
+            {index < breadcrumbs.length - 1 && (
               <BreadcrumbSeparator
                 className={index === 0 ? "hidden md:block" : ""}
               />

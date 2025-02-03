@@ -1,27 +1,40 @@
-import { useParams } from "react-router-dom";
-import { BreadcrumbNav } from "@/components/shared/breadcrumb-nav";
+import { useSearchParams } from "react-router-dom";
 import { FileMetadataView } from "@/components/explorer/file-metadata";
 import { useFileMetadata } from "@/hooks/use-file-metadata";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ExplorerBreadcrumb } from "@/components/explorer/breadcrumb";
+import { Loader2 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function FileMetadataPage() {
-  const { filePath } = useParams<{ filePath: string }>();
-  const { data: metadata, isLoading, error } = useFileMetadata(filePath);
+  const [searchParams] = useSearchParams();
+  const path = searchParams.get("path") || "";
+  const {
+    data: metadata,
+    downloadUrl,
+    isLoading,
+    error,
+  } = useFileMetadata(path);
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <BreadcrumbNav />
-      </div>
+    <div className="flex h-full flex-col container space-y-6 p-6">
+      <ExplorerBreadcrumb />
       <ScrollArea className="h-full">
         {isLoading ? (
-          <div className="flex items-center justify-center p-8">Loading...</div>
-        ) : error ? (
-          <div className="flex items-center justify-center p-8 text-destructive">
-            {error.message}
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-16 w-16 animate-spin" />
           </div>
-        ) : metadata && filePath ? (
-          <FileMetadataView metadata={metadata} filename={filePath} />
+        ) : error ? (
+          <Alert variant="destructive">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
+        ) : metadata && path ? (
+          <FileMetadataView
+            metadata={metadata}
+            filename={path}
+            downloadUrl={downloadUrl}
+          />
         ) : null}
       </ScrollArea>
     </div>

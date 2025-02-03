@@ -1,5 +1,4 @@
 import { useSearchParams } from "react-router-dom";
-import { BreadcrumbNav } from "@/components/shared/breadcrumb-nav";
 import {
   Card,
   CardContent,
@@ -10,6 +9,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { FileList } from "@/components/explorer/file-list";
 import { useExplorerData } from "@/hooks/use-explorer-data";
+import { ExplorerBreadcrumb } from "@/components/explorer/breadcrumb";
 
 export function DataObjectsPage() {
   const [searchParams] = useSearchParams();
@@ -17,10 +17,8 @@ export function DataObjectsPage() {
   const { data, isLoading, error } = useExplorerData(path);
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <BreadcrumbNav />
-      </div>
+    <div className="flex h-full flex-col container space-y-6 p-6">
+      <ExplorerBreadcrumb />
       <ScrollArea className="h-full">
         <div className="grid gap-4">
           <Card>
