@@ -1,7 +1,9 @@
 package distributor
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -42,6 +44,11 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
 	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, logPushRequestStreams)
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			// we shouldn't treat EOF as a failure/error.
+			return
+		}
+
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
 				"msg", "push request failed",
