@@ -80,7 +80,6 @@ func (t *table) ReadPages(ctx context.Context, pages []dataset.Page) result.Seq[
 
 		return nil
 	})
-
 }
 
 // Size returns the total size of the table in bytes.

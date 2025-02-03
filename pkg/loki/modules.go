@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
@@ -144,11 +145,11 @@ const (
 	BlockBuilder             = "block-builder"
 	BlockScheduler           = "block-scheduler"
 	DataObjExplorer          = "dataobj-explorer"
-
-	All     = "all"
-	Read    = "read"
-	Write   = "write"
-	Backend = "backend"
+	DataObjConsumer          = "dataobj-consumer"
+	All                      = "all"
+	Read                     = "read"
+	Write                    = "write"
+	Backend                  = "backend"
 )
 
 const (
@@ -1903,6 +1904,33 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 
 	t.Server.HTTP.PathPrefix("/dataobj/explorer/").Handler(explorer.Handler())
 	return explorer, nil
+}
+
+func (t *Loki) initDataObjConsumer() (services.Service, error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema for now: %w", err)
+	}
+
+	store, err := bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj", util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
+	t.dataObjConsumer = consumer.New(
+		t.Cfg.KafkaConfig,
+		t.Cfg.DataObjConsumer,
+		store,
+		t.Cfg.Ingester.LifecyclerConfig.ID,
+		t.partitionRing,
+		prometheus.DefaultRegisterer,
+		util_log.Logger,
+	)
+
+	return t.dataObjConsumer, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
