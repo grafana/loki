@@ -101,7 +101,11 @@ func (p *partitionProcessor) start() {
 			case <-p.ctx.Done():
 				level.Info(p.logger).Log("msg", "stopping partition processor")
 				return
-			case record := <-p.records:
+			case record, ok := <-p.records:
+				if !ok {
+					// Channel was closed
+					return
+				}
 				p.processRecord(record)
 			}
 		}
