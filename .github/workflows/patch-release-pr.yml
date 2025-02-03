@@ -696,9 +696,6 @@ jobs:
         - arch: "linux/arm64"
           runs_on:
           - "github-hosted-ubuntu-arm64-small"
-        - arch: "linux/arm"
-          runs_on:
-          - "github-hosted-ubuntu-arm64-small"
   promtail:
     needs:
     - "version"
