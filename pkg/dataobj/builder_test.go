@@ -1,19 +1,17 @@
 package dataobj
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/pkg/push"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -28,8 +26,7 @@ var testBuilderConfig = BuilderConfig{
 }
 
 func TestBuilder(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
-
+	obj := bytes.NewBuffer(nil)
 	streams := []logproto.Stream{
 		{
 			Labels: `{cluster="test",app="foo"}`,
@@ -75,22 +72,18 @@ func TestBuilder(t *testing.T) {
 	}
 
 	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig, bucket, "fake")
+		builder, err := NewBuilder(testBuilderConfig)
 		require.NoError(t, err)
 
 		for _, entry := range streams {
 			require.NoError(t, builder.Append(entry))
 		}
-		_, err = builder.Flush(context.Background())
+		_, err = builder.Flush(context.Background(), obj)
 		require.NoError(t, err)
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		objects, err := result.Collect(listObjects(context.Background(), bucket, "fake"))
-		require.NoError(t, err)
-		require.Len(t, objects, 1)
-
-		obj := FromBucket(bucket, objects[0])
+		obj := FromReaderAt(bytes.NewReader(obj.Bytes()), int64(obj.Len()))
 		md, err := obj.Metadata(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, 1, md.StreamsSections)
@@ -104,9 +97,7 @@ func TestBuilder_Append(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	bucket := objstore.NewInMemBucket()
-
-	builder, err := NewBuilder(testBuilderConfig, bucket, "fake")
+	builder, err := NewBuilder(testBuilderConfig)
 	require.NoError(t, err)
 
 	for {
@@ -124,26 +115,4 @@ func TestBuilder_Append(t *testing.T) {
 		}
 		require.NoError(t, err)
 	}
-}
-
-func listObjects(ctx context.Context, bucket objstore.Bucket, tenant string) result.Seq[string] {
-	tenantPath := fmt.Sprintf("tenant-%s/objects/", tenant)
-
-	return result.Iter(func(yield func(string) bool) error {
-		errIterationStopped := errors.New("iteration stopped")
-
-		err := bucket.Iter(ctx, tenantPath, func(name string) error {
-			if !yield(name) {
-				return errIterationStopped
-			}
-			return nil
-		}, objstore.WithRecursiveIter())
-
-		switch {
-		case errors.Is(err, errIterationStopped):
-			return nil
-		default:
-			return err
-		}
-	})
 }

@@ -2,7 +2,6 @@ package metastore
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -21,7 +20,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	m, err := NewMetastoreManager(bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
+	m, err := NewManager(bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 
 	// Set limits for the test
@@ -34,10 +33,9 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-	flushResults := make([]dataobj.FlushResult, 1000)
+	flushStats := make([]dataobj.FlushStats, 1000)
 	for i := 0; i < 1000; i++ {
-		flushResults[i] = dataobj.FlushResult{
-			Path:         fmt.Sprintf("test-dataobj-path-%d", i),
+		flushStats[i] = dataobj.FlushStats{
 			MinTimestamp: now.Add(-1 * time.Hour).Add(time.Duration(i) * time.Millisecond),
 			MaxTimestamp: now,
 		}
@@ -47,7 +45,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	t.ReportAllocs()
 	for i := 0; i < t.N; i++ {
 		// Test writing metastores
-		err = m.UpdateMetastore(ctx, flushResults[i%len(flushResults)])
+		err = m.UpdateMetastore(ctx, "path", flushStats[i%len(flushStats)])
 		require.NoError(t, err)
 	}
 
@@ -59,7 +57,7 @@ func TestWriteMetastores(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	m, err := NewMetastoreManager(bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
+	m, err := NewManager(bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 
 	// Set limits for the test
@@ -72,8 +70,7 @@ func TestWriteMetastores(t *testing.T) {
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-	flushResult := dataobj.FlushResult{
-		Path:         "test-dataobj-path",
+	flushStats := dataobj.FlushStats{
 		MinTimestamp: now.Add(-1 * time.Hour),
 		MaxTimestamp: now,
 	}
@@ -81,7 +78,7 @@ func TestWriteMetastores(t *testing.T) {
 	require.Len(t, bucket.Objects(), 0)
 
 	// Test writing metastores
-	err = m.UpdateMetastore(ctx, flushResult)
+	err = m.UpdateMetastore(ctx, "test-dataobj-path", flushStats)
 	require.NoError(t, err)
 
 	require.Len(t, bucket.Objects(), 1)
@@ -90,13 +87,12 @@ func TestWriteMetastores(t *testing.T) {
 		originalSize = len(obj)
 	}
 
-	flushResult2 := dataobj.FlushResult{
-		Path:         "different-test-dataobj-path",
+	flushResult2 := dataobj.FlushStats{
 		MinTimestamp: now.Add(-15 * time.Minute),
 		MaxTimestamp: now,
 	}
 
-	err = m.UpdateMetastore(ctx, flushResult2)
+	err = m.UpdateMetastore(ctx, "different-dataobj-path", flushResult2)
 	require.NoError(t, err)
 
 	require.Len(t, bucket.Objects(), 1)

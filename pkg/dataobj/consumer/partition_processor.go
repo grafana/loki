@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
@@ -26,15 +27,18 @@ type partitionProcessor struct {
 	partition int32
 	tenantID  []byte
 	// Processing pipeline
-	records chan *kgo.Record
-	builder *dataobj.Builder
-	decoder *kafka.Decoder
+	records          chan *kgo.Record
+	builder          *dataobj.Builder
+	decoder          *kafka.Decoder
+	uploader         *uploader.Uploader
+	metastoreManager *metastore.Manager
 
 	// Builder initialization
-	builderOnce      sync.Once
-	builderCfg       dataobj.BuilderConfig
-	bucket           objstore.Bucket
-	metastoreManager *metastore.Manager
+	builderOnce sync.Once
+	builderCfg  dataobj.BuilderConfig
+	bucket      objstore.Bucket
+	flushBuffer *bytes.Buffer
+
 	// Metrics
 	metrics *partitionOffsetMetrics
 
@@ -54,6 +58,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 	}
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
 		"partition": strconv.Itoa(int(partition)),
+		"tenant":    tenantID,
 	}, reg)
 
 	metrics := newPartitionOffsetMetrics()
@@ -61,7 +66,14 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	metastoreManager, err := metastore.NewMetastoreManager(bucket, tenantID, logger, reg)
+	uploader := uploader.New(uploader.UploaderConfig{
+		SHAPrefixSize: builderCfg.SHAPrefixSize,
+	}, bucket, tenantID, reg)
+	if err := uploader.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
+	}
+
+	metastoreManager, err := metastore.NewManager(bucket, tenantID, logger, reg)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to create metastore manager", "err", err)
 		cancel()
@@ -82,6 +94,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		bucket:           bucket,
 		tenantID:         []byte(tenantID),
 		metrics:          metrics,
+		uploader:         uploader,
 		metastoreManager: metastoreManager,
 	}
 }
@@ -112,12 +125,14 @@ func (p *partitionProcessor) stop() {
 		p.builder.UnregisterMetrics(p.reg)
 	}
 	p.metrics.unregister(p.reg)
+	p.uploader.UnregisterMetrics(p.reg)
 }
 
 func (p *partitionProcessor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
-		builder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
+		// Dataobj builder
+		builder, err := dataobj.NewBuilder(p.builderCfg)
 		if err != nil {
 			initErr = err
 			return
@@ -127,6 +142,7 @@ func (p *partitionProcessor) initBuilder() error {
 			return
 		}
 		p.builder = builder
+		p.flushBuffer = bytes.NewBuffer(make([]byte, 0, p.builderCfg.TargetObjectSize))
 	})
 	return initErr
 }
@@ -166,9 +182,9 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			MaxBackoff: 10 * time.Second,
 		})
 
-		var flushResult dataobj.FlushResult
+		var flushedDataobjStats dataobj.FlushStats
 		for backoff.Ongoing() {
-			flushResult, err = p.builder.Flush(p.ctx)
+			flushedDataobjStats, err = p.builder.Flush(p.ctx, p.flushBuffer)
 			if err == nil {
 				break
 			}
@@ -177,7 +193,19 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			backoff.Wait()
 		}
 
-		if err := p.metastoreManager.UpdateMetastore(p.ctx, flushResult); err != nil {
+		backoff.Reset()
+		var objectPath string
+		for backoff.Ongoing() {
+			objectPath, err = p.uploader.Upload(p.ctx, p.flushBuffer)
+			if err == nil {
+				break
+			}
+			level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
+			p.metrics.incUploadFailures()
+			backoff.Wait()
+		}
+
+		if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
 			level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 			return
 		}

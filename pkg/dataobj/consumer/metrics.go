@@ -14,6 +14,7 @@ type partitionOffsetMetrics struct {
 
 	// Error counters
 	flushFailures  prometheus.Counter
+	uploadFailures prometheus.Counter
 	commitFailures prometheus.Counter
 	appendFailures prometheus.Counter
 
@@ -26,6 +27,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_flush_failures_total",
 			Help: "Total number of flush failures",
+		}),
+		uploadFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_upload_failures_total",
+			Help: "Total number of upload failures",
 		}),
 		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_commit_failures_total",
@@ -64,6 +69,7 @@ func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
 		p.currentOffset,
 		p.flushFailures,
+		p.uploadFailures,
 		p.commitFailures,
 		p.appendFailures,
 		p.processingDelay,
@@ -83,6 +89,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.currentOffset,
 		p.flushFailures,
+		p.uploadFailures,
 		p.commitFailures,
 		p.appendFailures,
 		p.processingDelay,
@@ -99,6 +106,10 @@ func (p *partitionOffsetMetrics) updateOffset(offset int64) {
 
 func (p *partitionOffsetMetrics) incFlushFailures() {
 	p.flushFailures.Inc()
+}
+
+func (p *partitionOffsetMetrics) incUploadFailures() {
+	p.uploadFailures.Inc()
 }
 
 func (p *partitionOffsetMetrics) incCommitFailures() {

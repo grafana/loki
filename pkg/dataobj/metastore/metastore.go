@@ -40,11 +40,12 @@ type Manager struct {
 	bucket           objstore.Bucket
 	logger           log.Logger
 	backoff          *backoff.Backoff
+	flushBuffer      *bytes.Buffer
 
 	builderOnce sync.Once
 }
 
-func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*Manager, error) {
+func NewManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*Manager, error) {
 	metrics := newMetastoreMetrics()
 	if err := metrics.register(reg); err != nil {
 		return nil, err
@@ -66,17 +67,18 @@ func NewMetastoreManager(bucket objstore.Bucket, tenantID string, logger log.Log
 func (m *Manager) initBuilder() error {
 	var initErr error
 	m.builderOnce.Do(func() {
-		metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg, m.bucket, m.tenantID)
+		metastoreBuilder, err := dataobj.NewBuilder(metastoreBuilderCfg)
 		if err != nil {
 			initErr = err
 			return
 		}
+		m.flushBuffer = bytes.NewBuffer(make([]byte, 0, metastoreBuilderCfg.TargetObjectSize))
 		m.metastoreBuilder = metastoreBuilder
 	})
 	return initErr
 }
 
-func (m *Manager) UpdateMetastore(ctx context.Context, flushResult dataobj.FlushResult) error {
+func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flushResult dataobj.FlushStats) error {
 	var err error
 	start := time.Now()
 	defer m.metrics.observeMetastoreProcessing(start)
@@ -92,7 +94,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, flushResult dataobj.Flush
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
 	minMetastoreWindow := minTimestamp.Truncate(metastoreWindowSize)
 	maxMetastoreWindow := maxTimestamp.Truncate(metastoreWindowSize)
-	for metastoreWindow := minMetastoreWindow; metastoreWindow.Compare(maxMetastoreWindow) <= 0; metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
+	for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
 		metastorePath := fmt.Sprintf("tenant-%s/metastore/%s.store", m.tenantID, metastoreWindow.Format(time.RFC3339))
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
@@ -115,7 +117,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, flushResult dataobj.Flush
 
 				encodingStart := time.Now()
 
-				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), flushResult.Path)
+				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), dataobjPath)
 				err = m.metastoreBuilder.Append(logproto.Stream{
 					Labels:  ls,
 					Entries: []logproto.Entry{{Line: ""}},
@@ -124,12 +126,13 @@ func (m *Manager) UpdateMetastore(ctx context.Context, flushResult dataobj.Flush
 					return nil, err
 				}
 
-				newMetastore, err := m.metastoreBuilder.FlushToBuffer()
+				m.flushBuffer.Reset()
+				_, err = m.metastoreBuilder.Flush(ctx, m.flushBuffer)
 				if err != nil {
 					return nil, err
 				}
 				m.metrics.observeMetastoreEncoding(encodingStart)
-				return newMetastore, nil
+				return m.flushBuffer, nil
 			})
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)

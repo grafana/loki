@@ -22,7 +22,6 @@ type metrics struct {
 
 	appendTime prometheus.Histogram
 	buildTime  prometheus.Histogram
-	flushTime  prometheus.Histogram
 
 	sizeEstimate prometheus.Gauge
 	builtSize    prometheus.Histogram
@@ -85,18 +84,6 @@ func newMetrics() *metrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 
-		flushTime: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "flush_time_seconds",
-
-			Help: "Time taken flushing data objects to object storage.",
-
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
 
 		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
@@ -141,7 +128,6 @@ func (m *metrics) Register(reg prometheus.Registerer) error {
 
 	errs = append(errs, reg.Register(m.appendTime))
 	errs = append(errs, reg.Register(m.buildTime))
-	errs = append(errs, reg.Register(m.flushTime))
 
 	errs = append(errs, reg.Register(m.sizeEstimate))
 	errs = append(errs, reg.Register(m.builtSize))
@@ -161,7 +147,6 @@ func (m *metrics) Unregister(reg prometheus.Registerer) {
 
 	reg.Unregister(m.appendTime)
 	reg.Unregister(m.buildTime)
-	reg.Unregister(m.flushTime)
 
 	reg.Unregister(m.sizeEstimate)
 	reg.Unregister(m.builtSize)
