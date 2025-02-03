@@ -545,6 +545,12 @@
     "steps":
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@v3"
+    - "id": "get-secrets"
+      "uses": "grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0"
+      "with":
+        "repo_secrets": |
+          ECR_ACCESS_KEY=aws-credentials:access_key_id
+          ECR_SECRET_KEY=aws-credentials:secret_access_key"   
     - "name": "Configure AWS credentials"
       "uses": "aws-actions/configure-aws-credentials@v4"
       "with":
