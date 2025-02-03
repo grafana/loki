@@ -227,10 +227,10 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	}
 
 	factory := ringclient.PoolAddrFunc(func(addr string) (ringclient.PoolClient, error) {
-		return frontendclient.NewIngestLimitsFrontendClient(cfg.FrontendClientConfig, addr)
+		return frontendclient.New(cfg.FrontendClientConfig, addr)
 	})
 
-	s.frontentClientPool = frontendclient.NewIngestLimitsFrontendClientPool(frontend.RingName, cfg.FrontendClientConfig.PoolConfig, s.frontendRing, factory, logger)
+	s.frontentClientPool = frontendclient.NewPool(frontend.RingName, cfg.FrontendClientConfig.PoolConfig, s.frontendRing, factory, logger)
 
 	// Init services
 	srvs := []services.Service{
@@ -254,7 +254,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 
 var frontendReadOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
-func (s *generator) getFrontendClient() (*frontendclient.IngestLimitsFrontendClient, error) {
+func (s *generator) getFrontendClient() (*frontendclient.Client, error) {
 	instances, err := s.frontendRing.GetAllHealthy(frontendReadOp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingest limits frontend instances: %w", err)
@@ -269,7 +269,7 @@ func (s *generator) getFrontendClient() (*frontendclient.IngestLimitsFrontendCli
 		return nil, fmt.Errorf("failed to get ingest limits frontend client: %w", err)
 	}
 
-	return client.(*frontendclient.IngestLimitsFrontendClient), nil
+	return client.(*frontendclient.Client), nil
 }
 
 func (s *generator) starting(ctx context.Context) error {
@@ -332,9 +332,9 @@ func (s *generator) running(ctx context.Context) error {
 
 					streamsBatch := streams[streamIdx : streamIdx+batchSize]
 
-					var streamMetadata []*logproto.StreamMetadataWithSize
+					var streamMetadata []*logproto.StreamMetadata
 					for _, stream := range streamsBatch {
-						streamMetadata = append(streamMetadata, &logproto.StreamMetadataWithSize{
+						streamMetadata = append(streamMetadata, &logproto.StreamMetadata{
 							StreamHash: stream.HashNoShard,
 						})
 					}
