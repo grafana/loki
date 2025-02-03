@@ -103,7 +103,7 @@ const baseNavItems: NavItem[] = [
       },
       {
         title: "Data Objects",
-        url: "/storage/data",
+        url: "/storage/dataobj",
       },
     ],
   },

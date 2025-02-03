@@ -759,7 +759,7 @@ func (t *Loki) setupModuleManager() error {
 		Write:   {Ingester, Distributor, PatternIngester},
 		Backend: {QueryScheduler, Ruler, Compactor, IndexGateway, BloomPlanner, BloomBuilder, BloomGateway},
 
-		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, UI},
+		All: {QueryScheduler, QueryFrontend, Querier, Ingester, PatternIngester, Distributor, Ruler, Compactor, DataObjExplorer, UI},
 	}
 
 	if t.Cfg.Querier.PerRequestLimitsEnabled {

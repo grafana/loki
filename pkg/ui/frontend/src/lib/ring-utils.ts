@@ -1,5 +1,6 @@
 import { RingType, RingTypes } from "@/types/ring";
 import { formatDistanceToNowStrict, formatISO } from "date-fns";
+import { findNodeName, hasService } from "./utils";
 
 export function formatRelativeTime(timestamp: string) {
   const date = new Date(timestamp);
@@ -86,12 +87,6 @@ export const clusterSupportService = (
     hasService(member, serviceName)
   );
 };
-
-function hasService(member: Member, serviceName: string): boolean {
-  return (
-    member.services?.some((service) => service.service === serviceName) ?? false
-  );
-}
 
 const RingServices: Record<
   string,
@@ -193,9 +188,7 @@ export function getRingProxyPath(
   const serviceName = findServiceName(ringName);
   if (!serviceName) return "";
   // Find the first member that has the serviceName
-  const nodeName = Object.keys(members).find((key) =>
-    hasService(members[key], serviceName)
-  );
+  const nodeName = findNodeName(members, serviceName);
   if (!nodeName) return "";
 
   const proxyPath = `/ui/api/v1/proxy/${nodeName}`;

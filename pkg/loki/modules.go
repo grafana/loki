@@ -1903,8 +1903,8 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	t.Server.HTTP.PathPrefix("/dataobj/explorer/").Handler(explorer.Handler())
+	path, handler := explorer.Handler()
+	t.Server.HTTP.PathPrefix(path).Handler(handler)
 	return explorer, nil
 }
 

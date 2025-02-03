@@ -50,14 +50,14 @@ func (s *Service) running(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) Handler() http.Handler {
+func (s *Service) Handler() (string, http.Handler) {
 	mux := http.NewServeMux()
 
 	// API endpoints
-	mux.HandleFunc("/dataobj/explorer/api/list", s.handleList)
-	mux.HandleFunc("/dataobj/explorer/api/inspect", s.handleInspect)
-	mux.HandleFunc("/dataobj/explorer/api/download", s.handleDownload)
-	mux.HandleFunc("/dataobj/explorer/api/provider", s.handleProvider)
+	mux.HandleFunc("/dataobj/api/v1/list", s.handleList)
+	mux.HandleFunc("/dataobj/api/v1/inspect", s.handleInspect)
+	mux.HandleFunc("/dataobj/api/v1/download", s.handleDownload)
+	mux.HandleFunc("/dataobj/api/v1/provider", s.handleProvider)
 
 	fsHandler := http.FileServer(http.FS(s.uiFS))
 	mux.Handle("/dataobj/explorer/", http.StripPrefix("/dataobj/explorer/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,7 +67,7 @@ func (s *Service) Handler() http.Handler {
 		fsHandler.ServeHTTP(w, r)
 	})))
 
-	return mux
+	return "/dataobj", mux
 }
 
 func (s *Service) handleProvider(w http.ResponseWriter, r *http.Request) {
