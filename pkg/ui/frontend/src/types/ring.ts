@@ -16,15 +16,18 @@ export interface RingResponse {
   now: string;
 }
 
-export type RingType =
-  | "ingester"
-  | "partition-ingester"
-  | "distributor"
-  | "pattern-ingester"
-  | "scheduler"
-  | "compactor"
-  | "ruler"
-  | "index-gateway";
+export const RingTypes: Record<string, string> = {
+  INGESTER: "ingester",
+  PARTITION_INGESTER: "partition-ingester",
+  DISTRIBUTOR: "distributor",
+  PATTERN_INGESTER: "pattern-ingester",
+  QUERY_SCHEDULER: "query-scheduler",
+  COMPACTOR: "compactor",
+  RULER: "ruler",
+  INDEX_GATEWAY: "index-gateway",
+} as const;
+
+export type RingType = keyof typeof RingTypes;
 
 export interface PartitionInstance {
   id: number;

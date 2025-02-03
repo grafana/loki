@@ -1,45 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RingResponse, RingType } from "@/types/ring";
+import { RingResponse, RingType, RingTypes } from "@/types/ring";
 import { useCluster } from "@/contexts/use-cluster";
+import { getRingProxyPath, needsTokens } from "@/lib/ring-utils";
 
 export const AVAILABLE_RINGS: Array<{ id: RingType; title: string }> = [
-  { id: "ingester", title: "Ingester" },
-  { id: "partition-ingester", title: "Partition Ingester" },
-  { id: "distributor", title: "Distributor" },
-  { id: "pattern-ingester", title: "Pattern Ingester" },
-  { id: "scheduler", title: "Scheduler" },
-  { id: "compactor", title: "Compactor" },
-  { id: "ruler", title: "Ruler" },
-  { id: "index-gateway", title: "Index Gateway" },
+  { id: RingTypes.INGESTER, title: "Ingester" },
+  { id: RingTypes.PARTITION_INGESTER, title: "Partition Ingester" },
+  { id: RingTypes.DISTRIBUTOR, title: "Distributor" },
+  { id: RingTypes.PATTERN_INGESTER, title: "Pattern Ingester" },
+  { id: RingTypes.QUERY_SCHEDULER, title: "Scheduler" },
+  { id: RingTypes.COMPACTOR, title: "Compactor" },
+  { id: RingTypes.RULER, title: "Ruler" },
+  { id: RingTypes.INDEX_GATEWAY, title: "Index Gateway" },
 ];
-
-// Function to determine if a ring type needs tokens
-function needsTokens(ringName: RingType): boolean {
-  return [
-    "ingester",
-    "partition-ingester",
-    "index-gateway",
-    "ruler",
-    "pattern-ingester",
-  ].includes(ringName);
-}
-
-// Utility function to get ring proxy path
-function getRingProxyPath(
-  nodeName: string,
-  ringName: RingType,
-  withTokens = false
-): string {
-  const basePath = `/ui/api/v1/proxy/${nodeName}`;
-  const ringPaths: Record<string, string> = {
-    "partition-ingester": "/partition-ring",
-    ingester: "/ring",
-    "pattern-ingester": "/pattern/ring",
-  };
-  const ringPath = ringPaths[ringName] || `/${ringName}/ring`;
-  const tokensParam = withTokens ? "?tokens=true" : "";
-  return `${basePath}${ringPath}${tokensParam}`;
-}
 
 // Function to parse ownership from HTML response
 function parseOwnershipFromHTML(html: string): Record<string, string> {
@@ -99,23 +72,19 @@ export function useRing({
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController>();
 
-  const firstNodeName = useMemo(() => {
-    if (!cluster?.members) return null;
-    return Object.keys(cluster.members)[0] || null;
-  }, [cluster]);
+  const isTokenBased = useMemo(() => needsTokens(ringName), [ringName]);
 
-  const isTokenBased = useMemo(
-    () => (ringName ? needsTokens(ringName) : false),
-    [ringName]
-  );
+  const ringProxyPath = useCallback(() => {
+    return getRingProxyPath(cluster?.members, ringName ?? "");
+  }, [cluster, ringName]);
 
   const fetchRing = useCallback(async () => {
     if (!ringName) {
       setError("Ring name is required");
       return;
     }
-
-    if (!firstNodeName) {
+    const path = ringProxyPath();
+    if (!path) {
       setError("No cluster members available");
       return;
     }
@@ -129,15 +98,12 @@ export function useRing({
     setIsLoading(true);
     try {
       // Fetch JSON data first
-      const jsonResponse = await fetch(
-        getRingProxyPath(firstNodeName, ringName, isTokenBased),
-        {
-          headers: {
-            Accept: "application/json",
-          },
-          signal: abortControllerRef.current.signal,
-        }
-      );
+      const jsonResponse = await fetch(path, {
+        headers: {
+          Accept: "application/json",
+        },
+        signal: abortControllerRef.current.signal,
+      });
 
       if (!jsonResponse.ok) {
         throw new Error(`Failed to fetch ring: ${jsonResponse.statusText}`);
@@ -150,15 +116,12 @@ export function useRing({
       }
 
       // Then fetch text/plain data to get ownership information
-      const textResponse = await fetch(
-        getRingProxyPath(firstNodeName, ringName, false),
-        {
-          headers: {
-            Accept: "text/plain",
-          },
-          signal: abortControllerRef.current.signal,
-        }
-      );
+      const textResponse = await fetch(path, {
+        headers: {
+          Accept: "text/plain",
+        },
+        signal: abortControllerRef.current.signal,
+      });
 
       if (!textResponse.ok) {
         throw new Error(
@@ -190,11 +153,12 @@ export function useRing({
     } finally {
       setIsLoading(false);
     }
-  }, [firstNodeName, ringName, isTokenBased]);
+  }, [ringName, ringProxyPath]);
 
   const forgetInstances = useCallback(
     async (instanceIds: string[]) => {
-      if (!ringName || !firstNodeName) {
+      const path = ringProxyPath();
+      if (!path) {
         throw new Error("Ring name and node name are required");
       }
 
@@ -205,13 +169,10 @@ export function useRing({
         try {
           const formData = new FormData();
           formData.append("forget", instanceId);
-          const response = await fetch(
-            `${getRingProxyPath(firstNodeName, ringName)}`,
-            {
-              method: "POST",
-              body: formData,
-            }
-          );
+          const response = await fetch(path, {
+            method: "POST",
+            body: formData,
+          });
           if (response.ok) {
             success++;
           }
@@ -222,7 +183,7 @@ export function useRing({
 
       return { success, total };
     },
-    [ringName, firstNodeName]
+    [ringProxyPath]
   );
 
   // Calculate instance statistics

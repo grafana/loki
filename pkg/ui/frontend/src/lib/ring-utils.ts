@@ -1,3 +1,4 @@
+import { RingType, RingTypes } from "@/types/ring";
 import { formatDistanceToNowStrict, formatISO } from "date-fns";
 
 export function formatRelativeTime(timestamp: string) {
@@ -77,14 +78,88 @@ interface Member {
 }
 
 // Helper function to check if a service exists in any member
-export const hasService = (
+export const clusterSupportService = (
   members: Record<string, Member>,
   serviceName: string
 ): boolean => {
   return Object.values(members).some((member) =>
-    member.services?.some((service) => service.service === serviceName)
+    hasService(member, serviceName)
   );
 };
+
+function hasService(member: Member, serviceName: string): boolean {
+  return (
+    member.services?.some((service) => service.service === serviceName) ?? false
+  );
+}
+
+const RingServices: Record<
+  string,
+  { title: string; ringName: RingType; ringPath: string; needsTokens: boolean }
+> = {
+  ingester: {
+    title: "Ingester",
+    ringName: RingTypes.INGESTER,
+    ringPath: "/ring",
+    needsTokens: true,
+  },
+  "partition-ring": {
+    title: "Partition Ingester",
+    ringName: RingTypes.PARTITION_INGESTER,
+    ringPath: "/partition-ring",
+    needsTokens: true,
+  },
+  distributor: {
+    title: "Distributor",
+    ringName: RingTypes.DISTRIBUTOR,
+    ringPath: "/distributor/ring",
+    needsTokens: false,
+  },
+  "pattern-ingester": {
+    title: "Pattern Ingester",
+    ringName: RingTypes.PATTERN_INGESTER,
+    ringPath: "/pattern/ring",
+    needsTokens: true,
+  },
+  "query-scheduler": {
+    title: "Scheduler",
+    ringName: RingTypes.QUERY_SCHEDULER,
+    ringPath: "/scheduler/ring",
+    needsTokens: false,
+  },
+  compactor: {
+    title: "Compactor",
+    ringName: RingTypes.COMPACTOR,
+    ringPath: "/compactor/ring",
+    needsTokens: false,
+  },
+  ruler: {
+    title: "Ruler",
+    ringName: RingTypes.RULER,
+    ringPath: "/ruler/ring",
+    needsTokens: true,
+  },
+  "index-gateway": {
+    title: "Index Gateway",
+    ringName: RingTypes.INDEX_GATEWAY,
+    ringPath: "/index-gateway/ring",
+    needsTokens: true,
+  },
+};
+
+function findServiceName(ringType: RingType) {
+  return Object.keys(RingServices).find(
+    (key) => RingServices[key].ringName === ringType
+  );
+}
+
+// Function to determine if a ring type needs tokens
+export function needsTokens(ringName: RingType | undefined): boolean {
+  if (!ringName) return false;
+  const serviceName = findServiceName(ringName);
+  if (!serviceName) return false;
+  return RingServices[serviceName].needsTokens;
+}
 
 // Helper function to get available rings based on cluster services
 export const getAvailableRings = (
@@ -94,33 +169,39 @@ export const getAvailableRings = (
 
   if (!members) return rings;
 
-  if (hasService(members, "ingester")) {
-    rings.push({ title: "Ingester", url: "/rings/ingester" });
-  }
-  if (hasService(members, "partition-ring")) {
-    rings.push({
-      title: "Partition Ingester",
-      url: "/rings/partition-ingester",
-    });
-  }
-  if (hasService(members, "distributor")) {
-    rings.push({ title: "Distributor", url: "/rings/distributor" });
-  }
-  if (hasService(members, "pattern-ingester")) {
-    rings.push({ title: "Pattern Ingester", url: "/rings/pattern-ingester" });
-  }
-  if (hasService(members, "query-scheduler")) {
-    rings.push({ title: "Scheduler", url: "/rings/scheduler" });
-  }
-  if (hasService(members, "compactor")) {
-    rings.push({ title: "Compactor", url: "/rings/compactor" });
-  }
-  if (hasService(members, "ruler")) {
-    rings.push({ title: "Ruler", url: "/rings/ruler" });
-  }
-  if (hasService(members, "index-gateway")) {
-    rings.push({ title: "Index Gateway", url: "/rings/index-gateway" });
-  }
+  // loop through services type an push to rigns
 
+  for (const service in RingServices) {
+    if (clusterSupportService(members, service)) {
+      rings.push({
+        title: RingServices[service].title,
+        url: `/rings/${RingServices[service].ringName}`,
+      });
+    }
+  }
   return rings;
 };
+
+// Utility function to get ring proxy path
+export function getRingProxyPath(
+  members: Record<string, Member> | undefined,
+  ringName: RingType
+): string {
+  if (!members) return "";
+  if (!ringName) return "";
+
+  const serviceName = findServiceName(ringName);
+  if (!serviceName) return "";
+  // Find the first member that has the serviceName
+  const nodeName = Object.keys(members).find((key) =>
+    hasService(members[key], serviceName)
+  );
+  if (!nodeName) return "";
+
+  const proxyPath = `/ui/api/v1/proxy/${nodeName}`;
+  const ringPath = RingServices[serviceName].ringPath;
+  const tokensParam = RingServices[serviceName].needsTokens
+    ? "?tokens=true"
+    : "";
+  return `${proxyPath}${ringPath}${tokensParam}`;
+}

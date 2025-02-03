@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PartitionInstance, PartitionRingResponse } from "@/types/ring";
+import {
+  PartitionInstance,
+  PartitionRingResponse,
+  RingTypes,
+} from "@/types/ring";
 import { useCluster } from "@/contexts/use-cluster";
 import { useRateNodeMetrics } from "./use-rate-node-metrics";
-import { parseZoneFromOwner } from "@/lib/ring-utils";
+import { getRingProxyPath, parseZoneFromOwner } from "@/lib/ring-utils";
 
 interface PartitionState {
   partitions: PartitionInstance[];
@@ -48,16 +52,13 @@ export function usePartitionRing({
   });
   const abortControllerRef = useRef<AbortController>();
 
-  const firstNodeName = useMemo(() => {
-    if (!cluster?.members) {
-      return null;
-    }
-    return Object.keys(cluster.members)[0] || null;
+  const ringProxyPath = useCallback(() => {
+    return getRingProxyPath(cluster?.members, RingTypes.PARTITION_INGESTER);
   }, [cluster]);
 
   const { fetchMetrics } = useRateNodeMetrics();
   const fetchPartitions = useCallback(async () => {
-    if (!firstNodeName) {
+    if (!ringProxyPath()) {
       setState((prev) => ({
         ...prev,
         partitions: [],
@@ -77,15 +78,12 @@ export function usePartitionRing({
 
     try {
       setState((prev) => ({ ...prev, isLoading: true, error: "" }));
-      const response = await fetch(
-        `/ui/api/v1/proxy/${firstNodeName}/partition-ring`,
-        {
-          signal: abortControllerRef.current.signal,
-          headers: {
-            Accept: "application/json",
-          },
-        }
-      );
+      const response = await fetch(ringProxyPath(), {
+        signal: abortControllerRef.current.signal,
+        headers: {
+          Accept: "application/json",
+        },
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch partitions: ${response.statusText}`);
@@ -151,11 +149,11 @@ export function usePartitionRing({
         }));
       }
     }
-  }, [firstNodeName, fetchMetrics]);
+  }, [ringProxyPath, fetchMetrics]);
 
   const changePartitionState = useCallback(
     async (selectedPartitionDetails: number[], newState: string) => {
-      if (!firstNodeName) {
+      if (!ringProxyPath()) {
         throw new Error("No cluster members available");
       }
       const uniquePartitions = Array.from(new Set(selectedPartitionDetails));
@@ -173,13 +171,10 @@ export function usePartitionRing({
           }
           formData.append("partition_state", stateValue.toString());
 
-          const response = await fetch(
-            `/ui/api/v1/proxy/${firstNodeName}/partition-ring`,
-            {
-              method: "POST",
-              body: formData,
-            }
-          );
+          const response = await fetch(ringProxyPath(), {
+            method: "POST",
+            body: formData,
+          });
 
           if (!response.ok) {
             const error = await response.text();
@@ -195,7 +190,7 @@ export function usePartitionRing({
 
       return { success, total };
     },
-    [firstNodeName]
+    [ringProxyPath]
   );
 
   // Calculate partition statistics with memoization for each part
