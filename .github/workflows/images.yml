@@ -566,13 +566,11 @@
         # Unfortunately there is no better way atm than having a separate named output for each digest
         echo 'linux/arm64 ${{ needs.lambda-promtail-image.outputs.image_digest_linux_amd64 }}'
         echo 'linux/amd64 ${{ needs.lambda-promtail-image.outputs.image_digest_linux_arm64 }}'
-        echo 'linux/arm   ${{ needs.lambda-promtail-image.outputs.image_digest_linux_arm }}'
         IMAGE=${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${{ needs.lambda-promtail-image.outputs.image_name }}@${{ needs.lambda-promtail-image.outputs.image_digest_linux_amd64 }} \
           ${{ needs.lambda-promtail-image.outputs.image_name }}@${{ needs.lambda-promtail-image.outputs.image_digest_linux_arm64 }} \
-          ${{ needs.lambda-promtail-image.outputs.image_name }}@${{ needs.lambda-promtail-image.outputs.image_digest_linux_arm }}
         docker buildx imagetools inspect $IMAGE
 "name": "Publish images"
 "on":
