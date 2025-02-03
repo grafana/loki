@@ -26,10 +26,6 @@ var ErrBufferFull = errors.New("buffer full")
 
 // BuilderConfig configures a data object [Builder].
 type BuilderConfig struct {
-	// SHAPrefixSize sets the number of bytes of the SHA filename to use as a
-	// folder path.
-	SHAPrefixSize int `yaml:"sha_prefix_size"`
-
 	// TargetPageSize configures a target size for encoded pages within the data
 	// object. TargetPageSize accounts for encoding, but not for compression.
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
@@ -58,11 +54,10 @@ type BuilderConfig struct {
 // RegisterFlagsWithPrefix registers flags with the given prefix.
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.TargetPageSize.Set("2MB")
-	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")         // Page Size * 8
-	_ = cfg.TargetSectionSize.Set("128MB") // Target Object Size / 8
+	_ = cfg.TargetObjectSize.Set("10MB")
+	_ = cfg.BufferSize.Set("16MB")       // Page Size * 8
+	_ = cfg.TargetSectionSize.Set("2MB") // Target Object Size / 8
 
-	f.IntVar(&cfg.SHAPrefixSize, prefix+"sha-prefix-size", 2, "The size of the SHA prefix to use for the data object builder.")
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
@@ -72,10 +67,6 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 // Validate validates the BuilderConfig.
 func (cfg *BuilderConfig) Validate() error {
 	var errs []error
-
-	if cfg.SHAPrefixSize <= 0 {
-		errs = append(errs, errors.New("SHAPrefixSize must be greater than 0"))
-	}
 
 	if cfg.TargetPageSize <= 0 {
 		errs = append(errs, errors.New("TargetPageSize must be greater than 0"))
@@ -114,7 +105,18 @@ type Builder struct {
 
 	streams *streams.Streams
 	logs    *logs.Logs
+
+	state builderState
+
+	encoder *encoding.Encoder
 }
+
+type builderState int
+
+const (
+	builderStateEmpty builderState = iota
+	builderStateDirty
+)
 
 type FlushStats struct {
 	MinTimestamp time.Time
@@ -152,6 +154,8 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 			BufferSize:   int(cfg.BufferSize),
 			SectionSize:  int(cfg.TargetSectionSize),
 		}),
+
+		encoder: encoding.NewEncoder(nil),
 	}, nil
 }
 
@@ -173,7 +177,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 	// Since this check only happens after the first call to Append,
 	// b.currentSizeEstimate will always be updated to reflect the size following
 	// the previous append.
-	if b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
+	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
 		return ErrBufferFull
 	}
 
@@ -192,6 +196,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 	}
 
 	b.currentSizeEstimate = b.estimatedSize()
+	b.state = builderStateDirty
 	return nil
 }
 
@@ -254,8 +259,13 @@ func streamSizeEstimate(stream logproto.Stream) int {
 //
 // [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
 func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
+	if b.state == builderStateEmpty {
+		return FlushStats{}, ErrBufferFull
+	}
+
 	err := b.buildObject(output)
 	if err != nil {
+		b.metrics.flushFailures.Inc()
 		return FlushStats{}, fmt.Errorf("building object: %w", err)
 	}
 
@@ -272,15 +282,13 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
 
-	// Reset the buffer before building for safety.
-	output.Reset()
-	encoder := encoding.NewEncoder(output)
+	b.encoder.Reset(output)
 
-	if err := b.streams.EncodeTo(encoder); err != nil {
+	if err := b.streams.EncodeTo(b.encoder); err != nil {
 		return fmt.Errorf("encoding streams: %w", err)
-	} else if err := b.logs.EncodeTo(encoder); err != nil {
+	} else if err := b.logs.EncodeTo(b.encoder); err != nil {
 		return fmt.Errorf("encoding logs: %w", err)
-	} else if err := encoder.Flush(); err != nil {
+	} else if err := b.encoder.Flush(); err != nil {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
@@ -299,6 +307,8 @@ func (b *Builder) Reset() {
 	b.streams.Reset()
 
 	b.metrics.sizeEstimate.Set(0)
+	b.currentSizeEstimate = 0
+	b.state = builderStateEmpty
 }
 
 // RegisterMetrics registers metrics about builder to report to reg. All

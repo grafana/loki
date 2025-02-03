@@ -16,12 +16,12 @@ type metrics struct {
 	streams  *streams.Metrics
 	encoding *encoding.Metrics
 
-	shaPrefixSize    prometheus.Gauge
 	targetPageSize   prometheus.Gauge
 	targetObjectSize prometheus.Gauge
 
-	appendTime prometheus.Histogram
-	buildTime  prometheus.Histogram
+	appendTime    prometheus.Histogram
+	buildTime     prometheus.Histogram
+	flushFailures prometheus.Counter
 
 	sizeEstimate prometheus.Gauge
 	builtSize    prometheus.Histogram
@@ -33,15 +33,6 @@ func newMetrics() *metrics {
 		logs:     logs.NewMetrics(),
 		streams:  streams.NewMetrics(),
 		encoding: encoding.NewMetrics(),
-
-		shaPrefixSize: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "dataobj",
-			Name:      "config_sha_prefix_size",
-
-			Help: "Configured SHA prefix size.",
-		}),
-
 		targetPageSize: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",
@@ -103,12 +94,19 @@ func newMetrics() *metrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
+
+		flushFailures: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "dataobj",
+			Name:      "flush_failures_total",
+
+			Help: "Total number of flush failures.",
+		}),
 	}
 }
 
 // ObserveConfig updates config metrics based on the provided [BuilderConfig].
 func (m *metrics) ObserveConfig(cfg BuilderConfig) {
-	m.shaPrefixSize.Set(float64(cfg.SHAPrefixSize))
 	m.targetPageSize.Set(float64(cfg.TargetPageSize))
 	m.targetObjectSize.Set(float64(cfg.TargetObjectSize))
 }
@@ -121,7 +119,6 @@ func (m *metrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, m.streams.Register(reg))
 	errs = append(errs, m.encoding.Register(reg))
 
-	errs = append(errs, reg.Register(m.shaPrefixSize))
 	errs = append(errs, reg.Register(m.targetPageSize))
 	errs = append(errs, reg.Register(m.targetObjectSize))
 
@@ -130,6 +127,7 @@ func (m *metrics) Register(reg prometheus.Registerer) error {
 
 	errs = append(errs, reg.Register(m.sizeEstimate))
 	errs = append(errs, reg.Register(m.builtSize))
+	errs = append(errs, reg.Register(m.flushFailures))
 
 	return errors.Join(errs...)
 }
@@ -140,7 +138,6 @@ func (m *metrics) Unregister(reg prometheus.Registerer) {
 	m.streams.Unregister(reg)
 	m.encoding.Unregister(reg)
 
-	reg.Unregister(m.shaPrefixSize)
 	reg.Unregister(m.targetPageSize)
 	reg.Unregister(m.targetObjectSize)
 
@@ -149,4 +146,5 @@ func (m *metrics) Unregister(reg prometheus.Registerer) {
 
 	reg.Unregister(m.sizeEstimate)
 	reg.Unregister(m.builtSize)
+	reg.Unregister(m.flushFailures)
 }

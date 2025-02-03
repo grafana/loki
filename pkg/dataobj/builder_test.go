@@ -16,8 +16,6 @@ import (
 )
 
 var testBuilderConfig = BuilderConfig{
-	SHAPrefixSize: 2,
-
 	TargetPageSize:    2048,
 	TargetObjectSize:  4096,
 	TargetSectionSize: 4096,

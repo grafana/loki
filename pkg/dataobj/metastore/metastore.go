@@ -25,7 +25,6 @@ const (
 var (
 	// Define our own builder config because metastore objects are significantly smaller.
 	metastoreBuilderCfg = dataobj.BuilderConfig{
-		SHAPrefixSize:     2,
 		TargetObjectSize:  32 * 1024 * 1024,
 		TargetPageSize:    4 * 1024 * 1024,
 		BufferSize:        32 * 1024 * 1024, // 8x page size
@@ -40,16 +39,13 @@ type Manager struct {
 	bucket           objstore.Bucket
 	logger           log.Logger
 	backoff          *backoff.Backoff
-	flushBuffer      *bytes.Buffer
+	buf              *bytes.Buffer
 
 	builderOnce sync.Once
 }
 
-func NewManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) (*Manager, error) {
+func NewManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) *Manager {
 	metrics := newMetastoreMetrics()
-	if err := metrics.register(reg); err != nil {
-		return nil, err
-	}
 
 	return &Manager{
 		bucket:   bucket,
@@ -61,7 +57,15 @@ func NewManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg 
 			MaxBackoff: 10 * time.Second,
 		}),
 		builderOnce: sync.Once{},
-	}, nil
+	}
+}
+
+func (m *Manager) RegisterMetrics(reg prometheus.Registerer) error {
+	return m.metrics.register(reg)
+}
+
+func (m *Manager) UnregisterMetrics(reg prometheus.Registerer) {
+	m.metrics.unregister(reg)
 }
 
 func (m *Manager) initBuilder() error {
@@ -72,7 +76,7 @@ func (m *Manager) initBuilder() error {
 			initErr = err
 			return
 		}
-		m.flushBuffer = bytes.NewBuffer(make([]byte, 0, metastoreBuilderCfg.TargetObjectSize))
+		m.buf = bytes.NewBuffer(make([]byte, 0, metastoreBuilderCfg.TargetObjectSize))
 		m.metastoreBuilder = metastoreBuilder
 	})
 	return initErr
@@ -81,8 +85,8 @@ func (m *Manager) initBuilder() error {
 // UpdateMetastore adds provided dataobj path to the metastore. Flush stats are used to determine the stored metadata about this dataobj.
 func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flushStats dataobj.FlushStats) error {
 	var err error
-	start := time.Now()
-	defer m.metrics.observeMetastoreProcessing(start)
+	processingTime := prometheus.NewTimer(m.metrics.metastoreProcessingTime)
+	defer processingTime.ObserveDuration()
 
 	// Initialize builder if this is the first call for this partition
 	if err := m.initBuilder(); err != nil {
@@ -100,23 +104,24 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
-				buf, err := io.ReadAll(existing)
+				m.buf.Reset()
+				_, err := io.Copy(m.buf, existing)
 				if err != nil {
 					return nil, err
 				}
 
 				m.metastoreBuilder.Reset()
 
-				if len(buf) > 0 {
-					replayStart := time.Now()
-					object := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
+				if m.buf.Len() > 0 {
+					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
+					object := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
 					if err := m.readFromExisting(ctx, object); err != nil {
 						return nil, err
 					}
-					m.metrics.observeMetastoreReplay(replayStart)
+					replayDuration.ObserveDuration()
 				}
 
-				encodingStart := time.Now()
+				encodingDuration := prometheus.NewTimer(m.metrics.metastoreEncodingTime)
 
 				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), dataobjPath)
 				err = m.metastoreBuilder.Append(logproto.Stream{
@@ -127,13 +132,13 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 					return nil, err
 				}
 
-				m.flushBuffer.Reset()
-				_, err = m.metastoreBuilder.Flush(m.flushBuffer)
+				m.buf.Reset()
+				_, err = m.metastoreBuilder.Flush(m.buf)
 				if err != nil {
 					return nil, err
 				}
-				m.metrics.observeMetastoreEncoding(encodingStart)
-				return m.flushBuffer, nil
+				encodingDuration.ObserveDuration()
+				return m.buf, nil
 			})
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)

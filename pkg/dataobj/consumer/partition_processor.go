@@ -50,7 +50,7 @@ type partitionProcessor struct {
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
+func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, uploaderCfg uploader.Config, bucket objstore.Bucket, tenantID string, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
@@ -66,18 +66,14 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	uploader := uploader.New(uploader.Config{
-		SHAPrefixSize: builderCfg.SHAPrefixSize,
-	}, bucket, tenantID)
+	uploader := uploader.New(uploaderCfg, bucket, tenantID)
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreManager, err := metastore.NewManager(bucket, tenantID, logger, reg)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to create metastore manager", "err", err)
-		cancel()
-		return nil
+	metastoreManager := metastore.NewManager(bucket, tenantID, logger, reg)
+	if err := metastoreManager.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register metastore manager metrics", "err", err)
 	}
 
 	return &partitionProcessor{
@@ -177,32 +173,16 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		backoff := backoff.New(p.ctx, backoff.Config{
-			MinBackoff: 100 * time.Millisecond,
-			MaxBackoff: 10 * time.Second,
-		})
-
-		var flushedDataobjStats dataobj.FlushStats
-		for backoff.Ongoing() {
-			flushedDataobjStats, err = p.builder.Flush(p.flushBuffer)
-			if err == nil {
-				break
-			}
+		flushedDataobjStats, err := p.builder.Flush(p.flushBuffer)
+		if err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
-			p.metrics.incFlushFailures()
-			backoff.Wait()
+			return
 		}
 
-		backoff.Reset()
-		var objectPath string
-		for backoff.Ongoing() {
-			objectPath, err = p.uploader.Upload(p.ctx, p.flushBuffer)
-			if err == nil {
-				break
-			}
+		objectPath, err := p.uploader.Upload(p.ctx, p.flushBuffer)
+		if err != nil {
 			level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
-			p.metrics.incUploadFailures()
-			backoff.Wait()
+			return
 		}
 
 		if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
@@ -210,15 +190,10 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		backoff.Reset()
-		for backoff.Ongoing() {
-			err = p.client.CommitRecords(p.ctx, record)
-			if err == nil {
-				break
-			}
+		if err := p.commitRecords(record); err != nil {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
 			p.metrics.incCommitFailures()
-			backoff.Wait()
+			return
 		}
 
 		if err := p.builder.Append(stream); err != nil {
@@ -226,4 +201,26 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			p.metrics.incAppendFailures()
 		}
 	}
+}
+
+func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
+	backoff := backoff.New(p.ctx, backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 20,
+	})
+
+	var lastErr error
+	backoff.Reset()
+	for backoff.Ongoing() {
+		err := p.client.CommitRecords(p.ctx, record)
+		if err == nil {
+			return nil
+		}
+		level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+		p.metrics.incCommitFailures()
+		lastErr = err
+		backoff.Wait()
+	}
+	return lastErr
 }
