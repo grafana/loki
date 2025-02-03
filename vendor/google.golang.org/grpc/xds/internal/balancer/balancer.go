@@ -20,6 +20,7 @@
 package balancer
 
 import (
+	_ "google.golang.org/grpc/balancer/leastrequest"                  // Register the least_request_experimental balancer
 	_ "google.golang.org/grpc/balancer/weightedtarget"                // Register the weighted_target balancer
 	_ "google.golang.org/grpc/xds/internal/balancer/cdsbalancer"      // Register the CDS balancer
 	_ "google.golang.org/grpc/xds/internal/balancer/clusterimpl"      // Register the xds_cluster_impl balancer

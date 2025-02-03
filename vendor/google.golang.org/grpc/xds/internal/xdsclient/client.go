@@ -32,8 +32,6 @@ import (
 type XDSClient interface {
 	WatchListener(string, func(xdsresource.ListenerUpdate, error)) func()
 	WatchRouteConfig(string, func(xdsresource.RouteConfigUpdate, error)) func()
-	WatchCluster(string, func(xdsresource.ClusterUpdate, error)) func()
-	WatchEndpoints(string, func(xdsresource.EndpointsUpdate, error)) func()
 
 	// WatchResource uses xDS to discover the resource associated with the
 	// provided resource name. The resource type implementation determines how
