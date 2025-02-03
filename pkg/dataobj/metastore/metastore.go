@@ -78,7 +78,8 @@ func (m *Manager) initBuilder() error {
 	return initErr
 }
 
-func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flushResult dataobj.FlushStats) error {
+// UpdateMetastore adds provided dataobj path to the metastore. Flush stats are used to determine the stored metadata about this dataobj.
+func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flushStats dataobj.FlushStats) error {
 	var err error
 	start := time.Now()
 	defer m.metrics.observeMetastoreProcessing(start)
@@ -88,7 +89,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 		return err
 	}
 
-	minTimestamp, maxTimestamp := flushResult.MinTimestamp, flushResult.MaxTimestamp
+	minTimestamp, maxTimestamp := flushStats.MinTimestamp, flushStats.MaxTimestamp
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
@@ -148,6 +149,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 	return err
 }
 
+// readFromExisting reads the provided metastore object and appends the streams to the builder so it can be later modified.
 func (m *Manager) readFromExisting(ctx context.Context, object *dataobj.Object) error {
 	// Fetch sections
 	si, err := object.Metadata(ctx)
