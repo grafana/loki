@@ -64,14 +64,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
-type streamMetadataLimits struct {
-	maxGlobalStreamsPerUser int
-}
-
-func (l *streamMetadataLimits) MaxGlobalStreamsPerUser(_ string) int {
-	return l.maxGlobalStreamsPerUser
-}
-
 type config struct {
 	NumTenants                int      `yaml:"num_tenants"`
 	QPSPerTenant              int      `yaml:"qps_per_tenant"`
@@ -80,7 +72,7 @@ type config struct {
 	MaxGlobalStreamsPerTenant int      `yaml:"max_global_streams_per_tenant"`
 
 	LogLevel       dskit_log.Level `yaml:"log_level,omitempty"`
-	HttpListenPort int             `yaml:"http_listen_port,omitempty"`
+	HTTPListenPort int             `yaml:"http_listen_port,omitempty"`
 
 	// Memberlist config
 	MemberlistKV memberlist.KVConfig `yaml:"memberlist,omitempty"`
@@ -113,7 +105,7 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
 	f.IntVar(&c.MaxGlobalStreamsPerTenant, "tenants.max-global-streams", 1000, "Maximum number of global streams per tenant")
-	f.IntVar(&c.HttpListenPort, "http-listen-port", 3100, "HTTP Listener port")
+	f.IntVar(&c.HTTPListenPort, "http-listen-port", 3100, "HTTP Listener port")
 
 	// Set default stream labels
 	defaultLabels := []string{"cluster", "namespace", "job", "instance"}
@@ -505,7 +497,7 @@ func main() {
 	}
 
 	// Create HTTP server for metrics
-	httpListenAddr := fmt.Sprintf(":%d", cfg.HttpListenPort)
+	httpListenAddr := fmt.Sprintf(":%d", cfg.HTTPListenPort)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
