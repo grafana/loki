@@ -229,6 +229,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 		s.memberlistKV,
 		s.ingesterRing,
 		s.partitionRingWatcher,
+		s.frontendRing,
 		s.frontentClientPool,
 	}
 	s.subservices, err = services.NewManager(srvs...)
@@ -243,10 +244,10 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	return s, nil
 }
 
-var frontendRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+var frontendReadOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 func (s *generator) getFrontendClient() (*frontendclient.IngestLimitsFrontendClient, error) {
-	instances, err := s.frontendRing.GetAllHealthy(frontendRead)
+	instances, err := s.frontendRing.GetAllHealthy(frontendReadOp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingest limits frontend instances: %w", err)
 	}
@@ -286,13 +287,6 @@ func (s *generator) running(ctx context.Context) error {
 		go func(tenantID string, streams []distributor.KeyedStream) {
 			defer s.wg.Done()
 
-			ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, tenantID))
-			if err != nil {
-				errCh <- err
-				return
-			}
-
-			//var client interface{}
 			client, err := s.getFrontendClient()
 			if err != nil {
 				errCh <- err
@@ -331,6 +325,12 @@ func (s *generator) running(ctx context.Context) error {
 
 					// Check if the stream exceeds limits
 					if client != nil {
+						ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, tenantID))
+						if err != nil {
+							errCh <- err
+							return
+						}
+
 						resp, err := client.ExceedsLimits(ctx, req)
 						if err != nil {
 							errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
@@ -511,6 +511,7 @@ func main() {
 	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 	mux.Handle("/memberlist", gen.memberlistKV)
 	mux.Handle("/ring", gen.ingesterRing)
+	mux.Handle("/ingest-limits-ring", gen.frontendRing)
 	mux.Handle("/partition-ring", ring.NewPartitionRingPageHandler(
 		gen.partitionRingWatcher,
 		ring.NewPartitionRingEditor(
