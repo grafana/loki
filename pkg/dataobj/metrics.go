@@ -84,7 +84,6 @@ func newMetrics() *metrics {
 			NativeHistogramMinResetDuration: 0,
 		}),
 
-
 		sizeEstimate: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
 			Subsystem: "dataobj",

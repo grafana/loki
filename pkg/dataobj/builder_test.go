@@ -78,7 +78,7 @@ func TestBuilder(t *testing.T) {
 		for _, entry := range streams {
 			require.NoError(t, builder.Append(entry))
 		}
-		_, err = builder.Flush(context.Background(), obj)
+		_, err = builder.Flush(obj)
 		require.NoError(t, err)
 	})
 

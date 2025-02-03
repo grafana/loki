@@ -253,7 +253,7 @@ func streamSizeEstimate(stream logproto.Stream) int {
 // in a no-op if there is no buffered data to flush.
 //
 // [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(ctx context.Context, output *bytes.Buffer) (FlushStats, error) {
+func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 	err := b.buildObject(output)
 	if err != nil {
 		return FlushStats{}, fmt.Errorf("building object: %w", err)

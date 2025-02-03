@@ -11,7 +11,7 @@ import (
 	"github.com/thanos-io/objstore"
 )
 
-type UploaderConfig struct {
+type Config struct {
 	SHAPrefixSize int
 }
 
@@ -22,8 +22,8 @@ type Uploader struct {
 	metrics       *Metrics
 }
 
-func New(cfg UploaderConfig, bucket objstore.Bucket, tenantID string, reg prometheus.Registerer) *Uploader {
-	metrics := NewMetrics(reg)
+func New(cfg Config, bucket objstore.Bucket, tenantID string) *Uploader {
+	metrics := NewMetrics()
 
 	return &Uploader{
 		SHAPrefixSize: cfg.SHAPrefixSize,

@@ -128,7 +128,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 				}
 
 				m.flushBuffer.Reset()
-				_, err = m.metastoreBuilder.Flush(ctx, m.flushBuffer)
+				_, err = m.metastoreBuilder.Flush(m.flushBuffer)
 				if err != nil {
 					return nil, err
 				}

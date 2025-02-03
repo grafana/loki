@@ -66,9 +66,9 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	uploader := uploader.New(uploader.UploaderConfig{
+	uploader := uploader.New(uploader.Config{
 		SHAPrefixSize: builderCfg.SHAPrefixSize,
-	}, bucket, tenantID, reg)
+	}, bucket, tenantID)
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
@@ -184,7 +184,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 		var flushedDataobjStats dataobj.FlushStats
 		for backoff.Ongoing() {
-			flushedDataobjStats, err = p.builder.Flush(p.ctx, p.flushBuffer)
+			flushedDataobjStats, err = p.builder.Flush(p.flushBuffer)
 			if err == nil {
 				break
 			}

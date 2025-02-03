@@ -8,7 +8,7 @@ type Metrics struct {
 	UploadTime prometheus.Histogram
 }
 
-func NewMetrics(reg prometheus.Registerer) *Metrics {
+func NewMetrics() *Metrics {
 	return &Metrics{
 		UploadTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Namespace: "loki",
