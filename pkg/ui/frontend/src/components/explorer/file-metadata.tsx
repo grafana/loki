@@ -365,8 +365,6 @@ function ColumnsList({
           <Column
             key={columnIndex}
             column={column}
-            columnIndex={columnIndex}
-            sectionIndex={sectionIndex}
             isExpanded={expandedColumns[`${sectionIndex}-${columnIndex}`]}
             onToggle={() => onToggleColumn(columnIndex)}
           />
@@ -378,13 +376,11 @@ function ColumnsList({
 
 interface ColumnProps {
   column: FileMetadataResponse["sections"][0]["columns"][0];
-  columnIndex: number;
-  sectionIndex: number;
   isExpanded: boolean;
   onToggle: () => void;
 }
 
-function Column({ column, columnIndex, isExpanded, onToggle }: ColumnProps) {
+function Column({ column, isExpanded, onToggle }: ColumnProps) {
   return (
     <Card className="bg-card/50">
       <button
