@@ -93,11 +93,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedStats: Stats{
 				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 9,
+					},
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 0,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: nil,
@@ -132,11 +136,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedStats: Stats{
 				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 9,
+					},
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 0,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: nil,
@@ -171,11 +179,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedStats: Stats{
 				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 9,
+					},
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 0,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: nil,
@@ -249,11 +261,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedStats: Stats{
 				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 26,
+					},
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 37,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 37,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: []push.LabelAdapter{
@@ -340,11 +356,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedStats: Stats{
 				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 26,
+					},
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 97,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 97,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: []push.LabelAdapter{
@@ -491,11 +511,15 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			},
 			expectedStats: Stats{
 				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 26,
+					},
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 113,
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"": {
+						time.Hour: 113,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: []push.LabelAdapter{
@@ -524,16 +548,23 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				stats,
 				false,
 				log.NewNopLogger(),
+				func(_ string, _ labels.Labels) string {
+					return ""
+				},
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 
 			totalBytes := 0.0
-			for _, b := range stats.LogLinesBytes {
-				totalBytes += float64(b)
+			for _, policyMapping := range stats.LogLinesBytes {
+				for _, b := range policyMapping {
+					totalBytes += float64(b)
+				}
 			}
-			for _, b := range stats.StructuredMetadataBytes {
-				totalBytes += float64(b)
+			for _, policyMapping := range stats.StructuredMetadataBytes {
+				for _, b := range policyMapping {
+					totalBytes += float64(b)
+				}
 			}
 			require.Equal(t, totalBytes, tracker.Total(), "Total tracked bytes must equal total bytes of the stats.")
 		})

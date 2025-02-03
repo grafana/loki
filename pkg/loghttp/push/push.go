@@ -43,18 +43,18 @@ var (
 		Namespace: constants.Loki,
 		Name:      "distributor_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
-	}, []string{"tenant", "retention_hours", "aggregated_metric"})
+	}, []string{"tenant", "retention_hours", "aggregated_metric", "policy"})
 
 	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_structured_metadata_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant for entries' structured metadata",
-	}, []string{"tenant", "retention_hours", "aggregated_metric"})
+	}, []string{"tenant", "retention_hours", "aggregated_metric", "policy"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_lines_received_total",
 		Help:      "The total number of lines received per tenant",
-	}, []string{"tenant", "aggregated_metric"})
+	}, []string{"tenant", "aggregated_metric", "policy"})
 
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
@@ -77,6 +77,7 @@ type TenantsRetention interface {
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
 	DiscoverServiceName(userID string) []string
+	PolicyFor(userID string, lbs labels.Labels) string
 }
 
 type EmptyLimits struct{}
@@ -89,17 +90,23 @@ func (EmptyLimits) DiscoverServiceName(string) []string {
 	return nil
 }
 
+func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
+	return ""
+}
+
 type (
 	RequestParser        func(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error)
 	RequestParserWrapper func(inner RequestParser) RequestParser
 	ErrorWriter          func(w http.ResponseWriter, error string, code int, logger log.Logger)
 )
 
+type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
+
 type Stats struct {
 	Errs                            []error
 	NumLines                        int64
-	LogLinesBytes                   map[time.Duration]int64
-	StructuredMetadataBytes         map[time.Duration]int64
+	LogLinesBytes                   PolicyWithRetentionWithBytes
+	StructuredMetadataBytes         PolicyWithRetentionWithBytes
 	ResourceAndSourceMetadataLabels map[time.Duration]push.LabelsAdapter
 	StreamLabelsSize                int64
 	MostRecentEntryTimestamp        time.Time
@@ -126,28 +133,32 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 
 	isAggregatedMetric := fmt.Sprintf("%t", pushStats.IsAggregatedMetric)
 
-	for retentionPeriod, size := range pushStats.LogLinesBytes {
-		retentionHours := RetentionPeriodToString(retentionPeriod)
-		bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric).Add(float64(size))
-		bytesReceivedStats.Inc(size)
-		entriesSize += size
+	for policyName, retentionToSizeMapping := range pushStats.LogLinesBytes {
+		for retentionPeriod, size := range retentionToSizeMapping {
+			retentionHours := RetentionPeriodToString(retentionPeriod)
+			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+			bytesReceivedStats.Inc(size)
+			entriesSize += size
+		}
 	}
 
-	for retentionPeriod, size := range pushStats.StructuredMetadataBytes {
-		retentionHours := RetentionPeriodToString(retentionPeriod)
+	for policyName, retentionToSizeMapping := range pushStats.StructuredMetadataBytes {
+		for retentionPeriod, size := range retentionToSizeMapping {
+			retentionHours := RetentionPeriodToString(retentionPeriod)
 
-		structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric).Add(float64(size))
-		bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric).Add(float64(size))
-		bytesReceivedStats.Inc(size)
-		structuredMetadataBytesReceivedStats.Inc(size)
+			structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+			bytesIngested.WithLabelValues(userID, retentionHours, isAggregatedMetric, policyName).Add(float64(size))
+			bytesReceivedStats.Inc(size)
+			structuredMetadataBytesReceivedStats.Inc(size)
 
-		entriesSize += size
-		structuredMetadataSize += size
+			entriesSize += size
+			structuredMetadataSize += size
+		}
 	}
 
 	// incrementing tenant metrics if we have a tenant.
 	if pushStats.NumLines != 0 && userID != "" {
-		linesIngested.WithLabelValues(userID, isAggregatedMetric).Add(float64(pushStats.NumLines))
+		linesIngested.WithLabelValues(userID, isAggregatedMetric, "").Add(float64(pushStats.NumLines))
 	}
 	linesReceivedStats.Inc(pushStats.NumLines)
 
@@ -286,12 +297,20 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
 		}
 		totalBytesReceived := int64(0)
+		policy := limits.PolicyFor(userID, lbs)
+
+		if _, ok := pushStats.LogLinesBytes[policy]; !ok {
+			pushStats.LogLinesBytes[policy] = make(map[time.Duration]int64)
+		}
+		if _, ok := pushStats.StructuredMetadataBytes[policy]; !ok {
+			pushStats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
+		}
 
 		for _, e := range s.Entries {
 			pushStats.NumLines++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
-			pushStats.LogLinesBytes[retentionPeriod] += int64(len(e.Line))
-			pushStats.StructuredMetadataBytes[retentionPeriod] += entryLabelsSize
+			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
+			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
 			totalBytesReceived += int64(len(e.Line))
 			totalBytesReceived += entryLabelsSize
 

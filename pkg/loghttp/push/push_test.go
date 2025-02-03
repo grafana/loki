@@ -287,10 +287,11 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, test.expectedBytes, bytesReceived)
 				require.Equalf(t, tracker.Total(), float64(bytesReceived), "tracked usage bytes must equal bytes received metric")
 				require.Equal(t, test.expectedLines, linesReceived)
+				policy := ""
 				require.Equal(
 					t,
 					float64(test.expectedStructuredMetadataBytes),
-					testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric))),
+					testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric), policy)),
 				)
 				require.Equal(
 					t,
@@ -300,6 +301,7 @@ func TestParseRequest(t *testing.T) {
 							"fake",
 							"",
 							fmt.Sprintf("%t", test.aggregatedMetric),
+							policy,
 						),
 					),
 				)
@@ -310,6 +312,7 @@ func TestParseRequest(t *testing.T) {
 						linesIngested.WithLabelValues(
 							"fake",
 							fmt.Sprintf("%t", test.aggregatedMetric),
+							policy,
 						),
 					),
 				)
@@ -321,9 +324,10 @@ func TestParseRequest(t *testing.T) {
 				require.Equal(t, 0, structuredMetadataBytesReceived)
 				require.Equal(t, 0, bytesReceived)
 				require.Equal(t, 0, linesReceived)
-				require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric))))
-				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric))))
-				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake", fmt.Sprintf("%t", test.aggregatedMetric))))
+				policy := ""
+				require.Equal(t, float64(0), testutil.ToFloat64(structuredMetadataBytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric), policy)))
+				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "", fmt.Sprintf("%t", test.aggregatedMetric), policy)))
+				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake", fmt.Sprintf("%t", test.aggregatedMetric), policy)))
 			}
 		})
 	}
@@ -436,6 +440,10 @@ func (f *fakeLimits) OTLPConfig(_ string) OTLPConfig {
 	defaultGlobalOTLPConfig := GlobalOTLPConfig{}
 	flagext.DefaultValues(&defaultGlobalOTLPConfig)
 	return DefaultOTLPConfig(defaultGlobalOTLPConfig)
+}
+
+func (f *fakeLimits) PolicyFor(_ string, _ labels.Labels) string {
+	return ""
 }
 
 func (f *fakeLimits) DiscoverServiceName(_ string) []string {
