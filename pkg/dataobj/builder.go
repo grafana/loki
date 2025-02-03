@@ -375,6 +375,7 @@ func (b *Builder) Reset() {
 // reg must contain additional labels to differentiate between them.
 func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{"tenant": b.tenantID}, reg)
+
 	return b.metrics.Register(reg)
 }
 

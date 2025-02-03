@@ -808,10 +808,6 @@ dataobj_consumer:
     # CLI flag: -dataobj-consumer.buffer-size
     [buffer_size: <int> | default = 16MiB]
 
-  # The tenant ID to use for the data object builder.
-  # CLI flag: -dataobj-consumer.tenant-id
-  [tenant_id: <string> | default = "fake"]
-
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-consumer.storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
