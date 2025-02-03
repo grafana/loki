@@ -65,11 +65,10 @@ const (
 )
 
 const (
-	KindBlock   EntryKind = "block"
-	KindField   EntryKind = "field"
-	KindSlice   EntryKind = "slice"
-	KindMap     EntryKind = "map"
-	KindRootRef EntryKind = "root_ref"
+	KindBlock EntryKind = "block"
+	KindField EntryKind = "field"
+	KindSlice EntryKind = "slice"
+	KindMap   EntryKind = "map"
 )
 
 type ConfigEntry struct {
@@ -81,6 +80,7 @@ type ConfigEntry struct {
 	Block     *ConfigBlock
 	BlockDesc string
 	Root      bool
+	Inline    bool
 
 	// In case the Kind is KindField
 	FieldFlag    string
@@ -229,8 +229,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 					blocks = append(blocks, subBlock)
 				}
 			} else {
-				// For inline fields, we still want to add them to the root blocks list if they are root blocks
-				// but we don't want to create a new block entry in the current block
+				// For inline fields, we still want to add them to the root blocks list
 				if isRoot {
 					subBlock = &ConfigBlock{
 						Name: rootName,
@@ -240,11 +239,11 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 
 					// Add a field entry that references the root block
 					block.Add(&ConfigEntry{
-						Kind:      KindRootRef,
-						Name:      fieldName,
-						Required:  isFieldRequired(field),
-						FieldDesc: getFieldDescription(cfg, field, rootDesc),
-						FieldType: rootName,
+						Kind:      KindBlock,
+						Block:     subBlock,
+						BlockDesc: subBlock.Desc,
+						Root:      true,
+						Inline:    true,
 					})
 				} else {
 					subBlock = block

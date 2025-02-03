@@ -137,10 +137,11 @@ ruler_storage:
   # clients in future releases.
   # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
   # is set to true.
+  # The CLI flags prefix for this block configuration is: ruler-storage
   [<thanos_object_store_config>]
 
-  # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
-  # filesystem.
+  # Backend storage to use. Supported backends are: local, s3, gcs, azure,
+  # swift, filesystem, alibabacloud, bos
   # CLI flag: -ruler-storage.backend
   [backend: <string> | default = "filesystem"]
 
@@ -680,6 +681,7 @@ pattern_ingester:
 compactor_grpc_client:
   # The grpc_client block configures the gRPC client used to communicate between
   # a client and server component in Loki.
+  # The CLI flags prefix for this block configuration is: compactor.grpc-client
   [<grpc_client>]
 
 # The limits_config block configures global and per-tenant limits in Loki. The
@@ -1345,6 +1347,8 @@ memcached_client:
   [tls_enabled: <boolean> | default = false]
 
   # The TLS configuration.
+  # The CLI flags prefix for this block configuration is:
+  # store.index-cache-write.memcached
   [<tls_config>]
 
 redis:
@@ -2143,6 +2147,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
+# The CLI flags prefix for this block configuration is: ruler.ring.etcd
 [<tls_config>]
 
 # Etcd username.
@@ -2424,6 +2429,8 @@ backoff_config:
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
+# The CLI flags prefix for this block configuration is:
+# tsdb.shipper.index-gateway-client.grpc
 [<tls_config>]
 
 # The maximum amount of time to establish a connection. A value of 0 means
@@ -3740,6 +3747,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
+# The CLI flags prefix for this block configuration is: memberlist
 [<tls_config>]
 ```
 
@@ -4305,6 +4313,8 @@ storage:
 
 alertmanager_client:
   # The TLS configuration.
+  # The CLI flags prefix for this block configuration is:
+  # ruler.alertmanager-client
   [<tls_config>]
 
   # HTTP Basic authentication username. It overrides the username set in the URL
@@ -4528,6 +4538,8 @@ evaluation:
     [tls_enabled: <boolean> | default = false]
 
     # The TLS configuration.
+    # The CLI flags prefix for this block configuration is:
+    # ruler.evaluation.query-frontend
     [<tls_config>]
 ```
 
@@ -5235,6 +5247,7 @@ object_store:
   # clients in future releases.
   # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
   # is set to true.
+  # The CLI flags prefix for this block configuration is: object-store
   [<thanos_object_store_config>]
 
   named_stores:

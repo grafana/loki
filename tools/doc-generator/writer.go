@@ -52,7 +52,11 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) (written
 			}
 
 			// Block reference without entries, because it's a root block
-			w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.Block.Name + ">]\n")
+			if e.Inline {
+				w.out.WriteString(pad(indent) + "[<" + e.Block.Name + ">]\n")
+			} else {
+				w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.Block.Name + ">]\n")
+			}
 		} else {
 			// Description
 			w.writeComment(e.BlockDesc, indent, 0)
@@ -93,15 +97,6 @@ func (w *specWriter) writeConfigEntry(e *parse.ConfigEntry, indent int) (written
 			}
 			w.out.WriteString(pad(indent) + "[" + e.Name + ": <" + e.FieldType + ">" + defaultValue + "]\n")
 		}
-	}
-
-	if e.Kind == parse.KindRootRef {
-		// Description
-		w.writeComment(e.Description(), indent, 0)
-		w.writeFlag(e.FieldFlag, indent)
-
-		// For root references, we just write the reference without any default value
-		w.out.WriteString(pad(indent) + "[<" + e.FieldType + ">]\n")
 	}
 
 	return written
