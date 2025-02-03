@@ -10,8 +10,8 @@ import (
 
 type Config struct {
 	dataobj.BuilderConfig
-	UploaderConfig uploader.Config
-	TenantID       string `yaml:"tenant_id"`
+	UploaderConfig uploader.Config `yaml:"uploader"`
+	TenantID       string          `yaml:"tenant_id"`
 	// StorageBucketPrefix is the prefix to use for the storage bucket.
 	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
 }

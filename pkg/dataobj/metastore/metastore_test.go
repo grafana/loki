@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/dskit/backoff"
@@ -20,8 +19,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	m, err := NewManager(bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
-	require.NoError(t, err)
+	m := NewManager(bucket, tenantID, log.NewNopLogger())
 
 	// Set limits for the test
 	m.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -45,7 +43,7 @@ func BenchmarkWriteMetastores(t *testing.B) {
 	t.ReportAllocs()
 	for i := 0; i < t.N; i++ {
 		// Test writing metastores
-		err = m.UpdateMetastore(ctx, "path", flushStats[i%len(flushStats)])
+		err := m.UpdateMetastore(ctx, "path", flushStats[i%len(flushStats)])
 		require.NoError(t, err)
 	}
 
@@ -57,8 +55,7 @@ func TestWriteMetastores(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	m, err := NewManager(bucket, tenantID, log.NewNopLogger(), prometheus.DefaultRegisterer)
-	require.NoError(t, err)
+	m := NewManager(bucket, tenantID, log.NewNopLogger())
 
 	// Set limits for the test
 	m.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -78,7 +75,7 @@ func TestWriteMetastores(t *testing.T) {
 	require.Len(t, bucket.Objects(), 0)
 
 	// Test writing metastores
-	err = m.UpdateMetastore(ctx, "test-dataobj-path", flushStats)
+	err := m.UpdateMetastore(ctx, "test-dataobj-path", flushStats)
 	require.NoError(t, err)
 
 	require.Len(t, bucket.Objects(), 1)

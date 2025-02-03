@@ -44,7 +44,7 @@ type Manager struct {
 	builderOnce sync.Once
 }
 
-func NewManager(bucket objstore.Bucket, tenantID string, logger log.Logger, reg prometheus.Registerer) *Manager {
+func NewManager(bucket objstore.Bucket, tenantID string, logger log.Logger) *Manager {
 	metrics := newMetastoreMetrics()
 
 	return &Manager{

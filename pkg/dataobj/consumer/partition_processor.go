@@ -71,7 +71,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreManager := metastore.NewManager(bucket, tenantID, logger, reg)
+	metastoreManager := metastore.NewManager(bucket, tenantID, logger)
 	if err := metastoreManager.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore manager metrics", "err", err)
 	}
@@ -167,7 +167,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	}
 
 	if err := p.builder.Append(stream); err != nil {
-		if err != dataobj.ErrBufferFull {
+		if err != dataobj.ErrBuilderFull {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
 			p.metrics.incAppendFailures()
 			return
@@ -192,7 +192,6 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 		if err := p.commitRecords(record); err != nil {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
-			p.metrics.incCommitFailures()
 			return
 		}
 

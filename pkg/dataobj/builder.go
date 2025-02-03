@@ -20,9 +20,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// ErrBufferFull is returned by [Builder.Append] when the buffer is full and
+// ErrBuilderFull is returned by [Builder.Append] when the buffer is full and
 // needs to flush; call [Builder.Flush] to flush it.
-var ErrBufferFull = errors.New("buffer full")
+var (
+	ErrBuilderFull  = errors.New("builder full")
+	ErrBuilderEmpty = errors.New("builder empty")
+)
 
 // BuilderConfig configures a data object [Builder].
 type BuilderConfig struct {
@@ -55,8 +58,8 @@ type BuilderConfig struct {
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.TargetPageSize.Set("2MB")
 	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")         // Page Size * 8
-	_ = cfg.TargetSectionSize.Set("128MB") // Target Object Size / 8
+	_ = cfg.BufferSize.Set("16MB")           // Page Size * 8
+	_ = cfg.TargetSectionSize.Set("128t MB") // Target Object Size / 8
 
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
@@ -114,7 +117,10 @@ type Builder struct {
 type builderState int
 
 const (
+	// builderStateEmpty indicates the builder is empty and ready to accept new data.
 	builderStateEmpty builderState = iota
+
+	// builderStateDirty indicates the builder has been modified since the last flush.
 	builderStateDirty
 )
 
@@ -160,7 +166,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBufferFull] if the
+// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
 // builder is full.
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
@@ -178,7 +184,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 	// b.currentSizeEstimate will always be updated to reflect the size following
 	// the previous append.
 	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
-		return ErrBufferFull
+		return ErrBuilderFull
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -260,7 +266,7 @@ func streamSizeEstimate(stream logproto.Stream) int {
 // [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
 func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
 	if b.state == builderStateEmpty {
-		return FlushStats{}, ErrBufferFull
+		return FlushStats{}, ErrBuilderEmpty
 	}
 
 	err := b.buildObject(output)
@@ -282,6 +288,8 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
 
+	initialBufferSize := output.Len()
+
 	b.encoder.Reset(output)
 
 	if err := b.streams.EncodeTo(b.encoder); err != nil {
@@ -292,12 +300,12 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
-	b.metrics.builtSize.Observe(float64(output.Len()))
+	b.metrics.builtSize.Observe(float64(output.Len() - initialBufferSize))
 
 	// We pass context.Background() below to avoid allowing building an object to
 	// time out; timing out on build would discard anything we built and would
 	// cause data loss.
-	dec := encoding.ReaderAtDecoder(bytes.NewReader(output.Bytes()), int64(output.Len()))
+	dec := encoding.ReaderAtDecoder(bytes.NewReader(output.Bytes()[initialBufferSize:]), int64(output.Len()-initialBufferSize))
 	return b.metrics.encoding.Observe(context.Background(), dec)
 }
 

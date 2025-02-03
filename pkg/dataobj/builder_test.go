@@ -24,7 +24,9 @@ var testBuilderConfig = BuilderConfig{
 }
 
 func TestBuilder(t *testing.T) {
-	obj := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(nil)
+	dirtyBuf := bytes.NewBuffer([]byte("dirty"))
+
 	streams := []logproto.Stream{
 		{
 			Labels: `{cluster="test",app="foo"}`,
@@ -76,12 +78,34 @@ func TestBuilder(t *testing.T) {
 		for _, entry := range streams {
 			require.NoError(t, builder.Append(entry))
 		}
-		_, err = builder.Flush(obj)
+		_, err = builder.Flush(buf)
 		require.NoError(t, err)
 	})
 
 	t.Run("Read", func(t *testing.T) {
-		obj := FromReaderAt(bytes.NewReader(obj.Bytes()), int64(obj.Len()))
+		obj := FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		md, err := obj.Metadata(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, 1, md.StreamsSections)
+		require.Equal(t, 1, md.LogsSections)
+	})
+
+	t.Run("BuildWithDirtyBuffer", func(t *testing.T) {
+		builder, err := NewBuilder(testBuilderConfig)
+		require.NoError(t, err)
+
+		for _, entry := range streams {
+			require.NoError(t, builder.Append(entry))
+		}
+
+		_, err = builder.Flush(dirtyBuf)
+		require.NoError(t, err)
+
+		require.Equal(t, buf.Len(), dirtyBuf.Len()-5)
+	})
+
+	t.Run("ReadFromDirtyBuffer", func(t *testing.T) {
+		obj := FromReaderAt(bytes.NewReader(dirtyBuf.Bytes()[5:]), int64(dirtyBuf.Len()-5))
 		md, err := obj.Metadata(context.Background())
 		require.NoError(t, err)
 		require.Equal(t, 1, md.StreamsSections)
@@ -108,7 +132,7 @@ func TestBuilder_Append(t *testing.T) {
 				Line:      strings.Repeat("a", 1024),
 			}},
 		})
-		if errors.Is(err, ErrBufferFull) {
+		if errors.Is(err, ErrBuilderFull) {
 			break
 		}
 		require.NoError(t, err)
