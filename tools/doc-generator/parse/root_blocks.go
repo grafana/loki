@@ -299,8 +299,7 @@ Named store from this example can be used by setting object_store to store-1 in 
 		{
 			Name:       "thanos_object_store_config",
 			StructType: []reflect.Type{reflect.TypeOf(bucket.Config{})},
-			Desc: `The thanos_storage_config block configures the connection to object storage.
-It uses thanos-io/objstore clients for connecting to object storage backends. This will become the default way of configuring object store clients in future releases.
+			Desc: `The thanos_object_store_config block configures the connection to object storage backend using thanos-io/objstore clients. This will become the default way of configuring object store clients in future releases.
 Currently this is opt-in and takes effect only when ` + "`-use-thanos-objstore` " + "is set to true.",
 		},
 	}
