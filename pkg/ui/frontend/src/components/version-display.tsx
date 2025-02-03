@@ -3,19 +3,18 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
-import { Button } from "@/components/ui/button";
 import { useVersionInfo } from "@/hooks/use-version-info";
-import { Loader2, Copy, Check } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { CopyButton } from "@/components/common/copy-button";
 
 export function VersionDisplay() {
   const { mostCommonVersion, versionInfos, isLoading } = useVersionInfo();
   const [isOpen, setIsOpen] = useState(false);
-  const [hasCopied, setHasCopied] = useState(false);
 
-  const copyToClipboard = () => {
-    const text = versionInfos
+  const getVersionText = () => {
+    return versionInfos
       .map(
         ({ version, info }) => `Version: ${version}
 Revision: ${info.revision}
@@ -26,11 +25,6 @@ Go Version: ${info.goVersion}
 `
       )
       .join("\n");
-
-    navigator.clipboard.writeText(text).then(() => {
-      setHasCopied(true);
-      setTimeout(() => setHasCopied(false), 2000);
-    });
   };
 
   return (
@@ -62,24 +56,7 @@ Go Version: ${info.goVersion}
           <div className="flex items-center justify-between mb-2">
             <div className="font-semibold">Build Information</div>
             {!isLoading && versionInfos.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={copyToClipboard}
-                className="h-8 px-2"
-              >
-                {hasCopied ? (
-                  <>
-                    <Check className="h-4 w-4 mr-1" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-4 w-4 mr-1" />
-                    Copy
-                  </>
-                )}
-              </Button>
+              <CopyButton text={getVersionText()} />
             )}
           </div>
           <div

@@ -2,6 +2,7 @@ import React from "react";
 import { formatDistanceToNow, parseISO, isValid } from "date-fns";
 import { Member } from "@/types/cluster";
 import StatusBadge from "@/components/nodes/status-badge";
+import { ReadinessIndicator } from "@/components/nodes/readiness-indicator";
 import { DataTableColumnHeader } from "@/components/common/data-table-column-header";
 import { Button } from "@/components/ui/button";
 import { ArrowRightCircle } from "lucide-react";
@@ -24,6 +25,63 @@ interface NodeListProps {
   onSort: (field: NodeSortField) => void;
 }
 
+interface NodeRowProps {
+  name: string;
+  node: Member;
+  onNavigate: (name: string) => void;
+}
+
+const formatBuildDate = (dateStr: string) => {
+  try {
+    const date = parseISO(dateStr);
+    if (!isValid(date)) {
+      return "Invalid date";
+    }
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch (error) {
+    console.warn("Error parsing date:", dateStr, error);
+    return "Invalid date";
+  }
+};
+
+const NodeRow: React.FC<NodeRowProps> = ({ name, node, onNavigate }) => {
+  return (
+    <TableRow
+      key={name}
+      className="hover:bg-muted/50 cursor-pointer"
+      onClick={() => onNavigate(name)}
+    >
+      <TableCell className="font-medium">{name}</TableCell>
+      <TableCell>{node.target}</TableCell>
+      <TableCell className="font-mono text-sm">{node.build.version}</TableCell>
+      <TableCell>{formatBuildDate(node.build.buildDate)}</TableCell>
+      <TableCell>
+        <StatusBadge services={node.services} error={node.error} />
+      </TableCell>
+      <TableCell>
+        <ReadinessIndicator
+          isReady={node.ready?.isReady}
+          message={node.ready?.message}
+        />
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 w-8 p-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate(name);
+          }}
+        >
+          <ArrowRightCircle className="h-4 w-4" />
+          <span className="sr-only">View details</span>
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+};
+
 const NodeList: React.FC<NodeListProps> = ({
   nodes,
   sortField,
@@ -31,19 +89,6 @@ const NodeList: React.FC<NodeListProps> = ({
   onSort,
 }) => {
   const navigate = useNavigate();
-
-  const formatBuildDate = (dateStr: string) => {
-    try {
-      const date = parseISO(dateStr);
-      if (!isValid(date)) {
-        return "Invalid date";
-      }
-      return formatDistanceToNow(date, { addSuffix: true });
-    } catch (error) {
-      console.warn("Error parsing date:", dateStr, error);
-      return "Invalid date";
-    }
-  };
 
   const compareDates = (dateStrA: string, dateStrB: string) => {
     const dateA = parseISO(dateStrA);
@@ -72,6 +117,10 @@ const NodeList: React.FC<NodeListProps> = ({
     }
     return sortDirection === "asc" ? comparison : -comparison;
   });
+
+  const handleNavigate = (name: string) => {
+    navigate(`/nodes/${name}`);
+  };
 
   return (
     <div className="rounded-md border bg-card">
@@ -115,44 +164,22 @@ const NodeList: React.FC<NodeListProps> = ({
               />
             </TableHead>
             <TableHead className="w-[150px]">Status</TableHead>
+            <TableHead className="w-[50px]">Ready</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {sortedNodes.map(([name, node]) => (
-            <TableRow
+            <NodeRow
               key={name}
-              className="hover:bg-muted/50 cursor-pointer"
-              onClick={() => navigate(`/nodes/${name}`)}
-            >
-              <TableCell className="font-medium">{name}</TableCell>
-              <TableCell>{node.target}</TableCell>
-              <TableCell className="font-mono text-sm">
-                {node.build.version}
-              </TableCell>
-              <TableCell>{formatBuildDate(node.build.buildDate)}</TableCell>
-              <TableCell>
-                <StatusBadge services={node.services} error={node.error} />
-              </TableCell>
-              <TableCell>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigate(`/nodes/${name}`);
-                  }}
-                >
-                  <ArrowRightCircle className="h-4 w-4" />
-                  <span className="sr-only">View details</span>
-                </Button>
-              </TableCell>
-            </TableRow>
+              name={name}
+              node={node}
+              onNavigate={handleNavigate}
+            />
           ))}
           {sortedNodes.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center">
+              <TableCell colSpan={7} className="h-24 text-center">
                 <div className="text-muted-foreground">No nodes found</div>
               </TableCell>
             </TableRow>

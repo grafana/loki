@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 
 interface NodeMetrics {
   store_object_type?: string;
+  distributor_replication_factor?: number;
   [key: string]: string | number | boolean | undefined;
 }
 
@@ -16,6 +17,7 @@ interface NodeDetails {
     goVersion: string;
   };
   config: string;
+  target: string;
   clusterID: string;
   clusterSeededAt: number;
   os: string;
@@ -56,6 +58,8 @@ export function useNodeDetails(
         return response.json();
       })
       .then((data) => {
+        data.target =
+          data.config.match(/target:\s*([^\n]+)/)?.[1]?.trim() || "";
         setNodeDetails(data);
         setIsLoading(false);
       })

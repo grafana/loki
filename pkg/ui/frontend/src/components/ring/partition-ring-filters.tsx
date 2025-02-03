@@ -27,7 +27,6 @@ export function PartitionRingFilters({
   ownerFilter,
   onOwnerFilterChange,
   uniqueStates,
-  uniqueZones,
   partitions,
 }: PartitionRingFiltersProps) {
   // Create options for each filter type

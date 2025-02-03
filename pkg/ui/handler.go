@@ -120,7 +120,6 @@ func (s *Service) clusterProxyHandler() http.Handler {
 	return proxy
 }
 
-// clusterMembersHandler returns a handler that returns the current state of the cluster.
 func (s *Service) clusterMembersHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state, err := s.fetchClusterMembers(r.Context())

@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import { VersionInformation } from "@/components/nodes/version-information";
 import { NodeStatusIndicator } from "@/components/nodes/node-status-indicator";
 import { PprofControls } from "@/components/nodes/pprof-controls";
+import { CopyButton } from "@/components/common/copy-button";
 
 function NodeDetailsPage() {
   const { nodeName } = useParams();
@@ -60,8 +61,14 @@ function NodeDetailsPage() {
         <CardHeader>
           <div className="flex items-center gap-4">
             <div className="flex-1">
-              <CardTitle>Node</CardTitle>
-              <p className="text-sm text-muted-foreground">{nodeName}</p>
+              <CardTitle>
+                <h2 className="text-3xl font-semibold tracking-tight">
+                  <div className="flex items-center gap-2">
+                    {nodeDetails.target} - {nodeName}
+                    <CopyButton text={nodeName || ""} />
+                  </div>
+                </h2>
+              </CardTitle>
             </div>
             <NodeStatusIndicator nodeName={nodeName || ""} />
           </div>

@@ -1,15 +1,14 @@
-import { useMemo, useEffect } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { PartitionInstance } from "@/types/ring";
 import {
   formatTimestamp,
   formatRelativeTime,
   getZoneColors,
-  formatBytes,
 } from "@/lib/ring-utils";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowRightCircle, ArrowUpCircle, ArrowDownCircle } from "lucide-react";
+import { ArrowRightCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -83,15 +82,6 @@ function getStateColors(state: number): string {
   }
 }
 
-interface RateMetrics {
-  uncompressedRate: number;
-  compressedRate: number;
-}
-
-interface NodeMetrics {
-  [nodeId: string]: RateMetrics;
-}
-
 interface PartitionRingTableProps {
   partitions: PartitionInstance[];
   selectedPartitions: Set<number>;
@@ -109,35 +99,6 @@ const STATE_OPTIONS = [
   { value: 3, label: "Inactive" },
   { value: 4, label: "Deleted" },
 ];
-
-function getRateTrend(
-  current: number | undefined,
-  previous: number | undefined
-): "up" | "down" | null {
-  if (current === undefined || previous === undefined) {
-    return null;
-  }
-
-  // Add a small threshold to avoid showing changes for tiny fluctuations
-  const threshold = 0.1; // 10% threshold
-  const percentChange = Math.abs((current - previous) / previous);
-
-  if (percentChange < threshold) {
-    return null;
-  }
-
-  return current > previous ? "up" : "down";
-}
-
-function TrendIndicator({ trend }: { trend: "up" | "down" | null }) {
-  if (!trend) return null;
-
-  return trend === "up" ? (
-    <ArrowUpCircle className="inline h-4 w-4 text-green-500 ml-1" />
-  ) : (
-    <ArrowDownCircle className="inline h-4 w-4 text-red-500 ml-1" />
-  );
-}
 
 export function PartitionRingTable({
   partitions,

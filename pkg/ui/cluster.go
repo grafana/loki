@@ -28,6 +28,7 @@ type Member struct {
 	Services []ServiceState `json:"services"`
 	Build    BuildInfo      `json:"build"`
 	Error    error          `json:"error,omitempty"`
+	Ready    ReadyResponse  `json:"ready,omitempty"`
 
 	configBody string
 }
@@ -101,6 +102,12 @@ func (s *Service) fetchMemberState(ctx context.Context, peer peer.Peer) (Member,
 		return member, fmt.Errorf("fetching build info: %w", err)
 	}
 	member.Build = build
+
+	readyResp, err := s.checkNodeReadiness(ctx, peer.Name)
+	if err != nil {
+		return member, fmt.Errorf("checking node readiness: %w", err)
+	}
+	member.Ready = readyResp
 
 	return member, nil
 }
@@ -271,6 +278,39 @@ func (s *Service) fetchBuild(ctx context.Context, peer peer.Peer) (BuildInfo, er
 		return BuildInfo{}, fmt.Errorf("decoding response: %w", err)
 	}
 	return build, nil
+}
+
+type ReadyResponse struct {
+	IsReady bool   `json:"isReady"`
+	Message string `json:"message"`
+}
+
+func (s *Service) checkNodeReadiness(ctx context.Context, nodeName string) (ReadyResponse, error) {
+	peer, err := s.findPeerByName(nodeName)
+	if err != nil {
+		return ReadyResponse{}, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", s.buildProxyPath(peer, "/ready"), nil)
+	if err != nil {
+		return ReadyResponse{}, err
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return ReadyResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ReadyResponse{}, err
+	}
+
+	return ReadyResponse{
+		IsReady: resp.StatusCode == http.StatusOK && strings.TrimSpace(string(body)) == "ready",
+		Message: string(body),
+	}, nil
 }
 
 // parseTargetFromConfig extracts the target value from a YAML configuration string.

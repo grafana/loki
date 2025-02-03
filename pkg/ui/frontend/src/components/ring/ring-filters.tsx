@@ -1,20 +1,14 @@
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { MultiSelect } from "../common/multi-select";
 
 interface RingFiltersProps {
   idFilter: string;
   onIdFilterChange: (value: string) => void;
-  stateFilter: string;
-  onStateFilterChange: (value: string) => void;
-  zoneFilter: string;
-  onZoneFilterChange: (value: string) => void;
+  stateFilter: string[];
+  onStateFilterChange: (value: string[]) => void;
+  zoneFilter: string[];
+  onZoneFilterChange: (value: string[]) => void;
   uniqueStates: string[];
   uniqueZones: string[];
 }
@@ -41,34 +35,28 @@ export function RingFilters({
         />
       </div>
       {uniqueStates.length > 0 && (
-        <Select value={stateFilter} onValueChange={onStateFilterChange}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by State" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All States</SelectItem>
-            {uniqueStates.map((state) => (
-              <SelectItem key={state} value={state}>
-                {state}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={uniqueStates.map((state) => ({
+            value: state,
+            label: state,
+          }))}
+          selected={stateFilter}
+          onChange={onStateFilterChange}
+          placeholder="Filter by State"
+          className="w-[180px]"
+        />
       )}
       {uniqueZones.length > 0 && (
-        <Select value={zoneFilter} onValueChange={onZoneFilterChange}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Filter by Zone" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__all__">All Zones</SelectItem>
-            {uniqueZones.map((zone) => (
-              <SelectItem key={zone} value={zone}>
-                {zone}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelect
+          options={uniqueZones.map((zone) => ({
+            value: zone,
+            label: zone,
+          }))}
+          selected={zoneFilter}
+          onChange={onZoneFilterChange}
+          placeholder="Filter by Zone"
+          className="w-[180px]"
+        />
       )}
     </div>
   );

@@ -37,8 +37,8 @@ export function RegularRing({ ringName }: RegularRingProps) {
   const [sortField, setSortField] = useState<SortField>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [idFilter, setIdFilter] = useState("");
-  const [stateFilter, setStateFilter] = useState<string>("__all__");
-  const [zoneFilter, setZoneFilter] = useState<string>("__all__");
+  const [stateFilter, setStateFilter] = useState<string[]>([]);
+  const [zoneFilter, setZoneFilter] = useState<string[]>([]);
   const [isForgetDialogOpen, setIsForgetDialogOpen] = useState(false);
 
   const {
@@ -120,7 +120,7 @@ export function RegularRing({ ringName }: RegularRingProps) {
       setIsForgetLoading(false);
       setIsForgetDialogOpen(false);
     }
-  }, [selectedInstances, forgetInstances, fetchRing]);
+  }, [selectedInstances, forgetInstances, fetchRing, toast, error]);
 
   // Filter and sort instances
   const sortedInstances = useMemo(() => {
@@ -132,9 +132,9 @@ export function RegularRing({ ringName }: RegularRingProps) {
           .toLowerCase()
           .includes(idFilter.toLowerCase());
         const matchesState =
-          stateFilter === "__all__" || instance.state === stateFilter;
+          stateFilter.length === 0 || stateFilter.includes(instance.state);
         const matchesZone =
-          zoneFilter === "__all__" || instance.zone === zoneFilter;
+          zoneFilter.length === 0 || zoneFilter.includes(instance.zone);
         return matchesId && matchesState && matchesZone;
       })
       .sort((a, b) => {

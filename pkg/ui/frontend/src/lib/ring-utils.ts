@@ -1,5 +1,4 @@
 import { formatDistanceToNowStrict, formatISO } from "date-fns";
-import { cn } from "./utils";
 
 export function formatRelativeTime(timestamp: string) {
   const date = new Date(timestamp);
@@ -72,3 +71,56 @@ export function formatBytes(bytes: number): string {
 
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
+
+interface Member {
+  services?: Array<{ service: string }>;
+}
+
+// Helper function to check if a service exists in any member
+export const hasService = (
+  members: Record<string, Member>,
+  serviceName: string
+): boolean => {
+  return Object.values(members).some((member) =>
+    member.services?.some((service) => service.service === serviceName)
+  );
+};
+
+// Helper function to get available rings based on cluster services
+export const getAvailableRings = (
+  members: Record<string, Member>
+): Array<{ title: string; url: string }> => {
+  const rings: Array<{ title: string; url: string }> = [];
+
+  if (!members) return rings;
+
+  if (hasService(members, "ingester")) {
+    rings.push({ title: "Ingester", url: "/rings/ingester" });
+  }
+  if (hasService(members, "partition-ring")) {
+    rings.push({
+      title: "Partition Ingester",
+      url: "/rings/partition-ingester",
+    });
+  }
+  if (hasService(members, "distributor")) {
+    rings.push({ title: "Distributor", url: "/rings/distributor" });
+  }
+  if (hasService(members, "pattern-ingester")) {
+    rings.push({ title: "Pattern Ingester", url: "/rings/pattern-ingester" });
+  }
+  if (hasService(members, "query-scheduler")) {
+    rings.push({ title: "Scheduler", url: "/rings/scheduler" });
+  }
+  if (hasService(members, "compactor")) {
+    rings.push({ title: "Compactor", url: "/rings/compactor" });
+  }
+  if (hasService(members, "ruler")) {
+    rings.push({ title: "Ruler", url: "/rings/ruler" });
+  }
+  if (hasService(members, "index-gateway")) {
+    rings.push({ title: "Index Gateway", url: "/rings/index-gateway" });
+  }
+
+  return rings;
+};

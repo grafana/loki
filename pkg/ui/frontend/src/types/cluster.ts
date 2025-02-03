@@ -37,6 +37,10 @@ export interface Member {
   services: ServiceState[];
   build: BuildInfo;
   error?: string;
+  ready?: {
+    isReady: boolean;
+    message: string;
+  };
 }
 
 export interface Cluster {

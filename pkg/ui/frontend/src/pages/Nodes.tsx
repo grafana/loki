@@ -2,7 +2,7 @@ import { useState } from "react";
 import NodeFilters from "@/components/nodes/node-filters";
 import NodeList from "@/components/nodes/node-list";
 import { TargetDistributionChart } from "@/components/nodes/target-distribution-chart";
-import { Member, NodeState, ALL_VALUES_TARGET } from "../types/cluster";
+import { Member, NodeState } from "../types/cluster";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { ErrorBoundary } from "@/components/shared/errors/error-boundary";
 import { useCluster } from "@/contexts/use-cluster";
@@ -12,7 +12,7 @@ import { AlertCircle } from "lucide-react";
 const NodesPage = () => {
   const { cluster, error, refresh, isLoading } = useCluster();
   const [nameFilter, setNameFilter] = useState("");
-  const [targetFilter, setTargetFilter] = useState("");
+  const [targetFilter, setTargetFilter] = useState<string[]>([]);
   const [selectedStates, setSelectedStates] = useState<NodeState[]>([
     "New",
     "Starting",
@@ -42,8 +42,8 @@ const NodesPage = () => {
       const matchesName = name.toLowerCase().includes(nameFilter.toLowerCase());
       const matchesTarget =
         !targetFilter ||
-        targetFilter === ALL_VALUES_TARGET ||
-        node.target === targetFilter;
+        targetFilter.length === 0 ||
+        targetFilter.includes(node.target);
 
       // Show node if any of its services match any of the selected states
       const hasMatchingService =

@@ -1,27 +1,16 @@
 import React from "react";
-import {
-  NodeState,
-  ALL_NODE_STATES,
-  ALL_VALUES_TARGET,
-} from "../../types/cluster";
+import { NodeState, ALL_NODE_STATES } from "../../types/cluster";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { MultiSelect } from "@/components/common/multi-select";
 import { RefreshCw } from "lucide-react";
 
 interface NodeFiltersProps {
   nameFilter: string;
-  targetFilter: string;
+  targetFilter: string[];
   selectedStates: NodeState[];
   onNameFilterChange: (value: string) => void;
-  onTargetFilterChange: (value: string) => void;
+  onTargetFilterChange: (value: string[]) => void;
   onStatesChange: (states: NodeState[]) => void;
   onRefresh: () => void;
   availableTargets: string[];
@@ -62,21 +51,16 @@ const NodeFilters: React.FC<NodeFiltersProps> = ({
             placeholder="Filter by node name..."
             className="w-[300px]"
           />
-          <Select value={targetFilter} onValueChange={onTargetFilterChange}>
-            <SelectTrigger className="w-[300px]">
-              <SelectValue placeholder="All Targets" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem key={ALL_VALUES_TARGET} value={ALL_VALUES_TARGET}>
-                All Targets
-              </SelectItem>
-              {availableTargets.map((target) => (
-                <SelectItem key={target} value={target}>
-                  {target}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MultiSelect
+            options={availableTargets.map((target) => ({
+              value: target,
+              label: target,
+            }))}
+            selected={targetFilter}
+            onChange={onTargetFilterChange}
+            placeholder="All Targets"
+            className="w-[300px]"
+          />
         </div>
       </div>
       <div className="space-y-1.5 self-end">
