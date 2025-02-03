@@ -129,7 +129,7 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	c.IngesterLifecyclerConfig.RegisterFlagsWithPrefix("partition-ingester.ring.", f, logger)
 	c.IngestLimitsLifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.ring.", f, logger)
 	c.MemberlistKV.RegisterFlags(f)
-	c.ClientConfig.RegisterFlagsWithPrefix("ingest-limits.client.", f)
+	c.ClientConfig.RegisterFlagsWithPrefix("ingest-limits.client", f)
 }
 
 type generator struct {
@@ -149,13 +149,9 @@ type generator struct {
 	partitionRingKV      kv.Client
 
 	// ring
-	memberlistKV *memberlist.KVInitService
-	ingesterRing *ring.Ring
-
-	// ingest limits ring
-	ingestLimitsRing              *ring.Ring
-	ingestLimitsRingLifecycler    *ring.Lifecycler
-	ingestLimitsLifecyclerWatcher *services.FailureWatcher
+	memberlistKV     *memberlist.KVInitService
+	ingesterRing     *ring.Ring
+	ingestLimitsRing *ring.Ring
 
 	// limits
 	limitsSrv limitsfrontend.IngestLimitsService
@@ -224,13 +220,6 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 		return nil, fmt.Errorf("creating ingest limits ring: %w", err)
 	}
 
-	s.ingestLimitsRingLifecycler, err = ring.NewLifecycler(cfg.IngestLimitsLifecyclerConfig, s, limits.RingName, limits.RingKey, true, logger, ingestLimitsRingReg)
-	if err != nil {
-		return nil, fmt.Errorf("creating ingest limits ring lifecycler: %w", err)
-	}
-	s.ingestLimitsLifecyclerWatcher = services.NewFailureWatcher()
-	s.ingestLimitsLifecyclerWatcher.WatchService(s.ingestLimitsRingLifecycler)
-
 	// Init limits service
 	smLimits := &streamMetadataLimits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
@@ -244,7 +233,6 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	srvs := []services.Service{
 		s.memberlistKV,
 		s.ingestLimitsRing,
-		s.ingestLimitsRingLifecycler,
 		s.ingesterRing,
 		s.partitionRingWatcher,
 		pool,
@@ -362,8 +350,6 @@ func (s *generator) running(ctx context.Context) error {
 		return nil
 	case err := <-s.subservicesWatcher.Chan():
 		return errors.Wrap(err, "stream-metadata-generator subservice failed")
-	case err := <-s.ingestLimitsLifecyclerWatcher.Chan():
-		return errors.Wrap(err, "ingest limits ring lifecycler failed")
 	case err := <-errCh:
 		return err
 	}
