@@ -23,8 +23,9 @@ import (
 	dskit_log "github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
-	ring_client "github.com/grafana/dskit/ring/client"
+	ringclient "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -38,10 +39,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
-	limitsfrontendclient "github.com/grafana/loki/v3/pkg/limits/frontend/client"
+	"github.com/grafana/loki/v3/pkg/limits/frontend"
+	frontendclient "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/discovery"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -91,9 +92,9 @@ type config struct {
 	// Ingester ring config
 	IngesterLifecyclerConfig ring.LifecyclerConfig `yaml:"ingester_lifecycler,omitempty"`
 
-	// Ingest Limits Frontend Client config
-	IngestLimitsFrontendDiscoveryAddress string                      `yaml:"ingest_limits_frontend_discovery_address,omitempty"`
-	IngestLimitsFrontendClientConfig     limitsfrontendclient.Config `yaml:"ingest_limits_frontend_client,omitempty"`
+	// Frontend ring config
+	FrontendLifecyclerConfig ring.LifecyclerConfig `yaml:"frontend_lifecycler,omitempty"`
+	FrontendClientConfig     frontendclient.Config `yaml:"frontend_client,omitempty"`
 }
 
 type streamLabelsFlag []string
@@ -125,12 +126,10 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	c.LogLevel.RegisterFlags(f)
 	c.Kafka.RegisterFlags(f)
 	c.PartitionRingConfig.RegisterFlagsWithPrefix("", f)
-	c.IngesterLifecyclerConfig.RegisterFlagsWithPrefix("ring.", f, logger)
+	c.IngesterLifecyclerConfig.RegisterFlagsWithPrefix("ingester-ring.", f, logger)
+	c.FrontendLifecyclerConfig.RegisterFlagsWithPrefix("frontend-ring.", f, logger)
+	c.FrontendClientConfig.RegisterFlagsWithPrefix("frontend", f)
 	c.MemberlistKV.RegisterFlags(f)
-
-	// Ingest Limits Frontend Client config
-	c.IngestLimitsFrontendClientConfig.RegisterFlagsWithPrefix("ingest-limits", f)
-	f.StringVar(&c.IngestLimitsFrontendDiscoveryAddress, "ingest-limits.limits-frontend-client.discovery-address", "", "The address of the ingest limits frontend service")
 }
 
 type generator struct {
@@ -152,10 +151,9 @@ type generator struct {
 	// ring
 	memberlistKV *memberlist.KVInitService
 	ingesterRing *ring.Ring
+	frontendRing *ring.Ring
 
-	// ingest limits frontend client
-	ingestLimitsFrontendDNS  *discovery.DNS
-	ingestLimitsFrontendPool *ring_client.Pool
+	frontentClientPool *ringclient.Pool
 
 	// service
 	subservices        *services.Manager
@@ -194,6 +192,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 
 	cfg.IngesterLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 	cfg.PartitionRingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
+	cfg.FrontendLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 
 	// Init KVStore client
 	regKV := kv.RegistererWithKVName(reg, ingester.PartitionRingName+"-watcher")
@@ -205,7 +204,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	// Init partition ingester ring
 	s.ingesterRing, err = ring.New(cfg.IngesterLifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, reg)
 	if err != nil {
-		return nil, fmt.Errorf("creating ring: %w", err)
+		return nil, fmt.Errorf("creating ingester ring: %w", err)
 	}
 
 	// Init Partition Ring and Watcher
@@ -213,18 +212,24 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, s.partitionRingKV, logger, reg)
 	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ingesterRing, cfg.IngesterLifecyclerConfig.RingConfig.HeartbeatTimeout)
 
-	// Init ingest limits frontend client
-	s.ingestLimitsFrontendDNS = discovery.NewDNS(logger, cfg.IngestLimitsFrontendClientConfig.PoolConfig.ClientCleanupPeriod, cfg.IngestLimitsFrontendDiscoveryAddress, nil)
-	s.ingestLimitsFrontendDNS.RunOnce()
+	// Init Frontend Ring
+	s.frontendRing, err = ring.New(cfg.FrontendLifecyclerConfig.RingConfig, frontend.RingName, frontend.RingKey, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("creating ingest limits frontend ring: %w", err)
+	}
 
-	s.ingestLimitsFrontendPool = newIngestLimitsFrontendPool(cfg.IngestLimitsFrontendClientConfig, s.ingestLimitsFrontendDNS.Addresses(), logger)
+	factory := ringclient.PoolAddrFunc(func(addr string) (ringclient.PoolClient, error) {
+		return frontendclient.NewIngestLimitsFrontendClient(cfg.FrontendClientConfig, addr)
+	})
+
+	s.frontentClientPool = frontendclient.NewIngestLimitsFrontendClientPool(frontend.RingName, cfg.FrontendClientConfig.PoolConfig, s.frontendRing, factory, logger)
 
 	// Init services
 	srvs := []services.Service{
 		s.memberlistKV,
 		s.ingesterRing,
 		s.partitionRingWatcher,
-		s.ingestLimitsFrontendPool,
+		s.frontentClientPool,
 	}
 	s.subservices, err = services.NewManager(srvs...)
 	if err != nil {
@@ -238,46 +243,24 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	return s, nil
 }
 
-func (s *generator) ingestLimitsFrontendFromPool() (*limitsfrontendclient.IngestLimitsFrontendClient, error) {
-	addrs := s.ingestLimitsFrontendDNS.Addresses()
+var frontendRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
-	rand.Shuffle(len(addrs), func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
-	})
-
-	if len(addrs) == 0 {
-		return nil, fmt.Errorf("no ingest limits frontend addresses found")
+func (s *generator) getFrontendClient() (*frontendclient.IngestLimitsFrontendClient, error) {
+	instances, err := s.frontendRing.GetAllHealthy(frontendRead)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ingest limits frontend instances: %w", err)
 	}
 
-	instance, err := s.ingestLimitsFrontendPool.GetClientFor(addrs[0])
+	rand.Shuffle(len(instances.Instances), func(i, j int) {
+		instances.Instances[i], instances.Instances[j] = instances.Instances[j], instances.Instances[i]
+	})
+
+	client, err := s.frontentClientPool.GetClientForInstance(instances.Instances[0])
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingest limits frontend client: %w", err)
 	}
-	return instance.(*limitsfrontendclient.IngestLimitsFrontendClient), nil
-}
 
-func newIngestLimitsFrontendPool(cfg limitsfrontendclient.Config, members []string, logger log.Logger) *ring_client.Pool {
-	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return limitsfrontendclient.NewIngestLimitsFrontendClient(cfg, addr)
-	})
-
-	discovery := func() ([]string, error) {
-		return members, nil
-	}
-
-	clientmetrics := prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "loki",
-		Name:      "ingest_limits_frontend_clients",
-		Help:      "The current number of ingest limits frontend clients.",
-	})
-
-	poolConfig := ring_client.PoolConfig{
-		CheckInterval:      cfg.PoolConfig.ClientCleanupPeriod,
-		HealthCheckEnabled: cfg.PoolConfig.HealthCheckIngestLimits,
-		HealthCheckTimeout: cfg.PoolConfig.RemoteTimeout,
-	}
-
-	return ring_client.NewPool("ingest-limits-frontend", poolConfig, discovery, factory, clientmetrics, logger)
+	return client.(*frontendclient.IngestLimitsFrontendClient), nil
 }
 
 func (s *generator) starting(ctx context.Context) error {
@@ -303,6 +286,19 @@ func (s *generator) running(ctx context.Context) error {
 		go func(tenantID string, streams []distributor.KeyedStream) {
 			defer s.wg.Done()
 
+			ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, tenantID))
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			//var client interface{}
+			client, err := s.getFrontendClient()
+			if err != nil {
+				errCh <- err
+				return
+			}
+
 			// Create a ticker for rate limiting based on QPSPerTenant
 			ticker := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
 			defer ticker.Stop()
@@ -321,12 +317,6 @@ func (s *generator) running(ctx context.Context) error {
 						firstPassComplete = true
 					}
 
-					client, err := s.ingestLimitsFrontendFromPool()
-					if err != nil {
-						errCh <- errors.Wrapf(err, "failed to get ingest limits frontend client for tenant %s", tenantID)
-						return
-					}
-
 					var streamMetadata []*logproto.StreamMetadataWithSize
 					for _, stream := range streams[streamIdx : streamIdx+1] {
 						streamMetadata = append(streamMetadata, &logproto.StreamMetadataWithSize{
@@ -340,23 +330,25 @@ func (s *generator) running(ctx context.Context) error {
 					}
 
 					// Check if the stream exceeds limits
-					resp, err := client.ExceedsLimits(ctx, req)
-					if err != nil {
-						errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
-						return
-					}
-
-					if len(resp.RejectedStreams) > 0 {
-						var rejectedStreamsMsg string
-						for _, rejectedStream := range resp.RejectedStreams {
-							rejectedStreamsMsg += fmt.Sprintf("%d (%s), ", rejectedStream.StreamHash, rejectedStream.Reason)
+					if client != nil {
+						resp, err := client.ExceedsLimits(ctx, req)
+						if err != nil {
+							errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
+							return
 						}
 
-						level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "stream", streamIdx, "rejected", rejectedStreamsMsg)
+						if len(resp.RejectedStreams) > 0 {
+							var rejectedStreamsMsg string
+							for _, rejectedStream := range resp.RejectedStreams {
+								rejectedStreamsMsg += fmt.Sprintf("%d (%s), ", rejectedStream.StreamHash, rejectedStream.Reason)
+							}
+
+							level.Info(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "stream", streamIdx, "rejected", rejectedStreamsMsg)
+						}
 					}
 
 					// Send single stream to Kafka
-					err = s.sendStreamsToKafka(ctx, streams[streamIdx:streamIdx+1], tenantID)
+					err := s.sendStreamsToKafka(ctx, streams[streamIdx:streamIdx+1], tenantID)
 					if err != nil {
 						errCh <- errors.Wrapf(err, "failed to send stream for tenant %s", tenantID)
 						return
@@ -380,6 +372,7 @@ func (s *generator) running(ctx context.Context) error {
 	case err := <-s.subservicesWatcher.Chan():
 		return errors.Wrap(err, "stream-metadata-generator subservice failed")
 	case err := <-errCh:
+		level.Error(s.logger).Log("msg", "stream-metadata-generator error", "err", err)
 		return err
 	}
 }
