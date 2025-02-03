@@ -539,6 +539,7 @@
     "env":
       "BUILD_TIMEOUT": 60
       "IMAGE_PREFIX": "public.ecr.aws/grafana"
+      "REPO": "loki"
     "needs":
     - "lambda-promtail-image"
     "runs-on": "ubuntu-latest"
@@ -570,7 +571,7 @@
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
           ${{ needs.lambda-promtail-image.outputs.image_name }}@${{ needs.lambda-promtail-image.outputs.image_digest_linux_amd64 }} \
-          ${{ needs.lambda-promtail-image.outputs.image_name }}@${{ needs.lambda-promtail-image.outputs.image_digest_linux_arm64 }} \
+          ${{ needs.lambda-promtail-image.outputs.image_name }}@${{ needs.lambda-promtail-image.outputs.image_digest_linux_arm64 }}
         docker buildx imagetools inspect $IMAGE
 "name": "Publish images"
 "on":
