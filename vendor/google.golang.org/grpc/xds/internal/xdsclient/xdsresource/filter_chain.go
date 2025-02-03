@@ -96,6 +96,8 @@ type RouteWithInterceptors struct {
 	Interceptors []resolver.ServerInterceptor
 }
 
+// UsableRouteConfiguration contains a matchable route configuration, with
+// instantiated HTTP Filters per route.
 type UsableRouteConfiguration struct {
 	VHS []VirtualHostWithInterceptors
 	Err error
@@ -104,7 +106,7 @@ type UsableRouteConfiguration struct {
 // ConstructUsableRouteConfiguration takes Route Configuration and converts it
 // into matchable route configuration, with instantiated HTTP Filters per route.
 func (fc *FilterChain) ConstructUsableRouteConfiguration(config RouteConfigUpdate) *UsableRouteConfiguration {
-	vhs := make([]VirtualHostWithInterceptors, len(config.VirtualHosts))
+	vhs := make([]VirtualHostWithInterceptors, 0, len(config.VirtualHosts))
 	for _, vh := range config.VirtualHosts {
 		vhwi, err := fc.convertVirtualHost(vh)
 		if err != nil {
@@ -504,6 +506,7 @@ func (fcm *FilterChainManager) addFilterChainsForSourcePorts(srcEntry *sourcePre
 	return nil
 }
 
+// FilterChains returns the filter chains for this filter chain manager.
 func (fcm *FilterChainManager) FilterChains() []*FilterChain {
 	return fcm.fcs
 }
@@ -533,12 +536,12 @@ func (fcm *FilterChainManager) filterChainFromProto(fc *v3listenerpb.FilterChain
 	if name := ts.GetName(); name != transportSocketName {
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
-	any := ts.GetTypedConfig()
-	if any == nil || any.TypeUrl != version.V3DownstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", any.TypeUrl)
+	tc := ts.GetTypedConfig()
+	if tc == nil || tc.TypeUrl != version.V3DownstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
 	}
 	downstreamCtx := &v3tlspb.DownstreamTlsContext{}
-	if err := proto.Unmarshal(any.GetValue(), downstreamCtx); err != nil {
+	if err := proto.Unmarshal(tc.GetValue(), downstreamCtx); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal DownstreamTlsContext in LDS response: %v", err)
 	}
 	if downstreamCtx.GetRequireSni().GetValue() {
@@ -630,7 +633,7 @@ func processNetworkFilters(filters []*v3listenerpb.Filter) (*FilterChain, error)
 			}
 			hcm := &v3httppb.HttpConnectionManager{}
 			if err := tc.UnmarshalTo(hcm); err != nil {
-				return nil, fmt.Errorf("network filters {%+v} failed unmarshaling of network filter {%+v}: %v", filters, filter, err)
+				return nil, fmt.Errorf("network filters {%+v} failed unmarshalling of network filter {%+v}: %v", filters, filter, err)
 			}
 			// "Any filters after HttpConnectionManager should be ignored during
 			// connection processing but still be considered for validity.

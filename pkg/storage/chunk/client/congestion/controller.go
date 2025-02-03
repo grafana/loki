@@ -83,7 +83,7 @@ func (a *AIMDController) withLogger(logger log.Logger) Controller {
 	return a
 }
 
-func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.Reader) error {
 	return a.inner.PutObject(ctx, objectKey, object)
 }
 
@@ -133,12 +133,20 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 	return rc, sz, err
 }
 
+func (a *AIMDController) GetObjectRange(ctx context.Context, objectKey string, offset, length int64) (io.ReadCloser, error) {
+	return a.inner.GetObjectRange(ctx, objectKey, offset, length)
+}
+
 func (a *AIMDController) List(ctx context.Context, prefix string, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	return a.inner.List(ctx, prefix, delimiter)
 }
 
 func (a *AIMDController) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
 	return a.inner.ObjectExists(ctx, objectKey)
+}
+
+func (a *AIMDController) GetAttributes(ctx context.Context, objectKey string) (client.ObjectAttributes, error) {
+	return a.inner.GetAttributes(ctx, objectKey)
 }
 
 func (a *AIMDController) DeleteObject(ctx context.Context, objectKey string) error {
@@ -208,11 +216,18 @@ func NewNoopController(Config) *NoopController {
 	return &NoopController{}
 }
 
-func (n *NoopController) ObjectExists(context.Context, string) (bool, error)     { return true, nil }
-func (n *NoopController) PutObject(context.Context, string, io.ReadSeeker) error { return nil }
+func (n *NoopController) GetAttributes(context.Context, string) (client.ObjectAttributes, error) {
+	return client.ObjectAttributes{}, nil
+}
+func (n *NoopController) ObjectExists(context.Context, string) (bool, error) { return true, nil }
+func (n *NoopController) PutObject(context.Context, string, io.Reader) error { return nil }
 func (n *NoopController) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
 	return nil, 0, nil
 }
+func (n *NoopController) GetObjectRange(context.Context, string, int64, int64) (io.ReadCloser, error) {
+	return nil, nil
+}
+
 func (n *NoopController) List(context.Context, string, string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	return nil, nil, nil
 }
@@ -226,14 +241,17 @@ func (n *NoopController) withLogger(logger log.Logger) Controller {
 	n.logger = logger
 	return n
 }
+
 func (n *NoopController) withRetrier(r Retrier) Controller {
 	n.retrier = r
 	return n
 }
+
 func (n *NoopController) withHedger(h Hedger) Controller {
 	n.hedger = h
 	return n
 }
+
 func (n *NoopController) withMetrics(m *Metrics) Controller {
 	n.metrics = m
 	return n

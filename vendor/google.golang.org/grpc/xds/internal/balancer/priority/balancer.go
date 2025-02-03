@@ -115,12 +115,15 @@ type priorityBalancer struct {
 }
 
 func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
-	b.logger.Debugf("Received an update with balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received an update with balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	}
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
 	}
 	addressesSplit := hierarchy.Group(s.ResolverState.Addresses)
+	endpointsSplit := hierarchy.GroupEndpoints(s.ResolverState.Endpoints)
 
 	b.mu.Lock()
 	// Create and remove children, since we know all children from the config
@@ -140,6 +143,7 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 			cb := newChildBalancer(name, b, bb.Name(), b.cc)
 			cb.updateConfig(newSubConfig, resolver.State{
 				Addresses:     addressesSplit[name],
+				Endpoints:     endpointsSplit[name],
 				ServiceConfig: s.ResolverState.ServiceConfig,
 				Attributes:    s.ResolverState.Attributes,
 			})
@@ -161,6 +165,7 @@ func (b *priorityBalancer) UpdateClientConnState(s balancer.ClientConnState) err
 		// be built, if it's a low priority).
 		currentChild.updateConfig(newSubConfig, resolver.State{
 			Addresses:     addressesSplit[name],
+			Endpoints:     endpointsSplit[name],
 			ServiceConfig: s.ResolverState.ServiceConfig,
 			Attributes:    s.ResolverState.Attributes,
 		})
@@ -268,6 +273,7 @@ func (b *priorityBalancer) run() {
 			// deadlock.
 			b.mu.Lock()
 			if b.done.HasFired() {
+				b.mu.Unlock()
 				return
 			}
 			switch s := u.(type) {

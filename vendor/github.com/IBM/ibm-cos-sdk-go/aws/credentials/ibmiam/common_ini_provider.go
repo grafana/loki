@@ -14,12 +14,15 @@ const (
 // commonIni constructor of the IBM IAM provider that loads IAM credentials from
 // an ini file
 // Parameters:
-//		AWS Config
-// 		Profile filename
-//		Profile prefix
+//
+//	AWS Config
+//	Profile filename
+//	Profile prefix
+//
 // Returns:
-//		New provider with Provider name, config, API Key, IBM IAM Authentication Server end point,
-//		Service Instance ID
+//
+//	New provider with Provider name, config, API Key, IBM IAM Authentication Server end point,
+//	Service Instance ID
 func commonIniProvider(providerName string, config *aws.Config, filename, profilename string) *Provider {
 
 	// Opens an ini file with the filename passed in for shared credentials

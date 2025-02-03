@@ -32,7 +32,6 @@ func Test_GetShards(t *testing.T) {
 		{32, &index.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31}},
 		{64, &index.ShardAnnotation{Shard: 15, Of: 16}, []uint32{15, 31, 47, 63}},
 	} {
-		tt := tt
 		t.Run(tt.shard.String()+fmt.Sprintf("_total_%d", tt.total), func(t *testing.T) {
 			ii := NewWithShards(tt.total)
 			res := ii.getShards(tt.shard)

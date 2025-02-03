@@ -95,6 +95,54 @@ func (r *readRingMock) GetTokenRangesForInstance(_ string) (ring.TokenRanges, er
 	return tr, nil
 }
 
+func (r *readRingMock) InstancesInZoneCount(zone string) int {
+	count := 0
+	for _, instance := range r.replicationSet.Instances {
+		if instance.Zone == zone {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *readRingMock) InstancesWithTokensCount() int {
+	count := 0
+	for _, instance := range r.replicationSet.Instances {
+		if len(instance.Tokens) > 0 {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *readRingMock) InstancesWithTokensInZoneCount(zone string) int {
+	count := 0
+	for _, instance := range r.replicationSet.Instances {
+		if len(instance.Tokens) > 0 && instance.Zone == zone {
+			count++
+		}
+	}
+	return count
+}
+
+func (r *readRingMock) ZonesCount() int {
+	uniqueZone := make(map[string]any)
+	for _, instance := range r.replicationSet.Instances {
+		uniqueZone[instance.Zone] = nil
+	}
+	return len(uniqueZone)
+}
+
+// WritableInstancesWithTokensCount returns the number of writable instances in the ring that have tokens.
+func (r *readRingMock) WritableInstancesWithTokensCount() int {
+	return len(r.replicationSet.Instances)
+}
+
+// WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
+func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
+	return len(r.replicationSet.Instances)
+}
+
 type readLifecyclerMock struct {
 	mock.Mock
 	addr string

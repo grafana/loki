@@ -170,8 +170,8 @@ func (c *IndexClient) LabelValuesForMetricName(ctx context.Context, userID strin
 }
 
 // tsdb no longer uses the __metric_name__="logs" hack, so we can ignore metric names!
-func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string) ([]string, error) {
-	return c.idx.LabelNames(ctx, userID, from, through)
+func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+	return c.idx.LabelNames(ctx, userID, from, through, matchers...)
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
@@ -281,7 +281,6 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 }
 
 func (c *IndexClient) GetShards(ctx context.Context, userID string, from, through model.Time, targetBytesPerShard uint64, predicate chunk.Predicate) (*logproto.ShardsResponse, error) {
-
 	// TODO(owen-d): perf, this is expensive :(
 	var mtx sync.Mutex
 

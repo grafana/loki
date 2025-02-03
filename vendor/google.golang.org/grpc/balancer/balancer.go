@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/channelz"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials"
+	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/grpclog"
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/metadata"
@@ -54,13 +55,14 @@ var (
 // an init() function), and is not thread-safe. If multiple Balancers are
 // registered with the same name, the one registered last will take effect.
 func Register(b Builder) {
-	if strings.ToLower(b.Name()) != b.Name() {
+	name := strings.ToLower(b.Name())
+	if name != b.Name() {
 		// TODO: Skip the use of strings.ToLower() to index the map after v1.59
 		// is released to switch to case sensitive balancer registry. Also,
 		// remove this warning and update the docstrings for Register and Get.
 		logger.Warningf("Balancer registered with name %q. grpc-go will be switching to case sensitive balancer registries soon", b.Name())
 	}
-	m[strings.ToLower(b.Name())] = b
+	m[name] = b
 }
 
 // unregisterForTesting deletes the balancer with the given name from the
@@ -73,6 +75,8 @@ func unregisterForTesting(name string) {
 
 func init() {
 	internal.BalancerUnregister = unregisterForTesting
+	internal.ConnectedAddress = connectedAddress
+	internal.SetConnectedAddress = setConnectedAddress
 }
 
 // Get returns the resolver builder registered with the given name.
@@ -89,54 +93,6 @@ func Get(name string) Builder {
 		return b
 	}
 	return nil
-}
-
-// A SubConn represents a single connection to a gRPC backend service.
-//
-// Each SubConn contains a list of addresses.
-//
-// All SubConns start in IDLE, and will not try to connect. To trigger the
-// connecting, Balancers must call Connect.  If a connection re-enters IDLE,
-// Balancers must call Connect again to trigger a new connection attempt.
-//
-// gRPC will try to connect to the addresses in sequence, and stop trying the
-// remainder once the first connection is successful. If an attempt to connect
-// to all addresses encounters an error, the SubConn will enter
-// TRANSIENT_FAILURE for a backoff period, and then transition to IDLE.
-//
-// Once established, if a connection is lost, the SubConn will transition
-// directly to IDLE.
-//
-// This interface is to be implemented by gRPC. Users should not need their own
-// implementation of this interface. For situations like testing, any
-// implementations should embed this interface. This allows gRPC to add new
-// methods to this interface.
-type SubConn interface {
-	// UpdateAddresses updates the addresses used in this SubConn.
-	// gRPC checks if currently-connected address is still in the new list.
-	// If it's in the list, the connection will be kept.
-	// If it's not in the list, the connection will gracefully closed, and
-	// a new connection will be created.
-	//
-	// This will trigger a state transition for the SubConn.
-	//
-	// Deprecated: this method will be removed.  Create new SubConns for new
-	// addresses instead.
-	UpdateAddresses([]resolver.Address)
-	// Connect starts the connecting for this SubConn.
-	Connect()
-	// GetOrBuildProducer returns a reference to the existing Producer for this
-	// ProducerBuilder in this SubConn, or, if one does not currently exist,
-	// creates a new one and returns it.  Returns a close function which must
-	// be called when the Producer is no longer needed.
-	GetOrBuildProducer(ProducerBuilder) (p Producer, close func())
-	// Shutdown shuts down the SubConn gracefully.  Any started RPCs will be
-	// allowed to complete.  No future calls should be made on the SubConn.
-	// One final state update will be delivered to the StateListener (or
-	// UpdateSubConnState; deprecated) with ConnectivityState of Shutdown to
-	// indicate the shutdown operation.  This may be delivered before
-	// in-progress RPCs are complete and the actual connection is closed.
-	Shutdown()
 }
 
 // NewSubConnOptions contains options to create new SubConn.
@@ -232,8 +188,8 @@ type BuildOptions struct {
 	// implementations which do not communicate with a remote load balancer
 	// server can ignore this field.
 	Authority string
-	// ChannelzParentID is the parent ClientConn's channelz ID.
-	ChannelzParentID *channelz.Identifier
+	// ChannelzParent is the parent ClientConn's channelz channel.
+	ChannelzParent channelz.Identifier
 	// CustomUserAgent is the custom user agent set on the parent ClientConn.
 	// The balancer should set the same custom user agent if it creates a
 	// ClientConn.
@@ -242,6 +198,10 @@ type BuildOptions struct {
 	// same resolver.Target as passed to the resolver. See the documentation for
 	// the resolver.Target type for details about what it contains.
 	Target resolver.Target
+	// MetricsRecorder is the metrics recorder that balancers can use to record
+	// metrics. Balancer implementations which do not register metrics on
+	// metrics registry and record on them can ignore this field.
+	MetricsRecorder estats.MetricsRecorder
 }
 
 // Builder creates a balancer.
@@ -402,15 +362,6 @@ type ExitIdler interface {
 	ExitIdle()
 }
 
-// SubConnState describes the state of a SubConn.
-type SubConnState struct {
-	// ConnectivityState is the connectivity state of the SubConn.
-	ConnectivityState connectivity.State
-	// ConnectionError is set if the ConnectivityState is TransientFailure,
-	// describing the reason the SubConn failed.  Otherwise, it is nil.
-	ConnectionError error
-}
-
 // ClientConnState describes the state of a ClientConn relevant to the
 // balancer.
 type ClientConnState struct {
@@ -423,20 +374,3 @@ type ClientConnState struct {
 // ErrBadResolverState may be returned by UpdateClientConnState to indicate a
 // problem with the provided name resolver data.
 var ErrBadResolverState = errors.New("bad resolver state")
-
-// A ProducerBuilder is a simple constructor for a Producer.  It is used by the
-// SubConn to create producers when needed.
-type ProducerBuilder interface {
-	// Build creates a Producer.  The first parameter is always a
-	// grpc.ClientConnInterface (a type to allow creating RPCs/streams on the
-	// associated SubConn), but is declared as `any` to avoid a dependency
-	// cycle.  Should also return a close function that will be called when all
-	// references to the Producer have been given up.
-	Build(grpcClientConnInterface any) (p Producer, close func())
-}
-
-// A Producer is a type shared among potentially many consumers.  It is
-// associated with a SubConn, and an implementation will typically contain
-// other methods to provide additional functionality, e.g. configuration or
-// subscription registration.
-type Producer any

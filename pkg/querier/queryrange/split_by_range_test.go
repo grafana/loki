@@ -256,7 +256,6 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			expected: expectedMergedResponseWithTime(1+2+3+4, twelve34),
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
 				maxSeries:    10000,
@@ -275,7 +274,7 @@ func Test_RangeVectorSplitAlign(t *testing.T) {
 			}
 
 			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
-				func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 					// req should match with one of the subqueries.
 					ts := req.(*LokiInstantRequest).TimeTs
 					subq, ok := byTimeTs[ts.UnixNano()]
@@ -408,10 +407,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 			expected: expectedMergedResponse(1 + 2 + 3),
 		},
 	} {
-		tc := tc
 		t.Run(tc.in.GetQuery(), func(t *testing.T) {
 			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
-				func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 					// Assert subquery request
 					for _, reqResp := range tc.subQueries {
 						if req.GetQuery() == reqResp.Request.GetQuery() {
@@ -421,7 +419,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 						}
 					}
 
-					return nil, fmt.Errorf("subquery request '" + req.GetQuery() + "' not found")
+					return nil, fmt.Errorf("%s", "subquery request '"+req.GetQuery()+"' not found")
 				})).Do(ctx, tc.in)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)

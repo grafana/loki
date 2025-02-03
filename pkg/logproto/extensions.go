@@ -182,3 +182,9 @@ func (r *QueryPatternsResponse) UnmarshalJSON(data []byte) error {
 func (d DetectedFieldType) String() string {
 	return string(d)
 }
+
+func (m *ShardsResponse) Merge(other *ShardsResponse) {
+	m.Shards = append(m.Shards, other.Shards...)
+	m.ChunkGroups = append(m.ChunkGroups, other.ChunkGroups...)
+	m.Statistics.Merge(other.Statistics)
+}

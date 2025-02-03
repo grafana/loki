@@ -18889,7 +18889,7 @@ type Blueprint struct {
 	// This parameter only applies to Lightsail for Research resources.
 	AppCategory *string `locationName:"appCategory" type:"string" enum:"AppCategory"`
 
-	// The ID for the virtual private server image (app_wordpress_4_4 or app_lamp_7_0).
+	// The ID for the virtual private server image (app_wordpress_x_x or app_lamp_x_x).
 	BlueprintId *string `locationName:"blueprintId" type:"string"`
 
 	// The description of the blueprint.
@@ -19452,7 +19452,7 @@ func (s *BucketState) SetMessage(v string) *BucketState {
 type Bundle struct {
 	_ struct{} `type:"structure"`
 
-	// The bundle ID (micro_1_0).
+	// The bundle ID (micro_x_x).
 	BundleId *string `locationName:"bundleId" type:"string"`
 
 	// The number of vCPUs included in the bundle (2).
@@ -19461,7 +19461,7 @@ type Bundle struct {
 	// The size of the SSD (30).
 	DiskSizeInGb *int64 `locationName:"diskSizeInGb" type:"integer"`
 
-	// The Amazon EC2 instance type (t2.micro).
+	// The instance type (micro).
 	InstanceType *string `locationName:"instanceType" type:"string"`
 
 	// A Boolean value indicating whether the bundle is active.
@@ -23300,6 +23300,12 @@ type CreateDistributionInput struct {
 	// An array of objects that describe the per-path cache behavior for the distribution.
 	CacheBehaviors []*CacheBehaviorPerPath `locationName:"cacheBehaviors" type:"list"`
 
+	// The name of the SSL/TLS certificate that you want to attach to the distribution.
+	//
+	// Use the GetCertificates (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetCertificates.html)
+	// action to get a list of certificate names that you can specify.
+	CertificateName *string `locationName:"certificateName" type:"string"`
+
 	// An object that describes the default cache behavior for the distribution.
 	//
 	// DefaultCacheBehavior is a required field
@@ -23329,6 +23335,9 @@ type CreateDistributionInput struct {
 	//
 	// Use the TagResource action to tag a resource after it's created.
 	Tags []*Tag `locationName:"tags" type:"list"`
+
+	// The minimum TLS protocol version for the SSL/TLS certificate.
+	ViewerMinimumTlsProtocolVersion *string `locationName:"viewerMinimumTlsProtocolVersion" type:"string" enum:"ViewerMinimumTlsProtocolVersionEnum"`
 }
 
 // String returns the string representation.
@@ -23389,6 +23398,12 @@ func (s *CreateDistributionInput) SetCacheBehaviors(v []*CacheBehaviorPerPath) *
 	return s
 }
 
+// SetCertificateName sets the CertificateName field's value.
+func (s *CreateDistributionInput) SetCertificateName(v string) *CreateDistributionInput {
+	s.CertificateName = &v
+	return s
+}
+
 // SetDefaultCacheBehavior sets the DefaultCacheBehavior field's value.
 func (s *CreateDistributionInput) SetDefaultCacheBehavior(v *CacheBehavior) *CreateDistributionInput {
 	s.DefaultCacheBehavior = v
@@ -23416,6 +23431,12 @@ func (s *CreateDistributionInput) SetOrigin(v *InputOrigin) *CreateDistributionI
 // SetTags sets the Tags field's value.
 func (s *CreateDistributionInput) SetTags(v []*Tag) *CreateDistributionInput {
 	s.Tags = v
+	return s
+}
+
+// SetViewerMinimumTlsProtocolVersion sets the ViewerMinimumTlsProtocolVersion field's value.
+func (s *CreateDistributionInput) SetViewerMinimumTlsProtocolVersion(v string) *CreateDistributionInput {
+	s.ViewerMinimumTlsProtocolVersion = &v
 	return s
 }
 
@@ -23881,7 +23902,7 @@ type CreateInstancesFromSnapshotInput struct {
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string" required:"true"`
 
 	// The bundle of specification information for your virtual private server (or
-	// instance), including the pricing plan (micro_1_0).
+	// instance), including the pricing plan (micro_x_x).
 	//
 	// BundleId is a required field
 	BundleId *string `locationName:"bundleId" type:"string" required:"true"`
@@ -23904,7 +23925,8 @@ type CreateInstancesFromSnapshotInput struct {
 
 	// The IP address type for the instance.
 	//
-	// The possible values are ipv4 for IPv4 only, and dualstack for IPv4 and IPv6.
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
 	//
 	// The default value is dualstack.
 	IpAddressType *string `locationName:"ipAddressType" type:"string" enum:"IpAddressType"`
@@ -24145,7 +24167,7 @@ type CreateInstancesInput struct {
 	// AvailabilityZone is a required field
 	AvailabilityZone *string `locationName:"availabilityZone" type:"string" required:"true"`
 
-	// The ID for a virtual private server image (app_wordpress_4_4 or app_lamp_7_0).
+	// The ID for a virtual private server image (app_wordpress_x_x or app_lamp_x_x).
 	// Use the get blueprints operation to return a list of available images (or
 	// blueprints).
 	//
@@ -24158,7 +24180,7 @@ type CreateInstancesInput struct {
 	BlueprintId *string `locationName:"blueprintId" type:"string" required:"true"`
 
 	// The bundle of specification information for your virtual private server (or
-	// instance), including the pricing plan (micro_1_0).
+	// instance), including the pricing plan (medium_x_x).
 	//
 	// BundleId is a required field
 	BundleId *string `locationName:"bundleId" type:"string" required:"true"`
@@ -24179,7 +24201,8 @@ type CreateInstancesInput struct {
 
 	// The IP address type for the instance.
 	//
-	// The possible values are ipv4 for IPv4 only, and dualstack for IPv4 and IPv6.
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
 	//
 	// The default value is dualstack.
 	IpAddressType *string `locationName:"ipAddressType" type:"string" enum:"IpAddressType"`
@@ -24498,7 +24521,8 @@ type CreateLoadBalancerInput struct {
 
 	// The IP address type for the load balancer.
 	//
-	// The possible values are ipv4 for IPv4 only, and dualstack for IPv4 and IPv6.
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
 	//
 	// The default value is dualstack.
 	IpAddressType *string `locationName:"ipAddressType" type:"string" enum:"IpAddressType"`
@@ -36131,6 +36155,12 @@ type InputOrigin struct {
 
 	// The AWS Region name of the origin resource.
 	RegionName *string `locationName:"regionName" type:"string" enum:"RegionName"`
+
+	// The amount of time, in seconds, that the distribution waits for a response
+	// after forwarding a request to the origin. The minimum timeout is 1 second,
+	// the maximum is 60 seconds, and the default (if you don't specify otherwise)
+	// is 30 seconds.
+	ResponseTimeout *int64 `locationName:"responseTimeout" type:"integer"`
 }
 
 // String returns the string representation.
@@ -36169,6 +36199,12 @@ func (s *InputOrigin) SetRegionName(v string) *InputOrigin {
 	return s
 }
 
+// SetResponseTimeout sets the ResponseTimeout field's value.
+func (s *InputOrigin) SetResponseTimeout(v int64) *InputOrigin {
+	s.ResponseTimeout = &v
+	return s
+}
+
 // Describes an instance (a virtual private server).
 type Instance struct {
 	_ struct{} `type:"structure"`
@@ -36179,13 +36215,13 @@ type Instance struct {
 	// The Amazon Resource Name (ARN) of the instance (arn:aws:lightsail:us-east-2:123456789101:Instance/244ad76f-8aad-4741-809f-12345EXAMPLE).
 	Arn *string `locationName:"arn" type:"string"`
 
-	// The blueprint ID (os_amlinux_2016_03).
+	// The blueprint ID (amazon_linux_2023).
 	BlueprintId *string `locationName:"blueprintId" type:"string"`
 
-	// The friendly name of the blueprint (Amazon Linux).
+	// The friendly name of the blueprint (Amazon Linux 2023).
 	BlueprintName *string `locationName:"blueprintName" type:"string"`
 
-	// The bundle for the instance (micro_1_0).
+	// The bundle for the instance (micro_x_x).
 	BundleId *string `locationName:"bundleId" type:"string"`
 
 	// The timestamp when the instance was created (1479734909.17) in Unix time
@@ -36197,7 +36233,8 @@ type Instance struct {
 
 	// The IP address type of the instance.
 	//
-	// The possible values are ipv4 for IPv4 only, and dualstack for IPv4 and IPv6.
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
 	IpAddressType *string `locationName:"ipAddressType" type:"string" enum:"IpAddressType"`
 
 	// The IPv6 addresses of the instance.
@@ -36213,7 +36250,7 @@ type Instance struct {
 	// The metadata options for the Amazon Lightsail instance.
 	MetadataOptions *InstanceMetadataOptions `locationName:"metadataOptions" type:"structure"`
 
-	// The name the user gave the instance (Amazon_Linux-1GB-Ohio-1).
+	// The name the user gave the instance (Amazon_Linux_2023-1).
 	Name *string `locationName:"name" type:"string"`
 
 	// Information about the public ports and monthly data transfer rates for the
@@ -37052,6 +37089,10 @@ type InstancePortInfo struct {
 	//    an instance could not be reached. When you specify icmp as the protocol,
 	//    you must specify the ICMP type using the fromPort parameter, and ICMP
 	//    code using the toPort parameter.
+	//
+	//    * icmp6 - Internet Control Message Protocol (ICMP) for IPv6. When you
+	//    specify icmp6 as the protocol, you must specify the ICMP type using the
+	//    fromPort parameter, and ICMP code using the toPort parameter.
 	Protocol *string `locationName:"protocol" type:"string" enum:"NetworkProtocol"`
 
 	// The last port in a range of open ports on an instance.
@@ -37228,6 +37269,10 @@ type InstancePortState struct {
 	//    an instance could not be reached. When you specify icmp as the protocol,
 	//    you must specify the ICMP type using the fromPort parameter, and ICMP
 	//    code using the toPort parameter.
+	//
+	//    * icmp6 - Internet Control Message Protocol (ICMP) for IPv6. When you
+	//    specify icmp6 as the protocol, you must specify the ICMP type using the
+	//    fromPort parameter, and ICMP code using the toPort parameter.
 	Protocol *string `locationName:"protocol" type:"string" enum:"NetworkProtocol"`
 
 	// Specifies whether the instance port is open or closed.
@@ -37325,12 +37370,12 @@ type InstanceSnapshot struct {
 	// An array of disk objects containing information about all block storage disks.
 	FromAttachedDisks []*Disk `locationName:"fromAttachedDisks" type:"list"`
 
-	// The blueprint ID from which you created the snapshot (os_debian_8_3). A blueprint
-	// is a virtual private server (or instance) image used to create instances
-	// quickly.
+	// The blueprint ID from which you created the snapshot (amazon_linux_2023).
+	// A blueprint is a virtual private server (or instance) image used to create
+	// instances quickly.
 	FromBlueprintId *string `locationName:"fromBlueprintId" type:"string"`
 
-	// The bundle ID from which you created the snapshot (micro_1_0).
+	// The bundle ID from which you created the snapshot (micro_x_x).
 	FromBundleId *string `locationName:"fromBundleId" type:"string"`
 
 	// The Amazon Resource Name (ARN) of the instance from which the snapshot was
@@ -37492,10 +37537,10 @@ func (s *InstanceSnapshot) SetTags(v []*Tag) *InstanceSnapshot {
 type InstanceSnapshotInfo struct {
 	_ struct{} `type:"structure"`
 
-	// The blueprint ID from which the source instance (os_debian_8_3).
+	// The blueprint ID from which the source instance (amazon_linux_2023).
 	FromBlueprintId *string `locationName:"fromBlueprintId" type:"string"`
 
-	// The bundle ID from which the source instance was created (micro_1_0).
+	// The bundle ID from which the source instance was created (micro_x_x).
 	FromBundleId *string `locationName:"fromBundleId" type:"string"`
 
 	// A list of objects describing the disks that were attached to the source instance.
@@ -37885,6 +37930,10 @@ type LightsailDistribution struct {
 	// The tag keys and optional values for the resource. For more information about
 	// tags in Lightsail, see the Amazon Lightsail Developer Guide (https://lightsail.aws.amazon.com/ls/docs/en_us/articles/amazon-lightsail-tags).
 	Tags []*Tag `locationName:"tags" type:"list"`
+
+	// The minimum TLS protocol version that the distribution can use to communicate
+	// with viewers.
+	ViewerMinimumTlsProtocolVersion *string `locationName:"viewerMinimumTlsProtocolVersion" type:"string"`
 }
 
 // String returns the string representation.
@@ -38025,6 +38074,12 @@ func (s *LightsailDistribution) SetTags(v []*Tag) *LightsailDistribution {
 	return s
 }
 
+// SetViewerMinimumTlsProtocolVersion sets the ViewerMinimumTlsProtocolVersion field's value.
+func (s *LightsailDistribution) SetViewerMinimumTlsProtocolVersion(v string) *LightsailDistribution {
+	s.ViewerMinimumTlsProtocolVersion = &v
+	return s
+}
+
 // Describes a load balancer.
 type LoadBalancer struct {
 	_ struct{} `type:"structure"`
@@ -38060,7 +38115,8 @@ type LoadBalancer struct {
 
 	// The IP address type of the load balancer.
 	//
-	// The possible values are ipv4 for IPv4 only, and dualstack for IPv4 and IPv6.
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
 	IpAddressType *string `locationName:"ipAddressType" type:"string" enum:"IpAddressType"`
 
 	// The AWS Region where your load balancer was created (us-east-2a). Lightsail
@@ -39588,6 +39644,12 @@ type Origin struct {
 
 	// The resource type of the origin resource (Instance).
 	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
+
+	// The amount of time, in seconds, that the distribution waits for a response
+	// after forwarding a request to the origin. The minimum timeout is 1 second,
+	// the maximum is 60 seconds, and the default (if you don't specify otherwise)
+	// is 30 seconds.
+	ResponseTimeout *int64 `locationName:"responseTimeout" type:"integer"`
 }
 
 // String returns the string representation.
@@ -39629,6 +39691,12 @@ func (s *Origin) SetRegionName(v string) *Origin {
 // SetResourceType sets the ResourceType field's value.
 func (s *Origin) SetResourceType(v string) *Origin {
 	s.ResourceType = &v
+	return s
+}
+
+// SetResponseTimeout sets the ResponseTimeout field's value.
+func (s *Origin) SetResponseTimeout(v int64) *Origin {
+	s.ResponseTimeout = &v
 	return s
 }
 
@@ -39932,6 +40000,10 @@ type PortInfo struct {
 	//    an instance could not be reached. When you specify icmp as the protocol,
 	//    you must specify the ICMP type using the fromPort parameter, and ICMP
 	//    code using the toPort parameter.
+	//
+	//    * icmp6 - Internet Control Message Protocol (ICMP) for IPv6. When you
+	//    specify icmp6 as the protocol, you must specify the ICMP type using the
+	//    fromPort parameter, and ICMP code using the toPort parameter.
 	Protocol *string `locationName:"protocol" type:"string" enum:"NetworkProtocol"`
 
 	// The last port in a range of open ports on an instance.
@@ -42549,9 +42621,21 @@ func (s *Session) SetUrl(v string) *Session {
 type SetIpAddressTypeInput struct {
 	_ struct{} `type:"structure"`
 
+	// Required parameter to accept the instance bundle update when changing to,
+	// and from, IPv6-only.
+	//
+	// An instance bundle will change when switching from dual-stack or ipv4, to
+	// ipv6. It also changes when switching from ipv6, to dual-stack or ipv4.
+	//
+	// You must include this parameter in the command to update the bundle. For
+	// example, if you switch from dual-stack to ipv6, the bundle will be updated,
+	// and billing for the IPv6-only instance bundle begins immediately.
+	AcceptBundleUpdate *bool `locationName:"acceptBundleUpdate" type:"boolean"`
+
 	// The IP address type to set for the specified resource.
 	//
-	// The possible values are ipv4 for IPv4 only, and dualstack for IPv4 and IPv6.
+	// The possible values are ipv4 for IPv4 only, ipv6 for IPv6 only, and dualstack
+	// for IPv4 and IPv6.
 	//
 	// IpAddressType is a required field
 	IpAddressType *string `locationName:"ipAddressType" type:"string" required:"true" enum:"IpAddressType"`
@@ -42608,6 +42692,12 @@ func (s *SetIpAddressTypeInput) Validate() error {
 		return invalidParams
 	}
 	return nil
+}
+
+// SetAcceptBundleUpdate sets the AcceptBundleUpdate field's value.
+func (s *SetIpAddressTypeInput) SetAcceptBundleUpdate(v bool) *SetIpAddressTypeInput {
+	s.AcceptBundleUpdate = &v
+	return s
 }
 
 // SetIpAddressType sets the IpAddressType field's value.
@@ -44859,6 +44949,14 @@ type UpdateDistributionInput struct {
 	// An array of objects that describe the per-path cache behavior for the distribution.
 	CacheBehaviors []*CacheBehaviorPerPath `locationName:"cacheBehaviors" type:"list"`
 
+	// The name of the SSL/TLS certificate that you want to attach to the distribution.
+	//
+	// Only certificates with a status of ISSUED can be attached to a distribution.
+	//
+	// Use the GetCertificates (https://docs.aws.amazon.com/lightsail/2016-11-28/api-reference/API_GetCertificates.html)
+	// action to get a list of certificate names that you can specify.
+	CertificateName *string `locationName:"certificateName" type:"string"`
+
 	// An object that describes the default cache behavior for the distribution.
 	DefaultCacheBehavior *CacheBehavior `locationName:"defaultCacheBehavior" type:"structure"`
 
@@ -44878,6 +44976,17 @@ type UpdateDistributionInput struct {
 	//
 	// The distribution pulls, caches, and serves content from the origin.
 	Origin *InputOrigin `locationName:"origin" type:"structure"`
+
+	// Indicates whether the default SSL/TLS certificate is attached to the distribution.
+	// The default value is true. When true, the distribution uses the default domain
+	// name such as d111111abcdef8.cloudfront.net.
+	//
+	// Set this value to false to attach a new certificate to the distribution.
+	UseDefaultCertificate *bool `locationName:"useDefaultCertificate" type:"boolean"`
+
+	// Use this parameter to update the minimum TLS protocol version for the SSL/TLS
+	// certificate that's attached to the distribution.
+	ViewerMinimumTlsProtocolVersion *string `locationName:"viewerMinimumTlsProtocolVersion" type:"string" enum:"ViewerMinimumTlsProtocolVersionEnum"`
 }
 
 // String returns the string representation.
@@ -44923,6 +45032,12 @@ func (s *UpdateDistributionInput) SetCacheBehaviors(v []*CacheBehaviorPerPath) *
 	return s
 }
 
+// SetCertificateName sets the CertificateName field's value.
+func (s *UpdateDistributionInput) SetCertificateName(v string) *UpdateDistributionInput {
+	s.CertificateName = &v
+	return s
+}
+
 // SetDefaultCacheBehavior sets the DefaultCacheBehavior field's value.
 func (s *UpdateDistributionInput) SetDefaultCacheBehavior(v *CacheBehavior) *UpdateDistributionInput {
 	s.DefaultCacheBehavior = v
@@ -44944,6 +45059,18 @@ func (s *UpdateDistributionInput) SetIsEnabled(v bool) *UpdateDistributionInput 
 // SetOrigin sets the Origin field's value.
 func (s *UpdateDistributionInput) SetOrigin(v *InputOrigin) *UpdateDistributionInput {
 	s.Origin = v
+	return s
+}
+
+// SetUseDefaultCertificate sets the UseDefaultCertificate field's value.
+func (s *UpdateDistributionInput) SetUseDefaultCertificate(v bool) *UpdateDistributionInput {
+	s.UseDefaultCertificate = &v
+	return s
+}
+
+// SetViewerMinimumTlsProtocolVersion sets the ViewerMinimumTlsProtocolVersion field's value.
+func (s *UpdateDistributionInput) SetViewerMinimumTlsProtocolVersion(v string) *UpdateDistributionInput {
+	s.ViewerMinimumTlsProtocolVersion = &v
 	return s
 }
 
@@ -46691,6 +46818,9 @@ const (
 
 	// IpAddressTypeIpv4 is a IpAddressType enum value
 	IpAddressTypeIpv4 = "ipv4"
+
+	// IpAddressTypeIpv6 is a IpAddressType enum value
+	IpAddressTypeIpv6 = "ipv6"
 )
 
 // IpAddressType_Values returns all elements of the IpAddressType enum
@@ -46698,6 +46828,7 @@ func IpAddressType_Values() []string {
 	return []string{
 		IpAddressTypeDualstack,
 		IpAddressTypeIpv4,
+		IpAddressTypeIpv6,
 	}
 }
 
@@ -47297,6 +47428,9 @@ const (
 
 	// NetworkProtocolIcmp is a NetworkProtocol enum value
 	NetworkProtocolIcmp = "icmp"
+
+	// NetworkProtocolIcmpv6 is a NetworkProtocol enum value
+	NetworkProtocolIcmpv6 = "icmpv6"
 )
 
 // NetworkProtocol_Values returns all elements of the NetworkProtocol enum
@@ -47306,6 +47440,7 @@ func NetworkProtocol_Values() []string {
 		NetworkProtocolAll,
 		NetworkProtocolUdp,
 		NetworkProtocolIcmp,
+		NetworkProtocolIcmpv6,
 	}
 }
 
@@ -48186,5 +48321,29 @@ func TreatMissingData_Values() []string {
 		TreatMissingDataNotBreaching,
 		TreatMissingDataIgnore,
 		TreatMissingDataMissing,
+	}
+}
+
+const (
+	// ViewerMinimumTlsProtocolVersionEnumTlsv112016 is a ViewerMinimumTlsProtocolVersionEnum enum value
+	ViewerMinimumTlsProtocolVersionEnumTlsv112016 = "TLSv1.1_2016"
+
+	// ViewerMinimumTlsProtocolVersionEnumTlsv122018 is a ViewerMinimumTlsProtocolVersionEnum enum value
+	ViewerMinimumTlsProtocolVersionEnumTlsv122018 = "TLSv1.2_2018"
+
+	// ViewerMinimumTlsProtocolVersionEnumTlsv122019 is a ViewerMinimumTlsProtocolVersionEnum enum value
+	ViewerMinimumTlsProtocolVersionEnumTlsv122019 = "TLSv1.2_2019"
+
+	// ViewerMinimumTlsProtocolVersionEnumTlsv122021 is a ViewerMinimumTlsProtocolVersionEnum enum value
+	ViewerMinimumTlsProtocolVersionEnumTlsv122021 = "TLSv1.2_2021"
+)
+
+// ViewerMinimumTlsProtocolVersionEnum_Values returns all elements of the ViewerMinimumTlsProtocolVersionEnum enum
+func ViewerMinimumTlsProtocolVersionEnum_Values() []string {
+	return []string{
+		ViewerMinimumTlsProtocolVersionEnumTlsv112016,
+		ViewerMinimumTlsProtocolVersionEnumTlsv122018,
+		ViewerMinimumTlsProtocolVersionEnumTlsv122019,
+		ViewerMinimumTlsProtocolVersionEnumTlsv122021,
 	}
 }

@@ -70,6 +70,7 @@ type Enterprise struct {
 		AutonomousSystemNumber       uint    `maxminddb:"autonomous_system_number"`
 		StaticIPScore                float64 `maxminddb:"static_ip_score"`
 		IsAnonymousProxy             bool    `maxminddb:"is_anonymous_proxy"`
+		IsAnycast                    bool    `maxminddb:"is_anycast"`
 		IsLegitimateProxy            bool    `maxminddb:"is_legitimate_proxy"`
 		IsSatelliteProvider          bool    `maxminddb:"is_satellite_provider"`
 	} `maxminddb:"traits"`
@@ -130,6 +131,7 @@ type City struct {
 	} `maxminddb:"location"`
 	Traits struct {
 		IsAnonymousProxy    bool `maxminddb:"is_anonymous_proxy"`
+		IsAnycast           bool `maxminddb:"is_anycast"`
 		IsSatelliteProvider bool `maxminddb:"is_satellite_provider"`
 	} `maxminddb:"traits"`
 }
@@ -163,6 +165,7 @@ type Country struct {
 	} `maxminddb:"represented_country"`
 	Traits struct {
 		IsAnonymousProxy    bool `maxminddb:"is_anonymous_proxy"`
+		IsAnycast           bool `maxminddb:"is_anycast"`
 		IsSatelliteProvider bool `maxminddb:"is_satellite_provider"`
 	} `maxminddb:"traits"`
 }

@@ -80,83 +80,8 @@ rules:
   - loki.grafana.com
   resources:
   - alertingrules
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - alertingrules/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - alertingrules/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
   - lokistacks
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - lokistacks/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - lokistacks/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
   - recordingrules
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - recordingrules/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
-  - recordingrules/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - loki.grafana.com
-  resources:
   - rulerconfigs
   verbs:
   - create
@@ -169,12 +94,18 @@ rules:
 - apiGroups:
   - loki.grafana.com
   resources:
+  - alertingrules/finalizers
+  - lokistacks/finalizers
+  - recordingrules/finalizers
   - rulerconfigs/finalizers
   verbs:
   - update
 - apiGroups:
   - loki.grafana.com
   resources:
+  - alertingrules/status
+  - lokistacks/status
+  - recordingrules/status
   - rulerconfigs/status
   verbs:
   - get

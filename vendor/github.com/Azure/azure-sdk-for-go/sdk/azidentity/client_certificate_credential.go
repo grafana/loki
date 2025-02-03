@@ -51,7 +51,8 @@ type ClientCertificateCredential struct {
 	client *confidentialClient
 }
 
-// NewClientCertificateCredential constructs a ClientCertificateCredential. Pass nil for options to accept defaults.
+// NewClientCertificateCredential constructs a ClientCertificateCredential. Pass nil for options to accept defaults. See
+// [ParseCertificates] for help loading a certificate.
 func NewClientCertificateCredential(tenantID string, clientID string, certs []*x509.Certificate, key crypto.PrivateKey, options *ClientCertificateCredentialOptions) (*ClientCertificateCredential, error) {
 	if len(certs) == 0 {
 		return nil, errors.New("at least one certificate is required")
@@ -86,8 +87,10 @@ func (c *ClientCertificateCredential) GetToken(ctx context.Context, opts policy.
 	return tk, err
 }
 
-// ParseCertificates loads certificates and a private key, in PEM or PKCS12 format, for use with NewClientCertificateCredential.
-// Pass nil for password if the private key isn't encrypted. This function can't decrypt keys in PEM format.
+// ParseCertificates loads certificates and a private key, in PEM or PKCS#12 format, for use with [NewClientCertificateCredential].
+// Pass nil for password if the private key isn't encrypted. This function has limitations, for example it can't decrypt keys in
+// PEM format or PKCS#12 certificates that use SHA256 for message authentication. If you encounter such limitations, consider
+// using another module to load the certificate and private key.
 func ParseCertificates(certData []byte, password []byte) ([]*x509.Certificate, crypto.PrivateKey, error) {
 	var blocks []*pem.Block
 	var err error

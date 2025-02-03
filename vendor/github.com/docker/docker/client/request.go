@@ -134,17 +134,18 @@ func (cli *Client) sendRequest(ctx context.Context, method, path string, query u
 	return resp, errdefs.FromStatusCode(err, resp.statusCode)
 }
 
+// FIXME(thaJeztah): Should this actually return a serverResp when a connection error occurred?
 func (cli *Client) doRequest(req *http.Request) (serverResponse, error) {
 	serverResp := serverResponse{statusCode: -1, reqURL: req.URL}
 
 	resp, err := cli.client.Do(req)
 	if err != nil {
 		if cli.scheme != "https" && strings.Contains(err.Error(), "malformed HTTP response") {
-			return serverResp, fmt.Errorf("%v.\n* Are you trying to connect to a TLS-enabled daemon without TLS?", err)
+			return serverResp, errConnectionFailed{fmt.Errorf("%v.\n* Are you trying to connect to a TLS-enabled daemon without TLS?", err)}
 		}
 
 		if cli.scheme == "https" && strings.Contains(err.Error(), "bad certificate") {
-			return serverResp, errors.Wrap(err, "the server probably has client authentication (--tlsverify) enabled; check your TLS client certification settings")
+			return serverResp, errConnectionFailed{errors.Wrap(err, "the server probably has client authentication (--tlsverify) enabled; check your TLS client certification settings")}
 		}
 
 		// Don't decorate context sentinel errors; users may be comparing to
@@ -156,12 +157,13 @@ func (cli *Client) doRequest(req *http.Request) (serverResponse, error) {
 		if uErr, ok := err.(*url.Error); ok {
 			if nErr, ok := uErr.Err.(*net.OpError); ok {
 				if os.IsPermission(nErr.Err) {
-					return serverResp, errors.Wrapf(err, "permission denied while trying to connect to the Docker daemon socket at %v", cli.host)
+					return serverResp, errConnectionFailed{errors.Wrapf(err, "permission denied while trying to connect to the Docker daemon socket at %v", cli.host)}
 				}
 			}
 		}
 
 		if nErr, ok := err.(net.Error); ok {
+			// FIXME(thaJeztah): any net.Error should be considered a connection error (but we should include the original error)?
 			if nErr.Timeout() {
 				return serverResp, ErrorConnectionFailed(cli.host)
 			}
@@ -182,15 +184,15 @@ func (cli *Client) doRequest(req *http.Request) (serverResponse, error) {
 		// `open //./pipe/docker_engine: Le fichier spécifié est introuvable.`
 		if strings.Contains(err.Error(), `open //./pipe/docker_engine`) {
 			// Checks if client is running with elevated privileges
-			if f, elevatedErr := os.Open("\\\\.\\PHYSICALDRIVE0"); elevatedErr == nil {
+			if f, elevatedErr := os.Open(`\\.\PHYSICALDRIVE0`); elevatedErr != nil {
 				err = errors.Wrap(err, "in the default daemon configuration on Windows, the docker client must be run with elevated privileges to connect")
 			} else {
-				f.Close()
+				_ = f.Close()
 				err = errors.Wrap(err, "this error may indicate that the docker daemon is not running")
 			}
 		}
 
-		return serverResp, errors.Wrap(err, "error during connect")
+		return serverResp, errConnectionFailed{errors.Wrap(err, "error during connect")}
 	}
 
 	if resp != nil {
@@ -276,7 +278,7 @@ func encodeData(data interface{}) (*bytes.Buffer, error) {
 func ensureReaderClosed(response serverResponse) {
 	if response.body != nil {
 		// Drain up to 512 bytes and close the body to let the Transport reuse the connection
-		io.CopyN(io.Discard, response.body, 512)
-		response.body.Close()
+		_, _ = io.CopyN(io.Discard, response.body, 512)
+		_ = response.body.Close()
 	}
 }

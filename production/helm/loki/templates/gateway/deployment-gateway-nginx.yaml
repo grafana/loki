@@ -30,7 +30,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/gateway/configmap-gateway.yaml") . | sha256sum }}
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/gateway/configmap-gateway.yaml") }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -62,15 +62,15 @@ spec:
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           ports:
             - name: http-metrics
-              containerPort: 8080
+              containerPort: {{ .Values.gateway.containerPort }}
               protocol: TCP
           {{- with .Values.gateway.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.gateway.extraEnvFrom }}
+          {{- if or .Values.global.extraEnvFrom .Values.gateway.extraEnvFrom }}
           envFrom:
-            {{- toYaml . | nindent 12 }}
+            {{- coalesce .Values.gateway.extraEnvFrom .values.global.extraEnvFrom | toYaml | nindent 10 }}
           {{- end }}
           readinessProbe:
             {{- toYaml .Values.gateway.readinessProbe | nindent 12 }}

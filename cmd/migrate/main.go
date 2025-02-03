@@ -53,7 +53,7 @@ func main() {
 	flag.Parse()
 
 	go func() {
-		log.Println(http.ListenAndServe("localhost:8080", nil))
+		log.Println(http.ListenAndServe("localhost:8080", nil)) //#nosec G114 -- This is only bound to localhost, not a plausible DOS vector.
 	}()
 
 	// Create a set of defaults
@@ -309,7 +309,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			start := time.Now()
 			var totalBytes uint64
 			var totalChunks uint64
-			schemaGroups, fetchers, err := m.source.GetChunks(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), chunk.NewPredicate(m.matchers, nil))
+			schemaGroups, fetchers, err := m.source.GetChunks(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), chunk.NewPredicate(m.matchers, nil), nil)
 			if err != nil {
 				log.Println(threadID, "Error querying index for chunk refs:", err)
 				errCh <- err

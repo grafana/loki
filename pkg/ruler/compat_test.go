@@ -118,15 +118,31 @@ func TestNonMetricQuery(t *testing.T) {
 type FakeQuerier struct{}
 
 func (q *FakeQuerier) SelectLogs(context.Context, logql.SelectLogParams) (iter.EntryIterator, error) {
-	return iter.NoopIterator, nil
+	return iter.NoopEntryIterator, nil
 }
 
 func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return iter.NoopIterator, nil
+	return iter.NoopSampleIterator, nil
 }
 
 type fakeChecker struct{}
 
 func (f fakeChecker) isReady(_ string) bool {
 	return true
+}
+
+func TestAddAndGetRuleDetailsFromContext(t *testing.T) {
+	ctx := context.Background()
+	ruleName := "test_rule"
+	ruleType := "test_type"
+
+	// Add rule details to context
+	ctx = AddRuleDetailsToContext(ctx, ruleName, ruleType)
+
+	// Retrieve rule details from context
+	retrievedRuleName, retrievedRuleType := GetRuleDetailsFromContext(ctx)
+
+	// Assert that the retrieved values match the expected values
+	assert.Equal(t, ruleName, retrievedRuleName, "Expected rule name to match")
+	assert.Equal(t, ruleType, retrievedRuleType, "Expected rule type to match")
 }

@@ -1,10 +1,10 @@
 ---
-title: Loki Canary
-menuTitle:  
+title: Audit data propagation latency and correctness using Loki Canary
+menuTitle: Loki Canary
 description: Describes how to use Loki Canary to audit the log-capturing performance of a Grafana Loki cluster to ensure Loki is ingesting logs without data loss.
 weight: 
 ---
-# Loki Canary
+# Audit data propagation latency and correctness using Loki Canary
 
 Loki Canary is a standalone app that audits the log-capturing performance of a Grafana Loki cluster.  
 This component emits and periodically queries for logs, making sure that Loki is ingesting logs without any data loss.
@@ -29,7 +29,7 @@ array. The contents look something like this:
 The relevant part of the log entry is the timestamp; the `p`s are just filler
 bytes to make the size of the log configurable.
 
-An agent (like Promtail) should be configured to read the log file and ship it
+An agent (like Grafana Alloy) should be configured to read the log file and ship it
 to Loki.
 
 Meanwhile, Loki Canary will open a WebSocket connection to Loki and will tail

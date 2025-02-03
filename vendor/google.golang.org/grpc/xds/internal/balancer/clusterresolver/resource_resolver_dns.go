@@ -47,7 +47,7 @@ type dnsDiscoveryMechanism struct {
 	logger           *grpclog.PrefixLogger
 
 	mu             sync.Mutex
-	addrs          []string
+	endpoints      []resolver.Endpoint
 	updateReceived bool
 }
 
@@ -65,7 +65,7 @@ type dnsDiscoveryMechanism struct {
 // propagated to the child policy which eventually move the channel to
 // transient failure.
 //
-// The `dnsR` field is unset if we run into erros in this function. Therefore, a
+// The `dnsR` field is unset if we run into errors in this function. Therefore, a
 // nil check is required wherever we access that field.
 func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *grpclog.PrefixLogger) *dnsDiscoveryMechanism {
 	ret := &dnsDiscoveryMechanism{
@@ -79,7 +79,7 @@ func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *gr
 			ret.logger.Infof("Failed to parse dns hostname %q in clusterresolver LB policy", target)
 		}
 		ret.updateReceived = true
-		ret.topLevelResolver.onUpdate()
+		ret.topLevelResolver.onUpdate(func() {})
 		return ret
 	}
 
@@ -89,7 +89,7 @@ func newDNSResolver(target string, topLevelResolver topLevelResolver, logger *gr
 			ret.logger.Infof("Failed to build DNS resolver for target %q: %v", target, err)
 		}
 		ret.updateReceived = true
-		ret.topLevelResolver.onUpdate()
+		ret.topLevelResolver.onUpdate(func() {})
 		return ret
 	}
 	ret.dnsR = r
@@ -103,7 +103,7 @@ func (dr *dnsDiscoveryMechanism) lastUpdate() (any, bool) {
 	if !dr.updateReceived {
 		return nil, false
 	}
-	return dr.addrs, true
+	return dr.endpoints, true
 }
 
 func (dr *dnsDiscoveryMechanism) resolveNow() {
@@ -133,27 +133,19 @@ func (dr *dnsDiscoveryMechanism) UpdateState(state resolver.State) error {
 	}
 
 	dr.mu.Lock()
-	var addrs []string
-	if len(state.Endpoints) > 0 {
-		// Assume 1 address per endpoint, which is how DNS is expected to
-		// behave.  The slice will grow as needed, however.
-		addrs = make([]string, 0, len(state.Endpoints))
-		for _, e := range state.Endpoints {
-			for _, a := range e.Addresses {
-				addrs = append(addrs, a.Addr)
-			}
-		}
-	} else {
-		addrs = make([]string, len(state.Addresses))
+	var endpoints = state.Endpoints
+	if len(endpoints) == 0 {
+		endpoints = make([]resolver.Endpoint, len(state.Addresses))
 		for i, a := range state.Addresses {
-			addrs[i] = a.Addr
+			endpoints[i] = resolver.Endpoint{Addresses: []resolver.Address{a}}
+			endpoints[i].Attributes = a.BalancerAttributes
 		}
 	}
-	dr.addrs = addrs
+	dr.endpoints = endpoints
 	dr.updateReceived = true
 	dr.mu.Unlock()
 
-	dr.topLevelResolver.onUpdate()
+	dr.topLevelResolver.onUpdate(func() {})
 	return nil
 }
 
@@ -172,11 +164,11 @@ func (dr *dnsDiscoveryMechanism) ReportError(err error) {
 		dr.mu.Unlock()
 		return
 	}
-	dr.addrs = nil
+	dr.endpoints = nil
 	dr.updateReceived = true
 	dr.mu.Unlock()
 
-	dr.topLevelResolver.onUpdate()
+	dr.topLevelResolver.onUpdate(func() {})
 }
 
 func (dr *dnsDiscoveryMechanism) NewAddress(addresses []resolver.Address) {

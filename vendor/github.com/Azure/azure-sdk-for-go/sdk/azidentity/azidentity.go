@@ -121,6 +121,9 @@ func alphanumeric(r rune) bool {
 }
 
 func validTenantID(tenantID string) bool {
+	if len(tenantID) < 1 {
+		return false
+	}
 	for _, r := range tenantID {
 		if !(alphanumeric(r) || r == '.' || r == '-') {
 			return false

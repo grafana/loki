@@ -341,15 +341,15 @@ type fakeOverrides struct {
 func (c *fakeOverrides) AllByUserID() map[string]*validation.Limits {
 	return map[string]*validation.Limits{
 		"ingester0": {
-			ShardStreams: &shardstreams.Config{
+			ShardStreams: shardstreams.Config{
 				Enabled: c.enabled,
 			},
 		},
 	}
 }
 
-func (c *fakeOverrides) ShardStreams(_ string) *shardstreams.Config {
-	return &shardstreams.Config{
+func (c *fakeOverrides) ShardStreams(_ string) shardstreams.Config {
+	return shardstreams.Config{
 		Enabled: c.enabled,
 	}
 }

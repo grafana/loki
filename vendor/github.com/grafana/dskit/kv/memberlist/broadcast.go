@@ -1,10 +1,7 @@
 package memberlist
 
 import (
-	"fmt"
-
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/hashicorp/memberlist"
 )
 
@@ -45,7 +42,6 @@ func (r ringBroadcast) Invalidates(old memberlist.Broadcast) bool {
 		// otherwise, we may be invalidating some older messages, which however covered different
 		// ingesters
 		if r.version >= oldb.version {
-			level.Debug(r.logger).Log("msg", "Invalidating forwarded broadcast", "key", r.key, "version", r.version, "oldVersion", oldb.version, "content", fmt.Sprintf("%v", r.content), "oldContent", fmt.Sprintf("%v", oldb.content))
 			return true
 		}
 	}

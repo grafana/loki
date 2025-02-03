@@ -19,19 +19,19 @@ import (
 
 // PushHandler reads a snappy-compressed proto from the HTTP body.
 func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseLokiRequest)
+	d.pushHandler(w, r, push.ParseLokiRequest, push.HTTPError)
 }
 
 func (d *Distributor) OTLPPushHandler(w http.ResponseWriter, r *http.Request) {
-	d.pushHandler(w, r, push.ParseOTLPRequest)
+	d.pushHandler(w, r, push.ParseOTLPRequest, push.OTLPError)
 }
 
-func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser) {
+func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRequestParser push.RequestParser, errorWriter push.ErrorWriter) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	tenantID, err := tenant.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", "error getting tenant id", "err", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		errorWriter(w, err.Error(), http.StatusBadRequest, logger)
 		return
 	}
 
@@ -39,7 +39,8 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		pushRequestParser = d.RequestParserWrapper(pushRequestParser)
 	}
 
-	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker)
+	logPushRequestStreams := d.tenantConfigs.LogPushRequestStreams(tenantID)
+	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention, d.validator.Limits, pushRequestParser, d.usageTracker, logPushRequestStreams)
 	if err != nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -50,11 +51,11 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
 
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		errorWriter(w, err.Error(), http.StatusBadRequest, logger)
 		return
 	}
 
-	if d.tenantConfigs.LogPushRequestStreams(tenantID) {
+	if logPushRequestStreams {
 		var sb strings.Builder
 		for _, s := range req.Streams {
 			sb.WriteString(s.Labels)
@@ -86,7 +87,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				"err", body,
 			)
 		}
-		http.Error(w, body, int(resp.Code))
+		errorWriter(w, body, int(resp.Code), logger)
 	} else {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
@@ -95,7 +96,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 				"err", err.Error(),
 			)
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		errorWriter(w, err.Error(), http.StatusInternalServerError, logger)
 	}
 }
 

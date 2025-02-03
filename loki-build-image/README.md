@@ -2,6 +2,31 @@
 
 ## Versions
 
+### 0.34.4
+
+- Update to Go 1.23.5
+
+### 0.34.0
+
+- Update to Go 1.23.1
+- Update to Alpine 3.20.3
+
+### 0.33.6
+
+- Update to go 1.22.6
+
+### 0.33.5
+
+- Update to alpine 3.20.2
+
+### 0.33.4
+
+- Update to go 1.22.5
+
+### 0.33.2
+
+- Update to go 1.22.2
+
 ### 0.33.1-golangci.1.51.2
 
 - Update to Go version 1.21.9 but restore golangci-lint to v1.51.2

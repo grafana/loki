@@ -12,15 +12,16 @@ weight:  500
 ## Why does log rotation matter?
 
 At any point in time, there may be three processes working on a log file as shown in the image below.
-![block_diagram](./logrotation-components.png)
+
+{{< figure alt="block diagram showing three processes" align="center" src="./logrotation-components.png" >}}
 
 1. Appender - A writer that keeps appending to a log file. This can be your application or some system daemons like Syslog, Docker log driver or Kubelet, etc.
 2. Tailer - A reader that reads log lines as they are appended, for example, agents like Promtail.
 3. Log Rotator - A process that rotates the log file either based on time (for example, scheduled every day) or size (for example, a log file reached its maximum size).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Here `fd` defines a file descriptor. Once a file is open for read or write, The Operating System returns a unique file descriptor (usually an integer) per process, and all the operations like read and write are done over that file descriptor. In other words, once the file is opened successfully, the file descriptor matters more than the file name.
-{{% /admonition %}}
+{{< /admonition >}}
 
 One of the critical components here is the log rotator. Let's understand how it impacts other components like the appender and tailer.
 
@@ -36,10 +37,12 @@ In both cases, after log rotation, all new log lines are written to the original
 These two methods of log rotation are shown in the following images.
 
 ### Copy and Truncate
-![block_diagram](./logrotation-copy-and-truncate.png)
+
+{{< figure alt="Copy and truncate log rotation" align="center" src="./logrotation-copy-and-truncate.png" >}}
 
 ### Rename and Create
-![block_diagram](./logrotation-rename-and-create.png)
+
+{{< figure alt="Rename and create log rotation" align="center" src="./logrotation-rename-and-create.png" >}}
 
 Both types of log rotation produce the same result. However, there are some subtle differences.
 
@@ -66,6 +69,7 @@ It has a wide range of [options](https://man7.org/linux/man-pages/man8/logrotate
 It supports both methods of log rotation described previously.
 
 #### Copy and Truncate
+
 ```
 /var/log/apache2/*.log {
         weekly
@@ -77,6 +81,7 @@ It supports both methods of log rotation described previously.
 Here `copytruncate` mode works exactly like (1) explained above.
 
 #### Rename and Create **(Recommend)**
+
 ```
 /var/log/apache2/*.log {
         weekly
@@ -84,8 +89,8 @@ Here `copytruncate` mode works exactly like (1) explained above.
         create
 }
 ```
-Here, the `create` mode works as explained in (2) above. The `create` mode is optional because it's the default mode in `logrotate`.
 
+Here, the `create` mode works as explained in (2) above. The `create` mode is optional because it's the default mode in `logrotate`.
 
 ### Kubernetes
 
@@ -98,13 +103,14 @@ You can [configure](https://kubernetes.io/docs/concepts/cluster-administration/l
 
 Both should be part of the `kubelet` config. If you run a managed version of Kubernetes in Cloud, refer to your cloud provider documentation for configuring `kubelet`. Examples [GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/node-system-config#create), [AKS](https://learn.microsoft.com/en-us/azure/aks/custom-node-configuration#use-custom-node-configuration) and [EKS](https://eksctl.io/usage/customizing-the-kubelet/#customizing-kubelet-configuration).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Log rotation managed by `kubelet` supports only rename + create and doesn't support copy + truncate.
-{{% /admonition %}}
+{{< /admonition >}}
 
 If `kubelet` is not configured to manage the log rotation, then it's up to the Container Runtime Interface (CRI) the cluster uses. Alternatively, log rotation can be managed by the `logrotate` utility in the Kubernetes node itself.
 
 Check your container runtime (CRI) on your nodes by running:
+
 ```bash
 $ kubectl get nodes -o wide
 ```
@@ -120,6 +126,7 @@ At the time of writing this guide, `containerd` [doesn't support any method of l
 When using `docker` as runtime (EKS before 1.24 uses it by default), log rotation is managed by its logging driver (if supported). Docker has [support for several logging drivers](https://docs.docker.com/config/containers/logging/configure/#supported-logging-drivers).
 
 You can determine which logging driver `docker` is using by running the following command:
+
 ```bash
  docker info --format '{{.LoggingDriver}}'
 ```
@@ -130,6 +137,7 @@ Out of all these logging drivers only the `local` (default) and the `json-file` 
 2. `max-file` - The maximum number of log files that can be present. If rolling the logs creates excess files, the oldest file is removed. A positive integer. Defaults to 5.
 
 Example `/etc/docker/daemon.json`:
+
 ```json
 {
   "log-driver": "local",
@@ -142,9 +150,9 @@ Example `/etc/docker/daemon.json`:
 
 If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrotate` utility can be used on the Kubernetes nodes as explained previously.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 We recommend using kubelet for log rotation.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Configure Promtail
 

@@ -26,7 +26,6 @@ func Test_Walkable(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			expr, err := ParseExpr(test.expr)
 			require.Nil(t, err)
@@ -72,7 +71,6 @@ func Test_AppendMatchers(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 		t.Run(test.desc, func(t *testing.T) {
 			expr, err := ParseExpr(test.expr)
 			require.NoError(t, err)

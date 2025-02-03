@@ -33,7 +33,7 @@ schema_config:
 | Property     | Description                                                                                                                                            |
 |--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | from         | for a new install, this must be a date in the past, use a recent date. Format is YYYY-MM-DD.                                                           |
-| object_store | s3, azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (see [StorageConfig]({{< relref "../../../configure#storage_config" >}})). |
+| object_store | s3, azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (see [StorageConfig](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#storage_config)). |
 | store        | `tsdb` is the current and only recommended value for store.                                                                                            |
 | schema       | `v13` is the most recent schema and recommended value.                                                                                                 |
 | prefix:      | any value without spaces is acceptable.                                                                                                                |

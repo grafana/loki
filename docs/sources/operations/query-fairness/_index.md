@@ -1,11 +1,10 @@
 ---
-title: Query fairness within tenants
+title: Ensure query fairness within tenants using actors
 menuTitle: Query fairness
 description: Describes methods for guaranteeing query fairness across multiple actors within a single tenant using the scheduler.
 weight:
 ---
-
-# Query fairness within tenants
+# Ensure query fairness within tenants using actors
 
 Loki uses [shuffle sharding]({{< relref "../shuffle-sharding/_index.md" >}})
 to minimize impact across tenants in case of querier failures or misbehaving
@@ -95,7 +94,7 @@ curl -s http://localhost:3100/loki/api/v1/query_range?xxx \
 ```
 
 There is a limit to how deep a path and thus the queue tree can be. This is
-controlled by Loki's `-query-scheduler.max-queue-hierarchy-levels` CLI argument
+controlled by the Loki `-query-scheduler.max-queue-hierarchy-levels` CLI argument
 or its respective YAML configuration block:
 
 ```yaml

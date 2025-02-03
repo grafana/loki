@@ -401,7 +401,7 @@ func TestAllServices(t *testing.T) {
 	<-ch
 }
 
-// targetgroup with no targets is emitted if no services were discovered.
+// TestNoTargets with no targets is emitted if no services were discovered.
 func TestNoTargets(t *testing.T) {
 	stub, config := newServer(t)
 	defer stub.Close()
@@ -464,14 +464,14 @@ func TestGetDatacenterShouldReturnError(t *testing.T) {
 	}{
 		{
 			// Define a handler that will return status 500.
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(500)
 			},
 			errMessage: "Unexpected response code: 500 ()",
 		},
 		{
 			// Define a handler that will return incorrect response.
-			handler: func(w http.ResponseWriter, r *http.Request) {
+			handler: func(w http.ResponseWriter, _ *http.Request) {
 				_, err := w.Write([]byte(`{"Config": {"Not-Datacenter": "test-dc"}}`))
 				require.NoError(t, err)
 			},

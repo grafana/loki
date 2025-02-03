@@ -76,6 +76,9 @@ const (
 
 	// StorageColdArchive cold archive
 	StorageColdArchive StorageClassType = "ColdArchive"
+
+	// StorageDeepColdArchive deep cold archive
+	StorageDeepColdArchive StorageClassType = "DeepColdArchive"
 )
 
 //RedundancyType bucket data Redundancy type
@@ -224,6 +227,9 @@ const (
 	HTTPParamAccessKeyIDV2       = "x-oss-access-key-id"
 	HTTPParamSignatureV2         = "x-oss-signature"
 	HTTPParamAdditionalHeadersV2 = "x-oss-additional-headers"
+	HTTPParamCredential          = "x-oss-credential"
+	HTTPParamDate                = "x-oss-date"
+	HTTPParamOssSecurityToken    = "x-oss-security-token"
 )
 
 // Other constants
@@ -242,7 +248,7 @@ const (
 
 	DefaultContentSha256 = "UNSIGNED-PAYLOAD" // for v4 signature
 
-	Version = "v2.2.7" // Go SDK version
+	Version = "v3.0.2" // Go SDK version
 )
 
 // FrameType

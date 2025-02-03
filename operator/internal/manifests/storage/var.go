@@ -10,15 +10,15 @@ const (
 	// EnvAWSAccessKeyID is the environment variable to specify the AWS client id to access S3.
 	EnvAWSAccessKeyID = "AWS_ACCESS_KEY_ID"
 	// EnvAWSAccessKeySecret is the environment variable to specify the AWS client secret to access S3.
-	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET"
+	EnvAWSAccessKeySecret = "AWS_ACCESS_KEY_SECRET" //#nosec G101 -- False positive
 	// EnvAWSSseKmsEncryptionContext is the environment variable to specify the AWS KMS encryption context when using type SSE-KMS.
 	EnvAWSSseKmsEncryptionContext = "AWS_SSE_KMS_ENCRYPTION_CONTEXT"
 	// EnvAWSRoleArn is the environment variable to specify the AWS role ARN secret for the federated identity workflow.
 	EnvAWSRoleArn = "AWS_ROLE_ARN"
 	// EnvAWSWebIdentityTokenFile is the environment variable to specify the path to the web identity token file used in the federated identity workflow.
-	EnvAWSWebIdentityTokenFile = "AWS_WEB_IDENTITY_TOKEN_FILE"
+	EnvAWSWebIdentityTokenFile = "AWS_WEB_IDENTITY_TOKEN_FILE" //#nosec G101 -- False positive
 	// EnvAWSCredentialsFile is the environment variable to specify the path to the shared credentials file
-	EnvAWSCredentialsFile = "AWS_SHARED_CREDENTIALS_FILE"
+	EnvAWSCredentialsFile = "AWS_SHARED_CREDENTIALS_FILE" //#nosec G101 -- False positive
 	// EnvAWSSdkLoadConfig is the environment that enabled the AWS SDK to enable the shared credentials file to be loaded
 	EnvAWSSdkLoadConfig = "AWS_SDK_LOAD_CONFIG"
 	// EnvAzureStorageAccountName is the environment variable to specify the Azure storage account name to access the container.
@@ -34,7 +34,7 @@ const (
 	// EnvAzureFederatedTokenFile is the environment variable used to store the path to the Managed Identity token.
 	EnvAzureFederatedTokenFile = "AZURE_FEDERATED_TOKEN_FILE"
 	// EnvGoogleApplicationCredentials is the environment variable to specify path to key.json
-	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
+	EnvGoogleApplicationCredentials = "GOOGLE_APPLICATION_CREDENTIALS" //#nosec G101 -- False positive
 	// EnvSwiftPassword is the environment variable to specify the OpenStack Swift password.
 	EnvSwiftPassword = "SWIFT_PASSWORD"
 	// EnvSwiftUsername is the environment variable to specify the OpenStack Swift username.
@@ -52,7 +52,7 @@ const (
 	// KeyAWSAccessKeyID is the secret data key for the AWS client id to access S3.
 	KeyAWSAccessKeyID = "access_key_id"
 	// KeyAWSAccessKeySecret is the secret data key for the AWS client secret to access S3.
-	KeyAWSAccessKeySecret = "access_key_secret"
+	KeyAWSAccessKeySecret = "access_key_secret" //#nosec G101 -- False positive
 	// KeyAWSBucketNames is the secret data key for the AWS S3 bucket names.
 	KeyAWSBucketNames = "bucketnames"
 	// KeyAWSEndpoint is the secret data key for the AWS endpoint URL.
@@ -97,6 +97,8 @@ const (
 	KeyGCPStorageBucketName = "bucketname"
 	// KeyGCPServiceAccountKeyFilename is the service account key filename containing the Google authentication credentials.
 	KeyGCPServiceAccountKeyFilename = "key.json"
+	// KeyGCPManagedServiceAccountKeyFilename is the service account key filename for the managed Google service account.
+	KeyGCPManagedServiceAccountKeyFilename = "service_account.json"
 
 	// KeySwiftAuthURL is the secret data key for the OpenStack Swift authentication URL.
 	KeySwiftAuthURL = "auth_url"
@@ -129,20 +131,20 @@ const (
 
 	saTokenVolumeName            = "bound-sa-token"
 	saTokenExpiration      int64 = 3600
-	saTokenVolumeMountPath       = "/var/run/secrets/storage/serviceaccount"
+	saTokenVolumeMountPath       = "/var/run/secrets/storage/serviceaccount" //#nosec G101 -- False positive
 
 	ServiceAccountTokenFilePath = saTokenVolumeMountPath + "/token"
 
-	secretDirectory  = "/etc/storage/secrets"
+	secretDirectory  = "/etc/storage/secrets" //#nosec G101 -- False positive
 	storageTLSVolume = "storage-tls"
 	caDirectory      = "/etc/storage/ca"
 
-	tokenAuthConfigVolumeName = "token-auth-config"
-	tokenAuthConfigDirectory  = "/etc/storage/token-auth"
+	tokenAuthConfigVolumeName = "token-auth-config"       //#nosec G101 -- False positive
+	tokenAuthConfigDirectory  = "/etc/storage/token-auth" //#nosec G101 -- False positive
 
-	awsDefaultAudience = "sts.amazonaws.com"
-
+	awsDefaultAudience   = "sts.amazonaws.com"
 	azureDefaultAudience = "api://AzureADTokenExchange"
+	gcpDefaultAudience   = "openshift"
 
 	azureManagedCredentialKeyClientID       = "azure_client_id"
 	azureManagedCredentialKeyTenantID       = "azure_tenant_id"

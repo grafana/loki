@@ -33,11 +33,11 @@ docker run --log-driver=loki \
     --log-opt loki-batch-size=400 \
     grafana/grafana
 ```
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 The Loki logging driver still uses the json-log driver in combination with sending logs to Loki, this is mainly useful to keep the `docker logs` command working. 
 You can adjust file size and rotation using the respective log option `max-size` and `max-file`. Keep in mind that default values for these options are not taken from json-log configuration.
 You can deactivate this behavior by setting the log option `no-file` to true. 
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Change the default logging driver
 
@@ -65,11 +65,11 @@ Options for the logging driver can also be configured with `log-opts` in the
     }
 }
 ```
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 log-opt configuration options in daemon.json must be provided as
 > strings. Boolean and numeric values (such as the value for loki-batch-size in
 > the example above) must therefore be enclosed in quotes (`"`).
-{{% /admonition %}}
+{{< /admonition >}}
 
 After changing `daemon.json`, restart the Docker daemon for the changes to take
 effect. All **newly created** containers from that host will then send logs to Loki via the driver.
@@ -104,13 +104,13 @@ docker-compose -f docker-compose.yaml up
 
 Once deployed, the Grafana service will send its logs to Loki.
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Stack name and service name for each swarm service and project name and service name for each compose service are automatically discovered and sent as Loki labels, this way you can filter by them in Grafana.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Labels
 
-Loki can received a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector]({{< relref "../../query/log_queries#log-stream-selector" >}}).
+Loki can receive a set of labels along with log line. These labels are used to index log entries and query back logs using [LogQL stream selector]({{< relref "../../query/log_queries#log-stream-selector" >}}).
 
 By default, the Docker driver will add the following labels to each log line:
 
@@ -128,7 +128,7 @@ next section for all supported options.
 ## Pipeline stages
 
 While you can provide `loki-pipeline-stage-file` it can be hard to mount the configuration file to the driver root filesystem.
-This is why another option `loki-pipeline-stages` is available allowing your to pass a list of stages inlined. Pipeline stages are run at last on every lines.
+This is why another option `loki-pipeline-stages` is available allowing you to pass a list of stages inlined. Pipeline stages are run at last on every lines.
 
 The example [docker-compose](https://github.com/grafana/loki/blob/main/clients/cmd/docker-driver/docker-compose.yaml) below configures 2 stages, one to extract level values and one to set it as a label:
 
@@ -150,9 +150,9 @@ services:
       - "3000:3000"
 ```
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Note the `loki-pipeline-stages: |` letting you keep the indentation correct.
-{{% /admonition %}}
+{{< /admonition >}}
 
 When using docker run you can also pass the value via a string parameter like such:
 

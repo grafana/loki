@@ -2,7 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_matcher = if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'compactor',
+  local compactor_matcher = 'pod=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher,
   grafanaDashboards+::
     {
       'loki-deletion.json':
@@ -10,6 +10,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
         .addCluster()
         .addNamespace()
         .addTag()
+        .addLog()
         .addRow(
           ($.row('Headlines') +
            {
@@ -43,11 +44,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
           g.row('Compactor')
           .addPanel(
             $.newQueryPanel('Compactor CPU usage') +
-            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, container="compactor"}' % $.namespaceMatcher(), '{{pod}}'),
+            g.queryPanel('node_namespace_pod_container:container_cpu_usage_seconds_total:sum_irate{%s, %s}' % [$.namespaceMatcher(), compactor_matcher], '{{pod}}'),
           )
           .addPanel(
             $.newQueryPanel('Compactor memory usage (MiB)') +
-            g.queryPanel('go_memstats_heap_inuse_bytes{%s, container="compactor"} / 1024 / 1024 ' % $.namespaceMatcher(), ' {{pod}} '),
+            g.queryPanel('go_memstats_heap_inuse_bytes{%s, %s} / 1024 / 1024 ' % [$.namespaceMatcher(), compactor_matcher], ' {{pod}} '),
           )
           .addPanel(
             $.newQueryPanel('Compaction run duration (seconds)') +
@@ -61,15 +62,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
           )
           .addPanel(
             $.newQueryPanel('Lines Deleted / Sec') +
-            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $._config.per_cluster_label + '=~"$cluster",job=~"$namespace/%s"}[$__rate_interval])) by (user)' % compactor_matcher, '{{user}}'),
+            g.queryPanel('sum(rate(loki_compactor_deleted_lines{' + $.namespaceMatcher() + ', ' + compactor_matcher + '}[$__rate_interval])) by (user)', '{{user}}'),
           )
         ).addRow(
           g.row('List of deletion requests')
           .addPanel(
-            $.logPanel('In progress/finished', '{%s, container="compactor"} |~ "Started processing delete request|delete request for user marked as processed" | logfmt | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % $.namespaceMatcher()),
+            $.logPanel('In progress/finished', '{%s, %s} |~ "Started processing delete request|delete request for user marked as processed" | logfmt | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % [$.namespaceMatcher(), compactor_matcher]),
           )
           .addPanel(
-            $.logPanel('Requests', '{%s, container="compactor"} |~ "delete request for user added" | logfmt | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % $.namespaceMatcher()),
+            $.logPanel('Requests', '{%s, %s} |~ "delete request for user added" | logfmt | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % [$.namespaceMatcher(), compactor_matcher]),
           )
         ),
     },

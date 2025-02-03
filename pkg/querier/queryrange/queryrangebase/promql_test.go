@@ -124,7 +124,13 @@ func Test_PromQL(t *testing.T) {
 			  )`,
 			true,
 		},
-		// avg generally cant be parallelized
+		// avg can be paralleized since we split it into sum / count
+		{
+			`avg(bar1{baz="blip"})`,
+			`(sum(bar1{__cortex_shard__="0_of_3",baz="blip"}) + sum(bar1{__cortex_shard__="1_of_3",baz="blip"}) + sum(bar1{__cortex_shard__="2_of_3",baz="blip"})) /
+             (count(bar1{__cortex_shard__="0_of_3",baz="blip"}) + count(bar1{__cortex_shard__="1_of_3",baz="blip"}) + count(bar1{__cortex_shard__="2_of_3",baz="blip"}))`,
+			true,
+		},
 		{
 			`avg(bar1{baz="blip"})`,
 			`avg(
@@ -132,7 +138,7 @@ func Test_PromQL(t *testing.T) {
 				avg by(__cortex_shard__) (bar1{__cortex_shard__="1_of_3",baz="blip"}) or
 				avg by(__cortex_shard__) (bar1{__cortex_shard__="2_of_3",baz="blip"})
 			  )`,
-			false,
+			true,
 		},
 		// stddev can't be parallelized.
 		{
@@ -314,7 +320,6 @@ func Test_PromQL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.normalQuery, func(t *testing.T) {
 
 			baseQuery, err := engine.NewRangeQuery(context.Background(), shardAwareQueryable, nil, tt.normalQuery, start, end, step)
@@ -570,7 +575,7 @@ func Test_FunctionParallelism(t *testing.T) {
 
 }
 
-var shardAwareQueryable = storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+var shardAwareQueryable = storage.QueryableFunc(func(_, _ int64) (storage.Querier, error) {
 	return &testMatrix{
 		series: []*promql.StorageSeries{
 			newSeries(labels.Labels{{Name: "__name__", Value: "bar1"}, {Name: "baz", Value: "blip"}, {Name: "bar", Value: "blop"}, {Name: "foo", Value: "barr"}}, factor(5)),
@@ -617,10 +622,10 @@ func (m *testMatrix) Select(_ context.Context, _ bool, _ *storage.SelectHints, m
 	return m.Copy()
 }
 
-func (m *testMatrix) LabelValues(_ context.Context, _ string, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m *testMatrix) LabelValues(_ context.Context, _ string, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
-func (m *testMatrix) LabelNames(_ context.Context, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (m *testMatrix) LabelNames(_ context.Context, _ *storage.LabelHints, _ ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 func (m *testMatrix) Close() error { return nil }

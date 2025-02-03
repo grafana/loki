@@ -1,3 +1,5 @@
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if and .Values.gateway.enabled .Values.enterprise.enabled .Values.enterprise.gelGateway }}
 apiVersion: apps/v1
 kind: Deployment
@@ -30,12 +32,18 @@ spec:
         {{- if .Values.useExternalConfig }}
         checksum/config: {{ .Values.externalConfigVersion }}
         {{- else }}
-        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+        checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
         {{- end}}
         {{- with .Values.enterpriseGateway.annotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- with .Values.enterpriseGateway.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}    
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
       {{- if .Values.enterpriseGateway.priorityClassName }}
       priorityClassName: {{ .Values.enterpriseGateway.priorityClassName }}
@@ -44,11 +52,9 @@ spec:
         {{- toYaml .Values.enterpriseGateway.podSecurityContext | nindent 8 }}
       initContainers:
         {{- toYaml .Values.enterpriseGateway.initContainers | nindent 8 }}
-      {{- if .Values.imagePullSecrets }}
+      {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.imagePullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.enterpriseGateway.hostAliases }}
       hostAliases:
@@ -64,18 +70,28 @@ spec:
             {{- if .Values.minio.enabled }}
             - -admin.client.backend-type=s3
             - -admin.client.s3.endpoint={{ template "loki.minio" . }}
-            - -admin.client.s3.bucket-name=enterprise-logs-admin
-            - -admin.client.s3.access-key-id={{ .Values.minio.accessKey }}
-            - -admin.client.s3.secret-access-key={{ .Values.minio.secretKey }}
-            - -admin.client.s3.insecure=true
+            - -admin.client.s3.bucket-name={{ .Values.loki.storage.bucketNames.admin }}
+            - -admin.client.s3.access-key-id={{ (index .Values.minio.users 0).accessKey }}
+            - -admin.client.s3.secret-access-key={{ (index .Values.minio.users 0).secretKey }}
+            - -admin.client.s3.insecure={{ .Values.loki.storage.s3.insecure }}
             {{- end }}
-            {{- if .Values.enterpriseGateway.useDefaultProxyURLs }}
+            {{- if and $isDistributed .Values.enterpriseGateway.useDefaultProxyURLs }}
             - -gateway.proxy.default.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.admin-api.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.distributor.url=dns:///{{ template "loki.fullname" . }}-distributor-headless.{{ .Release.Namespace }}.svc:9095
             - -gateway.proxy.ingester.url=http://{{ template "loki.fullname" . }}-ingester.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.query-frontend.url=http://{{ template "loki.fullname" . }}-query-frontend.{{ .Release.Namespace }}.svc:3100
             - -gateway.proxy.ruler.url=http://{{ template "loki.fullname" . }}-ruler.{{ .Release.Namespace }}.svc:3100
+            {{- end }}
+            {{- if and $isSimpleScalable .Values.enterpriseGateway.useDefaultProxyURLs }}
+            - -gateway.proxy.default.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.admin-api.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.compactor.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.distributor.url=dns:///{{ template "loki.writeFullname" . }}-headless.{{ .Release.Namespace }}.svc:9095
+            - -gateway.proxy.ingester.url=http://{{ template "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.query-frontend.url=http://{{ template "loki.readFullname" . }}.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.query-scheduler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
             {{- end }}
             {{- range $key, $value := .Values.enterpriseGateway.extraArgs }}
             - "-{{ $key }}={{ $value }}"
@@ -103,6 +119,10 @@ spec:
           env:
             {{- if .Values.enterpriseGateway.env }}
             {{ toYaml .Values.enterpriseGateway.env | nindent 12 }}
+            {{- end }}
+            {{- with .Values.enterpriseGateway.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
             {{- end }}
         {{- with .Values.enterpriseGateway.extraContainers }}
         {{ toYaml . | nindent 8 }}

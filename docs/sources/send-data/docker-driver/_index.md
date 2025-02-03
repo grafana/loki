@@ -12,32 +12,35 @@ Grafana Loki officially supports a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](/oss/loki).
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Docker plugins are not supported on Windows; see the [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
-{{% /admonition %}}
+{{< /admonition >}}
 
 Documentation on configuring the Loki Docker Driver can be found on the
-[configuration page]({{< relref "./configuration" >}}).
-
-If you have any questions or issues using the Docker plugin, open an issue in 
+If you have any questions or issues using the Docker plugin, open an issue in
 the [Loki repository](https://github.com/grafana/loki/issues).
 
 ## Install the Docker driver client
 
 The Docker plugin must be installed on each Docker host that will be running containers you want to collect logs from.
 
-Run the following command to install the plugin, updating the release version if needed:
+Run the following command to install the plugin, updating the release version, or changing the architecture (`arm64` and `amd64` are currently supported), if needed:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:2.9.2 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:3.3.2-arm64 --alias loki --grant-all-permissions
 ```
 
-To check installed plugins, use the `docker plugin ls` command. 
+{{< admonition type="note" >}}
+Add `-arm64` to the image tag for ARM64 hosts.
+{{< /admonition >}}
+
+To check installed plugins, use the `docker plugin ls` command.
 Plugins that have started successfully are listed as enabled:
 
 ```bash
-$ docker plugin ls
+docker plugin ls
 ```
+
 You should see output similar to the following:
 
 ```bash
@@ -45,22 +48,23 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once you have successfully installed the plugin you can [configure]({{< relref "./configuration" >}}) it.
+Once you have successfully installed the plugin you can [configure](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/docker-driver/configuration/) it.
 
 ## Upgrade the Docker driver client
 
-The upgrade process involves disabling the existing plugin, upgrading, then
+The upgrade process involves disabling the existing plugin, upgrading (chaning version and architecture as needed), then
 re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki --force
-docker plugin upgrade loki grafana/loki-docker-driver:2.9.2 --grant-all-permissions
+docker plugin upgrade loki grafana/loki-docker-driver:3.3.2-arm64 --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
-{{% admonition type="note" %}}
+
+{{< admonition type="note" >}}
 Update the version number to the appropriate version.
-{{% /admonition %}}
+{{< /admonition >}}
 
 ## Uninstall the Docker driver client
 
@@ -77,4 +81,6 @@ The driver keeps all logs in memory and will drop log entries if Loki is not rea
 
 The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff=800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the logs will be persisted locally when the Loki client is unable to re-connect.
 
-To avoid this issue, use the Promtail [Docker target]({{< relref "../../send-data/promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../../send-data/promtail/configuration#docker_sd_configs" >}}).
+Also you can use non-blocking mode by setting `services.logger.logging.options.mode=non-blocking` in your `docker-compose` file. Non-blocking means that the process of writing logs to Loki will not block the main flow of an application or service if Loki is temporarily unavailable or unable to process log messages. In non-blocking mode, log messages will be buffered and sent to Loki asynchronously, which allows the main thread to continue working without delay. If Loki is unavailable, log messages will be stored in a buffer and sent when Loki becomes available again. However, this setting is useful to prevent blocking the main flow of an application or service due to logging issues, but it can also lead to loss of log messages if the buffer overflows or if Loki is unavailable for a long time.
+
+To avoid this issue, use the Promtail [Docker target](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#docker) or [Docker service discovery](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#docker_sd_configs).

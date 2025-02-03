@@ -21,11 +21,13 @@ import (
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
 )
 
@@ -203,7 +205,7 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, indexStatsTripperware, codec, iqo)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, metrics, codec, iqo, indexStatsTripperware, metricsNamespace)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -235,6 +237,27 @@ func NewMiddleware(
 		return nil, nil, err
 	}
 
+	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
+		limits,
+		schema,
+		limitedTripperware,
+		logFilterTripperware,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	detectedLabelsTripperware, err := NewDetectedLabelsTripperware(
+		cfg,
+		log,
+		limits,
+		schema,
+		metrics,
+		metricsNamespace,
+		codec, limits, iqo)
+	if err != nil {
+		return nil, nil, err
+	}
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		var (
 			metricRT         = metricsTripperware.Wrap(next)
@@ -243,14 +266,61 @@ func NewMiddleware(
 			seriesRT         = seriesTripperware.Wrap(next)
 			labelsRT         = labelsTripperware.Wrap(next)
 			instantRT        = instantMetricTripperware.Wrap(next)
-			statsRT          = indexStatsTripperware.Wrap(next)
+			statsRT          = base.MergeMiddlewares(StatsCollectorMiddleware(), indexStatsTripperware).Wrap(next)
 			seriesVolumeRT   = seriesVolumeTripperware.Wrap(next)
-			detectedFieldsRT = next // TODO(twhitney): add middlewares for detected fields
-			detectedLabelsRT = next // TODO(shantanu): add middlewares
+			detectedFieldsRT = detectedFieldsTripperware.Wrap(next)
+			detectedLabelsRT = detectedLabelsTripperware.Wrap(next)
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, detectedFieldsRT, detectedLabelsRT, limits)
 	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
+}
+
+func NewDetectedLabelsTripperware(cfg Config, logger log.Logger, l Limits, schema config.SchemaConfig, metrics *Metrics, namespace string, merger base.Merger, limits Limits, iqo util.IngesterQueryOptions) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		splitter := newDefaultSplitter(limits, iqo)
+
+		queryRangeMiddleware := []base.Middleware{
+			StatsCollectorMiddleware(),
+			NewLimitsMiddleware(l),
+			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
+			SplitByIntervalMiddleware(schema.Configs, limits, merger, splitter, metrics.SplitByMetrics),
+		}
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(logger, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, namespace),
+			)
+		}
+		limitedRt := NewLimitedRoundTripper(next, l, schema.Configs, queryRangeMiddleware...)
+		return NewDetectedLabelsCardinalityFilter(limitedRt)
+	}), nil
+}
+
+func NewDetectedLabelsCardinalityFilter(rt queryrangebase.Handler) queryrangebase.Handler {
+	return queryrangebase.HandlerFunc(
+		func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			res, err := rt.Do(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+
+			resp, ok := res.(*DetectedLabelsResponse)
+			if !ok {
+				return res, nil
+			}
+
+			var result []*logproto.DetectedLabel
+
+			for _, dl := range resp.Response.DetectedLabels {
+				result = append(result, &logproto.DetectedLabel{Label: dl.Label, Cardinality: dl.Cardinality})
+			}
+			return &DetectedLabelsResponse{
+				Response: &logproto.DetectedLabelsResponse{DetectedLabels: result},
+				Headers:  resp.Headers,
+			}, nil
+		})
 }
 
 type roundTripper struct {
@@ -313,21 +383,22 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 
 			for _, g := range groups {
 				if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
-					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 			}
 			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
 			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
-			// Only filter expressions are query sharded
-			if !e.HasFilter() {
+			// Some queries we don't want to parallelize as aggressively, like limited queries and `datasample` queries
+			tags := httpreq.ExtractQueryTagsFromContext(ctx)
+			if !e.HasFilter() || strings.Contains(tags, "datasample") {
 				return r.limited.Do(ctx, req)
 			}
 			return r.log.Do(ctx, req)
@@ -372,15 +443,27 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 	case *DetectedFieldsRequest:
 		level.Info(logger).Log(
 			"msg", "executing query",
-			"type", "detected fields",
-			"query", op.Query,
-			"length", op.End.Sub(op.Start),
-			"start", op.Start,
+			"type", "detected_fields",
 			"end", op.End,
+			"field_limit", op.Limit,
+			"length", op.End.Sub(op.Start),
+			"line_limit", op.LineLimit,
+			"query", op.Query,
+			"start", op.Start,
+			"step", op.Step,
 		)
 
 		return r.detectedFields.Do(ctx, req)
-	// TODO(shantanu): Add DetectedLabels
+	case *DetectedLabelsRequest:
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "detected_label",
+			"end", op.End,
+			"length", op.End.Sub(op.Start),
+			"query", op.Query,
+			"start", op.Start,
+		)
+		return r.detectedLabels.Do(ctx, req)
 	default:
 		return r.next.Do(ctx, req)
 	}
@@ -423,26 +506,34 @@ func getOperation(path string) string {
 	switch {
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
+	case strings.HasSuffix(path, "/query"):
+		return InstantQueryOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
-	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label") || strings.HasSuffix(path, "/values"):
+	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label"):
 		return LabelNamesOp
-	case strings.HasSuffix(path, "/v1/query"):
-		return InstantQueryOp
-	case path == "/loki/api/v1/index/stats":
+	case strings.HasSuffix(path, "/index/stats"):
 		return IndexStatsOp
-	case path == "/loki/api/v1/index/volume":
+	case strings.HasSuffix(path, "/index/volume"):
 		return VolumeOp
-	case path == "/loki/api/v1/index/volume_range":
+	case strings.HasSuffix(path, "/index/volume_range"):
 		return VolumeRangeOp
-	case path == "/loki/api/v1/index/shards":
+	case strings.HasSuffix(path, "/index/shards"):
 		return IndexShardsOp
-	case path == "/loki/api/v1/detected_fields":
+	case strings.HasSuffix(path, "/detected_fields"):
 		return DetectedFieldsOp
-	case path == "/loki/api/v1/patterns":
+	case strings.HasSuffix(path, "/patterns"):
 		return PatternsQueryOp
-	case path == "/loki/api/v1/detected_labels":
+	case strings.HasSuffix(path, "/detected_labels"):
 		return DetectedLabelsOp
+	case strings.HasSuffix(path, "/values"):
+		if strings.Contains(path, "/label") {
+			return LabelNamesOp
+		}
+		if strings.Contains(path, "/detected_field") {
+			return DetectedFieldsOp
+		}
+		return ""
 	default:
 		return ""
 	}
@@ -452,6 +543,12 @@ func getOperation(path string) string {
 func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			QueryMetricsMiddleware(metrics.QueryMetrics),
@@ -491,6 +588,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -514,17 +612,47 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Lo
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
-func NewLimitedTripperware(_ Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, indexStatsTripperware base.Middleware, merger base.Merger, iqo util.IngesterQueryOptions) (base.Middleware, error) {
+func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logger, limits Limits, schema config.SchemaConfig, metrics *Metrics, merger base.Merger, iqo util.IngesterQueryOptions, indexStatsTripperware base.Middleware, metricsNamespace string) (base.Middleware, error) {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
 			NewLimitsMiddleware(limits),
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
 			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
 			SplitByIntervalMiddleware(schema.Configs, WithMaxParallelism(limits, limitedQuerySplits), merger, newDefaultSplitter(limits, iqo), metrics.SplitByMetrics),
-			NewQuerierSizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
+		}
+
+		if cfg.ShardedQueries {
+			queryRangeMiddleware = append(queryRangeMiddleware,
+				NewQueryShardMiddleware(
+					log,
+					schema.Configs,
+					engineOpts,
+					metrics.InstrumentMiddlewareMetrics, // instrumentation is included in the sharding middleware
+					metrics.MiddlewareMapperMetrics.shardMapper,
+					limits,
+					// Too many shards on limited queries results in slowing down this type of query
+					// and overwhelming the frontend, therefore we fix the number of shards to prevent this.
+					32, // 0 is unlimited shards
+					statsHandler,
+					retryNextHandler,
+					cfg.ShardAggregations,
+				),
+			)
+		}
+
+		if cfg.MaxRetries > 0 {
+			queryRangeMiddleware = append(
+				queryRangeMiddleware, base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
+				base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace),
+			)
 		}
 
 		if len(queryRangeMiddleware) > 0 {
@@ -730,6 +858,12 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			QueryMetricsMiddleware(metrics.QueryMetrics),
@@ -771,6 +905,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, log log.Logge
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -852,6 +987,12 @@ func NewInstantMetricTripperware(
 
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		statsHandler := indexStatsTripperware.Wrap(next)
+		retryNextHandler := next
+		if cfg.MaxRetries > 0 {
+			tr := base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics)
+			rm := base.NewRetryMiddleware(log, cfg.MaxRetries, metrics.RetryMiddlewareMetrics, metricsNamespace)
+			retryNextHandler = queryrangebase.MergeMiddlewares(tr, rm).Wrap(next)
+		}
 
 		queryRangeMiddleware := []base.Middleware{
 			StatsCollectorMiddleware(),
@@ -879,6 +1020,7 @@ func NewInstantMetricTripperware(
 					limits,
 					0, // 0 is unlimited shards
 					statsHandler,
+					retryNextHandler,
 					cfg.ShardAggregations,
 				),
 			)
@@ -956,22 +1098,6 @@ func NewVolumeTripperware(cfg Config, log log.Logger, limits Limits, schema conf
 	), nil
 }
 
-func statsTripperware(nextTW base.Middleware) base.Middleware {
-	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
-			cacheMiddlewares := []base.Middleware{
-				StatsCollectorMiddleware(),
-				nextTW,
-			}
-
-			// wrap nextRT with our new middleware
-			return base.MergeMiddlewares(
-				cacheMiddlewares...,
-			).Wrap(next).Do(ctx, r)
-		})
-	})
-}
-
 func volumeRangeTripperware(nextTW base.Middleware) base.Middleware {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
@@ -1042,7 +1168,7 @@ func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema 
 		}
 	}
 
-	tw, err := sharedIndexTripperware(
+	return sharedIndexTripperware(
 		cacheMiddleware,
 		cfg,
 		merger,
@@ -1053,11 +1179,6 @@ func NewIndexStatsTripperware(cfg Config, log log.Logger, limits Limits, schema 
 		schema,
 		metricsNamespace,
 	)
-	if err != nil {
-		return nil, err
-	}
-
-	return statsTripperware(tw), nil
 }
 
 func sharedIndexTripperware(
@@ -1095,5 +1216,20 @@ func sharedIndexTripperware(
 		}
 
 		return base.MergeMiddlewares(middlewares...).Wrap(next)
+	}), nil
+}
+
+// NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
+func NewDetectedFieldsTripperware(
+	limits Limits,
+	_ config.SchemaConfig,
+	limitedTripperware base.Middleware,
+	logTripperware base.Middleware,
+) (base.Middleware, error) {
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		limitedHandler := limitedTripperware.Wrap(next)
+		logHandler := logTripperware.Wrap(next)
+
+		return NewDetectedFieldsHandler(limitedHandler, logHandler, limits)
 	}), nil
 }

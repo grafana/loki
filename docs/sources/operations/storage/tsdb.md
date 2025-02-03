@@ -69,11 +69,11 @@ querier:
 
 ### Limits
 
-We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `limits_config`. This functions the same as the prior `max_query_parallelism` configuration but applies to tsdb queries instead. Since the TSDB index will create many more smaller queries compared to the other index types before it, we've added a separate configuration so they can coexist. This is helpful when transitioning between index types. The default parallelism is `512` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
+We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `limits_config`. This functions the same as the prior `max_query_parallelism` configuration but applies to tsdb queries instead. Since the TSDB index will create many more smaller queries compared to the other index types before it, we've added a separate configuration so they can coexist. This is helpful when transitioning between index types. The default parallelism is `128` which should work well for most cases, but you can extend it globally in the `limits_config` or per-tenant in the `overrides` file as needed.
 
 ### Dynamic Query Sharding
 
-Previously we would statically shard queries based on the index row shards configured [here]({{< relref "../../configure#period_config" >}}).
+Previously we would statically shard queries based on the index row shards configured [here](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#period_config).
 TSDB does Dynamic Query Sharding based on how much data a query is going to be processing.
 We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend]({{< relref "../../get-started/components#query-frontend" >}}) for planning the query.
 Based on our experience from operating many Loki clusters, we have configured TSDB to aim for processing 300-600 MBs of data per query shard.
@@ -81,4 +81,4 @@ This means with TSDB we will be running more, smaller queries.
 
 ### Index Caching not required
 
-TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention]({{< relref "./retention" >}}) or your configured `max_query_lookback` under [limits_config]({{< relref "../../configure#limits_config" >}}). After that, we suggest running without an index cache (it isn't used in TSDB).
+TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/storage/retention/)) or your configured `max_query_lookback` under [limits_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config). After that, we suggest running without an index cache (it isn't used in TSDB).

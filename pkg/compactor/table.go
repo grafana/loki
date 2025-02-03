@@ -198,7 +198,7 @@ func (t *table) done() error {
 		userIDs = append(userIDs, userID)
 	}
 
-	err := concurrency.ForEachJob(t.ctx, len(userIDs), t.uploadConcurrency, func(ctx context.Context, idx int) error {
+	err := concurrency.ForEachJob(t.ctx, len(userIDs), t.uploadConcurrency, func(_ context.Context, idx int) error {
 		return t.indexSets[userIDs[idx]].done()
 	})
 	if err != nil {

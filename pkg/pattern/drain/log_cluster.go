@@ -11,16 +11,18 @@ import (
 )
 
 type LogCluster struct {
-	id       int
-	Size     int
-	Tokens   []string
-	Stringer func([]string) string
-	Chunks   Chunks
+	id         int
+	Size       int
+	Tokens     []string
+	TokenState interface{}
+	Stringer   func([]string, interface{}) string
+
+	Chunks Chunks
 }
 
 func (c *LogCluster) String() string {
 	if c.Stringer != nil {
-		return c.Stringer(c.Tokens)
+		return c.Stringer(c.Tokens, c.TokenState)
 	}
 	return strings.Join(c.Tokens, " ")
 }
@@ -35,8 +37,8 @@ func (c *LogCluster) merge(samples []*logproto.PatternSample) {
 	c.Chunks.merge(samples)
 }
 
-func (c *LogCluster) Iterator(from, through model.Time) iter.Iterator {
-	return c.Chunks.Iterator(c.String(), from, through)
+func (c *LogCluster) Iterator(from, through, step model.Time) iter.Iterator {
+	return c.Chunks.Iterator(c.String(), from, through, step)
 }
 
 func (c *LogCluster) Samples() []*logproto.PatternSample {

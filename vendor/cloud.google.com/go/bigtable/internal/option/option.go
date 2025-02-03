@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"os"
 
+	"cloud.google.com/go/bigtable/internal"
 	"cloud.google.com/go/internal/version"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/option"
@@ -55,6 +56,8 @@ func withGoogleClientInfo() metadata.MD {
 		gax.Version,
 		"grpc",
 		grpc.Version,
+		"gccl",
+		internal.Version,
 	}
 	return metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
 }
@@ -89,7 +92,7 @@ func DefaultClientOptions(endpoint, mtlsEndpoint, scope, userAgent string) ([]op
 		o = []option.ClientOption{option.WithGRPCConn(conn)}
 	} else {
 		o = []option.ClientOption{
-			internaloption.WithDefaultEndpoint(endpoint),
+			internaloption.WithDefaultEndpointTemplate(endpoint),
 			internaloption.WithDefaultMTLSEndpoint(mtlsEndpoint),
 			option.WithScopes(scope),
 			option.WithUserAgent(userAgent),

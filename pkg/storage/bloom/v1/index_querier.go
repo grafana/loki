@@ -7,11 +7,6 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-type SeriesIterator interface {
-	Iterator[*SeriesWithOffset]
-	Reset()
-}
-
 type LazySeriesIter struct {
 	b *Block
 
@@ -136,7 +131,7 @@ func (it *LazySeriesIter) next() bool {
 	return false
 }
 
-func (it *LazySeriesIter) At() *SeriesWithOffset {
+func (it *LazySeriesIter) At() *SeriesWithMeta {
 	return it.curPage.At()
 }
 

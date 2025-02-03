@@ -23,9 +23,12 @@ type Limits interface {
 
 	IncrementDuplicateTimestamps(userID string) bool
 	DiscoverServiceName(userID string) []string
+	DiscoverGenericFields(userID string) map[string][]string
 	DiscoverLogLevels(userID string) bool
+	LogLevelFields(userID string) []string
+	LogLevelFromJSONMaxDepth(userID string) int
 
-	ShardStreams(userID string) *shardstreams.Config
+	ShardStreams(userID string) shardstreams.Config
 	IngestionRateStrategy() string
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
@@ -33,4 +36,10 @@ type Limits interface {
 	MaxStructuredMetadataSize(userID string) int
 	MaxStructuredMetadataCount(userID string) int
 	OTLPConfig(userID string) push.OTLPConfig
+
+	BlockIngestionUntil(userID string) time.Time
+	BlockIngestionStatusCode(userID string) int
+	EnforcedLabels(userID string) []string
+
+	IngestionPartitionsTenantShardSize(userID string) int
 }

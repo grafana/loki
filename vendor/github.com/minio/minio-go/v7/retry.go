@@ -45,7 +45,7 @@ var DefaultRetryCap = time.Second
 
 // newRetryTimer creates a timer with exponentially increasing
 // delays until the maximum retry attempts are reached.
-func (c *Client) newRetryTimer(ctx context.Context, maxRetry int, unit, cap time.Duration, jitter float64) <-chan int {
+func (c *Client) newRetryTimer(ctx context.Context, maxRetry int, baseSleep, maxSleep time.Duration, jitter float64) <-chan int {
 	attemptCh := make(chan int)
 
 	// computes the exponential backoff duration according to
@@ -59,10 +59,10 @@ func (c *Client) newRetryTimer(ctx context.Context, maxRetry int, unit, cap time
 			jitter = MaxJitter
 		}
 
-		// sleep = random_between(0, min(cap, base * 2 ** attempt))
-		sleep := unit * time.Duration(1<<uint(attempt))
-		if sleep > cap {
-			sleep = cap
+		// sleep = random_between(0, min(maxSleep, base * 2 ** attempt))
+		sleep := baseSleep * time.Duration(1<<uint(attempt))
+		if sleep > maxSleep {
+			sleep = maxSleep
 		}
 		if jitter != NoJitter {
 			sleep -= time.Duration(c.random.Float64() * float64(sleep) * jitter)
@@ -112,12 +112,14 @@ func isS3CodeRetryable(s3Code string) (ok bool) {
 
 // List of HTTP status codes which are retryable.
 var retryableHTTPStatusCodes = map[int]struct{}{
+	http.StatusRequestTimeout:      {},
 	429:                            {}, // http.StatusTooManyRequests is not part of the Go 1.5 library, yet
 	499:                            {}, // client closed request, retry. A non-standard status code introduced by nginx.
 	http.StatusInternalServerError: {},
 	http.StatusBadGateway:          {},
 	http.StatusServiceUnavailable:  {},
 	http.StatusGatewayTimeout:      {},
+	520:                            {}, // It is used by Cloudflare as a catch-all response for when the origin server sends something unexpected.
 	// Add more HTTP status codes here.
 }
 
@@ -128,9 +130,10 @@ func isHTTPStatusRetryable(httpStatusCode int) (ok bool) {
 }
 
 // For now, all http Do() requests are retriable except some well defined errors
-func isRequestErrorRetryable(err error) bool {
+func isRequestErrorRetryable(ctx context.Context, err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-		return false
+		// Retry if internal timeout in the HTTP call.
+		return ctx.Err() == nil
 	}
 	if ue, ok := err.(*url.Error); ok {
 		e := ue.Unwrap()

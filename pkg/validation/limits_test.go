@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
+	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logql"
 )
@@ -214,8 +214,10 @@ ruler_remote_write_headers:
   foo: "bar"
 `,
 			exp: Limits{
+				DiscoverGenericFields:   FieldDetectorConfig{},
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"foo": "bar"}},
 				DiscoverServiceName:     []string{},
+				LogLevelFields:          []string{},
 
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
@@ -224,7 +226,8 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 		{
@@ -233,8 +236,9 @@ ruler_remote_write_headers:
 ruler_remote_write_headers:
 `,
 			exp: Limits{
-				DiscoverServiceName: []string{},
-
+				DiscoverGenericFields: FieldDetectorConfig{},
+				DiscoverServiceName:   []string{},
+				LogLevelFields:        []string{},
 				// Rest from new defaults
 				StreamRetention: []StreamRetention{
 					{
@@ -242,7 +246,8 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 		{
@@ -253,7 +258,9 @@ retention_stream:
     selector: '{foo="bar"}'
 `,
 			exp: Limits{
-				DiscoverServiceName: []string{},
+				DiscoverGenericFields: FieldDetectorConfig{},
+				DiscoverServiceName:   []string{},
+				LogLevelFields:        []string{},
 				StreamRetention: []StreamRetention{
 					{
 						Period:   model.Duration(24 * time.Hour),
@@ -264,6 +271,7 @@ retention_stream:
 				// Rest from new defaults
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
 				OTLPConfig:              defaultOTLPConfig,
+				EnforcedLabels:          []string{},
 			},
 		},
 		{
@@ -272,8 +280,10 @@ retention_stream:
 reject_old_samples: true
 `,
 			exp: Limits{
-				RejectOldSamples:    true,
-				DiscoverServiceName: []string{},
+				RejectOldSamples:      true,
+				DiscoverGenericFields: FieldDetectorConfig{},
+				DiscoverServiceName:   []string{},
+				LogLevelFields:        []string{},
 
 				// Rest from new defaults
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
@@ -283,7 +293,8 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 		{
@@ -292,8 +303,11 @@ reject_old_samples: true
 query_timeout: 5m
 `,
 			exp: Limits{
-				DiscoverServiceName: []string{},
-				QueryTimeout:        model.Duration(5 * time.Minute),
+				DiscoverGenericFields: FieldDetectorConfig{},
+				DiscoverServiceName:   []string{},
+				LogLevelFields:        []string{},
+
+				QueryTimeout: model.Duration(5 * time.Minute),
 
 				// Rest from new defaults.
 				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
@@ -303,7 +317,8 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig: defaultOTLPConfig,
+				OTLPConfig:     defaultOTLPConfig,
+				EnforcedLabels: []string{},
 			},
 		},
 	} {
@@ -339,17 +354,111 @@ func TestLimitsValidation(t *testing.T) {
 		},
 		{
 			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown"},
-			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", chunkenc.SupportedEncoding()),
+			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedCodecs()),
 		},
 	} {
 		desc := fmt.Sprintf("%s/%s", tc.limits.DeletionMode, tc.limits.BloomBlockEncoding)
 		t.Run(desc, func(t *testing.T) {
 			tc.limits.TSDBShardingStrategy = logql.PowerOfTwoVersion.String() // hacky but needed for test
+			tc.limits.TSDBMaxBytesPerShard = DefaultTSDBMaxBytesPerShard
 			if tc.expected == nil {
 				require.NoError(t, tc.limits.Validate())
 			} else {
 				require.ErrorContains(t, tc.limits.Validate(), tc.expected.Error())
 			}
+		})
+	}
+}
+
+func Test_PatternIngesterTokenizableJSONFields(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected []string
+	}{
+		{
+			name: "only defaults",
+			yaml: `
+pattern_ingester_tokenizable_json_fields_default: log,message
+`,
+			expected: []string{"log", "message"},
+		},
+		{
+			name: "with append",
+			yaml: `
+pattern_ingester_tokenizable_json_fields_default: log,message
+pattern_ingester_tokenizable_json_fields_append: msg,body
+`,
+			expected: []string{"log", "message", "msg", "body"},
+		},
+		{
+			name: "with delete",
+			yaml: `
+pattern_ingester_tokenizable_json_fields_default: log,message
+pattern_ingester_tokenizable_json_fields_delete: message
+`,
+			expected: []string{"log"},
+		},
+		{
+			name: "with append and delete from default",
+			yaml: `
+pattern_ingester_tokenizable_json_fields_default: log,message
+pattern_ingester_tokenizable_json_fields_append: msg,body
+pattern_ingester_tokenizable_json_fields_delete: message
+`,
+			expected: []string{"log", "msg", "body"},
+		},
+		{
+			name: "with append and delete from append",
+			yaml: `
+pattern_ingester_tokenizable_json_fields_default: log,message
+pattern_ingester_tokenizable_json_fields_append: msg,body
+pattern_ingester_tokenizable_json_fields_delete: body
+`,
+			expected: []string{"log", "message", "msg"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PatternIngesterTokenizableJSONFields("fake")
+			require.ElementsMatch(t, tc.expected, actual)
+		})
+	}
+}
+
+func Test_MetricAggregationEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected bool
+	}{
+		{
+			name: "when true",
+			yaml: `
+metric_aggregation_enabled: true
+`,
+			expected: true,
+		},
+		{
+			name: "when false",
+			yaml: `
+metric_aggregation_enabled: false
+`,
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.MetricAggregationEnabled("fake")
+			require.Equal(t, tc.expected, actual)
 		})
 	}
 }

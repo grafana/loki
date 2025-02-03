@@ -282,14 +282,14 @@ func isHexDigit(r byte) bool {
 // It returns the number of chars in the initial segment of `s`
 // which consist only of chars from `accept`.
 func bytesSpan(s, accept []byte) int {
-	m := make(map[byte]bool)
+	var charset [256]bool
 
 	for _, r := range accept {
-		m[r] = true
+		charset[r] = true
 	}
 
 	for i, r := range s {
-		if !m[r] {
+		if !charset[r] {
 			return i
 		}
 	}

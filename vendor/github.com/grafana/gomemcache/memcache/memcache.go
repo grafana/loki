@@ -619,7 +619,7 @@ func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, erro
 	options := newOptions(opts...)
 
 	var lk sync.Mutex
-	m := make(map[string]*Item)
+	m := make(map[string]*Item, len(keys))
 	addItemToMap := func(it *Item) {
 		lk.Lock()
 		defer lk.Unlock()

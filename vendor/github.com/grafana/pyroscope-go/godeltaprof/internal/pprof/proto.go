@@ -25,6 +25,14 @@ type ProfileBuilderOptions struct {
 	// pre 1.21 - always use runtime.Frame->Function - produces frames with generic types ommited [...]
 	GenericsFrames bool
 	LazyMapping    bool
+	mem            []memMap
+}
+
+func (d *ProfileBuilderOptions) mapping() []memMap {
+	if d.mem == nil || !d.LazyMapping {
+		d.mem = readMapping()
+	}
+	return d.mem
 }
 
 // A profileBuilder writes a profile incrementally from a
@@ -45,8 +53,9 @@ type profileBuilder struct {
 	funcs     map[string]int      // Package path-qualified function name to Function.ID
 	mem       []memMap
 	deck      pcDeck
+	tmplocs   []uint64
 
-	opt ProfileBuilderOptions
+	opt *ProfileBuilderOptions
 }
 
 type memMap struct {
@@ -162,13 +171,13 @@ func (b *profileBuilder) pbValueType(tag int, typ, unit string) {
 	b.pb.endMessage(tag, start)
 }
 
-// pbSample encodes a Sample message to b.pb.
-func (b *profileBuilder) pbSample(values []int64, locs []uint64, labels func()) {
+// Sample encodes a Sample message to b.pb.
+func (b *profileBuilder) Sample(values []int64, locs []uint64, blockSize int64) {
 	start := b.pb.startMessage()
 	b.pb.int64s(tagSample_Value, values)
 	b.pb.uint64s(tagSample_Location, locs)
-	if labels != nil {
-		labels()
+	if blockSize != 0 {
+		b.pbLabel(tagSample_Label, "bytes", "", blockSize)
 	}
 	b.pb.endMessage(tagProfile_Sample, start)
 	b.flush()
@@ -258,11 +267,11 @@ type locInfo struct {
 	firstPCSymbolizeResult symbolizeFlag
 }
 
-// newProfileBuilder returns a new profileBuilder.
+// NewProfileBuilder returns a new profileBuilder.
 // CPU profiling data obtained from the runtime can be added
 // by calling b.addCPUData, and then the eventual profile
 // can be obtained by calling b.finish.
-func newProfileBuilder(w io.Writer, opt ProfileBuilderOptions, mapping []memMap) *profileBuilder {
+func NewProfileBuilder(w io.Writer, opt *ProfileBuilderOptions, stc ProfileConfig) ProfileBuilder {
 	zw := newGzipWriter(w)
 	b := &profileBuilder{
 		w:         w,
@@ -273,13 +282,22 @@ func newProfileBuilder(w io.Writer, opt ProfileBuilderOptions, mapping []memMap)
 		locs:      map[uintptr]locInfo{},
 		funcs:     map[string]int{},
 		opt:       opt,
+		tmplocs:   make([]uint64, 0, 128),
 	}
-	b.mem = mapping
+	b.mem = opt.mapping()
+	b.pbValueType(tagProfile_PeriodType, stc.PeriodType.Typ, stc.PeriodType.Unit)
+	b.pb.int64Opt(tagProfile_Period, stc.Period)
+	for _, st := range stc.SampleType {
+		b.pbValueType(tagProfile_SampleType, st.Typ, st.Unit)
+	}
+	if stc.DefaultSampleType != "" {
+		b.pb.int64Opt(tagProfile_DefaultSampleType, b.stringIndex(stc.DefaultSampleType))
+	}
 	return b
 }
 
-// build completes and returns the constructed profile.
-func (b *profileBuilder) build() {
+// Build completes and returns the constructed profile.
+func (b *profileBuilder) Build() {
 	b.end = time.Now()
 
 	b.pb.int64Opt(tagProfile_TimeNanos, b.start.UnixNano())
@@ -304,7 +322,7 @@ func (b *profileBuilder) build() {
 	b.zw.Close()
 }
 
-// appendLocsForStack appends the location IDs for the given stack trace to the given
+// LocsForStack appends the location IDs for the given stack trace to the given
 // location ID slice, locs. The addresses in the stack are return PCs or 1 + the PC of
 // an inline marker as the runtime traceback function returns.
 //
@@ -313,7 +331,8 @@ func (b *profileBuilder) build() {
 // get the right cumulative sample count.
 //
 // It may emit to b.pb, so there must be no message encoding in progress.
-func (b *profileBuilder) appendLocsForStack(locs []uint64, stk []uintptr) (newLocs []uint64) {
+func (b *profileBuilder) LocsForStack(stk []uintptr) (newLocs []uint64) {
+	locs := b.tmplocs[:0]
 	b.deck.reset()
 
 	// The last frame might be truncated. Recover lost inline frames.
@@ -474,7 +493,7 @@ func (d *pcDeck) tryAdd(pc uintptr, frames []runtime.Frame, symbolizeResult symb
 		if last.Entry != newFrame.Entry { // newFrame is for a different function.
 			return false
 		}
-		if last.Function == newFrame.Function { // maybe recursion.
+		if runtime_FrameSymbolName(&last) == runtime_FrameSymbolName(&newFrame) { // maybe recursion.
 			return false
 		}
 	}
@@ -524,13 +543,14 @@ func (b *profileBuilder) emitLocation() uint64 {
 	b.pb.uint64Opt(tagLocation_Address, uint64(firstFrame.PC))
 	for _, frame := range b.deck.frames {
 		// Write out each line in frame expansion.
-		funcID := uint64(b.funcs[frame.Function])
+		funcName := runtime_FrameSymbolName(&frame)
+		funcID := uint64(b.funcs[funcName])
 		if funcID == 0 {
 			funcID = uint64(len(b.funcs)) + 1
-			b.funcs[frame.Function] = int(funcID)
+			b.funcs[funcName] = int(funcID)
 			var name string
 			if b.opt.GenericsFrames {
-				name = runtime_FrameSymbolName(&frame)
+				name = funcName
 			} else {
 				name = frame.Function
 			}

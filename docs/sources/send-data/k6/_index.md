@@ -9,8 +9,8 @@ weight:  900
 
 # Using k6 for load testing
 
-Grafana [k6](https://k6.io) is a modern load-testing tool.
-Its clean and approachable scripting [API](https://k6.io/docs/javascript-api/)
+Grafana [k6](https://grafana.com/oss/k6/) is a modern load-testing tool.
+Its clean and approachable scripting [API](https://grafana.com/docs/k6/latest/javascript-api/)
 works locally or in the cloud.
 Its configuration makes it flexible.
 
@@ -55,7 +55,7 @@ Use the custom-built k6 binary in the same way as a non-custom k6 binary:
 ```
 
 `test.js` is a Javascript load test.
-Refer to the [k6 documentation](https://k6.io/docs/) to get started.
+Refer to the [k6 documentation](https://grafana.com/docs/k6/latest/) to get started.
 
 ### Scripting API
 
@@ -75,7 +75,7 @@ Classes of this module are:
 | `Client` | client for writing and reading logs from Loki |
 
 `Config` and `Client` must be called on the k6 init context (see
-[Test life cycle](https://k6.io/docs/using-k6/test-life-cycle/)) outside of the
+[Test life cycle](https://grafana.com/docs/k6/latest/using-k6/test-lifecycle/)) outside of the
 default function so the client is only configured once and shared between all
 VU iterations.
 

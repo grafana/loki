@@ -22,7 +22,7 @@ Log data is then compressed and stored in chunks in an object store such as Amaz
 
 A typical Loki-based logging stack consists of 3 components:
 
-- **Agent** - An agent or client, for example Promtail, which is distributed with Loki, or the Grafana Agent. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
+- **Agent** - An agent or client, for example Grafana Alloy, or Promtail, which is distributed with Loki. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
 
 - **Loki** - The main server, responsible for ingesting and storing logs and processing queries. It can be deployed in three different configurations, for more information see [deployment modes]({{< relref "../get-started/deployment-modes" >}}).
   
@@ -32,7 +32,7 @@ A typical Loki-based logging stack consists of 3 components:
 
 - **Scalability** - Loki is designed for scalability, and can scale from as small as running on a Raspberry Pi to ingesting petabytes a day. 
 In its most common deployment, “simple scalable mode”, Loki decouples requests into separate read and write paths, so that you can independently scale them, which leads to flexible large-scale installations that can quickly adapt to meet your workload at any given time.
-If needed, each of Loki's components can also be run as microservices designed to run natively within Kubernetes.
+If needed, each of the Loki components can also be run as microservices designed to run natively within Kubernetes.
 
 - **Multi-tenancy** - Loki allows multiple tenants to share a single Loki instance. With multi-tenancy, the data and requests of each tenant is completely isolated from the others.
 Multi-tenancy is [configured]({{< relref "../operations/multi-tenancy" >}}) by assigning a tenant ID in the agent.
@@ -44,7 +44,7 @@ Similarly, the Loki index, because it indexes only the set of labels, is signifi
 By leveraging object storage as the only data storage mechanism, Loki inherits the reliability and stability of the underlying object store. It also capitalizes on both the cost efficiency and operational simplicity of object storage over other storage mechanisms like locally attached solid state drives (SSD) and hard disk drives (HDD).  
 The compressed chunks, smaller index, and use of low-cost object storage, make Loki less expensive to operate.
 
-- **LogQL, Loki's query language** - [LogQL]({{< relref "../query" >}}) is the query language for Loki.  Users who are already familiar with the Prometheus query language, [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/), will find LogQL familiar and flexible for generating queries against the logs.
+- **LogQL, the Loki query language** - [LogQL]({{< relref "../query" >}}) is the query language for Loki.  Users who are already familiar with the Prometheus query language, [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/), will find LogQL familiar and flexible for generating queries against the logs.
 The language also facilitates the generation of metrics from log data,
 a powerful feature that goes well beyond log aggregation.
 

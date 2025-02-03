@@ -26,6 +26,8 @@ func TestRecvFailDoesntCancelProcess(t *testing.T) {
 
 	listener := bufconn.Listen(bufConnSize)
 	defer listener.Close()
+
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	cc, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
 	}), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -63,6 +65,8 @@ func TestContextCancelStopsProcess(t *testing.T) {
 
 	listener := bufconn.Listen(bufConnSize)
 	defer listener.Close()
+
+	// nolint:staticcheck // grpc.DialContext() has been deprecated; we'll address it before upgrading to gRPC 2.
 	cc, err := grpc.DialContext(ctx, "bufnet", grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
 	}), grpc.WithTransportCredentials(insecure.NewCredentials()))

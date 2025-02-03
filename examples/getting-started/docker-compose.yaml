@@ -1,12 +1,10 @@
 ---
-version: "3"
-
 networks:
   loki:
 
 services:
   read:
-    image: grafana/loki:2.9.2
+    image: grafana/loki:latest
     command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
       - 3101:3100
@@ -27,7 +25,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:2.9.2
+    image: grafana/loki:latest
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
@@ -45,12 +43,14 @@ services:
     networks:
       <<: *loki-dns
 
-  promtail:
-    image: grafana/promtail:2.9.2
+  alloy:
+    image: grafana/alloy:latest
     volumes:
-      - ./promtail-local-config.yaml:/etc/promtail/config.yaml:ro
+      - ./alloy-local-config.yaml:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock
-    command: -config.file=/etc/promtail/config.yaml
+    command:  run --server.http.listen-addr=0.0.0.0:12345 --storage.path=/var/lib/alloy/data /etc/alloy/config.alloy
+    ports:
+      - 12345:12345
     depends_on:
       - gateway
     networks:
@@ -117,6 +117,20 @@ services:
       retries: 5
     networks:
       - loki
+
+  backend:
+    image: grafana/loki:latest
+    volumes:
+      - ./loki-config.yaml:/etc/loki/config.yaml
+    ports:
+      - "3100"
+      - "7946"
+    command: "-config.file=/etc/loki/config.yaml -target=backend -legacy-read-mode=false"
+    depends_on:
+      - gateway
+    networks:
+      - loki
+    
 
   gateway:
     image: nginx:latest
@@ -186,6 +200,7 @@ services:
       retries: 5
     networks:
       - loki
+  
 
   flog:
     image: mingrammer/flog

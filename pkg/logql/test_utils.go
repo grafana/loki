@@ -7,10 +7,12 @@ import (
 	"math/rand"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
@@ -20,6 +22,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
+
+const ConCurrency = 100
 
 func NewMockQuerier(shards int, streams []logproto.Stream) MockQuerier {
 	return MockQuerier{
@@ -45,7 +49,6 @@ func (q MockQuerier) extractOldShard(xs []string) (*index.ShardAnnotation, error
 	}
 
 	return parsed[0].PowerOfTwo, nil
-
 }
 
 func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.EntryIterator, error) {
@@ -113,8 +116,8 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	resByStream := map[string]*logproto.Stream{}
 
 	for _, stream := range in {
+		sp := pipeline.ForStream(mustParseLabels(stream.Labels))
 		for _, e := range stream.Entries {
-			sp := pipeline.ForStream(mustParseLabels(stream.Labels))
 			if l, out, matches := sp.Process(e.Timestamp.UnixNano(), []byte(e.Line)); matches {
 				var s *logproto.Stream
 				var found bool
@@ -137,12 +140,12 @@ func processStream(in []logproto.Stream, pipeline log.Pipeline) []logproto.Strea
 	return streams
 }
 
-func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Series {
+func processSeries(in []logproto.Stream, ex log.SampleExtractor) ([]logproto.Series, error) {
 	resBySeries := map[string]*logproto.Series{}
 
 	for _, stream := range in {
+		exs := ex.ForStream(mustParseLabels(stream.Labels))
 		for _, e := range stream.Entries {
-			exs := ex.ForStream(mustParseLabels(stream.Labels))
 			if f, lbs, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
 				var s *logproto.Series
 				var found bool
@@ -151,6 +154,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 					s = &logproto.Series{Labels: lbs.String(), StreamHash: exs.BaseLabels().Hash()}
 					resBySeries[lbs.String()] = s
 				}
+
 				s.Samples = append(s.Samples, logproto.Sample{
 					Timestamp: e.Timestamp.UnixNano(),
 					Value:     f,
@@ -159,12 +163,13 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 			}
 		}
 	}
+
 	series := []logproto.Series{}
 	for _, s := range resBySeries {
 		sort.Sort(s)
 		series = append(series, *s)
 	}
-	return series
+	return series, nil
 }
 
 func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
@@ -212,7 +217,10 @@ outer:
 		matched = append(matched, stream)
 	}
 
-	filtered := processSeries(matched, extractor)
+	filtered, err := processSeries(matched, extractor)
+	if err != nil {
+		return nil, err
+	}
 
 	return iter.NewTimeRangedSampleIterator(
 		iter.NewMultiSeriesIterator(filtered),
@@ -227,33 +235,29 @@ type MockDownstreamer struct {
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
-func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, _ Accumulator) ([]logqlmodel.Result, error) {
-	results := make([]logqlmodel.Result, 0, len(queries))
-	for _, query := range queries {
-		res, err := m.Query(query.Params).Exec(ctx)
+func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery, acc Accumulator) ([]logqlmodel.Result, error) {
+	mu := sync.Mutex{}
+	err := concurrency.ForEachJob(ctx, len(queries), ConCurrency, func(ctx context.Context, idx int) error {
+		res, err := m.Query(queries[idx].Params).Exec(ctx)
 		if err != nil {
-			return nil, err
+			return err
 		}
-
-		results = append(results, res)
+		mu.Lock()
+		defer mu.Unlock()
+		err = acc.Accumulate(ctx, res, idx)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	if matrix, ok := results[0].Data.(ProbabilisticQuantileMatrix); ok {
-		if len(results) == 1 {
-			return results, nil
-		}
-		for _, m := range results[1:] {
-			matrix, _ = matrix.Merge(m.Data.(ProbabilisticQuantileMatrix))
-		}
-		return []logqlmodel.Result{{Data: matrix}}, nil
-	}
-	return results, nil
+	return acc.Result(), nil
 }
 
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
 func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueField bool) (streams []logproto.Stream) {
-	r := rand.New(rand.NewSource(42))
+	r := rand.New(rand.NewSource(42)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
@@ -277,8 +281,9 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			if valueField {
 				line = fmt.Sprintf("%s value=%f", line, r.Float64()*100.0)
 			}
+			nanos := r.Int63n(time.Second.Nanoseconds())
 			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp: time.Unix(0, int64(j*int(time.Second))),
+				Timestamp: time.Unix(0, int64(j*int(time.Second))+nanos),
 				Line:      line,
 			})
 		}

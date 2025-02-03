@@ -266,3 +266,8 @@ func (m *dropStage) shouldDrop(e Entry) bool {
 func (m *dropStage) Name() string {
 	return StageTypeDrop
 }
+
+// Cleanup implements Stage.
+func (*dropStage) Cleanup() {
+	// no-op
+}

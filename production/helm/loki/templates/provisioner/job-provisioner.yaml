@@ -37,11 +37,9 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.enterprise.provisioner.securityContext | nindent 8 }}
-      {{- if .Values.imagePullSecrets }}
+      {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
-      {{- range .Values.imagePullSecrets }}
-        - name: {{ . }}
-      {{- end }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
         - name: provisioner
@@ -125,6 +123,18 @@ spec:
             {{- end }}
             - name: bootstrap
               mountPath: /bootstrap
+      {{- with .Values.enterprise.provisioner.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterprise.provisioner.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.enterprise.provisioner.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       restartPolicy: OnFailure
       serviceAccount: {{ include "enterprise-logs.provisionerFullname" . }}
       serviceAccountName: {{ include "enterprise-logs.provisionerFullname" . }}

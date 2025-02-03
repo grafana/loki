@@ -6,13 +6,13 @@ weight: 1000
 ---
 # Legacy storage
 
-{{% admonition type="warning" %}}
+{{< admonition type="warning" >}}
 The concepts described on this page are considered legacy and pre-date the single store storage introduced in Loki 2.0.
 The usage of legacy storage for new installations is highly discouraged and documentation is meant for informational
 purposes in case of upgrade to a single store.
-{{% /admonition %}}
+{{< /admonition >}}
 
-The **chunk store** is Loki's long-term data store, designed to support
+The **chunk store** is the Loki long-term data store, designed to support
 interactive querying and sustained writing without the need for background
 maintenance tasks. It consists of:
 
@@ -27,11 +27,11 @@ maintenance tasks. It consists of:
     - [Amazon S3](https://aws.amazon.com/s3)
     - [Google Cloud Storage](https://cloud.google.com/storage/)
 
-{{% admonition type="note" %}}
+{{< admonition type="note" >}}
 Unlike the other core components of Loki, the chunk store is not a separate
 service, job, or process, but rather a library embedded in the two services
 that need to access Loki data: the [ingester]({{< relref "../../get-started/components#ingester" >}}) and [querier]({{< relref "../../get-started/components#querier" >}}).
-{{% /admonition %}}
+{{< /admonition >}}
 
 The chunk store relies on a unified interface to the
 "[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB, Bigtable, and

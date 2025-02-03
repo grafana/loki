@@ -129,7 +129,7 @@ func testResultCanary(t *testing.T, ctx context.Context, metric string, test fun
 	body, err := io.ReadAll(rsp.Body)
 	require.NoError(t, err, "Failed to read response body")
 
-	p, err := textparse.New(body, rsp.Header.Get("Content-Type"), true)
+	p, err := textparse.New(body, rsp.Header.Get("Content-Type"), true, nil)
 	require.NoError(t, err, "Failed to create Prometheus parser")
 
 	for {

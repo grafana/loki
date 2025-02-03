@@ -424,6 +424,13 @@ func EmptyPostings() Postings {
 	return emptyPostings
 }
 
+// IsEmptyPostingsType returns true if the postings are an empty postings list.
+// When this function returns false, it doesn't mean that the postings isn't empty
+// (it could be an empty intersection of two non-empty postings, for example).
+func IsEmptyPostingsType(p Postings) bool {
+	return p == emptyPostings
+}
+
 // ErrPostings returns new postings that immediately error.
 func ErrPostings(err error) Postings {
 	return errPostings{err}
@@ -777,22 +784,22 @@ func (it *ListPostings) Err() error {
 	return nil
 }
 
-// bigEndianPostings implements the Postings interface over a byte stream of
+// BigEndianPostings implements the Postings interface over a byte stream of
 // big endian numbers.
-type bigEndianPostings struct {
+type BigEndianPostings struct {
 	list []byte
 	cur  uint32
 }
 
-func newBigEndianPostings(list []byte) *bigEndianPostings {
-	return &bigEndianPostings{list: list}
+func NewBigEndianPostings(list []byte) *BigEndianPostings {
+	return &BigEndianPostings{list: list}
 }
 
-func (it *bigEndianPostings) At() storage.SeriesRef {
+func (it *BigEndianPostings) At() storage.SeriesRef {
 	return storage.SeriesRef(it.cur)
 }
 
-func (it *bigEndianPostings) Next() bool {
+func (it *BigEndianPostings) Next() bool {
 	if len(it.list) >= 4 {
 		it.cur = binary.BigEndian.Uint32(it.list)
 		it.list = it.list[4:]
@@ -801,7 +808,7 @@ func (it *bigEndianPostings) Next() bool {
 	return false
 }
 
-func (it *bigEndianPostings) Seek(x storage.SeriesRef) bool {
+func (it *BigEndianPostings) Seek(x storage.SeriesRef) bool {
 	if storage.SeriesRef(it.cur) >= x {
 		return true
 	}
@@ -821,7 +828,7 @@ func (it *bigEndianPostings) Seek(x storage.SeriesRef) bool {
 	return false
 }
 
-func (it *bigEndianPostings) Err() error {
+func (it *BigEndianPostings) Err() error {
 	return nil
 }
 

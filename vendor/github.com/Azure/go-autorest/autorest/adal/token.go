@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/url"
@@ -1061,7 +1060,7 @@ func (spt *ServicePrincipalToken) refreshInternal(ctx context.Context, resource 
 			} else if msiSecret.clientResourceID != "" {
 				data.Set("msi_res_id", msiSecret.clientResourceID)
 			}
-			req.Body = ioutil.NopCloser(strings.NewReader(data.Encode()))
+			req.Body = io.NopCloser(strings.NewReader(data.Encode()))
 			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 			break
 		case msiTypeIMDS:
@@ -1096,7 +1095,7 @@ func (spt *ServicePrincipalToken) refreshInternal(ctx context.Context, resource 
 		}
 
 		s := v.Encode()
-		body := ioutil.NopCloser(strings.NewReader(s))
+		body := io.NopCloser(strings.NewReader(s))
 		req.ContentLength = int64(len(s))
 		req.Header.Set(contentType, mimeTypeFormPost)
 		req.Body = body
@@ -1113,7 +1112,7 @@ func (spt *ServicePrincipalToken) refreshInternal(ctx context.Context, resource 
 
 	logger.Instance.WriteResponse(resp, logger.Filter{Body: authBodyFilter})
 	defer resp.Body.Close()
-	rb, err := ioutil.ReadAll(resp.Body)
+	rb, err := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		if err != nil {
@@ -1235,7 +1234,7 @@ func retryForIMDS(sender Sender, req *http.Request, maxAttempts int) (resp *http
 
 	for attempt < maxAttempts {
 		if resp != nil && resp.Body != nil {
-			io.Copy(ioutil.Discard, resp.Body)
+			io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 		}
 		resp, err = sender.Do(req)

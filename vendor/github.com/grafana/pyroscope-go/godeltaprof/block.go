@@ -28,6 +28,7 @@ type BlockProfiler struct {
 	mutex          sync.Mutex
 	runtimeProfile func([]runtime.BlockProfileRecord) (int, bool)
 	scaleProfile   pprof.MutexProfileScaler
+	options        pprof.ProfileBuilderOptions
 }
 
 // NewMutexProfiler creates a new BlockProfiler instance for profiling mutex contention.
@@ -42,11 +43,10 @@ func NewMutexProfiler() *BlockProfiler {
 	return &BlockProfiler{
 		runtimeProfile: runtime.MutexProfile,
 		scaleProfile:   pprof.ScalerMutexProfile,
-		impl: pprof.DeltaMutexProfiler{
-			Options: pprof.ProfileBuilderOptions{
-				GenericsFrames: true,
-				LazyMapping:    true,
-			},
+		impl:           pprof.DeltaMutexProfiler{},
+		options: pprof.ProfileBuilderOptions{
+			GenericsFrames: true,
+			LazyMapping:    true,
 		},
 	}
 }
@@ -55,11 +55,10 @@ func NewMutexProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 	return &BlockProfiler{
 		runtimeProfile: runtime.MutexProfile,
 		scaleProfile:   pprof.ScalerMutexProfile,
-		impl: pprof.DeltaMutexProfiler{
-			Options: pprof.ProfileBuilderOptions{
-				GenericsFrames: options.GenericsFrames,
-				LazyMapping:    options.LazyMappings,
-			},
+		impl:           pprof.DeltaMutexProfiler{},
+		options: pprof.ProfileBuilderOptions{
+			GenericsFrames: options.GenericsFrames,
+			LazyMapping:    options.LazyMappings,
 		},
 	}
 }
@@ -76,11 +75,10 @@ func NewBlockProfiler() *BlockProfiler {
 	return &BlockProfiler{
 		runtimeProfile: runtime.BlockProfile,
 		scaleProfile:   pprof.ScalerBlockProfile,
-		impl: pprof.DeltaMutexProfiler{
-			Options: pprof.ProfileBuilderOptions{
-				GenericsFrames: true,
-				LazyMapping:    true,
-			},
+		impl:           pprof.DeltaMutexProfiler{},
+		options: pprof.ProfileBuilderOptions{
+			GenericsFrames: true,
+			LazyMapping:    true,
 		},
 	}
 }
@@ -89,11 +87,10 @@ func NewBlockProfilerWithOptions(options ProfileOptions) *BlockProfiler {
 	return &BlockProfiler{
 		runtimeProfile: runtime.BlockProfile,
 		scaleProfile:   pprof.ScalerBlockProfile,
-		impl: pprof.DeltaMutexProfiler{
-			Options: pprof.ProfileBuilderOptions{
-				GenericsFrames: options.GenericsFrames,
-				LazyMapping:    options.LazyMappings,
-			},
+		impl:           pprof.DeltaMutexProfiler{},
+		options: pprof.ProfileBuilderOptions{
+			GenericsFrames: options.GenericsFrames,
+			LazyMapping:    options.LazyMappings,
 		},
 	}
 }
@@ -115,5 +112,7 @@ func (d *BlockProfiler) Profile(w io.Writer) error {
 
 	sort.Slice(p, func(i, j int) bool { return p[i].Cycles > p[j].Cycles })
 
-	return d.impl.PrintCountCycleProfile(w, "contentions", "delay", d.scaleProfile, p)
+	stc := pprof.MutexProfileConfig()
+	b := pprof.NewProfileBuilder(w, &d.options, stc)
+	return d.impl.PrintCountCycleProfile(b, d.scaleProfile, p)
 }

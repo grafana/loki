@@ -9,19 +9,23 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           local cfg = self,
 
                           showMultiCluster:: true,
-                          clusterLabel:: $._config.per_cluster_label,
                           clusterMatchers::
                             if cfg.showMultiCluster then
-                              [utils.selector.re(cfg.clusterLabel, '$cluster')]
+                              [utils.selector.re($._config.per_cluster_label, '$cluster')]
                             else
                               [],
 
                           matchers:: {
                             cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
-                            distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
-                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
-                            ingester_zone: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
-                            any_ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
+                            distributor: if $._config.meta_monitoring.enabled
+                            then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
+                            ingester: if $._config.meta_monitoring.enabled
+                            then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
+                            ingester_zone: if $._config.meta_monitoring.enabled
+                            then [utils.selector.re('job', '($namespace)/(partition-ingester-.*|ingester-zone-.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
+                            else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester-zone.*|partition-ingester-.*)'))],
                           },
 
                           local selector(matcherId) =
@@ -34,7 +38,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           distributorSelector:: selector('distributor'),
                           ingesterSelector:: selector('ingester'),
                           ingesterZoneSelector:: selector('ingester_zone'),
-                          anyIngester:: selector('any_ingester'),
                         } +
                         $.dashboard('Loki / Writes', uid='writes')
                         .addCluster()
@@ -45,13 +48,25 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Frontend (cortex_gw)')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push"}' % dashboards['loki-writes.json'].cortexGwSelector)
+                            $.newQpsPanel('loki_request_duration_seconds_count{%s route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs"}' % dashboards['loki-writes.json'].cortexGwSelector)
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.cortexgateway + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
+                              dashboards['loki-writes.json'].clusterMatchers +
+                              dashboards['loki-writes.json'].matchers.cortexgateway +
+                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs')],
+                            )
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_request_duration_seconds',
+                              $.toPrometheusSelector(
+                                dashboards['loki-writes.json'].clusterMatchers +
+                                dashboards['loki-writes.json'].matchers.cortexgateway +
+                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs')],
+                              ),
                             )
                           )
                         )
@@ -59,19 +74,31 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
+                            $.newQpsPanel('loki_request_duration_seconds_count{%s, route=~"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle"}' % std.rstripChars(dashboards['loki-writes.json'].distributorSelector, ','))
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.distributor + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|/httpgrpc.HTTP/Handle')],
+                              dashboards['loki-writes.json'].clusterMatchers +
+                              dashboards['loki-writes.json'].matchers.distributor +
+                              [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle')],
+                            )
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_request_duration_seconds',
+                              $.toPrometheusSelector(
+                                dashboards['loki-writes.json'].clusterMatchers +
+                                dashboards['loki-writes.json'].matchers.distributor +
+                                [utils.selector.re('route', 'api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle')],
+                              ),
                             )
                           )
                         )
                         .addRowIf(
                           $._config.tsdb,
-                          $.row(if $._config.ssd.enabled then 'Write Path' else 'Distributor - Structured Metadata')
+                          $.row((if $._config.ssd.enabled then 'Write Path' else 'Distributor') + ' - Structured Metadata')
                           .addPanel(
                             $.newQueryPanel('Per Total Received Bytes') +
                             $.queryPanel('sum (rate(loki_distributor_structured_metadata_bytes_received_total{%s}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{%s}[$__rate_interval]))' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], 'bytes')
@@ -98,7 +125,19 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.newQueryPanel('Latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester_zone + [utils.selector.eq('route', '/logproto.Pusher/Push')],
+                              dashboards['loki-writes.json'].clusterMatchers +
+                              dashboards['loki-writes.json'].matchers.ingester_zone +
+                              [utils.selector.eq('route', '/logproto.Pusher/Push')],
+                            )
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_request_duration_seconds',
+                              $.toPrometheusSelector(
+                                dashboards['loki-writes.json'].clusterMatchers +
+                                dashboards['loki-writes.json'].matchers.ingester_zone +
+                                [utils.selector.eq('route', '/logproto.Pusher/Push')],
+                              ),
                             )
                           )
                         )
@@ -107,14 +146,25 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Ingester')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector) +
                             $.newQpsPanel('loki_request_duration_seconds_count{%s route="/logproto.Pusher/Push"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('route', '/logproto.Pusher/Push')],
+                              dashboards['loki-writes.json'].clusterMatchers +
+                              dashboards['loki-writes.json'].matchers.ingester +
+                              [utils.selector.eq('route', '/logproto.Pusher/Push')],
+                            )
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_request_duration_seconds',
+                              $.toPrometheusSelector(
+                                dashboards['loki-writes.json'].clusterMatchers +
+                                dashboards['loki-writes.json'].matchers.ingester +
+                                [utils.selector.eq('route', '/logproto.Pusher/Push')]
+                              ),
                             )
                           )
                         )
@@ -123,11 +173,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +
-                            $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].anyIngester)
+                            $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
                           )
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
-                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].anyIngester)
+                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_index_request_duration_seconds',
+                              '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector,
+                            )
                           )
                         )
                         .addRowIf(
@@ -141,12 +197,25 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.newQueryPanel('Latency', 'ms') +
                             utils.latencyRecordingRulePanel(
                               'loki_bigtable_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')]
+                              dashboards['loki-writes.json'].clusterMatchers +
+                              dashboards['loki-writes.json'].matchers.ingester +
+                              [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')],
+                            )
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_bigtable_request_duration_seconds',
+                              $.toPrometheusSelector(
+                                dashboards['loki-writes.json'].clusterMatchers +
+                                dashboards['loki-writes.json'].matchers.ingester +
+                                [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')],
+                              ),
                             )
                           )
                         )
-                        .addRow(
-                          $.row('BoltDB Shipper')
+                        .addRowIf(
+                          !$._config.ssd.enabled,
+                          $.row('BoltDB Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +
                             $.newQpsPanel('loki_boltdb_shipper_request_duration_seconds_count{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
@@ -154,6 +223,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           .addPanel(
                             $.newQueryPanel('Latency', 'ms') +
                             $.latencyPanel('loki_boltdb_shipper_request_duration_seconds', '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector)
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_boltdb_shipper_request_duration_seconds',
+                              '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector,
+                            )
                           )
                         ),
   },

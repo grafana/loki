@@ -20,6 +20,7 @@ const (
 	typeOr
 	typeKeys
 	typeEndKeys
+	typeOmitNil
 )
 
 const (
@@ -120,12 +121,12 @@ func (v *Validate) extractStructCache(current reflect.Value, sName string) *cStr
 	var fld reflect.StructField
 	var tag string
 	var customName string
-	
+
 	for i := 0; i < numFields; i++ {
 
 		fld = typ.Field(i)
 
-		if !fld.Anonymous && len(fld.PkgPath) > 0 {
+		if !v.privateFieldValidation && !fld.Anonymous && len(fld.PkgPath) > 0 {
 			continue
 		}
 
@@ -250,6 +251,10 @@ func (v *Validate) parseFieldTagsRecursive(tag string, fieldName string, alias s
 
 		case omitempty:
 			current.typeof = typeOmitEmpty
+			continue
+
+		case omitnil:
+			current.typeof = typeOmitNil
 			continue
 
 		case structOnlyTag:

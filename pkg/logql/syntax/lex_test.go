@@ -95,6 +95,23 @@ func TestLex(t *testing.T) {
 		{`{foo="bar"} | logfmt --strict code"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PARSER_FLAG, IDENTIFIER}},
 		{`{foo="bar"} | logfmt --keep-empty --strict code="response.code", IPAddress="host"`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PARSER_FLAG, PARSER_FLAG, IDENTIFIER, EQ, STRING, COMMA, IDENTIFIER, EQ, STRING}},
 		{`decolorize`, []int{DECOLORIZE}},
+		{`123`, []int{NUMBER}},
+		{`-123`, []int{SUB, NUMBER}},
+		{`123.45`, []int{NUMBER}},
+		{`-123.45`, []int{SUB, NUMBER}},
+		{`123KB`, []int{BYTES}},
+		// Skip -123KB: Negative bytes are explicitly not supported in the Lexer.
+		{`123ms`, []int{DURATION}},
+		{`-123ms`, []int{DURATION}},
+		{`34 + - 123`, []int{NUMBER, ADD, SUB, NUMBER}},
+		{`34 + -123`, []int{NUMBER, ADD, SUB, NUMBER}},
+		{`34+-123`, []int{NUMBER, ADD, SUB, NUMBER}},
+		{`34-123`, []int{NUMBER, SUB, NUMBER}},
+		{`sum(rate({foo="bar"}[5m])-1 > 30`, []int{SUM, OPEN_PARENTHESIS, RATE, OPEN_PARENTHESIS, OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, RANGE, CLOSE_PARENTHESIS, SUB, NUMBER, GT, NUMBER}},
+		{`{foo="bar"} | logfmt | bytes  < 0B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
+		{`{foo="bar"} | logfmt | bytes  < 1B`, []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE, PIPE, LOGFMT, PIPE, IDENTIFIER, LT, BYTES}},
+		{`0b01`, []int{NUMBER}},
+		{`0b10`, []int{NUMBER}},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			actual := []int{}
@@ -179,6 +196,7 @@ func Test_parseDuration(t *testing.T) {
 		{"1w", WEEK},
 		{"1d", DAY},
 		{"1h15m30.918273645s", time.Hour + 15*time.Minute + 30*time.Second + 918273645*time.Nanosecond},
+		{"-1s", -1 * time.Second},
 	} {
 		actual, err := parseDuration(tc.input)
 

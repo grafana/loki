@@ -36,6 +36,7 @@ type targetGroup struct {
 	httpClientConfig config.HTTPClientConfig
 	client           client.APIClient
 	refreshInterval  model.Duration
+	maxLineSize      int
 
 	mtx     sync.Mutex
 	targets map[string]*Target
@@ -120,6 +121,7 @@ func (tg *targetGroup) addTarget(id string, discoveredLabels model.LabelSet) err
 		discoveredLabels.Merge(tg.defaultLabels),
 		tg.relabelConfig,
 		tg.client,
+		tg.maxLineSize,
 	)
 	if err != nil {
 		return err

@@ -44,12 +44,13 @@ func init() {
 
 type bb struct{}
 
-func (bb) Build(cc balancer.ClientConn, bOpts balancer.BuildOptions) balancer.Balancer {
+func (bb) Build(cc balancer.ClientConn, _ balancer.BuildOptions) balancer.Balancer {
 	b := &ringhashBalancer{
-		cc:       cc,
-		subConns: resolver.NewAddressMap(),
-		scStates: make(map[balancer.SubConn]*subConn),
-		csEvltr:  &connectivityStateEvaluator{},
+		cc:              cc,
+		subConns:        resolver.NewAddressMap(),
+		scStates:        make(map[balancer.SubConn]*subConn),
+		csEvltr:         &connectivityStateEvaluator{},
+		orderedSubConns: make([]*subConn, 0),
 	}
 	b.logger = prefixLogger(b)
 	b.logger.Infof("Created")
@@ -197,6 +198,14 @@ type ringhashBalancer struct {
 
 	resolverErr error // the last error reported by the resolver; cleared on successful resolution
 	connErr     error // the last connection error; cleared upon leaving TransientFailure
+
+	// orderedSubConns contains the list of subconns in the order that addresses
+	// appear from the resolver. Together with lastInternallyTriggeredSCIndex,
+	// this allows triggering connection attempts to all SubConns independently
+	// of the order they appear on the ring. Always in sync with ring and
+	// subConns. The index is reset when addresses change.
+	orderedSubConns                []*subConn
+	lastInternallyTriggeredSCIndex int
 }
 
 // updateAddresses creates new SubConns and removes SubConns, based on the
@@ -214,6 +223,9 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 	var addrsUpdated bool
 	// addrsSet is the set converted from addrs, used for quick lookup.
 	addrsSet := resolver.NewAddressMap()
+
+	b.orderedSubConns = b.orderedSubConns[:0] // reuse the underlying array.
+
 	for _, addr := range addrs {
 		addrsSet.Set(addr, true)
 		newWeight := getWeightAttribute(addr)
@@ -234,6 +246,7 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 			b.state = b.csEvltr.recordTransition(connectivity.Shutdown, connectivity.Idle)
 			b.subConns.Set(addr, scs)
 			b.scStates[sc] = scs
+			b.orderedSubConns = append(b.orderedSubConns, scs)
 			addrsUpdated = true
 		} else {
 			// We have seen this address before and created a subConn for it. If the
@@ -244,6 +257,7 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 			// since *only* the weight attribute has changed, and that does not affect
 			// subConn uniqueness.
 			scInfo := val.(*subConn)
+			b.orderedSubConns = append(b.orderedSubConns, scInfo)
 			if oldWeight := scInfo.weight; oldWeight != newWeight {
 				scInfo.weight = newWeight
 				b.subConns.Set(addr, scInfo)
@@ -264,11 +278,17 @@ func (b *ringhashBalancer) updateAddresses(addrs []resolver.Address) bool {
 			// The entry will be deleted in updateSubConnState.
 		}
 	}
+	if addrsUpdated {
+		b.lastInternallyTriggeredSCIndex = 0
+	}
 	return addrsUpdated
 }
 
 func (b *ringhashBalancer) UpdateClientConnState(s balancer.ClientConnState) error {
-	b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	if b.logger.V(2) {
+		b.logger.Infof("Received update from resolver, balancer config: %+v", pretty.ToJSON(s.BalancerConfig))
+	}
+
 	newConfig, ok := s.BalancerConfig.(*LBConfig)
 	if !ok {
 		return fmt.Errorf("unexpected balancer config with type: %T", s.BalancerConfig)
@@ -399,19 +419,11 @@ func (b *ringhashBalancer) updateSubConnState(sc balancer.SubConn, state balance
 				return
 			}
 		}
-		// Trigger a SubConn (this updated SubConn's next SubConn in the ring)
-		// to connect if nobody is attempting to connect.
-		sc := nextSkippingDuplicatesSubConn(b.ring, scs)
-		if sc != nil {
-			sc.queueConnect()
-			return
-		}
-		// This handles the edge case where we have a single subConn in the
-		// ring. nextSkippingDuplicatesSubCon() would have returned nil. We
-		// still need to ensure that some subConn is attempting to connect, in
-		// order to give the LB policy a chance to move out of
-		// TRANSIENT_FAILURE. Hence, we try connecting on the current subConn.
-		scs.queueConnect()
+
+		// Trigger a SubConn (the next in the order addresses appear in the
+		// resolver) to connect if nobody is attempting to connect.
+		b.lastInternallyTriggeredSCIndex = (b.lastInternallyTriggeredSCIndex + 1) % len(b.orderedSubConns)
+		b.orderedSubConns[b.lastInternallyTriggeredSCIndex].queueConnect()
 	}
 }
 

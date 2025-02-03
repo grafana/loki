@@ -224,7 +224,7 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	s.metrics.versionComparisons.Inc()
 
 	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		level.Debug(logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx), "query", req.GetQuery())
 
 		// NB(owen-d):
 		// If the queriers aren't returning cache numbers, something is likely broken
@@ -235,7 +235,7 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 
 	for _, gen := range genNumbersFromResp {
 		if gen != genNumberFromCtx {
-			level.Debug(logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			level.Debug(logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx), "query", req.GetQuery())
 			s.metrics.versionComparisonFailures.WithLabelValues(reasonMismatch).Inc()
 			return false
 		}

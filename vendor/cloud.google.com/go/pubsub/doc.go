@@ -14,11 +14,11 @@
 
 /*
 Package pubsub provides an easy way to publish and receive Google Cloud Pub/Sub
-messages, hiding the details of the underlying server RPCs.  Google Cloud
+messages, hiding the details of the underlying server RPCs.
 Pub/Sub is a many-to-many, asynchronous messaging system that decouples senders
 and receivers.
 
-More information about Google Cloud Pub/Sub is available at
+More information about Pub/Sub is available at
 https://cloud.google.com/pubsub/docs
 
 See https://godoc.org/cloud.google.com/go for authentication, timeouts,
@@ -26,62 +26,62 @@ connection pooling and similar aspects of this package.
 
 # Publishing
 
-Google Cloud Pub/Sub messages are published to topics. Topics may be created
-using the pubsub package like so:
+Pub/Sub messages are published to topics. A [Topic] may be created
+using [Client.CreateTopic] like so:
 
 	topic, err := pubsubClient.CreateTopic(context.Background(), "topic-name")
 
-Messages may then be published to a topic:
+Messages may then be published to a [Topic]:
 
 	res := topic.Publish(ctx, &pubsub.Message{Data: []byte("payload")})
 
-Publish queues the message for publishing and returns immediately. When enough
+[Topic.Publish] queues the message for publishing and returns immediately. When enough
 messages have accumulated, or enough time has elapsed, the batch of messages is
 sent to the Pub/Sub service.
 
-Publish returns a PublishResult, which behaves like a future: its Get method
+[Topic.Publish] returns a [PublishResult], which behaves like a future: its Get method
 blocks until the message has been sent to the service.
 
-The first time you call Publish on a topic, goroutines are started in the
-background. To clean up these goroutines, call Stop:
+The first time you call [Topic.Publish] on a [Topic], goroutines are started in the
+background. To clean up these goroutines, call [Topic.Stop]:
 
 	topic.Stop()
 
 # Receiving
 
-To receive messages published to a topic, clients create subscriptions
-to the topic. There may be more than one subscription per topic; each message
-that is published to the topic will be delivered to all of its subscriptions.
+To receive messages published to a [Topic], clients create a [Subscription]
+for the topic. There may be more than one subscription per topic ; each message
+that is published to the topic will be delivered to all associated subscriptions.
 
-Subscriptions may be created like so:
+A [Subscription] may be created like so:
 
 	 sub, err := pubsubClient.CreateSubscription(context.Background(), "sub-name",
 		pubsub.SubscriptionConfig{Topic: topic})
 
-Messages are then consumed from a subscription via callback.
+Messages are then consumed from a [Subscription] via callback.
 
 	 err := sub.Receive(context.Background(), func(ctx context.Context, m *Message) {
 		log.Printf("Got message: %s", m.Data)
 		m.Ack()
 	 })
-	 if err != nil {
+	 if err != nil && !errors.Is(err, context.Canceled) {
 		// Handle error.
 	 }
 
 The callback is invoked concurrently by multiple goroutines, maximizing
-throughput. To terminate a call to Receive, cancel its context.
+throughput. To terminate a call to [Subscription.Receive], cancel its context.
 
-Once client code has processed the message, it must call Message.Ack or
-Message.Nack; otherwise the message will eventually be redelivered. Ack/Nack
-MUST be called within the Receive handler function, and not from a goroutine.
+Once client code has processed the [Message], it must call Message.Ack or
+Message.Nack; otherwise the Message will eventually be redelivered. Ack/Nack
+MUST be called within the [Subscription.Receive] handler function, and not from a goroutine.
 Otherwise, flow control (e.g. ReceiveSettings.MaxOutstandingMessages) will
 not be respected, and messages can get orphaned when cancelling Receive.
 
 If the client cannot or doesn't want to process the message, it can call Message.Nack
 to speed redelivery. For more information and configuration options, see
-"Ack Deadlines" below.
+Ack Deadlines below.
 
-Note: It is possible for Messages to be redelivered even if Message.Ack has
+Note: It is possible for a [Message] to be redelivered even if Message.Ack has
 been called. Client code must be robust to multiple deliveries of messages.
 
 Note: This uses pubsub's streaming pull feature. This feature has properties that
@@ -91,7 +91,7 @@ pull method.
 
 # Streams Management
 
-The number of StreamingPull connections can be configured by setting sub.ReceiveSettings.NumGoroutines.
+The number of StreamingPull connections can be configured by setting NumGoroutines in [ReceiveSettings].
 The default value of 10 means the client library will maintain 10 StreamingPull connections.
 This is more than sufficient for most use cases, as StreamingPull connections can handle up to
 10 MB/s https://cloud.google.com/pubsub/quotas#resource_limits. In some cases, using too many streams
@@ -125,10 +125,8 @@ either:
   - The "MaxExtension" duration elapses from the time the message is fetched from
     the server. This defaults to 60m.
 
-Ack deadlines are extended periodically by the client. The initial ack
-deadline given to messages is based on the subscription's AckDeadline property,
-which defaults to 10s. The period between extensions, as well as the
-length of the extension, automatically adjusts based on the time it takes the
+Ack deadlines are extended periodically by the client. The period between extensions,
+as well as the length of the extension, automatically adjusts based on the time it takes the
 subscriber application to ack messages (based on the 99th percentile of ack latency).
 By default, this extension period is capped at 10m, but this limit can be configured
 by the "MaxExtensionPeriod" setting. This has the effect that subscribers that process
@@ -144,15 +142,7 @@ library sends such an extension: the Pub/Sub server would wait the remaining
 2m55s before re-sending the messages out to other subscribers.
 
 Please note that by default, the client library does not use the subscription's
-AckDeadline for the MaxExtension value. To enforce the subscription's AckDeadline,
-set MaxExtension to the subscription's AckDeadline:
-
-	cfg, err := sub.Config(ctx)
-	if err != nil {
-		// TODO: handle err
-	}
-
-	sub.ReceiveSettings.MaxExtension = cfg.AckDeadline
+AckDeadline for the MaxExtension value.
 
 # Slow Message Processing
 
@@ -164,7 +154,7 @@ by firewalls. See the example at https://godoc.org/cloud.google.com/go/pubsub/ap
 
 To use an emulator with this library, you can set the PUBSUB_EMULATOR_HOST
 environment variable to the address at which your emulator is running. This will
-send requests to that address instead of to Cloud Pub/Sub. You can then create
+send requests to that address instead of to Pub/Sub. You can then create
 and use a client as usual:
 
 	// Set PUBSUB_EMULATOR_HOST environment variable.

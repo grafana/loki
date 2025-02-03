@@ -44,12 +44,26 @@ func WrapWithTraces(bkt objstore.Bucket) objstore.InstrumentedBucket {
 	return TracingBucket{bkt: bkt}
 }
 
+func (t TracingBucket) Provider() objstore.ObjProvider { return t.bkt.Provider() }
+
 func (t TracingBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) (err error) {
 	doWithSpan(ctx, "bucket_iter", func(spanCtx context.Context, span opentracing.Span) {
 		span.LogKV("dir", dir)
 		err = t.bkt.Iter(spanCtx, dir, f, options...)
 	})
 	return
+}
+
+func (t TracingBucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) (err error) {
+	doWithSpan(ctx, "bucket_iter_with_attrs", func(spanCtx context.Context, span opentracing.Span) {
+		span.LogKV("dir", dir)
+		err = t.bkt.IterWithAttributes(spanCtx, dir, f, options...)
+	})
+	return
+}
+
+func (t TracingBucket) SupportedIterOptions() []objstore.IterOptionType {
+	return t.bkt.SupportedIterOptions()
 }
 
 func (t TracingBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
@@ -209,8 +223,8 @@ func startSpan(ctx context.Context, operationName string, opts ...opentracing.St
 
 // doWithSpan executes function doFn inside new span with `operationName` name and hooking as child to a span found within given context if any.
 // It uses opentracing.Tracer propagated in context. If no found, it uses noop tracer notification.
-func doWithSpan(ctx context.Context, operationName string, doFn func(context.Context, Span), opts ...opentracing.StartSpanOption) {
-	span, newCtx := startSpan(ctx, operationName, opts...)
+func doWithSpan(ctx context.Context, operationName string, doFn func(context.Context, Span), _ ...opentracing.StartSpanOption) {
+	span, newCtx := startSpan(ctx, operationName)
 	defer span.Finish()
 	doFn(newCtx, span)
 }

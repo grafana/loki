@@ -479,6 +479,33 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.FromStrings("foo", "hello"),
 			[]byte("1"),
 		},
+		{
+			"simple key template",
+			newMustLineFormatter("{{.foo}}"),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte("bar"),
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
+		{
+			"simple key template with space",
+			newMustLineFormatter("{{.foo}}  "),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte("bar  "),
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
+		{
+			"simple key template with missing key",
+			newMustLineFormatter("{{.missing}}"),
+			labels.FromStrings("foo", "bar"),
+			0,
+			[]byte{},
+			labels.FromStrings("foo", "bar"),
+			nil,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -515,6 +542,22 @@ func Test_labelsFormatter_Format(t *testing.T) {
 		in   labels.Labels
 		want labels.Labels
 	}{
+		{
+			"rename label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("baz", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blop", "baz", "blip"),
+		},
+		{
+			"rename and overwrite existing label",
+			mustNewLabelsFormatter([]LabelFmt{
+				NewRenameLabelFmt("bar", "foo"),
+			}),
+			labels.FromStrings("foo", "blip", "bar", "blop"),
+			labels.FromStrings("bar", "blip"),
+		},
 		{
 			"combined with template",
 			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", "{{.foo}} and {{.bar}}")}),
@@ -900,7 +943,7 @@ func TestLabelFormatter_RequiredLabelNames(t *testing.T) {
 }
 
 func TestDecolorizer(t *testing.T) {
-	var decolorizer, _ = NewDecolorizer()
+	decolorizer, _ := NewDecolorizer()
 	tests := []struct {
 		name     string
 		src      []byte
@@ -911,7 +954,7 @@ func TestDecolorizer(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var result, _ = decolorizer.Process(0, tt.src, nil)
+			result, _ := decolorizer.Process(0, tt.src, nil)
 			require.Equal(t, tt.expected, result)
 		})
 	}
@@ -963,7 +1006,6 @@ func TestMapPoolPanic(_ *testing.T) {
 			}
 			smp.Put(m)
 			wgFinished.Done()
-
 		}()
 	}
 	wg.Done()

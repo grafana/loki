@@ -52,6 +52,10 @@
       // cores and will result in scheduling delays.
       concurrency: 4,
 
+      // use_no_constraints is false by default allowing either TopologySpreadConstraints or pod antiAffinity to be configured.
+      // If no_schedule_constraints is set to true, neither of the pod constraints will be applied.
+      no_schedule_constraints: false,
+
       // If use_topology_spread is true, queriers can run on nodes already running queriers but will be
       // spread through the available nodes using a TopologySpreadConstraints with a max skew
       // of topology_spread_max_skew.
@@ -67,12 +71,7 @@
       sharded_queries_enabled: false,
     },
 
-    storage_backend: error 'must define storage_backend as a comma separated list of backends in use,\n    valid entries: dynamodb,s3,gcs,bigtable,cassandra. Typically this would be two entries, e.g. `gcs,bigtable`',
-
-    enabledBackends: [
-      backend
-      for backend in std.split($._config.storage_backend, ',')
-    ],
+    storage_backend: error 'must define storage_backend. valid entries: s3,gcs',
 
     table_prefix: $._config.namespace,
     index_period_hours: 24,  // 1 day
@@ -80,22 +79,15 @@
     ruler_enabled: false,
 
     distributor: {
+      // use_no_constraints is false by default allowing either TopologySpreadConstraints or pod antiAffinity to be configured.
+      // If no_schedule_constraints is set to true, neither of the pod constraints will be applied.
+      no_schedule_constraints: false,
       use_topology_spread: true,
       topology_spread_max_skew: 1,
     },
 
-    // Bigtable variables
-    bigtable_instance: error 'must specify bigtable instance',
-    bigtable_project: error 'must specify bigtable project',
-
     // GCS variables
     gcs_bucket_name: error 'must specify GCS bucket name',
-
-    // Cassandra variables
-    cassandra_keyspace: 'lokiindex',
-    cassandra_username: '',
-    cassandra_password: '',
-    cassandra_addresses: error 'must specify cassandra_addresses',
 
     // S3 variables
     s3_access_key: '',
@@ -104,22 +96,15 @@
     s3_bucket_name: error 'must specify s3_bucket_name',
     s3_path_style: false,
 
-    // Dynamodb variables
-    dynamodb_access_key: '',
-    dynamodb_secret_access_key: '',
-    dynamodb_region: error 'must specify dynamodb_region',
+    // Azure variables
+    azure_container_name: error 'must specify azure_container_name',
+    azure_account_name: error 'must specify azure_account_name',
+    azure_account_key: '',  // secret access key, recommend setting this using environment variable
 
     // DNS Resolver
     dns_resolver: 'kube-dns.kube-system.svc.cluster.local',
 
     client_configs: {
-      dynamo: {
-        dynamodb: {} + if $._config.dynamodb_access_key != '' then {
-          dynamodb_url: 'dynamodb://' + $._config.dynamodb_access_key + ':' + $._config.dynamodb_secret_access_key + '@' + $._config.dynamodb_region,
-        } else {
-          dynamodb_url: 'dynamodb://' + $._config.dynamodb_region,
-        },
-      },
       s3: {
         s3forcepathstyle: $._config.s3_path_style,
       } + (
@@ -129,24 +114,17 @@
           s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
         }
       ),
-      cassandra: {
-        auth: false,
-        addresses: $._config.cassandra_addresses,
-        keyspace: $._config.cassandra_keyspace,
-      } + (
-        if $._config.cassandra_username != '' then {
-          auth: true,
-          username: $._config.cassandra_username,
-          password: $._config.cassandra_password,
-        } else {}
-      ),
-      gcp: {
-        instance: $._config.bigtable_instance,
-        project: $._config.bigtable_project,
-      },
       gcs: {
         bucket_name: $._config.gcs_bucket_name,
       },
+      azure: {
+        container_name: $._config.azure_container_name,
+        account_name: $._config.azure_account_name,
+      } + (
+        if $._config.azure_account_key != '' then {
+          account_key: $._config.azure_account_key,
+        } else {}
+      ),
     },
 
     // December 11 is when we first launched to the public.
@@ -291,35 +269,34 @@
         remote_timeout: '1s',
       },
 
-      storage_config: {
-                        index_queries_cache_config: {
-                          memcached: {
-                            batch_size: 100,
-                            parallelism: 100,
-                          },
-
-                          memcached_client: {
-                            host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
-                            service: 'memcached-client',
-                            consistent_hash: true,
-                          },
-                        },
-                      } +
-                      (if std.count($._config.enabledBackends, 'gcs') > 0 then {
-                         gcs: $._config.client_configs.gcs,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 's3') > 0 then {
-                         aws+: $._config.client_configs.s3,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 'bigtable') > 0 then {
-                         bigtable: $._config.client_configs.gcp,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 'cassandra') > 0 then {
-                         cassandra: $._config.client_configs.cassandra,
-                       } else {}) +
-                      (if std.count($._config.enabledBackends, 'dynamodb') > 0 then {
-                         aws+: $._config.client_configs.dynamo,
-                       } else {}),
+      storage_config:
+        {
+          index_queries_cache_config: {
+            memcached: {
+              batch_size: 100,
+              parallelism: 100,
+            },
+            memcached_client: {
+              host: 'memcached-index-queries.%s.svc.cluster.local' % $._config.namespace,
+              service: 'memcached-client',
+              consistent_hash: true,
+            },
+          },
+        } + (
+          if $._config.storage_backend == 'gcs' then {
+            gcs: $._config.client_configs.gcs,
+          } else {}
+        ) +
+        (
+          if $._config.storage_backend == 's3' then {
+            aws: $._config.client_configs.s3,
+          } else {}
+        ) +
+        (
+          if $._config.storage_backend == 'azure' then {
+            azure: $._config.client_configs.azure,
+          } else {}
+        ),
 
       chunk_store_config: {
         chunk_cache_config: {
@@ -336,25 +313,17 @@
         },
       },
 
-      // Default schema config is boltdb-shipper/gcs, this will need to be overridden for other stores
       schema_config: {
         configs: [{
           from: '2020-10-24',
-          store: 'boltdb-shipper',
-          object_store: 'gcs',
-          schema: 'v11',
+          store: 'tsdb',
+          object_store: $._config.storage_backend,
+          schema: 'v13',
           index: {
             prefix: '%s_index_' % $._config.table_prefix,
             period: '%dh' % $._config.index_period_hours,
           },
         }],
-      },
-
-      table_manager: {
-        retention_period: 0,
-        retention_deletes_enabled: false,
-        poll_interval: '10m',
-        creation_grace_period: '3h',
       },
 
       distributor: {
