@@ -149,9 +149,13 @@ type generator struct {
 	partitionRingKV      kv.Client
 
 	// ring
-	memberlistKV     *memberlist.KVInitService
-	ingesterRing     *ring.Ring
-	ingestLimitsRing *ring.Ring
+	memberlistKV *memberlist.KVInitService
+	ingesterRing *ring.Ring
+
+	// ingest limits ring
+	ingestLimitsRing              *ring.Ring
+	ingestLimitsRingLifecycler    *ring.Lifecycler
+	ingestLimitsLifecyclerWatcher *services.FailureWatcher
 
 	// limits
 	limitsSrv limitsfrontend.IngestLimitsService
@@ -195,11 +199,23 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	cfg.IngestLimitsLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 	cfg.PartitionRingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 
+	// Init KVStore client
+	regKV := kv.RegistererWithKVName(reg, ingester.PartitionRingName+"-watcher")
+	kvClient, err := kv.NewClient(cfg.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), regKV, logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
+	}
+
 	// Init partition ingester ring
 	s.ingesterRing, err = ring.New(cfg.IngesterLifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating ring: %w", err)
 	}
+
+	// Init Partition Ring and Watcher
+	s.partitionRingKV = kvClient
+	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, s.partitionRingKV, logger, reg)
+	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ingesterRing, cfg.IngesterLifecyclerConfig.RingConfig.HeartbeatTimeout)
 
 	// Init ingest limits ring
 	ingestLimitsRingReg := prometheus.WrapRegistererWithPrefix("ingest_limits_ring_", reg)
@@ -208,31 +224,28 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 		return nil, fmt.Errorf("creating ingest limits ring: %w", err)
 	}
 
-	// Init KVStore client
-	regKV := kv.RegistererWithKVName(reg, ingester.PartitionRingName+"-watcher")
-	s.partitionRingKV, err = kv.NewClient(cfg.PartitionRingConfig.KVStore, ring.GetPartitionRingCodec(), regKV, logger)
+	s.ingestLimitsRingLifecycler, err = ring.NewLifecycler(cfg.IngestLimitsLifecyclerConfig, s, limits.RingName, limits.RingKey, true, logger, ingestLimitsRingReg)
 	if err != nil {
-		return nil, fmt.Errorf("creating KV store for partitions ring watcher: %w", err)
+		return nil, fmt.Errorf("creating ingest limits ring lifecycler: %w", err)
 	}
-
-	// Init Partition Ring and Watcher
-	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, s.partitionRingKV, logger, reg)
-	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ingesterRing, cfg.IngesterLifecyclerConfig.RingConfig.HeartbeatTimeout)
+	s.ingestLimitsLifecyclerWatcher = services.NewFailureWatcher()
+	s.ingestLimitsLifecyclerWatcher.WatchService(s.ingestLimitsRingLifecycler)
 
 	// Init limits service
-	limits := &streamMetadataLimits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
+	smLimits := &streamMetadataLimits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
 	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
 		return limitsfrontend.NewIngestLimitsBackendClient(s.cfg.ClientConfig, addr)
 	})
 
-	pool := limitsfrontend.NewIngestLimitsClientPool(ingesterRingName, s.cfg.ClientConfig.PoolConfig, s.ingesterRing, factory, logger)
-	s.limitsSrv = limitsfrontend.NewRingIngestLimitsService(s.ingesterRing, pool, limits, logger, reg)
+	pool := limitsfrontend.NewIngestLimitsClientPool(limits.RingName, s.cfg.ClientConfig.PoolConfig, s.ingestLimitsRing, factory, logger)
+	s.limitsSrv = limitsfrontend.NewRingIngestLimitsService(s.ingestLimitsRing, pool, smLimits, logger, reg)
 
 	// Init services
 	srvs := []services.Service{
 		s.memberlistKV,
-		s.ingesterRing,
 		s.ingestLimitsRing,
+		s.ingestLimitsRingLifecycler,
+		s.ingesterRing,
 		s.partitionRingWatcher,
 		pool,
 	}
@@ -246,6 +259,14 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
+}
+
+// Flush implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
+func (s *generator) Flush() {}
+
+// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
+func (s *generator) TransferOut(_ context.Context) error {
+	return nil
 }
 
 func (s *generator) starting(ctx context.Context) error {
@@ -341,6 +362,8 @@ func (s *generator) running(ctx context.Context) error {
 		return nil
 	case err := <-s.subservicesWatcher.Chan():
 		return errors.Wrap(err, "stream-metadata-generator subservice failed")
+	case err := <-s.ingestLimitsLifecyclerWatcher.Chan():
+		return errors.Wrap(err, "ingest limits ring lifecycler failed")
 	case err := <-errCh:
 		return err
 	}
