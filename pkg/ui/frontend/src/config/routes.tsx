@@ -11,6 +11,8 @@ import Nodes from "@/pages/nodes";
 import { BreadcrumbComponentType } from "use-react-router-breadcrumbs";
 import NodeDetails from "@/pages/node-details";
 import ComingSoon from "@/pages/coming-soon";
+import DeletesPage from "@/pages/deletes";
+import NewDeleteRequest from "@/pages/new-delete";
 
 type RouteObjectWithBreadcrumb = Omit<RouteObject, "children"> & {
   breadcrumb: string | BreadcrumbComponentType;
@@ -72,6 +74,16 @@ export const routes: RouteObjectWithBreadcrumb[] = [
     path: "/tenants",
     breadcrumb: "Tenants",
     element: <ComingSoon />,
+  },
+  {
+    path: "/tenants/deletes",
+    breadcrumb: "Deletes",
+    element: <DeletesPage />,
+  },
+  {
+    path: "/tenants/deletes/new",
+    element: <NewDeleteRequest />,
+    breadcrumb: "New Delete Request",
   },
   {
     path: "/tenants/limits",

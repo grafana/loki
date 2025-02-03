@@ -1,6 +1,7 @@
 package deletion
 
 import (
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -194,4 +195,16 @@ func intervalsOverlap(interval1, interval2 model.Interval) bool {
 	}
 
 	return true
+}
+
+// GetMatchers returns the string representation of the matchers
+func (r *DeleteRequest) GetMatchers() string {
+	if len(r.matchers) == 0 {
+		return ""
+	}
+	var result []string
+	for _, m := range r.matchers {
+		result = append(result, m.String())
+	}
+	return strings.Join(result, ",")
 }

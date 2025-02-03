@@ -10,6 +10,7 @@ import {
   GaugeCircle,
   LayoutDashboard,
   Users,
+  BookOpen,
 } from "lucide-react";
 import { useCluster } from "@/contexts/use-cluster";
 import { getAvailableRings } from "@/lib/ring-utils";
@@ -113,6 +114,10 @@ const baseNavItems: NavItem[] = [
     icon: <Users className="h-4 w-4" />,
     items: [
       {
+        title: "Deletes",
+        url: "/tenants/deletes",
+      },
+      {
         title: "Limits",
         url: "/tenants/limits",
       },
@@ -126,6 +131,12 @@ const baseNavItems: NavItem[] = [
     title: "Rules",
     url: "/rules",
     icon: <GaugeCircle className="h-4 w-4" />,
+    items: [],
+  },
+  {
+    title: "Documentation",
+    url: "https://grafana.com/docs/loki/latest/",
+    icon: <BookOpen className="h-4 w-4" />,
     items: [],
   },
 ];
@@ -169,7 +180,12 @@ const NavItemComponent = React.memo(function NavItemComponent({
         <div className="flex items-center justify-between font-medium">
           <div className="flex items-center gap-2">
             {item.icon}
-            {item.title}
+            <Link
+              to={`${item.url}`}
+              target={item.url.includes("http") ? "_blank" : "_self"}
+            >
+              {item.title}
+            </Link>
           </div>
           {item.items && item.items.length > 0 && (
             <ChevronDown

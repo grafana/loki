@@ -88,7 +88,18 @@ export const clusterSupportService = (
   );
 };
 
-const RingServices: Record<
+export const ServiceNames = {
+  ingester: "ingester",
+  "partition-ring": "partition-ring",
+  distributor: "distributor",
+  "pattern-ingester": "pattern-ingester",
+  "query-scheduler": "query-scheduler",
+  compactor: "compactor",
+  ruler: "ruler",
+  "index-gateway": "index-gateway",
+};
+
+export const RingServices: Record<
   string,
   { title: string; ringName: RingType; ringPath: string; needsTokens: boolean }
 > = {
