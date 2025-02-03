@@ -3372,8 +3372,16 @@ minio:
   # https://docs.min.io/docs/minio-erasure-code-quickstart-guide
   # Since we only have 1 replica, that means 2 drives must be used.
   drivesPerNode: 2
-  rootUser: enterprise-logs
-  rootPassword: supersecret
+  # root user; not used for GEL authentication
+  rootUser: root-user
+  rootPassword: supersecretpassword
+  # The first user in the list below is used for Loki/GEL authentication.
+  # You can add additional users if desired; they will not impact Loki/GEL.
+  # `accessKey` = username, `secretKey` = password
+  users:
+    - accessKey: logs-user
+      secretKey: supersecretpassword
+      policy: readwrite
   buckets:
     - name: chunks
       policy: none
@@ -3430,7 +3438,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.29.0
+    tag: 1.29.1
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -3444,7 +3452,12 @@ sidecar:
   #     cpu: 50m
   #     memory: 50Mi
   # -- The SecurityContext for the sidecar.
-  securityContext: {}
+  securityContext:
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    allowPrivilegeEscalation: false
   # -- Set to true to skip tls verification for kube api calls.
   skipTlsVerify: false
   # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.

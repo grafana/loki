@@ -1,8 +1,10 @@
 package logs
 
 import (
+	"cmp"
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/grafana/loki/pkg/push"
@@ -31,7 +33,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 				continue
 			}
 
-			for result := range iterSection(ctx, logsDec, section) {
+			for result := range IterSection(ctx, logsDec, section) {
 				if result.Err() != nil || !yield(result.MustValue()) {
 					return result.Err()
 				}
@@ -42,7 +44,7 @@ func Iter(ctx context.Context, dec encoding.Decoder) result.Seq[Record] {
 	})
 }
 
-func iterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.SectionInfo) result.Seq[Record] {
+func IterSection(ctx context.Context, dec encoding.LogsDecoder, section *filemd.SectionInfo) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
 		// We need to pull the columns twice: once from the dataset implementation
 		// and once for the metadata to retrieve column type.
@@ -121,6 +123,16 @@ func decodeRecord(columns []*logsmd.ColumnDesc, row dataset.Row) (Record, error)
 			record.Line = columnValue.String()
 		}
 	}
+
+	// Metadata is originally sorted in received order; we sort it by key
+	// per-record since it might not be obvious why keys appear in a certain
+	// order.
+	slices.SortFunc(record.Metadata, func(a, b push.LabelAdapter) int {
+		if res := cmp.Compare(a.Name, b.Name); res != 0 {
+			return res
+		}
+		return cmp.Compare(a.Value, b.Value)
+	})
 
 	return record, nil
 }

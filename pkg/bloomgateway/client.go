@@ -20,14 +20,10 @@ import (
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/queue"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/discovery"
 )
 
@@ -70,10 +66,6 @@ type ClientConfig struct {
 	// GRPCClientConfig configures the gRPC connection between the Bloom Gateway client and the server.
 	GRPCClientConfig grpcclient.Config `yaml:"grpc_client_config"`
 
-	// Cache configures the cache used to store the results of the Bloom Gateway server.
-	Cache        CacheConfig `yaml:"results_cache,omitempty"`
-	CacheResults bool        `yaml:"cache_results"`
-
 	// Client sharding using DNS disvovery and jumphash
 	Addresses string `yaml:"addresses,omitempty"`
 }
@@ -86,9 +78,7 @@ func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
 // RegisterFlagsWithPrefix registers flags for the Bloom Gateway client configuration with a common prefix.
 func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+"grpc", f)
-	i.Cache.RegisterFlagsWithPrefix(prefix+"cache.", f)
 	i.PoolConfig.RegisterFlagsWithPrefix(prefix+"pool.", f)
-	f.BoolVar(&i.CacheResults, prefix+"cache_results", false, "Flag to control whether to cache bloom gateway client requests/responses.")
 	f.StringVar(&i.Addresses, prefix+"addresses", "", "Comma separated addresses list in DNS Service Discovery format: https://grafana.com/docs/mimir/latest/configure/about-dns-service-discovery/#supported-discovery-modes")
 }
 
@@ -99,12 +89,6 @@ func (i *ClientConfig) Validate() error {
 
 	if err := i.PoolConfig.Validate(); err != nil {
 		return errors.Wrap(err, "pool config")
-	}
-
-	if i.CacheResults {
-		if err := i.Cache.Validate(); err != nil {
-			return errors.Wrap(err, "cache config")
-		}
 	}
 
 	if i.Addresses == "" {
@@ -136,14 +120,7 @@ type GatewayClient struct {
 	dnsProvider *discovery.DNS
 }
 
-func NewClient(
-	cfg ClientConfig,
-	limits Limits,
-	registerer prometheus.Registerer,
-	logger log.Logger,
-	cacheGen resultscache.CacheGenNumberLoader,
-	retentionEnabled bool,
-) (*GatewayClient, error) {
+func NewClient(cfg ClientConfig, registerer prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
 	metrics := newClientMetrics(registerer)
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(metrics.requestLatency))
@@ -151,34 +128,11 @@ func NewClient(
 		return nil, err
 	}
 
-	var c cache.Cache
-	if cfg.CacheResults {
-		c, err = cache.New(cfg.Cache.CacheConfig, registerer, logger, stats.BloomFilterCache, constants.Loki)
-		if err != nil {
-			return nil, errors.Wrap(err, "new bloom gateway cache")
-		}
-		if cfg.Cache.Compression == "snappy" {
-			c = cache.NewSnappy(c, logger)
-		}
-	}
-
 	clientFactory := func(addr string) (ringclient.PoolClient, error) {
 		pool, err := NewBloomGatewayGRPCPool(addr, dialOpts)
 		if err != nil {
 			return nil, errors.Wrap(err, "new bloom gateway grpc pool")
 		}
-
-		if cfg.CacheResults {
-			pool.BloomGatewayClient = NewBloomGatewayClientCacheMiddleware(
-				logger,
-				pool.BloomGatewayClient,
-				c,
-				limits,
-				cacheGen,
-				retentionEnabled,
-			)
-		}
-
 		return pool, nil
 	}
 

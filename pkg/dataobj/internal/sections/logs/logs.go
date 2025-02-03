@@ -3,20 +3,20 @@
 package logs
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
 // A Record is an individual log record within the logs section.
@@ -27,117 +27,147 @@ type Record struct {
 	Line      string
 }
 
+// Options configures the behavior of the logs section.
+type Options struct {
+	// PageSizeHint is the size of pages to use when encoding the logs section.
+	PageSizeHint int
+
+	// BufferSize is the size of the buffer to use when accumulating log records.
+	BufferSize int
+
+	// SectionSizeHint is the size of the section to use when encoding the logs
+	// section. If the section size is exceeded, multiple sections will be
+	// created.
+	SectionSize int
+}
+
 // Logs accumulate a set of [Record]s within a data object.
 type Logs struct {
-	rows     int
-	pageSize int
+	metrics *Metrics
+	opts    Options
 
-	streamIDs  *dataset.ColumnBuilder
-	timestamps *dataset.ColumnBuilder
+	// Sorting the entire set of logs is very expensive, so we need to break it
+	// up into smaller pieces:
+	//
+	// 1. Records are accumulated in memory up to BufferSize; the current size is
+	//    tracked by recordsSize.
+	//
+	// 2. Once the buffer is full, records are sorted and flushed to smaller
+	//    [table]s called stripes.
+	//
+	// 3. Once the set of stripes reaches SectionSize, they are merged together
+	//    into a final table that will be encoded as a single section.
+	//
+	// At the end of this process, there will be a set of sections that are
+	// encoded separately.
 
-	metadatas      []*dataset.ColumnBuilder
-	metadataLookup map[string]int // map of metadata key to index in metadatas
+	records     []Record // Buffered records to flush to a group.
+	recordsSize int
 
-	messages *dataset.ColumnBuilder
+	stripes      []*table // In-progress section; flushed with [mergeTables] into a single table.
+	stripeBuffer tableBuffer
+	stripesSize  int // Estimated byte size of all elements in stripes.
+
+	sections      []*table // Completed sections.
+	sectionBuffer tableBuffer
 }
 
 // Nwe creates a new Logs section. The pageSize argument specifies how large
 // pages should be.
-func New(pageSize int) *Logs {
-	// We control the Value/Encoding tuple so creating column builders can't
-	// fail; if it does, we're left in an unrecoverable state where nothing can
-	// be encoded properly so we panic.
-	streamIDs, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
-	})
-	if err != nil {
-		panic(fmt.Sprintf("creating stream ID column: %v", err))
-	}
-
-	timestamps, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
-	})
-	if err != nil {
-		panic(fmt.Sprintf("creating timestamp column: %v", err))
-	}
-
-	messages, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_STRING,
-		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
-	})
-	if err != nil {
-		panic(fmt.Sprintf("creating message column: %v", err))
+func New(metrics *Metrics, opts Options) *Logs {
+	if metrics == nil {
+		metrics = NewMetrics()
 	}
 
 	return &Logs{
-		pageSize: pageSize,
-
-		streamIDs:  streamIDs,
-		timestamps: timestamps,
-
-		metadataLookup: make(map[string]int),
-
-		messages: messages,
+		metrics: metrics,
+		opts:    opts,
 	}
 }
 
 // Append adds a new entry to the set of Logs.
 func (l *Logs) Append(entry Record) {
-	// Sort metadata to ensure consistent encoding. Metadata is sorted by key.
-	// While keys must be unique, we sort by value if two keys match; this
-	// ensures that the same value always gets encoded for duplicate keys.
-	slices.SortFunc(entry.Metadata, func(a, b push.LabelAdapter) int {
-		if res := cmp.Compare(a.Name, b.Name); res != 0 {
-			return res
-		}
-		return cmp.Compare(a.Value, b.Value)
-	})
+	l.metrics.appendsTotal.Inc()
 
-	// We ignore the errors below; they only fail if given out-of-order data
-	// (where the row number is less than the previous row number), which can't
-	// ever happen here.
+	l.records = append(l.records, entry)
+	l.recordsSize += recordSize(entry)
 
-	_ = l.streamIDs.Append(l.rows, dataset.Int64Value(entry.StreamID))
-	_ = l.timestamps.Append(l.rows, dataset.Int64Value(entry.Timestamp.UnixNano()))
-	_ = l.messages.Append(l.rows, dataset.StringValue(entry.Line))
-
-	for _, m := range entry.Metadata {
-		col := l.getMetadataColumn(m.Name)
-		_ = col.Append(l.rows, dataset.StringValue(m.Value))
+	if l.recordsSize >= l.opts.BufferSize {
+		l.flushRecords()
 	}
 
-	l.rows++
+	l.metrics.recordCount.Inc()
 }
 
-func (l *Logs) getMetadataColumn(key string) *dataset.ColumnBuilder {
-	idx, ok := l.metadataLookup[key]
-	if !ok {
-		col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
-			PageSizeHint: l.pageSize,
-			Value:        datasetmd.VALUE_TYPE_STRING,
-			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
-		})
-		if err != nil {
-			// We control the Value/Encoding tuple so this can't fail; if it does,
-			// we're left in an unrecoverable state where nothing can be encoded
-			// properly so we panic.
-			panic(fmt.Sprintf("creating metadata column: %v", err))
-		}
+func recordSize(record Record) int {
+	var size int
 
-		l.metadatas = append(l.metadatas, col)
-		l.metadataLookup[key] = len(l.metadatas) - 1
-		return col
+	size++    // One byte per stream ID (for uvarint).
+	size += 8 // Eight bytes for timestamp.
+	for _, metadata := range record.Metadata {
+		size += len(metadata.Value)
 	}
-	return l.metadatas[idx]
+	size += len(record.Line)
+
+	return size
+}
+
+func (l *Logs) flushRecords() {
+	if len(l.records) == 0 {
+		return
+	}
+
+	// Our stripes are intermediate tables that don't need to have the best
+	// compression. To maintain high throughput on appends, we use the fastest
+	// compression for a stripe. Better compression is then used for sections.
+	compressionOpts := dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
+	}
+
+	stripe := buildTable(&l.stripeBuffer, l.opts.PageSizeHint, compressionOpts, l.records)
+	l.stripes = append(l.stripes, stripe)
+	l.stripesSize += stripe.Size()
+
+	l.records = sliceclear.Clear(l.records)
+	l.recordsSize = 0
+
+	if l.stripesSize >= l.opts.SectionSize {
+		l.flushSection()
+	}
+}
+
+func (l *Logs) flushSection() {
+	if len(l.stripes) == 0 {
+		return
+	}
+
+	compressionOpts := dataset.CompressionOptions{
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
+	}
+
+	section, err := mergeTables(&l.sectionBuffer, l.opts.PageSizeHint, compressionOpts, l.stripes)
+	if err != nil {
+		// We control the input to mergeTables, so this should never happen.
+		panic(fmt.Sprintf("merging tables: %v", err))
+	}
+
+	l.sections = append(l.sections, section)
+
+	l.stripes = sliceclear.Clear(l.stripes)
+	l.stripesSize = 0
+}
+
+// EstimatedSize returns the estimated size of the Logs section in bytes.
+func (l *Logs) EstimatedSize() int {
+	var size int
+
+	size += l.recordsSize
+	size += l.stripesSize
+	for _, section := range l.sections {
+		size += section.Size()
+	}
+
+	return size
 }
 
 // EncodeTo encodes the set of logs to the provided encoder. Before encoding,
@@ -148,26 +178,33 @@ func (l *Logs) getMetadataColumn(key string) *dataset.ColumnBuilder {
 //
 // [Logs.Reset] is invoked after encoding, even if encoding fails.
 func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
+	timer := prometheus.NewTimer(l.metrics.encodeSeconds)
+	defer timer.ObserveDuration()
+
 	defer l.Reset()
 
-	// TODO(rfratto): handle one section becoming too large. This can happen when
-	// the number of columns is very wide, due to a lot of metadata columns.
-	// There are two approaches to handle this:
+	// Flush any remaining buffered data.
+	l.flushRecords()
+	l.flushSection()
+
+	// TODO(rfratto): handle individual sections having oversized metadata. This
+	// can happen when the number of columns is very wide, due to a lot of
+	// metadata columns.
 	//
-	// 1. Split streams into multiple sections.
-	// 2. Move some columns into an aggregated column which holds multiple label
-	//    keys and values.
-
-	// Create a sorted dataset for us to encode.
-	dset, err := l.sort()
-	if err != nil {
-		return fmt.Errorf("sorting logs: %w", err)
-	}
-	cols, err := result.Collect(dset.ListColumns(context.Background())) // dset is in memory; "real" context not needed.
-	if err != nil {
-		return fmt.Errorf("listing columns: %w", err)
+	// As we're already splitting data into separate sections, the best solution
+	// for this is to aggregate the lowest cardinality columns into a combined
+	// column. This will reduce the number of columns in the section and thus the
+	// metadata size.
+	for _, section := range l.sections {
+		if err := l.encodeSection(enc, section); err != nil {
+			return fmt.Errorf("encoding section: %w", err)
+		}
 	}
 
+	return nil
+}
+
+func (l *Logs) encodeSection(enc *encoding.Encoder, section *table) error {
 	logsEnc, err := enc.OpenLogs()
 	if err != nil {
 		return fmt.Errorf("opening logs section: %w", err)
@@ -178,58 +215,20 @@ func (l *Logs) EncodeTo(enc *encoding.Encoder) error {
 		_ = logsEnc.Discard()
 	}()
 
-	// Encode our columns. The slice order here *must* match the order in
-	// [Logs.sort]!
 	{
-		errs := make([]error, 0, len(cols))
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, cols[0]))
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, cols[1]))
-		for _, mdCol := range cols[2 : len(cols)-1] {
-			errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_METADATA, mdCol))
+		errs := make([]error, 0, len(section.Metadatas)+3)
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_STREAM_ID, section.StreamID))
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_TIMESTAMP, section.Timestamp))
+		for _, md := range section.Metadatas {
+			errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_METADATA, md))
 		}
-		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_MESSAGE, cols[len(cols)-1]))
+		errs = append(errs, encodeColumn(logsEnc, logsmd.COLUMN_TYPE_MESSAGE, section.Message))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
 	}
 
 	return logsEnc.Commit()
-}
-
-func (l *Logs) sort() (dataset.Dataset, error) {
-	// Our columns are ordered as follows:
-	//
-	// 1. StreamID
-	// 2. Timestamp
-	// 3. Metadata columns
-	// 4. Message
-	//
-	// Do *not* change this order without updating [Logs.EncodeTo]!
-	//
-	// TODO(rfratto): find a clean way to decorate columns with additional
-	// metadata so we don't have to rely on order.
-	columns := make([]*dataset.MemColumn, 0, 3+len(l.metadatas))
-
-	// Flush never returns an error so we ignore it here to keep the code simple.
-	//
-	// TODO(rfratto): remove error return from Flush to clean up code.
-	streamID, _ := l.streamIDs.Flush()
-	timestamp, _ := l.timestamps.Flush()
-	columns = append(columns, streamID, timestamp)
-
-	for _, mdBuilder := range l.metadatas {
-		mdBuilder.Backfill(l.rows)
-
-		mdColumn, _ := mdBuilder.Flush()
-		columns = append(columns, mdColumn)
-	}
-
-	messages, _ := l.messages.Flush()
-	columns = append(columns, messages)
-
-	// dset is in memory, so we don't need a "real" context in dataset.Sort.
-	dset := dataset.FromMemory(columns)
-	return dataset.Sort(context.Background(), dset, []dataset.Column{streamID, timestamp}, l.pageSize)
 }
 
 func encodeColumn(enc *encoding.LogsEncoder, columnType logsmd.ColumnType, column dataset.Column) error {
@@ -270,11 +269,15 @@ func encodeColumn(enc *encoding.LogsEncoder, columnType logsmd.ColumnType, colum
 
 // Reset resets all state, allowing Logs to be reused.
 func (l *Logs) Reset() {
-	l.rows = 0
+	l.metrics.recordCount.Set(0)
 
-	l.streamIDs.Reset()
-	l.timestamps.Reset()
-	l.metadatas = l.metadatas[:0]
-	clear(l.metadataLookup)
-	l.messages.Reset()
+	l.records = sliceclear.Clear(l.records)
+	l.recordsSize = 0
+
+	l.stripes = sliceclear.Clear(l.stripes)
+	l.stripeBuffer.Reset()
+	l.stripesSize = 0
+
+	l.sections = sliceclear.Clear(l.sections)
+	l.sectionBuffer.Reset()
 }

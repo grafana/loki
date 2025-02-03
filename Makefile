@@ -1,4 +1,4 @@
-#     ______           ____                     __          __   _ 
+#     ______           ____                     __          __   _
 #    / ____/________ _/ __/___ _____  ____ _   / /   ____  / /__(_)
 #   / / __/ ___/ __ `/ /_/ __ `/ __ \/ __ `/  / /   / __ \/ //_/ /
 #  / /_/ / /  / /_/ / __/ /_/ / / / / /_/ /  / /___/ /_/ / ,< / /
@@ -18,8 +18,8 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.23.1
-BUILD_IMAGE_TAG    := 0.34.3
+GO_VERSION         := 1.23.5
+BUILD_IMAGE_TAG    := 0.34.4
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -66,7 +66,7 @@ OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
 # OCI (Docker) setup
 OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
-OCI_BUILD_ARGS := --build-arg GO_VERSION=$(GO_VERSION) --build-arg BUILD_IMAGE=$(BUILD_IMAGE)
+OCI_BUILD_ARGS := --build-arg GO_VERSION=$(GO_VERSION) --build-arg BUILD_IMAGE=$(BUILD_IMAGE) --build-arg IMAGE_TAG=$(IMAGE_TAG)
 OCI_PUSH_ARGS  := -o type=registry
 OCI_PUSH       := docker push
 OCI_TAG        := docker tag
@@ -199,6 +199,8 @@ cmd/loki/loki:
 cmd/loki/loki-debug:
 	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o $@ ./$(@D)
 
+ui-assets:
+	make -C pkg/dataobj/explorer/ui build
 ###############
 # Loki-Canary #
 ###############
@@ -610,7 +612,7 @@ loki-local-image: ## build the loki docker image locally (set LOCAL_ARCH=linux/a
 
 # Canary image
 loki-canary-image: ## build the canary docker image
-	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
+	$(OCI_BUILD) -t $(CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
 loki-canary-boringcrypto-image:
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
 
@@ -836,7 +838,7 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
 	pushd $(CURDIR)/.github && jb update && popd
-	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) .github/release-workflows.jsonnet
+	jsonnet -SJ .github/vendor -m .github/workflows -V BUILD_IMAGE_VERSION=$(BUILD_IMAGE_TAG) -V GO_VERSION=$(GO_VERSION) .github/release-workflows.jsonnet
 endif
 
 .PHONY: release-workflows-check

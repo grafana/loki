@@ -26,7 +26,7 @@ func Test(t *testing.T) {
 		{labels.FromStrings("cluster", "test", "app", "foo"), time.Unix(9, 0).UTC()},
 	}
 
-	tracker := streams.New(1024)
+	tracker := streams.New(nil, 1024)
 	for _, tc := range tt {
 		tracker.Record(tc.Labels, tc.Time)
 	}
@@ -51,7 +51,7 @@ func Test(t *testing.T) {
 		},
 	}
 
-	dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf))
+	dec := encoding.ReaderAtDecoder(bytes.NewReader(buf), int64(len(buf)))
 
 	var actual []streams.Stream
 	for result := range streams.Iter(context.Background(), dec) {

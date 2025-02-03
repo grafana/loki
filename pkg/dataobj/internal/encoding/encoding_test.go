@@ -5,6 +5,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
@@ -79,8 +80,16 @@ func TestStreams(t *testing.T) {
 		require.NoError(t, enc.Flush())
 	})
 
+	t.Run("Metrics", func(t *testing.T) {
+		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+
+		metrics := encoding.NewMetrics()
+		require.NoError(t, metrics.Register(prometheus.NewRegistry()))
+		require.NoError(t, metrics.Observe(context.Background(), dec))
+	})
+
 	t.Run("Decode", func(t *testing.T) {
-		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf.Bytes()))
+		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 		sections, err := dec.Sections(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, sections, 1)
@@ -152,7 +161,7 @@ func TestLogs(t *testing.T) {
 	})
 
 	t.Run("Decode", func(t *testing.T) {
-		dec := encoding.ReadSeekerDecoder(bytes.NewReader(buf.Bytes()))
+		dec := encoding.ReaderAtDecoder(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
 		sections, err := dec.Sections(context.TODO())
 		require.NoError(t, err)
 		require.Len(t, sections, 1)

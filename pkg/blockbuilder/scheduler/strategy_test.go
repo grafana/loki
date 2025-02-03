@@ -7,16 +7,16 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
-	"github.com/twmb/franz-go/pkg/kadm"
 
 	"github.com/grafana/loki/v3/pkg/blockbuilder/types"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
 type mockOffsetReader struct {
-	groupLag map[int32]kadm.GroupMemberLag
+	groupLag map[int32]partition.Lag
 }
 
-func (m *mockOffsetReader) GroupLag(_ context.Context, _ int64) (map[int32]kadm.GroupMemberLag, error) {
+func (m *mockOffsetReader) GroupLag(_ context.Context, _ int64) (map[int32]partition.Lag, error) {
 	return m.groupLag, nil
 }
 
@@ -34,22 +34,19 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 		recordCount      int64
 		minOffsetsPerJob int
 		expectedJobs     []*JobWithMetadata
-		groupLag         map[int32]kadm.GroupMemberLag
+		groupLag         map[int32]partition.Lag
 	}{
 		{
 			name:             "single partition, single job",
 			recordCount:      100,
 			minOffsetsPerJob: 0,
-			groupLag: map[int32]kadm.GroupMemberLag{
-				0: {
-					Commit: kadm.Offset{
-						At: 100,
-					},
-					End: kadm.ListedOffset{
-						Offset: 150,
-					},
-					Partition: 0,
-				},
+			groupLag: map[int32]partition.Lag{
+				0: partition.NewLag(
+					50,  // startOffset (committed offset)
+					150, // endOffset
+					100, // committedOffset
+					50,  // rawLag (endOffset - committedOffset)
+				),
 			},
 			expectedJobs: []*JobWithMetadata{
 				NewJobWithMetadata(
@@ -62,16 +59,13 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			name:             "single partition, multiple jobs",
 			recordCount:      50,
 			minOffsetsPerJob: 0,
-			groupLag: map[int32]kadm.GroupMemberLag{
-				0: {
-					Commit: kadm.Offset{
-						At: 100,
-					},
-					End: kadm.ListedOffset{
-						Offset: 200,
-					},
-					Partition: 0,
-				},
+			groupLag: map[int32]partition.Lag{
+				0: partition.NewLag(
+					50,  // startOffset (committed offset)
+					200, // endOffset
+					100, // committedOffset
+					100, // rawLag (endOffset - committedOffset)
+				),
 			},
 			expectedJobs: []*JobWithMetadata{
 				NewJobWithMetadata(
@@ -88,25 +82,19 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			name:             "multiple partitions",
 			recordCount:      100,
 			minOffsetsPerJob: 0,
-			groupLag: map[int32]kadm.GroupMemberLag{
-				0: {
-					Commit: kadm.Offset{
-						At: 100,
-					},
-					End: kadm.ListedOffset{
-						Offset: 150,
-					},
-					Partition: 0,
-				},
-				1: {
-					Commit: kadm.Offset{
-						At: 200,
-					},
-					End: kadm.ListedOffset{
-						Offset: 400,
-					},
-					Partition: 1,
-				},
+			groupLag: map[int32]partition.Lag{
+				0: partition.NewLag(
+					100, // startOffset (committed offset)
+					150, // endOffset
+					100, // committedOffset
+					50,  // rawLag (endOffset - committedOffset)
+				),
+				1: partition.NewLag(
+					200, // startOffset (committed offset)
+					400, // endOffset
+					200, // committedOffset
+					200, // rawLag (endOffset - committedOffset)
+				),
 			},
 			expectedJobs: []*JobWithMetadata{
 				NewJobWithMetadata(
@@ -127,16 +115,13 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			name:             "no lag",
 			recordCount:      100,
 			minOffsetsPerJob: 0,
-			groupLag: map[int32]kadm.GroupMemberLag{
-				0: {
-					Commit: kadm.Offset{
-						At: 100,
-					},
-					End: kadm.ListedOffset{
-						Offset: 100,
-					},
-					Partition: 0,
-				},
+			groupLag: map[int32]partition.Lag{
+				0: partition.NewLag(
+					100, // startOffset (committed offset)
+					100, // endOffset
+					100, // committedOffset
+					0,   // rawLag (endOffset - committedOffset)
+				),
 			},
 			expectedJobs: nil,
 		},
@@ -144,25 +129,19 @@ func TestRecordCountPlanner_Plan(t *testing.T) {
 			name:             "skip small jobs",
 			recordCount:      100,
 			minOffsetsPerJob: 40,
-			groupLag: map[int32]kadm.GroupMemberLag{
-				0: {
-					Commit: kadm.Offset{
-						At: 100,
-					},
-					End: kadm.ListedOffset{
-						Offset: 130, // Only 30 records available, less than minimum
-					},
-					Partition: 0,
-				},
-				1: {
-					Commit: kadm.Offset{
-						At: 200,
-					},
-					End: kadm.ListedOffset{
-						Offset: 300, // 100 records available, more than minimum
-					},
-					Partition: 1,
-				},
+			groupLag: map[int32]partition.Lag{
+				0: partition.NewLag(
+					100, // startOffset (committed offset)
+					130, // endOffset
+					100, // committedOffset
+					30,  // rawLag (endOffset - committedOffset)
+				),
+				1: partition.NewLag(
+					200, // startOffset (committed offset)
+					300, // endOffset
+					200, // committedOffset
+					100, // rawLag (endOffset - committedOffset)
+				),
 			},
 			expectedJobs: []*JobWithMetadata{
 				NewJobWithMetadata(

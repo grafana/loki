@@ -6922,8 +6922,15 @@ false
       "memory": "128Mi"
     }
   },
-  "rootPassword": "supersecret",
-  "rootUser": "enterprise-logs"
+  "rootPassword": "supersecretpassword",
+  "rootUser": "root-user",
+  "users": [
+    {
+      "accessKey": "logs-user",
+      "policy": "readwrite",
+      "secretKey": "supersecretpassword"
+    }
+  ]
 }
 </pre>
 </td>
@@ -10799,7 +10806,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.29.0"
+"1.29.1"
 </pre>
 </td>
 		</tr>
@@ -10934,7 +10941,15 @@ null
 			<td>object</td>
 			<td>The SecurityContext for the sidecar.</td>
 			<td><pre lang="json">
-{}
+{
+  "allowPrivilegeEscalation": false,
+  "capabilities": {
+    "drop": [
+      "ALL"
+    ]
+  },
+  "readOnlyRootFilesystem": true
+}
 </pre>
 </td>
 		</tr>
