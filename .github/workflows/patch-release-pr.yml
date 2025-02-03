@@ -618,7 +618,7 @@ jobs:
   loki-docker-driver:
     needs:
     - "version"
-    runs-on: "ubuntu-latest"
+    runs-on: "${{ matrix.runs_on }}"
     steps:
     - name: "pull release library code"
       uses: "actions/checkout@v4"
@@ -649,9 +649,9 @@ jobs:
         mkdir -p images
         mkdir -p plugins
         
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
         if [[ "${platform}" == "linux/arm64" ]]; then
           echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
         else
@@ -670,7 +670,7 @@ jobs:
         context: "release"
         file: "release/clients/cmd/docker-driver/Dockerfile"
         outputs: "type=local,dest=release/plugins/loki-docker-driver-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}"
-        platforms: "${{ matrix.platform }}"
+        platforms: "${{ matrix.arch }}"
         push: false
         tags: "${{ env.IMAGE_PREFIX }}/loki-docker-driver:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}"
     - if: "${{ fromJSON(needs.version.outputs.pr_created) }}"
@@ -689,7 +689,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        platform:
+        include:
         - arch: "linux/amd64"
           runs_on:
           - "github-hosted-ubuntu-x64-small"
