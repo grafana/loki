@@ -10,83 +10,62 @@ local row = grafana.row;
       }
     ),
     'loki_thanos_object_storage.json':
-      dashboard.dashboard('Loki / Object Store Thanos')
+      dashboard.dashboard('Loki / Object Store Thanos', uid='object-store')
       .addCluster()
       .addNamespace()
       .addTag()
       .addRow(
         row.new('Operations')
         .addPanel(
-          grafana.graphPanel.new(
-            'RPS / operation',
-            format='reqps',
-            span=4,
-            datasource='$datasource',
-          ).addTargets(
-            [
-              grafana.prometheus.target('sum by(operation) (rate(loki_objstore_bucket_operations_total{%s}[$__rate_interval]))' % cluster_namespace_matcher),
-            ],
+          $.newQueryPanel('RPS / operation', 'reqps') +
+          $.queryPanel(
+            'sum by(operation) (rate(loki_objstore_bucket_operations_total{%s}[$__rate_interval]))' % cluster_namespace_matcher,
+            '{{operation}}'
           )
         )
         .addPanel(
-          grafana.graphPanel.new(
-            'Error rate / operation',
-            format='reqps',
-            span=4,
-            datasource='$datasource',
-          ).addTargets(
-            [
-              grafana.prometheus.target('sum by(operation) (rate(loki_objstore_bucket_operation_failures_total{%s}[$__rate_interval])) > 0' % cluster_namespace_matcher),
-            ],
+          $.newQueryPanel('Error rate / operation', 'reqps') +
+          $.queryPanel(
+            'sum by(operation) (rate(loki_objstore_bucket_operation_failures_total{%s}[$__rate_interval])) > 0' % cluster_namespace_matcher,
+            '{{operation}}'
           )
         )
         .addPanel(
-          grafana.graphPanel.new(
-            'Transport error rate / method and status code',
-            format='reqps',
-            span=4,
-            datasource='$datasource',
-          ).addTargets(
-            [
-              grafana.prometheus.target('sum  by (method, status_code) (rate(loki_objstore_bucket_transport_requests_total{%s, status_code!~"2.."}[$__rate_interval])) > 0' % cluster_namespace_matcher),
-            ],
+          $.newQueryPanel('Transport error rate / method and status code', 'reqps') +
+          $.queryPanel(
+            'sum by (method, status_code) (rate(loki_objstore_bucket_transport_requests_total{%s, status_code!~"2.."}[$__rate_interval])) > 0' % cluster_namespace_matcher,
+            '{{method}} - {{status_code}}'
           )
         )
       )
       .addRow(
         row.new('')
         .addPanel(
-          dashboard.timeseriesPanel('Op: Get') +
-          dashboard.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="get"}' % cluster_namespace_matcher) +
-          { fieldConfig: { defaults: { unit: 'ms' } } },
+          $.newQueryPanel('Op: Get', 'ms') +
+          $.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="get"}' % cluster_namespace_matcher)
         )
         .addPanel(
-          dashboard.timeseriesPanel('Op: GetRange') +
-          dashboard.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="get_range"}' % cluster_namespace_matcher) +
-          { fieldConfig: { defaults: { unit: 'ms' } } },
+          $.newQueryPanel('Op: GetRange', 'ms') +
+          $.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="get_range"}' % cluster_namespace_matcher)
         )
         .addPanel(
-          dashboard.timeseriesPanel('Op: Exists') +
-          dashboard.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="exists"}' % cluster_namespace_matcher) +
-          { fieldConfig: { defaults: { unit: 'ms' } } },
+          $.newQueryPanel('Op: Exists', 'ms') +
+          $.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="exists"}' % cluster_namespace_matcher)
         )
       )
       .addRow(
         row.new('')
         .addPanel(
-          dashboard.timeseriesPanel('Op: Attributes') +
-          dashboard.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="attributes"}' % cluster_namespace_matcher) +
-          { fieldConfig: { defaults: { unit: 'ms' } } },
+          $.newQueryPanel('Op: Attributes', 'ms') +
+          $.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="attributes"}' % cluster_namespace_matcher)
         )
         .addPanel(
-          dashboard.timeseriesPanel('Op: Upload') +
-          dashboard.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="upload"}' % cluster_namespace_matcher) +
-          { fieldConfig: { defaults: { unit: 'ms' } } },
+          $.newQueryPanel('Op: Upload', 'ms') +
+          $.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="upload"}' % cluster_namespace_matcher)
         )
         .addPanel(
-          dashboard.timeseriesPanel('Op: Delete') +
-          dashboard.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="delete"}' % cluster_namespace_matcher) +
-          { fieldConfig: { defaults: { unit: 'ms' } } },
+          $.newQueryPanel('Op: Delete', 'ms') +
+          $.latencyPanel('loki_objstore_bucket_operation_duration_seconds', '{%s,operation="delete"}' % cluster_namespace_matcher)
         )
       ),
   },

@@ -27,247 +27,145 @@
             "collapsed": false,
             "panels": [
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "fillGradient": 0,
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [ ]
+                  },
                   "gridPos": { },
                   "id": 1,
-                  "legend": {
-                     "alignAsTable": false,
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "rightSide": false,
-                     "show": true,
-                     "sideWidth": null,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
                   "links": [ ],
-                  "nullPointMode": "null",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "repeat": null,
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
-                  "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "targets": [
                      {
                         "expr": "sum by(operation) (rate(loki_objstore_bucket_operations_total{cluster=\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
-                        "intervalFactor": 2,
-                        "legendFormat": "",
-                        "refId": "A"
+                        "legendFormat": "{{operation}}",
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "RPS / operation",
-                  "tooltip": {
-                     "shared": true,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "reqps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": true
-                     },
-                     {
-                        "format": "reqps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": true
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "fillGradient": 0,
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [ ]
+                  },
                   "gridPos": { },
                   "id": 2,
-                  "legend": {
-                     "alignAsTable": false,
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "rightSide": false,
-                     "show": true,
-                     "sideWidth": null,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
                   "links": [ ],
-                  "nullPointMode": "null",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "repeat": null,
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
-                  "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "targets": [
                      {
                         "expr": "sum by(operation) (rate(loki_objstore_bucket_operation_failures_total{cluster=\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) > 0",
                         "format": "time_series",
-                        "intervalFactor": 2,
-                        "legendFormat": "",
-                        "refId": "A"
+                        "legendFormat": "{{operation}}",
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Error rate / operation",
-                  "tooltip": {
-                     "shared": true,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "reqps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": true
-                     },
-                     {
-                        "format": "reqps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": true
-                     }
-                  ]
+                  "type": "timeseries"
                },
                {
-                  "aliasColors": { },
-                  "bars": false,
-                  "dashLength": 10,
-                  "dashes": false,
                   "datasource": "$datasource",
-                  "fill": 1,
-                  "fillGradient": 0,
+                  "fieldConfig": {
+                     "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
+                        "unit": "reqps"
+                     },
+                     "overrides": [ ]
+                  },
                   "gridPos": { },
                   "id": 3,
-                  "legend": {
-                     "alignAsTable": false,
-                     "avg": false,
-                     "current": false,
-                     "max": false,
-                     "min": false,
-                     "rightSide": false,
-                     "show": true,
-                     "sideWidth": null,
-                     "total": false,
-                     "values": false
-                  },
-                  "lines": true,
-                  "linewidth": 1,
                   "links": [ ],
-                  "nullPointMode": "null",
-                  "percentage": false,
-                  "pointradius": 5,
-                  "points": false,
-                  "renderer": "flot",
-                  "repeat": null,
-                  "seriesOverrides": [ ],
-                  "spaceLength": 10,
-                  "span": 4,
-                  "stack": false,
-                  "steppedLine": false,
+                  "options": {
+                     "legend": {
+                        "showLegend": true
+                     },
+                     "tooltip": {
+                        "mode": "single",
+                        "sort": "none"
+                     }
+                  },
                   "targets": [
                      {
-                        "expr": "sum  by (method, status_code) (rate(loki_objstore_bucket_transport_requests_total{cluster=\"$cluster\", namespace=~\"$namespace\", status_code!~\"2..\"}[$__rate_interval])) > 0",
+                        "expr": "sum by (method, status_code) (rate(loki_objstore_bucket_transport_requests_total{cluster=\"$cluster\", namespace=~\"$namespace\", status_code!~\"2..\"}[$__rate_interval])) > 0",
                         "format": "time_series",
-                        "intervalFactor": 2,
-                        "legendFormat": "",
-                        "refId": "A"
+                        "legendFormat": "{{method}} - {{status_code}}",
+                        "legendLink": null
                      }
                   ],
-                  "thresholds": [ ],
-                  "timeFrom": null,
-                  "timeShift": null,
                   "title": "Transport error rate / method and status code",
-                  "tooltip": {
-                     "shared": true,
-                     "sort": 0,
-                     "value_type": "individual"
-                  },
-                  "type": "graph",
-                  "xaxis": {
-                     "buckets": null,
-                     "mode": "time",
-                     "name": null,
-                     "show": true,
-                     "values": [ ]
-                  },
-                  "yaxes": [
-                     {
-                        "format": "reqps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": true
-                     },
-                     {
-                        "format": "reqps",
-                        "label": null,
-                        "logBase": 1,
-                        "max": null,
-                        "min": null,
-                        "show": true
-                     }
-                  ]
+                  "type": "timeseries"
                }
             ],
             "repeat": null,
@@ -286,8 +184,25 @@
                   "datasource": "$datasource",
                   "fieldConfig": {
                      "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
                         "unit": "ms"
-                     }
+                     },
+                     "overrides": [ ]
                   },
                   "gridPos": { },
                   "id": 4,
@@ -347,8 +262,25 @@
                   "datasource": "$datasource",
                   "fieldConfig": {
                      "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
                         "unit": "ms"
-                     }
+                     },
+                     "overrides": [ ]
                   },
                   "gridPos": { },
                   "id": 5,
@@ -408,8 +340,25 @@
                   "datasource": "$datasource",
                   "fieldConfig": {
                      "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
                         "unit": "ms"
-                     }
+                     },
+                     "overrides": [ ]
                   },
                   "gridPos": { },
                   "id": 6,
@@ -482,8 +431,25 @@
                   "datasource": "$datasource",
                   "fieldConfig": {
                      "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
                         "unit": "ms"
-                     }
+                     },
+                     "overrides": [ ]
                   },
                   "gridPos": { },
                   "id": 7,
@@ -543,8 +509,25 @@
                   "datasource": "$datasource",
                   "fieldConfig": {
                      "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
                         "unit": "ms"
-                     }
+                     },
+                     "overrides": [ ]
                   },
                   "gridPos": { },
                   "id": 8,
@@ -604,8 +587,25 @@
                   "datasource": "$datasource",
                   "fieldConfig": {
                      "defaults": {
+                        "custom": {
+                           "drawStyle": "line",
+                           "fillOpacity": 10,
+                           "lineWidth": 1,
+                           "pointSize": 5,
+                           "showPoints": "never",
+                           "spanNulls": false,
+                           "stacking": {
+                              "group": "A",
+                              "mode": "none"
+                           }
+                        },
+                        "thresholds": {
+                           "mode": "absolute",
+                           "steps": [ ]
+                        },
                         "unit": "ms"
-                     }
+                     },
+                     "overrides": [ ]
                   },
                   "gridPos": { },
                   "id": 9,
@@ -771,6 +771,6 @@
       },
       "timezone": "utc",
       "title": "Loki / Object Store Thanos",
-      "uid": "",
+      "uid": "object-store",
       "version": 0
    }
