@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"os/signal"
@@ -37,10 +38,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
-	"github.com/grafana/loki/v3/pkg/limits"
-	limitsfrontend "github.com/grafana/loki/v3/pkg/limits/frontend"
+	limitsfrontendclient "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/discovery"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -90,11 +91,9 @@ type config struct {
 	// Ingester ring config
 	IngesterLifecyclerConfig ring.LifecyclerConfig `yaml:"ingester_lifecycler,omitempty"`
 
-	// Ingest Limits ring config
-	IngestLimitsLifecyclerConfig ring.LifecyclerConfig `yaml:"ingest_limits_lifecycler,omitempty"`
-
-	// Ingest Limits client config
-	ClientConfig limitsfrontend.BackendClientConfig `yaml:"client_config,omitempty"`
+	// Ingest Limits Frontend Client config
+	IngestLimitsFrontendDiscoveryAddress string                      `yaml:"ingest_limits_frontend_discovery_address,omitempty"`
+	IngestLimitsFrontendClientConfig     limitsfrontendclient.Config `yaml:"ingest_limits_frontend_client,omitempty"`
 }
 
 type streamLabelsFlag []string
@@ -126,10 +125,12 @@ func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	c.LogLevel.RegisterFlags(f)
 	c.Kafka.RegisterFlags(f)
 	c.PartitionRingConfig.RegisterFlagsWithPrefix("", f)
-	c.IngesterLifecyclerConfig.RegisterFlagsWithPrefix("partition-ingester.ring.", f, logger)
-	c.IngestLimitsLifecyclerConfig.RegisterFlagsWithPrefix("ingest-limits.ring.", f, logger)
+	c.IngesterLifecyclerConfig.RegisterFlagsWithPrefix("ring.", f, logger)
 	c.MemberlistKV.RegisterFlags(f)
-	c.ClientConfig.RegisterFlagsWithPrefix("ingest-limits.client", f)
+
+	// Ingest Limits Frontend Client config
+	c.IngestLimitsFrontendClientConfig.RegisterFlagsWithPrefix("ingest-limits", f)
+	f.StringVar(&c.IngestLimitsFrontendDiscoveryAddress, "ingest-limits.limits-frontend-client.discovery-address", "", "The address of the ingest limits frontend service")
 }
 
 type generator struct {
@@ -149,12 +150,12 @@ type generator struct {
 	partitionRingKV      kv.Client
 
 	// ring
-	memberlistKV     *memberlist.KVInitService
-	ingesterRing     *ring.Ring
-	ingestLimitsRing *ring.Ring
+	memberlistKV *memberlist.KVInitService
+	ingesterRing *ring.Ring
 
-	// limits
-	limitsSrv limitsfrontend.IngestLimitsService
+	// ingest limits frontend client
+	ingestLimitsFrontendDNS  *discovery.DNS
+	ingestLimitsFrontendPool *ring_client.Pool
 
 	// service
 	subservices        *services.Manager
@@ -192,7 +193,6 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	s.memberlistKV = memberlist.NewKVInitService(&cfg.MemberlistKV, logger, provider, reg)
 
 	cfg.IngesterLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
-	cfg.IngestLimitsLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 	cfg.PartitionRingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 
 	// Init KVStore client
@@ -213,29 +213,18 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	s.partitionRingWatcher = ring.NewPartitionRingWatcher(ingester.PartitionRingName, ingester.PartitionRingKey, s.partitionRingKV, logger, reg)
 	s.partitionRing = ring.NewPartitionInstanceRing(s.partitionRingWatcher, s.ingesterRing, cfg.IngesterLifecyclerConfig.RingConfig.HeartbeatTimeout)
 
-	// Init ingest limits ring
-	ingestLimitsRingReg := prometheus.WrapRegistererWithPrefix("ingest_limits_ring_", reg)
-	s.ingestLimitsRing, err = ring.New(cfg.IngestLimitsLifecyclerConfig.RingConfig, limits.RingName, limits.RingKey, logger, ingestLimitsRingReg)
-	if err != nil {
-		return nil, fmt.Errorf("creating ingest limits ring: %w", err)
-	}
+	// Init ingest limits frontend client
+	s.ingestLimitsFrontendDNS = discovery.NewDNS(logger, cfg.IngestLimitsFrontendClientConfig.PoolConfig.ClientCleanupPeriod, cfg.IngestLimitsFrontendDiscoveryAddress, nil)
+	s.ingestLimitsFrontendDNS.RunOnce()
 
-	// Init limits service
-	smLimits := &streamMetadataLimits{maxGlobalStreamsPerUser: cfg.MaxGlobalStreamsPerTenant}
-	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
-		return limitsfrontend.NewIngestLimitsBackendClient(s.cfg.ClientConfig, addr)
-	})
-
-	pool := limitsfrontend.NewIngestLimitsClientPool(limits.RingName, s.cfg.ClientConfig.PoolConfig, s.ingestLimitsRing, factory, logger)
-	s.limitsSrv = limitsfrontend.NewRingIngestLimitsService(s.ingestLimitsRing, pool, smLimits, logger, reg)
+	s.ingestLimitsFrontendPool = newIngestLimitsFrontendPool(cfg.IngestLimitsFrontendClientConfig, s.ingestLimitsFrontendDNS.Addresses(), logger)
 
 	// Init services
 	srvs := []services.Service{
 		s.memberlistKV,
-		s.ingestLimitsRing,
 		s.ingesterRing,
 		s.partitionRingWatcher,
-		pool,
+		s.ingestLimitsFrontendPool,
 	}
 	s.subservices, err = services.NewManager(srvs...)
 	if err != nil {
@@ -249,12 +238,46 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	return s, nil
 }
 
-// Flush implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
-func (s *generator) Flush() {}
+func (s *generator) ingestLimitsFrontendFromPool() (*limitsfrontendclient.IngestLimitsFrontendClient, error) {
+	addrs := s.ingestLimitsFrontendDNS.Addresses()
 
-// TransferOut implements ring.FlushTransferer. It transfers state to another ingest limits frontend instance.
-func (s *generator) TransferOut(_ context.Context) error {
-	return nil
+	rand.Shuffle(len(addrs), func(i, j int) {
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	})
+
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("no ingest limits frontend addresses found")
+	}
+
+	instance, err := s.ingestLimitsFrontendPool.GetClientFor(addrs[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ingest limits frontend client: %w", err)
+	}
+	return instance.(*limitsfrontendclient.IngestLimitsFrontendClient), nil
+}
+
+func newIngestLimitsFrontendPool(cfg limitsfrontendclient.Config, members []string, logger log.Logger) *ring_client.Pool {
+	factory := ring_client.PoolAddrFunc(func(addr string) (ring_client.PoolClient, error) {
+		return limitsfrontendclient.NewIngestLimitsFrontendClient(cfg, addr)
+	})
+
+	discovery := func() ([]string, error) {
+		return members, nil
+	}
+
+	clientmetrics := prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki",
+		Name:      "ingest_limits_frontend_clients",
+		Help:      "The current number of ingest limits frontend clients.",
+	})
+
+	poolConfig := ring_client.PoolConfig{
+		CheckInterval:      cfg.PoolConfig.ClientCleanupPeriod,
+		HealthCheckEnabled: cfg.PoolConfig.HealthCheckIngestLimits,
+		HealthCheckTimeout: cfg.PoolConfig.RemoteTimeout,
+	}
+
+	return ring_client.NewPool("ingest-limits-frontend", poolConfig, discovery, factory, clientmetrics, logger)
 }
 
 func (s *generator) starting(ctx context.Context) error {
@@ -298,6 +321,12 @@ func (s *generator) running(ctx context.Context) error {
 						firstPassComplete = true
 					}
 
+					client, err := s.ingestLimitsFrontendFromPool()
+					if err != nil {
+						errCh <- errors.Wrapf(err, "failed to get ingest limits frontend client for tenant %s", tenantID)
+						return
+					}
+
 					var streamMetadata []*logproto.StreamMetadataWithSize
 					for _, stream := range streams[streamIdx : streamIdx+1] {
 						streamMetadata = append(streamMetadata, &logproto.StreamMetadataWithSize{
@@ -311,7 +340,7 @@ func (s *generator) running(ctx context.Context) error {
 					}
 
 					// Check if the stream exceeds limits
-					resp, err := s.limitsSrv.ExceedsLimits(ctx, req)
+					resp, err := client.ExceedsLimits(ctx, req)
 					if err != nil {
 						errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
 						return
@@ -489,7 +518,6 @@ func main() {
 	mux.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{}))
 	mux.Handle("/memberlist", gen.memberlistKV)
 	mux.Handle("/ring", gen.ingesterRing)
-	mux.Handle("/ingest-limits-ring", gen.ingestLimitsRing)
 	mux.Handle("/partition-ring", ring.NewPartitionRingPageHandler(
 		gen.partitionRingWatcher,
 		ring.NewPartitionRingEditor(
