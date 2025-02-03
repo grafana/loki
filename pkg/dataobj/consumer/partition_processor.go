@@ -46,14 +46,16 @@ type partitionProcessor struct {
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
+func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, virtualShard int32, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		panic(err)
 	}
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
+		"shard":     strconv.Itoa(int(virtualShard)),
 		"partition": strconv.Itoa(int(partition)),
+		"topic":     topic,
 	}, reg)
 
 	metrics := newPartitionOffsetMetrics()
@@ -70,7 +72,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 
 	return &partitionProcessor{
 		client:           client,
-		logger:           log.With(logger, "topic", topic, "partition", partition),
+		logger:           log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
 		topic:            topic,
 		partition:        partition,
 		records:          make(chan *kgo.Record, 1000),
@@ -90,7 +92,6 @@ func (p *partitionProcessor) start() {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		defer close(p.records)
 
 		level.Info(p.logger).Log("msg", "started partition processor")
 		for {
@@ -98,7 +99,11 @@ func (p *partitionProcessor) start() {
 			case <-p.ctx.Done():
 				level.Info(p.logger).Log("msg", "stopping partition processor")
 				return
-			case record := <-p.records:
+			case record, ok := <-p.records:
+				if !ok {
+					// Channel was closed
+					return
+				}
 				p.processRecord(record)
 			}
 		}
@@ -112,6 +117,21 @@ func (p *partitionProcessor) stop() {
 		p.builder.UnregisterMetrics(p.reg)
 	}
 	p.metrics.unregister(p.reg)
+}
+
+// Drops records from the channel if the processor is stopped.
+// Returns false if the processor is stopped, true otherwise.
+func (p *partitionProcessor) Append(records []*kgo.Record) bool {
+	for _, record := range records {
+		select {
+		// must check per-record in order to not block on a full channel
+		// after receiver has been stopped.
+		case <-p.ctx.Done():
+			return false
+		case p.records <- record:
+		}
+	}
+	return true
 }
 
 func (p *partitionProcessor) initBuilder() error {
@@ -146,6 +166,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 	// todo: handle multi-tenant
 	if !bytes.Equal(record.Key, p.tenantID) {
+		level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
 		return
 	}
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
