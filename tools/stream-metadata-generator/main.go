@@ -195,12 +195,13 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	cfg.IngestLimitsLifecyclerConfig.RingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 	cfg.PartitionRingConfig.KVStore.MemberlistKV = s.memberlistKV.GetMemberlistKV
 
-	// Init Ring
+	// Init partition ingester ring
 	s.ingesterRing, err = ring.New(cfg.IngesterLifecyclerConfig.RingConfig, ingesterRingName, ingester.RingKey, logger, reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating ring: %w", err)
 	}
 
+	// Init ingest limits ring
 	ingestLimitsRingReg := prometheus.WrapRegistererWithPrefix("ingest_limits_ring_", reg)
 	s.ingestLimitsRing, err = ring.New(cfg.IngestLimitsLifecyclerConfig.RingConfig, limits.RingName, limits.RingKey, logger, ingestLimitsRingReg)
 	if err != nil {
@@ -231,6 +232,7 @@ func newStreamMetaGen(cfg config, writer *client.Producer, logger log.Logger, re
 	srvs := []services.Service{
 		s.memberlistKV,
 		s.ingesterRing,
+		s.ingestLimitsRing,
 		s.partitionRingWatcher,
 		pool,
 	}
