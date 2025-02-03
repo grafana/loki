@@ -165,14 +165,7 @@ func (s *Service) run(ctx context.Context) error {
 				return
 			}
 
-			for _, record := range records {
-				select {
-				case <-processor.ctx.Done():
-					return
-				case processor.records <- record:
-					// Record sent successfully
-				}
-			}
+			_ = processor.Append(records)
 		})
 	}
 }

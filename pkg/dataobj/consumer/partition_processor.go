@@ -39,11 +39,13 @@ type partitionProcessor struct {
 	metrics *partitionOffsetMetrics
 
 	// Control and coordination
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	reg    prometheus.Registerer
-	logger log.Logger
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	reg         prometheus.Registerer
+	logger      log.Logger
+	runningLock sync.RWMutex
+	finished    bool
 }
 
 func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, virtualShard int32, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
@@ -92,7 +94,6 @@ func (p *partitionProcessor) start() {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		defer close(p.records)
 
 		level.Info(p.logger).Log("msg", "started partition processor")
 		for {
@@ -109,11 +110,37 @@ func (p *partitionProcessor) start() {
 
 func (p *partitionProcessor) stop() {
 	p.cancel()
+	p.runningLock.Lock()
+	p.finished = true
+	close(p.records)
+	p.runningLock.Unlock()
 	p.wg.Wait()
 	if p.builder != nil {
 		p.builder.UnregisterMetrics(p.reg)
 	}
 	p.metrics.unregister(p.reg)
+}
+
+// Drops records from the channel if the processor is stopped.
+// Returns false if the processor is stopped, true otherwise.
+func (p *partitionProcessor) Append(records []*kgo.Record) bool {
+	// check if we're finished
+	p.runningLock.RLock()
+	defer p.runningLock.RUnlock()
+	if p.finished {
+		return false
+	}
+
+	for _, record := range records {
+		select {
+		// must check per-record in order to not block on a full channel
+		// after receiver has been stopped.
+		case <-p.ctx.Done():
+			return false
+		case p.records <- record:
+		}
+	}
+	return true
 }
 
 func (p *partitionProcessor) initBuilder() error {
