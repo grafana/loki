@@ -131,10 +131,9 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [ruler: <ruler>]
 
 ruler_storage:
-  # The thanos_storage_config block configures the connection to object storage.
-  # It uses thanos-io/objstore clients for connecting to object storage
-  # backends. This will become the default way of configuring object store
-  # clients in future releases.
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
   # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
   # is set to true.
   # The CLI flags prefix for this block configuration is: ruler-storage
@@ -1583,10 +1582,9 @@ storage:
       # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
-  # The thanos_storage_config block configures the connection to object storage.
-  # It uses thanos-io/objstore clients for connecting to object storage
-  # backends. This will become the default way of configuring object store
-  # clients in future releases.
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
   # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
   # is set to true.
   # The CLI flags prefix for this block configuration is:
@@ -5241,10 +5239,9 @@ congestion_control:
 [use_thanos_objstore: <boolean> | default = false]
 
 object_store:
-  # The thanos_storage_config block configures the connection to object storage.
-  # It uses thanos-io/objstore clients for connecting to object storage
-  # backends. This will become the default way of configuring object store
-  # clients in future releases.
+  # The thanos_object_store_config block configures the connection to object
+  # storage backend using thanos-io/objstore clients. This will become the
+  # default way of configuring object store clients in future releases.
   # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
   # is set to true.
   # The CLI flags prefix for this block configuration is: object-store
@@ -5866,8 +5863,7 @@ chunk_tables_provisioning:
 
 ### thanos_object_store_config
 
-The thanos_storage_config block configures the connection to object storage.
-It uses thanos-io/objstore clients for connecting to object storage backends. This will become the default way of configuring object store clients in future releases.
+The `thanos_object_store_config` block configures the connection to object storage backend using thanos-io/objstore clients. This will become the default way of configuring object store clients in future releases.
 Currently this is opt-in and takes effect only when `-use-thanos-objstore` is set to true. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `common.storage.object-store`
