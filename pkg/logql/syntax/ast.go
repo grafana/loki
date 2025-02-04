@@ -21,22 +21,30 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
-// Expr is the root expression which can be a SampleExpr or LogSelectorExpr
-//
-//sumtype:decl
-type Expr interface {
-	isExpr()                      // ensure it's not implemented accidentally
-	Shardable(topLevel bool) bool // A recursive check on the AST to see if it's shardable.
-	Walkable
-	fmt.Stringer
-	AcceptVisitor
+// Type alias for backward compatibility
+type (
+	Pipeline        = log.Pipeline
+	SampleExtractor = log.SampleExtractor
+)
 
-	// Pretty prettyfies any LogQL expression at given `level` of the whole LogQL query.
+// Expr is the root expression which can be a SampleExpr or LogSelectorExpr
+type Expr interface {
+	// Shardable performs a recursive check on the expression and its children to see whether it is shardable.
+	Shardable(topLevel bool) bool
+	// Accepts a walk function to recursively visit the AST
+	// Works on expressions that are represented in the LogQL syntax as well as expressions from the "execution plan".
+	Walkable
+	// Accepts a visitor to recursively visit the AST.
+	// Only works on expressions that are represented in the LogQL syntax.
+	AcceptVisitor
+	// Returns the string representation of the expression.
+	fmt.Stringer
+	// Pretty returns a nicely formatted string representation of the expression at given level.
 	Pretty(level int) string
+	// isExpr ensures that the interface is not implemented accidentally.
+	isExpr()
 }
 
-// func (MetricExpr) isExpr()            {}
-// func (LogExpr) isExpr()               {}
 func (MatchersExpr) isExpr()               {}
 func (PipelineExpr) isExpr()               {}
 func (RangeAggregationExpr) isExpr()       {}
@@ -59,19 +67,48 @@ func (LogRangeExpr) isExpr()               {}
 func (OffsetExpr) isExpr()                 {}
 func (UnwrapExpr) isExpr()                 {}
 
-// func (LogExpr) isLogSelectorExpr()      {}
+// LogSelectorExpr is a expression filtering and returning logs.
+type LogSelectorExpr interface {
+	Matchers() []*labels.Matcher
+	Pipeline() (Pipeline, error)
+	HasFilter() bool
+
+	Expr
+	// isLogSelectorExpr ensures that the interface is not implemented accidentally.
+	isLogSelectorExpr()
+}
+
 func (MatchersExpr) isLogSelectorExpr()   {}
 func (PipelineExpr) isLogSelectorExpr()   {}
 func (MultiStageExpr) isLogSelectorExpr() {}
 func (LiteralExpr) isLogSelectorExpr()    {}
 func (VectorExpr) isLogSelectorExpr()     {}
 
-// func (MetricExpr) isSampleExpr()            {}
+// SampleExpr is a LogQL expression filtering logs and returning metric samples
+type SampleExpr interface {
+	Selector() (LogSelectorExpr, error)
+	Extractor() (SampleExtractor, error)
+	MatcherGroups() ([]MatcherRange, error)
+
+	Expr
+	// isSampleExpr ensures that the interface is not implemented accidentally.
+	isSampleExpr()
+}
+
 func (RangeAggregationExpr) isSampleExpr()  {}
 func (VectorAggregationExpr) isSampleExpr() {}
 func (LiteralExpr) isSampleExpr()           {}
 func (VectorExpr) isSampleExpr()            {}
 func (LabelReplaceExpr) isSampleExpr()      {}
+
+// StageExpr is an expression defining a single step into a log pipeline
+type StageExpr interface {
+	Stage() (log.Stage, error)
+
+	Expr
+	// isStageExpr ensures that the interface is not implemented accidentally.
+	isStageExpr()
+}
 
 func (LineParserExpr) isStageExpr()             {}
 func (LogfmtParserExpr) isStageExpr()           {}
@@ -167,34 +204,6 @@ func IsMatchEqualFilterer(filterer log.LabelFilterer) bool {
 	default:
 		return false
 	}
-}
-
-// LogSelectorExpr is a LogQL expression filtering and returning logs.
-//
-//sumtype:decl
-type LogSelectorExpr interface {
-	Matchers() []*labels.Matcher
-	Pipeline() (Pipeline, error)
-	HasFilter() bool
-	Expr
-
-	isLogSelectorExpr()
-}
-
-// Type alias for backward compatibility
-type (
-	Pipeline        = log.Pipeline
-	SampleExtractor = log.SampleExtractor
-)
-
-// StageExpr is an expression defining a single step into a log pipeline
-//
-//sumtype:decl
-type StageExpr interface {
-	Stage() (log.Stage, error)
-	Expr
-
-	isStageExpr()
 }
 
 // MultiStageExpr is multiple stages which implements a LogSelectorExpr.
@@ -1328,18 +1337,6 @@ func IsLogicalBinOp(op string) bool {
 	default:
 		return false
 	}
-}
-
-// SampleExpr is a LogQL expression filtering logs and returning metric samples.
-//
-//sumtype:decl
-type SampleExpr interface {
-	// Selector is the LogQL selector to apply when retrieving logs.
-	Selector() (LogSelectorExpr, error)
-	Extractor() (SampleExtractor, error)
-	MatcherGroups() ([]MatcherRange, error)
-	Expr
-	isSampleExpr()
 }
 
 // RangeAggregationExpr not all range vector aggregation expressions support grouping by/without label(s),
