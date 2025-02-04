@@ -148,7 +148,7 @@ export const RingServices: Record<
   "index-gateway": {
     title: "Index Gateway",
     ringName: RingTypes.INDEX_GATEWAY,
-    ringPath: "/index-gateway/ring",
+    ringPath: "/indexgateway/ring",
     needsTokens: true,
   },
 };
