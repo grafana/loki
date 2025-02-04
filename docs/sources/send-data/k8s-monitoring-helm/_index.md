@@ -56,7 +56,7 @@ Provide feedback, report bugs, and raise issues in the [Grafana Killercoda repos
 
 <!-- INTERACTIVE page step1.md START -->
 
-## Step 1: Create the `meta` and `prod` namespaces
+## Create the `meta` and `prod` namespaces
 
 The K8s Monitoring Helm chart will monitor two namespaces: `meta` and `prod`:
 - `meta` namespace: This namespace will be used to deploy Loki, Grafana, and Alloy.
@@ -72,7 +72,7 @@ kubectl create namespace meta && kubectl create namespace prod
 
 <!-- INTERACTIVE page step2.md START -->
 
-## Step 2: Add the Grafana Helm repository
+## Add the Grafana Helm repository
 
 All three Helm charts (Loki, Grafana, and the Kubernetes Monitoring Helm) are available in the Grafana Helm repository. Add the Grafana Helm repository by running the following command:
 
@@ -82,7 +82,7 @@ helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
 
 As well as adding the repo to our local helm list, we also run `helm repo update` to ensure you have the latest version of the charts.
 
-## Step 3: Clone the tutorial repository
+## Clone the tutorial repository
 
 Clone the tutorial repository by running the following command:
 
@@ -102,7 +102,7 @@ cd alloy-scenarios/k8s/logs
 
 <!-- INTERACTIVE page step3.md START -->
 
-## Step 4: Deploy Loki
+## Deploy Loki
 
 Grafana Loki will be used to store our collected logs. In this tutorial we will deploy Loki with a minimal footprint and use the default storage backend provided by the Loki Helm chart, MinIO.
 
@@ -127,7 +127,7 @@ helm install --values killercoda/loki-values.yml loki grafana/loki -n meta
 
 This command will deploy Loki in the `meta` namespace. The command also includes a `values` file that specifies the configuration for Loki. For more details on how to configure the Loki Helm chart refer to the Loki Helm [documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm).
 
-## Step 5: Deploy Grafana
+## Deploy Grafana
 
 Next we will deploy Grafana to the `meta` namespace. You will use Grafana to visualize the logs stored in Loki. To deploy Grafana run the following command:
 
@@ -162,7 +162,7 @@ As before the command also includes a `values` file that specifies the configura
 
 <!-- INTERACTIVE page step4.md START -->
 
-## Step 6: Deploy the Kubernetes Monitoring Helm chart
+## Deploy the Kubernetes Monitoring Helm chart
 
 The Kubernetes Monitoring Helm chart is used for gathering, scraping, and forwarding Kubernetes telemetry data to a Grafana stack. This includes the ability to collect metrics, logs, traces, and continuous profiling data. The scope of this tutorial is to deploy the Kubernetes Monitoring Helm chart to collect pod logs and Kubernetes events. 
 
@@ -237,7 +237,7 @@ To break down the configuration file:
 
 <!-- INTERACTIVE page step5.md START -->
 
-## Step 7: Accessing Grafana
+## Accessing Grafana
 
 To access Grafana, you will need to port-forward the Grafana service to your local machine. To do this, run the following command:
 
@@ -259,7 +259,7 @@ One of the first places you should visit is Explore Logs which lets you automati
 
 {{< figure max-width="100%" src="/media/docs/loki/k8s-logs-explore-logs.png" caption="Explore Logs view of K8s logs" alt="Explore Logs view of K8s logs" >}}
 
-## Step 8 (Optional): View the Alloy UI
+## (Optional): View the Alloy UI
 
 The Kubernetes Monitoring Helm chart deploys Grafana Alloy to collect and forward telemetry data from the Kubernetes cluster. The Helm is designed to abstract you from creating an Alloy configuration file. However if you would like to understand the pipeline you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
 
@@ -279,7 +279,7 @@ This command will port-forward the Alloy service to your local machine on port `
 
 <!-- INTERACTIVE page step6.md START -->
 
-## Step 9: Adding a sample application to `prod`
+## Adding a sample application to `prod`
 
 Finally, lets deploy a sample application to the `prod` namespace that will generate some logs. To deploy the sample application run the following command:
 
