@@ -93,7 +93,7 @@ git clone https://github.com/grafana/alloy-scenarios.git
 Then change directories to the `alloy-scenarios/k8s/logs` directory:
 
 ```bash
-cd alloy-scenarios/k8s-logs
+cd alloy-scenarios/k8s/logs
 ```
 
 **The rest of this tutorial assumes you are in this directory.**
