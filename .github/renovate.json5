@@ -37,6 +37,12 @@
       "enabled": false
     },
     {
+      // Disable certain npm updates for compatibility reasons
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["tailwindcss"],
+      "enabled": false
+    },
+    {
       // Don't automatically merge GitHub Actions updates
       "matchManagers": ["github-actions"],
       "enabled": true,

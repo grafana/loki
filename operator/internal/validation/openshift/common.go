@@ -65,8 +65,13 @@ func validateRuleExpression(namespace, tenantID, rawExpr string) error {
 	}
 
 	matchers := selector.Matchers()
-	if tenantID != tenantAudit && !validateIncludesNamespace(namespace, matchers) {
-		return lokiv1.ErrRuleMustMatchNamespace
+	if tenantID != tenantAudit {
+		if !validateIncludesNamespace(namespace, matchers) {
+			return lokiv1.ErrRuleMustMatchNamespace
+		}
+		if !validateExclusiveNamespaceLabels(matchers) {
+			return lokiv1.ErrRuleExclusiveNamespaceLabel
+		}
 	}
 
 	return nil
@@ -80,6 +85,22 @@ func validateIncludesNamespace(namespace string, matchers []*labels.Matcher) boo
 	}
 
 	return false
+}
+
+func validateExclusiveNamespaceLabels(matchers []*labels.Matcher) bool {
+	var namespaceLabelSet, otlpLabelSet bool
+
+	for _, m := range matchers {
+		if m.Name == namespaceLabelName && m.Type == labels.MatchEqual {
+			namespaceLabelSet = true
+		}
+		if m.Name == namespaceOTLPLabelName && m.Type == labels.MatchEqual {
+			otlpLabelSet = true
+		}
+	}
+
+	// Only one of the labels should be set, not both
+	return (namespaceLabelSet || otlpLabelSet) && !(namespaceLabelSet && otlpLabelSet)
 }
 
 func tenantForNamespace(namespace string) []string {

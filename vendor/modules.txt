@@ -1,8 +1,8 @@
 # cel.dev/expr v0.19.1
 ## explicit; go 1.21.1
 cel.dev/expr
-# cloud.google.com/go v0.118.0
-## explicit; go 1.21
+# cloud.google.com/go v0.118.1
+## explicit; go 1.22.7
 cloud.google.com/go
 cloud.google.com/go/internal
 cloud.google.com/go/internal/detect
@@ -55,7 +55,7 @@ cloud.google.com/go/longrunning/autogen/longrunningpb
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb
 cloud.google.com/go/monitoring/internal
-# cloud.google.com/go/pubsub v1.46.0
+# cloud.google.com/go/pubsub v1.47.0
 ## explicit; go 1.22.7
 cloud.google.com/go/pubsub
 cloud.google.com/go/pubsub/apiv1
@@ -667,7 +667,7 @@ github.com/eapache/go-xerial-snappy
 # github.com/eapache/queue v1.1.0
 ## explicit
 github.com/eapache/queue
-# github.com/ebitengine/purego v0.8.1
+# github.com/ebitengine/purego v0.8.2
 ## explicit; go 1.18
 github.com/ebitengine/purego
 github.com/ebitengine/purego/internal/cgo
@@ -1584,7 +1584,7 @@ github.com/segmentio/fasthash/fnv1a
 # github.com/sercand/kuberesolver/v5 v5.1.1
 ## explicit; go 1.18
 github.com/sercand/kuberesolver/v5
-# github.com/shirou/gopsutil/v4 v4.24.12
+# github.com/shirou/gopsutil/v4 v4.25.1
 ## explicit; go 1.18
 github.com/shirou/gopsutil/v4/common
 github.com/shirou/gopsutil/v4/cpu
@@ -1633,7 +1633,7 @@ github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 github.com/stretchr/testify/suite
-# github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
+# github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a => github.com/grafana/objstore v0.0.0-20250128154815-d7e99f81f866
 ## explicit; go 1.22
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/clientutil
@@ -1782,7 +1782,7 @@ go.opencensus.io/tag
 ## explicit; go 1.22.0
 go.opentelemetry.io/auto/sdk
 go.opentelemetry.io/auto/sdk/internal/telemetry
-# go.opentelemetry.io/collector/pdata v1.24.0
+# go.opentelemetry.io/collector/pdata v1.25.0
 ## explicit; go 1.22.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data
@@ -2562,3 +2562,4 @@ sigs.k8s.io/yaml/goyaml.v2
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
+# github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250128154815-d7e99f81f866

@@ -36,6 +36,11 @@ func (b *PrefixedBucketClient) Upload(ctx context.Context, name string, r io.Rea
 	return
 }
 
+// GetAndReplace is a helper function that gets an object from the bucket and replaces it with a new reader.
+func (b *PrefixedBucketClient) GetAndReplace(ctx context.Context, name string, fn func(existing io.Reader) (io.Reader, error)) error {
+	return b.bucket.GetAndReplace(ctx, b.fullName(name), fn)
+}
+
 // Delete removes the object with the given name.
 func (b *PrefixedBucketClient) Delete(ctx context.Context, name string) error {
 	return b.bucket.Delete(ctx, b.fullName(name))

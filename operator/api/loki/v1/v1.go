@@ -104,4 +104,6 @@ var (
 	ErrSummaryAnnotationMissing = errors.New("rule requires annotation: summary")
 	// ErrDescriptionAnnotationMissing indicates that an alerting rule is missing the description annotation
 	ErrDescriptionAnnotationMissing = errors.New("rule requires annotation: description")
+	// ErrRuleExclusiveNamespaceLabel indicates that a rule must not specify both kubernetes_namespace_name and k8s_namespace_name labels
+	ErrRuleExclusiveNamespaceLabel = errors.New("rule must not specify both kubernetes_namespace_name and k8s_namespace_name labels")
 )
