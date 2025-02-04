@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
   tenant: z.string().min(1, "Tenant ID is required"),
@@ -119,6 +120,7 @@ function LabelValuesList({ values, totalValues }: LabelValuesListProps) {
 
 export default function AnalyzeLabels() {
   const { cluster } = useCluster();
+  const { toast } = useToast();
   const [analysisResults, setAnalysisResults] = useState<{
     totalStreams: number;
     uniqueLabels: number;
@@ -143,74 +145,87 @@ export default function AnalyzeLabels() {
   const { isLoading, refetch } = useQuery({
     queryKey: ["analyze-labels"],
     queryFn: async () => {
-      const values = form.getValues();
-      const end = new Date();
-      const start = new Date(end.getTime() - parseDuration(values.since));
+      try {
+        const values = form.getValues();
+        const end = new Date();
+        const start = new Date(end.getTime() - parseDuration(values.since));
 
-      const response = await fetch(
-        `/ui/api/v1/proxy/${nodeName}/loki/api/v1/series?match[]=${encodeURIComponent(
-          values.matcher
-        )}&start=${start.getTime() * 1e6}&end=${end.getTime() * 1e6}`,
-        {
-          headers: {
-            "X-Scope-OrgID": values.tenant,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch series");
-      }
-
-      const data = await response.json();
-      const labelMap = new Map<
-        string,
-        { uniqueValues: Set<string>; inStreams: number }
-      >();
-      const valueCountMap = new Map<string, Map<string, number>>();
-
-      // Process the streams similar to the CLI tool
-      data.data.forEach((stream: Record<string, string>) => {
-        Object.entries(stream).forEach(([name, value]) => {
-          if (!labelMap.has(name)) {
-            labelMap.set(name, { uniqueValues: new Set(), inStreams: 0 });
-            valueCountMap.set(name, new Map());
+        const response = await fetch(
+          `/ui/api/v1/proxy/${nodeName}/loki/api/v1/series?match[]=${encodeURIComponent(
+            values.matcher
+          )}&start=${start.getTime() * 1e6}&end=${end.getTime() * 1e6}`,
+          {
+            headers: {
+              "X-Scope-OrgID": values.tenant,
+            },
           }
-          const label = labelMap.get(name) as {
-            uniqueValues: Set<string>;
-            inStreams: number;
-          };
-          const valueCounts = valueCountMap.get(name)!;
+        );
 
-          label.uniqueValues.add(value);
-          label.inStreams++;
-          valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error || "Failed to fetch series");
+        }
+
+        const data = await response.json();
+        const labelMap = new Map<
+          string,
+          { uniqueValues: Set<string>; inStreams: number }
+        >();
+        const valueCountMap = new Map<string, Map<string, number>>();
+
+        // Process the streams similar to the CLI tool
+        data.data.forEach((stream: Record<string, string>) => {
+          Object.entries(stream).forEach(([name, value]) => {
+            if (!labelMap.has(name)) {
+              labelMap.set(name, { uniqueValues: new Set(), inStreams: 0 });
+              valueCountMap.set(name, new Map());
+            }
+            const label = labelMap.get(name) as {
+              uniqueValues: Set<string>;
+              inStreams: number;
+            };
+            const valueCounts = valueCountMap.get(name)!;
+
+            label.uniqueValues.add(value);
+            label.inStreams++;
+            valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
+          });
         });
-      });
 
-      // Convert to array and sort by unique values count
-      const labels = Array.from(labelMap.entries()).map(([name, stats]) => {
-        const valueCounts = Array.from(valueCountMap.get(name)!.entries())
-          .map(([value, count]) => ({ value, count }))
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 5);
+        // Convert to array and sort by unique values count
+        const labels = Array.from(labelMap.entries()).map(([name, stats]) => {
+          const valueCounts = Array.from(valueCountMap.get(name)!.entries())
+            .map(([value, count]) => ({ value, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
 
-        return {
-          name,
-          uniqueValues: stats.uniqueValues.size,
-          inStreams: stats.inStreams,
-          sampleValues: valueCounts,
-        };
-      });
-      labels.sort((a, b) => b.uniqueValues - a.uniqueValues);
+          return {
+            name,
+            uniqueValues: stats.uniqueValues.size,
+            inStreams: stats.inStreams,
+            sampleValues: valueCounts,
+          };
+        });
+        labels.sort((a, b) => b.uniqueValues - a.uniqueValues);
 
-      setAnalysisResults({
-        totalStreams: data.data.length,
-        uniqueLabels: labelMap.size,
-        labels,
-      });
+        setAnalysisResults({
+          totalStreams: data.data.length,
+          uniqueLabels: labelMap.size,
+          labels,
+        });
 
-      return data;
+        return data;
+      } catch (error) {
+        toast({
+          variant: "destructive",
+          title: "Error analyzing labels",
+          description:
+            error instanceof Error
+              ? error.message
+              : "An unexpected error occurred",
+        });
+        throw error;
+      }
     },
     enabled: false,
   });
@@ -291,18 +306,18 @@ export default function AnalyzeLabels() {
           <Form {...form}>
             <form
               onSubmit={form.handleSubmit(onSubmit)}
-              className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"
+              className="grid grid-cols-1 md:grid-cols-4 gap-4"
             >
               <FormField
                 control={form.control}
                 name="tenant"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col space-y-1.5">
                     <FormLabel>Tenant ID</FormLabel>
                     <FormControl>
                       <Input placeholder="Enter tenant ID..." {...field} />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs" />
                   </FormItem>
                 )}
               />
@@ -311,7 +326,7 @@ export default function AnalyzeLabels() {
                 control={form.control}
                 name="since"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col space-y-1.5">
                     <FormLabel>Time Range</FormLabel>
                     <Select
                       onValueChange={field.onChange}
@@ -330,7 +345,7 @@ export default function AnalyzeLabels() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage className="text-xs" />
                   </FormItem>
                 )}
               />
@@ -339,7 +354,7 @@ export default function AnalyzeLabels() {
                 control={form.control}
                 name="matcher"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col space-y-1.5">
                     <FormLabel>Matcher</FormLabel>
                     <FormControl>
                       <Input
@@ -347,7 +362,7 @@ export default function AnalyzeLabels() {
                         {...field}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs" />
                   </FormItem>
                 )}
               />
@@ -355,7 +370,7 @@ export default function AnalyzeLabels() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="md:self-end"
+                className="self-end h-10"
               >
                 {isLoading ? "Analyzing..." : "Analyze"}
               </Button>
@@ -452,12 +467,7 @@ export default function AnalyzeLabels() {
                     tickMargin={8}
                   />
                   <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        className="w-[200px]"
-                        labelKey="name"
-                      />
-                    }
+                    content={<ChartTooltipContent className="w-[200px]" />}
                   />
                   <Bar
                     dataKey="value"
