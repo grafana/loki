@@ -198,6 +198,9 @@ podLogs:
   enabled: true
   gatherMethod: kubernetesApi
   collector: alloy-logs
+  labelsToKeep: ["app_kubernetes_io_name","container","instance","job","level","namespace","service_name","service_namespace","deployment_environment","deployment_environment_name"]
+  structuredMetadata:
+    pod: pod  # Set structured metadata "pod" from label "pod"
   namespaces:
     - meta
     - prod
