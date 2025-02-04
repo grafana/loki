@@ -114,6 +114,10 @@ const baseNavItems: NavItem[] = [
     icon: <Users className="h-4 w-4" />,
     items: [
       {
+        title: "Analyze Labels",
+        url: "/tenants/analyze-labels",
+      },
+      {
         title: "Deletes",
         url: "/tenants/deletes",
       },

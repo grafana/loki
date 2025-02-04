@@ -13,6 +13,7 @@ import NodeDetails from "@/pages/node-details";
 import ComingSoon from "@/pages/coming-soon";
 import DeletesPage from "@/pages/deletes";
 import NewDeleteRequest from "@/pages/new-delete";
+import AnalyzeLabels from "@/pages/analyze-labels";
 
 type RouteObjectWithBreadcrumb = Omit<RouteObject, "children"> & {
   breadcrumb: string | BreadcrumbComponentType;
@@ -84,6 +85,11 @@ export const routes: RouteObjectWithBreadcrumb[] = [
     path: "/tenants/deletes/new",
     element: <NewDeleteRequest />,
     breadcrumb: "New Delete Request",
+  },
+  {
+    path: "/tenants/analyze-labels",
+    element: <AnalyzeLabels />,
+    breadcrumb: "Analyze Labels",
   },
   {
     path: "/tenants/limits",
