@@ -271,6 +271,53 @@ jobs:
           path: formatted_diff_output.md
           retention-days: 2
 
+  simple-thanos-values-diff:
+    name: Simple Thanos Values Scenario
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Add required Helm repositories
+        run: |
+          helm repo add minio https://charts.min.io/
+          helm repo add grafana https://grafana.github.io/helm-charts
+          helm repo add grafana-operator https://grafana.github.io/helm-charts
+          helm repo update
+
+      - name: Build helm dependencies
+        run: |
+          helm dependency build production/helm/loki
+
+      - name: Generate latest manifests
+        run: |
+          helm template loki-release grafana/loki -f production/helm/loki/scenarios/simple-thanos-values.yaml > release-manifest.yaml
+
+      - name: Generate current manifest
+        run: |
+          helm template loki-release production/helm/loki -f production/helm/loki/scenarios/simple-thanos-values.yaml > current-manifest.yaml
+
+      - name: Compare manifests
+        run: |
+          diff current-manifest.yaml release-manifest.yaml > helm_diff_output.txt || true
+
+      - name: Convert Helm Diff Output to Markdown
+        id: convert_diff
+        run: |
+          cat helm_diff_output.txt >> formatted_diff_output.md
+
+      - name: Upload diff output as artifact
+        uses: actions/upload-artifact@v4
+        id: upload_diff
+        with:
+          name: simple-thanos-diff-output
+          path: formatted_diff_output.md
+          retention-days: 2
+
   summary-diff-outputs:
     name: Summary Diffs
     runs-on: ubuntu-latest
@@ -281,6 +328,7 @@ jobs:
       - ingress-values-diff
       - legacy-monitoring-values-diff
       - simple-scalable-aws-kube-irsa-values-diff
+      - simple-thanos-values-diff
 
     steps:
       - name: Checkout code
@@ -313,6 +361,12 @@ jobs:
           name: simple-scalable-aws-kube-irsa-diff-output
           path: simple-scalable-aws-kube-irsa-values-diff
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: simple-thanos-diff-output
+          path: simple-thanos-values-diff
+
+      # TODO: Make step more generic and dynamic add the scenarios as needed
       - name: Combine diff outputs
         run: |
           echo "## Helm Diff Output - Summary" > formatted_diff_output.md
@@ -363,6 +417,16 @@ jobs:
           echo "" >> formatted_diff_output.md
           echo '```diff' >> formatted_diff_output.md
           cat simple-scalable-aws-kube-irsa-values-diff/formatted_diff_output.md >> formatted_diff_output.md
+          echo '```' >> formatted_diff_output.md
+          echo "</details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+
+          echo "<details>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo "<summary>Simple Thanos Scenario</summary>" >> formatted_diff_output.md
+          echo "" >> formatted_diff_output.md
+          echo '```diff' >> formatted_diff_output.md
+          cat simple-thanos-values-diff/formatted_diff_output.md >> formatted_diff_output.md
           echo '```' >> formatted_diff_output.md
           echo "</details>" >> formatted_diff_output.md
           echo "" >> formatted_diff_output.md
