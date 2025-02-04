@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/grafana/ckit/peer"
 	"golang.org/x/sync/errgroup"
@@ -59,6 +60,9 @@ func (s *Service) fetchClusterMembers(ctx context.Context) (Cluster, error) {
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(16)
 
+	// Use a mutex to protect concurrent map access
+	var mu sync.Mutex
+
 	for _, p := range s.node.Peers() {
 		peer := p // Create new variable to avoid closure issues
 		g.Go(func() error {
@@ -66,7 +70,9 @@ func (s *Service) fetchClusterMembers(ctx context.Context) (Cluster, error) {
 			if err != nil {
 				member.Error = err
 			}
+			mu.Lock()
 			cluster.Members[peer.Name] = member
+			mu.Unlock()
 			return nil
 		})
 	}
