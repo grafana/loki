@@ -285,6 +285,12 @@ func (s *generator) running(ctx context.Context) error {
 				return
 			}
 
+			userCtx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, tenantID))
+			if err != nil {
+				errCh <- err
+				return
+			}
+
 			// Create a ticker for rate limiting based on QPSPerTenant
 			ticker := time.NewTicker(time.Second / time.Duration(s.cfg.QPSPerTenant))
 			defer ticker.Stop()
@@ -317,13 +323,8 @@ func (s *generator) running(ctx context.Context) error {
 
 					// Check if the stream exceeds limits
 					if client != nil {
-						ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, tenantID))
-						if err != nil {
-							errCh <- err
-							return
-						}
 
-						resp, err := client.ExceedsLimits(ctx, req)
+						resp, err := client.ExceedsLimits(userCtx, req)
 						if err != nil {
 							errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
 							return
