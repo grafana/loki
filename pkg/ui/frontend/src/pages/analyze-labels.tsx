@@ -45,6 +45,14 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { DataTableColumnHeader } from "@/components/common/data-table-column-header";
+import { ChevronDown } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
   tenant: z.string().min(1, "Tenant ID is required"),
@@ -60,14 +68,54 @@ const durationOptions = [
   { value: "24h", label: "Last 24 hours" },
 ];
 
+interface LabelValue {
+  value: string;
+  count: number;
+}
+
 interface LabelAnalysis {
   name: string;
   uniqueValues: number;
   inStreams: number;
+  sampleValues: LabelValue[];
 }
 
 type SortField = "name" | "uniqueValues" | "inStreams" | "cardinality";
 type MetricType = "uniqueValues" | "inStreams";
+
+interface LabelValuesListProps {
+  values: LabelValue[];
+  totalValues: number;
+}
+
+function LabelValuesList({ values, totalValues }: LabelValuesListProps) {
+  return (
+    <div className="space-y-2 py-2">
+      {values.map(({ value, count }) => (
+        <div
+          key={value}
+          className="grid grid-cols-[200px_1fr_80px] items-center gap-4"
+        >
+          <Badge
+            variant="outline"
+            className="font-mono text-xs justify-self-start overflow-hidden"
+          >
+            {value}
+          </Badge>
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary"
+              style={{ width: `${(count / totalValues) * 100}%` }}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground tabular-nums justify-self-end">
+            {((count / totalValues) * 100).toFixed(1)}%
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function AnalyzeLabels() {
   const { cluster } = useCluster();
@@ -80,6 +128,7 @@ export default function AnalyzeLabels() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [selectedMetric, setSelectedMetric] =
     useState<MetricType>("uniqueValues");
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set());
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -118,28 +167,41 @@ export default function AnalyzeLabels() {
         string,
         { uniqueValues: Set<string>; inStreams: number }
       >();
+      const valueCountMap = new Map<string, Map<string, number>>();
 
       // Process the streams similar to the CLI tool
       data.data.forEach((stream: Record<string, string>) => {
         Object.entries(stream).forEach(([name, value]) => {
           if (!labelMap.has(name)) {
             labelMap.set(name, { uniqueValues: new Set(), inStreams: 0 });
+            valueCountMap.set(name, new Map());
           }
           const label = labelMap.get(name) as {
             uniqueValues: Set<string>;
             inStreams: number;
           };
+          const valueCounts = valueCountMap.get(name)!;
+
           label.uniqueValues.add(value);
           label.inStreams++;
+          valueCounts.set(value, (valueCounts.get(value) || 0) + 1);
         });
       });
 
       // Convert to array and sort by unique values count
-      const labels = Array.from(labelMap.entries()).map(([name, stats]) => ({
-        name,
-        uniqueValues: stats.uniqueValues.size,
-        inStreams: stats.inStreams,
-      }));
+      const labels = Array.from(labelMap.entries()).map(([name, stats]) => {
+        const valueCounts = Array.from(valueCountMap.get(name)!.entries())
+          .map(([value, count]) => ({ value, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        return {
+          name,
+          uniqueValues: stats.uniqueValues.size,
+          inStreams: stats.inStreams,
+          sampleValues: valueCounts,
+        };
+      });
       labels.sort((a, b) => b.uniqueValues - a.uniqueValues);
 
       setAnalysisResults({
@@ -491,19 +553,64 @@ export default function AnalyzeLabels() {
                 </TableHeader>
                 <TableBody>
                   {sortedLabels.map((label) => (
-                    <TableRow key={label.name}>
-                      <TableCell className="font-medium">
-                        {label.name}
-                      </TableCell>
-                      <TableCell>{label.uniqueValues}</TableCell>
-                      <TableCell>{label.inStreams}</TableCell>
-                      <TableCell>
-                        {((label.uniqueValues / label.inStreams) * 100).toFixed(
-                          2
-                        )}
-                        %
-                      </TableCell>
-                    </TableRow>
+                    <Collapsible
+                      key={label.name}
+                      asChild
+                      open={openRows.has(label.name)}
+                      onOpenChange={(isOpen) => {
+                        const newOpenRows = new Set(openRows);
+                        if (isOpen) {
+                          newOpenRows.add(label.name);
+                        } else {
+                          newOpenRows.delete(label.name);
+                        }
+                        setOpenRows(newOpenRows);
+                      }}
+                    >
+                      <>
+                        <TableRow>
+                          <TableCell className="font-medium">
+                            <CollapsibleTrigger className="flex items-center gap-2 hover:text-primary">
+                              <ChevronDown
+                                className={cn(
+                                  "h-4 w-4 transition-transform",
+                                  openRows.has(label.name) && "rotate-180"
+                                )}
+                              />
+                              {label.name}
+                            </CollapsibleTrigger>
+                          </TableCell>
+                          <TableCell>
+                            {label.uniqueValues.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {label.inStreams.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {(
+                              (label.uniqueValues / label.inStreams) *
+                              100
+                            ).toFixed(2)}
+                            %
+                          </TableCell>
+                        </TableRow>
+                        <CollapsibleContent asChild>
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="border-t-0 bg-muted/5"
+                            >
+                              <div className="px-4">
+                                <LabelValuesList
+                                  values={label.sampleValues}
+                                  totalValues={label.inStreams}
+                                />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        </CollapsibleContent>
+                      </>
+                    </Collapsible>
                   ))}
                 </TableBody>
               </Table>
