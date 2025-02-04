@@ -788,10 +788,6 @@ kafka_config:
 
 dataobj_consumer:
   builderconfig:
-    # The size of the SHA prefix to use for the data object builder.
-    # CLI flag: -dataobj-consumer.sha-prefix-size
-    [sha_prefix_size: <int> | default = 2]
-
     # The size of the target page to use for the data object builder.
     # CLI flag: -dataobj-consumer.target-page-size
     [target_page_size: <int> | default = 2MiB]
@@ -807,6 +803,12 @@ dataobj_consumer:
     # The size of the buffer to use for sorting logs.
     # CLI flag: -dataobj-consumer.buffer-size
     [buffer_size: <int> | default = 16MiB]
+
+  uploader:
+    # The size of the SHA prefix to use for generating object storage keys for
+    # data objects.
+    # CLI flag: -dataobj-consumer.sha-prefix-size
+    [shaprefixsize: <int> | default = 2]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-consumer.storage-bucket-prefix

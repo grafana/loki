@@ -4,6 +4,7 @@
 package filesystem
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -292,7 +293,7 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reade
 		defer r.Close()
 	}
 
-	newContent, err := f(r)
+	newContent, err := f(wrapReader(r))
 	if err != nil {
 		return err
 	}
@@ -303,6 +304,13 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reade
 	}
 
 	return os.WriteFile(file, content, 0600)
+}
+
+func wrapReader(r io.Reader) io.Reader {
+	if r == nil {
+		return bytes.NewReader(nil)
+	}
+	return r
 }
 
 func isDirEmpty(name string) (ok bool, err error) {
