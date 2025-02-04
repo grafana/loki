@@ -9,8 +9,7 @@ import (
 func AlertingRuleTenantLabels(ar *lokiv1.AlertingRule) {
 	switch ar.Spec.TenantID {
 	case tenantApplication:
-		appendAlertingRuleLabels(ar, map[string]string{
-			opaDefaultLabelMatchers:   ar.Namespace,
+		labels := map[string]string{
 			ocpMonitoringGroupByLabel: ar.Namespace,
 		}
 		labelMatchers := strings.Split(opaDefaultLabelMatchers, ",")
