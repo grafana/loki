@@ -87,10 +87,16 @@ It's recommended to also run `helm repo update` to ensure you have the latest ve
 Clone the tutorial repository by running the following command:
 
 ```bash
-git clone https://github.com/grafana/alloy-scenarios.git && cd alloy-scenarios/k8s-logs
+git clone https://github.com/grafana/alloy-scenarios.git
 ```
 
-As well as cloning the repository, we have also changed directories to `alloy-scenarios/k8s-logs`. **The rest of this tutorial assumes you are in this directory.**
+Then change directories to the `alloy-scenarios/k8s/logs` directory:
+
+```bash
+cd alloy-scenarios/k8s-logs
+```
+
+**The rest of this tutorial assumes you are in this directory.**
 
 <!-- INTERACTIVE page step2.md END -->
 
@@ -239,7 +245,7 @@ kubectl --namespace meta port-forward $POD_NAME 3000 --address 0.0.0.0
 This will make your terminal unusable until you stop the port-forwarding process. To do this, press `Ctrl + C`.
 {{< /admonition >}}
 
-This command will port-forward the Grafana service to your local machine on port `3000`. You can access Grafana by navigating to [http://localhost:3000](http://localhost:3000) in your browser. The default credentials are `admin` and `adminadminadmin`.  One of the first places you should visit is Explore Logs which will provide a no-code view of the logs being stored in Loki:
+This command will port-forward the Grafana service to your local machine on port `3000`. You can access Grafana by navigating to [http://localhost:3000](http://localhost:3000) in your browser. The default credentials are `admin` and `adminadminadmin`.  One of the first places you should visit is Explore Logs which lets you automatically visualize and explore your logs without having to write queries:
 
 [http://localhost:3000/a/grafana-lokiexplore-app](http://localhost:3000/a/grafana-lokiexplore-app)
 
