@@ -356,6 +356,7 @@ object_store:
   {{- end }}
 {{- end -}}
 {{- end -}}
+{{- end -}}
 
 {{/*
 Storage config for ruler
