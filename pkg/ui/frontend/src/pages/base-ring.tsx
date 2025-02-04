@@ -4,6 +4,7 @@ import { AlertCircle, CircleDot } from "lucide-react";
 import { AVAILABLE_RINGS } from "@/hooks/use-ring";
 import { RingType } from "@/types/ring";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { PageContainer } from "@/layout/page-container";
 
 interface BaseRingProps {
   error?: string;
@@ -14,18 +15,20 @@ export function BaseRing({ error, ringName }: BaseRingProps) {
   // Show error state if there is an error
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
+      <PageContainer>
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      </PageContainer>
     );
   }
 
   // Show ring selection if no ring is selected
   if (!ringName) {
     return (
-      <div className="container space-y-6 p-6">
+      <PageContainer constrainWidth={false}>
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
             <CircleDot className="h-6 w-6" />
@@ -48,7 +51,7 @@ export function BaseRing({ error, ringName }: BaseRingProps) {
             ))}
           </div>
         </div>
-      </div>
+      </PageContainer>
     );
   }
 

@@ -8,6 +8,7 @@ import { ErrorBoundary } from "@/components/shared/errors/error-boundary";
 import { useCluster } from "@/contexts/use-cluster";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle } from "lucide-react";
+import { PageContainer } from "@/layout/page-container";
 
 const NodesPage = () => {
   const { cluster, error, refresh, isLoading } = useCluster();
@@ -73,7 +74,7 @@ const NodesPage = () => {
   };
 
   return (
-    <div className="p-6">
+    <PageContainer>
       <Card className="shadow-sm">
         <CardHeader>
           <div className="grid grid-cols-[1fr_auto] gap-8">
@@ -134,7 +135,7 @@ const NodesPage = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 };
 

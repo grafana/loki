@@ -66,7 +66,7 @@ OPERATOR_IMAGE         := $(IMAGE_PREFIX)/loki-operator:$(IMAGE_TAG)
 
 # OCI (Docker) setup
 OCI_PLATFORMS  := --platform=linux/amd64,linux/arm64
-OCI_BUILD_ARGS := --build-arg GO_VERSION=$(GO_VERSION) --build-arg BUILD_IMAGE=$(BUILD_IMAGE)
+OCI_BUILD_ARGS := --build-arg GO_VERSION=$(GO_VERSION) --build-arg BUILD_IMAGE=$(BUILD_IMAGE) --build-arg IMAGE_TAG=$(IMAGE_TAG)
 OCI_PUSH_ARGS  := -o type=registry
 OCI_PUSH       := docker push
 OCI_TAG        := docker tag
@@ -612,7 +612,7 @@ loki-local-image: ## build the loki docker image locally (set LOCAL_ARCH=linux/a
 
 # Canary image
 loki-canary-image: ## build the canary docker image
-	$(OCI_BUILD) -t $(LOKI_CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
+	$(OCI_BUILD) -t $(CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
 loki-canary-boringcrypto-image:
 	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
 

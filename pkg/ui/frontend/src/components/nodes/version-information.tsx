@@ -1,6 +1,7 @@
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { FaApple, FaLinux, FaWindows } from "react-icons/fa";
+import { Badge } from "@/components/ui/badge";
 
 interface VersionInformationProps {
   build: {
@@ -25,6 +26,18 @@ const getOSIcon = (os: string) => {
     return <FaWindows className="h-4 w-4" />;
   }
   return null;
+};
+
+const getEditionBadgeStyle = (edition: string): string => {
+  const editionLower = edition.toLowerCase();
+
+  if (editionLower === "oss") {
+    return "bg-blue-500/20 text-blue-700 dark:bg-blue-500/30 dark:text-blue-300 hover:bg-blue-500/30";
+  }
+  if (editionLower === "enterprise") {
+    return "bg-yellow-500/20 text-yellow-700 dark:bg-yellow-500/30 dark:text-yellow-300 hover:bg-yellow-500/30";
+  }
+  return ""; // default badge style
 };
 
 export function VersionInformation({
@@ -59,7 +72,11 @@ export function VersionInformation({
           <div className="space-y-2">
             <div className="space-y-2">
               <Label>Edition</Label>
-              <p className="text-sm">{edition.toUpperCase()}</p>
+              <div>
+                <Badge className={getEditionBadgeStyle(edition)}>
+                  {edition.toUpperCase()}
+                </Badge>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Architecture</Label>

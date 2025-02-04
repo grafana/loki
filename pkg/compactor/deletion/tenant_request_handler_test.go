@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
 
@@ -79,4 +81,8 @@ func (f *fakeLimits) RetentionPeriod(userID string) time.Duration {
 
 func (f *fakeLimits) StreamRetention(userID string) []validation.StreamRetention {
 	return f.getLimitForUser(userID).streamRetention
+}
+
+func (f *fakeLimits) RetentionHours(userID string, _ labels.Labels) string {
+	return util.RetentionHours(f.getLimitForUser(userID).retentionPeriod)
 }

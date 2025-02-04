@@ -27,6 +27,7 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { Input } from "@/components/ui/input";
+import { PageContainer } from "@/layout/page-container";
 
 interface DeleteRequest {
   request_id: string;
@@ -333,7 +334,7 @@ const DeletesPage = () => {
   };
 
   return (
-    <div className="p-6">
+    <PageContainer>
       <Card className="shadow-sm">
         <CardHeader>
           <div className="flex flex-col gap-6">
@@ -388,7 +389,7 @@ const DeletesPage = () => {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 };
 

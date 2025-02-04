@@ -17,6 +17,7 @@ import { VersionInformation } from "@/components/nodes/version-information";
 import { NodeStatusIndicator } from "@/components/nodes/node-status-indicator";
 import { PprofControls } from "@/components/nodes/pprof-controls";
 import { CopyButton } from "@/components/common/copy-button";
+import { PageContainer } from "@/layout/page-container";
 
 function NodeDetailsPage() {
   const { nodeName } = useParams();
@@ -31,16 +32,18 @@ function NodeDetailsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-6">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
-        <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
+      <div className="container space-y-6 p-6">
+        <div className="flex items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+          <span className="ml-2 text-sm text-muted-foreground">Loading...</span>
+        </div>
       </div>
     );
   }
 
   if (!nodeDetails) {
     return (
-      <div className="p-6">
+      <div className="container space-y-6 p-6">
         <div className="bg-red-50 dark:bg-red-900 border-l-4 border-red-400 p-4">
           <div className="flex">
             <div className="ml-3">
@@ -55,7 +58,7 @@ function NodeDetailsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="container space-y-6 p-6">
       {/* Main Node Card */}
       <Card>
         <CardHeader>

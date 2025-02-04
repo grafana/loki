@@ -12,6 +12,12 @@
         "advisorynotifications": {
             "component": "advisorynotifications"
         },
+        "ai": {
+            "component": "ai"
+        },
+        "aiplatform": {
+            "component": "aiplatform"
+        },
         "alloydb": {
             "component": "alloydb"
         },
@@ -302,6 +308,9 @@
         },
         "parallelstore": {
             "component": "parallelstore"
+        },
+        "parametermanager": {
+            "component": "parametermanager"
         },
         "phishingprotection": {
             "component": "phishingprotection"

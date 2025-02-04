@@ -26,6 +26,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { PageContainer } from "@/layout/page-container";
 
 const formSchema = z.object({
   tenant_id: z.string().min(1, "Tenant ID is required"),
@@ -162,7 +163,7 @@ const NewDeleteRequest = () => {
   }, [form]);
 
   return (
-    <div className="p-6">
+    <PageContainer>
       <Card>
         <CardHeader>
           <CardTitle>New Delete Request</CardTitle>
@@ -325,7 +326,7 @@ const NewDeleteRequest = () => {
           </Form>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 };
 
