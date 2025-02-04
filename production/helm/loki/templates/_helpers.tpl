@@ -307,6 +307,54 @@ filesystem:
   rules_directory: {{ .rules_directory }}
 {{- end -}}
 {{- end -}}
+{{- if .Values.loki.storage.use_thanos_objstore  -}}
+{{- with .Values.loki.storage.object_store }}
+object_store:
+  type: {{ .type | quote }}
+  config:
+  {{- if eq .type "s3" }}
+    bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+    {{- with .endpoint }}
+    endpoint: {{ . }}
+    {{- end }}
+    {{- with .access_key_id }}
+    access_key_id: {{ . }}
+    {{- end }}
+    {{- with .secret_access_key }}
+    secret_access_key: {{ . }}
+    {{- end }}
+    {{- with .region }}
+    region: {{ . }}
+    {{- end }}
+    {{- with .insecure }}
+    insecure: {{ . }}
+    {{- end }}
+    {{- with .http }}
+    http:
+{{ toYaml . | indent 6 }}
+    {{- end }}
+    {{- with .sse }}
+    sse:
+{{ toYaml . | indent 6 }}
+    {{- end }}
+  {{- else if eq .type "gcs" }}
+    bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+    {{- with .service_account }}
+    service_account: {{ . }}
+    {{- end }}
+  {{- else if eq .type "azure" }}
+    container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+    {{- with .account_name }}
+    account_name: {{ . }}
+    {{- end }}
+    {{- with .account_key }}
+    account_key: {{ . }}
+    {{- end }}
+  {{- end }}
+  {{- with .prefix }}
+  prefix: {{ . }}
+  {{- end }}
+{{- end -}}
 {{- end -}}
 
 {{/*

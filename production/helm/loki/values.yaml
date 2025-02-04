@@ -384,6 +384,35 @@ loki:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
       admin_api_directory: /var/loki/admin
+
+    # Loki now supports using thanos storage clients for connecting to object storage backend.
+    # This will become the default way to configure storage in a future releases.
+    use_thanos_objstore: false
+    object_store:
+      # Type of object store. Valid options are: S3, GCS, AZURE
+      type: s3
+      prefix: null  # Optional prefix for storage keys
+
+      # S3 configuration (when type is "S3")
+      s3:
+        endpoint: null     # S3 endpoint URL
+        region: null       # Optional region
+        access_key_id: null      # Optional access key
+        secret_access_key: null  # Optional secret key
+        insecure: false       # Optional. Enable if using self-signed TLS
+        sse: {}         # Optional server-side encryption configuration
+        http: {}       # Optional HTTP client configuration
+
+      # GCS configuration (when type is "GCS")
+      gcs:
+        bucket_name: null  # Name of the bucket
+        service_account: null # Optional service account JSON
+
+      # Azure configuration (when type is "AZURE")
+      azure:
+        account_name: null  # Storage account name
+        account_key: null # Optional storage account key
+
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
