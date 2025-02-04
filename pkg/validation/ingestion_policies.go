@@ -2,8 +2,6 @@ package validation
 
 import "github.com/prometheus/prometheus/model/labels"
 
-type PolicyStreamMapping map[string][]*PriorityStream
-
 type PriorityStream struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description=The larger the value, the higher the priority."`
 	Selector string            `yaml:"selector" json:"selector" doc:"description=Stream selector expression."`
@@ -18,6 +16,8 @@ func (p *PriorityStream) Matches(lbs labels.Labels) bool {
 	}
 	return true
 }
+
+type PolicyStreamMapping map[string][]*PriorityStream
 
 func (p *PolicyStreamMapping) PolicyFor(lbs labels.Labels) string {
 	var (
