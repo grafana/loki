@@ -80,7 +80,7 @@ type Storage struct {
 	Hedging           hedging.Config            `yaml:"hedging"`
 	COS               ibmcloud.COSConfig        `yaml:"cos"`
 	CongestionControl congestion.Config         `yaml:"congestion_control,omitempty"`
-	ObjectStore       bucket.Config             `yaml:"object_store"  doc:"hidden"`
+	ObjectStore       bucket.Config             `yaml:"object_store"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

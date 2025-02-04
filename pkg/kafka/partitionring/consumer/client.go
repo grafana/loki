@@ -37,6 +37,7 @@ type Client struct {
 func NewGroupClient(kafkaCfg kafka.Config, partitionRing ring.PartitionRingReader, groupName string, metrics *kprom.Metrics, logger log.Logger, opts ...kgo.Opt) (*Client, error) {
 	defaultOpts := []kgo.Opt{
 		kgo.ConsumerGroup(groupName),
+		kgo.ConsumeRegex(),
 		kgo.ConsumeTopics(kafkaCfg.Topic),
 		kgo.Balancers(NewCooperativeActiveStickyBalancer(partitionRing)),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
