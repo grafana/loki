@@ -58,8 +58,8 @@ type BuilderConfig struct {
 func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	_ = cfg.TargetPageSize.Set("2MB")
 	_ = cfg.TargetObjectSize.Set("1GB")
-	_ = cfg.BufferSize.Set("16MB")           // Page Size * 8
-	_ = cfg.TargetSectionSize.Set("128t MB") // Target Object Size / 8
+	_ = cfg.BufferSize.Set("16MB")         // Page Size * 8
+	_ = cfg.TargetSectionSize.Set("128MB") // Target Object Size / 8
 
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
