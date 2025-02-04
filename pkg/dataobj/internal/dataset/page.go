@@ -112,9 +112,12 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
 		zr := &fixedZstdReader{page: p, data: compressedValuesData}
 		return bitmapReader, zr, nil
-	}
 
-	panic(fmt.Sprintf("dataset.MemPage.reader: unknown compression type %q", compression.String()))
+	default:
+		// We do *not* want to panic here, as we may be trying to read a page from
+		// a newer format.
+		return nil, nil, fmt.Errorf("unknown compression type %q", compression.String())
+	}
 }
 
 var snappyPool = sync.Pool{
