@@ -198,12 +198,12 @@ func intervalsOverlap(interval1, interval2 model.Interval) bool {
 }
 
 // GetMatchers returns the string representation of the matchers
-func (r *DeleteRequest) GetMatchers() string {
-	if len(r.matchers) == 0 {
+func (d *DeleteRequest) GetMatchers() string {
+	if len(d.matchers) == 0 {
 		return ""
 	}
 	var result []string
-	for _, m := range r.matchers {
+	for _, m := range d.matchers {
 		result = append(result, m.String())
 	}
 	return strings.Join(result, ",")

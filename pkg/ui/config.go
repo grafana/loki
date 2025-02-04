@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/netutil"
+
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 

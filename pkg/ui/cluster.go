@@ -9,9 +9,10 @@ import (
 	"strings"
 
 	"github.com/grafana/ckit/peer"
-	"github.com/grafana/loki/v3/pkg/analytics"
 	"golang.org/x/sync/errgroup"
 	"gopkg.in/yaml.v3"
+
+	"github.com/grafana/loki/v3/pkg/analytics"
 )
 
 // Cluster represents a collection of cluster members.
