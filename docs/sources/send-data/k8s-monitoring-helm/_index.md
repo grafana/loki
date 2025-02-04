@@ -28,7 +28,7 @@ In this tutorial, we will deploy [Loki](https://grafana.com/docs/loki/latest/get
 
 Before you begin, here are some things you should know:
 
-* **Loki**: Loki can run in a single binary mode or as a distributed system. In this tutorial, we will deploy Loki as a single binary, otherwise known as monolithic mode. Loki can be vertically scaled in this mode depending on the amount of logs you are collecting. Grafana Labs recommends running Loki in a distributed/microservice mode for production use cases to monitor high volumes of logs.
+* **Loki**: Loki can run in a single binary mode or as a distributed system. In this tutorial, we will deploy Loki as a single binary, otherwise known as monolithic mode. Loki can be vertically scaled in this mode depending on the number of logs you are collecting. Grafana Labs recommends running Loki in a distributed/microservice mode for production use cases to monitor high volumes of logs.
 * **Deployment**: You will deploy Loki, Grafana, and Alloy (As part of the Kubernetes Monitoring Helm chart) in the `meta` namespace of your Kubernetes cluster. Make sure you have the necessary permissions to create resources in this namespace. These pods will also require resources to run, so consider the amount of capacity your nodes have available. It also possible to just deploy the Kubernetes monitoring Helm chart (since it has a minimal resource footprint) within your cluster and write logs to an external Loki instance or Grafana Cloud.
 * **Storage**:  In this tutorial, Loki will use the default object storage backend provided in the Loki Helm chart; [MinIO](https://min.io/docs/minio/kubernetes/upstream/index.html). You should migrate to a more production-ready storage backend like [S3](https://aws.amazon.com/s3/getting-started/), [GCS](https://cloud.google.com/storage/docs), [Azure Blob Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/) or a MinIO Cluster for production use cases.
 
@@ -80,7 +80,7 @@ All three Helm charts (Loki, Grafana, and the Kubernetes Monitoring Helm) are av
 helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
 ```
 
-It's recommended to also run `helm repo update` to ensure you have the latest version of the charts.
+As well as adding the repo to our local helm list, we also run `helm repo update` to ensure you have the latest version of the charts.
 
 ## Step 3: Clone the tutorial repository
 
@@ -101,7 +101,7 @@ As well as cloning the repository, we have also changed directories to `alloy-sc
 Grafana Loki will be used to store our collected logs. In this tutorial we will deploy Loki with a minimal footprint and use the default storage backend provided by the Loki Helm chart, MinIO.
 
 {{< docs/ignore >}}
-> **Note**: Due to the resource constraints of the Kubernetes cluster running in the playground, we are deploying Loki using a custom values file. This values file reduces the resource requirements of Loki. This turns off features such as; cache, Loki Canary, and runs Loki with limited resources. This can take up to **1 minute** to complete.
+> **Note**: Due to the resource constraints of the Kubernetes cluster running in the playground, we are deploying Loki using a custom values file. This values file reduces the resource requirements of Loki. This turns off features such as cache and Loki Canary, and runs Loki with limited resources. This can take up to **1 minute** to complete.
 {{< /docs/ignore >}}
 
 To deploy Loki run the following command:
