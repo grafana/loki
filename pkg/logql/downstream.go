@@ -139,7 +139,12 @@ func (d DownstreamLogSelectorExpr) Pretty(level int) string {
 	return s
 }
 
-func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
+func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) {
+	f(d)
+	if d.SampleExpr != nil {
+		d.SampleExpr.Walk(f)
+	}
+}
 
 var defaultMaxDepth = 4
 
@@ -173,7 +178,12 @@ func (c *ConcatSampleExpr) string(maxDepth int) string {
 
 func (c *ConcatSampleExpr) Walk(f syntax.WalkFn) {
 	f(c)
-	f(c.next)
+	if c.SampleExpr != nil {
+		c.SampleExpr.Walk(f)
+	}
+	if c.next != nil {
+		c.next.Walk(f)
+	}
 }
 
 // ConcatSampleExpr has no LogQL repretenstation. It is expressed in in the
@@ -271,7 +281,12 @@ func (e QuantileSketchEvalExpr) String() string {
 
 func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
 	f(e)
-	e.quantileMergeExpr.Walk(f)
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
+	if e.quantileMergeExpr != nil {
+		e.quantileMergeExpr.Walk(f)
+	}
 }
 
 type QuantileSketchMergeExpr struct {
@@ -297,6 +312,9 @@ func (e QuantileSketchMergeExpr) String() string {
 
 func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	f(e)
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -326,6 +344,9 @@ func (e MergeFirstOverTimeExpr) String() string {
 
 func (e *MergeFirstOverTimeExpr) Walk(f syntax.WalkFn) {
 	f(e)
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -355,6 +376,9 @@ func (e MergeLastOverTimeExpr) String() string {
 
 func (e *MergeLastOverTimeExpr) Walk(f syntax.WalkFn) {
 	f(e)
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}
@@ -383,6 +407,9 @@ func (e CountMinSketchEvalExpr) String() string {
 
 func (e *CountMinSketchEvalExpr) Walk(f syntax.WalkFn) {
 	f(e)
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
 	for _, d := range e.downstreams {
 		d.Walk(f)
 	}

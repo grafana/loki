@@ -22,7 +22,7 @@ func Test_Walkable(t *testing.T) {
 		{
 			desc: "bin op query",
 			expr: `(sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])) / sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])))`,
-			want: 16,
+			want: 17,
 		},
 	}
 	for _, test := range tests {
@@ -79,8 +79,6 @@ func Test_AppendMatchers(t *testing.T) {
 				switch me := e.(type) {
 				case *MatchersExpr:
 					me.AppendMatchers(test.matchers)
-				default:
-					// Do nothing
 				}
 			})
 			require.Equal(t, test.want, expr.String())

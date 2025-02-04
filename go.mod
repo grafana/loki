@@ -6,7 +6,7 @@ toolchain go1.23.1
 
 require (
 	cloud.google.com/go/bigtable v1.35.0
-	cloud.google.com/go/pubsub v1.46.0
+	cloud.google.com/go/pubsub v1.47.0
 	cloud.google.com/go/storage v1.50.0
 	dario.cat/mergo v1.0.1
 	github.com/Azure/azure-pipeline-go v0.2.3
@@ -134,7 +134,7 @@ require (
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0
-	github.com/shirou/gopsutil/v4 v4.24.12
+	github.com/shirou/gopsutil/v4 v4.25.1
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
 	github.com/twmb/franz-go v1.18.1
 	github.com/twmb/franz-go/pkg/kadm v1.15.0
@@ -143,7 +143,7 @@ require (
 	github.com/twmb/franz-go/plugin/kotel v1.5.0
 	github.com/twmb/franz-go/plugin/kprom v1.1.0
 	github.com/willf/bloom v2.0.3+incompatible
-	go.opentelemetry.io/collector/pdata v1.24.0
+	go.opentelemetry.io/collector/pdata v1.25.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/oauth2 v0.25.0
 	golang.org/x/text v0.21.0
@@ -166,7 +166,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.6 // indirect
 	github.com/containerd/containerd v1.7.25 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
-	github.com/ebitengine/purego v0.8.1 // indirect
+	github.com/ebitengine/purego v0.8.2 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.4 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
@@ -203,7 +203,7 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.118.0 // indirect
+	cloud.google.com/go v0.118.1 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/iam v1.3.1 // indirect
 	cloud.google.com/go/longrunning v0.6.4 // indirect
@@ -408,3 +408,5 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
+
+replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250128154815-d7e99f81f866

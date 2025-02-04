@@ -148,15 +148,15 @@ local runner = import 'runner.libsonnet',
     dockerfile='Dockerfile',
     context='release',
     platform=[
-      'linux/amd64',
-      'linux/arm64',
+      r.forPlatform('linux/amd64'),
+      r.forPlatform('linux/arm64'),
     ]
                )
-    job.new()
+    job.new('${{ matrix.runs_on }}')
     + job.withStrategy({
       'fail-fast': true,
       matrix: {
-        platform: platform,
+        include: platform,
       },
     })
     + job.withSteps([
@@ -174,9 +174,9 @@ local runner = import 'runner.libsonnet',
         mkdir -p images
         mkdir -p plugins
 
-        platform="$(echo "${{ matrix.platform}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
+        platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.platform }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
         if [[ "${platform}" == "linux/arm64" ]]; then
           echo "plugin_arch=-arm64" >> $GITHUB_OUTPUT
         else
@@ -190,7 +190,7 @@ local runner = import 'runner.libsonnet',
       + step.with({
         context: context,
         file: 'release/%s/%s' % [path, dockerfile],
-        platforms: '${{ matrix.platform }}',
+        platforms: '${{ matrix.arch }}',
         push: false,
         tags: '${{ env.IMAGE_PREFIX }}/%s:${{ needs.version.outputs.version }}-${{ steps.platform.outputs.platform_short }}' % [name],
         outputs: 'type=local,dest=release/plugins/%s-${{ needs.version.outputs.version}}-${{ steps.platform.outputs.platform }}' % name,

@@ -1,5 +1,12 @@
 # Changes
 
+## [1.47.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.46.0...pubsub/v1.47.0) (2025-01-31)
+
+
+### Features
+
+* **pubsub:** Support new forms of topic ingestion ([#11537](https://github.com/googleapis/google-cloud-go/issues/11537)) ([46d6ed4](https://github.com/googleapis/google-cloud-go/commit/46d6ed475e6ae6b96f3e11e17496fd75fd8ea7c4))
+
 ## [1.46.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.45.3...pubsub/v1.46.0) (2025-01-24)
 
 
