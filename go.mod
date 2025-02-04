@@ -145,7 +145,7 @@ require (
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.25.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
-	golang.org/x/oauth2 v0.25.0
+	golang.org/x/oauth2 v0.26.0
 	golang.org/x/text v0.21.0
 	google.golang.org/protobuf v1.36.4
 	gotest.tools v2.2.0+incompatible
