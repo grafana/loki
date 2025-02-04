@@ -3932,10 +3932,10 @@ otlp_config:
 # policy_stream_mapping:
 #   finance:
 #   - selectors: ["{namespace="prod", container="billing"}"]
-#     priority: 20
+#     priority: 2
 #   ops:
 #   - selectors: ["{namespace="prod", container="ops"}"]
-#     priority: 21
+#     priority: 1
 #   staging:
 #   - selectors: ["{namespace="staging"}, {namespace="dev"}"]
 #     priority: 1
