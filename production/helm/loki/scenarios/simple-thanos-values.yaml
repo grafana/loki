@@ -1,0 +1,37 @@
+---
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+
+  use_thanos_objstore: true
+
+  storage_config:
+    object_store:
+      type: s3
+
+      config:
+        bucket_name: chunks-thanos
+        endpoint: http://minio-server.minio.svc.cluster.local:9000
+        access_key_id: thanos-minio
+        secret_access_key: thanos-minio123
+        region: us-east-1
+        insecure: true\
+
+  ruler_storage:
+    backend: s3
+    bucket_name: chunks-thanos
+    endpoint: http://minio-server.minio.svc.cluster.local:9000
+    region: us-east-1
+
+read:
+  replicas: 1
+write:
+  replicas: 1
+backend:
+  replicas: 1
