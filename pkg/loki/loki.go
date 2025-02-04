@@ -38,6 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
+	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -88,7 +90,7 @@ type Config struct {
 	Frontend            lokifrontend.Config        `yaml:"frontend,omitempty"`
 	QueryRange          queryrange.Config          `yaml:"query_range,omitempty"`
 	Ruler               ruler.Config               `yaml:"ruler,omitempty"`
-	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty" doc:"hidden"`
+	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
 	BlockBuilder        blockbuilder.Config        `yaml:"block_builder,omitempty"`
@@ -108,6 +110,8 @@ type Config struct {
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
+	DataObjConsumer     consumer.Config            `yaml:"dataobj_consumer,omitempty" category:"experimental"`
+	DataObjExplorer     explorer.Config            `yaml:"dataobj_explorer,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -189,6 +193,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.KafkaConfig.RegisterFlags(f)
 	c.BlockBuilder.RegisterFlags(f)
 	c.BlockScheduler.RegisterFlags(f)
+	c.DataObjExplorer.RegisterFlags(f)
+	c.DataObjConsumer.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -304,6 +310,9 @@ func (c *Config) Validate() error {
 		if err := c.KafkaConfig.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
+		if err := c.DataObjConsumer.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj_consumer config"))
+		}
 	}
 	if err := c.Distributor.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
@@ -367,6 +376,7 @@ type Loki struct {
 	ingesterQuerier           *querier.IngesterQuerier
 	Store                     storage.Store
 	BloomStore                bloomshipper.Store
+	bloomGatewayClient        bloomgateway.Client
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
@@ -386,6 +396,7 @@ type Loki struct {
 	partitionRing             *ring.PartitionInstanceRing
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
+	dataObjConsumer           *consumer.Service
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -691,6 +702,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(BloomGateway, t.initBloomGateway)
+	mm.RegisterModule(BloomGatewayClient, t.initBloomGatewayClient)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics, modules.UserInvisibleModule)
@@ -701,6 +713,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
 	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
+	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
+	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -729,7 +743,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomGateway:             {Server, BloomStore, Analytics},
 		BloomPlanner:             {Server, BloomStore, Analytics, Store},
 		BloomBuilder:             {Server, BloomStore, Analytics, Store},
-		BloomStore:               {IndexGatewayRing},
+		BloomStore:               {IndexGatewayRing, BloomGatewayClient},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		PatternIngesterTee:       {Server, MemberlistKV, Analytics, PatternRingClient},
 		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides},
@@ -740,6 +754,8 @@ func (t *Loki) setupModuleManager() error {
 		MemberlistKV:             {Server},
 		BlockBuilder:             {PartitionRing, Store, Server},
 		BlockScheduler:           {Server},
+		DataObjExplorer:          {Server},
+		DataObjConsumer:          {PartitionRing, Server},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},

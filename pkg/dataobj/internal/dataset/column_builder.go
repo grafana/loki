@@ -3,6 +3,8 @@ package dataset
 import (
 	"fmt"
 
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 )
 
@@ -21,6 +23,20 @@ type BuilderOptions struct {
 
 	// Compression is the compression algorithm to use for values.
 	Compression datasetmd.CompressionType
+
+	// CompressionOptions holds optional configuration for compression.
+	CompressionOptions CompressionOptions
+
+	// StoreRangeStats indicates whether to store value range statistics for the
+	// column and pages.
+	StoreRangeStats bool
+}
+
+// CompressionOptions customizes the compressor used when building pages.
+type CompressionOptions struct {
+	// Zstd holds encoding options for Zstd compression. Only used for
+	// [datasetmd.COMPRESSION_TYPE_ZSTD].
+	Zstd []zstd.EOption
 }
 
 // A ColumnBuilder builds a sequence of [Value] entries of a common type into a
@@ -143,13 +159,8 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 		Type: cb.opts.Value,
 
 		Compression: cb.opts.Compression,
+		Statistics:  cb.buildStats(),
 	}
-
-	// TODO(rfratto): Should we compute column-wide statistics if they're
-	// available in pages?
-	//
-	// That would potentially work for min/max values, but not for count
-	// distinct, unless we had a way to pass sketches around.
 
 	for _, page := range cb.pages {
 		info.RowsCount += page.Info.RowCount
@@ -165,6 +176,48 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 
 	cb.Reset()
 	return column, nil
+}
+
+func (cb *ColumnBuilder) buildStats() *datasetmd.Statistics {
+	if !cb.opts.StoreRangeStats {
+		return nil
+	}
+
+	var stats datasetmd.Statistics
+
+	var minValue, maxValue Value
+
+	for i, page := range cb.pages {
+		if page.Info.Stats == nil {
+			// This should never hit; if cb.opts.StoreRangeStats is true, then
+			// page.Info.Stats will be populated.
+			panic("ColumnBuilder.buildStats: page missing stats")
+		}
+
+		var pageMin, pageMax Value
+
+		if err := pageMin.UnmarshalBinary(page.Info.Stats.MinValue); err != nil {
+			panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to unmarshal min value: %s", err))
+		} else if err := pageMax.UnmarshalBinary(page.Info.Stats.MaxValue); err != nil {
+			panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to unmarshal max value: %s", err))
+		}
+
+		if i == 0 || CompareValues(pageMin, minValue) < 0 {
+			minValue = pageMin
+		}
+		if i == 0 || CompareValues(pageMax, maxValue) > 0 {
+			maxValue = pageMax
+		}
+	}
+
+	var err error
+	if stats.MinValue, err = minValue.MarshalBinary(); err != nil {
+		panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to marshal min value: %s", err))
+	}
+	if stats.MaxValue, err = maxValue.MarshalBinary(); err != nil {
+		panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to marshal max value: %s", err))
+	}
+	return &stats
 }
 
 func (cb *ColumnBuilder) flushPage() {

@@ -256,9 +256,17 @@ func (m *ColumnInfo) GetValuesCount() uint64 {
 // Statistics about a column or a page. All statistics are optional and are
 // conditionally set depending on the column type.
 type Statistics struct {
-	// Minimum value.
+	// Minimum value. Applications should only set min_value to an encoding of a
+	// non-NULL value. If there is no non-NULL value, min_value should be unset.
+	//
+	// Applications must not assume that an unset min_value means that the column
+	// is empty; check for values_count == 0 instead.
 	MinValue []byte `protobuf:"bytes,1,opt,name=min_value,json=minValue,proto3" json:"min_value,omitempty"`
-	// Maximum value.
+	// Maximum value. Applications should only set max_value to an encoding of a
+	// non-NULL value. If there is no non-NULL value, max_value should be unset.
+	//
+	// Applications must not assume that an unset max_value means that the column
+	// is empty; check for values_count == 0 instead.
 	MaxValue []byte `protobuf:"bytes,2,opt,name=max_value,json=maxValue,proto3" json:"max_value,omitempty"`
 }
 

@@ -11,8 +11,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/push"
+
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
@@ -20,8 +24,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
-	"google.golang.org/grpc/codes"
-	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -65,6 +67,8 @@ const (
 	ServiceUnknown        = "unknown_service"
 	AggregatedMetricLabel = "__aggregated_metric__"
 )
+
+var ErrAllLogsFiltered = errors.New("all logs lines filtered during parsing")
 
 type TenantsRetention interface {
 	RetentionPeriodFor(userID string, lbs labels.Labels) time.Duration
@@ -111,7 +115,7 @@ type Stats struct {
 
 func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, pushRequestParser RequestParser, tracker UsageTracker, logPushRequestStreams bool) (*logproto.PushRequest, error) {
 	req, pushStats, err := pushRequestParser(userID, r, tenantsRetention, limits, tracker, logPushRequestStreams, logger)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		return nil, err
 	}
 
@@ -164,7 +168,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	logValues = append(logValues, pushStats.Extra...)
 	level.Debug(logger).Log(logValues...)
 
-	return req, nil
+	return req, err
 }
 
 func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {

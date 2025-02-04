@@ -1,5 +1,20 @@
 # Changes
 
+
+## [0.118.1](https://github.com/googleapis/google-cloud-go/compare/v0.118.0...v0.118.1) (2025-01-30)
+
+
+### Bug Fixes
+
+* **main:** Remove OpenCensus dependency ([6243d91](https://github.com/googleapis/google-cloud-go/commit/6243d910b2bb502211d8308f9cc7723829d9f844))
+
+## [0.118.0](https://github.com/googleapis/google-cloud-go/compare/v0.117.0...v0.118.0) (2025-01-02)
+
+
+### Features
+
+* **civil:** Add AddMonths, AddYears and Weekday methods to Date ([#11340](https://github.com/googleapis/google-cloud-go/issues/11340)) ([d45f1a0](https://github.com/googleapis/google-cloud-go/commit/d45f1a01ebff868418aa14fe762ef7d1334f797d))
+
 ## [0.117.0](https://github.com/googleapis/google-cloud-go/compare/v0.116.0...v0.117.0) (2024-12-16)
 
 

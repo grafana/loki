@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gorilla/websocket"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
@@ -19,25 +18,19 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/v3/pkg/loghttp/legacy"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	querier_limits "github.com/grafana/loki/v3/pkg/querier/limits"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/util/marshal"
-	marshal_legacy "github.com/grafana/loki/v3/pkg/util/marshal/legacy"
 	serverutil "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
-)
-
-const (
-	wsPingPeriod = 1 * time.Second
 )
 
 type QueryResponse struct {
@@ -53,12 +46,12 @@ type Engine interface {
 type QuerierAPI struct {
 	querier Querier
 	cfg     Config
-	limits  Limits
+	limits  querier_limits.Limits
 	engine  Engine
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, logger log.Logger) *QuerierAPI {
 	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
 	return &QuerierAPI{
 		cfg:     cfg,
@@ -126,129 +119,6 @@ func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelReques
 	logql.RecordLabelQueryMetrics(ctx, util_log.Logger, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	return resp, err
-}
-
-// TailHandler is a http.HandlerFunc for handling tail queries.
-func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{
-		CheckOrigin: func(_ *http.Request) bool { return true },
-	}
-	logger := util_log.WithContext(r.Context(), util_log.Logger)
-
-	req, err := loghttp.ParseTailQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
-		return
-	}
-
-	tenantID, err := tenant.TenantID(r.Context())
-	if err != nil {
-		level.Warn(logger).Log("msg", "error getting tenant id", "err", err)
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error()), w)
-		return
-	}
-
-	encodingFlags := httpreq.ExtractEncodingFlags(r)
-	version := loghttp.GetVersion(r.RequestURI)
-
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		level.Error(logger).Log("msg", "Error in upgrading websocket", "err", err)
-		return
-	}
-
-	level.Info(logger).Log("msg", "starting to tail logs", "tenant", tenantID, "selectors", req.Query)
-
-	defer func() {
-		level.Info(logger).Log("msg", "ended tailing logs", "tenant", tenantID, "selectors", req.Query)
-	}()
-
-	defer func() {
-		if err := conn.Close(); err != nil {
-			level.Error(logger).Log("msg", "Error closing websocket", "err", err)
-		}
-	}()
-
-	tailer, err := q.querier.Tail(r.Context(), req, encodingFlags.Has(httpreq.FlagCategorizeLabels))
-	if err != nil {
-		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-			level.Error(logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
-		}
-		return
-	}
-	defer func() {
-		if err := tailer.close(); err != nil {
-			level.Error(logger).Log("msg", "Error closing Tailer", "err", err)
-		}
-	}()
-
-	ticker := time.NewTicker(wsPingPeriod)
-	defer ticker.Stop()
-
-	connWriter := marshal.NewWebsocketJSONWriter(conn)
-
-	var response *loghttp_legacy.TailResponse
-	responseChan := tailer.getResponseChan()
-	closeErrChan := tailer.getCloseErrorChan()
-
-	doneChan := make(chan struct{})
-	go func() {
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				if closeErr, ok := err.(*websocket.CloseError); ok {
-					if closeErr.Code == websocket.CloseNormalClosure {
-						break
-					}
-					level.Error(logger).Log("msg", "Error from client", "err", err)
-					break
-				} else if tailer.stopped.Load() {
-					return
-				}
-
-				level.Error(logger).Log("msg", "Unexpected error from client", "err", err)
-				break
-			}
-		}
-		doneChan <- struct{}{}
-	}()
-
-	for {
-		select {
-		case response = <-responseChan:
-			var err error
-			if version == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, connWriter, encodingFlags)
-			} else {
-				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
-			}
-			if err != nil {
-				level.Error(logger).Log("msg", "Error writing to websocket", "err", err)
-				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
-				}
-				return
-			}
-
-		case err := <-closeErrChan:
-			level.Error(logger).Log("msg", "Error from iterator", "err", err)
-			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-				level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
-			}
-			return
-		case <-ticker.C:
-			// This is to periodically check whether connection is active, useful to clean up dead connections when there are no entries to send
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				level.Error(logger).Log("msg", "Error writing ping message to websocket", "err", err)
-				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(logger).Log("msg", "Error writing close message to websocket", "err", err)
-				}
-				return
-			}
-		case <-doneChan:
-			return
-		}
-	}
 }
 
 // SeriesHandler returns the list of time series that match a certain label set.
@@ -420,7 +290,6 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, expr syntax.E
 // DetectedLabelsHandler returns a response for detected labels
 func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
 	resp, err := q.querier.DetectedLabels(ctx, req)
-
 	if err != nil {
 		return nil, err
 	}
@@ -430,7 +299,7 @@ func (q *QuerierAPI) DetectedLabelsHandler(ctx context.Context, req *logproto.De
 // WrapQuerySpanAndTimeout applies a context deadline and a span logger to a query call.
 //
 // The timeout is based on the per-tenant query timeout configuration.
-func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
+func WrapQuerySpanAndTimeout(call string, limits querier_limits.Limits) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)

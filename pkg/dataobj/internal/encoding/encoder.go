@@ -12,6 +12,26 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 )
 
+// TODO(rfratto): the memory footprint of [Encoder] can very slowly grow in
+// memory as [bytesBufferPool] is filled with buffers with increasing capacity:
+// each encoding pass has a different number of elements, shuffling which
+// elements of the hierarchy get which pooled buffers.
+//
+// This means that elements that require more bytes will grow the capacity of
+// the buffer and put the buffer back into the pool. Even if further encoding
+// passes don't need that many bytes, the buffer is kept alive with its larger
+// footprint. Given enough time, all buffers in the pool will have a large
+// capacity.
+//
+// The bufpool package provides a solution to this (bucketing pools by
+// capacity), but using bufpool properly requires knowing how many bytes are
+// needed.
+//
+// Encoder can eventually be moved to the bufpool package by calculating a
+// rolling maximum of encoding size used per element across usages of an
+// Encoder instance. This would then allow larger buffers to be eventually
+// reclaimed regardless of how often encoding is done.
+
 // Encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
 //
@@ -145,6 +165,14 @@ func (enc *Encoder) Flush() error {
 	enc.sections = nil
 	enc.data.Reset()
 	return nil
+}
+
+func (enc *Encoder) Reset(w streamio.Writer) {
+	enc.data.Reset()
+	enc.sections = nil
+	enc.curSection = nil
+	enc.w = w
+	enc.startOffset = len(magic)
 }
 
 func (enc *Encoder) append(data, metadata []byte) error {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
 )
 
 // A Stream is an individual stream within a data object.
@@ -30,6 +32,21 @@ type Stream struct {
 	MinTimestamp time.Time     // Minimum timestamp in the stream.
 	MaxTimestamp time.Time     // Maximum timestamp in the stream.
 	Rows         int           // Number of rows in the stream.
+}
+
+// Reset zeroes all values in the stream struct so it can be reused.
+func (s *Stream) Reset() {
+	s.ID = 0
+	s.Labels = nil
+	s.MinTimestamp = time.Time{}
+	s.MaxTimestamp = time.Time{}
+	s.Rows = 0
+}
+
+var streamPool = sync.Pool{
+	New: func() interface{} {
+		return &Stream{}
+	},
 }
 
 // Streams tracks information about streams in a data object.
@@ -60,8 +77,14 @@ func New(metrics *Metrics, pageSize int) *Streams {
 	return &Streams{
 		metrics:  metrics,
 		pageSize: pageSize,
-		lookup:   make(map[uint64][]*Stream),
+		lookup:   make(map[uint64][]*Stream, 1024),
+		ordered:  make([]*Stream, 0, 1024),
 	}
+}
+
+// TimeRange returns the minimum and maximum timestamp across all streams.
+func (s *Streams) TimeRange() (time.Time, time.Time) {
+	return s.globalMinTimestamp, s.globalMaxTimestamp
 }
 
 // Record a stream record within the Streams section. The provided timestamp is
@@ -152,7 +175,11 @@ func (s *Streams) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 		s.currentLabelsSize += len(lbl.Value)
 	}
 
-	newStream := &Stream{ID: s.lastID.Add(1), Labels: streamLabels}
+	newStream := streamPool.Get().(*Stream)
+	newStream.Reset()
+	newStream.ID = s.lastID.Add(1)
+	newStream.Labels = streamLabels
+
 	s.lookup[hash] = append(s.lookup[hash], newStream)
 	s.ordered = append(s.ordered, newStream)
 	s.metrics.streamCount.Inc()
@@ -186,7 +213,6 @@ func (s *Streams) StreamID(streamLabels labels.Labels) int64 {
 func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 	timer := prometheus.NewTimer(s.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
-	defer s.Reset()
 
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
@@ -225,10 +251,11 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		}
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
-			PageSizeHint: s.pageSize,
-			Value:        datasetmd.VALUE_TYPE_STRING,
-			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+			PageSizeHint:    s.pageSize,
+			Value:           datasetmd.VALUE_TYPE_STRING,
+			Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
+			Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
+			StoreRangeStats: true,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("creating label column: %w", err)
@@ -296,10 +323,11 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 
 func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		PageSizeHint:    pageSize,
+		Value:           datasetmd.VALUE_TYPE_INT64,
+		Encoding:        datasetmd.ENCODING_TYPE_DELTA,
+		Compression:     datasetmd.COMPRESSION_TYPE_NONE,
+		StoreRangeStats: true,
 	})
 }
 
@@ -332,8 +360,11 @@ func encodeColumn(enc *encoding.StreamsEncoder, columnType streamsmd.ColumnType,
 // Reset resets all state, allowing Streams to be reused.
 func (s *Streams) Reset() {
 	s.lastID.Store(0)
+	for _, stream := range s.ordered {
+		streamPool.Put(stream)
+	}
 	clear(s.lookup)
-	s.ordered = s.ordered[:0]
+	s.ordered = sliceclear.Clear(s.ordered)
 	s.currentLabelsSize = 0
 	s.globalMinTimestamp = time.Time{}
 	s.globalMaxTimestamp = time.Time{}
