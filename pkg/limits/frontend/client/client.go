@@ -39,6 +39,11 @@ type Config struct {
 	PoolConfig                   PoolConfig                     `yaml:"pool_config,omitempty" doc:"description=Configures client gRPC connections pool to limits service."`
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
+
+	// Internal is used to indicate that this client communicates on behalf of
+	// a machine and not a user. When Internal = true, the client won't attempt
+	// to inject an userid into the context.
+	Internal bool `yaml:"-"`
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -100,12 +105,18 @@ func getGRPCInterceptors(cfg *Config) ([]grpc.UnaryClientInterceptor, []grpc.Str
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientQueryTagsInterceptor)
 	unaryInterceptors = append(unaryInterceptors, server.UnaryClientHTTPHeadersInterceptor)
 	unaryInterceptors = append(unaryInterceptors, otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()))
+	if !cfg.Internal {
+		unaryInterceptors = append(unaryInterceptors, middleware.ClientUserHeaderInterceptor)
+	}
 	unaryInterceptors = append(unaryInterceptors, middleware.UnaryClientInstrumentInterceptor(frontendRequestDuration))
 
 	streamInterceptors = append(streamInterceptors, cfg.GRCPStreamClientInterceptors...)
 	streamInterceptors = append(streamInterceptors, server.StreamClientQueryTagsInterceptor)
 	streamInterceptors = append(streamInterceptors, server.StreamClientHTTPHeadersInterceptor)
 	streamInterceptors = append(streamInterceptors, otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()))
+	if !cfg.Internal {
+		streamInterceptors = append(streamInterceptors, middleware.StreamClientUserHeaderInterceptor)
+	}
 	streamInterceptors = append(streamInterceptors, middleware.StreamClientInstrumentInterceptor(frontendRequestDuration))
 
 	return unaryInterceptors, streamInterceptors
