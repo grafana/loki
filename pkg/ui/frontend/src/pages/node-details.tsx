@@ -18,7 +18,6 @@ import { NodeStatusIndicator } from "@/components/nodes/node-status-indicator";
 import { PprofControls } from "@/components/nodes/pprof-controls";
 import { CopyButton } from "@/components/common/copy-button";
 import { PageContainer } from "@/layout/page-container";
-
 function NodeDetailsPage() {
   const { nodeName } = useParams();
   const [activeTab, setActiveTab] = useState("config");
@@ -58,7 +57,7 @@ function NodeDetailsPage() {
   }
 
   return (
-    <div className="container space-y-6 p-6">
+    <PageContainer>
       {/* Main Node Card */}
       <Card>
         <CardHeader>
@@ -198,7 +197,7 @@ function NodeDetailsPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageContainer>
   );
 }
 

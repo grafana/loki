@@ -28,7 +28,7 @@ export function BaseRing({ error, ringName }: BaseRingProps) {
   // Show ring selection if no ring is selected
   if (!ringName) {
     return (
-      <PageContainer constrainWidth={false}>
+      <PageContainer>
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
             <CircleDot className="h-6 w-6" />
