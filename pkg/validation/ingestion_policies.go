@@ -26,12 +26,11 @@ func (p *PolicyStreamMapping) PolicyFor(lbs labels.Labels) string {
 		matchedPolicyName string
 	)
 
-Outer:
 	for policyName, policyStreams := range *p {
 		for _, policyStream := range policyStreams {
 			if found && policyStream.Priority <= matchedPolicy.Priority {
 				// Even if a match occurs it won't have a higher priority than the current matched policy.
-				continue Outer
+				continue
 			}
 
 			if !policyStream.Matches(lbs) {

@@ -60,14 +60,21 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 		"policy6": []*PriorityStream{
 			{
 				Selector: `{env="prod"}`,
-				Priority: 1,
+				Priority: 2,
 				Matchers: []*labels.Matcher{
 					labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
 				},
 			},
 			{
+				Selector: `{env=~"prod|staging"}`,
+				Priority: 1,
+				Matchers: []*labels.Matcher{
+					labels.MustNewMatcher(labels.MatchRegexp, "env", "prod|staging"),
+				},
+			},
+			{
 				Selector: `{team="finance"}`,
-				Priority: 3,
+				Priority: 4,
 				Matchers: []*labels.Matcher{
 					labels.MustNewMatcher(labels.MatchEqual, "team", "finance"),
 				},
@@ -76,7 +83,7 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 		"policy7": []*PriorityStream{
 			{
 				Selector: `{env=~"prod|dev"}`,
-				Priority: 2,
+				Priority: 3,
 				Matchers: []*labels.Matcher{
 					labels.MustNewMatcher(labels.MatchRegexp, "env", "prod|dev"),
 				},
