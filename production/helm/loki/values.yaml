@@ -449,7 +449,7 @@ loki:
   rulerConfig:
     wal:
       dir: /var/loki/ruler-wal
-  # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`
+  # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
   query_scheduler: {}

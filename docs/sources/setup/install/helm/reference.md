@@ -6436,7 +6436,7 @@ null
 		<tr>
 			<td>loki.structuredConfig</td>
 			<td>object</td>
-			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`</td>
+			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`</td>
 			<td><pre lang="json">
 {}
 </pre>
