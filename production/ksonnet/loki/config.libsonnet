@@ -122,6 +122,11 @@
           } else {
             s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
           }
+        ) + (
+          if $._config.s3_bucket_region != '' then {
+            region: $._config.s3_bucket_region,
+          }
+          else {}
         ),
       } else if $._config.storage_backend == 'azure' then {
         azure: {
