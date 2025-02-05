@@ -497,19 +497,11 @@
         echo "image_name=${{ env.IMAGE_PREFIX }}/lambda-promtail" >> $GITHUB_OUTPUT
         echo "image_full_name=${{ env.IMAGE_PREFIX }}/lambda-promtail:$version" >> $GITHUB_OUTPUT
       "working-directory": "release"
-    - "id": "platform"
-      "name": "Parse image platform"
-      "run": |
-        platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
-        echo "platform=${platform}" >> $GITHUB_OUTPUT
-        echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
-      "working-directory": "release"
     - "id": "prepare-tag"
       "name": "Prepare tag name"
       "run": |
         arch=$(echo ${{ matrix.arch }} | cut -d'/' -f2)
         echo "IMAGE_TAG=${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${arch}" >> $GITHUB_OUTPUT
-
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
@@ -522,7 +514,7 @@
         "file": "release/tools/lambda-promtail/Dockerfile"
         "outputs": "type=image,push=true"
         "platform": "${{ matrix.arch }}"
-        "provenance": true
+        "provenance": false
         "tags": "${{ steps.prepare-tag.outputs.IMAGE_TAG }}"
     - "id": "digest"
       "name": "Process image digest"
@@ -570,7 +562,7 @@
     - "name": "Publish multi-arch manifest"
       "run": |
         # Ensure each architecture image is pushed
-        for arch in "linux/amd64" "linux/arm64"; do
+        for arch in "amd64" "arm64"; do
           docker pull ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-${arch}
           docker push ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-${arch}
         done
@@ -579,8 +571,8 @@
         IMAGE=${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}
         echo "Create multi-arch manifest for $IMAGE"
         docker buildx imagetools create -t $IMAGE \
-          ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-linux/amd64 \
-          ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-linux/arm64
+          ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-amd64 \
+          ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-arm64
 
         docker buildx imagetools inspect $IMAGE
 "name": "Publish images"
