@@ -12,6 +12,8 @@ type Config struct {
 	UploaderConfig uploader.Config `yaml:"uploader"`
 	// StorageBucketPrefix is the prefix to use for the storage bucket.
 	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
+	// TenantIDFallback is the tenant ID to use if the tenant ID cannot be decoded from the topic.
+	TenantIDFallback string `yaml:"tenant_id_fallback"`
 }
 
 func (cfg *Config) Validate() error {
@@ -30,4 +32,5 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.UploaderConfig.RegisterFlagsWithPrefix(prefix, f)
 	f.StringVar(&cfg.StorageBucketPrefix, prefix+"storage-bucket-prefix", "dataobj/", "The prefix to use for the storage bucket.")
+	f.StringVar(&cfg.TenantIDFallback, prefix+"tenant-id-fallback", "", "The tenant ID to use if the tenant ID cannot be decoded from the topic.")
 }

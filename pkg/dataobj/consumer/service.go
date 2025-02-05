@@ -86,8 +86,14 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 		tenant, virtualShard, err := s.codec.Decode(topic)
 		// TODO: should propage more effectively
 		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to decode topic", "topic", topic, "err", err)
-			continue
+			if s.cfg.TenantIDFallback != "" {
+				level.Warn(s.logger).Log("msg", "failed to decode topic, using fallback tenant ID", "topic", topic, "err", err, "tenantID", s.cfg.TenantIDFallback)
+				tenant = s.cfg.TenantIDFallback
+				virtualShard = 0
+			} else {
+				level.Error(s.logger).Log("msg", "failed to decode topic, skipping topic", "topic", topic, "err", err)
+				continue
+			}
 		}
 
 		if _, ok := s.partitionHandlers[topic]; !ok {

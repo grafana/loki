@@ -178,7 +178,6 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 	// todo: handle multi-tenant
 	if !bytes.Equal(record.Key, p.tenantID) {
-		level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
 		return
 	}
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
