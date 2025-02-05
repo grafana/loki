@@ -23,7 +23,7 @@ const (
 var parserPool = sync.Pool{
 	New: func() interface{} {
 		p := &parser{
-			p:      &exprParserImpl{},
+			p:      &syntaxParserImpl{},
 			Reader: strings.NewReader(""),
 			lexer:  &lexer{},
 		}
@@ -41,16 +41,16 @@ const maxInputSize = 131072
 
 func init() {
 	// Improve the error messages coming out of yacc.
-	exprErrorVerbose = true
+	syntaxErrorVerbose = true
 	// uncomment when you need to understand yacc rule tree.
 	// exprDebug = 3
 	for str, tok := range tokens {
-		exprToknames[tok-exprPrivate+1] = str
+		syntaxToknames[tok-syntaxPrivate+1] = str
 	}
 }
 
 type parser struct {
-	p *exprParserImpl
+	p *syntaxParserImpl
 	*lexer
 	expr Expr
 	*strings.Reader
