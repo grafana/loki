@@ -106,6 +106,18 @@ Cluster label for rules and alerts.
 {{- end }}
 {{- end }}
 
+{{/* Create a default storage config that uses filesystem storage
+This is required for CI, but Loki will not be queryable with this default
+applied, thus it is encouraged that users override this.
+*/}}
+{{- define "loki.storageConfig" -}}
+{{- if .Values.loki.storageConfig -}}
+{{- .Values.loki.storageConfig | toYaml | nindent 4 -}}
+{{- else }}
+{{- .Values.loki.defaultStorageConfig | toYaml | nindent 4 }}
+{{- end}}
+{{- end}}
+
 {{/*
 Create chart name and version as used by the chart label.
 */}}
@@ -196,7 +208,7 @@ Generated storage config for loki common config
 object_store:
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
 {{- else }}
-{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks "type" .Values.loki.storage.type) | nindent 2 }}
+{{- include "loki.internalStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks "type" .Values.loki.storage.type) | nindent 2 }}
 {{- end }}
 {{- end -}}
 
@@ -204,7 +216,7 @@ object_store:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler "type" .Values.loki.storage.type) | nindent 2 }}
+{{- include "loki.internalStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler "type" .Values.loki.storage.type) | nindent 2 }}
 {{- end -}}
 
 {{/* Loki ruler config */}}
@@ -227,7 +239,7 @@ ruler:
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin "type" .Values.loki.storage.type) | nindent 2 -}}
+  {{- include "loki.internalStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin "type" .Values.loki.storage.type) | nindent 2 -}}
 {{- end }}
 
 {{/*
@@ -915,7 +927,7 @@ prefix: {{ . }}
 
 {{/* Loki Storage Config Helper to create the storage model
 that is used by commonStorage, rulerStorage and enterprise logs */}}
-{{- define "loki.storageConfig" -}}
+{{- define "loki.internalStorageConfig" -}}
   {{- $bucketName := .bucketName }}
   {{- $storageType := .type }}
 
