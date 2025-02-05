@@ -18,7 +18,7 @@ BUILD_IN_CONTAINER ?= true
 CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.23.5
+GO_VERSION         := 1.23.6
 BUILD_IMAGE_TAG    := 0.34.4
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
