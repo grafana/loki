@@ -77,7 +77,6 @@ type TenantsRetention interface {
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
 	DiscoverServiceName(userID string) []string
-	PolicyFor(userID string, lbs labels.Labels) string
 }
 
 type EmptyLimits struct{}
@@ -183,7 +182,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 	return req, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, _ PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -298,7 +297,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
 		}
 		totalBytesReceived := int64(0)
-		policy := limits.PolicyFor(userID, lbs)
+		policy := policyResolver(userID, lbs)
 
 		if _, ok := pushStats.LogLinesBytes[policy]; !ok {
 			pushStats.LogLinesBytes[policy] = make(map[time.Duration]int64)

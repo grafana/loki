@@ -3,8 +3,6 @@ package distributor
 import (
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/shardstreams"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -42,7 +40,6 @@ type Limits interface {
 	BlockIngestionUntil(userID string) time.Time
 	BlockIngestionStatusCode(userID string) int
 	EnforcedLabels(userID string) []string
-	PolicyFor(userID string, lbs labels.Labels) string
 
 	IngestionPartitionsTenantShardSize(userID string) int
 }
