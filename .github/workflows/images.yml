@@ -517,12 +517,11 @@
         "outputs": "type=image,push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
-        "tags": |
-          ${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${{ matrix.arch | replace('/', '-') }}
+        "tags": "${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-$(echo ${{ matrix.arch }} | tr '/' '-')"
     - "id": "digest"
       "name": "Process image digest"
       "run": |
-        arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+        arch=$(echo ${{ matrix.arch }} | tr "/" "-")
         echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
       "working-directory": "release"
     "strategy":
