@@ -295,6 +295,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 		}
 		return nil
 	}
+	setSeed(rep.cluster)
 	rep.startCPUPercentCollection(ctx, time.Minute)
 	// check every minute if we should report.
 	ticker := time.NewTicker(reportCheckInterval)
@@ -352,9 +353,7 @@ func (rep *Reporter) reportUsage(ctx context.Context, interval time.Time) error 
 
 const cpuUsageKey = "cpu_usage"
 
-var (
-	cpuUsage = NewFloat(cpuUsageKey)
-)
+var cpuUsage = NewFloat(cpuUsageKey)
 
 func (rep *Reporter) startCPUPercentCollection(ctx context.Context, cpuCollectionInterval time.Duration) {
 	proc, err := process.NewProcess(int32(os.Getpid()))

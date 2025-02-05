@@ -34,6 +34,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/model"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/thanos-io/objstore"
 
@@ -87,6 +89,7 @@ import (
 	boltdbcompactor "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/v3/pkg/storage/types"
+	"github.com/grafana/loki/v3/pkg/ui"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	"github.com/grafana/loki/v3/pkg/util/limiter"
@@ -146,6 +149,7 @@ const (
 	BlockScheduler           = "block-scheduler"
 	DataObjExplorer          = "dataobj-explorer"
 	DataObjConsumer          = "dataobj-consumer"
+	UI                       = "ui"
 	All                      = "all"
 	Read                     = "read"
 	Write                    = "write"
@@ -205,6 +209,7 @@ func (t *Loki) initServer() (services.Service, error) {
 	}(t.Server.HTTPServer.Handler)
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
+	t.Server.HTTPServer.Handler = h2c.NewHandler(t.Server.HTTPServer.Handler, &http2.Server{})
 
 	if t.Cfg.Server.HTTPListenPort == 0 {
 		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
@@ -1486,10 +1491,11 @@ func (t *Loki) initCompactor() (services.Service, error) {
 
 	t.compactor.RegisterIndexCompactor(types.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(types.TSDBType, tsdb.NewIndexCompactor())
-	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+	prefix, compactorHandler := t.compactor.Handler()
+	t.Server.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
+		t.InternalServer.HTTP.PathPrefix(prefix).Handler(compactorHandler)
 	}
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
@@ -1504,7 +1510,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 }
 
 func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
-	return t.HTTPAuthMiddleware.Wrap(deletion.TenantMiddleware(t.Overrides, h))
+	return middleware.Merge(t.HTTPAuthMiddleware, deletion.TenantMiddleware(t.Overrides)).Wrap(h)
 }
 
 func (t *Loki) initBloomGateway() (services.Service, error) {
@@ -1901,9 +1907,19 @@ func (t *Loki) initDataObjExplorer() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	t.Server.HTTP.PathPrefix("/dataobj/explorer/").Handler(explorer.Handler())
+	path, handler := explorer.Handler()
+	t.Server.HTTP.PathPrefix(path).Handler(handler)
 	return explorer, nil
+}
+
+func (t *Loki) initUI() (services.Service, error) {
+	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
+	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"))
+	if err != nil {
+		return nil, err
+	}
+	t.UI = svc
+	return svc, nil
 }
 
 func (t *Loki) initDataObjConsumer() (services.Service, error) {
