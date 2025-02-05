@@ -504,6 +504,12 @@
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
       "working-directory": "release"
+    - "id": "prepare-tag"
+      "name": "Prepare tag name"
+      "run": |
+        arch=$(echo ${{ matrix.arch }} | tr '/' '-')
+        echo "IMAGE_TAG=${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${arch}" >> $GITHUB_OUTPUT
+
     - "id": "build-push"
       "name": "Build and push"
       "timeout-minutes": "${{ fromJSON(env.BUILD_TIMEOUT) }}"
@@ -517,7 +523,7 @@
         "outputs": "type=image,push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
-        "tags": "${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-$(echo ${{ matrix.arch }} | tr '/' '-')"
+        "tags": "${{ steps.prepare-tag.outputs.IMAGE_TAG }}"
     - "id": "digest"
       "name": "Process image digest"
       "run": |
