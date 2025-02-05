@@ -208,7 +208,13 @@ Generated storage config for loki common config
 object_store:
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
 {{- else }}
-{{- include "loki.internalStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks "type" .Values.loki.storage.type) | nindent 2 }}
+{{- include "loki.internalStorageConfig" (
+    dict "ctx" .
+    "bucketName" .Values.loki.storage.bucketNames.chunks
+    "type" .Values.loki.storage.type
+    "isEnterpriseConfig" false
+    "isRulerConfig" false
+    ) | nindent 2 }}
 {{- end }}
 {{- end -}}
 
@@ -216,7 +222,13 @@ object_store:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- include "loki.internalStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler "type" .Values.loki.storage.type) | nindent 2 }}
+{{- include "loki.internalStorageConfig" (
+    dict "ctx" .
+    "bucketName" .Values.loki.storage.bucketNames.ruler
+    "type" .Values.loki.storage.type
+    "isEnterpriseConfig" false
+    "isRulerConfig" true
+    ) | nindent 2 }}
 {{- end -}}
 
 {{/* Loki ruler config */}}
@@ -239,7 +251,13 @@ ruler:
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- include "loki.internalStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin "type" .Values.loki.storage.type) | nindent 2 -}}
+  {{- include "loki.internalStorageConfig" (
+      dict "ctx" .
+      "bucketName" .Values.loki.storage.bucketNames.admin
+      "type" .Values.loki.storage.type
+      "isEnterpriseConfig" true
+      "isRulerConfig" false
+      ) | nindent 2 -}}
 {{- end }}
 
 {{/*
@@ -930,16 +948,25 @@ that is used by commonStorage, rulerStorage and enterprise logs */}}
 {{- define "loki.internalStorageConfig" -}}
   {{- $bucketName := .bucketName }}
   {{- $storageType := .type }}
-
+  {{- $isEnterpriseConfig := .isEnterpriseConfig }}
+  {{- $isRulerConfig := .isRulerConfig }}
   {{- if .ctx.Values.loki.storage.use_thanos_objstore }}
     {{- include "loki.thanosStorageConfig" (dict "ctx" .ctx "bucketName" $bucketName) | nindent 2 }}
   {{- else if .ctx.Values.minio.enabled }}
+  {{- if $isEnterpriseConfig }}
   backend: "s3"
+  {{- else if $isRulerConfig }}
+  type: "s3"
+  {{- end }}
   s3:
     bucket_name: {{ $bucketName }}
   {{- else if eq $storageType "s3" }}
   {{- with .ctx.Values.loki.storage.s3 }}
+  {{- if $isEnterpriseConfig }}
   backend: "s3"
+  {{- else if $isRulerConfig }}
+  type: "s3"
+  {{- end }}
   s3:
     {{- with .s3 }}
     s3: {{ . }}
@@ -965,7 +992,11 @@ that is used by commonStorage, rulerStorage and enterprise logs */}}
   {{- end -}}
   {{- else if eq $storageType "gcs" -}}
   {{- with .ctx.Values.loki.storage.gcs }}
+  {{- if $isEnterpriseConfig }}
   backend: "gcs"
+  {{- else if $isRulerConfig }}
+  type: "gcs"
+  {{- end }}
   gcs:
     bucket_name: {{ $bucketName }}
     chunk_buffer_size: {{ .chunkBufferSize }}
@@ -974,7 +1005,11 @@ that is used by commonStorage, rulerStorage and enterprise logs */}}
   {{- end -}}
   {{- else if eq $storageType "azure" -}}
   {{- with .ctx.Values.loki.storage.azure }}
+  {{- if $isEnterpriseConfig }}
   backend: "azure"
+  {{- else if $isRulerConfig }}
+  type: "azure"
+  {{- end }}
   azure:
     account_name: {{ .accountName }}
     {{- with .accountKey }}
@@ -990,7 +1025,11 @@ that is used by commonStorage, rulerStorage and enterprise logs */}}
   {{- end -}}
   {{- else if eq $storageType "swift" -}}
   {{- with .ctx.Values.loki.storage.swift }}
+  {{- if $isEnterpriseConfig }}
   backend: "swift"
+  {{- else if $isRulerConfig }}
+  type: "swift"
+  {{- end }}
   swift:
     {{- with .auth_version }}
     auth_version: {{ . }}
@@ -1023,7 +1062,11 @@ that is used by commonStorage, rulerStorage and enterprise logs */}}
     request_timeout: {{ .request_timeout | default "5s" }}
   {{- end -}}
   {{- else }}
+  {{- if $isEnterpriseConfig }}
   backend: "filesystem"
+  {{- else if $isRulerConfig }}
+  type: "filesystem"
+  {{- end }}
   filesystem:
     dir: {{ .ctx.Values.loki.storage.filesystem.admin_api_directory }}
   {{- end -}}
