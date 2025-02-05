@@ -7255,6 +7255,7 @@ type Commitment struct {
 	//   "ACCELERATOR_OPTIMIZED"
 	//   "ACCELERATOR_OPTIMIZED_A3"
 	//   "ACCELERATOR_OPTIMIZED_A3_MEGA"
+	//   "ACCELERATOR_OPTIMIZED_A3_ULTRA"
 	//   "COMPUTE_OPTIMIZED"
 	//   "COMPUTE_OPTIMIZED_C2D"
 	//   "COMPUTE_OPTIMIZED_C3"
@@ -40674,6 +40675,11 @@ type Scheduling struct {
 	// in. The value must be a number between 1 and the number of availability
 	// domains specified in the spread placement policy attached to the instance.
 	AvailabilityDomain int64 `json:"availabilityDomain,omitempty"`
+	// HostErrorTimeoutSeconds: Specify the time in seconds for host error
+	// detection, the value must be within the range of [90, 330] with the
+	// increment of 30, if unset, the default behavior of host error recovery will
+	// be used.
+	HostErrorTimeoutSeconds int64 `json:"hostErrorTimeoutSeconds,omitempty"`
 	// InstanceTerminationAction: Specifies the termination action for the
 	// instance.
 	//
