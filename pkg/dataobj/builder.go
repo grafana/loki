@@ -3,8 +3,6 @@ package dataobj
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,7 +12,6 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/encoding"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
@@ -23,16 +20,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-// ErrBufferFull is returned by [Builder.Append] when the buffer is full and
+// ErrBuilderFull is returned by [Builder.Append] when the buffer is full and
 // needs to flush; call [Builder.Flush] to flush it.
-var ErrBufferFull = errors.New("buffer full")
+var (
+	ErrBuilderFull  = errors.New("builder full")
+	ErrBuilderEmpty = errors.New("builder empty")
+)
 
 // BuilderConfig configures a data object [Builder].
 type BuilderConfig struct {
-	// SHAPrefixSize sets the number of bytes of the SHA filename to use as a
-	// folder path.
-	SHAPrefixSize int `yaml:"sha_prefix_size"`
-
 	// TargetPageSize configures a target size for encoded pages within the data
 	// object. TargetPageSize accounts for encoding, but not for compression.
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
@@ -65,7 +61,6 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	_ = cfg.BufferSize.Set("16MB")         // Page Size * 8
 	_ = cfg.TargetSectionSize.Set("128MB") // Target Object Size / 8
 
-	f.IntVar(&cfg.SHAPrefixSize, prefix+"sha-prefix-size", 2, "The size of the SHA prefix to use for the data object builder.")
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
@@ -75,10 +70,6 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 // Validate validates the BuilderConfig.
 func (cfg *BuilderConfig) Validate() error {
 	var errs []error
-
-	if cfg.SHAPrefixSize <= 0 {
-		errs = append(errs, errors.New("SHAPrefixSize must be greater than 0"))
-	}
 
 	if cfg.TargetPageSize <= 0 {
 		errs = append(errs, errors.New("TargetPageSize must be greater than 0"))
@@ -108,47 +99,41 @@ func (cfg *BuilderConfig) Validate() error {
 // Methods on Builder are not goroutine-safe; callers are responsible for
 // synchronizing calls.
 type Builder struct {
-	cfg      BuilderConfig
-	metrics  *metrics
-	bucket   objstore.Bucket
-	tenantID string
+	cfg     BuilderConfig
+	metrics *metrics
 
 	labelCache *lru.Cache[string, labels.Labels]
 
 	currentSizeEstimate int
-	state               builderState
 
 	streams *streams.Streams
 	logs    *logs.Logs
 
-	flushBuffer *bytes.Buffer
-	encoder     *encoding.Encoder
+	state builderState
+
+	encoder *encoding.Encoder
 }
 
 type builderState int
 
-type FlushResult struct {
-	Path         string
-	MinTimestamp time.Time
-	MaxTimestamp time.Time
-}
-
 const (
-	// builderStateReady indicates the builder is empty and ready to accept new data.
+	// builderStateEmpty indicates the builder is empty and ready to accept new data.
 	builderStateEmpty builderState = iota
 
 	// builderStateDirty indicates the builder has been modified since the last flush.
 	builderStateDirty
-
-	// builderStateFlushing indicates the builder has data to flush.
-	builderStateFlush
 )
+
+type FlushStats struct {
+	MinTimestamp time.Time
+	MaxTimestamp time.Time
+}
 
 // NewBuilder creates a new Builder which stores data objects for the specified
 // tenant in a bucket.
 //
 // NewBuilder returns an error if BuilderConfig is invalid.
-func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Builder, error) {
+func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -160,17 +145,12 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 
 	var (
 		metrics = newMetrics()
-
-		flushBuffer = bytes.NewBuffer(make([]byte, 0, int(cfg.TargetObjectSize)))
-		encoder     = encoding.NewEncoder(flushBuffer)
 	)
 	metrics.ObserveConfig(cfg)
 
 	return &Builder{
-		cfg:      cfg,
-		metrics:  metrics,
-		bucket:   bucket,
-		tenantID: tenantID,
+		cfg:     cfg,
+		metrics: metrics,
 
 		labelCache: labelCache,
 
@@ -181,23 +161,17 @@ func NewBuilder(cfg BuilderConfig, bucket objstore.Bucket, tenantID string) (*Bu
 			SectionSize:  int(cfg.TargetSectionSize),
 		}),
 
-		flushBuffer: flushBuffer,
-		encoder:     encoder,
+		encoder: encoding.NewEncoder(nil),
 	}, nil
 }
 
 // Append buffers a stream to be written to a data object. Append returns an
-// error if the stream labels cannot be parsed or [ErrBufferFull] if the
+// error if the stream labels cannot be parsed or [ErrBuilderFull] if the
 // builder is full.
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
 func (b *Builder) Append(stream logproto.Stream) error {
-	// Don't allow appending to a builder that has data to be flushed.
-	if b.state == builderStateFlush {
-		return ErrBufferFull
-	}
-
 	ls, err := b.parseLabels(stream.Labels)
 	if err != nil {
 		return err
@@ -210,7 +184,7 @@ func (b *Builder) Append(stream logproto.Stream) error {
 	// b.currentSizeEstimate will always be updated to reflect the size following
 	// the previous append.
 	if b.state != builderStateEmpty && b.currentSizeEstimate+labelsEstimate(ls)+streamSizeEstimate(stream) > int(b.cfg.TargetObjectSize) {
-		return ErrBufferFull
+		return ErrBuilderFull
 	}
 
 	timer := prometheus.NewTimer(b.metrics.appendTime)
@@ -286,60 +260,37 @@ func streamSizeEstimate(stream logproto.Stream) int {
 	return size
 }
 
-// Flush flushes all buffered data to object storage. Calling Flush can result
+// Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
-// If Flush builds an object but fails to upload it to object storage, the
-// built object is cached and can be retried. [Builder.Reset] can be called to
-// discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(ctx context.Context) (FlushResult, error) {
-	buf, err := b.FlushToBuffer()
+// [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
+func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
+	if b.state == builderStateEmpty {
+		return FlushStats{}, ErrBuilderEmpty
+	}
+
+	err := b.buildObject(output)
 	if err != nil {
-		return FlushResult{}, fmt.Errorf("flushing buffer: %w", err)
+		b.metrics.flushFailures.Inc()
+		return FlushStats{}, fmt.Errorf("building object: %w", err)
 	}
 
-	timer := prometheus.NewTimer(b.metrics.flushTime)
-	defer timer.ObserveDuration()
-
-	sum := sha256.Sum224(b.flushBuffer.Bytes())
-	sumStr := hex.EncodeToString(sum[:])
-
-	objectPath := fmt.Sprintf("tenant-%s/objects/%s/%s", b.tenantID, sumStr[:b.cfg.SHAPrefixSize], sumStr[b.cfg.SHAPrefixSize:])
-	if err := b.bucket.Upload(ctx, objectPath, bytes.NewReader(buf.Bytes())); err != nil {
-		return FlushResult{}, fmt.Errorf("uploading object: %w", err)
-	}
-
-	minTime, maxTime := b.streams.GetBounds()
+	minTime, maxTime := b.streams.TimeRange()
 
 	b.Reset()
-	return FlushResult{
-		Path:         objectPath,
+	return FlushStats{
 		MinTimestamp: minTime,
 		MaxTimestamp: maxTime,
 	}, nil
 }
 
-func (b *Builder) FlushToBuffer() (*bytes.Buffer, error) {
-	switch b.state {
-	case builderStateEmpty:
-		return nil, nil // Nothing to flush
-	case builderStateDirty:
-		if err := b.buildObject(); err != nil {
-			return nil, fmt.Errorf("building object: %w", err)
-		}
-		b.state = builderStateFlush
-	}
-
-	return b.flushBuffer, nil
-}
-
-func (b *Builder) buildObject() error {
+func (b *Builder) buildObject(output *bytes.Buffer) error {
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
 
-	// We reset after a successful flush, but we also reset the buffer before
-	// building for safety.
-	b.flushBuffer.Reset()
+	initialBufferSize := output.Len()
+
+	b.encoder.Reset(output)
 
 	if err := b.streams.EncodeTo(b.encoder); err != nil {
 		return fmt.Errorf("encoding streams: %w", err)
@@ -349,12 +300,12 @@ func (b *Builder) buildObject() error {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
-	b.metrics.builtSize.Observe(float64(b.flushBuffer.Len()))
+	b.metrics.builtSize.Observe(float64(output.Len() - initialBufferSize))
 
 	// We pass context.Background() below to avoid allowing building an object to
 	// time out; timing out on build would discard anything we built and would
 	// cause data loss.
-	dec := encoding.ReaderAtDecoder(bytes.NewReader(b.flushBuffer.Bytes()), int64(b.flushBuffer.Len()))
+	dec := encoding.ReaderAtDecoder(bytes.NewReader(output.Bytes()[initialBufferSize:]), int64(output.Len()-initialBufferSize))
 	return b.metrics.encoding.Observe(context.Background(), dec)
 }
 
@@ -363,9 +314,9 @@ func (b *Builder) Reset() {
 	b.logs.Reset()
 	b.streams.Reset()
 
-	b.state = builderStateEmpty
-	b.flushBuffer.Reset()
 	b.metrics.sizeEstimate.Set(0)
+	b.currentSizeEstimate = 0
+	b.state = builderStateEmpty
 }
 
 // RegisterMetrics registers metrics about builder to report to reg. All
@@ -374,13 +325,10 @@ func (b *Builder) Reset() {
 // If multiple Builders for the same tenant are running in the same process,
 // reg must contain additional labels to differentiate between them.
 func (b *Builder) RegisterMetrics(reg prometheus.Registerer) error {
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{"tenant": b.tenantID}, reg)
-
 	return b.metrics.Register(reg)
 }
 
 // UnregisterMetrics unregisters metrics about builder from reg.
 func (b *Builder) UnregisterMetrics(reg prometheus.Registerer) {
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{"tenant": b.tenantID}, reg)
 	b.metrics.Unregister(reg)
 }

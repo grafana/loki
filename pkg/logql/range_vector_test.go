@@ -541,7 +541,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("testing aggregation %s", tt.name), func(t *testing.T) {
 			it, err := newRangeVectorIterator(sampleIter(tt.negative),
-				&syntax.RangeAggregationExpr{Left: &syntax.LogRange{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
+				&syntax.RangeAggregationExpr{Left: &syntax.LogRangeExpr{Interval: 2}, Params: proto.Float64(0.99), Operation: tt.op},
 				3, 1, start, end, 0)
 			require.NoError(t, err)
 
