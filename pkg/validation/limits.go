@@ -227,9 +227,10 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	EnforcedLabels           []string           `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	BlockIngestionUntil      dskit_flagext.Time  `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionStatusCode int                 `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	EnforcedLabels           []string            `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	PolicyStreamMapping      PolicyStreamMapping `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.\nExample:\npolicy_stream_mapping:\n  finance:\n  - selectors: [\"{namespace=\"prod\", container=\"billing\"}\"]\n    priority: 2\n  ops:\n  - selectors: [\"{namespace=\"prod\", container=\"ops\"}\"]\n    priority: 1\n  staging:\n  - selectors: [\"{namespace=\"staging\"}, {namespace=\"dev\"}\"]\n    priority: 1"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -508,6 +509,18 @@ func (l *Limits) Validate() error {
 			}
 			// populate matchers during validation
 			l.StreamRetention[i].Matchers = matchers
+		}
+	}
+
+	if l.PolicyStreamMapping != nil {
+		for policyName, policyStreams := range l.PolicyStreamMapping {
+			for idx, policyStream := range policyStreams {
+				matchers, err := syntax.ParseMatchers(policyStream.Selector, true)
+				if err != nil {
+					return fmt.Errorf("invalid labels matchers for policy stream mapping: %w", err)
+				}
+				l.PolicyStreamMapping[policyName][idx].Matchers = matchers
+			}
 		}
 	}
 
@@ -1109,6 +1122,10 @@ func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 
 func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
+}
+
+func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {
+	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
 
 func (o *Overrides) ShardAggregations(userID string) []string {
