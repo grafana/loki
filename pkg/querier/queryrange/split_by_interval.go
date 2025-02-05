@@ -271,7 +271,7 @@ func maxRangeVectorAndOffsetDuration(expr syntax.Expr) (time.Duration, time.Dura
 
 	var maxRVDuration, maxOffset time.Duration
 	expr.Walk(func(e syntax.Expr) {
-		if r, ok := e.(*syntax.LogRange); ok {
+		if r, ok := e.(*syntax.LogRangeExpr); ok {
 			if r.Interval > maxRVDuration {
 				maxRVDuration = r.Interval
 			}

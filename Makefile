@@ -425,9 +425,7 @@ yacc: $(YACC_GOS)
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(run_in_container)
 else
-	goyacc -p $(basename $(notdir $<)) -o $@ $<
-	sed -i.back '/^\/\/line/ d' $@
-	rm ${@}.back
+	goyacc -l -p $(basename $(notdir $<)) -o $@ $<
 endif
 
 #########
