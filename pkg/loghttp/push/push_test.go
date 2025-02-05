@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // GZip source string and return compressed string
@@ -271,6 +270,7 @@ func TestParseRequest(t *testing.T) {
 				&fakeLimits{enabled: test.enableServiceDiscovery},
 				ParseLokiRequest,
 				tracker,
+				nil,
 				false,
 			)
 
@@ -365,7 +365,7 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/loki/api/v1/push", strings.NewReader(body))
 
 		limits := &fakeLimits{enabled: true, labels: []string{"foo"}}
-		data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, tracker, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, nil, limits, ParseLokiRequest, tracker, nil, false)
 
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("foo", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
@@ -376,7 +376,7 @@ func Test_ServiceDetection(t *testing.T) {
 		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
 
 		limits := &fakeLimits{enabled: true}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, nil, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
@@ -390,7 +390,7 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{"special"},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, nil, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings("special", "sauce", LabelServiceName, "sauce").String(), data.Streams[0].Labels)
 	})
@@ -404,7 +404,7 @@ func Test_ServiceDetection(t *testing.T) {
 			labels:          []string{"special"},
 			indexAttributes: []string{},
 		}
-		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, false)
+		data, err := ParseRequest(util_log.Logger, "fake", request, limits, limits, ParseOTLPRequest, tracker, nil, false)
 		require.NoError(t, err)
 		require.Equal(t, labels.FromStrings(LabelServiceName, ServiceUnknown).String(), data.Streams[0].Labels)
 	})
@@ -437,10 +437,6 @@ func (f *fakeLimits) OTLPConfig(_ string) OTLPConfig {
 	defaultGlobalOTLPConfig := GlobalOTLPConfig{}
 	flagext.DefaultValues(&defaultGlobalOTLPConfig)
 	return DefaultOTLPConfig(defaultGlobalOTLPConfig)
-}
-
-func (f *fakeLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
-	return nil
 }
 
 func (f *fakeLimits) DiscoverServiceName(_ string) []string {
