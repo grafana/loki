@@ -127,6 +127,10 @@ helm install --values killercoda/loki-values.yml loki grafana/loki -n meta
 
 This command will deploy Loki in the `meta` namespace. The command also includes a `values` file that specifies the configuration for Loki. For more details on how to configure the Loki Helm chart refer to the Loki Helm [documentation](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/install/helm).
 
+<!-- INTERACTIVE page step3.md END -->
+
+<!-- INTERACTIVE page step4.md START -->
+
 ## Deploy Grafana
 
 Next we will deploy Grafana to the `meta` namespace. You will use Grafana to visualize the logs stored in Loki. To deploy Grafana run the following command:
@@ -158,9 +162,9 @@ As before, the command also includes a `values` file that specifies the configur
    ```
   This configuration defines a data source named `Loki` that Grafana will use to query logs stored in Loki. The `url` attribute specifies the URL of the Loki gateway. The Loki gateway is a service that sits in front of the Loki API and provides a single endpoint for ingesting and querying logs. The URL is in the format `http://loki-gateway.<NAMESPACE>.svc.cluster.local:80`. The `loki-gateway` service is created by the Loki Helm chart and is used to query logs stored in Loki. **If you choose to deploy Loki in a different namespace or with a different name, you will need to update the `url` attribute accordingly.**
 
-<!-- INTERACTIVE page step3.md END -->
+<!-- INTERACTIVE page step4.md END -->
 
-<!-- INTERACTIVE page step4.md START -->
+<!-- INTERACTIVE page step5.md START -->
 
 ## Deploy the Kubernetes Monitoring Helm chart
 
@@ -214,6 +218,12 @@ alloy-metrics:
 
 alloy-logs:
   enabled: true
+  # Required when using the Kubernetes API to pod logs
+  alloy:
+    mounts:
+      varlog: false
+    clustering:
+      enabled: true
 
 alloy-profiles:
   enabled: false
@@ -233,9 +243,9 @@ To break down the configuration file:
 * Disable the collection of node logs for the purpose of this tutorial as it requires the mounting of `/var/log/journal`. This is out of scope for this tutorial.
 * Lastly, define the role of the collector. The Kubernetes Monitoring Helm chart will deploy only what you need and nothing more. In this case, we are telling the Helm chart to only deploy Alloy with the capability to collect logs. If you need to collect K8s metrics, traces, or continuous profiling data, you can enable the respective collectors.
 
-<!-- INTERACTIVE page step4.md END -->
+<!-- INTERACTIVE page step5.md END -->
 
-<!-- INTERACTIVE page step5.md START -->
+<!-- INTERACTIVE page step6.md START -->
 
 ## Accessing Grafana
 
@@ -259,6 +269,10 @@ One of the first places you should visit is Explore Logs which lets you automati
 
 {{< figure max-width="100%" src="/media/docs/loki/k8s-logs-explore-logs.png" caption="Explore Logs view of K8s logs" alt="Explore Logs view of K8s logs" >}}
 
+<!-- INTERACTIVE page step6.md END -->
+
+<!-- INTERACTIVE page step7.md START -->
+
 ## (Optional): View the Alloy UI
 
 The Kubernetes Monitoring Helm chart deploys Grafana Alloy to collect and forward telemetry data from the Kubernetes cluster. The Helm is designed to abstract you from creating an Alloy configuration file. However if you would like to understand the pipeline you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
@@ -275,9 +289,9 @@ This will make your terminal unusable until you stop the port-forwarding process
 This command will port-forward the Alloy service to your local machine on port `12345`. You can access the Alloy UI by navigating to [http://localhost:12345](http://localhost:12345) in your browser.
 
 {{< figure max-width="100%" src="/media/docs/loki/k8s-logs-alloy-ui.png" caption="Grafana Alloy UI" alt="Grafana Alloy UI" >}}
-<!-- INTERACTIVE page step5.md END -->
+<!-- INTERACTIVE page step7.md END -->
 
-<!-- INTERACTIVE page step6.md START -->
+<!-- INTERACTIVE page step8.md START -->
 
 ## Adding a sample application to `prod`
 
@@ -300,7 +314,7 @@ and navigate to [http://localhost:3000/a/grafana-lokiexplore-app](http://localho
 
 {{< figure max-width="100%" src="/media/docs/loki/k8s-logs-tempo.png" caption="Label view of Tempo logs" alt="Label view of Tempo logs" >}}
 
-<!-- INTERACTIVE page step6.md END -->
+<!-- INTERACTIVE page step8.md END -->
 
 <!-- INTERACTIVE page finish.md START -->
 
