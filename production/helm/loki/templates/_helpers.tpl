@@ -427,6 +427,13 @@ ruler:
 {{- end }}
 {{- end }}
 
+{{/* Ruler Thanos Storage Config */}}
+{{- define "loki.rulerThanosStorageConfig" -}}
+{{- if .Values.loki.storage.use_thanos_objstore }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
+{{- end }}
+{{- end }}
+
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:

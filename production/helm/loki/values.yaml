@@ -209,6 +209,9 @@ loki:
     {{ include "loki.rulerConfig" . }}
     {{- end }}
 
+    ruler_storage:
+    {{ include "loki.rulerThanosStorageConfig" . }}
+
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
       retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
