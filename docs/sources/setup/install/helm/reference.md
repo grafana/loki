@@ -6335,6 +6335,27 @@ null
     "enableHttp2": true,
     "requestTimeout": "0s"
   },
+  "object_store": {
+    "azure": {
+      "account_key": null,
+      "account_name": null
+    },
+    "gcs": {
+      "bucket_name": null,
+      "service_account": null
+    },
+    "prefix": null,
+    "s3": {
+      "access_key_id": null,
+      "endpoint": null,
+      "http": {},
+      "insecure": false,
+      "region": null,
+      "secret_access_key": null,
+      "sse": {}
+    },
+    "type": "s3"
+  },
   "s3": {
     "accessKeyId": null,
     "backoff_config": {},
@@ -6369,7 +6390,8 @@ null
     "user_id": null,
     "username": null
   },
-  "type": "s3"
+  "type": "s3",
+  "use_thanos_objstore": false
 }
 </pre>
 </td>
@@ -6414,7 +6436,7 @@ null
 		<tr>
 			<td>loki.structuredConfig</td>
 			<td>object</td>
-			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`</td>
+			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`</td>
 			<td><pre lang="json">
 {}
 </pre>
