@@ -19,7 +19,8 @@ CI                 ?= false
 
 # Ensure you run `make release-workflows` after changing this
 GO_VERSION         := 1.23.6
-BUILD_IMAGE_TAG    := 0.34.4
+# Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
+BUILD_IMAGE_TAG    := 0.34.5
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
