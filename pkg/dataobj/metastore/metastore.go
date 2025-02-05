@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"sync"
 	"time"
 
@@ -97,10 +98,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	minMetastoreWindow := minTimestamp.Truncate(metastoreWindowSize)
-	maxMetastoreWindow := maxTimestamp.Truncate(metastoreWindowSize)
-	for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
-		metastorePath := fmt.Sprintf("tenant-%s/metastore/%s.store", m.tenantID, metastoreWindow.Format(time.RFC3339))
+	for metastorePath := range Iter(m.tenantID, minTimestamp, maxTimestamp) {
 		m.backoff.Reset()
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
@@ -182,4 +180,21 @@ func (m *Manager) readFromExisting(ctx context.Context, object *dataobj.Object) 
 		}
 	}
 	return nil
+}
+
+func metastorePath(tenantID string, window time.Time) string {
+	return fmt.Sprintf("tenant-%s/metastore/%s.store", tenantID, window.Format(time.RFC3339))
+}
+
+func Iter(tenantID string, start, end time.Time) iter.Seq[string] {
+	minMetastoreWindow := start.Truncate(metastoreWindowSize)
+	maxMetastoreWindow := end.Truncate(metastoreWindowSize)
+
+	return func(yield func(t string) bool) {
+		for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
+			if !yield(metastorePath(tenantID, metastoreWindow)) {
+				return
+			}
+		}
+	}
 }
