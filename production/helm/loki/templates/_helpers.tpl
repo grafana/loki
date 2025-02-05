@@ -430,7 +430,9 @@ ruler:
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- if .Values.minio.enabled }}
+  {{- if .Values.loki.storage.use_thanos_objstore }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 }}
+  {{- else if .Values.minio.enabled }}
   backend: "s3"
   s3:
     bucket_name: admin

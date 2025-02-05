@@ -7,6 +7,8 @@ loki:
   storage:
     type: s3
 
+    use_thanos_objstore: true
+
     object_store:
       access_key_id: thanos-minio
       secret_access_key: thanos-minio123
@@ -21,7 +23,10 @@ loki:
       ruler: ruler_thanos
       admin: admin_thanos
 
-    use_thanos_objstore: true
+enterprise:
+  enabled: true
+  adminApi:
+    enabled: true
 
 read:
   replicas: 1
