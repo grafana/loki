@@ -180,6 +180,7 @@ type Distributor struct {
 	streamShardCount                      prometheus.Counter
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
+	policyResolver push.PolicyResolver
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
@@ -222,6 +223,11 @@ func New(
 		internalCfg.Internal = true
 		return client.New(internalCfg, addr)
 	}
+
+	policyResolver := push.PolicyResolver(func(userID string, lbs labels.Labels) string {
+		mappings := overrides.PoliciesStreamMapping(userID)
+		return mappings.PolicyFor(lbs)
+	})
 
 	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
@@ -280,6 +286,7 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
+		policyResolver:        policyResolver,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
