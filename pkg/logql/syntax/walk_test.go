@@ -79,6 +79,8 @@ func Test_AppendMatchers(t *testing.T) {
 				switch me := e.(type) {
 				case *MatchersExpr:
 					me.AppendMatchers(test.matchers)
+				default:
+					// do nothing
 				}
 			})
 			require.Equal(t, test.want, expr.String())

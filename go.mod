@@ -100,9 +100,9 @@ require (
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.32.0
 	golang.org/x/net v0.34.0
-	golang.org/x/sync v0.10.0
-	golang.org/x/sys v0.29.0
-	golang.org/x/time v0.9.0
+	golang.org/x/sync v0.11.0
+	golang.org/x/sys v0.30.0
+	golang.org/x/time v0.10.0
 	google.golang.org/api v0.219.0
 	google.golang.org/grpc v1.70.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -145,8 +145,8 @@ require (
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opentelemetry.io/collector/pdata v1.25.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
-	golang.org/x/oauth2 v0.25.0
-	golang.org/x/text v0.21.0
+	golang.org/x/oauth2 v0.26.0
+	golang.org/x/text v0.22.0
 	google.golang.org/protobuf v1.36.4
 	gotest.tools v2.2.0+incompatible
 	k8s.io/apimachinery v0.32.1
@@ -409,4 +409,4 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 // leodido fork his project to continue support
 replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
 
-replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250128154815-d7e99f81f866
+replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250203161329-90e33e9afde6
