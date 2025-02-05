@@ -13,8 +13,9 @@ import (
 )
 
 type retentionLimit struct {
-	retentionPeriod time.Duration
-	streamRetention []validation.StreamRetention
+	retentionPeriod     time.Duration
+	streamRetention     []validation.StreamRetention
+	policyStreamMapping validation.PolicyStreamMapping
 }
 
 func (r retentionLimit) convertToValidationLimit() *validation.Limits {
@@ -31,6 +32,10 @@ type fakeLimits struct {
 
 func (f fakeLimits) RetentionPeriod(userID string) time.Duration {
 	return f.perTenant[userID].retentionPeriod
+}
+
+func (f fakeLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
+	return f.perTenant["user0"].policyStreamMapping
 }
 
 func (f fakeLimits) StreamRetention(userID string) []validation.StreamRetention {

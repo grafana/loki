@@ -3613,6 +3613,20 @@ otlp_config:
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
 
+# Map of policies to stream selectors with a priority. Experimental.
+# Example:
+# policy_stream_mapping:
+#   finance:
+#   - selectors: ["{namespace="prod", container="billing"}"]
+#     priority: 2
+#   ops:
+#   - selectors: ["{namespace="prod", container="ops"}"]
+#     priority: 1
+#   staging:
+#   - selectors: ["{namespace="staging"}, {namespace="dev"}"]
+#     priority: 1
+[policy_stream_mapping: <map of string to list of PriorityStreams>]
+
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0
 # disables shuffle sharding and tenant is sharded across all partitions.
