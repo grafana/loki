@@ -204,7 +204,11 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
+
+{{- if .Values.loki.storage.use_thanos_objstore  -}}
+object_store:
+{{ include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | indent 2 }}
+{{- else if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: chunks
@@ -252,7 +256,6 @@ s3:
 {{ toYaml . | indent 4 }}
   {{- end }}
 {{- end -}}
-
 {{- else if eq .Values.loki.storage.type "gcs" -}}
 {{- with .Values.loki.storage.gcs }}
 gcs:
@@ -306,10 +309,6 @@ filesystem:
   chunks_directory: {{ .chunks_directory }}
   rules_directory: {{ .rules_directory }}
 {{- end -}}
-{{- end -}}
-{{- if .Values.loki.storage.use_thanos_objstore  -}}
-object_store:
-{{ include "loki.thanosStorageConfig" . | indent 2 }}
 {{- end -}}
 {{- end -}}
 
@@ -1137,11 +1136,12 @@ This function needs to be called with a context object containing the following 
 
 {{/* Thanos object storage configuration */}}
 {{- define "loki.thanosStorageConfig" -}}
-{{- with .Values.loki.storage.object_store }}
-type: {{ .type | quote }}
+{{- $bucketName := .bucketName }}
+type: {{ .ctx.Values.loki.storage.type | quote }}
+{{- with .ctx.Values.loki.storage.object_store }}
 config:
 {{- if eq .type "s3" }}
-  bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+  bucket_name: {{ $bucketName }}
   {{- with .endpoint }}
   endpoint: {{ . }}
   {{- end }}
@@ -1166,12 +1166,12 @@ config:
 {{ toYaml . | indent 4 }}
   {{- end }}
 {{- else if eq .type "gcs" }}
-  bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+  bucket_name: {{ $bucketName }}
   {{- with .service_account }}
   service_account: {{ . }}
   {{- end }}
 {{- else if eq .type "azure" }}
-  container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
+  container_name: {{ $bucketName }}
   {{- with .account_name }}
   account_name: {{ . }}
   {{- end }}

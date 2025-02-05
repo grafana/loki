@@ -3,31 +3,25 @@ loki:
   commonConfig:
     replication_factor: 1
   useTestSchema: true
+
   storage:
-    bucketNames:
-      chunks: chunks
-      ruler: ruler
-      admin: admin
+    type: s3
 
-  use_thanos_objstore: true
-
-  storage_config:
     object_store:
-      type: s3
+      access_key_id: thanos-minio
+      secret_access_key: thanos-minio123
+      region: us-east-1
+      insecure: true
+      http:
+        tls_config:
+          insecure_skip_verify: true
 
-      config:
-        bucket_name: chunks-thanos
-        endpoint: http://minio-server.minio.svc.cluster.local:9000
-        access_key_id: thanos-minio
-        secret_access_key: thanos-minio123
-        region: us-east-1
-        insecure: true\
+    bucketNames:
+      chunks: chunks_thanos
+      ruler: ruler_thanos
+      admin: admin_thanos
 
-  ruler_storage:
-    backend: s3
-    bucket_name: chunks-thanos
-    endpoint: http://minio-server.minio.svc.cluster.local:9000
-    region: us-east-1
+    use_thanos_objstore: true
 
 read:
   replicas: 1
