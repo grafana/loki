@@ -104,7 +104,7 @@ type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
 
 type Stats struct {
 	Errs                            []error
-	NumLines                        int64
+	PolicyNumLines                  map[string]int64
 	LogLinesBytes                   PolicyWithRetentionWithBytes
 	StructuredMetadataBytes         PolicyWithRetentionWithBytes
 	ResourceAndSourceMetadataLabels map[time.Duration]push.LabelsAdapter
@@ -156,11 +156,15 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		}
 	}
 
+	totalNumLines := int64(0)
 	// incrementing tenant metrics if we have a tenant.
-	if pushStats.NumLines != 0 && userID != "" {
-		linesIngested.WithLabelValues(userID, isAggregatedMetric, "").Add(float64(pushStats.NumLines))
+	for policy, numLines := range pushStats.PolicyNumLines {
+		if numLines != 0 && userID != "" {
+			linesIngested.WithLabelValues(userID, isAggregatedMetric, policy).Add(float64(numLines))
+		}
+		totalNumLines += numLines
 	}
-	linesReceivedStats.Inc(pushStats.NumLines)
+	linesReceivedStats.Inc(totalNumLines)
 
 	logValues := []interface{}{
 		"msg", "push request parsed",
@@ -169,7 +173,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		"contentEncoding", pushStats.ContentEncoding,
 		"bodySize", humanize.Bytes(uint64(pushStats.BodySize)),
 		"streams", len(req.Streams),
-		"entries", pushStats.NumLines,
+		"entries", totalNumLines,
 		"streamLabelsSize", humanize.Bytes(uint64(pushStats.StreamLabelsSize)),
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
 		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
@@ -307,7 +311,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 		}
 
 		for _, e := range s.Entries {
-			pushStats.NumLines++
+			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize

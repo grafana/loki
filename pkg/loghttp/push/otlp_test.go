@@ -92,7 +92,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
+				PolicyNumLines: map[string]int64{
+					"": 1,
+				},
 				LogLinesBytes: PolicyWithRetentionWithBytes{
 					"": {
 						time.Hour: 9,
@@ -135,7 +137,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
+				PolicyNumLines: map[string]int64{
+					"": 1,
+				},
 				LogLinesBytes: PolicyWithRetentionWithBytes{
 					"": {
 						time.Hour: 9,
@@ -178,7 +182,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
+				PolicyNumLines: map[string]int64{
+					"": 1,
+				},
 				LogLinesBytes: PolicyWithRetentionWithBytes{
 					"": {
 						time.Hour: 9,
@@ -260,7 +266,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
+				PolicyNumLines: map[string]int64{
+					"": 2,
+				},
 				LogLinesBytes: PolicyWithRetentionWithBytes{
 					"": {
 						time.Hour: 26,
@@ -355,7 +363,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
+				PolicyNumLines: map[string]int64{
+					"": 2,
+				},
 				LogLinesBytes: PolicyWithRetentionWithBytes{
 					"": {
 						time.Hour: 26,
@@ -510,7 +520,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
+				PolicyNumLines: map[string]int64{
+					"": 2,
+				},
 				LogLinesBytes: PolicyWithRetentionWithBytes{
 					"": {
 						time.Hour: 26,

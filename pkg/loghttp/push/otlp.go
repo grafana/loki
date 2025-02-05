@@ -39,6 +39,7 @@ func newPushStats() *Stats {
 	return &Stats{
 		LogLinesBytes:                   map[string]map[time.Duration]int64{},
 		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
+		PolicyNumLines:                  map[string]int64{},
 		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
 	}
 }
@@ -201,6 +202,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
 			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
 		}
+
 		stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
 		totalBytesReceived += int64(resourceAttributesAsStructuredMetadataSize)
 
@@ -286,7 +288,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				totalBytesReceived += metadataSize
 				totalBytesReceived += int64(len(entry.Line))
 
-				stats.NumLines++
+				stats.PolicyNumLines[policy]++
 				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {
 					stats.MostRecentEntryTimestamp = entry.Timestamp
 				}
