@@ -516,12 +516,6 @@
         "platform": "${{ matrix.arch }}"
         "provenance": false
         "tags": "${{ steps.prepare-tag.outputs.IMAGE_TAG }}"
-    - "id": "digest"
-      "name": "Process image digest"
-      "run": |
-        arch=$(echo ${{ matrix.arch }} | tr "/" "-")
-        echo "digest_$arch=${{ steps.build-push.outputs.digest }}" >> $GITHUB_OUTPUT
-      "working-directory": "release"
     "strategy":
       "fail-fast": true
       "matrix":
@@ -532,49 +526,6 @@
         - "arch": "linux/arm64"
           "runs_on":
           - "github-hosted-ubuntu-arm64-small"
-  "lambda-promtail-manifest":
-    "env":
-      "BUILD_TIMEOUT": 60
-      "IMAGE_PREFIX": "public.ecr.aws/grafana"
-      "REPO": "loki"
-    "needs":
-    - "lambda-promtail-image"
-    "runs-on": "ubuntu-latest"
-    "steps":
-    - "name": "Set up Docker buildx"
-      "uses": "docker/setup-buildx-action@v3"
-    - "id": "get-secrets"
-      "uses": "grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0"
-      "with":
-        "repo_secrets": |
-          ECR_ACCESS_KEY=aws-credentials:access_key_id
-          ECR_SECRET_KEY=aws-credentials:secret_access_key"   
-    - "name": "Configure AWS credentials"
-      "uses": "aws-actions/configure-aws-credentials@v4"
-      "with":
-        "aws-access-key-id": "${{ env.ECR_ACCESS_KEY }}"
-        "aws-secret-access-key": "${{ env.ECR_SECRET_KEY }}"
-        "aws-region": "us-east-1"
-    - "name": "Login to Amazon ECR Public"
-      "uses": "aws-actions/amazon-ecr-login@v2"
-      "with":
-        "registry-type": "public"
-    - "name": "Publish multi-arch manifest"
-      "run": |
-        # Ensure each architecture image is pushed
-        for arch in "amd64" "arm64"; do
-          docker pull ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-${arch}
-          docker push ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-${arch}
-        done
-
-        # Create and push the manifest list
-        IMAGE=${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}
-        echo "Create multi-arch manifest for $IMAGE"
-        docker buildx imagetools create -t $IMAGE \
-          ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-amd64 \
-          ${{ needs.lambda-promtail-image.outputs.image_name }}:${{ needs.lambda-promtail-image.outputs.image_tag }}-arm64
-
-        docker buildx imagetools inspect $IMAGE
 "name": "Publish images"
 "on":
   "push":

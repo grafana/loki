@@ -314,12 +314,18 @@ jobs:
         credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Docker buildx"
       uses: "docker/setup-buildx-action@v3"
+    - "id": "get-secrets"
+      "uses": "grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0"
+      "with":
+        "repo_secrets": |
+          ECR_ACCESS_KEY=aws-credentials:access_key_id
+          ECR_SECRET_KEY=aws-credentials:secret_access_key"  
     - name: "Configure AWS credentials"
       uses: "aws-actions/configure-aws-credentials@v4"
       with:
-        aws-access-key-id: "${{ secrets.ECR_ACCESS_KEY }}"
+        aws-access-key-id: "${{ env.ECR_ACCESS_KEY }}"
         aws-region: "us-east-1"
-        aws-secret-access-key: "${{ secrets.ECR_SECRET_KEY }}"
+        aws-secret-access-key: "${{ env.ECR_SECRET_KEY }}"
     - name: "Login to Amazon ECR Public"
       uses: "aws-actions/amazon-ecr-login@v2"
       with:
@@ -334,6 +340,7 @@ jobs:
     - id: "build-push"
       name: "Build and export"
       timeout-minutes: "${{ fromJSON(env.BUILD_TIMEOUT) }}"
+      uses: "docker/build-push-action@v6"
       with:
         build-args: |
           IMAGE_TAG=${{ needs.version.outputs.version }}
