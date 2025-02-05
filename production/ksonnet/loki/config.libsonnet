@@ -176,7 +176,7 @@
 
     loki: {
       common: {
-        compactor_address: 'http://compactor.%s.svc.cluster.local.:%d' % [$._config.namespace, $._config.http_listen_port],
+        compactor_grpc_address: 'compactor.%s.svc.cluster.local.:9095' % [$._config.namespace],
       },
       server: {
         graceful_shutdown_timeout: '5s',
