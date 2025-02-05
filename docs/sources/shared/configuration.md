@@ -112,7 +112,7 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 ui:
   # Name to use for this node in the cluster.
   # CLI flag: -ui.node-name
-  [node_name: <string> | default = "edc745be9ff5"]
+  [node_name: <string> | default = "<hostname>"]
 
   # IP address to advertise in the cluster.
   # CLI flag: -ui.advertise-addr

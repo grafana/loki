@@ -14,7 +14,7 @@ import (
 )
 
 type Config struct {
-	NodeName            string        `yaml:"node_name"` // Name to use for this node in the cluster.
+	NodeName            string        `yaml:"node_name" doc:"default=<hostname>"` // Name to use for this node in the cluster.
 	AdvertiseAddr       string        `yaml:"advertise_addr"`
 	InfNames            []string      `yaml:"interface_names" doc:"default=[<private network interfaces>]"`
 	RejoinInterval      time.Duration `yaml:"rejoin_interval"`        // How frequently to rejoin the cluster to address split brain issues.
