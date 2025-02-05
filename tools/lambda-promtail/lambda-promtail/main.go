@@ -103,19 +103,17 @@ func setupArguments() {
 		batchSize, _ = strconv.Atoi(batch)
 	}
 
-	print := os.Getenv("PRINT_LOG_LINE")
 	printLogLine = true
-	if strings.EqualFold(print, "false") {
+	if strings.EqualFold(os.Getenv("PRINT_LOG_LINE"), "false") {
 		printLogLine = false
 	}
 	s3Clients = make(map[string]*s3.Client)
 
-	// Parse relabel configs from environment variable
-	if relabelConfigsRaw := os.Getenv("RELABEL_CONFIGS"); relabelConfigsRaw != "" {
-		if err := json.Unmarshal([]byte(relabelConfigsRaw), &relabelConfigs); err != nil {
-			panic(fmt.Errorf("failed to parse RELABEL_CONFIGS: %v", err))
-		}
+	promConfigs, err := parseRelabelConfigs(os.Getenv("RELABEL_CONFIGS"))
+	if err != nil {
+		panic(err)
 	}
+	relabelConfigs = promConfigs
 }
 
 func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, error) {
@@ -131,7 +129,7 @@ func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, e
 	}
 
 	if len(extraLabelsSplit)%2 != 0 {
-		return nil, fmt.Errorf(invalidExtraLabelsError)
+		return nil, errors.New(invalidExtraLabelsError)
 	}
 	for i := 0; i < len(extraLabelsSplit); i += 2 {
 		extractedLabels[model.LabelName(prefix+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
