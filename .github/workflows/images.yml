@@ -507,7 +507,7 @@
     - "id": "prepare-tag"
       "name": "Prepare tag name"
       "run": |
-        arch=$(echo ${{ matrix.arch }} | tr '/' '-')
+        arch=$(echo ${{ matrix.arch }} | cut -d'/' -f2)
         echo "IMAGE_TAG=${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${arch}" >> $GITHUB_OUTPUT
 
     - "id": "build-push"
@@ -521,7 +521,7 @@
         "context": "release"
         "file": "release/tools/lambda-promtail/Dockerfile"
         "outputs": "type=image,push=true"
-        "platforms": "${{ matrix.arch }}"
+        "platform": "${{ matrix.arch }}"
         "provenance": true
         "tags": "${{ steps.prepare-tag.outputs.IMAGE_TAG }}"
     - "id": "digest"
