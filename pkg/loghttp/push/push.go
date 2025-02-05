@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -77,6 +78,7 @@ type TenantsRetention interface {
 type Limits interface {
 	OTLPConfig(userID string) OTLPConfig
 	DiscoverServiceName(userID string) []string
+	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
 type EmptyLimits struct{}
@@ -86,6 +88,10 @@ func (EmptyLimits) OTLPConfig(string) OTLPConfig {
 }
 
 func (EmptyLimits) DiscoverServiceName(string) []string {
+	return nil
+}
+
+func (EmptyLimits) PoliciesStreamMapping(string) validation.PolicyStreamMapping {
 	return nil
 }
 

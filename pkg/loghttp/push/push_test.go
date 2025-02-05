@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 // GZip source string and return compressed string
@@ -436,6 +437,10 @@ func (f *fakeLimits) OTLPConfig(_ string) OTLPConfig {
 	defaultGlobalOTLPConfig := GlobalOTLPConfig{}
 	flagext.DefaultValues(&defaultGlobalOTLPConfig)
 	return DefaultOTLPConfig(defaultGlobalOTLPConfig)
+}
+
+func (f *fakeLimits) PoliciesStreamMapping(_ string) validation.PolicyStreamMapping {
+	return nil
 }
 
 func (f *fakeLimits) DiscoverServiceName(_ string) []string {
