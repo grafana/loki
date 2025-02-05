@@ -137,7 +137,7 @@ spec:
               key: service-ca.crt
               name: openshift-service-ca.crt
         - name: GATEWAY_ADDRESS
-          value: lokistack-dev-gateway-http.openshift-logging.svc:8080
+          value: logging-loki-gateway-http.openshift-logging.svc.cluster.local:8080
         - name: GF_SECURITY_ADMIN_USER
           value: kube:admin
         image: docker.io/grafana/grafana:8.5.27
