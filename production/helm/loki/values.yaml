@@ -409,12 +409,12 @@ loki:
       # GCS configuration (when type is "GCS")
       gcs:
         bucket_name: null  # Name of the bucket
-        service_account: null # Optional service account JSON
+        service_account: null  # Optional service account JSON
 
       # Azure configuration (when type is "AZURE")
       azure:
         account_name: null  # Storage account name
-        account_key: null # Optional storage account key
+        account_key: null  # Optional storage account key
 
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
@@ -449,7 +449,7 @@ loki:
   rulerConfig:
     wal:
       dir: /var/loki/ruler-wal
-  # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
+  # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
   query_scheduler: {}

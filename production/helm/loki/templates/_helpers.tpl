@@ -106,18 +106,6 @@ Cluster label for rules and alerts.
 {{- end }}
 {{- end }}
 
-{{/* Create a default storage config that uses filesystem storage
-This is required for CI, but Loki will not be queryable with this default
-applied, thus it is encouraged that users override this.
-*/}}
-{{- define "loki.storageConfig" -}}
-{{- if .Values.loki.storageConfig -}}
-{{- .Values.loki.storageConfig | toYaml | nindent 4 -}}
-{{- else }}
-{{- .Values.loki.defaultStorageConfig | toYaml | nindent 4 }}
-{{- end}}
-{{- end}}
-
 {{/*
 Create chart name and version as used by the chart label.
 */}}
@@ -204,217 +192,19 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
-
-{{- if .Values.loki.storage.use_thanos_objstore  -}}
+{{- if .Values.loki.storage.use_thanos_objstore -}}
 object_store:
-{{ include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | indent 2 }}
-{{- else if .Values.minio.enabled -}}
-s3:
-  endpoint: {{ include "loki.minio" $ }}
-  bucketnames: chunks
-  secret_access_key: {{ $.Values.minio.rootPassword }}
-  access_key_id: {{ $.Values.minio.rootUser }}
-  s3forcepathstyle: true
-  insecure: true
-{{- else if eq .Values.loki.storage.type "s3" -}}
-{{- with .Values.loki.storage.s3 }}
-s3:
-  {{- with .s3 }}
-  s3: {{ . }}
-  {{- end }}
-  {{- with .endpoint }}
-  endpoint: {{ . }}
-  {{- end }}
-  {{- with .region }}
-  region: {{ . }}
-  {{- end}}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.chunks }}
-  {{- with .secretAccessKey }}
-  secret_access_key: {{ . }}
-  {{- end }}
-  {{- with .accessKeyId }}
-  access_key_id: {{ . }}
-  {{- end }}
-  {{- with .signatureVersion }}
-  signature_version: {{ . }}
-  {{- end }}
-  s3forcepathstyle: {{ .s3ForcePathStyle }}
-  insecure: {{ .insecure }}
-  {{- with .disable_dualstack }}
-  disable_dualstack: {{ . }}
-  {{- end }}
-  {{- with .http_config}}
-  http_config:
-{{ toYaml . | indent 4 }}
-  {{- end }}
-  {{- with .backoff_config}}
-  backoff_config:
-{{ toYaml . | indent 4 }}
-  {{- end }}
-  {{- with .sse }}
-  sse:
-{{ toYaml . | indent 4 }}
-  {{- end }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "gcs" -}}
-{{- with .Values.loki.storage.gcs }}
-gcs:
-  bucket_name: {{ $.Values.loki.storage.bucketNames.chunks }}
-  chunk_buffer_size: {{ .chunkBufferSize }}
-  request_timeout: {{ .requestTimeout }}
-  enable_http2: {{ .enableHttp2 }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "azure" -}}
-{{- with .Values.loki.storage.azure }}
-azure:
-  account_name: {{ .accountName }}
-  {{- with .accountKey }}
-  account_key: {{ . }}
-  {{- end }}
-  {{- with .connectionString }}
-  connection_string: {{ . }}
-  {{- end }}
-  container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
-  use_managed_identity: {{ .useManagedIdentity }}
-  use_federated_token: {{ .useFederatedToken }}
-  {{- with .userAssignedId }}
-  user_assigned_id: {{ . }}
-  {{- end }}
-  {{- with .requestTimeout }}
-  request_timeout: {{ . }}
-  {{- end }}
-  {{- with .endpointSuffix }}
-  endpoint_suffix: {{ . }}
-  {{- end }}
-  {{- with .chunkDelimiter }}
-  chunk_delimiter: {{ . }}
-  {{- end }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "alibabacloud" -}}
-{{- with .Values.loki.storage.alibabacloud }}
-alibabacloud:
-  bucket: {{ $.Values.loki.storage.bucketNames.chunks }}
-  endpoint: {{ .endpoint }}
-  access_key_id: {{ .accessKeyId }}
-  secret_access_key: {{ .secretAccessKey }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "swift" -}}
-{{- with .Values.loki.storage.swift }}
-swift:
-{{ toYaml . | indent 2 }}
-{{- end -}}
-{{- else -}}
-{{- with .Values.loki.storage.filesystem }}
-filesystem:
-  chunks_directory: {{ .chunks_directory }}
-  rules_directory: {{ .rules_directory }}
-{{- end -}}
-{{- end -}}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+{{- else }}
+{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+{{- end }}
 {{- end -}}
 
 {{/*
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.minio.enabled -}}
-type: "s3"
-s3:
-  bucketnames: ruler
-{{- else if eq .Values.loki.storage.type "s3" -}}
-{{- with .Values.loki.storage.s3 }}
-type: "s3"
-s3:
-  {{- with .s3 }}
-  s3: {{ . }}
-  {{- end }}
-  {{- with .endpoint }}
-  endpoint: {{ . }}
-  {{- end }}
-  {{- with .region }}
-  region: {{ . }}
-  {{- end}}
-  bucketnames: {{ $.Values.loki.storage.bucketNames.ruler }}
-  {{- with .secretAccessKey }}
-  secret_access_key: {{ . }}
-  {{- end }}
-  {{- with .accessKeyId }}
-  access_key_id: {{ . }}
-  {{- end }}
-  s3forcepathstyle: {{ .s3ForcePathStyle }}
-  insecure: {{ .insecure }}
-  {{- with .http_config }}
-  http_config: {{ toYaml . | nindent 6 }}
-  {{- end }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "gcs" -}}
-{{- with .Values.loki.storage.gcs }}
-type: "gcs"
-gcs:
-  bucket_name: {{ $.Values.loki.storage.bucketNames.ruler }}
-  chunk_buffer_size: {{ .chunkBufferSize }}
-  request_timeout: {{ .requestTimeout }}
-  enable_http2: {{ .enableHttp2 }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "azure" -}}
-{{- with .Values.loki.storage.azure }}
-type: "azure"
-azure:
-  account_name: {{ .accountName }}
-  {{- with .accountKey }}
-  account_key: {{ . }}
-  {{- end }}
-  {{- with .connectionString }}
-  connection_string: {{ . }}
-  {{- end }}
-  container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
-  use_managed_identity: {{ .useManagedIdentity }}
-  use_federated_token: {{ .useFederatedToken }}
-  {{- with .userAssignedId }}
-  user_assigned_id: {{ . }}
-  {{- end }}
-  {{- with .requestTimeout }}
-  request_timeout: {{ . }}
-  {{- end }}
-  {{- with .endpointSuffix }}
-  endpoint_suffix: {{ . }}
-  {{- end }}
-{{- end -}}
-{{- else if eq .Values.loki.storage.type "swift" -}}
-{{- with .Values.loki.storage.swift }}
-swift:
-  {{- with .auth_version }}
-  auth_version: {{ . }}
-  {{- end }}
-  auth_url: {{ .auth_url }}
-  {{- with .internal }}
-  internal: {{ . }}
-  {{- end }}
-  username: {{ .username }}
-  user_domain_name: {{ .user_domain_name }}
-  {{- with .user_domain_id }}
-  user_domain_id: {{ . }}
-  {{- end }}
-  {{- with .user_id }}
-  user_id: {{ . }}
-  {{- end }}
-  password: {{ .password }}
-  {{- with .domain_id }}
-  domain_id: {{ . }}
-  {{- end }}
-  domain_name: {{ .domain_name }}
-  project_id: {{ .project_id }}
-  project_name: {{ .project_name }}
-  project_domain_id: {{ .project_domain_id }}
-  project_domain_name: {{ .project_domain_name }}
-  region_name: {{ .region_name }}
-  container_name: {{ .container_name }}
-  max_retries: {{ .max_retries | default 3 }}
-  connect_timeout: {{ .connect_timeout | default "10s" }}
-  request_timeout: {{ .request_timeout | default "5s" }}
-{{- end -}}
-{{- else }}
-type: "local"
-{{- end -}}
+{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
 {{- end -}}
 
 {{/* Loki ruler config */}}
@@ -437,79 +227,7 @@ ruler:
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- if .Values.loki.storage.use_thanos_objstore }}
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 }}
-  {{- else if .Values.minio.enabled }}
-  backend: "s3"
-  s3:
-    bucket_name: admin
-  {{- else if eq .Values.loki.storage.type "s3" -}}
-  {{- with .Values.loki.storage.s3 }}
-  backend: "s3"
-  s3:
-    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
-  {{- end -}}
-  {{- else if eq .Values.loki.storage.type "gcs" -}}
-  {{- with .Values.loki.storage.gcs }}
-  backend: "gcs"
-  gcs:
-    bucket_name: {{ $.Values.loki.storage.bucketNames.admin }}
-  {{- end -}}
-  {{- else if eq .Values.loki.storage.type "azure" -}}
-  {{- with .Values.loki.storage.azure }}
-  backend: "azure"
-  azure:
-    account_name: {{ .accountName }}
-    {{- with .accountKey }}
-    account_key: {{ . }}
-    {{- end }}
-    {{- with .connectionString }}
-    connection_string: {{ . }}
-    {{- end }}
-    container_name: {{ $.Values.loki.storage.bucketNames.admin }}
-    {{- with .endpointSuffix }}
-    endpoint_suffix: {{ . }}
-    {{- end }}
-  {{- end -}}
-  {{- else if eq .Values.loki.storage.type "swift" -}}
-  {{- with .Values.loki.storage.swift }}
-  backend: "swift"
-  swift:
-    {{- with .auth_version }}
-    auth_version: {{ . }}
-    {{- end }}
-    auth_url: {{ .auth_url }}
-    {{- with .internal }}
-    internal: {{ . }}
-    {{- end }}
-    username: {{ .username }}
-    user_domain_name: {{ .user_domain_name }}
-    {{- with .user_domain_id }}
-    user_domain_id: {{ . }}
-    {{- end }}
-    {{- with .user_id }}
-    user_id: {{ . }}
-    {{- end }}
-    password: {{ .password }}
-    {{- with .domain_id }}
-    domain_id: {{ . }}
-    {{- end }}
-    domain_name: {{ .domain_name }}
-    project_id: {{ .project_id }}
-    project_name: {{ .project_name }}
-    project_domain_id: {{ .project_domain_id }}
-    project_domain_name: {{ .project_domain_name }}
-    region_name: {{ .region_name }}
-    container_name: {{ .container_name }}
-    max_retries: {{ .max_retries | default 3 }}
-    connect_timeout: {{ .connect_timeout | default "10s" }}
-    request_timeout: {{ .request_timeout | default "5s" }}
-  {{- end -}}
-  {{- else }}
-  backend: "filesystem"
-  filesystem:
-    dir: {{ .Values.loki.storage.filesystem.admin_api_directory }}
-  {{- end -}}
+  {{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 -}}
 {{- end }}
 
 {{/*
@@ -604,7 +322,6 @@ Generate list of ingress service paths based on deployment type
 {{- include "loki.ingress.legacyScalableServicePaths" . }}
 {{- end -}}
 {{- end -}}
-
 
 {{/*
 Ingress service paths for distributed deployment
@@ -1143,7 +860,8 @@ This function needs to be called with a context object containing the following 
 {{ get (include (print .ctx.Template.BasePath .name) .ctx | fromYaml) "data" | toYaml | sha256sum }}
 {{- end }}
 
-{{/* Thanos object storage configuration */}}
+{{/* Thanos object storage configuration helper to build
+the thanos_storage_config model*/}}
 {{- define "loki.thanosStorageConfig" -}}
 {{- $bucketName := .bucketName }}
 type: {{ .ctx.Values.loki.storage.type | quote }}
@@ -1192,4 +910,85 @@ config:
 prefix: {{ . }}
 {{- end }}
 {{- end }}
+{{- end }}
+
+
+{{/* Loki Storage Config Helper to create the storage model
+that is used by commonStorage, rulerStorage and enterprise logs */}}
+{{- define "loki.storageConfig" -}}
+  {{- $bucketName := .bucketName }}
+  {{- $storageType := .ctx.Values.loki.storage.type }}
+  {{- if .ctx.Values.loki.storage.use_thanos_objstore }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
+  {{- else if .ctx.Values.minio.enabled }}
+  backend: "s3"
+  s3:
+    bucket_name: {{ $bucketName }}
+  {{- else if eq $storageType "s3" -}}
+  {{- with .ctx.Values.loki.storage.s3 }}
+  backend: "s3"
+  s3:
+    bucket_name: {{ $bucketName }}
+  {{- end -}}
+  {{- else if eq $storageType "gcs" -}}
+  {{- with .ctx.Values.loki.storage.gcs }}
+  backend: "gcs"
+  gcs:
+    bucket_name: {{ $bucketName }}
+  {{- end -}}
+  {{- else if eq $storageType "azure" -}}
+  {{- with .ctx.Values.loki.storage.azure }}
+  backend: "azure"
+  azure:
+    account_name: {{ .accountName }}
+    {{- with .accountKey }}
+    account_key: {{ . }}
+    {{- end }}
+    {{- with .connectionString }}
+    connection_string: {{ . }}
+    {{- end }}
+    container_name: {{ $bucketName }}
+    {{- with .endpointSuffix }}
+    endpoint_suffix: {{ . }}
+    {{- end }}
+  {{- end -}}
+  {{- else if eq $storageType "swift" -}}
+  {{- with .ctx.Values.loki.storage.swift }}
+  backend: "swift"
+  swift:
+    {{- with .auth_version }}
+    auth_version: {{ . }}
+    {{- end }}
+    auth_url: {{ .auth_url }}
+    {{- with .internal }}
+    internal: {{ . }}
+    {{- end }}
+    username: {{ .username }}
+    user_domain_name: {{ .user_domain_name }}
+    {{- with .user_domain_id }}
+    user_domain_id: {{ . }}
+    {{- end }}
+    {{- with .user_id }}
+    user_id: {{ . }}
+    {{- end }}
+    password: {{ .password }}
+    {{- with .domain_id }}
+    domain_id: {{ . }}
+    {{- end }}
+    domain_name: {{ .domain_name }}
+    project_id: {{ .project_id }}
+    project_name: {{ .project_name }}
+    project_domain_id: {{ .project_domain_id }}
+    project_domain_name: {{ .project_domain_name }}
+    region_name: {{ .region_name }}
+    container_name: {{ .container_name }}
+    max_retries: {{ .max_retries | default 3 }}
+    connect_timeout: {{ .connect_timeout | default "10s" }}
+    request_timeout: {{ .request_timeout | default "5s" }}
+  {{- end -}}
+  {{- else }}
+  backend: "filesystem"
+  filesystem:
+    dir: {{ .ctx.Values.loki.storage.filesystem.admin_api_directory }}
+  {{- end -}}
 {{- end }}

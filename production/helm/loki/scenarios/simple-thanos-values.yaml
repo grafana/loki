@@ -28,6 +28,9 @@ enterprise:
   adminApi:
     enabled: true
 
+minio:
+  enabled: true
+
 read:
   replicas: 1
 write:
