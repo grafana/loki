@@ -514,10 +514,10 @@
           GO_VERSION=${{ env.GO_VERSION }}
         "context": "release"
         "file": "release/tools/lambda-promtail/Dockerfile"
-        "outputs": "push-by-digest=true,type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
+        "outputs": "type=image,name=${{ steps.weekly-version.outputs.image_name }},push=true"
         "platforms": "${{ matrix.arch }}"
         "provenance": true
-        "tags": "${{ steps.weekly-version.outputs.image_name }}"
+        "tags": "${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}"
     - "id": "digest"
       "name": "Process image digest"
       "run": |
