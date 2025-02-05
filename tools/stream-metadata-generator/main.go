@@ -67,6 +67,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 type config struct {
 	NumTenants                int      `yaml:"num_tenants"`
 	QPSPerTenant              int      `yaml:"qps_per_tenant"`
+	BatchSize                 int      `yaml:"batch_size"`
 	StreamsPerTenant          int      `yaml:"streams_per_tenant"`
 	StreamLabels              []string `yaml:"stream_labels"`
 	MaxGlobalStreamsPerTenant int      `yaml:"max_global_streams_per_tenant"`
@@ -103,6 +104,7 @@ func (s *streamLabelsFlag) Set(value string) error {
 func (c *config) RegisterFlags(f *flag.FlagSet, logger log.Logger) {
 	f.IntVar(&c.NumTenants, "tenants.total", 1, "Number of tenants to generate metadata for")
 	f.IntVar(&c.QPSPerTenant, "tenants.qps", 10, "Number of QPS per tenant")
+	f.IntVar(&c.BatchSize, "tenants.streams.batch-size", 100, "Number of streams to send to Kafka per tick")
 	f.IntVar(&c.StreamsPerTenant, "tenants.streams.total", 100, "Number of streams per tenant")
 	f.IntVar(&c.MaxGlobalStreamsPerTenant, "tenants.max-global-streams", 1000, "Maximum number of global streams per tenant")
 	f.IntVar(&c.HTTPListenPort, "http-listen-port", 3100, "HTTP Listener port")
@@ -303,14 +305,21 @@ func (s *generator) running(ctx context.Context) error {
 				select {
 				case <-ctx.Done():
 					return
-				case <-ticker.C:
+				case t := <-ticker.C:
 					if streamIdx >= len(streams) {
 						streamIdx = 0
 						firstPassComplete = true
 					}
 
+					batchSize := s.cfg.BatchSize
+					if streamIdx+batchSize > len(streams) {
+						batchSize = len(streams) - streamIdx
+					}
+
+					streamsBatch := streams[streamIdx : streamIdx+batchSize]
+
 					var streamMetadata []*logproto.StreamMetadataWithSize
-					for _, stream := range streams[streamIdx : streamIdx+1] {
+					for _, stream := range streamsBatch {
 						streamMetadata = append(streamMetadata, &logproto.StreamMetadataWithSize{
 							StreamHash: stream.HashNoShard,
 						})
@@ -323,7 +332,6 @@ func (s *generator) running(ctx context.Context) error {
 
 					// Check if the stream exceeds limits
 					if client != nil {
-
 						resp, err := client.ExceedsLimits(userCtx, req)
 						if err != nil {
 							errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
@@ -341,18 +349,15 @@ func (s *generator) running(ctx context.Context) error {
 					}
 
 					// Send single stream to Kafka
-					err := s.sendStreamsToKafka(ctx, streams[streamIdx:streamIdx+1], tenantID)
-					if err != nil {
-						errCh <- errors.Wrapf(err, "failed to send stream for tenant %s", tenantID)
-						return
-					}
+					s.sendStreamsToKafka(ctx, streamsBatch, tenantID, errCh)
+					level.Info(s.logger).Log("msg", "Sent streams to Kafka", "tenant", tenantID, "batch_size", batchSize, "stream_idx", streamIdx, "time", t.Format(time.RFC3339))
 
 					// Only increment during the first pass
 					if !firstPassComplete {
-						s.metrics.activeStreamsTotal.WithLabelValues(tenantID).Inc()
+						s.metrics.activeStreamsTotal.WithLabelValues(tenantID).Add(float64(batchSize))
 					}
 
-					streamIdx++
+					streamIdx += batchSize
 				}
 			}
 		}(tenantID, streams)
@@ -370,28 +375,30 @@ func (s *generator) running(ctx context.Context) error {
 	}
 }
 
-func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributor.KeyedStream, tenant string) error {
+func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributor.KeyedStream, tenant string, errCh chan error) {
 	for _, stream := range streams {
-		partitionID, err := s.partitionRing.PartitionRing().ActivePartitionForKey(stream.RingToken)
-		if err != nil {
-			return fmt.Errorf("failed to find active partition for stream: %w", err)
-		}
-
-		// Add metadata record
-		metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard)
-
-		// Send to Kafka
-		produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
-
-		// Check for errors
-		for _, result := range produceResults {
-			if result.Err != nil {
-				return fmt.Errorf("failed to write stream metadata to kafka: %w", result.Err)
+		go func(stream distributor.KeyedStream) {
+			partitionID, err := s.partitionRing.PartitionRing().ActivePartitionForKey(stream.RingToken)
+			if err != nil {
+				errCh <- fmt.Errorf("failed to find active partition for stream: %w", err)
+				return
 			}
-		}
-	}
 
-	return nil
+			// Add metadata record
+			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard)
+
+			// Send to Kafka
+			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
+
+			// Check for errors
+			for _, result := range produceResults {
+				if result.Err != nil {
+					errCh <- fmt.Errorf("failed to write stream metadata to kafka: %w", result.Err)
+					return
+				}
+			}
+		}(stream)
+	}
 }
 
 func (s *generator) stopping(_ error) error {
