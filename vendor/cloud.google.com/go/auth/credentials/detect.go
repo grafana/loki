@@ -149,10 +149,26 @@ type DetectOptions struct {
 	// CredentialsFile overrides detection logic and sources a credential file
 	// from the provided filepath. If provided, CredentialsJSON must not be.
 	// Optional.
+	//
+	// Important: If you accept a credential configuration (credential
+	// JSON/File/Stream) from an external source for authentication to Google
+	// Cloud Platform, you must validate it before providing it to any Google
+	// API or library. Providing an unvalidated credential configuration to
+	// Google APIs can compromise the security of your systems and data. For
+	// more information, refer to [Validate credential configurations from
+	// external sources](https://cloud.google.com/docs/authentication/external/externally-sourced-credentials).
 	CredentialsFile string
 	// CredentialsJSON overrides detection logic and uses the JSON bytes as the
 	// source for the credential. If provided, CredentialsFile must not be.
 	// Optional.
+	//
+	// Important: If you accept a credential configuration (credential
+	// JSON/File/Stream) from an external source for authentication to Google
+	// Cloud Platform, you must validate it before providing it to any Google
+	// API or library. Providing an unvalidated credential configuration to
+	// Google APIs can compromise the security of your systems and data. For
+	// more information, refer to [Validate credential configurations from
+	// external sources](https://cloud.google.com/docs/authentication/external/externally-sourced-credentials).
 	CredentialsJSON []byte
 	// UseSelfSignedJWT directs service account based credentials to create a
 	// self-signed JWT with the private key found in the file, skipping any
