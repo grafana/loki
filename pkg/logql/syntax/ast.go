@@ -341,16 +341,12 @@ func (e *PipelineExpr) Shardable(topLevel bool) bool {
 func (e *PipelineExpr) Walk(f WalkFn) {
 	f(e)
 
-	if e.Left == nil {
-		return
+	if e.Left != nil {
+		e.Left.Walk(f)
 	}
-
-	xs := make([]Walkable, 0, len(e.MultiStages)+1)
-	xs = append(xs, e.Left)
 	for _, p := range e.MultiStages {
-		xs = append(xs, p)
+		p.Walk(f)
 	}
-	walkAll(f, xs...)
 }
 
 func (e *PipelineExpr) Accept(v RootVisitor) { v.VisitPipeline(e) }
@@ -501,10 +497,12 @@ func (*LineFilterExpr) isStageExpr() {}
 
 func (e *LineFilterExpr) Walk(f WalkFn) {
 	f(e)
-	if e.Left == nil {
-		return
+	if e.Left != nil {
+		e.Left.Walk(f)
 	}
-	e.Left.Walk(f)
+	if e.Or != nil {
+		e.Or.Walk(f)
+	}
 }
 
 func (e *LineFilterExpr) Accept(v RootVisitor) {
@@ -1153,10 +1151,9 @@ func (r *LogRange) Shardable(topLevel bool) bool { return r.Left.Shardable(topLe
 
 func (r *LogRange) Walk(f WalkFn) {
 	f(r)
-	if r.Left == nil {
-		return
+	if r.Left != nil {
+		r.Left.Walk(f)
 	}
-	r.Left.Walk(f)
 }
 
 func (r *LogRange) Accept(v RootVisitor) {
@@ -1476,10 +1473,9 @@ func (e *RangeAggregationExpr) Shardable(topLevel bool) bool {
 
 func (e *RangeAggregationExpr) Walk(f WalkFn) {
 	f(e)
-	if e.Left == nil {
-		return
+	if e.Left != nil {
+		e.Left.Walk(f)
 	}
-	e.Left.Walk(f)
 }
 
 func (e *RangeAggregationExpr) Accept(v RootVisitor) { v.VisitRangeAggregation(e) }
@@ -1686,10 +1682,9 @@ func (e *VectorAggregationExpr) Shardable(topLevel bool) bool {
 
 func (e *VectorAggregationExpr) Walk(f WalkFn) {
 	f(e)
-	if e.Left == nil {
-		return
+	if e.Left != nil {
+		e.Left.Walk(f)
 	}
-	e.Left.Walk(f)
 }
 
 func (e *VectorAggregationExpr) Accept(v RootVisitor) { v.VisitVectorAggregation(e) }
@@ -1806,7 +1801,13 @@ func (e *BinOpExpr) Shardable(topLevel bool) bool {
 }
 
 func (e *BinOpExpr) Walk(f WalkFn) {
-	walkAll(f, e.SampleExpr, e.RHS)
+	f(e)
+	if e.SampleExpr != nil {
+		e.SampleExpr.Walk(f)
+	}
+	if e.RHS != nil {
+		e.RHS.Walk(f)
+	}
 }
 
 func (e *BinOpExpr) Accept(v RootVisitor) { v.VisitBinOp(e) }
@@ -2235,10 +2236,9 @@ func (e *LabelReplaceExpr) Shardable(_ bool) bool {
 
 func (e *LabelReplaceExpr) Walk(f WalkFn) {
 	f(e)
-	if e.Left == nil {
-		return
+	if e.Left != nil {
+		e.Left.Walk(f)
 	}
-	e.Left.Walk(f)
 }
 
 func (e *LabelReplaceExpr) Accept(v RootVisitor) { v.VisitLabelReplace(e) }
