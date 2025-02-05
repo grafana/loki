@@ -196,7 +196,7 @@ Generated storage config for loki common config
 object_store:
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
 {{- else }}
-{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks "type" .Values.loki.storage.type) | nindent 2 }}
 {{- end }}
 {{- end -}}
 
@@ -204,7 +204,7 @@ object_store:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
+{{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler "type" .Values.loki.storage.type) | nindent 2 }}
 {{- end -}}
 
 {{/* Loki ruler config */}}
@@ -227,7 +227,7 @@ ruler:
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 -}}
+  {{- include "loki.storageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin "type" .Values.loki.storage.type) | nindent 2 -}}
 {{- end }}
 
 {{/*
@@ -917,24 +917,48 @@ prefix: {{ . }}
 that is used by commonStorage, rulerStorage and enterprise logs */}}
 {{- define "loki.storageConfig" -}}
   {{- $bucketName := .bucketName }}
-  {{- $storageType := .ctx.Values.loki.storage.type }}
+  {{- $storageType := .type }}
+
   {{- if .ctx.Values.loki.storage.use_thanos_objstore }}
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
+    {{- include "loki.thanosStorageConfig" (dict "ctx" .ctx "bucketName" $bucketName) | nindent 2 }}
   {{- else if .ctx.Values.minio.enabled }}
   backend: "s3"
   s3:
     bucket_name: {{ $bucketName }}
-  {{- else if eq $storageType "s3" -}}
+  {{- else if eq $storageType "s3" }}
   {{- with .ctx.Values.loki.storage.s3 }}
   backend: "s3"
   s3:
-    bucket_name: {{ $bucketName }}
+    {{- with .s3 }}
+    s3: {{ . }}
+    {{- end }}
+    {{- with .endpoint }}
+    endpoint: {{ . }}
+    {{- end }}
+    {{- with .region }}
+    region: {{ . }}
+    {{- end}}
+    bucketnames: {{ $bucketName }}
+    {{- with .secretAccessKey }}
+    secret_access_key: {{ . }}
+    {{- end }}
+    {{- with .accessKeyId }}
+    access_key_id: {{ . }}
+    {{- end }}
+    s3forcepathstyle: {{ .s3ForcePathStyle }}
+    insecure: {{ .insecure }}
+    {{- with .http_config }}
+    http_config: {{ toYaml . | nindent 6 }}
+    {{- end }}
   {{- end -}}
   {{- else if eq $storageType "gcs" -}}
   {{- with .ctx.Values.loki.storage.gcs }}
   backend: "gcs"
   gcs:
     bucket_name: {{ $bucketName }}
+    chunk_buffer_size: {{ .chunkBufferSize }}
+    request_timeout: {{ .requestTimeout }}
+    enable_http2: {{ .enableHttp2 }}
   {{- end -}}
   {{- else if eq $storageType "azure" -}}
   {{- with .ctx.Values.loki.storage.azure }}
