@@ -788,10 +788,6 @@ kafka_config:
 
 dataobj_consumer:
   builderconfig:
-    # The size of the SHA prefix to use for the data object builder.
-    # CLI flag: -dataobj-consumer.sha-prefix-size
-    [sha_prefix_size: <int> | default = 2]
-
     # The size of the target page to use for the data object builder.
     # CLI flag: -dataobj-consumer.target-page-size
     [target_page_size: <int> | default = 2MiB]
@@ -808,9 +804,11 @@ dataobj_consumer:
     # CLI flag: -dataobj-consumer.buffer-size
     [buffer_size: <int> | default = 16MiB]
 
-  # The tenant ID to use for the data object builder.
-  # CLI flag: -dataobj-consumer.tenant-id
-  [tenant_id: <string> | default = "fake"]
+  uploader:
+    # The size of the SHA prefix to use for generating object storage keys for
+    # data objects.
+    # CLI flag: -dataobj-consumer.sha-prefix-size
+    [shaprefixsize: <int> | default = 2]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-consumer.storage-bucket-prefix
@@ -3614,6 +3612,20 @@ otlp_config:
 # all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
+
+# Map of policies to stream selectors with a priority. Experimental.
+# Example:
+# policy_stream_mapping:
+#   finance:
+#   - selectors: ["{namespace="prod", container="billing"}"]
+#     priority: 2
+#   ops:
+#   - selectors: ["{namespace="prod", container="ops"}"]
+#     priority: 1
+#   staging:
+#   - selectors: ["{namespace="staging"}, {namespace="dev"}"]
+#     priority: 1
+[policy_stream_mapping: <map of string to list of PriorityStreams>]
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0

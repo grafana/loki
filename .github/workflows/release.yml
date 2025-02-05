@@ -151,6 +151,7 @@ jobs:
         buildDir: "release/clients/cmd/docker-driver"
         imageDir: "plugins"
         imagePrefix: "${{ env.IMAGE_PREFIX }}"
+        isLatest: "${{ needs.createRelease.outputs.isLatest }}"
         isPlugin: true
   publishImages:
     needs:
@@ -186,6 +187,7 @@ jobs:
       with:
         imageDir: "images"
         imagePrefix: "${{ env.IMAGE_PREFIX }}"
+        isLatest: "${{ needs.createRelease.outputs.isLatest }}"
   publishRelease:
     needs:
     - "createRelease"

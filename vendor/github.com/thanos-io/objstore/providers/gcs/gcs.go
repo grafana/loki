@@ -395,9 +395,9 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reade
 	return b.upload(ctx, name, newContent, generation, mustNotExist)
 }
 
-func wrapReader(r *storage.Reader) io.ReadCloser {
+func wrapReader(r *storage.Reader) io.Reader {
 	if r == nil {
-		return io.NopCloser(bytes.NewReader(nil))
+		return bytes.NewReader(nil)
 	}
 
 	return r

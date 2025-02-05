@@ -167,6 +167,14 @@ func (enc *Encoder) Flush() error {
 	return nil
 }
 
+func (enc *Encoder) Reset(w streamio.Writer) {
+	enc.data.Reset()
+	enc.sections = nil
+	enc.curSection = nil
+	enc.w = w
+	enc.startOffset = len(magic)
+}
+
 func (enc *Encoder) append(data, metadata []byte) error {
 	if enc.curSection == nil {
 		return errElementNoExist

@@ -12,7 +12,7 @@ func TestDepthFirstTraversalVisitor(t *testing.T) {
 	visited := [][2]string{}
 
 	visitor := &DepthFirstTraversal{
-		VisitLabelParserFn: func(_ RootVisitor, e *LabelParserExpr) {
+		VisitLabelParserFn: func(_ RootVisitor, e *LineParserExpr) {
 			visited = append(visited, [2]string{fmt.Sprintf("%T", e), e.String()})
 		},
 		VisitLineFilterFn: func(_ RootVisitor, e *LineFilterExpr) {
@@ -33,7 +33,7 @@ func TestDepthFirstTraversalVisitor(t *testing.T) {
 		{"*syntax.LogfmtParserExpr", `| logfmt`},
 		{"*syntax.MatchersExpr", `{env="dev"}`},
 		{"*syntax.LineFilterExpr", `|~ "(foo|bar)"`},
-		{"*syntax.LabelParserExpr", `| json`},
+		{"*syntax.LineParserExpr", `| json`},
 	}
 
 	query := `
