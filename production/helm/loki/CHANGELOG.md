@@ -17,6 +17,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Added support for globals: `extraArgs`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` ([#16062](https://github.com/grafana/loki/pull/16062)) relates to ([#12652](https://github.com/grafana/loki/pull/12652))
 
+## 6.25.1
+
+- [BUGFIX] Disable service monitor for nginx service.
+
 ## 6.25.0
 
 - [BUGFIX] Removed minio-mc init container from admin-api.

@@ -1923,6 +1923,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	t.dataObjConsumer = consumer.New(
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObjConsumer,
+		t.Cfg.Distributor.TenantTopic.TopicPrefix,
 		store,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
 		t.partitionRing,

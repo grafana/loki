@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 )
 
@@ -26,15 +27,18 @@ type partitionProcessor struct {
 	partition int32
 	tenantID  []byte
 	// Processing pipeline
-	records chan *kgo.Record
-	builder *dataobj.Builder
-	decoder *kafka.Decoder
+	records          chan *kgo.Record
+	builder          *dataobj.Builder
+	decoder          *kafka.Decoder
+	uploader         *uploader.Uploader
+	metastoreManager *metastore.Manager
 
 	// Builder initialization
-	builderOnce      sync.Once
-	builderCfg       dataobj.BuilderConfig
-	bucket           objstore.Bucket
-	metastoreManager *metastore.Manager
+	builderOnce sync.Once
+	builderCfg  dataobj.BuilderConfig
+	bucket      objstore.Bucket
+	flushBuffer *bytes.Buffer
+
 	// Metrics
 	metrics *partitionOffsetMetrics
 
@@ -46,14 +50,17 @@ type partitionProcessor struct {
 	logger log.Logger
 }
 
-func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, bucket objstore.Bucket, tenantID string, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
+func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg dataobj.BuilderConfig, uploaderCfg uploader.Config, bucket objstore.Bucket, tenantID string, virtualShard int32, topic string, partition int32, logger log.Logger, reg prometheus.Registerer) *partitionProcessor {
 	ctx, cancel := context.WithCancel(ctx)
 	decoder, err := kafka.NewDecoder()
 	if err != nil {
 		panic(err)
 	}
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
+		"shard":     strconv.Itoa(int(virtualShard)),
 		"partition": strconv.Itoa(int(partition)),
+		"tenant":    tenantID,
+		"topic":     topic,
 	}, reg)
 
 	metrics := newPartitionOffsetMetrics()
@@ -61,16 +68,19 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	metastoreManager, err := metastore.NewMetastoreManager(bucket, tenantID, logger, reg)
-	if err != nil {
-		level.Error(logger).Log("msg", "failed to create metastore manager", "err", err)
-		cancel()
-		return nil
+	uploader := uploader.New(uploaderCfg, bucket, tenantID)
+	if err := uploader.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
+	}
+
+	metastoreManager := metastore.NewManager(bucket, tenantID, logger)
+	if err := metastoreManager.RegisterMetrics(reg); err != nil {
+		level.Error(logger).Log("msg", "failed to register metastore manager metrics", "err", err)
 	}
 
 	return &partitionProcessor{
 		client:           client,
-		logger:           log.With(logger, "topic", topic, "partition", partition),
+		logger:           log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
 		topic:            topic,
 		partition:        partition,
 		records:          make(chan *kgo.Record, 1000),
@@ -82,6 +92,7 @@ func newPartitionProcessor(ctx context.Context, client *kgo.Client, builderCfg d
 		bucket:           bucket,
 		tenantID:         []byte(tenantID),
 		metrics:          metrics,
+		uploader:         uploader,
 		metastoreManager: metastoreManager,
 	}
 }
@@ -90,7 +101,6 @@ func (p *partitionProcessor) start() {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
-		defer close(p.records)
 
 		level.Info(p.logger).Log("msg", "started partition processor")
 		for {
@@ -98,7 +108,11 @@ func (p *partitionProcessor) start() {
 			case <-p.ctx.Done():
 				level.Info(p.logger).Log("msg", "stopping partition processor")
 				return
-			case record := <-p.records:
+			case record, ok := <-p.records:
+				if !ok {
+					// Channel was closed
+					return
+				}
 				p.processRecord(record)
 			}
 		}
@@ -112,12 +126,29 @@ func (p *partitionProcessor) stop() {
 		p.builder.UnregisterMetrics(p.reg)
 	}
 	p.metrics.unregister(p.reg)
+	p.uploader.UnregisterMetrics(p.reg)
+}
+
+// Drops records from the channel if the processor is stopped.
+// Returns false if the processor is stopped, true otherwise.
+func (p *partitionProcessor) Append(records []*kgo.Record) bool {
+	for _, record := range records {
+		select {
+		// must check per-record in order to not block on a full channel
+		// after receiver has been stopped.
+		case <-p.ctx.Done():
+			return false
+		case p.records <- record:
+		}
+	}
+	return true
 }
 
 func (p *partitionProcessor) initBuilder() error {
 	var initErr error
 	p.builderOnce.Do(func() {
-		builder, err := dataobj.NewBuilder(p.builderCfg, p.bucket, string(p.tenantID))
+		// Dataobj builder
+		builder, err := dataobj.NewBuilder(p.builderCfg)
 		if err != nil {
 			initErr = err
 			return
@@ -127,6 +158,7 @@ func (p *partitionProcessor) initBuilder() error {
 			return
 		}
 		p.builder = builder
+		p.flushBuffer = bytes.NewBuffer(make([]byte, 0, p.builderCfg.TargetObjectSize))
 	})
 	return initErr
 }
@@ -146,6 +178,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 
 	// todo: handle multi-tenant
 	if !bytes.Equal(record.Key, p.tenantID) {
+		level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
 		return
 	}
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
@@ -155,42 +188,32 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	}
 
 	if err := p.builder.Append(stream); err != nil {
-		if err != dataobj.ErrBufferFull {
+		if err != dataobj.ErrBuilderFull {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
 			p.metrics.incAppendFailures()
 			return
 		}
 
-		backoff := backoff.New(p.ctx, backoff.Config{
-			MinBackoff: 100 * time.Millisecond,
-			MaxBackoff: 10 * time.Second,
-		})
-
-		var flushResult dataobj.FlushResult
-		for backoff.Ongoing() {
-			flushResult, err = p.builder.Flush(p.ctx)
-			if err == nil {
-				break
-			}
+		flushedDataobjStats, err := p.builder.Flush(p.flushBuffer)
+		if err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
-			p.metrics.incFlushFailures()
-			backoff.Wait()
+			return
 		}
 
-		if err := p.metastoreManager.UpdateMetastore(p.ctx, flushResult); err != nil {
+		objectPath, err := p.uploader.Upload(p.ctx, p.flushBuffer)
+		if err != nil {
+			level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
+			return
+		}
+
+		if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
 			level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 			return
 		}
 
-		backoff.Reset()
-		for backoff.Ongoing() {
-			err = p.client.CommitRecords(p.ctx, record)
-			if err == nil {
-				break
-			}
+		if err := p.commitRecords(record); err != nil {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
-			p.metrics.incCommitFailures()
-			backoff.Wait()
+			return
 		}
 
 		if err := p.builder.Append(stream); err != nil {
@@ -198,4 +221,26 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			p.metrics.incAppendFailures()
 		}
 	}
+}
+
+func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
+	backoff := backoff.New(p.ctx, backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 10 * time.Second,
+		MaxRetries: 20,
+	})
+
+	var lastErr error
+	backoff.Reset()
+	for backoff.Ongoing() {
+		err := p.client.CommitRecords(p.ctx, record)
+		if err == nil {
+			return nil
+		}
+		level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+		p.metrics.incCommitFailures()
+		lastErr = err
+		backoff.Wait()
+	}
+	return lastErr
 }
