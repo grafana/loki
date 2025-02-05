@@ -13,23 +13,23 @@ import (
 type RelabelConfig struct {
 	// A list of labels from which values are taken and concatenated
 	// with the configured separator in order.
-	SourceLabels []string `yaml:"source_labels,flow,omitempty" json:"source_labels,omitempty"`
+	SourceLabels []string `json:"source_labels,omitempty"`
 	// Separator is the string between concatenated values from the source labels.
-	Separator string `yaml:"separator,omitempty" json:"separator,omitempty"`
+	Separator string `json:"separator,omitempty"`
 	// Regex against which the concatenation is matched.
-	Regex string `yaml:"regex,omitempty" json:"regex,omitempty"`
+	Regex string `json:"regex,omitempty"`
 	// Modulus to take of the hash of concatenated values from the source labels.
-	Modulus uint64 `yaml:"modulus,omitempty" json:"modulus,omitempty"`
+	Modulus uint64 `json:"modulus,omitempty"`
 	// TargetLabel is the label to which the resulting string is written in a replacement.
 	// Regexp interpolation is allowed for the replace action.
-	TargetLabel string `yaml:"target_label,omitempty" json:"target_label,omitempty"`
+	TargetLabel string `json:"target_label,omitempty"`
 	// Replacement is the regex replacement pattern to be used.
-	Replacement string `yaml:"replacement,omitempty" json:"replacement,omitempty"`
+	Replacement string `json:"replacement,omitempty"`
 	// Action is the action to be performed for the relabeling.
-	Action string `yaml:"action,omitempty" json:"action,omitempty"`
+	Action string `json:"action,omitempty"`
 }
 
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
+// UnmarshalJSON implements the json.Unmarshaler interface.
 func (rc *RelabelConfig) UnmarshalJSON(data []byte) error {
 	*rc = RelabelConfig{
 		Action:      string(relabel.Replace),
