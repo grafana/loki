@@ -44,7 +44,7 @@ func removeFastRegexMatcherFromExpr(expr Expr) Expr {
 			typed.Mts = RemoveFastRegexMatchers(typed.Mts)
 		case *LabelFilterExpr:
 			typed.LabelFilterer = removeFastRegexMatcherFromLabelFilterer(typed.LabelFilterer)
-		case *LogRange:
+		case *LogRangeExpr:
 			if typed.Unwrap == nil {
 				return
 			}
