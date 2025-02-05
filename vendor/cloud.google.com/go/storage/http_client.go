@@ -34,7 +34,6 @@ import (
 	"cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/internal/optional"
 	"cloud.google.com/go/internal/trace"
-	"github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/callctx"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
@@ -593,6 +592,31 @@ func (c *httpStorageClient) RestoreObject(ctx context.Context, params *restoreOb
 	return newObject(obj), err
 }
 
+func (c *httpStorageClient) MoveObject(ctx context.Context, params *moveObjectParams, opts ...storageOption) (*ObjectAttrs, error) {
+	s := callSettings(c.settings, opts...)
+	req := c.raw.Objects.Move(params.bucket, params.srcObject, params.dstObject).Context(ctx)
+	if err := applyConds("MoveObjectDestination", defaultGen, params.dstConds, req); err != nil {
+		return nil, err
+	}
+	if err := applySourceConds("MoveObjectSource", defaultGen, params.srcConds, req); err != nil {
+		return nil, err
+	}
+	if s.userProject != "" {
+		req.UserProject(s.userProject)
+	}
+	if err := setEncryptionHeaders(req.Header(), params.encryptionKey, false); err != nil {
+		return nil, err
+	}
+	var obj *raw.Object
+	var err error
+	err = run(ctx, func(ctx context.Context) error { obj, err = req.Context(ctx).Do(); return err }, s.retry, s.idempotent)
+	var e *googleapi.Error
+	if ok := errors.As(err, &e); ok && e.Code == http.StatusNotFound {
+		return nil, ErrObjectNotExist
+	}
+	return newObject(obj), err
+}
+
 // Default Object ACL methods.
 
 func (c *httpStorageClient) DeleteDefaultObjectACL(ctx context.Context, bucket string, entity ACLEntity, opts ...storageOption) error {
@@ -798,7 +822,7 @@ func (c *httpStorageClient) RewriteObject(ctx context.Context, req *rewriteObjec
 	if err := applyConds("Copy destination", defaultGen, req.dstObject.conds, call); err != nil {
 		return nil, err
 	}
-	if err := applySourceConds(req.srcObject.gen, req.srcObject.conds, call); err != nil {
+	if err := applySourceConds("Copy source", req.srcObject.gen, req.srcObject.conds, call); err != nil {
 		return nil, err
 	}
 	if s.userProject != "" {
@@ -835,6 +859,11 @@ func (c *httpStorageClient) RewriteObject(ctx context.Context, req *rewriteObjec
 	}
 
 	return r, nil
+}
+
+// NewMultiRangeDownloader is not supported by http client.
+func (c *httpStorageClient) NewMultiRangeDownloader(ctx context.Context, params *newMultiRangeDownloaderParams, opts ...storageOption) (mr *MultiRangeDownloader, err error) {
+	return nil, errMethodNotSupported
 }
 
 func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (r *Reader, err error) {
@@ -953,6 +982,10 @@ func (c *httpStorageClient) newRangeReaderJSON(ctx context.Context, params *newR
 }
 
 func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error) {
+	if params.append {
+		return nil, errors.New("storage: append not supported on HTTP Client; use gRPC")
+	}
+
 	s := callSettings(c.settings, opts...)
 	errorf := params.setError
 	setObj := params.setObj
@@ -1026,13 +1059,7 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 			}
 			if useRetry {
 				if s.retry != nil {
-					bo := &gax.Backoff{}
-					if s.retry.backoff != nil {
-						bo.Multiplier = s.retry.backoff.GetMultiplier()
-						bo.Initial = s.retry.backoff.GetInitial()
-						bo.Max = s.retry.backoff.GetMax()
-					}
-					call.WithRetry(bo, s.retry.shouldRetry)
+					call.WithRetry(s.retry.backoff, s.retry.shouldRetry)
 				} else {
 					call.WithRetry(nil, nil)
 				}
@@ -1523,6 +1550,14 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 		}
 	}
 
+	metadata := map[string]string{}
+	for key, values := range res.Header {
+		if len(values) > 0 && strings.HasPrefix(key, "X-Goog-Meta-") {
+			key := key[len("X-Goog-Meta-"):]
+			metadata[key] = values[0]
+		}
+	}
+
 	attrs := ReaderObjectAttrs{
 		Size:            size,
 		ContentType:     res.Header.Get("Content-Type"),
@@ -1536,10 +1571,11 @@ func parseReadResponse(res *http.Response, params *newRangeReaderParams, reopen 
 		Decompressed:    res.Uncompressed || uncompressedByServer(res),
 	}
 	return &Reader{
-		Attrs:    attrs,
-		size:     size,
-		remain:   remain,
-		checkCRC: checkCRC,
+		Attrs:          attrs,
+		objectMetadata: &metadata,
+		size:           size,
+		remain:         remain,
+		checkCRC:       checkCRC,
 		reader: &httpReader{
 			reopen:   reopen,
 			body:     body,

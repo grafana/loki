@@ -25,6 +25,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/chunkenc"
+	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/distributor/writefailures"
 	"github.com/grafana/loki/v3/pkg/ingester/index"
 	"github.com/grafana/loki/v3/pkg/ingester/wal"
@@ -126,6 +127,8 @@ type instance struct {
 	schemaconfig *config.SchemaConfig
 
 	customStreamsTracker push.UsageTracker
+
+	tenantsRetention *retention.TenantsRetention
 }
 
 func newInstance(
@@ -143,6 +146,7 @@ func newInstance(
 	streamRateCalculator *StreamRateCalculator,
 	writeFailures *writefailures.Manager,
 	customStreamsTracker push.UsageTracker,
+	tenantsRetention *retention.TenantsRetention,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -181,6 +185,8 @@ func newInstance(
 		schemaconfig:  &c,
 
 		customStreamsTracker: customStreamsTracker,
+
+		tenantsRetention: tenantsRetention,
 	}
 	i.mapper = NewFPMapper(i.getLabelsFromFingerprint)
 
@@ -290,12 +296,15 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
+	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
+	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
+	policy := mapping.PolicyFor(labels)
 	if record != nil {
 		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
 	}
 
 	if err != nil {
-		return i.onStreamCreationError(ctx, pushReqStream, err, labels)
+		return i.onStreamCreationError(ctx, pushReqStream, err, labels, retentionHours, policy)
 	}
 
 	fp := i.getHashForLabels(labels)
@@ -307,7 +316,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -325,9 +334,15 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	return s, nil
 }
 
-func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels) (*stream, error) {
-	if i.configs.LogStreamCreation(i.instanceID) {
-		level.Debug(util_log.Logger).Log(
+func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy string) (*stream, error) {
+	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
+		l := level.Debug(util_log.Logger)
+
+		if i.cfg.KafkaIngestion.Enabled {
+			l = level.Warn(util_log.Logger)
+		}
+
+		l.Log(
 			"msg", "failed to create stream, exceeded limit",
 			"org_id", i.instanceID,
 			"err", err,
@@ -335,9 +350,9 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 		)
 	}
 
-	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(len(pushReqStream.Entries)))
+	validation.DiscardedSamples.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy).Add(float64(len(pushReqStream.Entries)))
 	bytes := util.EntriesTotalSize(pushReqStream.Entries)
-	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
+	validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID, retentionHours, policy).Add(float64(bytes))
 	if i.customStreamsTracker != nil {
 		i.customStreamsTracker.DiscardedBytesAdd(ctx, i.instanceID, validation.StreamLimit, labels, float64(bytes))
 	}
@@ -369,7 +384,8 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs)
+	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, ls))
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours)
 
 	i.onStreamCreated(s)
 
@@ -1177,7 +1193,7 @@ func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error))
 	}()
 
 	var err error
-	i.streams.WithLock(func() {
+	i.streams.WithRLock(func() {
 		i.ownedStreamsSvc.resetStreamCounts()
 		err = i.streams.ForEach(func(s *stream) (bool, error) {
 			ownedStream, err := isOwnedStream(s)

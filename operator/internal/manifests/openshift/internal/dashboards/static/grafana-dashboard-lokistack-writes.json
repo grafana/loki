@@ -33,6 +33,8 @@
                   "3xx": "#6ED0E0",
                   "4xx": "#EF843C",
                   "5xx": "#E24D42",
+                  "OK": "#7EB26D",
+                  "cancel": "#A9A9A9",
                   "error": "#E24D42",
                   "success": "#7EB26D"
                },
@@ -213,12 +215,10 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{status}}",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   }
                ],
                "title": "QPS",
@@ -265,26 +265,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"})) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
-                     "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "legendFormat": "99th percentile",
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"})) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
-                     "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "legendFormat": "50th percentile",
+                     "refId": "B"
                   },
                   {
                      "expr": "1e3 * sum(namespace_job_route:loki_request_duration_seconds_sum:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"}) / sum(namespace_job_route:loki_request_duration_seconds_count:sum_rate{namespace=\"$namespace\", job=~\".+-distributor-http\", route=~\"api_prom_push|loki_api_v1_push|otlp_v1_logs|/httpgrpc.HTTP/Handle\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Latency",
@@ -411,10 +405,8 @@
                   {
                      "expr": "sum (rate(loki_distributor_structured_metadata_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval])) / sum(rate(loki_distributor_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "bytes",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Per Total Received Bytes",
@@ -461,10 +453,8 @@
                   {
                      "expr": "sum by (tenant) (rate(loki_distributor_structured_metadata_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval])) / ignoring(tenant) group_left sum(rate(loki_distributor_structured_metadata_bytes_received_total{namespace=\"$namespace\",job=~\".+-distributor-http\",}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{tenant}}",
-                     "legendLink": null,
-                     "step": 10
+                     "legendLink": null
                   }
                ],
                "title": "Per Tenant",
@@ -507,6 +497,8 @@
                   "3xx": "#6ED0E0",
                   "4xx": "#EF843C",
                   "5xx": "#E24D42",
+                  "OK": "#7EB26D",
+                  "cancel": "#A9A9A9",
                   "error": "#E24D42",
                   "success": "#7EB26D"
                },
@@ -687,12 +679,10 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{status}}",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   }
                ],
                "title": "QPS",
@@ -739,26 +729,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"})) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
-                     "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "legendFormat": "99th percentile",
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum by (le) (namespace_job_route:loki_request_duration_seconds_bucket:sum_rate{namespace=\"$namespace\", job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"})) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
-                     "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "legendFormat": "50th percentile",
+                     "refId": "B"
                   },
                   {
                      "expr": "1e3 * sum(namespace_job_route:loki_request_duration_seconds_sum:sum_rate{namespace=\"$namespace\", job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"}) / sum(namespace_job_route:loki_request_duration_seconds_count:sum_rate{namespace=\"$namespace\", job=~\".+-ingester-http\", route=\"/logproto.Pusher/Push\"})",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Latency",
@@ -852,6 +836,8 @@
                   "3xx": "#6ED0E0",
                   "4xx": "#EF843C",
                   "5xx": "#E24D42",
+                  "OK": "#7EB26D",
+                  "cancel": "#A9A9A9",
                   "error": "#E24D42",
                   "success": "#7EB26D"
                },
@@ -1032,12 +1018,10 @@
                "stack": true,
                "targets": [
                   {
-                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_index_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))\n",
+                     "expr": "sum by (status) (\n  label_replace(label_replace(rate(loki_index_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n  \"status\", \"${1}\", \"status_code\", \"([a-zA-Z]+)\"))\n",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "{{status}}",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   }
                ],
                "title": "QPS",
@@ -1084,26 +1068,20 @@
                   {
                      "expr": "histogram_quantile(0.99, sum(rate(loki_index_request_duration_seconds_bucket{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "99th Percentile",
-                     "refId": "A",
-                     "step": 10
+                     "refId": "A"
                   },
                   {
                      "expr": "histogram_quantile(0.50, sum(rate(loki_index_request_duration_seconds_bucket{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval])) by (le)) * 1e3",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "50th Percentile",
-                     "refId": "B",
-                     "step": 10
+                     "refId": "B"
                   },
                   {
                      "expr": "sum(rate(loki_index_request_duration_seconds_sum{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval])) * 1e3 / sum(rate(loki_index_request_duration_seconds_count{namespace=\"$namespace\",job=~\".+-ingester-http\", operation=\"index_chunk\"}[$__rate_interval]))",
                      "format": "time_series",
-                     "intervalFactor": 2,
                      "legendFormat": "Average",
-                     "refId": "C",
-                     "step": 10
+                     "refId": "C"
                   }
                ],
                "title": "Latency",
@@ -1203,7 +1181,7 @@
                "value": "default"
             },
             "hide": 0,
-            "label": "Data Source",
+            "label": "Data source",
             "name": "datasource",
             "options": [ ],
             "query": "prometheus",

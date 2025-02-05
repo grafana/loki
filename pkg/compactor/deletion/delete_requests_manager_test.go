@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/util/filter"
 )
 
@@ -48,6 +51,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 		expectedResp                      resp
 		expectedDeletionRangeByUser       map[string]model.Interval
 		expectedRequestsMarkedAsProcessed []int
+		expectedDuplicateRequestsCount    int
 	}{
 		{
 			name:         "no delete requests",
@@ -895,6 +899,43 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedRequestsMarkedAsProcessed: []int{0, 1},
 		},
+		{
+			name:         "duplicate delete request marked as processed with loaded request",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    1,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					RequestID: "1",
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-24 * time.Hour),
+					EndTime:   now,
+					Status:    StatusReceived,
+				},
+				{
+					RequestID: "2",
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-24 * time.Hour),
+					EndTime:   now,
+					Status:    StatusReceived,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				expectedFilter: func(_ time.Time, s string, _ ...labels.Label) bool {
+					return strings.Contains(s, "fizz")
+				},
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-24 * time.Hour),
+					End:   now,
+				},
+			},
+			expectedRequestsMarkedAsProcessed: []int{0, 1},
+			expectedDuplicateRequestsCount:    1,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mockDeleteRequestsStore := &mockDeleteRequestsStore{deleteRequests: tc.deleteRequestsFromStore}
@@ -947,6 +988,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			for i, reqIdx := range tc.expectedRequestsMarkedAsProcessed {
 				require.True(t, requestsAreEqual(tc.deleteRequestsFromStore[reqIdx], processedRequests[i]))
 			}
+			require.Len(t, mgr.duplicateRequests, tc.expectedDuplicateRequestsCount)
 		})
 	}
 }
@@ -1008,6 +1050,10 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, s
 	return reqs, nil
 }
 
+func (m *mockDeleteRequestsStore) GetAllDeleteRequests(_ context.Context) ([]DeleteRequest, error) {
+	return m.deleteRequests, nil
+}
+
 func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
 	m.addReqs = reqs
 	if m.returnZeroDeleteRequests {
@@ -1046,13 +1092,132 @@ func (m *mockDeleteRequestsStore) UpdateStatus(_ context.Context, req DeleteRequ
 	return nil
 }
 
+func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context, requestToAdd DeleteRequest, requestsToRemove []DeleteRequest) error {
+	n := 0
+	for i := range m.deleteRequests {
+		for j := range requestsToRemove {
+			if requestsAreEqual(m.deleteRequests[i], requestsToRemove[j]) {
+				continue
+			}
+			m.deleteRequests[n] = m.deleteRequests[i]
+			n++
+			break
+		}
+	}
+
+	m.deleteRequests = m.deleteRequests[:n]
+	m.deleteRequests = append(m.deleteRequests, requestToAdd)
+
+	return nil
+}
+
 func requestsAreEqual(req1, req2 DeleteRequest) bool {
 	if req1.UserID == req2.UserID &&
 		req1.Query == req2.Query &&
 		req1.StartTime == req2.StartTime &&
-		req1.EndTime == req2.EndTime {
+		req1.EndTime == req2.EndTime &&
+		req1.SequenceNum == req2.SequenceNum &&
+		req1.Status == req2.Status {
 		return true
 	}
 
 	return false
+}
+
+func TestDeleteRequestsManager_mergeShardedRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		reqsToAdd              []DeleteRequest
+		shouldMarkProcessed    func(DeleteRequest) bool
+		requestsShouldBeMerged bool
+	}{
+		{
+			name: "no requests in store",
+		},
+		{
+			name:      "none of the requests are processed - should not merge",
+			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
+			shouldMarkProcessed: func(_ DeleteRequest) bool {
+				return false
+			},
+		},
+		{
+			name:      "not all requests are processed - should not merge",
+			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
+			shouldMarkProcessed: func(request DeleteRequest) bool {
+				return request.SequenceNum%2 == 0
+			},
+		},
+		{
+			name:      "all the requests are processed - should merge",
+			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
+			shouldMarkProcessed: func(_ DeleteRequest) bool {
+				return true
+			},
+			requestsShouldBeMerged: true,
+		},
+		{ // build requests for 2 different users and mark all requests as processed for just one of the two
+			name: "merging requests from one user should not touch another users requests",
+			reqsToAdd: append(
+				buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
+				buildRequests(time.Hour, `{foo="bar"}`, user2, now.Add(-24*time.Hour), now)...,
+			),
+			shouldMarkProcessed: func(request DeleteRequest) bool {
+				return request.UserID == user2
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mgr := setupManager(t)
+			reqs, err := mgr.deleteRequestsStore.AddDeleteRequestGroup(context.Background(), tc.reqsToAdd)
+			require.NoError(t, err)
+			require.GreaterOrEqual(t, len(reqs), len(tc.reqsToAdd))
+
+			for _, req := range reqs {
+				if !tc.shouldMarkProcessed(req) {
+					continue
+				}
+				require.NoError(t, mgr.deleteRequestsStore.UpdateStatus(context.Background(), req, StatusProcessed))
+			}
+
+			inStoreReqs, err := mgr.deleteRequestsStore.GetAllDeleteRequestsForUser(context.Background(), user1)
+			require.NoError(t, err)
+
+			require.NoError(t, mgr.mergeShardedRequests(context.Background()))
+			inStoreReqsAfterMerging, err := mgr.deleteRequestsStore.GetAllDeleteRequestsForUser(context.Background(), user1)
+			require.NoError(t, err)
+
+			if tc.requestsShouldBeMerged {
+				require.Len(t, inStoreReqsAfterMerging, 1)
+				require.True(t, requestsAreEqual(inStoreReqsAfterMerging[0], DeleteRequest{
+					UserID:    user1,
+					Query:     tc.reqsToAdd[0].Query,
+					StartTime: tc.reqsToAdd[0].StartTime,
+					EndTime:   tc.reqsToAdd[len(tc.reqsToAdd)-1].EndTime,
+					Status:    StatusProcessed,
+				}))
+			} else {
+				require.Len(t, inStoreReqsAfterMerging, len(inStoreReqs))
+				require.Equal(t, inStoreReqs, inStoreReqsAfterMerging)
+			}
+		})
+	}
+}
+
+func setupManager(t *testing.T) *DeleteRequestsManager {
+	t.Helper()
+	// build the store
+	tempDir := t.TempDir()
+
+	workingDir := filepath.Join(tempDir, "working-dir")
+	objectStorePath := filepath.Join(tempDir, "object-store")
+
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{
+		Directory: objectStorePath,
+	})
+	require.NoError(t, err)
+	ds, err := NewDeleteStore(workingDir, storage.NewIndexStorageClient(objectClient, ""))
+	require.NoError(t, err)
+
+	return NewDeleteRequestsManager(ds, time.Hour, 1, &fakeLimits{defaultLimit: limit{deletionMode: deletionmode.FilterAndDelete.String()}}, nil)
 }

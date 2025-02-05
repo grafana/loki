@@ -1,0 +1,60 @@
+// streamsmd.proto holds metadata for the streams section of a data object. The
+// streams section conains references to log streams within the data object.
+syntax = "proto3";
+
+package dataobj.metadata.streams.v1;
+
+import "pkg/dataobj/internal/metadata/datasetmd/datasetmd.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd";
+
+// Metadata describes the metadata for the streams section.
+message Metadata {
+  // Columns within the stream.
+  repeated ColumnDesc columns = 1;
+}
+
+// ColumnDesc describes an individual column within the streams table.
+message ColumnDesc {
+  // Information about the column.
+  dataobj.metadata.dataset.v1.ColumnInfo info = 1;
+
+  // Column type.
+  ColumnType type = 2;
+}
+
+// ColumnType represents the valid types that a stream's column can have.
+enum ColumnType {
+  // Invalid column type.
+  COLUMN_TYPE_UNSPECIFIED = 0;
+
+  // COLUMN_TYPE_STREAM_ID is a column containing the stream ID. Stream IDs are
+  // unique across the entire data object.
+  COLUMN_TYPE_STREAM_ID = 1;
+
+  // COLUMN_TYPE_MIN_TIMESTAMP is a column containing the minimum timestamp of
+  // a stream.
+  COLUMN_TYPE_MIN_TIMESTAMP = 2;
+
+  // COLUMN_TYPE_MAX_TIMESTAMP is a column containing the maximum timestamp of
+  // a stream.
+  COLUMN_TYPE_MAX_TIMESTAMP = 3;
+
+  // COLUMN_TYPE_LABEL is a column containing a label.
+  COLUMN_TYPE_LABEL = 4;
+
+  // COLUMN_TYPE_ROWS is a column indicating the number of rows for a stream.
+  COLUMN_TYPE_ROWS = 5;
+}
+
+// ColumnMetadata describes the metadata for a column.
+message ColumnMetadata {
+  // Pages within the column.
+  repeated PageDesc pages = 1;
+}
+
+// PageDesc describes an individual page within a column.
+message PageDesc {
+  // Information about the page.
+  dataobj.metadata.dataset.v1.PageInfo info = 1;
+}

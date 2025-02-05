@@ -489,11 +489,10 @@ func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) 
 	var err error
 	expr.Walk(func(e syntax.Expr) {
 		switch e := e.(type) {
-		case *syntax.RangeAggregationExpr:
-			if e.Left == nil || e.Left.Interval <= limit {
-				return
+		case *syntax.LogRangeExpr:
+			if e.Interval > limit {
+				err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Interval), model.Duration(limit))
 			}
-			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Left.Interval), model.Duration(limit))
 		}
 	})
 	return err

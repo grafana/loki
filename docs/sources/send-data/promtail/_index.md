@@ -4,7 +4,7 @@ menuTitle:  Promtail
 description: How to use the Promtail agent to ship logs to Loki
 aliases: 
 - ../clients/promtail/ # /docs/loki/latest/clients/promtail/
-weight:  200
+weight:  300
 ---
 # Promtail agent
 
@@ -110,7 +110,7 @@ Important details are:
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) with the [loki_push_api](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#loki_push_api) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API](https://grafana.com/docs/loki/<LOKI_VERSION>/reference/loki-http-api#ingest-logs) with the [Promtail loki_push_api](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/configuration/#loki_push_api) scrape config.
 
 There are a few instances where this might be helpful:
 

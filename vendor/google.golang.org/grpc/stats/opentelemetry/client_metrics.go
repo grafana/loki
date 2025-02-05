@@ -260,18 +260,19 @@ func (h *clientStatsHandler) processRPCEnd(ctx context.Context, ai *attemptInfo,
 }
 
 const (
-	// ClientAttemptStarted is the number of client call attempts started.
-	ClientAttemptStarted estats.Metric = "grpc.client.attempt.started"
-	// ClientAttemptDuration is the end-to-end time taken to complete a client
-	// call attempt.
-	ClientAttemptDuration estats.Metric = "grpc.client.attempt.duration"
-	// ClientAttemptSentCompressedTotalMessageSize is the compressed message
-	// bytes sent per client call attempt.
-	ClientAttemptSentCompressedTotalMessageSize estats.Metric = "grpc.client.attempt.sent_total_compressed_message_size"
-	// ClientAttemptRcvdCompressedTotalMessageSize is the compressed message
-	// bytes received per call attempt.
-	ClientAttemptRcvdCompressedTotalMessageSize estats.Metric = "grpc.client.attempt.rcvd_total_compressed_message_size"
-	// ClientCallDuration is the time taken by gRPC to complete an RPC from
-	// application's perspective.
-	ClientCallDuration estats.Metric = "grpc.client.call.duration"
+	// ClientAttemptStartedMetricName is the number of client call attempts
+	// started.
+	ClientAttemptStartedMetricName string = "grpc.client.attempt.started"
+	// ClientAttemptDurationMetricName is the end-to-end time taken to complete
+	// a client call attempt.
+	ClientAttemptDurationMetricName string = "grpc.client.attempt.duration"
+	// ClientAttemptSentCompressedTotalMessageSizeMetricName is the compressed
+	// message bytes sent per client call attempt.
+	ClientAttemptSentCompressedTotalMessageSizeMetricName string = "grpc.client.attempt.sent_total_compressed_message_size"
+	// ClientAttemptRcvdCompressedTotalMessageSizeMetricName is the compressed
+	// message bytes received per call attempt.
+	ClientAttemptRcvdCompressedTotalMessageSizeMetricName string = "grpc.client.attempt.rcvd_total_compressed_message_size"
+	// ClientCallDurationMetricName is the time taken by gRPC to complete an RPC
+	// from application's perspective.
+	ClientCallDurationMetricName string = "grpc.client.call.duration"
 )

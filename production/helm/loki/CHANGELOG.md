@@ -13,6 +13,20 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 6.25.1
+
+- [BUGFIX] Disable service monitor for nginx service.
+
+## 6.25.0
+
+- [BUGFIX] Removed minio-mc init container from admin-api.
+- [BUGFIX] Fixed admin-api and gateway deployment container args.
+- [FEATURE] Added support for Overrides Exporter
+
+## 6.24.1
+
+- [ENHANCEMENT] Fix Inconsistency between sidecar.securityContext and loki.containerSecurityContext
+
 ## 6.24.0
 
 - [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
@@ -163,7 +177,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
-
 
 ## 6.4.2
 

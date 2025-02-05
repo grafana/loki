@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"runtime/pprof"
 	"slices"
 	"sort"
 	"strconv"
@@ -30,7 +31,6 @@ import (
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -99,6 +99,9 @@ type Config struct {
 	KafkaEnabled    bool         `yaml:"kafka_writes_enabled"`
 	IngesterEnabled bool         `yaml:"ingester_writes_enabled"`
 	KafkaConfig     kafka.Config `yaml:"-"`
+
+	// TODO: cleanup config
+	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -107,6 +110,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	cfg.TenantTopic.RegisterFlags(fs)
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
 	fs.BoolVar(&cfg.IngesterEnabled, "distributor.ingester-writes-enabled", true, "Enable writes to Ingesters during Push requests. Defaults to true.")
@@ -115,6 +119,9 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
+	if err := cfg.TenantTopic.Validate(); err != nil {
+		return errors.Wrap(err, "validating tenant topic config")
 	}
 	return nil
 }
@@ -173,6 +180,7 @@ type Distributor struct {
 	streamShardCount                      prometheus.Counter
 	tenantPushSanitizedStructuredMetadata *prometheus.CounterVec
 
+	policyResolver push.PolicyResolver
 	usageTracker   push.UsageTracker
 	ingesterTasks  chan pushIngesterTask
 	ingesterTaskWg sync.WaitGroup
@@ -216,6 +224,11 @@ func New(
 		return client.New(internalCfg, addr)
 	}
 
+	policyResolver := push.PolicyResolver(func(userID string, lbs labels.Labels) string {
+		mappings := overrides.PoliciesStreamMapping(userID)
+		return mappings.PolicyFor(lbs)
+	})
+
 	validator, err := NewValidator(overrides, usageTracker)
 	if err != nil {
 		return nil, err
@@ -246,6 +259,16 @@ func New(
 		}
 		kafkaWriter = kafka_client.NewProducer(kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		// TODO: cleanup/make independent of whether we write kafka as primary?
+		if cfg.TenantTopic.Enabled {
+			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, overrides, registerer, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to start tenant topic tee: %w", err)
+			}
+
+			tee = WrapTee(tee, w)
+		}
 	}
 
 	d := &Distributor{
@@ -263,6 +286,7 @@ func New(
 		healthyInstancesCount: atomic.NewUint32(0),
 		rateLimitStrat:        rateLimitStrat,
 		tee:                   tee,
+		policyResolver:        policyResolver,
 		usageTracker:          usageTracker,
 		ingesterTasks:         make(chan pushIngesterTask),
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -453,15 +477,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// We use the heuristic of 1 sample per TS to size the array.
 	// We also work out the hash value at the same time.
 	streams := make([]KeyedStream, 0, len(req.Streams))
-	validatedLineSize := 0
-	validatedLineCount := 0
 
 	var validationErrors util.GroupedErrors
 
 	now := time.Now()
 	validationContext := d.validator.getValidationContextForTime(now, tenantID)
-	levelDetector := newLevelDetector(validationContext)
-	shouldDiscoverLevels := levelDetector.shouldDiscoverLogLevels()
+	fieldDetector := newFieldDetector(validationContext)
+	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
+	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
@@ -512,13 +535,24 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			d.truncateLines(validationContext, &stream)
 
 			var lbs labels.Labels
-			lbs, stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
+			var retentionHours, policy string
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(validation.InvalidLabels, tenantID, retentionHours, policy).Add(float64(discardedBytes))
+				continue
+			}
+
+			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
+				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(discardedBytes))
 				continue
 			}
 
@@ -527,7 +561,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			prevTs := stream.Entries[0].Timestamp
 
 			for _, entry := range stream.Entries {
-				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry); err != nil {
+				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
 					validationErrors.Add(err)
 					continue
@@ -547,10 +581,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 					}
 				}
 				if shouldDiscoverLevels {
-					logLevel, ok := levelDetector.extractLogLevel(lbs, structuredMetadata, entry)
-					if ok {
-						entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
-					}
+					pprof.Do(ctx, pprof.Labels("action", "discover_log_level"), func(_ context.Context) {
+						logLevel, ok := fieldDetector.extractLogLevel(lbs, structuredMetadata, entry)
+						if ok {
+							entry.StructuredMetadata = append(entry.StructuredMetadata, logLevel)
+						}
+					})
+				}
+				if shouldDiscoverGenericFields {
+					pprof.Do(ctx, pprof.Labels("action", "discover_generic_fields"), func(_ context.Context) {
+						for field, hints := range fieldDetector.validationContext.discoverGenericFields {
+							extracted, ok := fieldDetector.extractGenericField(field, hints, lbs, structuredMetadata, entry)
+							if ok {
+								entry.StructuredMetadata = append(entry.StructuredMetadata, extracted)
+							}
+						}
+					})
 				}
 				stream.Entries[n] = entry
 
@@ -570,8 +616,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				n++
-				validatedLineSize += util.EntryTotalSize(&entry)
-				validatedLineCount++
+				validationContext.validationMetrics.compute(entry, retentionHours, policy)
 				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
@@ -595,7 +640,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 
 	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.BlockedIngestion)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.BlockedIngestion)
 
 		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -609,10 +654,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
 	}
 
-	if !d.ingestionRateLimiter.AllowN(now, tenantID, validatedLineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validatedLineCount, validatedLineSize, validation.RateLimited)
+	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited)
 
-		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
 		// Return a 429 to indicate to the client they are being rate limited
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "%s", err.Error())
@@ -687,9 +732,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 		for ingester, streams := range streamsByIngester {
 			func(ingester ring.InstanceDesc, samples []*streamTracker) {
-				// Use a background context to make sure all ingesters get samples even if we return early
-				localCtx, cancel := context.WithTimeout(context.Background(), d.clientCfg.RemoteTimeout)
-				localCtx = user.InjectOrgID(localCtx, tenantID)
+				// Clone the context using WithoutCancel, which is not canceled when parent is canceled.
+				// This is to make sure all ingesters get samples even if we return early
+				localCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), d.clientCfg.RemoteTimeout)
 				if sp := opentracing.SpanFromContext(ctx); sp != nil {
 					localCtx = opentracing.ContextWithSpan(localCtx, sp)
 				}
@@ -720,21 +765,45 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+// missingEnforcedLabels returns true if the stream is missing any of the required labels.
+//
+// It also returns the first label that is missing if any (for the case of multiple labels missing).
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
+	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
+	if len(requiredLbs) == 0 {
+		// no enforced labels configured.
+		return false, []string{}
+	}
+
+	missingLbs := []string{}
+
+	for _, lb := range requiredLbs {
+		if !lbs.Has(lb) {
+			missingLbs = append(missingLbs, lb)
+		}
+	}
+
+	return len(missingLbs) > 0, missingLbs
+}
+
 func (d *Distributor) trackDiscardedData(
 	ctx context.Context,
 	req *logproto.PushRequest,
 	validationContext validationContext,
 	tenantID string,
-	validatedLineCount int,
-	validatedLineSize int,
+	validationMetrics validationMetrics,
 	reason string,
 ) {
-	validation.DiscardedSamples.WithLabelValues(reason, tenantID).Add(float64(validatedLineCount))
-	validation.DiscardedBytes.WithLabelValues(reason, tenantID).Add(float64(validatedLineSize))
+	for policy, retentionToStats := range validationMetrics.policyPushStats {
+		for retentionHours, stats := range retentionToStats {
+			validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(stats.lineCount))
+			validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(stats.lineSize))
+		}
+	}
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
 			if err != nil {
 				continue
 			}
@@ -1113,24 +1182,32 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, string, error) {
+	mapping := d.validator.Limits.PoliciesStreamMapping(vContext.userID)
 	if val, ok := d.labelCache.Get(key); ok {
-		return val.ls, val.ls.String(), val.hash, nil
+		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
+		policy := mapping.PolicyFor(val.ls)
+		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return nil, "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
+		// TODO: check for global policy.
+		return nil, "", 0, retentionHours, mapping.PolicyFor(nil), fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream); err != nil {
-		return nil, "", 0, err
+	policy := mapping.PolicyFor(ls)
+	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
+
+	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
+		return nil, "", 0, retentionHours, policy, err
 	}
 
 	lsHash := ls.Hash()
 
 	d.labelCache.Add(key, labelData{ls, lsHash})
-	return ls, ls.String(), lsHash, nil
+	return ls, ls.String(), lsHash, retentionHours, policy, nil
 }
 
 // shardCountFor returns the right number of shards to be used by the given stream.
