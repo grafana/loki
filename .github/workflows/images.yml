@@ -518,7 +518,7 @@
         "platforms": "${{ matrix.arch }}"
         "provenance": true
         "tags": |
-          ${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${{ matrix.arch }}
+          ${{ steps.weekly-version.outputs.image_name }}:${{ steps.weekly-version.outputs.image_version }}-${{ matrix.arch | replace('/', '-') }}
     - "id": "digest"
       "name": "Process image digest"
       "run": |
