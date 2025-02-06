@@ -287,6 +287,10 @@ func (s *IngestLimits) trackPerTenantPartitions(tenant string, partitionID int32
 		}
 	}
 
+	if _, ok := s.assingedPartitions[tenant]; !ok {
+		s.assingedPartitions[tenant] = make(map[int32]int64)
+	}
+
 	s.assingedPartitions[tenant][partitionID] = time.Now().UnixNano()
 }
 
