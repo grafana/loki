@@ -34,11 +34,3 @@ func deleteModeFromLimits(l Limits, userID string) (deletionmode.Mode, error) {
 	mode := l.DeletionMode(userID)
 	return deletionmode.ParseMode(mode)
 }
-
-func partitionByRequestID(reqs []DeleteRequest) map[string][]DeleteRequest {
-	groups := make(map[string][]DeleteRequest)
-	for _, req := range reqs {
-		groups[req.RequestID] = append(groups[req.RequestID], req)
-	}
-	return groups
-}
