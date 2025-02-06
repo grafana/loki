@@ -43,6 +43,7 @@ import (
 	frontendclient "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -52,7 +53,9 @@ const (
 )
 
 type metrics struct {
-	activeStreamsTotal *prometheus.CounterVec
+	activeStreamsTotal   *prometheus.CounterVec
+	kafkaWriteLatency    prometheus.Histogram
+	kafkaWriteBytesTotal prometheus.Counter
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -61,6 +64,20 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name: "active_streams_total",
 			Help: "The total number of active streams",
 		}, []string{"tenant"}),
+		kafkaWriteLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "kafka_write_metadata_latency_seconds",
+			Help:                            "Latency to write an incoming request to the ingest metadata storage.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		kafkaWriteBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "kafka_write_metadata_bytes_total",
+			Help:      "Total number of bytes sent to the ingest metadata storage.",
+		}),
 	}
 }
 
@@ -384,11 +401,18 @@ func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 				return
 			}
 
+			startTime := time.Now()
+
 			// Add metadata record
 			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard)
 
 			// Send to Kafka
 			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
+
+			if count, sizeBytes := successfulProduceRecordsStats(produceResults); count > 0 {
+				s.metrics.kafkaWriteLatency.Observe(time.Since(startTime).Seconds())
+				s.metrics.kafkaWriteBytesTotal.Add(float64(sizeBytes))
+			}
 
 			// Check for errors
 			for _, result := range produceResults {
@@ -399,6 +423,17 @@ func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 			}
 		}(stream)
 	}
+}
+
+func successfulProduceRecordsStats(results kgo.ProduceResults) (count, sizeBytes int) {
+	for _, res := range results {
+		if res.Err == nil && res.Record != nil {
+			count++
+			sizeBytes += len(res.Record.Value)
+		}
+	}
+
+	return
 }
 
 func (s *generator) stopping(_ error) error {
