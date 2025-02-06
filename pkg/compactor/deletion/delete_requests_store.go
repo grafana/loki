@@ -292,15 +292,14 @@ func (ds *deleteRequestsStore) queryDeleteRequests(ctx context.Context, deleteQu
 
 func (ds *deleteRequestsStore) deleteRequestsWithDetails(ctx context.Context, partialDeleteRequests []DeleteRequest) ([]DeleteRequest, error) {
 	deleteRequests := make([]DeleteRequest, 0, len(partialDeleteRequests))
-	for _, group := range partitionByRequestID(partialDeleteRequests) {
-		for _, deleteRequest := range group {
-			requestWithDetails, err := ds.queryDeleteRequestDetails(ctx, deleteRequest)
-			if err != nil {
-				return nil, err
-			}
-			deleteRequests = append(deleteRequests, requestWithDetails)
+	for _, deleteRequest := range partialDeleteRequests {
+		requestWithDetails, err := ds.queryDeleteRequestDetails(ctx, deleteRequest)
+		if err != nil {
+			return nil, err
 		}
+		deleteRequests = append(deleteRequests, requestWithDetails)
 	}
+
 	return deleteRequests, nil
 }
 
