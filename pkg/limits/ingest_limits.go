@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,21 +20,46 @@ import (
 	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
+	// Ring
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
+
+	// Kafka
+	consumerGroup = "ingest-limits"
+)
+
+var (
+	tenantPartitionDesc = prometheus.NewDesc(
+		constants.Loki+"_ingest_limits_partitions",
+		"The current number of partitions per tenant.",
+		[]string{"tenant"},
+		nil,
+	)
+
+	tenantRecordedStreamsDesc = prometheus.NewDesc(
+		constants.Loki+"_ingest_limits_recorded_streams",
+		"The current number of recorded streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		[]string{"tenant"},
+		nil,
+	)
+
+	tenantActiveStreamsDesc = prometheus.NewDesc(
+		constants.Loki+"_ingest_limits_active_streams",
+		"The current number of active streams (seen within the window) per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
+		[]string{"tenant"},
+		nil,
+	)
 )
 
 type metrics struct {
-	tenantCurrentRecordedStreams *prometheus.GaugeVec
-	tenantStreamEvictionsTotal   *prometheus.CounterVec
-	tenantActiveStreams          *prometheus.GaugeVec
+	tenantStreamEvictionsTotal *prometheus.CounterVec
 
 	kafkaReadLatency    prometheus.Histogram
 	kafkaReadBytesTotal prometheus.Counter
@@ -40,20 +67,10 @@ type metrics struct {
 
 func newMetrics(reg prometheus.Registerer) *metrics {
 	return &metrics{
-		tenantCurrentRecordedStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_recorded_streams",
-			Help:      "The current number of recorded streams per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
 		tenantStreamEvictionsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
-		}, []string{"tenant"}),
-		tenantActiveStreams: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_active_streams",
-			Help:      "The current number of active streams (seen within the window) per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
 		kafkaReadLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Namespace:                       constants.Loki,
@@ -72,14 +89,20 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
+type streamMetadata struct {
+	hash       uint64
+	lastSeenAt int64
+}
+
 // IngestLimits is a service that manages stream metadata limits.
 type IngestLimits struct {
 	services.Service
 
 	cfg    Config
 	logger log.Logger
-	client *kgo.Client
+	client *consumer.Client
 
+	partitionRing     ring.PartitionRingReader
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -88,7 +111,11 @@ type IngestLimits struct {
 
 	// Track stream metadata
 	mtx      sync.RWMutex
-	metadata map[string]map[uint64]int64 // tenant -> streamHash -> lastSeenAt
+	metadata map[string]map[int32][]streamMetadata // tenant -> partitionID -> streamMetadata
+
+	// Track partition assignments
+	mtxAssingedPartitions sync.RWMutex
+	assingedPartitions    map[int32]int64 // partitionID -> lastAssignedAt
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
@@ -101,13 +128,19 @@ func (s *IngestLimits) TransferOut(_ context.Context) error {
 
 // NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
-func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
+func NewIngestLimits(cfg Config, partitionRing ring.PartitionRingReader, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
 	s := &IngestLimits{
-		cfg:      cfg,
-		logger:   logger,
-		metadata: make(map[string]map[uint64]int64),
-		metrics:  newMetrics(reg),
+		cfg:           cfg,
+		logger:        logger,
+		partitionRing: partitionRing,
+		metadata:      make(map[string]map[int32][]streamMetadata),
+		metrics:       newMetrics(reg),
+	}
+
+	// Initialize internal metadata metrics
+	if err := reg.Register(s); err != nil {
+		return nil, fmt.Errorf("failed to register ingest limits internal metadata metrics: %w", err)
 	}
 
 	// Initialize lifecycler
@@ -122,27 +155,23 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 
 	metrics := kprom.NewMetrics("loki_ingest_limits",
 		kprom.Registerer(reg),
-		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
+		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
+	)
 
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
 	kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
 
-	s.client, err = client.NewReaderClient(kCfg, metrics, logger,
-		kgo.ConsumerGroup("ingest-limits"),
-		kgo.ConsumeTopics(kCfg.Topic),
-		kgo.Balancers(kgo.RoundRobinBalancer()),
+	s.client, err = consumer.NewGroupClient(
+		kCfg,
+		partitionRing,
+		consumerGroup,
+		metrics,
+		logger,
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
-		kgo.DisableAutoCommit(),
-		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-			level.Debug(logger).Log("msg", "assigned partitions", "partitions", partitions)
-		}),
-		kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-			level.Debug(logger).Log("msg", "revoked partitions", "partitions", partitions)
-		}),
-		kgo.OnPartitionsLost(func(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-			level.Debug(logger).Log("msg", "lost partitions", "partitions", partitions)
-		}),
+		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
+		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
+		kgo.OnPartitionsLost(s.onPartitionsLost),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
@@ -150,6 +179,102 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 
 	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
 	return s, nil
+}
+
+func (s *IngestLimits) Describe(descs chan<- *prometheus.Desc) {
+	descs <- tenantPartitionDesc
+	descs <- tenantRecordedStreamsDesc
+	descs <- tenantActiveStreamsDesc
+}
+
+func (s *IngestLimits) Collect(m chan<- prometheus.Metric) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	s.mtxAssingedPartitions.RLock()
+	defer s.mtxAssingedPartitions.RUnlock()
+
+	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
+
+	for tenant, partitions := range s.metadata {
+		var (
+			recorded int
+			active   int
+		)
+
+		for partitionID, partition := range partitions {
+			if _, assigned := s.assingedPartitions[partitionID]; !assigned {
+				continue
+			}
+
+			recorded += len(partition)
+
+			for _, stream := range partition {
+				if stream.lastSeenAt >= cutoff {
+					active++
+				}
+			}
+		}
+
+		m <- prometheus.MustNewConstMetric(tenantPartitionDesc, prometheus.GaugeValue, float64(len(partitions)), tenant)
+		m <- prometheus.MustNewConstMetric(tenantRecordedStreamsDesc, prometheus.GaugeValue, float64(recorded), tenant)
+		m <- prometheus.MustNewConstMetric(tenantActiveStreamsDesc, prometheus.GaugeValue, float64(active), tenant)
+	}
+}
+
+func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+	s.mtxAssingedPartitions.Lock()
+	defer s.mtxAssingedPartitions.Unlock()
+
+	if s.assingedPartitions == nil {
+		s.assingedPartitions = make(map[int32]int64)
+	}
+
+	var assigned []string
+	for _, partitionIDs := range partitions {
+		for _, partitionID := range partitionIDs {
+			s.assingedPartitions[partitionID] = time.Now().UnixNano()
+			assigned = append(assigned, strconv.Itoa(int(partitionID)))
+		}
+	}
+
+	if len(assigned) > 0 {
+		level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", strings.Join(assigned, ","))
+	}
+}
+
+func (s *IngestLimits) onPartitionsRevoked(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+	s.removePartitions(partitions)
+}
+
+func (s *IngestLimits) onPartitionsLost(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+	s.removePartitions(partitions)
+}
+
+func (s *IngestLimits) removePartitions(partitions map[string][]int32) {
+	s.mtxAssingedPartitions.Lock()
+	defer s.mtxAssingedPartitions.Unlock()
+
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	var dropped int
+
+	for _, partitionIDs := range partitions {
+		dropped += len(partitionIDs)
+		for _, partitionID := range partitionIDs {
+			// Unassign the partition from the ingest limits instance
+			delete(s.assingedPartitions, partitionID)
+
+			// Remove the partition from the metadata map
+			for _, partitions := range s.metadata {
+				delete(partitions, partitionID)
+			}
+		}
+	}
+
+	if dropped > 0 {
+		level.Debug(s.logger).Log("msg", "removed partitions", "partitions", dropped)
+	}
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {
@@ -208,13 +333,15 @@ func (s *IngestLimits) running(ctx context.Context) error {
 		default:
 			startTime := time.Now()
 
-			fetches := s.client.PollFetches(ctx)
+			fetches := s.client.PollRecords(ctx, 100)
 			if fetches.IsClientClosed() {
 				return nil
 			}
 
 			if errs := fetches.Errors(); len(errs) > 0 {
-				level.Error(s.logger).Log("msg", "error fetching records", "err", errs)
+				for _, err := range errs {
+					level.Error(s.logger).Log("msg", "error fetching records", "err", err.Err.Error())
+				}
 				continue
 			}
 
@@ -234,7 +361,19 @@ func (s *IngestLimits) running(ctx context.Context) error {
 					continue
 				}
 
-				s.updateMetadata(metadata, string(record.Key), record.Timestamp)
+				partitionID, err := s.partitionRing.PartitionRing().ActivePartitionForKey(metadata.RingToken)
+				if err != nil {
+					level.Error(s.logger).Log("msg", "error getting active partition", "err", err, "token", metadata.RingToken)
+					continue
+				}
+
+				evict := false
+				if partitionID != record.Partition {
+					level.Debug(s.logger).Log("msg", "skipping record from other instance", "token", metadata.RingToken, "ownerPartition", partitionID, "recordPartition", record.Partition)
+					evict = true
+				}
+
+				s.updateMetadata(metadata, string(record.Key), record.Partition, record.Timestamp, evict)
 			}
 
 			s.metrics.kafkaReadBytesTotal.Add(float64(sizeBytes))
@@ -255,35 +394,28 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 			return
 		case <-ticker.C:
 			s.mtx.Lock()
+
 			cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-			for tenant, streams := range s.metadata {
-				streamsBefore := len(streams)
+
+			for tenant, partitions := range s.metadata {
 				evictedCount := 0
-				activeCount := 0
-				for hash, lastSeen := range streams {
-					if lastSeen < cutoff {
-						delete(s.metadata[tenant], hash)
-						evictedCount++
-					} else {
-						activeCount++
+
+				for partitionID, streams := range partitions {
+					for i, stream := range streams {
+						if stream.lastSeenAt < cutoff {
+							s.metadata[tenant][partitionID] = append(s.metadata[tenant][partitionID][:i], s.metadata[tenant][partitionID][i+1:]...)
+							evictedCount++
+						}
 					}
 				}
-				// Update eviction counter if any streams were evicted
-				if evictedCount > 0 {
-					s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evictedCount))
-				}
+
 				// Clean up empty tenant maps and update gauges
 				if len(s.metadata[tenant]) == 0 {
 					delete(s.metadata, tenant)
-					s.metrics.tenantCurrentRecordedStreams.DeleteLabelValues(tenant)
-					s.metrics.tenantActiveStreams.DeleteLabelValues(tenant)
-				} else {
-					if len(streams) != streamsBefore {
-						// Only update recorded streams gauge if the number changed
-						s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(len(streams)))
-					}
-					// Always update active streams as they can change even if total count doesn't
-					s.metrics.tenantActiveStreams.WithLabelValues(tenant).Set(float64(activeCount))
+				}
+				// Only update recorded streams gauge if the number changed
+				if evictedCount > 0 {
+					s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evictedCount))
 				}
 			}
 			s.mtx.Unlock()
@@ -293,33 +425,46 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 
 // updateMetadata updates the metadata map with the provided StreamMetadata.
 // It uses the provided lastSeenAt timestamp as the last seen time.
-func (s *IngestLimits) updateMetadata(metadata *logproto.StreamMetadata, tenant string, lastSeenAt time.Time) {
+func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant string, partition int32, lastSeenAt time.Time, evict bool) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
 	// Initialize tenant map if it doesn't exist
 	if _, ok := s.metadata[tenant]; !ok {
-		s.metadata[tenant] = make(map[uint64]int64)
+		s.metadata[tenant] = make(map[int32][]streamMetadata)
+	}
+
+	if s.metadata[tenant][partition] == nil {
+		s.metadata[tenant][partition] = make([]streamMetadata, 0)
+	}
+
+	// Stream moved partition, evict it
+	if evict {
+		for i, stream := range s.metadata[tenant][partition] {
+			if stream.hash == rec.StreamHash {
+				s.metadata[tenant][partition] = append(s.metadata[tenant][partition][:i], s.metadata[tenant][partition][i+1:]...)
+				break
+			}
+		}
+
+		return
 	}
 
 	// Use the provided lastSeenAt timestamp as the last seen time
 	recordTime := lastSeenAt.UnixNano()
-	if current, ok := s.metadata[tenant][metadata.StreamHash]; !ok || recordTime > current {
-		s.metadata[tenant][metadata.StreamHash] = recordTime
 
-		// Count active streams (within window)
-		cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-		activeCount := 0
-		for _, lastSeen := range s.metadata[tenant] {
-			if lastSeen >= cutoff {
-				activeCount++
-			}
+	for i, stream := range s.metadata[tenant][partition] {
+		if stream.hash == rec.StreamHash {
+			stream.lastSeenAt = recordTime
+			s.metadata[tenant][partition][i] = stream
+			return
 		}
-
-		// Update gauges
-		s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(len(s.metadata[tenant])))
-		s.metrics.tenantActiveStreams.WithLabelValues(tenant).Set(float64(activeCount))
 	}
+
+	s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
+		hash:       rec.StreamHash,
+		lastSeenAt: recordTime,
+	})
 }
 
 // stopping implements the Service interface's stopping method.
@@ -343,7 +488,7 @@ func (s *IngestLimits) stopping(failureCase error) error {
 
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts and status per tenant as a JSON response.
-func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -354,33 +499,80 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	type tenantLimits struct {
 		Tenant          string   `json:"tenant"`
 		ActiveStreams   uint64   `json:"activeStreams"`
-		RecordedStreams []uint64 `json:"recordedStreams"`
+		AssignedStreams []uint64 `json:"assignedStreams"`
 	}
 
-	response := make(map[string]tenantLimits)
-	for tenant, streams := range s.metadata {
-		var activeStreams uint64
-		recordedStreams := make([]uint64, 0, len(streams))
+	// Get tenant and partitions from query parameters
+	params := r.URL.Query()
+	tenant := params.Get("tenant")
+	partitionsStr := params.Get("partitions")
 
-		// Count active streams and record their status
-		for hash, lastSeen := range streams {
-			isActive := lastSeen >= cutoff
-			if isActive {
-				activeStreams++
+	var requestedPartitions []int32
+	if partitionsStr != "" {
+		// Split comma-separated partition list
+		partitionStrs := strings.Split(partitionsStr, ",")
+		requestedPartitions = make([]int32, 0, len(partitionStrs))
+
+		// Convert each partition string to int32
+		for _, p := range partitionStrs {
+			if val, err := strconv.ParseInt(strings.TrimSpace(p), 10, 32); err == nil {
+				requestedPartitions = append(requestedPartitions, int32(val))
 			}
-			recordedStreams = append(recordedStreams, hash)
+		}
+	}
+
+	partitions := s.metadata[tenant]
+
+	var (
+		activeStreams   uint64
+		assignedStreams = make([]uint64, 0)
+		response        = make(map[string]tenantLimits)
+	)
+
+	for _, requestedID := range requestedPartitions {
+		// Consider the recorded stream if it's partition
+		// is one of the partitions we are still assigned to.
+		assigned := false
+		for assignedID := range partitions {
+			if requestedID == assignedID {
+				assigned = true
+				break
+			}
 		}
 
-		if activeStreams > 0 || len(recordedStreams) > 0 {
-			response[tenant] = tenantLimits{
-				Tenant:          tenant,
-				ActiveStreams:   activeStreams,
-				RecordedStreams: recordedStreams,
+		if !assigned {
+			continue
+		}
+
+		// If the stream is written into a partition we are
+		// assigned to and has been seen within the window,
+		// it is an active stream.
+		for _, stream := range partitions[requestedID] {
+			if stream.lastSeenAt >= cutoff {
+				activeStreams++
+				assignedStreams = append(assignedStreams, stream.hash)
 			}
+		}
+	}
+
+	if activeStreams > 0 || len(assignedStreams) > 0 {
+		response[tenant] = tenantLimits{
+			Tenant:          tenant,
+			ActiveStreams:   activeStreams,
+			AssignedStreams: assignedStreams,
 		}
 	}
 
 	util.WriteJSONResponse(w, response)
+}
+
+// GetAssignedPartitions implements the logproto.IngestLimitsServer interface.
+// It returns the partitions that the tenant is assigned to and the instance still owns.
+func (s *IngestLimits) GetAssignedPartitions(_ context.Context, _ *logproto.GetAssignedPartitionsRequest) (*logproto.GetAssignedPartitionsResponse, error) {
+	s.mtxAssingedPartitions.RLock()
+	defer s.mtxAssingedPartitions.RUnlock()
+
+	return &logproto.GetAssignedPartitionsResponse{AssignedPartitions: s.assingedPartitions}, nil
 }
 
 // GetStreamUsage implements the logproto.IngestLimitsServer interface.
@@ -393,8 +585,8 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
 	// Get the tenant's streams
-	streams := s.metadata[req.Tenant]
-	if streams == nil {
+	partitions := s.metadata[req.Tenant]
+	if partitions == nil {
 		// If tenant not found, return zero active streams and all requested streams as not recorded
 		return &logproto.GetStreamUsageResponse{
 			Tenant:        req.Tenant,
@@ -406,22 +598,55 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// across all assigned partitions and record
 	// the streams that have been seen within the
 	// window
-	var (
-		activeStreams   uint64
-		recordedStreams = make([]*logproto.RecordedStreams, 0, len(streams))
-	)
-	for hash, lastSeen := range streams {
-		if lastSeen >= cutoff {
-			activeStreams++
-			recordedStreams = append(recordedStreams, &logproto.RecordedStreams{
-				StreamHash: hash,
-			})
+	var activeStreams uint64
+	for _, requestedID := range req.Partitions {
+		// Consider the recorded stream if it's partition
+		// is one of the partitions we are still assigned to.
+		assigned := false
+		for assignedID := range partitions {
+			if requestedID == assignedID {
+				assigned = true
+				break
+			}
+		}
+
+		if !assigned {
+			continue
+		}
+
+		// If the stream is written into a partition we are
+		// assigned to and has been seen within the window,
+		// it is an active stream.
+		for _, stream := range partitions[requestedID] {
+			if stream.lastSeenAt >= cutoff {
+				activeStreams++
+			}
+		}
+	}
+
+	// Get the unknown streams
+	var unknownStreams []uint64
+	for _, reqHash := range req.StreamHashes {
+		found := false
+
+	outer:
+		for _, streams := range partitions {
+			for _, stream := range streams {
+				if stream.hash == reqHash && stream.lastSeenAt >= cutoff {
+					found = true
+					break outer
+				}
+			}
+		}
+
+		if !found {
+			unknownStreams = append(unknownStreams, reqHash)
 		}
 	}
 
 	return &logproto.GetStreamUsageResponse{
-		Tenant:          req.Tenant,
-		ActiveStreams:   activeStreams,
-		RecordedStreams: recordedStreams,
+		Tenant:         req.Tenant,
+		ActiveStreams:  activeStreams,
+		UnknownStreams: unknownStreams,
 	}, nil
 }

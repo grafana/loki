@@ -155,6 +155,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	tests := []struct {
 		name      string
 		hash      uint64
+		ringToken uint32
 		partition int32
 		topic     string
 		tenantID  string
@@ -163,6 +164,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 		{
 			name:      "Valid metadata",
 			hash:      12345,
+			ringToken: 1,
 			partition: 1,
 			topic:     "logs",
 			tenantID:  "tenant-1",
@@ -171,9 +173,19 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 		{
 			name:      "Zero hash - should error",
 			hash:      0,
+			ringToken: 1,
 			partition: 3,
 			topic:     "traces",
 			tenantID:  "tenant-3",
+			expectErr: true,
+		},
+		{
+			name:      "Zero ring token - should error",
+			hash:      12345,
+			ringToken: 0,
+			partition: 1,
+			topic:     "logs",
+			tenantID:  "tenant-1",
 			expectErr: true,
 		},
 	}
@@ -181,7 +193,7 @@ func TestEncodeDecodeStreamMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Encode metadata
-			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash)
+			record := EncodeStreamMetadata(tt.partition, tt.topic, tt.tenantID, tt.hash, tt.ringToken)
 			if tt.expectErr {
 				require.Nil(t, record)
 				return

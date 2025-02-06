@@ -203,9 +203,13 @@ func sovPush(x uint64) (n int) {
 
 // EncodeStreamMetadata encodes the stream metadata into a Kafka record
 // using the tenantID as the key and partition as the target partition
-func EncodeStreamMetadata(partition int32, topic string, tenantID string, streamHash uint64) *kgo.Record {
+func EncodeStreamMetadata(partition int32, topic string, tenantID string, streamHash uint64, ringToken uint32) *kgo.Record {
 	// Validate stream hash
 	if streamHash == 0 {
+		return nil
+	}
+
+	if ringToken == 0 {
 		return nil
 	}
 
@@ -215,7 +219,7 @@ func EncodeStreamMetadata(partition int32, topic string, tenantID string, stream
 
 	// Set stream hash
 	metadata.StreamHash = streamHash
-
+	metadata.RingToken = ringToken
 	// Encode the metadata into a byte slice
 	value, err := metadata.Marshal()
 	if err != nil {

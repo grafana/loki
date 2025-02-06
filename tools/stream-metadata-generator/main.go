@@ -401,7 +401,7 @@ func (s *generator) sendStreamsToKafka(ctx context.Context, streams []distributo
 			startTime := time.Now()
 
 			// Add metadata record
-			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard)
+			metadataRecord := kafka.EncodeStreamMetadata(partitionID, s.cfg.Kafka.Topic, tenant, stream.HashNoShard, stream.RingToken)
 
 			// Send to Kafka
 			produceResults := s.writer.ProduceSync(ctx, []*kgo.Record{metadataRecord})
