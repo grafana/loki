@@ -2291,6 +2291,12 @@ var shardableOps = map[string]bool{
 	// binops - arith
 	OpTypeAdd: true,
 	OpTypeMul: true,
+
+	// binops - comparison
+	OpTypeGT:  true,
+	OpTypeGTE: true,
+	OpTypeLT:  true,
+	OpTypeLTE: true,
 }
 
 type MatcherRange struct {
