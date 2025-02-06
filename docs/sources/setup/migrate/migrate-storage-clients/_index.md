@@ -1,10 +1,10 @@
 ---
-title: Migrate storage clients
-menuTitle: Migrate storage clients
-description: Links to Grafana Loki migrate storage clients documentation.
+title: Migrate to Thanos storage clients
+menuTitle: Migrate to Thanos storage clients
+description: Migration guide for moving from legacy storage clients to Thanos storage clients.
 weight: 
 ---
-# Migrate storage clients
+# Migrate to Thanos storage clients
 
 Loki 3.4 release introduces new object storage clients based on [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore).
 
