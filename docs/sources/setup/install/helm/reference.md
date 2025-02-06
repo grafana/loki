@@ -6356,7 +6356,7 @@ null
 		<tr>
 			<td>loki.storage</td>
 			<td>object</td>
-			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
+			<td>In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.</td>
 			<td><pre lang="json">
 {
   "azure": {
@@ -6379,6 +6379,27 @@ null
     "chunkBufferSize": 0,
     "enableHttp2": true,
     "requestTimeout": "0s"
+  },
+  "object_store": {
+    "azure": {
+      "account_key": null,
+      "account_name": null
+    },
+    "gcs": {
+      "bucket_name": null,
+      "service_account": null
+    },
+    "prefix": null,
+    "s3": {
+      "access_key_id": null,
+      "endpoint": null,
+      "http": {},
+      "insecure": false,
+      "region": null,
+      "secret_access_key": null,
+      "sse": {}
+    },
+    "type": "s3"
   },
   "s3": {
     "accessKeyId": null,
@@ -6414,7 +6435,8 @@ null
     "user_id": null,
     "username": null
   },
-  "type": "s3"
+  "type": "s3",
+  "use_thanos_objstore": false
 }
 </pre>
 </td>
