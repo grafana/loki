@@ -243,7 +243,7 @@ ruler:
 
 {{/* Ruler Thanos Storage Config */}}
 {{- define "loki.rulerThanosStorageConfig" -}}
-{{- if .Values.loki.storage.use_thanos_objstore }}
+{{- if and (.Values.loki.storage.use_thanos_objstore .Values.loki.ruler.enabled)}}
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
 {{- end }}
 {{- end }}
