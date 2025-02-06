@@ -6311,7 +6311,7 @@ null
 		<tr>
 			<td>loki.storage</td>
 			<td>object</td>
-			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
+			<td>In case of using thanos storage, the type of the object_store will be used as the backend. The configuration should be done inside the object_store section.</td>
 			<td><pre lang="json">
 {
   "azure": {
