@@ -43,7 +43,6 @@ import (
 	frontendclient "github.com/grafana/loki/v3/pkg/limits/frontend/client"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -65,18 +64,16 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Help: "The total number of active streams",
 		}, []string{"tenant"}),
 		kafkaWriteLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       constants.Loki,
-			Name:                            "kafka_write_metadata_latency_seconds",
-			Help:                            "Latency to write an incoming request to the ingest metadata storage.",
+			Name:                            "kafka_write_latency_seconds",
+			Help:                            "Latency to write stream metadata records to Kafka.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			NativeHistogramMaxBucketNumber:  100,
 			Buckets:                         prometheus.DefBuckets,
 		}),
 		kafkaWriteBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "kafka_write_metadata_bytes_total",
-			Help:      "Total number of bytes sent to the ingest metadata storage.",
+			Name: "kafka_write_bytes_total",
+			Help: "Total number of bytes sent to Kafka.",
 		}),
 	}
 }
