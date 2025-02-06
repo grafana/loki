@@ -367,6 +367,34 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}
 			return expr, exprStats.Bytes, nil
 		}
+	} else {
+		// if this AST contains unshardable operations, we still need to rewrite some operations (e.g. approx_topk) as if it had 0 shards as they are not supported on the querier
+		level.Error(util_log.Logger).Log(
+			"msg", "unshardable operation which is not supported by downstream querier",
+			"operation", expr.Operation,
+		)
+		switch expr.Operation {
+		case syntax.OpTypeApproxTopK:
+			_, bytesPerShard, err := m.shards.Resolver().Shards(expr)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			countMinSketchExpr := syntax.MustClone(expr)
+			countMinSketchExpr.Operation = syntax.OpTypeCountMinSketch
+			countMinSketchExpr.Params = 0
+
+			return &syntax.VectorAggregationExpr{
+				Left: &CountMinSketchEvalExpr{
+					downstreams: []DownstreamSampleExpr{{
+						SampleExpr: countMinSketchExpr,
+					}},
+				},
+				Grouping:  expr.Grouping,
+				Operation: syntax.OpTypeTopK,
+				Params:    expr.Params,
+			}, bytesPerShard, nil
+		}
 	}
 
 	// if this AST contains unshardable operations, don't shard this at this level,
