@@ -31,12 +31,13 @@ import (
 )
 
 type PushTarget struct {
-	logger        log.Logger
-	handler       api.EntryHandler
-	config        *scrapeconfig.PushTargetConfig
-	relabelConfig []*relabel.Config
-	jobName       string
-	server        *server.Server
+	logger         log.Logger
+	handler        api.EntryHandler
+	config         *scrapeconfig.PushTargetConfig
+	relabelConfig  []*relabel.Config
+	jobName        string
+	server         *server.Server
+	PolicyResolver push.PolicyResolver
 }
 
 func NewPushTarget(logger log.Logger,
@@ -52,6 +53,10 @@ func NewPushTarget(logger log.Logger,
 		relabelConfig: relabel,
 		jobName:       jobName,
 		config:        config,
+		PolicyResolver: push.PolicyResolver(func(userID string, lbs labels.Labels) string {
+			// TODO: no policies supported by the promtail lokipush target.
+			return ""
+		}),
 	}
 
 	mergedServerConfigs, err := serverutils.MergeWithDefaults(config.Server)
@@ -111,7 +116,7 @@ func (t *PushTarget) run() error {
 func (t *PushTarget) handleLoki(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), util_log.Logger)
 	userID, _ := tenant.TenantID(r.Context())
-	req, err := push.ParseRequest(logger, userID, r, nil, push.EmptyLimits{}, push.ParseLokiRequest, nil, nil, false)
+	req, err := push.ParseRequest(logger, userID, r, nil, push.EmptyLimits{}, push.ParseLokiRequest, nil, t.PolicyResolver, false)
 	if err != nil {
 		level.Warn(t.logger).Log("msg", "failed to parse incoming push request", "err", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
