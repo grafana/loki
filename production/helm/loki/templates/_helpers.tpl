@@ -1150,9 +1150,10 @@ This function needs to be called with a context object containing the following 
 the thanos_storage_config model*/}}
 {{- define "loki.thanosStorageConfig" -}}
 {{- $bucketName := .bucketName }}
-{{- with .ctx.Values.loki.storage.object_store }}
+{{- with .ctx.Values.loki.storage }}
 {{- if eq .type "s3" }}
 s3:
+  {{- with .s3 }}
   bucket_name: {{ $bucketName }}
   {{- with .endpoint }}
   endpoint: {{ . }}
@@ -1171,25 +1172,31 @@ s3:
   {{- end }}
   {{- with .http }}
   http:
-{{ toYaml . | indent 4 }}
+  {{ toYaml . | nindent 4 }}
   {{- end }}
   {{- with .sse }}
   sse:
-{{ toYaml . | indent 4 }}
+  {{ toYaml . | nindent 4 }}
+  {{- end }}
   {{- end }}
 {{- else if eq .type "gcs" }}
 gcs:
   bucket_name: {{ $bucketName }}
+  {{- with .gcs }}
   {{- with .service_account }}
   service_account: {{ . }}
   {{- end }}
+  {{- end }}
 {{- else if eq .type "azure" }}
+azure:
+  {{- with .azure }}
   container_name: {{ $bucketName }}
   {{- with .account_name }}
   account_name: {{ . }}
   {{- end }}
   {{- with .account_key }}
   account_key: {{ . }}
+  {{- end }}
   {{- end }}
 {{- end }}
 {{- with .prefix }}
