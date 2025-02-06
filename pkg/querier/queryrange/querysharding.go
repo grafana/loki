@@ -162,11 +162,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(params.GetExpression())
-	if err != nil {
-		level.Warn(spLogger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
-	}
+	maxRVDuration, maxOffset := maxRangeVectorAndOffsetDuration(params.GetExpression())
 
 	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart().UnixMilli()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd().UnixMilli()).Add(-maxOffset)))
 	// cannot shard with this timerange
