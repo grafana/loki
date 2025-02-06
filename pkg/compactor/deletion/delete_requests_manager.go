@@ -3,7 +3,9 @@ package deletion
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -94,8 +96,10 @@ func (d *DeleteRequestsManager) mergeShardedRequests(ctx context.Context) error 
 		return err
 	}
 
-	deletesPerRequest := partitionByRequestID(deleteGroups)
-	deleteRequests := mergeDeletes(deletesPerRequest)
+	slices.SortFunc(deleteGroups, func(a, b DeleteRequest) int {
+		return strings.Compare(a.RequestID, b.RequestID)
+	})
+	deleteRequests := mergeDeletes(deleteGroups)
 	for _, req := range deleteRequests {
 		// do not consider requests which do not have an id. Request ID won't be set in some tests or there is a bug in our code for loading requests.
 		if req.RequestID == "" {
@@ -108,17 +112,38 @@ func (d *DeleteRequestsManager) mergeShardedRequests(ctx context.Context) error 
 			continue
 		}
 		// do not do anything if we are not done with processing all the shards or the number of shards is 1
-		if req.Status != StatusProcessed || len(deletesPerRequest[req.RequestID]) == 1 {
+		if req.Status != StatusProcessed {
 			continue
 		}
 
+		var idxStart, idxEnd int
+		for i := range deleteGroups {
+			if req.RequestID == deleteGroups[i].RequestID {
+				idxStart = i
+				break
+			}
+		}
+
+		for i := len(deleteGroups) - 1; i > 0; i-- {
+			if req.RequestID == deleteGroups[i].RequestID {
+				idxEnd = i
+				break
+			}
+		}
+
+		// do not do anything if the number of shards is 1
+		if idxStart == idxEnd {
+			continue
+		}
+		reqShards := deleteGroups[idxStart : idxEnd+1]
+
 		level.Info(util_log.Logger).Log("msg", "merging sharded request",
 			"request_id", req.RequestID,
-			"num_shards", len(deletesPerRequest),
+			"num_shards", len(reqShards),
 			"start_time", req.StartTime.Unix(),
 			"end_time", req.EndTime.Unix(),
 		)
-		if err := d.deleteRequestsStore.MergeShardedRequests(ctx, req, deletesPerRequest[req.RequestID]); err != nil {
+		if err := d.deleteRequestsStore.MergeShardedRequests(ctx, req, reqShards); err != nil {
 			return err
 		}
 	}
