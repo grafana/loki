@@ -330,7 +330,7 @@ loki:
     replication_factor: 3
     compactor_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
-  # -- In case of using thanos storage, the type of the object_store will be used as the backend. The configuration should be done inside the object_store section.
+  # -- In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.
   storage:
     # Loki requires a bucket for chunks and the ruler. GEL requires a third bucket for the admin API.
     # Please provide these values if you are using object storage.
