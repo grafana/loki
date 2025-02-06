@@ -53,7 +53,7 @@ func NewPushTarget(logger log.Logger,
 		relabelConfig: relabel,
 		jobName:       jobName,
 		config:        config,
-		PolicyResolver: push.PolicyResolver(func(userID string, lbs labels.Labels) string {
+		PolicyResolver: push.PolicyResolver(func(_ string, _ labels.Labels) string {
 			// TODO: no policies supported by the promtail lokipush target.
 			return ""
 		}),
