@@ -6335,6 +6335,27 @@ null
     "enableHttp2": true,
     "requestTimeout": "0s"
   },
+  "object_store": {
+    "azure": {
+      "account_key": null,
+      "account_name": null
+    },
+    "gcs": {
+      "bucket_name": null,
+      "service_account": null
+    },
+    "prefix": null,
+    "s3": {
+      "access_key_id": null,
+      "endpoint": null,
+      "http": {},
+      "insecure": false,
+      "region": null,
+      "secret_access_key": null,
+      "sse": {}
+    },
+    "type": "s3"
+  },
   "s3": {
     "accessKeyId": null,
     "backoff_config": {},
