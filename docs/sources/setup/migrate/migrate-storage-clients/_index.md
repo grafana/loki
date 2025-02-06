@@ -1,0 +1,155 @@
+---
+title: Migrate storage clients
+menuTitle: Migrate storage clients
+description: Links to Grafana Loki migrate storage clients documentation.
+weight: 
+---
+# Migrate storage clients
+
+Loki 3.4 release introduces new object storage clients based on [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore).
+
+One of the reasons for making this change is to have a consistent storage configuration across LGTM+ stack. If you are already using Grafana Mimir or Pyroscope, you can reuse the storage configuration for setting up Loki.
+
+This is an opt-in feature with Loki 3.4 release. This would be made the default way of configuring storage in future releases and the existing storage clients will be deprecated.
+
+The new storage configuration deviates from the existing format. The following sections describe the changes in detail for each provider.
+Refer to the [thanos storage reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
+
+### Enabling the new storage clients
+1. Enable thanos storage clients by setting `use_thanos_objstore` to `true` in the `storage_config` section or by setting `-use-thanos-objstore` flag to true.
+1. When enabled, configuration under `storage_config.object_store` takes effect instead of legacy storage configs
+   ```yaml
+   # Uses the new storage clients for connecting to gcs backend
+   storage_config:
+      use_thanos_objstore: true # enable the new storage clients
+   object_store:
+      gcs: 
+         bucket: "example-bucket"
+   ```
+1. You can also configure the new clients in the common storage section if you prefer to use the common config section.
+   ```yaml
+   storage_config:
+      use_thanos_objstore: true # enable the new storage clients
+   common:
+      storage:
+         object_store:
+            gcs:
+            bucket: "example-bucket"
+   ```
+1. Ruler storage should be configured under `ruler_storage` section when using the new storage clients.
+   ```yaml
+   storage_config:
+      use_thanos_objstore: true # enable the new storage clients
+   ruler_storage:
+      backend: gcs
+      gcs:
+         bucket: "example-bucket"
+   ```
+
+{{< admonition type="note" >}}
+Following sections document the steps for migrating the clients. Only some of the commonly used parameters are listed here.
+For a complete list of supported parameters, refer to the [thanos storage reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) and compare that to what you are using in your setup.
+{{< /admonition >}}
+
+### GCS Storage Migration
+
+When migrating from the legacy GCS storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
+
+{{< responsive-table >}}
+| Legacy Parameter | New Parameter | Required Changes |
+|-----------------|---------------|------------------|
+| `bucket_name` | `bucket_name` | No changes required |
+| `chunk_buffer_size` | `chunk_size_bytes` | Rename parameter to `chunk_size_bytes` |
+| `enable_retries` | `enable_retries` | No changes required |
+{{< /responsive-table >}}
+
+**Example configuration migration:**
+
+Legacy configuration:
+```yaml
+storage_config:
+  gcs:
+    bucket_name: example-bucket
+    chunk_buffer_size: 10MB
+    enable_retries: true
+```
+
+New configuration:
+```yaml
+storage_config:
+  use_thanos_objstore: true
+object_store:
+  gcs:
+    bucket_name: example-bucket
+    chunk_size_bytes: 10MB
+    enable_retries: true
+```
+
+### S3 Storage Migration
+
+When migrating from the legacy S3 storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
+
+{{< responsive-table >}}
+| Legacy Parameter | New Parameter | Required Changes |
+|-----------------|---------------|------------------|
+| `endpoint` | `endpoint` | No changes required |
+| `region` | `region` | No changes required |
+| `bucket_names` | `bucket_name` | Rename parameter to `bucket_name` |
+| `access_key_id` | `access_key_id` | No changes required |
+| `secret_access_key` | `secret_access_key` | No changes required |
+| `session_token` | `session_token` | No changes required |
+| `insecure` | `insecure` | No changes required |
+| `disable_dualstack` | `dualstack_enabled` | Rename parameter to `dualstack_enabled` and invert logic |
+| `storage_class` | `storage_class` | No changes required |
+{{< /responsive-table >}}
+
+**Example configuration migration:**
+
+Legacy configuration:
+```yaml
+storage_config:
+  aws:
+    endpoint: s3.amazonaws.com
+    region: us-west-2
+    bucket_names: example-bucket
+    access_key_id: example-key
+    secret_access_key: example-secret
+    insecure: false
+    disable_dualstack: true
+    storage_class: STANDARD
+```
+
+New configuration:
+```yaml
+storage_config:
+  use_thanos_objstore: true
+object_store:
+  s3:
+    endpoint: s3.amazonaws.com
+    region: us-west-2
+    bucket_name: example-bucket
+    access_key_id: example-key
+    secret_access_key: example-secret
+    insecure: false
+    dualstack_enabled: false
+    storage_class: STANDARD
+```
+
+### Azure Storage Migration
+
+When migrating from the legacy Azure storage client to the new Thanos-based client, no changes are required if you are using the following parameters:
+
+{{< responsive-table >}}
+| Legacy Parameter | New Parameter | Required Changes |
+|-----------------|---------------|------------------|
+| `account_name` | `account_name` | No changes required |
+| `account_key` | `account_key` | No changes required |
+| `container_name` | `container_name` | No changes required |
+| `endpoint_suffix` | `endpoint_suffix` | No changes required |
+| `user_assigned_id` | `user_assigned_id` | No changes required |
+| `connection_string` | `connection_string` | No changes required |
+| `max_retries` | `max_retries` | No changes required |
+{{< /responsive-table >}}
+
+If you are using an authentication method other than storage account key or user-assigned managed identity, you'll have to pass the neccessary credetials using environment variables.
+For more details, refer to [Azure Identity Client Module for Go](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
