@@ -318,9 +318,7 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.loki.storage.use_thanos_objstore -}}
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
-{{- else if .Values.minio.enabled -}}
+{{- if .Values.minio.enabled -}}
 type: "s3"
 s3:
   bucketnames: ruler
@@ -1150,57 +1148,35 @@ This function needs to be called with a context object containing the following 
 the thanos_storage_config model*/}}
 {{- define "loki.thanosStorageConfig" -}}
 {{- $bucketName := .bucketName }}
-{{- with .ctx.Values.loki.storage }}
+{{- with .ctx.Values.loki.storage.object_store }}
 {{- if eq .type "s3" }}
 s3:
   {{- with .s3 }}
   bucket_name: {{ $bucketName }}
-  {{- with .endpoint }}
-  endpoint: {{ . }}
-  {{- end }}
-  {{- with .access_key_id }}
-  access_key_id: {{ . }}
-  {{- end }}
-  {{- with .secret_access_key }}
-  secret_access_key: {{ . }}
-  {{- end }}
-  {{- with .region }}
-  region: {{ . }}
-  {{- end }}
-  {{- with .insecure }}
-  insecure: {{ . }}
-  {{- end }}
-  {{- with .http }}
+  endpoint: {{ .endpoint }}
+  access_key_id: {{ .access_key_id }}
+  secret_access_key: {{ .secret_access_key }}
+  region: {{ .region }}
+  insecure: {{ .insecure }}
   http:
-  {{ toYaml . | nindent 4 }}
-  {{- end }}
-  {{- with .sse }}
+    {{ toYaml .http | nindent 4 }}
   sse:
-  {{ toYaml . | nindent 4 }}
-  {{- end }}
+    {{ toYaml .sse | nindent 4 }}
   {{- end }}
 {{- else if eq .type "gcs" }}
 gcs:
-  bucket_name: {{ $bucketName }}
   {{- with .gcs }}
-  {{- with .service_account }}
-  service_account: {{ . }}
-  {{- end }}
+  bucket_name: {{ $bucketName }}
+  service_account: {{ .service_account }}
   {{- end }}
 {{- else if eq .type "azure" }}
 azure:
   {{- with .azure }}
   container_name: {{ $bucketName }}
-  {{- with .account_name }}
-  account_name: {{ . }}
-  {{- end }}
-  {{- with .account_key }}
-  account_key: {{ . }}
-  {{- end }}
+  account_name: {{ .account_name }}
+  account_key: {{ .account_key }}
   {{- end }}
 {{- end }}
-{{- with .prefix }}
-prefix: {{ . }}
-{{- end }}
+prefix: {{ .prefix }}
 {{- end }}
 {{- end }}

@@ -10,13 +10,27 @@ loki:
     use_thanos_objstore: true
 
     object_store:
-      access_key_id: thanos-minio
-      secret_access_key: thanos-minio123
-      region: us-east-1
-      insecure: true
-      http:
-        tls_config:
-          insecure_skip_verify: true
+      type: s3
+
+      s3:
+        access_key_id: thanos-minio
+        secret_access_key: thanos-minio123
+        region: us-east-1
+        insecure: true
+        endpoint: http://minio.minio.svc.cluster.local:9000
+        http:
+          tls_config:
+            insecure_skip_verify: true
+
+       # GCS configuration (when type is "GCS")
+      gcs:
+        bucket_name: test-gcs  # Name of the bucket
+        service_account: service-account-test.json  # Optional service account JSON
+
+      # Azure configuration (when type is "AZURE")
+      azure:
+        account_name: azure-test  # Storage account name
+        account_key: 1234567890  # Optional storage account key
 
     bucketNames:
       chunks: chunks_thanos
