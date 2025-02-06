@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/prometheus/client_golang/prometheus"
@@ -73,7 +74,7 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 	}
 }
 
-type ringFunc func(context.Context, logproto.IngestLimitsClient) (*logproto.GetStreamUsageResponse, error)
+type ringGetUsageFunc func(context.Context, logproto.IngestLimitsClient, []int32) (*logproto.GetStreamUsageResponse, error)
 
 // RingIngestLimitsService is an IngestLimitsService that uses the ring to read the responses
 // from all limits backends.
@@ -99,24 +100,80 @@ func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limi
 	}
 }
 
-func (s *RingIngestLimitsService) forAllBackends(ctx context.Context, f ringFunc) ([]Response, error) {
+func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, tenant string) (map[string][]int32, error) {
 	replicaSet, err := s.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
-	return s.forGivenReplicaSet(ctx, replicaSet, f)
-}
 
-func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replicaSet ring.ReplicationSet, f ringFunc) ([]Response, error) {
 	g, ctx := errgroup.WithContext(ctx)
-	responses := make([]Response, len(replicaSet.Instances))
+	responses := make([]GetAssignedPartitionsResponse, len(replicaSet.Instances))
 	for i, instance := range replicaSet.Instances {
 		g.Go(func() error {
 			client, err := s.pool.GetClientFor(instance.Addr)
 			if err != nil {
 				return err
 			}
-			resp, err := f(ctx, client.(logproto.IngestLimitsClient))
+			resp, err := client.(logproto.IngestLimitsClient).GetAssingedPartitions(ctx, &logproto.GetAssingedPartitionsRequest{
+				Tenant: tenant,
+			})
+			if err != nil {
+				return err
+			}
+			responses[i] = GetAssignedPartitionsResponse{Addr: instance.Addr, Response: resp}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	partitions := make(map[string][]int32)
+	// Track highest value seen for each partition
+	highestValues := make(map[int32]int64)
+	// Track which addr has the highest value for each partition
+	highestAddr := make(map[int32]string)
+
+	// First pass - find highest values for each partition
+	for _, resp := range responses {
+		for partition, value := range resp.Response.AssignedPartitions {
+			if currentHighest, exists := highestValues[partition]; !exists || value > currentHighest {
+				highestValues[partition] = value
+				highestAddr[partition] = resp.Addr
+			}
+		}
+	}
+
+	// Second pass - assign partitions to addrs that have the highest values
+	for partition, addr := range highestAddr {
+		partitions[addr] = append(partitions[addr], partition)
+	}
+
+	level.Debug(s.logger).Log("msg", "partitions", "partitions", partitions)
+
+	return partitions, nil
+}
+
+func (s *RingIngestLimitsService) forAllBackends(ctx context.Context, partitions map[string][]int32, f ringGetUsageFunc) ([]Response, error) {
+	replicaSet, err := s.ring.GetAllHealthy(LimitsRead)
+	if err != nil {
+		return nil, err
+	}
+	return s.forGivenReplicaSet(ctx, replicaSet, partitions, f)
+}
+
+func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replicaSet ring.ReplicationSet, partitions map[string][]int32, f ringGetUsageFunc) ([]Response, error) {
+	g, ctx := errgroup.WithContext(ctx)
+	responses := make([]Response, len(replicaSet.Instances))
+
+	for i, instance := range replicaSet.Instances {
+		g.Go(func() error {
+			client, err := s.pool.GetClientFor(instance.Addr)
+			if err != nil {
+				return err
+			}
+			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
 			if err != nil {
 				return err
 			}
@@ -124,16 +181,30 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 			return nil
 		})
 	}
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
 	return responses, nil
 }
 
 func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
-	resps, err := s.forAllBackends(ctx, func(_ context.Context, client logproto.IngestLimitsClient) (*logproto.GetStreamUsageResponse, error) {
+	partitions, err := s.perReplicaSetPartitions(ctx, req.Tenant)
+	if err != nil {
+		return nil, err
+	}
+
+	streamHashes := make([]uint64, 0, len(req.Streams))
+	for _, stream := range req.Streams {
+		streamHashes = append(streamHashes, stream.StreamHash)
+	}
+
+	resps, err := s.forAllBackends(ctx, partitions, func(_ context.Context, client logproto.IngestLimitsClient, partitions []int32) (*logproto.GetStreamUsageResponse, error) {
 		return client.GetStreamUsage(ctx, &logproto.GetStreamUsageRequest{
-			Tenant: req.Tenant,
+			Tenant:       req.Tenant,
+			Partitions:   partitions,
+			StreamHashes: streamHashes,
 		})
 	})
 	if err != nil {
@@ -142,28 +213,9 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 
 	maxGlobalStreams := s.limits.MaxGlobalStreamsPerUser(req.Tenant)
 
-	var (
-		activeStreamsTotal uint64
-		uniqueStreamHashes = make(map[uint64]bool)
-	)
+	var activeStreamsTotal uint64
 	for _, resp := range resps {
-		var duplicates uint64
-		// Record the unique stream hashes
-		// and count duplicates active streams
-		// to be subtracted from the total
-		for _, stream := range resp.Response.RecordedStreams {
-			if uniqueStreamHashes[stream.StreamHash] {
-				duplicates++
-				continue
-			}
-			uniqueStreamHashes[stream.StreamHash] = true
-		}
-
-		activeStreamsTotal += resp.Response.ActiveStreams - duplicates
-
-		if duplicates > 0 {
-			s.metrics.tenantDuplicateStreamsFound.WithLabelValues(req.Tenant).Inc()
-		}
+		activeStreamsTotal += resp.Response.ActiveStreams
 	}
 
 	s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreamsTotal))
@@ -174,13 +226,19 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 		}, nil
 	}
 
-	var rejectedStreams []*logproto.RejectedStream
-	for _, stream := range req.Streams {
-		if !uniqueStreamHashes[stream.StreamHash] {
-			rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
-				StreamHash: stream.StreamHash,
-				Reason:     RejectedStreamReasonExceedsGlobalLimit,
-			})
+	var (
+		rejectedStreams    []*logproto.RejectedStream
+		uniqueStreamHashes = make(map[uint64]bool)
+	)
+	for _, resp := range resps {
+		for _, unknownStream := range resp.Response.UnknownStreams {
+			if !uniqueStreamHashes[unknownStream] {
+				uniqueStreamHashes[unknownStream] = true
+				rejectedStreams = append(rejectedStreams, &logproto.RejectedStream{
+					StreamHash: unknownStream,
+					Reason:     RejectedStreamReasonExceedsGlobalLimit,
+				})
+			}
 		}
 	}
 
@@ -198,4 +256,9 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 type Response struct {
 	Addr     string
 	Response *logproto.GetStreamUsageResponse
+}
+
+type GetAssignedPartitionsResponse struct {
+	Addr     string
+	Response *logproto.GetAssingedPartitionsResponse
 }

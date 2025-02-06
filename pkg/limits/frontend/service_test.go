@@ -45,7 +45,12 @@ func (f *mockFactory) FromInstance(_ ring.InstanceDesc) (ring_client.PoolClient,
 
 type mockIngestLimitsClient struct {
 	logproto.IngestLimitsClient
-	getStreamUsageResponse *logproto.GetStreamUsageResponse
+	getStreamUsageResponse        *logproto.GetStreamUsageResponse
+	getAssignedPartitionsResponse *logproto.GetAssingedPartitionsResponse
+}
+
+func (m *mockIngestLimitsClient) GetAssingedPartitions(_ context.Context, _ *logproto.GetAssingedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssingedPartitionsResponse, error) {
+	return m.getAssignedPartitionsResponse, nil
 }
 
 func (m *mockIngestLimitsClient) GetStreamUsage(_ context.Context, _ *logproto.GetStreamUsageRequest, _ ...grpc.CallOption) (*logproto.GetStreamUsageResponse, error) {
@@ -73,6 +78,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 		maxGlobalStreams   int
 		streams            []*logproto.StreamMetadataWithSize
 		backendResponses   []*logproto.GetStreamUsageResponse
+		assignedPartitions []*logproto.GetAssingedPartitionsResponse
 		expectedRejections []*logproto.RejectedStream
 	}{
 		{
@@ -84,6 +90,14 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				{
 					Tenant:        "test",
 					ActiveStreams: 0,
+				},
+			},
+			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+						1: 1,
+					},
 				},
 			},
 			expectedRejections: nil,
@@ -98,11 +112,16 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			},
 			backendResponses: []*logproto.GetStreamUsageResponse{
 				{
-					Tenant:        "test",
-					ActiveStreams: 2,
-					RecordedStreams: []*logproto.RecordedStreams{
-						{StreamHash: 1},
-						{StreamHash: 2},
+					Tenant:         "test",
+					ActiveStreams:  2,
+					UnknownStreams: []uint64{1, 2},
+				},
+			},
+			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+						1: 1,
 					},
 				},
 			},
@@ -118,14 +137,16 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			},
 			backendResponses: []*logproto.GetStreamUsageResponse{
 				{
-					Tenant:        "test",
-					ActiveStreams: 5,
-					RecordedStreams: []*logproto.RecordedStreams{
-						{StreamHash: 1},
-						{StreamHash: 2},
-						{StreamHash: 3},
-						{StreamHash: 4},
-						{StreamHash: 5},
+					Tenant:         "test",
+					ActiveStreams:  5,
+					UnknownStreams: []uint64{6, 7},
+				},
+			},
+			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+						1: 1,
 					},
 				},
 			},
@@ -149,50 +170,22 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			},
 			backendResponses: []*logproto.GetStreamUsageResponse{
 				{
-					Tenant:        "test",
-					ActiveStreams: 5,
-					RecordedStreams: []*logproto.RecordedStreams{
-						{StreamHash: 1},
-						{StreamHash: 2},
-						{StreamHash: 3},
-						{StreamHash: 4},
-						{StreamHash: 5},
+					Tenant:         "test",
+					ActiveStreams:  5,
+					UnknownStreams: []uint64{6, 7},
+				},
+			},
+			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+						1: 1,
 					},
 				},
 			},
 			expectedRejections: []*logproto.RejectedStream{
 				{StreamHash: 6, Reason: RejectedStreamReasonExceedsGlobalLimit},
 				{StreamHash: 7, Reason: RejectedStreamReasonExceedsGlobalLimit},
-			},
-		},
-		{
-			name:             "multiple backends with duplicates",
-			tenant:           "test",
-			maxGlobalStreams: 3,
-			streams: []*logproto.StreamMetadataWithSize{
-				{StreamHash: 1},
-				{StreamHash: 2},
-			},
-			backendResponses: []*logproto.GetStreamUsageResponse{
-				{
-					Tenant:        "test",
-					ActiveStreams: 3,
-					RecordedStreams: []*logproto.RecordedStreams{
-						{StreamHash: 1},
-						{StreamHash: 3},
-					},
-				},
-				{
-					Tenant:        "test",
-					ActiveStreams: 3,
-					RecordedStreams: []*logproto.RecordedStreams{
-						{StreamHash: 1}, // Duplicate
-						{StreamHash: 4},
-					},
-				},
-			},
-			expectedRejections: []*logproto.RejectedStream{
-				{StreamHash: 2, Reason: RejectedStreamReasonExceedsGlobalLimit},
 			},
 		},
 		{
@@ -204,6 +197,13 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			},
 			backendResponses: []*logproto.GetStreamUsageResponse{
 				{},
+			},
+			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+				{
+					AssignedPartitions: map[int32]int64{
+						0: 1,
+					},
+				},
 			},
 			expectedRejections: nil, // No rejections because activeStreamsTotal is 0
 		},
@@ -217,7 +217,8 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 
 			for i, resp := range tt.backendResponses {
 				mockClients[i] = &mockIngestLimitsClient{
-					getStreamUsageResponse: resp,
+					getStreamUsageResponse:        resp,
+					getAssignedPartitionsResponse: tt.assignedPartitions[i],
 				}
 				mockInstances[i] = ring.InstanceDesc{
 					Addr: "mock-instance",
