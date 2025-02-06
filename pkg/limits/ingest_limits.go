@@ -434,11 +434,13 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	util.WriteJSONResponse(w, response)
 }
 
-func (s *IngestLimits) GetAssignedPartitions(ctx context.Context, req *logproto.GetAssingedPartitionsRequest) (*logproto.GetAssingedPartitionsResponse, error) {
+// GetAssignedPartitions implements the logproto.IngestLimitsServer interface.
+// It returns the partitions that the tenant is assigned to and the instance still owns.
+func (s *IngestLimits) GetAssignedPartitions(_ context.Context, req *logproto.GetAssignedPartitionsRequest) (*logproto.GetAssignedPartitionsResponse, error) {
 	s.mtxAssingedPartitions.RLock()
 	defer s.mtxAssingedPartitions.RUnlock()
 
-	return &logproto.GetAssingedPartitionsResponse{
+	return &logproto.GetAssignedPartitionsResponse{
 		AssignedPartitions: s.assingedPartitions[req.Tenant],
 	}, nil
 }

@@ -114,7 +114,7 @@ func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, t
 			if err != nil {
 				return err
 			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssingedPartitions(ctx, &logproto.GetAssingedPartitionsRequest{
+			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{
 				Tenant: tenant,
 			})
 			if err != nil {
@@ -260,5 +260,5 @@ type Response struct {
 
 type GetAssignedPartitionsResponse struct {
 	Addr     string
-	Response *logproto.GetAssingedPartitionsResponse
+	Response *logproto.GetAssignedPartitionsResponse
 }

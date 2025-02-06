@@ -46,10 +46,10 @@ func (f *mockFactory) FromInstance(_ ring.InstanceDesc) (ring_client.PoolClient,
 type mockIngestLimitsClient struct {
 	logproto.IngestLimitsClient
 	getStreamUsageResponse        *logproto.GetStreamUsageResponse
-	getAssignedPartitionsResponse *logproto.GetAssingedPartitionsResponse
+	getAssignedPartitionsResponse *logproto.GetAssignedPartitionsResponse
 }
 
-func (m *mockIngestLimitsClient) GetAssingedPartitions(_ context.Context, _ *logproto.GetAssingedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssingedPartitionsResponse, error) {
+func (m *mockIngestLimitsClient) GetAssignedPartitions(_ context.Context, _ *logproto.GetAssignedPartitionsRequest, _ ...grpc.CallOption) (*logproto.GetAssignedPartitionsResponse, error) {
 	return m.getAssignedPartitionsResponse, nil
 }
 
@@ -78,7 +78,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 		maxGlobalStreams   int
 		streams            []*logproto.StreamMetadataWithSize
 		backendResponses   []*logproto.GetStreamUsageResponse
-		assignedPartitions []*logproto.GetAssingedPartitionsResponse
+		assignedPartitions []*logproto.GetAssignedPartitionsResponse
 		expectedRejections []*logproto.RejectedStream
 	}{
 		{
@@ -92,7 +92,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 					ActiveStreams: 0,
 				},
 			},
-			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -117,7 +117,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 					UnknownStreams: []uint64{1, 2},
 				},
 			},
-			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -142,7 +142,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 					UnknownStreams: []uint64{6, 7},
 				},
 			},
-			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -175,7 +175,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 					UnknownStreams: []uint64{6, 7},
 				},
 			},
-			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -198,7 +198,7 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			backendResponses: []*logproto.GetStreamUsageResponse{
 				{},
 			},
-			assignedPartitions: []*logproto.GetAssingedPartitionsResponse{
+			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,

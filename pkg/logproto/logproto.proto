@@ -85,7 +85,7 @@ message RejectedStream {
 
 service IngestLimits {
   rpc GetStreamUsage(GetStreamUsageRequest) returns (GetStreamUsageResponse) {}
-  rpc GetAssingedPartitions(GetAssingedPartitionsRequest) returns (GetAssingedPartitionsResponse) {}
+  rpc GetAssignedPartitions(GetAssignedPartitionsRequest) returns (GetAssignedPartitionsResponse) {}
 }
 
 message GetStreamUsageRequest {
@@ -108,11 +108,11 @@ message StreamRate {
   uint32 pushes = 5;
 }
 
-message GetAssingedPartitionsRequest {
+message GetAssignedPartitionsRequest {
   string tenant = 1;
 }
 
-message GetAssingedPartitionsResponse {
+message GetAssignedPartitionsResponse {
   map<int32, int64> assignedPartitions = 1;
 }
 
