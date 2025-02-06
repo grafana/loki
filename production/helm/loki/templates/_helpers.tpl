@@ -432,6 +432,7 @@ ruler:
 {{/* Ruler Thanos Storage Config */}}
 {{- define "loki.rulerThanosStorageConfig" -}}
 {{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
+  backend: {{ .Values.loki.storage.object_store.type }}
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
 {{- end }}
 {{- end }}
@@ -440,6 +441,7 @@ ruler:
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
   {{- if .Values.loki.storage.use_thanos_objstore }}
+  backend: {{ .Values.loki.storage.object_store.type }}
     {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 }}
   {{- else if .Values.minio.enabled }}
   backend: "s3"
