@@ -33,6 +33,9 @@ type metrics struct {
 	tenantCurrentRecordedStreams *prometheus.GaugeVec
 	tenantStreamEvictionsTotal   *prometheus.CounterVec
 	tenantActiveStreams          *prometheus.GaugeVec
+
+	kafkaReadLatency    prometheus.Histogram
+	kafkaReadBytesTotal prometheus.Counter
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -52,6 +55,20 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name:      "ingest_limits_active_streams",
 			Help:      "The current number of active streams (seen within the window) per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
+		kafkaReadLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
+			Namespace:                       constants.Loki,
+			Name:                            "ingest_limits_kafka_read_latency_seconds",
+			Help:                            "Latency to read stream metadata from Kafka.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			NativeHistogramMaxBucketNumber:  100,
+			Buckets:                         prometheus.DefBuckets,
+		}),
+		kafkaReadBytesTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_kafka_read_bytes_total",
+			Help:      "Total number of bytes read from Kafka.",
+		}),
 	}
 }
 
@@ -189,6 +206,8 @@ func (s *IngestLimits) running(ctx context.Context) error {
 		case err := <-s.lifecyclerWatcher.Chan():
 			return fmt.Errorf("lifecycler failed: %w", err)
 		default:
+			startTime := time.Now()
+
 			fetches := s.client.PollFetches(ctx)
 			if fetches.IsClientClosed() {
 				return nil
@@ -199,10 +218,16 @@ func (s *IngestLimits) running(ctx context.Context) error {
 				continue
 			}
 
+			// Record the latency of successful fetches
+			s.metrics.kafkaReadLatency.Observe(time.Since(startTime).Seconds())
+
 			// Process the fetched records
+			var sizeBytes int
+
 			iter := fetches.RecordIter()
 			for !iter.Done() {
 				record := iter.Next()
+				sizeBytes += len(record.Value)
 				metadata, err := kafka.DecodeStreamMetadata(record)
 				if err != nil {
 					level.Error(s.logger).Log("msg", "error decoding metadata", "err", err)
@@ -211,6 +236,8 @@ func (s *IngestLimits) running(ctx context.Context) error {
 
 				s.updateMetadata(metadata, string(record.Key), record.Timestamp)
 			}
+
+			s.metrics.kafkaReadBytesTotal.Add(float64(sizeBytes))
 		}
 	}
 }
