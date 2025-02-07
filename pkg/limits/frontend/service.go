@@ -3,6 +3,7 @@ package frontend
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -190,6 +191,13 @@ func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, r
 	// Second pass - assign partitions to addrs that have the highest values
 	for partition, addr := range highestAddr {
 		partitions[addr] = append(partitions[addr], partition)
+	}
+
+	// Sort partition IDs for each address for consistent ordering
+	for addr := range partitions {
+		sort.Slice(partitions[addr], func(i, j int) bool {
+			return partitions[addr][i] < partitions[addr][j]
+		})
 	}
 
 	return partitions, nil

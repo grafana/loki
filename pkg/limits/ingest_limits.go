@@ -138,7 +138,8 @@ func NewIngestLimits(cfg Config, partitionRing ring.PartitionRingReader, logger 
 
 	metrics := kprom.NewMetrics("loki_ingest_limits",
 		kprom.Registerer(reg),
-		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes))
+		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),
+	)
 
 	// Create a copy of the config to modify the topic
 	kCfg := cfg.KafkaConfig
