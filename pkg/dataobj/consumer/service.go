@@ -42,9 +42,6 @@ type Service struct {
 }
 
 func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
-	if cfg.StorageBucketPrefix != "" {
-		bucket = objstore.NewPrefixedBucket(bucket, cfg.StorageBucketPrefix)
-	}
 	s := &Service{
 		logger:            log.With(logger, "component", groupName),
 		cfg:               cfg,
