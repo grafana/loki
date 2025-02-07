@@ -1,5 +1,5 @@
 ---
-title: Kubernetes Monitoring Helm
+title: Kubernetes Monitoring Helm tutorial
 menuTitle: Kubernetes Monitoring Helm
 weight: 300
 description: Learn how to collect and store logs from your Kubernetes cluster using Loki.
@@ -12,7 +12,7 @@ killercoda:
 
 <!-- INTERACTIVE page intro.md START -->
 
-# Kubernetes Monitoring Helm
+# Kubernetes Monitoring Helm tutorial
 
 One of the primary use cases for Loki is to collect and store logs from your [Kubernetes cluster](https://kubernetes.io/docs/concepts/overview/). These logs fall into three categories:
 
@@ -80,7 +80,7 @@ All three Helm charts (Loki, Grafana, and the Kubernetes Monitoring Helm) are av
 helm repo add grafana https://grafana.github.io/helm-charts && helm repo update
 ```
 
-As well as adding the repo to our local helm list, we also run `helm repo update` to ensure you have the latest version of the charts.
+As well as adding the repo to your local helm list, you should also run `helm repo update` to ensure you have the latest version of the charts.
 
 ## Clone the tutorial repository
 
@@ -96,7 +96,7 @@ Then change directories to the `alloy-scenarios/k8s/logs` directory:
 cd alloy-scenarios/k8s/logs
 ```
 
-**The rest of this tutorial assumes you are in this directory.**
+**The rest of this tutorial assumes you are in the `alloy-scenarios/k8s/logs` directory.**
 
 <!-- INTERACTIVE page step2.md END -->
 
@@ -141,7 +141,7 @@ helm install --values grafana-values.yml grafana grafana/grafana --namespace met
 
 As before, the command also includes a `values` file that specifies the configuration for Grafana. There are two important configuration attributes to take note of:
 
-1. `adminUser` & `adminPassword`: These are the credentials you will use to log in to Grafana. The values are `admin` and `adminadminadmin` respectively. The recommended practice is to either use a Kubernetes secret or allow Grafana to generate a password for you. For more details on how to configure the Grafana Helm chart, refer to the Grafana Helm [documentation](https://grafana.com/docs/grafana/latest/installation/helm/).
+1. `adminUser` and `adminPassword`: These are the credentials you will use to log in to Grafana. The values are `admin` and `adminadminadmin` respectively. The recommended practice is to either use a Kubernetes secret or allow Grafana to generate a password for you. For more details on how to configure the Grafana Helm chart, refer to the Grafana Helm [documentation](https://grafana.com/docs/grafana/latest/installation/helm/).
 
 2. `datasources`: This section of the configuration lets you define the data sources that Grafana should use. In this tutorial, you will define a Loki data source. The data source is defined as follows:
 
@@ -275,7 +275,7 @@ One of the first places you should visit is Explore Logs which lets you automati
 
 ## (Optional): View the Alloy UI
 
-The Kubernetes Monitoring Helm chart deploys Grafana Alloy to collect and forward telemetry data from the Kubernetes cluster. The Helm is designed to abstract you from creating an Alloy configuration file. However if you would like to understand the pipeline you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
+The Kubernetes Monitoring Helm chart deploys Grafana Alloy to collect and forward telemetry data from the Kubernetes cluster. The Helm chart is designed to abstract you away from creating an Alloy configuration file. However if you would like to understand the pipeline you can view the Alloy UI. To access the Alloy UI, you will need to port-forward the Alloy service to your local machine. To do this, run the following command:
 
 ```bash
 export POD_NAME=$(kubectl get pods --namespace meta -l "app.kubernetes.io/name=alloy-logs,app.kubernetes.io/instance=k8s" -o jsonpath="{.items[0].metadata.name}") && \
