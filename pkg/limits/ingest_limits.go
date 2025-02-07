@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -398,7 +399,7 @@ func (s *IngestLimits) stopping(failureCase error) error {
 
 // ServeHTTP implements the http.Handler interface.
 // It returns the current stream counts and status per tenant as a JSON response.
-func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -412,26 +413,53 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 		RecordedStreams []uint64 `json:"recordedStreams"`
 	}
 
-	response := make(map[string]tenantLimits)
-	for tenant, streams := range s.metadata {
-		var activeStreams uint64
-		recordedStreams := make([]uint64, 0, len(streams))
+	// Get tenant and partitions from query parameters
+	params := r.URL.Query()
+	tenant := params.Get("tenant")
+	partitionsStr := params.Get("partitions")
 
-		// Count active streams and record their status
-		for hash, stream := range streams {
-			isActive := stream.lastSeenAt >= cutoff
-			if isActive {
-				activeStreams++
+	var partitions []int32
+	if partitionsStr != "" {
+		// Split comma-separated partition list
+		partitionStrs := strings.Split(partitionsStr, ",")
+		partitions = make([]int32, 0, len(partitionStrs))
+
+		// Convert each partition string to int32
+		for _, p := range partitionStrs {
+			if val, err := strconv.ParseInt(strings.TrimSpace(p), 10, 32); err == nil {
+				partitions = append(partitions, int32(val))
 			}
-			recordedStreams = append(recordedStreams, hash)
+		}
+	}
+
+	response := make(map[string]tenantLimits)
+	streams := s.metadata[tenant]
+	var activeStreams uint64
+	recordedStreams := make([]uint64, 0, len(streams))
+	for hash, stream := range streams {
+		// Consider the recorded stream if it's partition
+		// is one of the partitions we are still assigned to.
+		assigned := false
+		for _, partition := range partitions {
+			if stream.partition == partition {
+				assigned = true
+				break
+			}
 		}
 
-		if activeStreams > 0 || len(recordedStreams) > 0 {
-			response[tenant] = tenantLimits{
-				Tenant:          tenant,
-				ActiveStreams:   activeStreams,
-				RecordedStreams: recordedStreams,
-			}
+		// Count active streams and record their status
+		isActive := assigned && stream.lastSeenAt >= cutoff
+		if isActive {
+			activeStreams++
+		}
+		recordedStreams = append(recordedStreams, hash)
+	}
+
+	if activeStreams > 0 || len(recordedStreams) > 0 {
+		response[tenant] = tenantLimits{
+			Tenant:          tenant,
+			ActiveStreams:   activeStreams,
+			RecordedStreams: recordedStreams,
 		}
 	}
 
