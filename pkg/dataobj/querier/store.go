@@ -49,40 +49,48 @@ func NewStore(bucket objstore.Bucket) *Store {
 
 // SelectLogs implements querier.Store
 func (s *Store) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter.EntryIterator, error) {
+	// TODO: Implement
 	return iter.NoopEntryIterator, nil
 }
 
 // SelectSamples implements querier.Store
 func (s *Store) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
+	// TODO: Implement
 	return iter.NoopSampleIterator, nil
 }
 
 // SelectSeries implements querier.Store
 func (s *Store) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	// TODO: Implement
 	return []logproto.SeriesIdentifier{}, nil
 }
 
 // LabelValuesForMetricName implements querier.Store
 func (s *Store) LabelValuesForMetricName(_ context.Context, _ string, _ model.Time, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
+	// TODO: Implement
 	return []string{}, nil
 }
 
 // LabelNamesForMetricName implements querier.Store
 func (s *Store) LabelNamesForMetricName(_ context.Context, _ string, _ model.Time, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
+	// TODO: Implement
 	return []string{}, nil
 }
 
 // Stats implements querier.Store
 func (s *Store) Stats(_ context.Context, _ string, _ model.Time, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+	// TODO: Implement
 	return &stats.Stats{}, nil
 }
 
 // Volume implements querier.Store
 func (s *Store) Volume(_ context.Context, _ string, _ model.Time, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	// TODO: Implement
 	return &logproto.VolumeResponse{}, nil
 }
 
 // GetShards implements querier.Store
 func (s *Store) GetShards(_ context.Context, _ string, _ model.Time, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
+	// TODO: Implement
 	return &logproto.ShardsResponse{}, nil
 }
