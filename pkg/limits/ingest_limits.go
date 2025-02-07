@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -159,17 +160,19 @@ func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, pa
 	s.mtxAssingedPartitions.Lock()
 	defer s.mtxAssingedPartitions.Unlock()
 
-	level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", partitions)
-
 	if s.assingedPartitions == nil {
 		s.assingedPartitions = make(map[int32]int64)
 	}
 
+	var partitionStr strings.Builder
 	for _, partitionIDs := range partitions {
 		for _, partitionID := range partitionIDs {
 			s.assingedPartitions[partitionID] = time.Now().UnixNano()
+			partitionStr.WriteString(fmt.Sprintf("%d,", partitionID))
 		}
 	}
+
+	level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", partitionStr.String())
 }
 
 func (s *IngestLimits) onPartitionsRevoked(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
@@ -186,11 +189,15 @@ func (s *IngestLimits) cleanUpPerTenantPartitions(partitions map[string][]int32)
 	s.mtxAssingedPartitions.Lock()
 	defer s.mtxAssingedPartitions.Unlock()
 
+	var partitionStr strings.Builder
 	for _, partitionIDs := range partitions {
 		for _, partitionID := range partitionIDs {
 			delete(s.assingedPartitions, partitionID)
+			partitionStr.WriteString(fmt.Sprintf("%d,", partitionID))
 		}
 	}
+
+	level.Debug(s.logger).Log("msg", "revoked/lost partitions", "partitions", partitionStr.String())
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {

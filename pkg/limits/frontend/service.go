@@ -2,6 +2,8 @@ package frontend
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -124,7 +126,12 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 				return err
 			}
 
-			level.Debug(s.logger).Log("msg", "getting stream usage for", "addr", instance.Addr, "partitions", partitions[instance.Addr])
+			var partitionStr strings.Builder
+			for _, partition := range partitions[instance.Addr] {
+				partitionStr.WriteString(fmt.Sprintf("%d,", partition))
+			}
+
+			level.Debug(s.logger).Log("msg", "getting stream usage for", "addr", instance.Addr, "partitions", partitionStr.String())
 
 			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
 			if err != nil {
