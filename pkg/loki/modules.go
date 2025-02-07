@@ -402,8 +402,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 		return t.Store, nil
 	}
 
-	// verify that there's no schema with a date before the dataobj querier from date
-
+	// verify that there's no schema with a date after the dataobj querier from date
 	for _, schema := range t.Cfg.SchemaConfig.Configs {
 		if schema.From.After(t.Cfg.DataObj.Querier.From) {
 			return nil, fmt.Errorf("dataobj querier From should be after the last schema date")
