@@ -332,14 +332,11 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 				if len(s.metadata[tenant]) == 0 {
 					delete(s.metadata, tenant)
 					s.metrics.tenantCurrentRecordedStreams.DeleteLabelValues(tenant)
-					s.metrics.tenantActiveStreams.DeleteLabelValues(tenant)
 				} else {
 					if len(streams) != streamsBefore {
 						// Only update recorded streams gauge if the number changed
 						s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(len(streams)))
 					}
-					// Always update active streams as they can change even if total count doesn't
-					s.metrics.tenantActiveStreams.WithLabelValues(tenant).Set(float64(activeCount))
 				}
 			}
 			s.mtx.Unlock()
@@ -377,7 +374,6 @@ func (s *IngestLimits) updateMetadata(metadata *logproto.StreamMetadata, tenant 
 
 		// Update gauges
 		s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(len(s.metadata[tenant])))
-		s.metrics.tenantActiveStreams.WithLabelValues(tenant).Set(float64(activeCount))
 	}
 }
 
@@ -463,6 +459,8 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// Get the tenant's streams
 	streams := s.metadata[req.Tenant]
 	if streams == nil {
+		s.metrics.tenantActiveStreams.DeleteLabelValues(req.Tenant)
+
 		// If tenant not found, return zero active streams and all requested streams as not recorded
 		return &logproto.GetStreamUsageResponse{
 			Tenant:        req.Tenant,
@@ -503,6 +501,8 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 			unknownStreams = append(unknownStreams, reqHash)
 		}
 	}
+
+	s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreams))
 
 	return &logproto.GetStreamUsageResponse{
 		Tenant:         req.Tenant,

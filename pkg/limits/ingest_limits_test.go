@@ -155,6 +155,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 				partitionRing: &mockPartitionRing{},
 				logger:        log.NewNopLogger(),
 				metadata:      tt.setupMetadata,
+				metrics:       newMetrics(prometheus.NewRegistry()),
 			}
 
 			// Create request
@@ -209,6 +210,7 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 		partitionRing: &mockPartitionRing{},
 		logger:        log.NewNopLogger(),
 		metadata:      metadata,
+		metrics:       newMetrics(prometheus.NewRegistry()),
 	}
 
 	// Run concurrent requests
