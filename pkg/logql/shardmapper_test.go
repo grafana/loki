@@ -888,37 +888,7 @@ func TestMapping(t *testing.T) {
 				Left: &CountMinSketchEvalExpr{
 					downstreams: []DownstreamSampleExpr{
 						{
-							shard: NewPowerOfTwoShard(index.ShardAnnotation{
-								Shard: 0,
-								Of:    2,
-							}).Bind(nil),
-							SampleExpr: &syntax.VectorAggregationExpr{
-								Operation: syntax.OpTypeCountMinSketch,
-								Left: &syntax.BinOpExpr{
-									Op: syntax.OpTypeGT,
-									SampleExpr: &syntax.RangeAggregationExpr{
-										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRangeExpr{
-											Left: &syntax.MatchersExpr{
-												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
-											},
-											Interval: 5 * time.Minute,
-										},
-									},
-									RHS: &syntax.LiteralExpr{Val: 3},
-									Opts: &syntax.BinOpOptions{
-										ReturnBool:     false,
-										VectorMatching: &syntax.VectorMatching{},
-									},
-								},
-								Grouping: &syntax.Grouping{},
-							},
-						},
-						{
-							shard: NewPowerOfTwoShard(index.ShardAnnotation{
-								Shard: 1,
-								Of:    2,
-							}).Bind(nil),
+							shard: nil,
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Operation: syntax.OpTypeCountMinSketch,
 								Left: &syntax.BinOpExpr{
