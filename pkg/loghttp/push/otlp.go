@@ -35,15 +35,6 @@ const (
 	OTLPSeverityNumber = "severity_number"
 )
 
-func newPushStats() *Stats {
-	return &Stats{
-		LogLinesBytes:                   map[string]map[time.Duration]int64{},
-		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
-		PolicyNumLines:                  map[string]int64{},
-		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
-	}
-}
-
 func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
 	stats := newPushStats()
 	otlpLogs, err := extractLogs(r, stats)

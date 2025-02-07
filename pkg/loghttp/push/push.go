@@ -165,7 +165,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		}
 	}
 
-	totalNumLines := int64(0)
+	var totalNumLines int64
 	// incrementing tenant metrics if we have a tenant.
 	for policy, numLines := range pushStats.PolicyNumLines {
 		if numLines != 0 && userID != "" {

@@ -65,7 +65,7 @@ func TestParseRequest(t *testing.T) {
 		expectedBytes                   map[string]int
 		expectedLines                   map[string]int
 		expectedBytesUsageTracker       map[string]float64
-		expectedLabels                  labels.Labels
+		expectedLabels                  []labels.Labels
 		aggregatedMetric                bool
 		fakeLimits                      *fakeLimits
 	}{
@@ -89,7 +89,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -100,7 +100,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -118,7 +118,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -129,7 +129,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -147,7 +147,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -158,7 +158,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -212,7 +212,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:                   map[string]int{"": len("fizzbuzz") + 2*len("a") + 2*len("b")},
 			expectedLines:                   map[string]int{"": 1},
 			expectedBytesUsageTracker:       map[string]float64{`{foo="bar2"}`: float64(len("fizzbuzz") + 2*len("a") + 2*len("b"))},
-			expectedLabels:                  labels.FromStrings("foo", "bar2"),
+			expectedLabels:                  []labels.Labels{labels.FromStrings("foo", "bar2")},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -223,7 +223,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuss")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", job="stuff", service_name="stuff"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2", "job", "stuff", LabelServiceName, "stuff"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "job", "stuff", LabelServiceName, "stuff")},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -234,7 +234,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuzz")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{foo="bar2", service_name="unknown_service"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2", LabelServiceName, ServiceUnknown),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", LabelServiceName, ServiceUnknown)},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -245,7 +245,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"": len("fizzbuss")},
 			expectedLines:             map[string]int{"": 1},
 			expectedBytesUsageTracker: map[string]float64{`{__aggregated_metric__="stuff", foo="bar2", job="stuff"}`: float64(len("fizzbuss"))},
-			expectedLabels:            labels.FromStrings("__aggregated_metric__", "stuff", "foo", "bar2", "job", "stuff"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("__aggregated_metric__", "stuff", "foo", "bar2", "job", "stuff")},
 			aggregatedMetric:          true,
 		},
 		{
@@ -256,7 +256,7 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"prod": len("fizzbuzz")},
 			expectedLines:             map[string]int{"prod": 1},
 			expectedBytesUsageTracker: map[string]float64{"{environment=\"prod\", foo=\"bar2\"}": float64(len("fizzbuzz"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2", "environment", "prod"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "environment", "prod")},
 		},
 		{
 			path:                      `/loki/api/v1/push`,
@@ -266,7 +266,16 @@ func TestParseRequest(t *testing.T) {
 			expectedBytes:             map[string]int{"dev": len("fizzbuzz")},
 			expectedLines:             map[string]int{"dev": 1},
 			expectedBytesUsageTracker: map[string]float64{"{environment=\"dev\", foo=\"bar2\"}": float64(len("fizzbuzz"))},
-			expectedLabels:            labels.FromStrings("foo", "bar2", "environment", "dev"),
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "environment", "dev")},
+		}, {
+			path:                      `/loki/api/v1/push`,
+			body:                      `{"streams": [{ "stream": { "foo": "bar2", "environment": "dev" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }, {"stream": { "foo": "bar2", "environment": "prod" }, "values": [ [ "1570818238000000000", "xx" ] ] }, {"stream": { "foo": "bar2", "dass": "zasss" }, "values": [ [ "1570818238000000000", "graf" ] ] }]}`,
+			contentType:               `application/json`,
+			valid:                     true,
+			expectedBytes:             map[string]int{"dev": len("fizzbuzz"), "prod": len("xx"), "": len("graf")},
+			expectedLines:             map[string]int{"dev": 1, "prod": 1, "": 1},
+			expectedBytesUsageTracker: map[string]float64{"{environment=\"dev\", foo=\"bar2\"}": float64(len("fizzbuzz")), "{environment=\"prod\", foo=\"bar2\"}": float64(len("xx")), "{dass=\"zasss\", foo=\"bar2\"}": float64(len("graf"))},
+			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "environment", "dev"), labels.FromStrings("foo", "bar2", "environment", "prod"), labels.FromStrings("foo", "bar2", "dass", "zasss")},
 		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
@@ -362,10 +371,15 @@ func TestParseRequest(t *testing.T) {
 								policyName,
 							),
 						),
+						"policy %s with %d lines",
+						policyName,
+						lines,
 					)
 				}
 
-				require.Equal(t, test.expectedLabels.String(), data.Streams[0].Labels)
+				for i := range test.expectedLabels {
+					require.EqualValues(t, test.expectedLabels[i].String(), data.Streams[i].Labels)
+				}
 				require.InDeltaMapValuesf(t, test.expectedBytesUsageTracker, tracker.receivedBytes, 0.0, "%s != %s", test.expectedBytesUsageTracker, tracker.receivedBytes)
 			} else {
 				assert.Errorf(t, err, "Should give error for %d", index)
