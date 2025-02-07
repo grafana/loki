@@ -122,6 +122,11 @@
           } else {
             s3: 's3://' + $._config.s3_address + '/' + $._config.s3_bucket_name,
           }
+        ) + (
+          if $._config.s3_bucket_region != '' then {
+            region: $._config.s3_bucket_region,
+          }
+          else {}
         ),
       } else if $._config.storage_backend == 'azure' then {
         azure: {
@@ -171,7 +176,7 @@
 
     loki: {
       common: {
-        compactor_address: 'http://compactor.%s.svc.cluster.local.:%d' % [$._config.namespace, $._config.http_listen_port],
+        compactor_grpc_address: 'compactor.%s.svc.cluster.local.:9095' % [$._config.namespace],
       },
       server: {
         graceful_shutdown_timeout: '5s',
@@ -387,11 +392,15 @@
         },
       } else {},
 
-      ruler_storage: if $._config.ruler_enabled then {
-        backend: $._config.storage_backend,
-      } + $._config.thanos_object_store_config else {},
 
-    },
+    } + (
+      if $._config.use_thanos_objstore && $._config.ruler_enabled then {
+        ruler_storage: {
+          backend: $._config.storage_backend,
+        } + $._config.thanos_object_store_config,
+      }
+      else {}
+    ),
   },
 
   local k = import 'ksonnet-util/kausal.libsonnet',

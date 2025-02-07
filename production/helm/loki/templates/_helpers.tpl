@@ -204,6 +204,10 @@ Docker image name for kubectl container
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
+{{- if .Values.loki.storage.use_thanos_objstore -}}
+object_store:
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+{{- else }}
 {{- if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
@@ -305,6 +309,7 @@ swift:
 filesystem:
   chunks_directory: {{ .chunks_directory }}
   rules_directory: {{ .rules_directory }}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -424,10 +429,21 @@ ruler:
 {{- end }}
 {{- end }}
 
+{{/* Ruler Thanos Storage Config */}}
+{{- define "loki.rulerThanosStorageConfig" -}}
+{{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
+  backend: {{ .Values.loki.storage.object_store.type }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
+{{- end }}
+{{- end }}
+
 {{/* Enterprise Logs Admin API storage config */}}
 {{- define "enterprise-logs.adminAPIStorageConfig" }}
 storage:
-  {{- if .Values.minio.enabled }}
+  {{- if .Values.loki.storage.use_thanos_objstore }}
+  backend: {{ .Values.loki.storage.object_store.type }}
+    {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.admin) | nindent 2 }}
+  {{- else if .Values.minio.enabled }}
   backend: "s3"
   s3:
     bucket_name: admin
@@ -592,7 +608,6 @@ Generate list of ingress service paths based on deployment type
 {{- include "loki.ingress.legacyScalableServicePaths" . }}
 {{- end -}}
 {{- end -}}
-
 
 {{/*
 Ingress service paths for distributed deployment
@@ -1129,4 +1144,41 @@ This function needs to be called with a context object containing the following 
 */}}
 {{- define "loki.configMapOrSecretContentHash" -}}
 {{ get (include (print .ctx.Template.BasePath .name) .ctx | fromYaml) "data" | toYaml | sha256sum }}
+{{- end }}
+
+{{/* Thanos object storage configuration helper to build
+the thanos_storage_config model*/}}
+{{- define "loki.thanosStorageConfig" -}}
+{{- $bucketName := .bucketName }}
+{{- with .ctx.Values.loki.storage.object_store }}
+{{- if eq .type "s3" }}
+s3:
+  {{- with .s3 }}
+  bucket_name: {{ $bucketName }}
+  endpoint: {{ .endpoint }}
+  access_key_id: {{ .access_key_id }}
+  secret_access_key: {{ .secret_access_key }}
+  region: {{ .region }}
+  insecure: {{ .insecure }}
+  http:
+    {{ toYaml .http | nindent 4 }}
+  sse:
+    {{ toYaml .sse | nindent 4 }}
+  {{- end }}
+{{- else if eq .type "gcs" }}
+gcs:
+  {{- with .gcs }}
+  bucket_name: {{ $bucketName }}
+  service_account: {{ .service_account }}
+  {{- end }}
+{{- else if eq .type "azure" }}
+azure:
+  {{- with .azure }}
+  container_name: {{ $bucketName }}
+  account_name: {{ .account_name }}
+  account_key: {{ .account_key }}
+  {{- end }}
+{{- end }}
+prefix: {{ .prefix }}
+{{- end }}
 {{- end }}

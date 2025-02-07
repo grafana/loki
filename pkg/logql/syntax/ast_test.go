@@ -636,7 +636,7 @@ func TestOrLineFilterTypes(t *testing.T) {
 			left := &LineFilterExpr{LineFilter: LineFilter{Ty: tt.ty, Match: "something"}}
 			right := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 
-			_ = newOrLineFilter(left, right)
+			_ = newOrLineFilterExpr(left, right)
 			require.Equal(t, tt.ty, right.Ty)
 			require.Equal(t, tt.ty, left.Ty)
 		})
@@ -646,7 +646,7 @@ func TestOrLineFilterTypes(t *testing.T) {
 			f2 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 			f3 := &LineFilterExpr{LineFilter: LineFilter{Ty: log.LineMatchEqual, Match: "something"}}
 
-			_ = newOrLineFilter(f1, newOrLineFilter(f2, f3))
+			_ = newOrLineFilterExpr(f1, newOrLineFilterExpr(f2, f3))
 			require.Equal(t, tt.ty, f1.Ty)
 			require.Equal(t, tt.ty, f2.Ty)
 			require.Equal(t, tt.ty, f3.Ty)
@@ -887,7 +887,7 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var e *LabelParserExpr
+			var e *LineParserExpr
 			if tt.wantPanic {
 				require.Panics(t, func() { e = newLabelParserExpr(tt.op, tt.param) })
 				return
@@ -923,7 +923,7 @@ func Test_parserExpr_String(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l := LabelParserExpr{
+			l := LineParserExpr{
 				Op:    tt.op,
 				Param: tt.param,
 			}
