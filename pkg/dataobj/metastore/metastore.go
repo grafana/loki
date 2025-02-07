@@ -138,10 +138,11 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 			})
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)
+				m.metrics.incMetastoreWrites(statusSuccess)
 				break
 			}
 			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", metastorePath)
-			m.metrics.incMetastoreWriteFailures()
+			m.metrics.incMetastoreWrites(statusFailure)
 			m.backoff.Wait()
 		}
 		// Reset at the end too so we don't leave our memory hanging around between calls.
