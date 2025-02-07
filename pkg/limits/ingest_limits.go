@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,6 +176,10 @@ func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, pa
 
 	var partitionStr strings.Builder
 	for _, partitionIDs := range partitions {
+		sort.Slice(partitionIDs, func(i, j int) bool {
+			return partitionIDs[i] < partitionIDs[j]
+		})
+
 		for _, partitionID := range partitionIDs {
 			s.assingedPartitions[partitionID] = time.Now().UnixNano()
 			partitionStr.WriteString(fmt.Sprintf("%d,", partitionID))
@@ -185,12 +190,10 @@ func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, pa
 }
 
 func (s *IngestLimits) onPartitionsRevoked(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-	level.Debug(s.logger).Log("msg", "revoked partitions", "partitions", partitions)
 	s.cleanUpPerTenantPartitions(partitions)
 }
 
 func (s *IngestLimits) onPartitionsLost(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-	level.Debug(s.logger).Log("msg", "lost partitions", "partitions", partitions)
 	s.cleanUpPerTenantPartitions(partitions)
 }
 
@@ -316,13 +319,10 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 			for tenant, streams := range s.metadata {
 				streamsBefore := len(streams)
 				evictedCount := 0
-				activeCount := 0
 				for hash, stream := range streams {
 					if stream.lastSeenAt < cutoff {
 						delete(s.metadata[tenant], hash)
 						evictedCount++
-					} else {
-						activeCount++
 					}
 				}
 				// Update eviction counter if any streams were evicted
@@ -363,17 +363,6 @@ func (s *IngestLimits) updateMetadata(metadata *logproto.StreamMetadata, tenant 
 			lastSeenAt: recordTime,
 			partition:  partition,
 		}
-
-		// Count active streams (within window)
-		cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
-		activeCount := 0
-		for _, stream := range s.metadata[tenant] {
-			if stream.lastSeenAt >= cutoff {
-				activeCount++
-			}
-		}
-
-		// Update gauges
 		s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(len(s.metadata[tenant])))
 	}
 }
@@ -410,7 +399,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	type tenantLimits struct {
 		Tenant          string   `json:"tenant"`
 		ActiveStreams   uint64   `json:"activeStreams"`
-		RecordedStreams []uint64 `json:"recordedStreams"`
+		AssignedStreams []uint64 `json:"assignedStreams"`
 	}
 
 	// Get tenant and partitions from query parameters
@@ -436,7 +425,7 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		activeStreams   uint64
-		recordedStreams = make([]uint64, 0, len(streams))
+		assignedStreams = make([]uint64, 0, len(streams))
 		response        = make(map[string]tenantLimits)
 	)
 
@@ -454,15 +443,15 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Count active streams and record their status
 		if assigned && stream.lastSeenAt >= cutoff {
 			activeStreams++
-			recordedStreams = append(recordedStreams, hash)
+			assignedStreams = append(assignedStreams, hash)
 		}
 	}
 
-	if activeStreams > 0 || len(recordedStreams) > 0 {
+	if activeStreams > 0 || len(assignedStreams) > 0 {
 		response[tenant] = tenantLimits{
 			Tenant:          tenant,
 			ActiveStreams:   activeStreams,
-			RecordedStreams: recordedStreams,
+			AssignedStreams: assignedStreams,
 		}
 	}
 
@@ -503,10 +492,7 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// across all assigned partitions and record
 	// the streams that have been seen within the
 	// window
-	var (
-		activeStreams  uint64
-		unknownStreams []uint64
-	)
+	var activeStreams uint64
 	for _, stream := range streams {
 		// Consider the recorded stream if it's partition
 		// is one of the partitions we are still assigned to.
@@ -518,22 +504,29 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 			}
 		}
 
-		// If the stream is assigned to a partition we are
-		// assinged to and has been seen within the window,
+		// If the stream is written into a partition we are
+		// assigned to and has been seen within the window,
 		// it is an active stream.
 		if assigned && stream.lastSeenAt >= cutoff {
 			activeStreams++
-			continue
 		}
 	}
 
+	var unknownStreams []uint64
 	for _, reqHash := range req.StreamHashes {
-		if _, recorded := streams[reqHash]; !recorded {
+		if stream, recorded := streams[reqHash]; !recorded || stream.lastSeenAt < cutoff {
 			unknownStreams = append(unknownStreams, reqHash)
 		}
 	}
 
 	s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreams))
+
+	level.Debug(s.logger).Log("msg", "get stream usage",
+		"tenant", req.Tenant,
+		"partitionsTotal", len(req.Partitions),
+		"activeTotal", activeStreams,
+		"unknownTotal", len(unknownStreams),
+	)
 
 	return &logproto.GetStreamUsageResponse{
 		Tenant:         req.Tenant,
