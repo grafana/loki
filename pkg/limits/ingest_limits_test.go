@@ -15,6 +15,18 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+type mockPartitionRing struct {
+	ring.PartitionRingReader
+}
+
+func (m *mockPartitionRing) PartitionRing() *ring.PartitionRing {
+	return ring.NewPartitionRing(ring.PartitionRingDesc{
+		Partitions: map[int32]ring.PartitionDesc{
+			0: {Id: 0, Tokens: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}},
+		},
+	})
+}
+
 func TestIngestLimits_GetStreamUsage(t *testing.T) {
 	tests := []struct {
 		name                   string
@@ -140,8 +152,9 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 						ObservePeriod:   100 * time.Millisecond,
 					},
 				},
-				logger:   log.NewNopLogger(),
-				metadata: tt.setupMetadata,
+				partitionRing: &mockPartitionRing{},
+				logger:        log.NewNopLogger(),
+				metadata:      tt.setupMetadata,
 			}
 
 			// Create request
@@ -193,8 +206,9 @@ func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 				ObservePeriod:   100 * time.Millisecond,
 			},
 		},
-		logger:   log.NewNopLogger(),
-		metadata: metadata,
+		partitionRing: &mockPartitionRing{},
+		logger:        log.NewNopLogger(),
+		metadata:      metadata,
 	}
 
 	// Run concurrent requests
@@ -246,7 +260,7 @@ func TestNewIngestLimits(t *testing.T) {
 		},
 	}
 
-	s, err := NewIngestLimits(cfg, log.NewNopLogger(), prometheus.NewRegistry())
+	s, err := NewIngestLimits(cfg, &mockPartitionRing{}, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, s)
 	require.NotNil(t, s.client)

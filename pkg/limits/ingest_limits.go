@@ -19,15 +19,19 @@ import (
 	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
+	// Ring
 	RingKey  = "ingest-limits"
 	RingName = "ingest-limits"
+
+	// Kafka
+	consumerGroup = "ingest-limits"
 )
 
 type metrics struct {
@@ -84,8 +88,9 @@ type IngestLimits struct {
 
 	cfg    Config
 	logger log.Logger
-	client *kgo.Client
+	client *consumer.Client
 
+	partitionRing     ring.PartitionRingReader
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
@@ -111,13 +116,14 @@ func (s *IngestLimits) TransferOut(_ context.Context) error {
 
 // NewIngestLimits creates a new IngestLimits service. It initializes the metadata map and sets up a Kafka client
 // The client is configured to consume stream metadata from a dedicated topic with the metadata suffix.
-func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
+func NewIngestLimits(cfg Config, partitionRing ring.PartitionRingReader, logger log.Logger, reg prometheus.Registerer) (*IngestLimits, error) {
 	var err error
 	s := &IngestLimits{
-		cfg:      cfg,
-		logger:   logger,
-		metadata: make(map[string]map[uint64]streamMetadata),
-		metrics:  newMetrics(reg),
+		cfg:           cfg,
+		logger:        logger,
+		partitionRing: partitionRing,
+		metadata:      make(map[string]map[uint64]streamMetadata),
+		metrics:       newMetrics(reg),
 	}
 
 	// Initialize lifecycler
@@ -138,12 +144,13 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 	kCfg := cfg.KafkaConfig
 	kCfg.Topic = kafka.MetadataTopicFor(kCfg.Topic)
 
-	s.client, err = client.NewReaderClient(kCfg, metrics, logger,
-		kgo.ConsumerGroup("ingest-limits"),
-		kgo.ConsumeTopics(kCfg.Topic),
-		kgo.Balancers(kgo.RoundRobinBalancer()),
+	s.client, err = consumer.NewGroupClient(
+		kCfg,
+		partitionRing,
+		consumerGroup,
+		metrics,
+		logger,
 		kgo.ConsumeResetOffset(kgo.NewOffset().AfterMilli(time.Now().Add(-s.cfg.WindowSize).UnixMilli())),
-		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.onPartitionsAssigned),
 		kgo.OnPartitionsRevoked(s.onPartitionsRevoked),
 		kgo.OnPartitionsLost(s.onPartitionsLost),
