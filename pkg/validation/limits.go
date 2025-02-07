@@ -1124,10 +1124,6 @@ func (o *Overrides) EnforcedLabels(userID string) []string {
 	return o.getOverridesForUser(userID).EnforcedLabels
 }
 
-func (o *Overrides) PolicyFor(userID string, lbs labels.Labels) string {
-	return o.getOverridesForUser(userID).PolicyStreamMapping.PolicyFor(lbs)
-}
-
 func (o *Overrides) PoliciesStreamMapping(userID string) PolicyStreamMapping {
 	return o.getOverridesForUser(userID).PolicyStreamMapping
 }
