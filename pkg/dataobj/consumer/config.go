@@ -10,8 +10,6 @@ import (
 type Config struct {
 	dataobj.BuilderConfig
 	UploaderConfig uploader.Config `yaml:"uploader"`
-	// StorageBucketPrefix is the prefix to use for the storage bucket.
-	StorageBucketPrefix string `yaml:"storage_bucket_prefix"`
 }
 
 func (cfg *Config) Validate() error {
@@ -29,5 +27,4 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
 	cfg.UploaderConfig.RegisterFlagsWithPrefix(prefix, f)
-	f.StringVar(&cfg.StorageBucketPrefix, prefix+"storage-bucket-prefix", "dataobj/", "The prefix to use for the storage bucket.")
 }
