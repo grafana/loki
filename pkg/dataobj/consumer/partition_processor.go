@@ -194,28 +194,29 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		flushBuffer := p.bufPool.Get().(*bytes.Buffer)
-		flushBuffer.Reset()
+		func() {
+			flushBuffer := p.bufPool.Get().(*bytes.Buffer)
+			defer p.bufPool.Put(flushBuffer)
 
-		flushedDataobjStats, err := p.builder.Flush(flushBuffer)
-		if err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
-			p.bufPool.Put(flushBuffer)
-			return
-		}
+			flushBuffer.Reset()
 
-		objectPath, err := p.uploader.Upload(p.ctx, flushBuffer)
-		if err != nil {
-			level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
-			p.bufPool.Put(flushBuffer)
-			return
-		}
-		p.bufPool.Put(flushBuffer)
+			flushedDataobjStats, err := p.builder.Flush(flushBuffer)
+			if err != nil {
+				level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
+				return
+			}
 
-		if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
-			level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
-			return
-		}
+			objectPath, err := p.uploader.Upload(p.ctx, flushBuffer)
+			if err != nil {
+				level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
+				return
+			}
+
+			if err := p.metastoreManager.UpdateMetastore(p.ctx, objectPath, flushedDataobjStats); err != nil {
+				level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
+				return
+			}
+		}()
 
 		if err := p.commitRecords(record); err != nil {
 			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
