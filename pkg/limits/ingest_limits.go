@@ -97,7 +97,7 @@ type IngestLimits struct {
 
 	// Track partition assignments
 	mtxAssingedPartitions sync.RWMutex
-	assingedPartitions    map[string]map[int32]int64 // tenant -> partitionID -> lastAssignedAt
+	assingedPartitions    map[int32]int64 // partitionID -> lastAssignedAt
 }
 
 // Flush implements ring.FlushTransferer. It transfers state to another ingest limits instance.
@@ -156,7 +156,20 @@ func NewIngestLimits(cfg Config, logger log.Logger, reg prometheus.Registerer) (
 }
 
 func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
+	s.mtxAssingedPartitions.Lock()
+	defer s.mtxAssingedPartitions.Unlock()
+
 	level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", partitions)
+
+	if s.assingedPartitions == nil {
+		s.assingedPartitions = make(map[int32]int64)
+	}
+
+	for _, partitionIDs := range partitions {
+		for _, partitionID := range partitionIDs {
+			s.assingedPartitions[partitionID] = time.Now().UnixNano()
+		}
+	}
 }
 
 func (s *IngestLimits) onPartitionsRevoked(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
@@ -173,11 +186,9 @@ func (s *IngestLimits) cleanUpPerTenantPartitions(partitions map[string][]int32)
 	s.mtxAssingedPartitions.Lock()
 	defer s.mtxAssingedPartitions.Unlock()
 
-	for tenant := range s.assingedPartitions {
-		for _, partitionIDs := range partitions {
-			for _, partitionID := range partitionIDs {
-				delete(s.assingedPartitions[tenant], partitionID)
-			}
+	for _, partitionIDs := range partitions {
+		for _, partitionID := range partitionIDs {
+			delete(s.assingedPartitions, partitionID)
 		}
 	}
 }
@@ -265,33 +276,11 @@ func (s *IngestLimits) running(ctx context.Context) error {
 				}
 
 				s.updateMetadata(metadata, string(record.Key), record.Partition, record.Timestamp)
-				s.trackPerTenantPartitions(string(record.Key), record.Partition)
 			}
 
 			s.metrics.kafkaReadBytesTotal.Add(float64(sizeBytes))
 		}
 	}
-}
-
-func (s *IngestLimits) trackPerTenantPartitions(tenant string, partitionID int32) {
-	s.mtxAssingedPartitions.Lock()
-	defer s.mtxAssingedPartitions.Unlock()
-
-	if s.assingedPartitions == nil {
-		s.assingedPartitions = make(map[string]map[int32]int64)
-	}
-
-	if partitions, ok := s.assingedPartitions[tenant]; ok {
-		if _, ok := partitions[partitionID]; ok {
-			return
-		}
-	}
-
-	if _, ok := s.assingedPartitions[tenant]; !ok {
-		s.assingedPartitions[tenant] = make(map[int32]int64)
-	}
-
-	s.assingedPartitions[tenant][partitionID] = time.Now().UnixNano()
 }
 
 // evictOldStreams runs as a goroutine and periodically removes streams from the metadata map
@@ -444,9 +433,7 @@ func (s *IngestLimits) GetAssignedPartitions(_ context.Context, req *logproto.Ge
 	s.mtxAssingedPartitions.RLock()
 	defer s.mtxAssingedPartitions.RUnlock()
 
-	return &logproto.GetAssignedPartitionsResponse{
-		AssignedPartitions: s.assingedPartitions[req.Tenant],
-	}, nil
+	return &logproto.GetAssignedPartitionsResponse{AssignedPartitions: s.assingedPartitions}, nil
 }
 
 // GetStreamUsage implements the logproto.IngestLimitsServer interface.

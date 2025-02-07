@@ -109,7 +109,6 @@ message StreamRate {
 }
 
 message GetAssignedPartitionsRequest {
-  string tenant = 1;
 }
 
 message GetAssignedPartitionsResponse {

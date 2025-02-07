@@ -100,12 +100,49 @@ func NewRingIngestLimitsService(ring ring.ReadRing, pool *ring_client.Pool, limi
 	}
 }
 
-func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, tenant string) (map[string][]int32, error) {
+func (s *RingIngestLimitsService) forAllBackends(ctx context.Context, f ringGetUsageFunc) ([]GetStreamUsageResponse, error) {
 	replicaSet, err := s.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
 		return nil, err
 	}
+	return s.forGivenReplicaSet(ctx, replicaSet, f)
+}
 
+func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replicaSet ring.ReplicationSet, f ringGetUsageFunc) ([]GetStreamUsageResponse, error) {
+	partitions, err := s.perReplicaSetPartitions(ctx, replicaSet)
+	if err != nil {
+		return nil, err
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+	responses := make([]GetStreamUsageResponse, len(replicaSet.Instances))
+
+	for i, instance := range replicaSet.Instances {
+		g.Go(func() error {
+			client, err := s.pool.GetClientFor(instance.Addr)
+			if err != nil {
+				return err
+			}
+
+			level.Debug(s.logger).Log("msg", "getting stream usage for", "addr", instance.Addr, "partitions", partitions[instance.Addr])
+
+			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
+			if err != nil {
+				return err
+			}
+			responses[i] = GetStreamUsageResponse{Addr: instance.Addr, Response: resp}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return responses, nil
+}
+
+func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, replicaSet ring.ReplicationSet) (map[string][]int32, error) {
 	g, ctx := errgroup.WithContext(ctx)
 	responses := make([]GetAssignedPartitionsResponse, len(replicaSet.Instances))
 	for i, instance := range replicaSet.Instances {
@@ -114,9 +151,7 @@ func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, t
 			if err != nil {
 				return err
 			}
-			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{
-				Tenant: tenant,
-			})
+			resp, err := client.(logproto.IngestLimitsClient).GetAssignedPartitions(ctx, &logproto.GetAssignedPartitionsRequest{})
 			if err != nil {
 				return err
 			}
@@ -150,61 +185,20 @@ func (s *RingIngestLimitsService) perReplicaSetPartitions(ctx context.Context, t
 		partitions[addr] = append(partitions[addr], partition)
 	}
 
-	level.Debug(s.logger).Log("msg", "partitions", "partitions", partitions)
-
 	return partitions, nil
 }
 
-func (s *RingIngestLimitsService) forAllBackends(ctx context.Context, partitions map[string][]int32, f ringGetUsageFunc) ([]Response, error) {
-	replicaSet, err := s.ring.GetAllHealthy(LimitsRead)
-	if err != nil {
-		return nil, err
-	}
-	return s.forGivenReplicaSet(ctx, replicaSet, partitions, f)
-}
-
-func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replicaSet ring.ReplicationSet, partitions map[string][]int32, f ringGetUsageFunc) ([]Response, error) {
-	g, ctx := errgroup.WithContext(ctx)
-	responses := make([]Response, len(replicaSet.Instances))
-
-	for i, instance := range replicaSet.Instances {
-		g.Go(func() error {
-			client, err := s.pool.GetClientFor(instance.Addr)
-			if err != nil {
-				return err
-			}
-			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
-			if err != nil {
-				return err
-			}
-			responses[i] = Response{Addr: instance.Addr, Response: resp}
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	return responses, nil
-}
-
 func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logproto.ExceedsLimitsRequest) (*logproto.ExceedsLimitsResponse, error) {
-	partitions, err := s.perReplicaSetPartitions(ctx, req.Tenant)
-	if err != nil {
-		return nil, err
-	}
-
-	streamHashes := make([]uint64, 0, len(req.Streams))
+	reqStreams := make([]uint64, 0, len(req.Streams))
 	for _, stream := range req.Streams {
-		streamHashes = append(streamHashes, stream.StreamHash)
+		reqStreams = append(reqStreams, stream.StreamHash)
 	}
 
-	resps, err := s.forAllBackends(ctx, partitions, func(_ context.Context, client logproto.IngestLimitsClient, partitions []int32) (*logproto.GetStreamUsageResponse, error) {
+	resps, err := s.forAllBackends(ctx, func(_ context.Context, client logproto.IngestLimitsClient, partitions []int32) (*logproto.GetStreamUsageResponse, error) {
 		return client.GetStreamUsage(ctx, &logproto.GetStreamUsageRequest{
 			Tenant:       req.Tenant,
 			Partitions:   partitions,
-			StreamHashes: streamHashes,
+			StreamHashes: reqStreams,
 		})
 	})
 	if err != nil {
@@ -253,7 +247,7 @@ func (s *RingIngestLimitsService) ExceedsLimits(ctx context.Context, req *logpro
 	}, nil
 }
 
-type Response struct {
+type GetStreamUsageResponse struct {
 	Addr     string
 	Response *logproto.GetStreamUsageResponse
 }
