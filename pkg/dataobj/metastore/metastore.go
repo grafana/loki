@@ -23,15 +23,13 @@ const (
 	metastoreWindowSize = 12 * time.Hour
 )
 
-var (
-	// Define our own builder config because metastore objects are significantly smaller.
-	metastoreBuilderCfg = dataobj.BuilderConfig{
-		TargetObjectSize:  32 * 1024 * 1024,
-		TargetPageSize:    4 * 1024 * 1024,
-		BufferSize:        32 * 1024 * 1024, // 8x page size
-		TargetSectionSize: 4 * 1024 * 1024,  // object size / 8
-	}
-)
+// Define our own builder config because metastore objects are significantly smaller.
+var metastoreBuilderCfg = dataobj.BuilderConfig{
+	TargetObjectSize:  32 * 1024 * 1024,
+	TargetPageSize:    4 * 1024 * 1024,
+	BufferSize:        32 * 1024 * 1024, // 8x page size
+	TargetSectionSize: 4 * 1024 * 1024,  // object size / 8
+}
 
 type Manager struct {
 	metastoreBuilder *dataobj.Builder
