@@ -392,11 +392,15 @@
         },
       } else {},
 
-      ruler_storage: if $._config.ruler_enabled then {
-        backend: $._config.storage_backend,
-      } + $._config.thanos_object_store_config else {},
 
-    },
+    } + (
+      if $._config.use_thanos_objstore && $._config.ruler_enabled then {
+        ruler_storage: {
+          backend: $._config.storage_backend,
+        } + $._config.thanos_object_store_config,
+      }
+      else {}
+    ),
   },
 
   local k = import 'ksonnet-util/kausal.libsonnet',
