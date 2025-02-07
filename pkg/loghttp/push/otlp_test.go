@@ -53,7 +53,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return plog.NewLogs()
 			},
 			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
+			expectedStats:       *NewPushStats(),
 			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
@@ -64,7 +64,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return ld
 			},
 			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
+			expectedStats:       *NewPushStats(),
 			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
@@ -547,7 +547,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stats := newPushStats()
+			stats := NewPushStats()
 			tracker := NewMockTracker()
 
 			pushReq := otlpToLokiPushRequest(

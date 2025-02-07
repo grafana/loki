@@ -102,7 +102,7 @@ type (
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
 
-func newPushStats() *Stats {
+func NewPushStats() *Stats {
 	return &Stats{
 		LogLinesBytes:                   map[string]map[time.Duration]int64{},
 		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
@@ -227,7 +227,7 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 	contentType := r.Header.Get(contentType)
 	var (
 		req       logproto.PushRequest
-		pushStats = newPushStats()
+		pushStats = NewPushStats()
 	)
 
 	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
