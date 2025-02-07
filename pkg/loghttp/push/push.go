@@ -310,7 +310,10 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 			retentionPeriod = tenantsRetention.RetentionPeriodFor(userID, lbs)
 		}
 		totalBytesReceived := int64(0)
-		policy := policyResolver(userID, lbs)
+		var policy string
+		if policyResolver != nil {
+			policy = policyResolver(userID, lbs)
+		}
 
 		if _, ok := pushStats.LogLinesBytes[policy]; !ok {
 			pushStats.LogLinesBytes[policy] = make(map[time.Duration]int64)
