@@ -6,18 +6,19 @@ weight:
 ---
 # Migrate to Thanos storage clients
 
-Loki 3.4 release introduces new object storage clients based on [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore).
+Loki release 3.4 introduces new object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore).
 
 One of the reasons for making this change is to have a consistent storage configuration across LGTM+ stack. If you are already using Grafana Mimir or Pyroscope, you can reuse the storage configuration for setting up Loki.
 
-This is an opt-in feature with Loki 3.4 release. This would be made the default way of configuring storage in future releases and the existing storage clients will be deprecated.
+This is an opt-in feature with the Loki 3.4 release. In a future release, Thanos will become the default way of configuring storage and the existing storage clients will be deprecated.
 
 The new storage configuration deviates from the existing format. The following sections describe the changes in detail for each provider.
-Refer to the [thanos storage reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
+Refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
 
-### Enabling the new storage clients
-1. Enable thanos storage clients by setting `use_thanos_objstore` to `true` in the `storage_config` section or by setting `-use-thanos-objstore` flag to true.
-1. When enabled, configuration under `storage_config.object_store` takes effect instead of legacy storage configs
+### Enable the new storage clients
+
+1. Enable Thanos storage clients by setting `use_thanos_objstore` to `true` in the `storage_config` section or by setting the `-use-thanos-objstore` flag to true. When enabled, configuration under `storage_config.object_store` takes effect instead of legacy storage configurations.
+
    ```yaml
    # Uses the new storage clients for connecting to gcs backend
    storage_config:
@@ -26,7 +27,7 @@ Refer to the [thanos storage reference](https://grafana.com/docs/loki/<LOKI_VERS
       gcs: 
          bucket: "example-bucket"
    ```
-1. You can also configure the new clients in the common storage section if you prefer to use the common config section.
+1. As an alternative, you can also configure the new clients in the common storage section if you prefer to use the common config section.
    ```yaml
    storage_config:
       use_thanos_objstore: true # enable the new storage clients
@@ -36,7 +37,7 @@ Refer to the [thanos storage reference](https://grafana.com/docs/loki/<LOKI_VERS
             gcs:
             bucket: "example-bucket"
    ```
-1. Ruler storage should be configured under `ruler_storage` section when using the new storage clients.
+1. Ruler storage should be configured under the `ruler_storage` section when using the new storage clients.
    ```yaml
    storage_config:
       use_thanos_objstore: true # enable the new storage clients
@@ -48,12 +49,12 @@ Refer to the [thanos storage reference](https://grafana.com/docs/loki/<LOKI_VERS
 
 {{< admonition type="note" >}}
 Following sections document the steps for migrating the clients. Only some of the commonly used parameters are listed here.
-For a complete list of supported parameters, refer to the [thanos storage reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) and compare that to what you are using in your setup.
+For a complete list of supported parameters, refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) and compare that to what you are using in your setup.
 {{< /admonition >}}
 
 ### GCS Storage Migration
 
-When migrating from the legacy GCS storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
+When migrating from the legacy [Google Cloud Storage (GCS)](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#gcs_storage_config) storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
 
 {{< responsive-table >}}
 | Legacy Parameter | New Parameter | Required Changes |
@@ -85,9 +86,9 @@ object_store:
     enable_retries: true
 ```
 
-### S3 Storage Migration
+### Amazon S3 Storage Migration
 
-When migrating from the legacy S3 storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
+When migrating from the legacy [Amazon S3](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#aws_storage_config) storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
 
 {{< responsive-table >}}
 | Legacy Parameter | New Parameter | Required Changes |
@@ -137,7 +138,7 @@ object_store:
 
 ### Azure Storage Migration
 
-When migrating from the legacy Azure storage client to the new Thanos-based client, no changes are required if you are using the following parameters:
+When migrating from the legacy [Azure](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#azure_storage_config) storage client to the new Thanos-based client, no changes are required if you are using the following parameters:
 
 {{< responsive-table >}}
 | Legacy Parameter | New Parameter | Required Changes |
