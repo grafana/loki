@@ -8,12 +8,14 @@ weight:
 
 Loki release 3.4 introduces new object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore).
 
-One of the reasons for making this change is to have a consistent storage configuration across Grafana Loki, Grafana Mimir and other telemetry databases from Grafana Labs. If you are already using Grafana Mimir or Pyroscope, you can reuse the storage configuration for setting up Loki.
+One of the reasons for making this change is to have a consistent storage configuration across Grafana Loki, Mimir and other telemetry databases from Grafana Labs. If you are already using Grafana Mimir or Pyroscope, you can reuse the storage configuration for setting up Loki.
 
 This is an opt-in feature with the Loki 3.4 release. In a future release, Thanos will become the default way of configuring storage and the existing storage clients will be deprecated.
 
+{{< admonition type="note" >}}
 The new storage configuration deviates from the existing format. The following sections describe the changes in detail for each provider.
 Refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
+{{< /admonition >}}
 
 ### Enable the new storage clients
 
@@ -50,12 +52,6 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
       gcs:
          bucket_name: "example-bucket"
    ```
-
-{{< admonition type="note" >}}
-Following sections document the steps for migrating the clients. Only some of the commonly used parameters are listed here.
-For a complete list of supported parameters, refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) and compare that to what you are using in your setup.
-{{< /admonition >}}
-
 ### GCS Storage Migration
 
 When migrating from the existing [Google Cloud Storage (GCS)](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#gcs_storage_config) storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
@@ -184,6 +180,7 @@ When migrating from the existing [Azure](https://grafana.com/docs/loki/<LOKI_VER
 | `user_assigned_id` | `user_assigned_id` | No changes required |
 | `connection_string` | `connection_string` | No changes required |
 | `max_retries` | `max_retries` | No changes required |
+| `chunk_delimiter` | `chunk_delimiter` | No changes required |
 {{< /responsive-table >}}
 
 If you are using an authentication method other than storage account key or user-assigned managed identity, you'll have to pass the neccessary credetials using environment variables.
@@ -191,7 +188,7 @@ For more details, refer to [Azure Identity Client Module for Go](https://pkg.go.
 
 ### Filesystem Storage Migration
 
-When migrating from the existing [Filesystem storage](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#filesystem_object_storage_config)
+When migrating from the existing [Filesystem storage](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#local_storage_config)
 client to the new Thanos-based client, update or remove parameters as follows:
 
 {{< responsive-table >}}
