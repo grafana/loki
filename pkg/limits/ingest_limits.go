@@ -432,10 +432,14 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	response := make(map[string]tenantLimits)
 	streams := s.metadata[tenant]
-	var activeStreams uint64
-	recordedStreams := make([]uint64, 0, len(streams))
+
+	var (
+		activeStreams   uint64
+		recordedStreams = make([]uint64, 0, len(streams))
+		response        = make(map[string]tenantLimits)
+	)
+
 	for hash, stream := range streams {
 		// Consider the recorded stream if it's partition
 		// is one of the partitions we are still assigned to.
@@ -448,11 +452,10 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Count active streams and record their status
-		isActive := assigned && stream.lastSeenAt >= cutoff
-		if isActive {
+		if assigned && stream.lastSeenAt >= cutoff {
 			activeStreams++
+			recordedStreams = append(recordedStreams, hash)
 		}
-		recordedStreams = append(recordedStreams, hash)
 	}
 
 	if activeStreams > 0 || len(recordedStreams) > 0 {
