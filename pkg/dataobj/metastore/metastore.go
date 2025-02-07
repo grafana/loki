@@ -102,9 +102,14 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
 				m.buf.Reset()
-				_, err := io.Copy(m.buf, existing)
-				if err != nil {
-					return nil, errors.Wrap(err, "copying to local buffer")
+				if existing != nil {
+					level.Debug(m.logger).Log("msg", "found existing metastore, updating", "path", metastorePath)
+					_, err := io.Copy(m.buf, existing)
+					if err != nil {
+						return nil, errors.Wrap(err, "copying to local buffer")
+					}
+				} else {
+					level.Debug(m.logger).Log("msg", "no existing metastore found, creating new one", "path", metastorePath)
 				}
 
 				m.metastoreBuilder.Reset()
