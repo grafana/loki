@@ -102,6 +102,15 @@ type (
 
 type PolicyWithRetentionWithBytes map[string]map[time.Duration]int64
 
+func newPushStats() *Stats {
+	return &Stats{
+		LogLinesBytes:                   map[string]map[time.Duration]int64{},
+		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
+		PolicyNumLines:                  map[string]int64{},
+		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
+	}
+}
+
 type Stats struct {
 	Errs                            []error
 	PolicyNumLines                  map[string]int64
