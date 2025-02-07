@@ -39,7 +39,7 @@ func NewGroupClient(kafkaCfg kafka.Config, partitionRing ring.PartitionRingReade
 		kgo.ConsumerGroup(groupName),
 		kgo.ConsumeRegex(),
 		kgo.ConsumeTopics(kafkaCfg.Topic),
-		kgo.Balancers(NewCooperativeActiveStickyBalancer(partitionRing)),
+		//kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		kgo.DisableAutoCommit(),
 		kgo.RebalanceTimeout(5 * time.Minute),
