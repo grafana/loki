@@ -31,7 +31,7 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 		"policy3": []*PriorityStream{
 			{
 				Selector: `{qyx="qzx", qox="qox"}`,
-				Priority: 1,
+				Priority: 2,
 				Matchers: []*labels.Matcher{
 					labels.MustNewMatcher(labels.MatchEqual, "qyx", "qzx"),
 					labels.MustNewMatcher(labels.MatchEqual, "qox", "qox"),
