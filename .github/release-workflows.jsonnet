@@ -40,7 +40,7 @@ local weeklyImageJobs = {
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail', platform=platforms.all),
 };
 
-local lambdaPromtailJob = 
+local lambdaPromtailJob =
   job.new()
   + job.withNeeds(['check'])
   + job.withEnv({
@@ -52,10 +52,10 @@ local lambdaPromtailJob =
     REPO: 'loki',
   })
   + job.withOutputs({
-    'image_digest_linux_amd64': '${{ steps.digest.outputs.digest_linux_amd64 }}',
-    'image_digest_linux_arm64': '${{ steps.digest.outputs.digest_linux_arm64 }}',
-    'image_name': '${{ steps.weekly-version.outputs.image_name }}',
-    'image_tag': '${{ steps.weekly-version.outputs.image_version }}',
+    image_digest_linux_amd64: '${{ steps.digest.outputs.digest_linux_amd64 }}',
+    image_digest_linux_arm64: '${{ steps.digest.outputs.digest_linux_arm64 }}',
+    image_name: '${{ steps.weekly-version.outputs.image_name }}',
+    image_tag: '${{ steps.weekly-version.outputs.image_version }}',
   })
   + job.withStrategy({
     'fail-fast': true,
