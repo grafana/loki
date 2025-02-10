@@ -30,7 +30,7 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
          bucket_name: "example-bucket"
    ```
 
-1. As an alternative, you can also configure the new clients in the common storage section if you prefer to use the common config section.
+1. As an alternative, you can also configure the new clients in the common `storage` section if you prefer to use the `common` config section.
 
    ```yaml
    storage_config:
@@ -70,7 +70,7 @@ When migrating from the existing [Google Cloud Storage (GCS)](https://grafana.co
 
 **Example configuration migration (GCS):**
 
-Existing configuration:
+_**Existing configuration:**_
 
 ```yaml
 storage_config:
@@ -80,7 +80,7 @@ storage_config:
     enable_retries: true
 ```
 
-New configuration (Thanos-based):
+_**New configuration**_ (Thanos-based):
 
 ```yaml
 storage_config:
@@ -118,7 +118,7 @@ When migrating from the existing [Amazon S3](https://grafana.com/docs/loki/<LOKI
 
 **Example configuration migration (S3):**
 
-_**Existing**_
+_**Existing configuration**_
 
 ```yaml
 storage_config:
@@ -142,7 +142,7 @@ storage_config:
       kms_key_id: mySSEKey
 ```
 
-_**New** (Thanos-based)_
+_**New configuration** (Thanos-based)_
 
 ```yaml
 storage_config:
@@ -199,7 +199,7 @@ client to the new Thanos-based client, update or remove parameters as follows:
 
 **Example configuration migration (Filesystem):**
 
-_**Existing** (`FSConfig`)_
+_**Existing configuration** (`FSConfig`)_
 
 ```yaml
 storage_config:
@@ -207,7 +207,7 @@ storage_config:
     directory: /var/loki/chunks
 ```
 
-_**New** (Thanos-based)_
+_**New configuration** (Thanos-based)_
 
 ```yaml
 storage_config:

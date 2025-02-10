@@ -1,5 +1,6 @@
 ---
 title: "Configuration examples for using Thanos-based storage clients"
+menuTitle: Thanos storage examples
 description: "Minimal examples for using Thanos-based S3, GCS, Azure, and filesystem clients in Grafana Loki."
 weight: 100
 ---
@@ -40,7 +41,7 @@ storage_config:
       endpoint: s3.us-west-2.amazonaws.com
       region: us-west-2
       # You can either declare the access key and secret in the config or
-      # use environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY which will be picked up by AWS SDK.
+      # use environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY which will be picked up by the AWS SDK.
       access_key_id: access-key-id
       secret_access_key: secret-access-key
 ```
