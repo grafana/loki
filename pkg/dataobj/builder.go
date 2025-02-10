@@ -110,8 +110,6 @@ type Builder struct {
 	logs    *logs.Logs
 
 	state builderState
-
-	encoder *encoding.Encoder
 }
 
 type builderState int
@@ -160,8 +158,6 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 			BufferSize:   int(cfg.BufferSize),
 			SectionSize:  int(cfg.TargetSectionSize),
 		}),
-
-		encoder: encoding.NewEncoder(nil),
 	}, nil
 }
 
@@ -290,13 +286,15 @@ func (b *Builder) buildObject(output *bytes.Buffer) error {
 
 	initialBufferSize := output.Len()
 
-	b.encoder.Reset(output)
+	enc := encoderPool.Get().(*encoding.Encoder)
+	enc.Reset(output)
+	defer encoderPool.Put(enc)
 
-	if err := b.streams.EncodeTo(b.encoder); err != nil {
+	if err := b.streams.EncodeTo(enc); err != nil {
 		return fmt.Errorf("encoding streams: %w", err)
-	} else if err := b.logs.EncodeTo(b.encoder); err != nil {
+	} else if err := b.logs.EncodeTo(enc); err != nil {
 		return fmt.Errorf("encoding logs: %w", err)
-	} else if err := b.encoder.Flush(); err != nil {
+	} else if err := enc.Flush(); err != nil {
 		return fmt.Errorf("encoding object: %w", err)
 	}
 
