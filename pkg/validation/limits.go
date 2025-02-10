@@ -227,10 +227,12 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionUntil      dskit_flagext.Time  `yaml:"block_ingestion_until" json:"block_ingestion_until"`
-	BlockIngestionStatusCode int                 `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
-	EnforcedLabels           []string            `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
-	PolicyStreamMapping      PolicyStreamMapping `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
+	BlockIngestionUntil            dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionStatusCode       int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
+	BlockIngestionPolicyUntil      map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until"`
+	BlockIngestionPolicyStatusCode map[string]int                `yaml:"block_ingestion_policy_status_code" json:"block_ingestion_policy_status_code"`
+	EnforcedLabels                 []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
+	PolicyStreamMapping            PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -1118,6 +1120,32 @@ func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
 
 func (o *Overrides) BlockIngestionStatusCode(userID string) int {
 	return o.getOverridesForUser(userID).BlockIngestionStatusCode
+}
+
+func (o *Overrides) BlockIngestionPolicyUntil(userID string, policy string) time.Time {
+	limits := o.getOverridesForUser(userID)
+	if limits == nil || limits.BlockIngestionPolicyUntil == nil {
+		return time.Time{} // Zero time means no blocking
+	}
+
+	if blockUntil, ok := limits.BlockIngestionPolicyUntil[policy]; ok {
+		return time.Time(blockUntil)
+	}
+	return time.Time{} // Zero time means no blocking
+}
+
+// BlockIngestionPolicyStatusCode returns the status code to use when blocking ingestion for a given policy.
+func (o *Overrides) BlockIngestionPolicyStatusCode(userID string, policy string) int {
+	limits := o.getOverridesForUser(userID)
+	if limits == nil {
+		return defaultBlockedIngestionStatusCode
+	}
+
+	if statusCode, ok := limits.BlockIngestionPolicyStatusCode[policy]; ok {
+		return statusCode
+	}
+
+	return defaultBlockedIngestionStatusCode
 }
 
 func (o *Overrides) EnforcedLabels(userID string) []string {

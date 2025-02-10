@@ -17,11 +17,10 @@ import (
 
 	otlptranslate "github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheus"
 
-	"github.com/grafana/loki/pkg/push"
-
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
@@ -38,6 +37,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -1669,6 +1669,116 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 				expectedErr := fmt.Sprintf(validation.BlockedIngestionErrorMsg, "test", tc.blockUntil.Format(time.RFC3339), tc.blockStatusCode)
 				require.ErrorContains(t, err, expectedErr)
 				require.Nil(t, response)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, success, response)
+			}
+		})
+	}
+}
+
+func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
+	now := time.Now()
+
+	for _, tc := range []struct {
+		name             string
+		blockUntil       map[string]time.Time
+		blockStatusCode  map[string]int
+		policy           string
+		labels           string
+		expectError      bool
+		expectedErrorMsg string
+	}{
+		{
+			name:        "not blocked - no policy block configured",
+			policy:      "test-policy",
+			labels:      `{foo="bar"}`,
+			expectError: false,
+		},
+		{
+			name: "not blocked - policy block expired",
+			blockUntil: map[string]time.Time{
+				"test-policy": now.Add(-1 * time.Hour),
+			},
+			blockStatusCode: map[string]int{
+				"test-policy": 429,
+			},
+			policy:      "test-policy",
+			labels:      `{foo="bar"}`,
+			expectError: false,
+		},
+		{
+			name: "blocked - policy block active",
+			blockUntil: map[string]time.Time{
+				"test-policy": now.Add(1 * time.Hour),
+			},
+			blockStatusCode: map[string]int{
+				"test-policy": 429,
+			},
+			policy:           "test-policy",
+			labels:           `{foo="bar"}`,
+			expectError:      true,
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), 429),
+		},
+		{
+			name: "not blocked - different policy",
+			blockUntil: map[string]time.Time{
+				"blocked-policy": now.Add(1 * time.Hour),
+			},
+			blockStatusCode: map[string]int{
+				"blocked-policy": 429,
+			},
+			policy:      "test-policy",
+			labels:      `{foo="bar"}`,
+			expectError: false,
+		},
+		{
+			name: "blocked - custom status code",
+			blockUntil: map[string]time.Time{
+				"test-policy": now.Add(1 * time.Hour),
+			},
+			blockStatusCode: map[string]int{
+				"test-policy": 456,
+			},
+			policy:           "test-policy",
+			labels:           `{foo="bar"}`,
+			expectError:      true,
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), 456),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+
+			// Configure policy mapping
+			limits.PolicyStreamMapping = validation.PolicyStreamMapping{
+				tc.policy: []*validation.PriorityStream{
+					{
+						Selector: tc.labels,
+						Priority: 1,
+					},
+				},
+			}
+
+			// Configure policy blocks
+			if tc.blockUntil != nil {
+				limits.BlockIngestionPolicyUntil = make(map[string]dskit_flagext.Time)
+				for policy, until := range tc.blockUntil {
+					limits.BlockIngestionPolicyUntil[policy] = dskit_flagext.Time(until)
+				}
+			}
+
+			if tc.blockStatusCode != nil {
+				limits.BlockIngestionPolicyStatusCode = tc.blockStatusCode
+			}
+
+			distributors, _ := prepare(t, 1, 5, limits, nil)
+			request := makeWriteRequestWithLabels(1, 1024, []string{tc.labels}, false, false, false)
+			response, err := distributors[0].Push(ctx, request)
+
+			if tc.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErrorMsg)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)

@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
+	dskit_flagext "github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/compactor/deletionmode"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -226,9 +228,11 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:          defaultOTLPConfig,
-				EnforcedLabels:      []string{},
-				PolicyStreamMapping: PolicyStreamMapping{},
+				OTLPConfig:                     defaultOTLPConfig,
+				EnforcedLabels:                 []string{},
+				PolicyStreamMapping:            PolicyStreamMapping{},
+				BlockIngestionPolicyStatusCode: map[string]int{},
+				BlockIngestionPolicyUntil:      map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -247,9 +251,11 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:          defaultOTLPConfig,
-				EnforcedLabels:      []string{},
-				PolicyStreamMapping: PolicyStreamMapping{},
+				OTLPConfig:                     defaultOTLPConfig,
+				EnforcedLabels:                 []string{},
+				PolicyStreamMapping:            PolicyStreamMapping{},
+				BlockIngestionPolicyStatusCode: map[string]int{},
+				BlockIngestionPolicyUntil:      map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -271,10 +277,12 @@ retention_stream:
 				},
 
 				// Rest from new defaults
-				RulerRemoteWriteHeaders: OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
-				OTLPConfig:              defaultOTLPConfig,
-				EnforcedLabels:          []string{},
-				PolicyStreamMapping:     PolicyStreamMapping{},
+				RulerRemoteWriteHeaders:        OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
+				OTLPConfig:                     defaultOTLPConfig,
+				EnforcedLabels:                 []string{},
+				PolicyStreamMapping:            PolicyStreamMapping{},
+				BlockIngestionPolicyStatusCode: map[string]int{},
+				BlockIngestionPolicyUntil:      map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -296,9 +304,11 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:          defaultOTLPConfig,
-				EnforcedLabels:      []string{},
-				PolicyStreamMapping: PolicyStreamMapping{},
+				OTLPConfig:                     defaultOTLPConfig,
+				EnforcedLabels:                 []string{},
+				PolicyStreamMapping:            PolicyStreamMapping{},
+				BlockIngestionPolicyStatusCode: map[string]int{},
+				BlockIngestionPolicyUntil:      map[string]dskit_flagext.Time{},
 			},
 		},
 		{
@@ -321,9 +331,11 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:          defaultOTLPConfig,
-				EnforcedLabels:      []string{},
-				PolicyStreamMapping: PolicyStreamMapping{},
+				OTLPConfig:                     defaultOTLPConfig,
+				EnforcedLabels:                 []string{},
+				PolicyStreamMapping:            PolicyStreamMapping{},
+				BlockIngestionPolicyStatusCode: map[string]int{},
+				BlockIngestionPolicyUntil:      map[string]dskit_flagext.Time{},
 			},
 		},
 	} {
