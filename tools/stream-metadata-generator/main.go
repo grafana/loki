@@ -348,8 +348,7 @@ func (s *generator) running(ctx context.Context) error {
 					if client != nil {
 						resp, err := client.ExceedsLimits(userCtx, req)
 						if err != nil {
-							errCh <- errors.Wrapf(err, "failed to check limits for tenant %s", tenantID)
-							return
+							level.Error(s.logger).Log("msg", "Stream exceeds limits", "tenant", tenantID, "stream", streamIdx, "error", err)
 						}
 
 						if len(resp.RejectedStreams) > 0 {
