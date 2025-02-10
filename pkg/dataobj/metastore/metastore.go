@@ -126,7 +126,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 				encodingDuration := prometheus.NewTimer(m.metrics.metastoreEncodingTime)
 
 				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), dataobjPath)
-				err = m.metastoreBuilder.Append(logproto.Stream{
+				err := m.metastoreBuilder.Append(logproto.Stream{
 					Labels:  ls,
 					Entries: []logproto.Entry{{Line: ""}},
 				})
