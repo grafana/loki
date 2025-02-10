@@ -53,7 +53,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return plog.NewLogs()
 			},
 			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
+			expectedStats:       *NewPushStats(),
 			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
@@ -64,7 +64,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return ld
 			},
 			expectedPushRequest: logproto.PushRequest{},
-			expectedStats:       *newPushStats(),
+			expectedStats:       *NewPushStats(),
 			otlpConfig:          DefaultOTLPConfig(defaultGlobalOTLPConfig),
 		},
 		{
@@ -92,12 +92,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 1,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 9,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 0,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: nil,
@@ -131,12 +137,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				PolicyNumLines: map[string]int64{
+					"others": 1,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 9,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 0,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: nil,
@@ -170,12 +182,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 1,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 9,
+				PolicyNumLines: map[string]int64{
+					"others": 1,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 0,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 9,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"others": {
+						time.Hour: 0,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: nil,
@@ -248,12 +266,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 2,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 37,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 26,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 37,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: []push.LabelAdapter{
@@ -339,12 +363,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 2,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 97,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 26,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 97,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: []push.LabelAdapter{
@@ -490,12 +520,18 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				},
 			},
 			expectedStats: Stats{
-				NumLines: 2,
-				LogLinesBytes: map[time.Duration]int64{
-					time.Hour: 26,
+				PolicyNumLines: map[string]int64{
+					"service-1-policy": 2,
 				},
-				StructuredMetadataBytes: map[time.Duration]int64{
-					time.Hour: 113,
+				LogLinesBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 26,
+					},
+				},
+				StructuredMetadataBytes: PolicyWithRetentionWithBytes{
+					"service-1-policy": {
+						time.Hour: 113,
+					},
 				},
 				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
 					time.Hour: []push.LabelAdapter{
@@ -511,8 +547,9 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stats := newPushStats()
+			stats := NewPushStats()
 			tracker := NewMockTracker()
+
 			pushReq := otlpToLokiPushRequest(
 				context.Background(),
 				tc.generateLogs(),
@@ -524,16 +561,26 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				stats,
 				false,
 				log.NewNopLogger(),
+				func(_ string, lbs labels.Labels) string {
+					if lbs.Get("service_name") == "service-1" {
+						return "service-1-policy"
+					}
+					return "others"
+				},
 			)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 
 			totalBytes := 0.0
-			for _, b := range stats.LogLinesBytes {
-				totalBytes += float64(b)
+			for _, policyMapping := range stats.LogLinesBytes {
+				for _, b := range policyMapping {
+					totalBytes += float64(b)
+				}
 			}
-			for _, b := range stats.StructuredMetadataBytes {
-				totalBytes += float64(b)
+			for _, policyMapping := range stats.StructuredMetadataBytes {
+				for _, b := range policyMapping {
+					totalBytes += float64(b)
+				}
 			}
 			require.Equal(t, totalBytes, tracker.Total(), "Total tracked bytes must equal total bytes of the stats.")
 		})
