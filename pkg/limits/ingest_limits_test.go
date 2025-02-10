@@ -33,7 +33,7 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 		tenant                 string
 		partitions             []int32
 		streamHashes           []uint64
-		setupMetadata          map[string]map[uint64]streamMetadata
+		setupMetadata          map[string]map[int32][]streamMetadata
 		windowSize             time.Duration
 		expectedActive         uint64
 		expectedUnknownStreams []uint64
@@ -43,10 +43,12 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			tenant:       "tenant1",
 			partitions:   []int32{0},
 			streamHashes: []uint64{4, 5},
-			setupMetadata: map[string]map[uint64]streamMetadata{
+			setupMetadata: map[string]map[int32][]streamMetadata{
 				"tenant2": {
-					4: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					5: {partition: 0, lastSeenAt: time.Now().UnixNano()},
+					0: []streamMetadata{
+						{hash: 4, lastSeenAt: time.Now().UnixNano()},
+						{hash: 5, lastSeenAt: time.Now().UnixNano()},
+					},
 				},
 			},
 			windowSize:     time.Hour,
@@ -57,12 +59,14 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			tenant:       "tenant1",
 			partitions:   []int32{0},
 			streamHashes: []uint64{1, 2, 3, 4},
-			setupMetadata: map[string]map[uint64]streamMetadata{
+			setupMetadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
-					1: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					2: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					3: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					4: {partition: 0, lastSeenAt: time.Now().UnixNano()},
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano()},
+						{hash: 2, lastSeenAt: time.Now().UnixNano()},
+						{hash: 3, lastSeenAt: time.Now().UnixNano()},
+						{hash: 4, lastSeenAt: time.Now().UnixNano()},
+					},
 				},
 			},
 			windowSize:     time.Hour,
@@ -72,14 +76,16 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			name:         "mixed active and expired streams",
 			tenant:       "tenant1",
 			partitions:   []int32{0},
-			streamHashes: []uint64{1, 2, 3, 4, 5},
-			setupMetadata: map[string]map[uint64]streamMetadata{
+			streamHashes: []uint64{1, 3, 5},
+			setupMetadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
-					1: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					2: {partition: 0, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()}, // expired
-					3: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					4: {partition: 0, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()}, // expired
-					5: {partition: 0, lastSeenAt: time.Now().UnixNano()},                     // Additional active stream
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano()},
+						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()}, // expired
+						{hash: 3, lastSeenAt: time.Now().UnixNano()},
+						{hash: 4, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()}, // expired
+						{hash: 5, lastSeenAt: time.Now().UnixNano()},                     // Additional active stream
+					},
 				},
 			},
 			windowSize:     time.Hour,
@@ -88,10 +94,12 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 		{
 			name:   "all streams expired",
 			tenant: "tenant1",
-			setupMetadata: map[string]map[uint64]streamMetadata{
+			setupMetadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
-					1: {partition: 0, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()},
-					2: {partition: 0, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()},
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()},
+						{hash: 2, lastSeenAt: time.Now().Add(-2 * time.Hour).UnixNano()},
+					},
 				},
 			},
 			windowSize:     time.Hour,
@@ -102,10 +110,12 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			tenant:       "tenant1",
 			partitions:   []int32{0},
 			streamHashes: []uint64{},
-			setupMetadata: map[string]map[uint64]streamMetadata{
+			setupMetadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
-					1: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					2: {partition: 0, lastSeenAt: time.Now().UnixNano()},
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano()},
+						{hash: 2, lastSeenAt: time.Now().UnixNano()},
+					},
 				},
 			},
 			windowSize:     time.Hour,
@@ -116,13 +126,15 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 			tenant:       "tenant1",
 			partitions:   []int32{0},
 			streamHashes: []uint64{6, 7, 8},
-			setupMetadata: map[string]map[uint64]streamMetadata{
+			setupMetadata: map[string]map[int32][]streamMetadata{
 				"tenant1": {
-					1: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					2: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					3: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					4: {partition: 0, lastSeenAt: time.Now().UnixNano()},
-					5: {partition: 0, lastSeenAt: time.Now().UnixNano()},
+					0: []streamMetadata{
+						{hash: 1, lastSeenAt: time.Now().UnixNano()},
+						{hash: 2, lastSeenAt: time.Now().UnixNano()},
+						{hash: 3, lastSeenAt: time.Now().UnixNano()},
+						{hash: 4, lastSeenAt: time.Now().UnixNano()},
+						{hash: 5, lastSeenAt: time.Now().UnixNano()},
+					},
 				},
 			},
 			windowSize:             time.Hour,
@@ -179,13 +191,15 @@ func TestIngestLimits_GetStreamUsage(t *testing.T) {
 func TestIngestLimits_GetStreamUsage_Concurrent(t *testing.T) {
 	// Setup test data with a mix of active and expired streams
 	now := time.Now()
-	metadata := map[string]map[uint64]streamMetadata{
+	metadata := map[string]map[int32][]streamMetadata{
 		"tenant1": {
-			1: {partition: 0, lastSeenAt: now.UnixNano()},                        // active
-			2: {partition: 0, lastSeenAt: now.Add(-30 * time.Minute).UnixNano()}, // active
-			3: {partition: 0, lastSeenAt: now.Add(-2 * time.Hour).UnixNano()},    // expired
-			4: {partition: 0, lastSeenAt: now.Add(-45 * time.Minute).UnixNano()}, // active
-			5: {partition: 0, lastSeenAt: now.Add(-3 * time.Hour).UnixNano()},    // expired
+			0: []streamMetadata{
+				{hash: 1, lastSeenAt: now.UnixNano()},                        // active
+				{hash: 2, lastSeenAt: now.Add(-30 * time.Minute).UnixNano()}, // active
+				{hash: 3, lastSeenAt: now.Add(-2 * time.Hour).UnixNano()},    // expired
+				{hash: 4, lastSeenAt: now.Add(-45 * time.Minute).UnixNano()}, // active
+				{hash: 5, lastSeenAt: now.Add(-3 * time.Hour).UnixNano()},    // expired
+			},
 		},
 	}
 
