@@ -457,26 +457,37 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 
+	// enforced labels configured, but all labels are missing.
 	// makeWriteRequest only contains a `{foo="bar"}` label.
 	req := makeWriteRequest(100, 100)
 	limits.EnforcedLabels = []string{"app", "env"}
 	distributors, _ := prepare(t, 1, 3, limits, nil)
-	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
-	require.Error(t, err)
-	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test")
-	require.EqualError(t, err, expectedErr.Error())
+	require.NoError(t, err) // no error, we don't want the request to be retried.
+	require.EqualValues(t, 10000, testutil.ToFloat64(validation.DiscardedBytes))
+	require.EqualValues(t, 100, testutil.ToFloat64(validation.DiscardedSamples))
 
 	// enforced labels, but all labels are present.
 	req = makeWriteRequestWithLabels(100, 100, []string{`{app="foo", env="prod"}`}, false, false, false)
 	_, err = distributors[0].Push(ctx, req)
-	require.NoError(t, err)
+	require.NoError(t, err) // no error, we don't want the request to be retried.
+	require.EqualValues(t, 10000, testutil.ToFloat64(validation.DiscardedBytes))
+	require.EqualValues(t, 100, testutil.ToFloat64(validation.DiscardedSamples))
+
+	// push missing labels again.
+	req = makeWriteRequest(100, 100)
+	_, err = distributors[0].Push(ctx, req)
+	require.NoError(t, err) // no error, we don't want the request to be retried.
+	require.EqualValues(t, 20000, testutil.ToFloat64(validation.DiscardedBytes))
+	require.EqualValues(t, 200, testutil.ToFloat64(validation.DiscardedSamples))
 
 	// no enforced labels, so no errors.
 	limits.EnforcedLabels = []string{}
 	distributors, _ = prepare(t, 1, 3, limits, nil)
 	_, err = distributors[0].Push(ctx, req)
-	require.NoError(t, err)
+	require.NoError(t, err) // no error, we don't want the request to be retried.
+	require.EqualValues(t, 20000, testutil.ToFloat64(validation.DiscardedBytes))
+	require.EqualValues(t, 200, testutil.ToFloat64(validation.DiscardedSamples))
 }
 
 func TestDistributorPushConcurrently(t *testing.T) {

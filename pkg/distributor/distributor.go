@@ -548,8 +548,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
+				// we don't add this error to validationErrors because we want to continue processing the stream
+				// and don't want the reqeust to be retried, as the retried request will still miss the enforced label.
 				d.writeFailuresManager.Log(tenantID, err)
-				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
 				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(discardedBytes))
