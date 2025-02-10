@@ -460,24 +460,25 @@ func (s *IngestLimits) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		response        = make(map[string]tenantLimits)
 	)
 
-	for assignedID, streams := range partitions {
-		// Consider only the requested partitions
-		// that we are still assigned to.
+	for _, requestedID := range requestedPartitions {
+		// Consider the recorded stream if it's partition
+		// is one of the partitions we are still assigned to.
 		assigned := false
-		for _, requestedID := range requestedPartitions {
+		for assignedID := range partitions {
 			if requestedID == assignedID {
 				assigned = true
 				break
 			}
 		}
 
-		// If the partition is not assigned, skip it
 		if !assigned {
 			continue
 		}
 
-		// Count active streams and record their status
-		for _, stream := range streams {
+		// If the stream is written into a partition we are
+		// assigned to and has been seen within the window,
+		// it is an active stream.
+		for _, stream := range partitions[requestedID] {
 			if stream.lastSeenAt >= cutoff {
 				activeStreams++
 				assignedStreams = append(assignedStreams, stream.hash)
@@ -531,44 +532,43 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// the streams that have been seen within the
 	// window
 	var activeStreams uint64
-	for assignedID, streams := range partitions {
+	for _, requestedID := range req.Partitions {
 		// Consider the recorded stream if it's partition
 		// is one of the partitions we are still assigned to.
 		assigned := false
-		for _, requestedID := range req.Partitions {
+		for assignedID := range partitions {
 			if requestedID == assignedID {
 				assigned = true
 				break
 			}
 		}
 
-		// If the stream is written into a partition we are
-		// assigned to and has been seen within the window,
-		// it is an active stream.
 		if !assigned {
 			continue
 		}
 
-		for _, stream := range streams {
+		// If the stream is written into a partition we are
+		// assigned to and has been seen within the window,
+		// it is an active stream.
+		for _, stream := range partitions[requestedID] {
 			if stream.lastSeenAt >= cutoff {
 				activeStreams++
 			}
 		}
 	}
 
+	// Get the unknown streams
 	var unknownStreams []uint64
 	for _, reqHash := range req.StreamHashes {
 		found := false
 
+	outer:
 		for _, streams := range partitions {
 			for _, stream := range streams {
 				if stream.hash == reqHash && stream.lastSeenAt >= cutoff {
 					found = true
-					break
+					break outer
 				}
-			}
-			if found {
-				break
 			}
 		}
 
