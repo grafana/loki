@@ -389,13 +389,14 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 				hash:       rec.StreamHash,
 				lastSeenAt: recordTime,
 			}
-		} else {
-			s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
-				hash:       rec.StreamHash,
-				lastSeenAt: recordTime,
-			})
+			return
 		}
 	}
+
+	s.metadata[tenant][partition] = append(s.metadata[tenant][partition], streamMetadata{
+		hash:       rec.StreamHash,
+		lastSeenAt: recordTime,
+	})
 }
 
 // stopping implements the Service interface's stopping method.
