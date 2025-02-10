@@ -609,26 +609,35 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 
 // Upload the contents of the reader as an object into the bucket.
 func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
-	var requireNewObject bool
+	var missing bool
 	originalContent, err := b.getRange(ctx, name, 0, -1)
-	if err != nil && !b.IsObjNotFoundErr(err) {
-		return err
-	} else if b.IsObjNotFoundErr(err) {
-		requireNewObject = true
+	if err != nil {
+		if !b.IsObjNotFoundErr(err) {
+			return err
+		}
+		missing = true
+	}
+
+	// redefine the callback reader so a nil originalContent (with concrete type but no value)
+	// doesn't pass nil-checks in the callback
+	var reader io.Reader
+	var etag string
+	if !missing {
+		reader = originalContent
+		stats, err := originalContent.Stat()
+		if err != nil {
+			return err
+		}
+		etag = stats.ETag
 	}
 
 	// Call work function to get a new version of the file
-	newContent, err := f(originalContent)
+	newContent, err := f(reader)
 	if err != nil {
 		return err
 	}
 
-	stats, err := originalContent.Stat()
-	if err != nil {
-		return err
-	}
-
-	return b.upload(ctx, name, newContent, stats.ETag, requireNewObject)
+	return b.upload(ctx, name, newContent, etag, missing)
 }
 
 // Attributes returns information about the specified object.
