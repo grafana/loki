@@ -12,6 +12,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
@@ -101,9 +102,14 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 		for m.backoff.Ongoing() {
 			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.Reader) (io.Reader, error) {
 				m.buf.Reset()
-				_, err := io.Copy(m.buf, existing)
-				if err != nil {
-					return nil, err
+				if existing != nil {
+					level.Debug(m.logger).Log("msg", "found existing metastore, updating", "path", metastorePath)
+					_, err := io.Copy(m.buf, existing)
+					if err != nil {
+						return nil, errors.Wrap(err, "copying to local buffer")
+					}
+				} else {
+					level.Debug(m.logger).Log("msg", "no existing metastore found, creating new one", "path", metastorePath)
 				}
 
 				m.metastoreBuilder.Reset()
@@ -112,7 +118,7 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 					replayDuration := prometheus.NewTimer(m.metrics.metastoreReplayTime)
 					object := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
 					if err := m.readFromExisting(ctx, object); err != nil {
-						return nil, err
+						return nil, errors.Wrap(err, "reading existing metastore version")
 					}
 					replayDuration.ObserveDuration()
 				}
@@ -120,28 +126,29 @@ func (m *Manager) UpdateMetastore(ctx context.Context, dataobjPath string, flush
 				encodingDuration := prometheus.NewTimer(m.metrics.metastoreEncodingTime)
 
 				ls := fmt.Sprintf("{__start__=\"%d\", __end__=\"%d\", __path__=\"%s\"}", minTimestamp.UnixNano(), maxTimestamp.UnixNano(), dataobjPath)
-				err = m.metastoreBuilder.Append(logproto.Stream{
+				err := m.metastoreBuilder.Append(logproto.Stream{
 					Labels:  ls,
 					Entries: []logproto.Entry{{Line: ""}},
 				})
 				if err != nil {
-					return nil, err
+					return nil, errors.Wrap(err, "appending internal metadata stream")
 				}
 
 				m.buf.Reset()
 				_, err = m.metastoreBuilder.Flush(m.buf)
 				if err != nil {
-					return nil, err
+					return nil, errors.Wrap(err, "flushing metastore builder")
 				}
 				encodingDuration.ObserveDuration()
 				return m.buf, nil
 			})
 			if err == nil {
 				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)
+				m.metrics.incMetastoreWrites(statusSuccess)
 				break
 			}
 			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", metastorePath)
-			m.metrics.incMetastoreWriteFailures()
+			m.metrics.incMetastoreWrites(statusFailure)
 			m.backoff.Wait()
 		}
 		// Reset at the end too so we don't leave our memory hanging around between calls.
@@ -155,7 +162,7 @@ func (m *Manager) readFromExisting(ctx context.Context, object *dataobj.Object) 
 	// Fetch sections
 	si, err := object.Metadata(ctx)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "resolving object metadata")
 	}
 
 	// Read streams from existing metastore object and write them to the builder for the new object
@@ -164,7 +171,7 @@ func (m *Manager) readFromExisting(ctx context.Context, object *dataobj.Object) 
 		streamsReader := dataobj.NewStreamsReader(object, i)
 		for n, err := streamsReader.Read(ctx, streams); n > 0; n, err = streamsReader.Read(ctx, streams) {
 			if err != nil && err != io.EOF {
-				return err
+				return errors.Wrap(err, "reading streams")
 			}
 			for _, stream := range streams[:n] {
 				err = m.metastoreBuilder.Append(logproto.Stream{
@@ -172,7 +179,7 @@ func (m *Manager) readFromExisting(ctx context.Context, object *dataobj.Object) 
 					Entries: []logproto.Entry{{Line: ""}},
 				})
 				if err != nil {
-					return err
+					return errors.Wrap(err, "appending streams")
 				}
 			}
 		}

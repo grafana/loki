@@ -6,11 +6,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+type status string
+
+const (
+	statusSuccess status = "success"
+	statusFailure status = "failure"
+)
+
 type metastoreMetrics struct {
 	metastoreProcessingTime prometheus.Histogram
 	metastoreReplayTime     prometheus.Histogram
 	metastoreEncodingTime   prometheus.Histogram
-	metastoreWriteFailures  prometheus.Counter
+	metastoreWriteFailures  *prometheus.CounterVec
 }
 
 func newMetastoreMetrics() *metastoreMetrics {
@@ -39,10 +46,10 @@ func newMetastoreMetrics() *metastoreMetrics {
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		metastoreWriteFailures: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_metastore_write_failures_total",
+		metastoreWriteFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_metastore_writes_total",
 			Help: "Total number of metastore write failures",
-		}),
+		}, []string{"status"}),
 	}
 
 	return metrics
@@ -79,8 +86,8 @@ func (p *metastoreMetrics) unregister(reg prometheus.Registerer) {
 	}
 }
 
-func (p *metastoreMetrics) incMetastoreWriteFailures() {
-	p.metastoreWriteFailures.Inc()
+func (p *metastoreMetrics) incMetastoreWrites(status status) {
+	p.metastoreWriteFailures.WithLabelValues(string(status)).Inc()
 }
 
 func (p *metastoreMetrics) observeMetastoreReplay(recordTimestamp time.Time) {
