@@ -52,6 +52,17 @@ Refer to the [Thanos storage configuration reference](https://grafana.com/docs/l
       gcs:
          bucket_name: "example-bucket"
    ```
+
+1. If you are using `store.object-prefix` flag or the corresponding `object_prefix` YAML setting, you'll need to update your configuration to use the new `object_store.storage-prefix` flag or the corresponding `storage_prefix` YAML setting.
+
+   ```yaml
+   # Example configuration to prefix all objects with "prefix"
+   storage_config:
+      use_thanos_objstore: true # enable the new storage clients
+      object_store:
+         storage_prefix: "prefix"
+   ```
+
 ### GCS Storage Migration
 
 When migrating from the existing [Google Cloud Storage (GCS)](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#gcs_storage_config) storage client to the new Thanos-based client, you'll need to update your configuration parameters as follows:
