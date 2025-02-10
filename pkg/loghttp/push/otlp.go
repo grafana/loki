@@ -35,22 +35,14 @@ const (
 	OTLPSeverityNumber = "severity_number"
 )
 
-func newPushStats() *Stats {
-	return &Stats{
-		LogLinesBytes:                   map[time.Duration]int64{},
-		StructuredMetadataBytes:         map[time.Duration]int64{},
-		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
-	}
-}
-
-func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, _ PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
-	stats := newPushStats()
+func ParseOTLPRequest(userID string, r *http.Request, tenantsRetention TenantsRetention, limits Limits, tracker UsageTracker, policyResolver PolicyResolver, logPushRequestStreams bool, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+	stats := NewPushStats()
 	otlpLogs, err := extractLogs(r, stats)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger)
+	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, tenantsRetention, limits.OTLPConfig(userID), limits.DiscoverServiceName(userID), tracker, stats, logPushRequestStreams, logger, policyResolver)
 	return req, stats, nil
 }
 
@@ -101,7 +93,7 @@ func extractLogs(r *http.Request, pushStats *Stats) (plog.Logs, error) {
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, tenantsRetention TenantsRetention, otlpConfig OTLPConfig, discoverServiceName []string, tracker UsageTracker, stats *Stats, logPushRequestStreams bool, logger log.Logger, policyForResolver PolicyResolver) *logproto.PushRequest {
 	if ld.LogRecordCount() == 0 {
 		return &logproto.PushRequest{}
 	}
@@ -196,8 +188,13 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 
 		resourceAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(resourceAttributesAsStructuredMetadata)
 		retentionPeriodForUser := tenantsRetention.RetentionPeriodFor(userID, lbs)
+		policy := policyForResolver(userID, lbs)
 
-		stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
+		if _, ok := stats.StructuredMetadataBytes[policy]; !ok {
+			stats.StructuredMetadataBytes[policy] = make(map[time.Duration]int64)
+		}
+
+		stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += int64(resourceAttributesAsStructuredMetadataSize)
 		totalBytesReceived += int64(resourceAttributesAsStructuredMetadataSize)
 
 		stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], resourceAttributesAsStructuredMetadata...)
@@ -250,7 +247,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 			}
 
 			scopeAttributesAsStructuredMetadataSize := loki_util.StructuredMetadataSize(scopeAttributesAsStructuredMetadata)
-			stats.StructuredMetadataBytes[retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
+			stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += int64(scopeAttributesAsStructuredMetadataSize)
 			totalBytesReceived += int64(scopeAttributesAsStructuredMetadataSize)
 
 			stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
@@ -274,12 +271,15 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, ten
 				pushRequestsByStream[labelsStr] = stream
 
 				metadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata) - resourceAttributesAsStructuredMetadataSize - scopeAttributesAsStructuredMetadataSize)
-				stats.StructuredMetadataBytes[retentionPeriodForUser] += metadataSize
-				stats.LogLinesBytes[retentionPeriodForUser] += int64(len(entry.Line))
+				stats.StructuredMetadataBytes[policy][retentionPeriodForUser] += metadataSize
+				if _, ok := stats.LogLinesBytes[policy]; !ok {
+					stats.LogLinesBytes[policy] = make(map[time.Duration]int64)
+				}
+				stats.LogLinesBytes[policy][retentionPeriodForUser] += int64(len(entry.Line))
 				totalBytesReceived += metadataSize
 				totalBytesReceived += int64(len(entry.Line))
 
-				stats.NumLines++
+				stats.PolicyNumLines[policy]++
 				if entry.Timestamp.After(stats.MostRecentEntryTimestamp) {
 					stats.MostRecentEntryTimestamp = entry.Timestamp
 				}
