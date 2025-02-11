@@ -105,8 +105,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 0,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: nil,
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: nil,
+					},
 				},
 				StreamLabelsSize:         21,
 				MostRecentEntryTimestamp: now,
@@ -150,8 +152,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 0,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: nil,
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"others": {
+						time.Hour: nil,
+					},
 				},
 				StreamLabelsSize:         27,
 				MostRecentEntryTimestamp: now,
@@ -195,8 +199,10 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 0,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: nil,
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"others": {
+						time.Hour: nil,
+					},
 				},
 				StreamLabelsSize:         47,
 				MostRecentEntryTimestamp: now,
@@ -279,11 +285,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 37,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: []push.LabelAdapter{
-						{Name: "service_image", Value: "loki"},
-						{Name: "op", Value: "buzz"},
-						{Name: "scope_name", Value: "fizz"},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: []push.LabelAdapter{
+							{Name: "service_image", Value: "loki"},
+							{Name: "op", Value: "buzz"},
+							{Name: "scope_name", Value: "fizz"},
+						},
 					},
 				},
 				StreamLabelsSize:         21,
@@ -376,11 +384,13 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 97,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: []push.LabelAdapter{
-						{Name: "resource_nested_foo", Value: "bar"},
-						{Name: "scope_nested_foo", Value: "bar"},
-						{Name: "scope_name", Value: "fizz"},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: []push.LabelAdapter{
+							{Name: "resource_nested_foo", Value: "bar"},
+							{Name: "scope_nested_foo", Value: "bar"},
+							{Name: "scope_name", Value: "fizz"},
+						},
 					},
 				},
 				StreamLabelsSize:         21,
@@ -533,12 +543,14 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 						time.Hour: 113,
 					},
 				},
-				ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{
-					time.Hour: []push.LabelAdapter{
-						{Name: "pod_ip", Value: "10.200.200.200"},
-						{Name: "resource_nested_foo", Value: "bar"},
-						{Name: "scope_nested_foo", Value: "bar"},
-						{Name: "scope_name", Value: "fizz"},
+				ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{
+					"service-1-policy": {
+						time.Hour: []push.LabelAdapter{
+							{Name: "pod_ip", Value: "10.200.200.200"},
+							{Name: "resource_nested_foo", Value: "bar"},
+							{Name: "scope_nested_foo", Value: "bar"},
+							{Name: "scope_name", Value: "fizz"},
+						},
 					},
 				},
 				StreamLabelsSize:         42,
