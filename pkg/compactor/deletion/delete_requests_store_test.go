@@ -255,24 +255,22 @@ func TestDeleteRequestsStore_MergeShardedRequests(t *testing.T) {
 		},
 		{ // build requests for 2 different users and mark all requests as processed for just one of the two
 			name: "merging requests from one user should not touch another users requests",
-			reqsToAdd: append(
-				[]storeAddReqDetails{
-					{
-						userID:          user1,
-						query:           `{foo="bar"}`,
-						startTime:       now.Add(-24 * time.Hour),
-						endTime:         now,
-						shardByInterval: time.Hour,
-					},
-					{
-						userID:          user2,
-						query:           `{foo="bar"}`,
-						startTime:       now.Add(-24 * time.Hour),
-						endTime:         now,
-						shardByInterval: time.Hour,
-					},
+			reqsToAdd: []storeAddReqDetails{
+				{
+					userID:          user1,
+					query:           `{foo="bar"}`,
+					startTime:       now.Add(-24 * time.Hour),
+					endTime:         now,
+					shardByInterval: time.Hour,
 				},
-			),
+				{
+					userID:          user2,
+					query:           `{foo="bar"}`,
+					startTime:       now.Add(-24 * time.Hour),
+					endTime:         now,
+					shardByInterval: time.Hour,
+				},
+			},
 			shouldMarkProcessed: func(request DeleteRequest) bool {
 				return request.UserID == user2
 			},

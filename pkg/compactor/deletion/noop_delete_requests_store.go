@@ -2,8 +2,9 @@ package deletion
 
 import (
 	"context"
-	"github.com/prometheus/common/model"
 	"time"
+	
+	"github.com/prometheus/common/model"
 )
 
 func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
@@ -12,7 +13,7 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetDeleteRequest(_ context.Context, _, _ string) (DeleteRequest, error) {
 	return DeleteRequest{}, nil
 }
 
@@ -20,7 +21,7 @@ func (d *noOpDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteReq
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) GetAllShards(ctx context.Context) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetAllShards(_ context.Context) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
@@ -28,7 +29,7 @@ func (d *noOpDeleteRequestsStore) MergeShardedRequests(_ context.Context) error 
 	return nil
 }
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+func (d *noOpDeleteRequestsStore) AddDeleteRequest(_ context.Context, _, _ string, _, _ model.Time, _ time.Duration) (string, error) {
 	return "", nil
 }
 
@@ -40,7 +41,7 @@ func (d *noOpDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context,
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error {
+func (d *noOpDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, _ DeleteRequest) error {
 	return nil
 }
 
@@ -48,7 +49,7 @@ func (d *noOpDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, _, _ 
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {
+func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(_ context.Context, _ string, _ string) error {
 	return nil
 }
 
