@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -174,59 +173,53 @@ func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, pa
 		s.assingedPartitions = make(map[int32]int64)
 	}
 
-	var partitionStr strings.Builder
+	var assigned []string
 	for _, partitionIDs := range partitions {
-		sort.Slice(partitionIDs, func(i, j int) bool {
-			return partitionIDs[i] < partitionIDs[j]
-		})
-
 		for _, partitionID := range partitionIDs {
 			s.assingedPartitions[partitionID] = time.Now().UnixNano()
-			partitionStr.WriteString(fmt.Sprintf("%d,", partitionID))
+			assigned = append(assigned, strconv.Itoa(int(partitionID)))
 		}
 	}
 
-	level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", partitionStr.String())
+	level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", strings.Join(assigned, ","))
 }
 
 func (s *IngestLimits) onPartitionsRevoked(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-	s.cleanUpPerTenantPartitions(partitions)
+	s.removePartitions(partitions)
 }
 
 func (s *IngestLimits) onPartitionsLost(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-	s.cleanUpPerTenantPartitions(partitions)
+	s.removePartitions(partitions)
 }
 
-func (s *IngestLimits) cleanUpPerTenantPartitions(partitions map[string][]int32) {
+func (s *IngestLimits) removePartitions(partitions map[string][]int32) {
 	s.mtxAssingedPartitions.Lock()
 	defer s.mtxAssingedPartitions.Unlock()
-
-	var (
-		partitionStr strings.Builder
-		dropped      []int32
-	)
-	for _, partitionIDs := range partitions {
-		for _, partitionID := range partitionIDs {
-			dropped = append(dropped, partitionID)
-			delete(s.assingedPartitions, partitionID)
-			partitionStr.WriteString(fmt.Sprintf("%d,", partitionID))
-		}
-	}
-
-	level.Debug(s.logger).Log("msg", "revoked/lost partitions", "partitions", partitionStr.String())
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	var tenantStr strings.Builder
-	for _, partitionID := range dropped {
-		for tenant, partitions := range s.metadata {
-			delete(partitions, partitionID)
-			tenantStr.WriteString(fmt.Sprintf("%s,", tenant))
+	var (
+		dropped []string
+		tenants []string
+	)
+
+	for _, partitionIDs := range partitions {
+		for _, partitionID := range partitionIDs {
+			dropped = append(dropped, strconv.Itoa(int(partitionID)))
+
+			// Unassign the partition from the ingest limits instance
+			delete(s.assingedPartitions, partitionID)
+
+			// Remove the partition from the metadata map
+			for tenant, partitions := range s.metadata {
+				delete(partitions, partitionID)
+				tenants = append(tenants, tenant)
+			}
 		}
 	}
 
-	level.Debug(s.logger).Log("msg", "dropped partitions", "tenants", tenantStr.String())
+	level.Debug(s.logger).Log("msg", "removed partitions", "partitions", strings.Join(dropped, ","), "tenants", strings.Join(tenants, ","))
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {
@@ -579,13 +572,6 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	}
 
 	s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(float64(activeStreams))
-
-	level.Debug(s.logger).Log("msg", "get stream usage",
-		"tenant", req.Tenant,
-		"partitionsTotal", len(req.Partitions),
-		"activeTotal", activeStreams,
-		"unknownTotal", len(unknownStreams),
-	)
 
 	return &logproto.GetStreamUsageResponse{
 		Tenant:         req.Tenant,

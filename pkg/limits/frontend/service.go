@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/prometheus/client_golang/prometheus"
@@ -131,8 +130,6 @@ func (s *RingIngestLimitsService) forGivenReplicaSet(ctx context.Context, replic
 			for _, partition := range partitions[instance.Addr] {
 				partitionStr.WriteString(fmt.Sprintf("%d,", partition))
 			}
-
-			level.Debug(s.logger).Log("msg", "getting stream usage for", "addr", instance.Addr, "partitions", partitionStr.String())
 
 			resp, err := f(ctx, client.(logproto.IngestLimitsClient), partitions[instance.Addr])
 			if err != nil {
