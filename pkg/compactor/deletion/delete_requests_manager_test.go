@@ -1050,7 +1050,7 @@ type mockDeleteRequestsStore struct {
 	genNumber string
 }
 
-func (m *mockDeleteRequestsStore) GetUnprocessedShards(ctx context.Context) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {
 	return m.getDeleteRequestsByStatus(StatusReceived)
 }
 
@@ -1068,7 +1068,7 @@ func (m *mockDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteReq
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+func (m *mockDeleteRequestsStore) AddDeleteRequest(_ context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
 	m.addReq = storeAddReqDetails{
 		userID:          userID,
 		query:           query,
@@ -1079,7 +1079,7 @@ func (m *mockDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID, 
 	return "", m.addErr
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {
+func (m *mockDeleteRequestsStore) RemoveDeleteRequest(_ context.Context, userID string, requestID string) error {
 	m.removeReqs = removeReqDetails{
 		userID: userID,
 		reqID:  requestID,
@@ -1087,7 +1087,7 @@ func (m *mockDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userI
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequest(_ context.Context, userID, requestID string) (DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
 	if m.getErr != nil {
@@ -1105,7 +1105,7 @@ func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ 
 	return m.genNumber, m.getErr
 }
 
-func (m *mockDeleteRequestsStore) MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error {
+func (m *mockDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, req DeleteRequest) error {
 	for i := range m.deleteRequests {
 		if requestsAreEqual(m.deleteRequests[i], req) {
 			m.deleteRequests[i].Status = StatusProcessed
