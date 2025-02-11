@@ -31,7 +31,7 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 		"policy3": []*PriorityStream{
 			{
 				Selector: `{qyx="qzx", qox="qox"}`,
-				Priority: 1,
+				Priority: 2,
 				Matchers: []*labels.Matcher{
 					labels.MustNewMatcher(labels.MatchEqual, "qyx", "qzx"),
 					labels.MustNewMatcher(labels.MatchEqual, "qox", "qox"),
@@ -51,7 +51,7 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 		"policy5": []*PriorityStream{
 			{
 				Selector: `{qab=~"qzx.*"}`,
-				Priority: 1,
+				Priority: 2,
 				Matchers: []*labels.Matcher{
 					labels.MustNewMatcher(labels.MatchRegexp, "qab", "qzx.*"),
 				},
@@ -94,7 +94,7 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 	require.Equal(t, "policy1", mapping.PolicyFor(labels.FromStrings("foo", "bar")))
 	// matches both policy2 and policy1 but policy1 has higher priority.
 	require.Equal(t, "policy1", mapping.PolicyFor(labels.FromStrings("foo", "bar", "daz", "baz")))
-	// matches policy3 and policy4 but policy3 appears first.
+	// matches policy3 and policy4 but policy3 has higher priority..
 	require.Equal(t, "policy3", mapping.PolicyFor(labels.FromStrings("qyx", "qzx", "qox", "qox")))
 	// matches no policy.
 	require.Equal(t, "", mapping.PolicyFor(labels.FromStrings("foo", "fooz", "daz", "qux", "quux", "corge")))
