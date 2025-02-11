@@ -141,9 +141,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
 
-	var (
-		metrics = newMetrics()
-	)
+	metrics := newMetrics()
 	metrics.ObserveConfig(cfg)
 
 	return &Builder{

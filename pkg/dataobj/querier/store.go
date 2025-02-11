@@ -4,11 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"time"
 
+	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -16,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
 var _ querier.Store = &Store{}
@@ -59,24 +64,6 @@ func (s *Store) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (it
 	return iter.NoopSampleIterator, nil
 }
 
-// SelectSeries implements querier.Store
-func (s *Store) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
-	// TODO: Implement
-	return []logproto.SeriesIdentifier{}, nil
-}
-
-// LabelValuesForMetricName implements querier.Store
-func (s *Store) LabelValuesForMetricName(_ context.Context, _ string, _ model.Time, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
-	// TODO: Implement
-	return []string{}, nil
-}
-
-// LabelNamesForMetricName implements querier.Store
-func (s *Store) LabelNamesForMetricName(_ context.Context, _ string, _ model.Time, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
-	// TODO: Implement
-	return []string{}, nil
-}
-
 // Stats implements querier.Store
 func (s *Store) Stats(_ context.Context, _ string, _ model.Time, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	// TODO: Implement
@@ -93,4 +80,42 @@ func (s *Store) Volume(_ context.Context, _ string, _ model.Time, _ model.Time, 
 func (s *Store) GetShards(_ context.Context, _ string, _ model.Time, _ model.Time, _ uint64, _ chunk.Predicate) (*logproto.ShardsResponse, error) {
 	// TODO: Implement
 	return &logproto.ShardsResponse{}, nil
+}
+
+func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time) ([]*dataobj.Object, error) {
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	files, err := metastore.ListDataObjects(ctx, s.bucket, userID, from, through)
+	if err != nil {
+		return nil, err
+	}
+
+	objects := make([]*dataobj.Object, 0, len(files))
+	for _, path := range files {
+		objects = append(objects, dataobj.FromBucket(s.bucket, path))
+	}
+	return objects, nil
+}
+
+var noShard = logql.Shard{
+	PowerOfTwo: &index.ShardAnnotation{
+		Shard: uint32(1),
+		Of:    uint32(1),
+	},
+}
+
+func parseShards(shards []string) (logql.Shard, error) {
+	if len(shards) == 0 {
+		return noShard, nil
+	}
+	parsed, _, err := logql.ParseShards(shards)
+	if err != nil {
+		return noShard, err
+	}
+	if len(parsed) == 0 {
+		return noShard, nil
+	}
+	return parsed[0], nil
 }
