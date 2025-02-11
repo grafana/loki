@@ -45,10 +45,9 @@ var (
 )
 
 type metrics struct {
-	tenantExceedsLimits         *prometheus.CounterVec
-	tenantActiveStreams         *prometheus.GaugeVec
-	tenantDuplicateStreamsFound *prometheus.CounterVec
-	tenantRejectedStreams       *prometheus.CounterVec
+	tenantExceedsLimits   *prometheus.CounterVec
+	tenantActiveStreams   *prometheus.GaugeVec
+	tenantRejectedStreams *prometheus.CounterVec
 }
 
 func newMetrics(reg prometheus.Registerer) *metrics {
@@ -62,11 +61,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_frontend_streams_active",
 			Help:      "The current number of active streams (seen within the window) per tenant.",
-		}, []string{"tenant"}),
-		tenantDuplicateStreamsFound: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: constants.Loki,
-			Name:      "ingest_limits_frontend_streams_duplicate_total",
-			Help:      "The total number of duplicate streams found per tenant.",
 		}, []string{"tenant"}),
 		tenantRejectedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: constants.Loki,

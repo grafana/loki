@@ -333,11 +333,9 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 			cutoff := time.Now().Add(-s.cfg.WindowSize).UnixNano()
 
 			for tenant, partitions := range s.metadata {
-				streamsBefore := 0
 				evictedCount := 0
 
 				for partitionID, streams := range partitions {
-					streamsBefore += len(streams)
 					for i, stream := range streams {
 						if stream.lastSeenAt < cutoff {
 							s.metadata[tenant][partitionID] = append(s.metadata[tenant][partitionID][:i], s.metadata[tenant][partitionID][i+1:]...)
@@ -346,15 +344,15 @@ func (s *IngestLimits) evictOldStreams(ctx context.Context) {
 					}
 				}
 
-				switch {
 				// Clean up empty tenant maps and update gauges
-				case len(s.metadata[tenant]) == 0:
+				if len(s.metadata[tenant]) == 0 {
 					delete(s.metadata, tenant)
-					s.metrics.tenantCurrentRecordedStreams.DeleteLabelValues(tenant)
+					s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(0)
+				}
 				// Only update recorded streams gauge if the number changed
-				case evictedCount > 0:
+				if evictedCount > 0 {
 					s.metrics.tenantStreamEvictionsTotal.WithLabelValues(tenant).Add(float64(evictedCount))
-					s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Set(float64(streamsBefore - evictedCount))
+					s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Sub(float64(evictedCount))
 				}
 			}
 			s.mtx.Unlock()
@@ -516,7 +514,7 @@ func (s *IngestLimits) GetStreamUsage(_ context.Context, req *logproto.GetStream
 	// Get the tenant's streams
 	partitions := s.metadata[req.Tenant]
 	if partitions == nil {
-		s.metrics.tenantActiveStreams.DeleteLabelValues(req.Tenant)
+		s.metrics.tenantActiveStreams.WithLabelValues(req.Tenant).Set(0)
 
 		// If tenant not found, return zero active streams and all requested streams as not recorded
 		return &logproto.GetStreamUsageResponse{
