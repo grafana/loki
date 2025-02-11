@@ -101,7 +101,9 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 
-		StoreRangeStats: true,
+		Statistics: StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	}
 	b, err := NewColumnBuilder("", opts)
 	require.NoError(t, err)

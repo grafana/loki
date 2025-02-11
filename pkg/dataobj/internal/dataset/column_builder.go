@@ -27,9 +27,19 @@ type BuilderOptions struct {
 	// CompressionOptions holds optional configuration for compression.
 	CompressionOptions CompressionOptions
 
+	// StatisticsOptions holds optional configuration for statistics.
+	Statistics StatisticsOptions
+}
+
+// StatisticsOptions customizes the collection of statistics for a column.
+type StatisticsOptions struct {
 	// StoreRangeStats indicates whether to store value range statistics for the
 	// column and pages.
 	StoreRangeStats bool
+
+	// StoreCardinalityStats indicates whether to store cardinality estimations,
+	// facilitated by hyperloglog
+	StoreCardinalityStats bool
 }
 
 // CompressionOptions customizes the compressor used when building pages.
@@ -179,12 +189,27 @@ func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 }
 
 func (cb *ColumnBuilder) buildStats() *datasetmd.Statistics {
-	if !cb.opts.StoreRangeStats {
-		return nil
+	var stats datasetmd.Statistics
+	var found bool
+
+	if cb.opts.Statistics.StoreRangeStats {
+		found = true
+		cb.buildRangeStats(&stats)
 	}
 
-	var stats datasetmd.Statistics
+	if cb.opts.Statistics.StoreCardinalityStats {
+		found = true
+		cb.buildCardinalityStats(&stats)
+	}
 
+	if !found {
+		return nil
+	}
+	return &stats
+
+}
+
+func (cb *ColumnBuilder) buildRangeStats(dst *datasetmd.Statistics) {
 	var minValue, maxValue Value
 
 	for i, page := range cb.pages {
@@ -211,13 +236,16 @@ func (cb *ColumnBuilder) buildStats() *datasetmd.Statistics {
 	}
 
 	var err error
-	if stats.MinValue, err = minValue.MarshalBinary(); err != nil {
+	if dst.MinValue, err = minValue.MarshalBinary(); err != nil {
 		panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to marshal min value: %s", err))
 	}
-	if stats.MaxValue, err = maxValue.MarshalBinary(); err != nil {
+	if dst.MaxValue, err = maxValue.MarshalBinary(); err != nil {
 		panic(fmt.Sprintf("ColumnBuilder.buildStats: failed to marshal max value: %s", err))
 	}
-	return &stats
+}
+
+func (cb *ColumnBuilder) buildCardinalityStats(dst *datasetmd.Statistics) {
+	// TODO
 }
 
 func (cb *ColumnBuilder) flushPage() {
