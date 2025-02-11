@@ -300,3 +300,16 @@ func (v *cloneVisitor) VisitLogfmtParser(e *LogfmtParserExpr) {
 		KeepEmpty: e.KeepEmpty,
 	}
 }
+
+func (v *cloneVisitor) VisitVariants(e *MultiVariantExpr) {
+	copied := &MultiVariantExpr{
+		logRange: MustClone[*LogRangeExpr](e.logRange),
+		variants: make([]SampleExpr, len(e.variants)),
+	}
+
+	for i, v := range e.variants {
+		copied.variants[i] = MustClone[SampleExpr](v)
+	}
+
+	v.cloned = copied
+}

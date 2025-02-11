@@ -20,9 +20,11 @@ import (
   expr Expr
   logExpr LogSelectorExpr
   metricExpr SampleExpr
+  variantsExpr VariantsExpr
 
   matcher *labels.Matcher
   matchers []*labels.Matcher
+  variantsList []SampleExpr
   stage StageExpr
   stages MultiStageExpr
   filterer log.LabelFilterer
@@ -48,15 +50,16 @@ import (
 %type <expr> expr
 %type <logExpr> logExpr
 %type <metricExpr> metricExpr rangeAggregationExpr vectorAggregationExpr binOpExpr labelReplaceExpr vectorExpr
+%type <variantsExpr> variantsExpr
 %type <stage> pipelineStage logfmtParser labelParser jsonExpressionParser logfmtExpressionParser lineFormatExpr decolorizeExpr labelFormatExpr dropLabelsExpr keepLabelsExpr
 %type <stages> pipelineExpr
 %type <lineFilterExpr> lineFilter lineFilters orFilter
-%type <op> rangeOp convOp vectorOp filterOp
+%type <op> rangeOp convOp vectorOp filterOp variantsOp
 %type <filterer> bytesFilter numberFilter durationFilter labelFilter unitFilter ipLabelFilter
 %type <filter> filter
 %type <matcher> matcher
 %type <matchers> matchers selector
-%type <str> vector
+%type <str> vector variantsOf
 %type <strs> labels parserFlags
 %type <binOpts> binOpModifier boolModifier onOrIgnoringModifier
 %type <namedMatcher> namedMatcher
@@ -70,6 +73,7 @@ import (
 %type <labelExtractionExpressionList> labelExtractionExpressionList
 %type <unwrapExpr> unwrapExpr
 %type <offsetExpr> offsetExpr
+%type <variantsList> variantsList
 
 %token <bytes> BYTES
 %token <str> IDENTIFIER STRING NUMBER FUNCTION_FLAG
@@ -80,7 +84,7 @@ import (
              BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
              MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
              FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-             DECOLORIZE DROP KEEP
+             DECOLORIZE DROP KEEP VARIANTS OF
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -98,6 +102,7 @@ root:
 expr:
       logExpr { $$ = $1 }
     | metricExpr { $$ = $1 }
+    | variantsExpr { $$ = $1 }
     ;
 
 logExpr:
@@ -114,6 +119,10 @@ metricExpr:
     | labelReplaceExpr                              { $$ = $1 }
     | vectorExpr                                    { $$ = $1 }
     | OPEN_PARENTHESIS metricExpr CLOSE_PARENTHESIS { $$ = $2 }
+    ;
+
+variantsExpr:
+      variantsOp OPEN_PARENTHESIS variantsList CLOSE_PARENTHESIS variantsOf OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newVariantsExpr($3, $7) }
     ;
 
 logRangeExpr:
@@ -511,5 +520,17 @@ grouping:
     | WITHOUT OPEN_PARENTHESIS labels CLOSE_PARENTHESIS   { $$ = &Grouping{ Without: true , Groups: $3 } }
     | BY OPEN_PARENTHESIS CLOSE_PARENTHESIS               { $$ = &Grouping{ Without: false , Groups: nil } }
     | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &Grouping{ Without: true , Groups: nil } }
+    ;
+
+variantsOp:
+      VARIANTS { $$ = OpVariants }
+    ;
+variantsOf:
+      OF { $$ = VariantsOf }
+    ;
+
+variantsList:
+      metricExpr                         { $$ = []SampleExpr{$1} }
+    | variantsList COMMA metricExpr      { $$ = append($1, $3) }
     ;
 %%
