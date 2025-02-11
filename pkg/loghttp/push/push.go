@@ -107,7 +107,7 @@ func NewPushStats() *Stats {
 		LogLinesBytes:                   map[string]map[time.Duration]int64{},
 		StructuredMetadataBytes:         map[string]map[time.Duration]int64{},
 		PolicyNumLines:                  map[string]int64{},
-		ResourceAndSourceMetadataLabels: map[time.Duration]push.LabelsAdapter{},
+		ResourceAndSourceMetadataLabels: map[string]map[time.Duration]push.LabelsAdapter{},
 	}
 }
 
@@ -116,7 +116,7 @@ type Stats struct {
 	PolicyNumLines                  map[string]int64
 	LogLinesBytes                   PolicyWithRetentionWithBytes
 	StructuredMetadataBytes         PolicyWithRetentionWithBytes
-	ResourceAndSourceMetadataLabels map[time.Duration]push.LabelsAdapter
+	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
 	StreamLabelsSize                int64
 	MostRecentEntryTimestamp        time.Time
 	ContentType                     string
