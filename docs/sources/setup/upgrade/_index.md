@@ -46,9 +46,9 @@ Before upgrading, we recommend deleting all the existing bloom blocks in the obj
 metas inside the `bloom` path in the configured object store. To get rid of all the bloom blocks, delete all the objects
 inside the `bloom` path in the object store.
 
-## 3.3.2
+## 3.2.0
 
-### Loki 3.3.2
+### Loki 3.2.0
 
 ### HTTP API
 
