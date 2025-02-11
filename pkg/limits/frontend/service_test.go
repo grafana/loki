@@ -73,26 +73,26 @@ func (m *mockIngestLimitsClient) Watch(_ context.Context, _ *grpc_health_v1.Heal
 
 func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 	tests := []struct {
-		name               string
-		tenant             string
-		maxGlobalStreams   int
-		streams            []*logproto.StreamMetadataWithSize
-		backendResponses   []*logproto.GetStreamUsageResponse
-		assignedPartitions []*logproto.GetAssignedPartitionsResponse
-		expectedRejections []*logproto.RejectedStream
+		name                       string
+		tenant                     string
+		maxGlobalStreams           int
+		streams                    []*logproto.StreamMetadataWithSize
+		getStreamUsageResps        []*logproto.GetStreamUsageResponse
+		getAssignedPartitionsResps []*logproto.GetAssignedPartitionsResponse
+		expectedRejections         []*logproto.RejectedStream
 	}{
 		{
 			name:             "no streams",
 			tenant:           "test",
 			maxGlobalStreams: 10,
 			streams:          []*logproto.StreamMetadataWithSize{},
-			backendResponses: []*logproto.GetStreamUsageResponse{
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
 				{
 					Tenant:        "test",
 					ActiveStreams: 0,
 				},
 			},
-			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -110,14 +110,13 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				{StreamHash: 1},
 				{StreamHash: 2},
 			},
-			backendResponses: []*logproto.GetStreamUsageResponse{
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
 				{
-					Tenant:         "test",
-					ActiveStreams:  2,
-					UnknownStreams: []uint64{1, 2},
+					Tenant:        "test",
+					ActiveStreams: 2,
 				},
 			},
-			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -132,17 +131,17 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			tenant:           "test",
 			maxGlobalStreams: 5,
 			streams: []*logproto.StreamMetadataWithSize{
-				{StreamHash: 6},
-				{StreamHash: 7},
+				{StreamHash: 6}, // Exceeds limit
+				{StreamHash: 7}, // Exceeds limit
 			},
-			backendResponses: []*logproto.GetStreamUsageResponse{
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
 				{
 					Tenant:         "test",
 					ActiveStreams:  5,
 					UnknownStreams: []uint64{6, 7},
 				},
 			},
-			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -165,17 +164,17 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 				{StreamHash: 3},
 				{StreamHash: 4},
 				{StreamHash: 5},
-				{StreamHash: 6},
-				{StreamHash: 7},
+				{StreamHash: 6}, // Exceeds limit
+				{StreamHash: 7}, // Exceeds limit
 			},
-			backendResponses: []*logproto.GetStreamUsageResponse{
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
 				{
 					Tenant:         "test",
 					ActiveStreams:  5,
 					UnknownStreams: []uint64{6, 7},
 				},
 			},
-			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -195,10 +194,10 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 			streams: []*logproto.StreamMetadataWithSize{
 				{StreamHash: 1},
 			},
-			backendResponses: []*logproto.GetStreamUsageResponse{
+			getStreamUsageResps: []*logproto.GetStreamUsageResponse{
 				{},
 			},
-			assignedPartitions: []*logproto.GetAssignedPartitionsResponse{
+			getAssignedPartitionsResps: []*logproto.GetAssignedPartitionsResponse{
 				{
 					AssignedPartitions: map[int32]int64{
 						0: 1,
@@ -212,13 +211,13 @@ func TestRingIngestLimitsService_ExceedsLimits(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create mock clients that return the test responses
-			mockClients := make([]logproto.IngestLimitsClient, len(tt.backendResponses))
-			mockInstances := make([]ring.InstanceDesc, len(tt.backendResponses))
+			mockClients := make([]logproto.IngestLimitsClient, len(tt.getStreamUsageResps))
+			mockInstances := make([]ring.InstanceDesc, len(tt.getStreamUsageResps))
 
-			for i, resp := range tt.backendResponses {
+			for i, resp := range tt.getStreamUsageResps {
 				mockClients[i] = &mockIngestLimitsClient{
 					getStreamUsageResponse:        resp,
-					getAssignedPartitionsResponse: tt.assignedPartitions[i],
+					getAssignedPartitionsResponse: tt.getAssignedPartitionsResps[i],
 				}
 				mockInstances[i] = ring.InstanceDesc{
 					Addr: "mock-instance",
