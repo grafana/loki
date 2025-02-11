@@ -210,6 +210,15 @@ func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
+func (d *DayTime) Set(value string) error {
+	t, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return err
+	}
+	d.Time = model.TimeFromUnix(t.Unix())
+	return nil
+}
+
 func (d DayTime) String() string {
 	return d.Time.Time().UTC().Format("2006-01-02")
 }
@@ -560,6 +569,7 @@ func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
 
 	return g, nil
 }
+
 func ValidatePathPrefix(prefix string) error {
 	if prefix == "" {
 		return errors.New("prefix must be set")
