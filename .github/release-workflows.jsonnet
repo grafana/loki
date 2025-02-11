@@ -184,25 +184,4 @@ local lambdaPromtailJob =
       useGitHubAppToken=true,
     ), false, false
   ),
-  'check.yml': std.manifestYamlDoc({
-    name: 'check',
-    on: {
-      pull_request: {},
-      push: {
-        branches: ['main'],
-      },
-    },
-    jobs: {
-      check: {
-        uses: checkTemplate,
-        with: {
-          build_image: buildImage,
-          golang_ci_lint_version: golangCiLintVersion,
-          release_lib_ref: releaseLibRef,
-          skip_validation: false,
-          use_github_app_token: true,
-        },
-      },
-    },
-  }),
 }
