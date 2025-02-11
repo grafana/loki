@@ -35,6 +35,21 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+## 3.3.0
+
+### Loki 3.3.0
+
+#### Experimental Bloom Filters
+
+With Loki 3.3.0, the bloom block format changed and any previously created block is incompatible with the new format.
+Before upgrading, we recommend deleting all the existing bloom blocks in the object store. We store bloom blocks and
+metas inside the `bloom` path in the configured object store. To get rid of all the bloom blocks, delete all the objects
+inside the `bloom` path in the object store.
+
+## 3.3.2
+
+### Loki 3.3.2
+
 ### HTTP API
 
 The API endpoint for instant queries `/api/v1/query` now returns a HTTP status 400 (Bad Request) when the provided `query`
@@ -75,16 +90,6 @@ Their YAML counterparts in the `limits_config` block are kept identical.
 
 All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-compactor.` have been removed.
 
-## 3.3.0
-
-### Loki 3.3.0
-
-#### Experimental Bloom Filters
-
-With Loki 3.3.0, the bloom block format changed and any previously created block is incompatible with the new format.
-Before upgrading, we recommend deleting all the existing bloom blocks in the object store. We store bloom blocks and
-metas inside the `bloom` path in the configured object store. To get rid of all the bloom blocks, delete all the objects
-inside the `bloom` path in the object store.
 
 ## 3.0.0
 
