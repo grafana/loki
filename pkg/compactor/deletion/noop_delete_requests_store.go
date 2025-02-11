@@ -3,7 +3,7 @@ package deletion
 import (
 	"context"
 	"time"
-	
+
 	"github.com/prometheus/common/model"
 )
 
