@@ -197,7 +197,7 @@ func TestDataObjectsPaths(t *testing.T) {
 	// Create test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
-	// Add files in different time windows
+	// Add files in different time windows spanning multiple 12h periods
 	testCases := []struct {
 		path      string
 		startTime time.Time
@@ -215,13 +215,23 @@ func TestDataObjectsPaths(t *testing.T) {
 		},
 		{
 			path:      "path3",
-			startTime: now.Add(-2 * time.Hour),
-			endTime:   now.Add(-1 * time.Hour),
+			startTime: now.Add(-13 * time.Hour), // Previous 12h window
+			endTime:   now.Add(-12 * time.Hour),
 		},
 		{
-			path:      "path4", // Outside our query window
-			startTime: now.Add(-4 * time.Hour),
-			endTime:   now.Add(-3 * time.Hour),
+			path:      "path4",
+			startTime: now.Add(-14 * time.Hour), // Previous 12h window
+			endTime:   now.Add(-13 * time.Hour),
+		},
+		{
+			path:      "path5",
+			startTime: now.Add(-25 * time.Hour), // Two windows back
+			endTime:   now.Add(-24 * time.Hour),
+		},
+		{
+			path:      "path6",
+			startTime: now.Add(-36 * time.Hour), // Three windows back
+			endTime:   now.Add(-35 * time.Hour),
 		},
 	}
 
@@ -233,8 +243,7 @@ func TestDataObjectsPaths(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	t.Run("finds objects within time range", func(t *testing.T) {
-		// Query for objects in the last hour
+	t.Run("finds objects within current window", func(t *testing.T) {
 		paths, err := ListDataObjects(ctx, bucket, tenantID, now.Add(-1*time.Hour), now)
 		require.NoError(t, err)
 		require.Len(t, paths, 2)
@@ -242,20 +251,54 @@ func TestDataObjectsPaths(t *testing.T) {
 		require.Contains(t, paths, "path2")
 	})
 
-	t.Run("finds objects across metastore windows", func(t *testing.T) {
-		// Query for objects in the last 2 hours
-		paths, err := ListDataObjects(ctx, bucket, tenantID, now.Add(-2*time.Hour), now)
+	t.Run("finds objects across two 12h windows", func(t *testing.T) {
+		paths, err := ListDataObjects(ctx, bucket, tenantID, now.Add(-14*time.Hour), now)
 		require.NoError(t, err)
-		require.Len(t, paths, 3)
+		require.Len(t, paths, 4)
 		require.Contains(t, paths, "path1")
 		require.Contains(t, paths, "path2")
 		require.Contains(t, paths, "path3")
+		require.Contains(t, paths, "path4")
+	})
+
+	t.Run("finds objects across three 12h windows", func(t *testing.T) {
+		paths, err := ListDataObjects(ctx, bucket, tenantID, now.Add(-25*time.Hour), now)
+		require.NoError(t, err)
+		require.Len(t, paths, 5)
+		require.Contains(t, paths, "path1")
+		require.Contains(t, paths, "path2")
+		require.Contains(t, paths, "path3")
+		require.Contains(t, paths, "path4")
+		require.Contains(t, paths, "path5")
+	})
+
+	t.Run("finds all objects across all windows", func(t *testing.T) {
+		paths, err := ListDataObjects(ctx, bucket, tenantID, now.Add(-36*time.Hour), now)
+		require.NoError(t, err)
+		require.Len(t, paths, 6)
+		require.Contains(t, paths, "path1")
+		require.Contains(t, paths, "path2")
+		require.Contains(t, paths, "path3")
+		require.Contains(t, paths, "path4")
+		require.Contains(t, paths, "path5")
+		require.Contains(t, paths, "path6")
 	})
 
 	t.Run("returns empty list when no objects in range", func(t *testing.T) {
-		// Query for objects in a future time range
 		paths, err := ListDataObjects(ctx, bucket, tenantID, now.Add(1*time.Hour), now.Add(2*time.Hour))
 		require.NoError(t, err)
 		require.Empty(t, paths)
+	})
+
+	t.Run("finds half of objects with partial window overlap", func(t *testing.T) {
+		// Query starting from middle of first window to current time
+		paths, err := ListDataObjects(ctx, bucket, tenantID, now.Add(-30*time.Hour), now)
+		require.NoError(t, err)
+		require.Len(t, paths, 5) // Should exclude path6 which is before -30h
+		require.Contains(t, paths, "path1")
+		require.Contains(t, paths, "path2")
+		require.Contains(t, paths, "path3")
+		require.Contains(t, paths, "path4")
+		require.Contains(t, paths, "path5")
 	})
 }
