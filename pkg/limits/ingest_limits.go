@@ -392,6 +392,8 @@ func (s *IngestLimits) updateMetadata(rec *logproto.StreamMetadata, tenant strin
 		hash:       rec.StreamHash,
 		lastSeenAt: recordTime,
 	})
+
+	s.metrics.tenantCurrentRecordedStreams.WithLabelValues(tenant).Inc()
 }
 
 // stopping implements the Service interface's stopping method.
