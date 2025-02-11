@@ -431,6 +431,7 @@ func (t *Loki) initIngestLimits() (services.Service, error) {
 
 	ingestLimits, err := limits.NewIngestLimits(
 		t.Cfg.IngestLimits,
+		t.partitionRing,
 		util_log.Logger,
 		prometheus.DefaultRegisterer,
 	)
