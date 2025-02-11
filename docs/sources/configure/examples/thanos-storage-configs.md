@@ -28,7 +28,19 @@ storage_config:
       # 2. A JSON file in a location known to the gcloud command-line tool:
       # $HOME/.config/gcloud/application_default_credentials.json.
       # 3. On Google Compute Engine it fetches credentials from the metadata server.
-      service_account: service-account-json
+      service_account:  |-
+        {
+            "type": "service_account",
+            "project_id": "project",
+            "private_key_id": "abcdefghijklmnopqrstuvwxyz12345678906666",
+            "private_key": "-----BEGIN PRIVATE KEY-----\...\n-----END PRIVATE KEY-----\n",
+            "client_email": "project@example.iam.gserviceaccount.com",
+            "client_id": "123456789012345678901",
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/project@example.iam.gserviceaccount.com"
+        }
 ```
 
 ## S3 example
