@@ -109,6 +109,10 @@ func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Clie
 
 func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
 	level.Info(s.logger).Log("msg", "partitions revoked", "partitions", formatPartitionsMap(partitions))
+	if s.State() == services.Stopping {
+		// On shutdown, franz-go will send one more partitionRevoked event which we need to ignore to shutdown gracefully.
+		return
+	}
 	s.partitionMtx.Lock()
 	defer s.partitionMtx.Unlock()
 

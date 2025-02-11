@@ -68,7 +68,7 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 				corev1.ResourceCPU:    resource.MustParse("500m"),
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
-			PDBMinAvailable: 1,
+			PDBMinAvailable: 2,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{

@@ -66,6 +66,7 @@ type Bucket interface {
 
 	// GetAndReplace an existing object with a new object
 	// If the previous object is created or updated before the new object is uploaded, then the call will fail with an error.
+	// The existing reader will be nil in the case it did not previously exist.
 	GetAndReplace(ctx context.Context, name string, f func(existing io.Reader) (io.Reader, error)) error
 
 	// Delete removes the object with the given name.
