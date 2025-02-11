@@ -33,13 +33,11 @@ The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sn
 
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
 
-## Main / Unreleased
-
 ## 3.3.0
 
 ### Loki 3.3.0
 
-#### Experimental Bloom Filters
+#### Experimental Bloom Filters - block format change
 
 With Loki 3.3.0, the bloom block format changed and any previously created block is incompatible with the new format.
 Before upgrading, we recommend deleting all the existing bloom blocks in the object store. We store bloom blocks and
@@ -60,7 +58,7 @@ parameter contains a log selector query instead of returning inconsistent result
 
 Loki changes the default value of `-ruler.alertmanager-use-v2` from `false` to `true`. Alertmanager APIv1 was deprecated in Alertmanager 0.16.0 and is removed as of 0.27.0.
 
-### Experimental Bloom Filters
+### Experimental Bloom Filters - component changes
 
 {{< admonition type="note" >}}
 Experimental features are subject to rapid change and/or removal, which can introduce breaking changes even between minor version.
@@ -89,7 +87,6 @@ CLI arguments of per-tenant settings that have been moved to a different prefix 
 Their YAML counterparts in the `limits_config` block are kept identical.
 
 All other CLI arguments (and their YAML counterparts) prefixed with `-bloom-compactor.` have been removed.
-
 
 ## 3.0.0
 
