@@ -29,6 +29,10 @@ on:
         required: false
         type: string
         default: grafana
+      use_ecr:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-image:
@@ -63,7 +67,33 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to DockerHub
+        if: ${{ not inputs.use_ecr }}
         uses: grafana/shared-workflows/actions/dockerhub-login@main
+
+      # If we are using ECR, we need to get the secrets from Vault
+      - name: "get-secrets"
+        if: ${{ inputs.use_ecr }}
+        uses: "grafana/shared-workflows/actions/get-vault-secrets@get-vault-secrets-v1.1.0"
+        with:
+          repo_secrets: |
+            ECR_ACCESS_KEY=aws-credentials:access_key_id
+            ECR_SECRET_KEY=aws-credentials:secret_access_key
+
+      # If we are using ECR, we need to configure the AWS credentials
+      - name: Configure AWS credentials
+        if: ${{ inputs.use_ecr }}
+        uses: "aws-actions/configure-aws-credentials@v4"
+        with:
+          aws-access-key-id: "${{ env.ECR_ACCESS_KEY }}"
+          aws-region: "us-east-1"
+          aws-secret-access-key: "${{ env.ECR_SECRET_KEY }}"
+
+      # If we are using ECR, we need to login to the ECR public registry
+      - name: "Login to Amazon ECR Public"
+        if: ${{ inputs.use_ecr }}
+        uses: "aws-actions/amazon-ecr-login@v2"
+        with:
+          registry-type: "public"
 
       - id: weekly-version
         name: Get weekly version
@@ -127,6 +157,7 @@ jobs:
       - name: Publish multi-arch manifest
         run: |
           IMAGE=${{ needs.build-image.outputs.image_name }}:${{ needs.build-image.outputs.image_tag }}
+          echo "Create multi-arch manifest for $IMAGE"
           docker buildx imagetools create -t $IMAGE \
             ${{ needs.build-image.outputs.image_name }}@${{ needs.build-image.outputs.image_digest_linux_amd64 }} \
             ${{ needs.build-image.outputs.image_name }}@${{ needs.build-image.outputs.image_digest_linux_arm64 }} \
