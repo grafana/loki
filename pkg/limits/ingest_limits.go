@@ -181,7 +181,9 @@ func (s *IngestLimits) onPartitionsAssigned(_ context.Context, _ *kgo.Client, pa
 		}
 	}
 
-	level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", strings.Join(assigned, ","))
+	if len(assigned) > 0 {
+		level.Debug(s.logger).Log("msg", "assigned partitions", "partitions", strings.Join(assigned, ","))
+	}
 }
 
 func (s *IngestLimits) onPartitionsRevoked(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
@@ -219,7 +221,9 @@ func (s *IngestLimits) removePartitions(partitions map[string][]int32) {
 		}
 	}
 
-	level.Debug(s.logger).Log("msg", "removed partitions", "partitions", strings.Join(dropped, ","), "tenants", strings.Join(tenants, ","))
+	if len(dropped) > 0 {
+		level.Debug(s.logger).Log("msg", "removed partitions", "partitions", strings.Join(dropped, ","), "tenants", strings.Join(tenants, ","))
+	}
 }
 
 func (s *IngestLimits) CheckReady(ctx context.Context) error {
