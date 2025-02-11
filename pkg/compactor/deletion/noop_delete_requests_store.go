@@ -2,6 +2,8 @@ package deletion
 
 import (
 	"context"
+	"github.com/prometheus/common/model"
+	"time"
 )
 
 func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
@@ -10,19 +12,27 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) GetAllDeleteRequests(_ context.Context) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetDeleteRequest(ctx context.Context, userID, requestID string) (DeleteRequest, error) {
+	return DeleteRequest{}, nil
+}
+
+func (d *noOpDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) MergeShardedRequests(_ context.Context, _ DeleteRequest, _ []DeleteRequest) error {
+func (d *noOpDeleteRequestsStore) GetAllShards(ctx context.Context) ([]DeleteRequest, error) {
+	return nil, nil
+}
+
+func (d *noOpDeleteRequestsStore) MergeShardedRequests(_ context.Context) error {
 	return nil
 }
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, _ []DeleteRequest) ([]DeleteRequest, error) {
-	return nil, nil
+func (d *noOpDeleteRequestsStore) AddDeleteRequest(ctx context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+	return "", nil
 }
 
-func (d *noOpDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
@@ -30,7 +40,7 @@ func (d *noOpDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context,
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) UpdateStatus(_ context.Context, _ DeleteRequest, _ DeleteRequestStatus) error {
+func (d *noOpDeleteRequestsStore) MarkShardAsProcessed(ctx context.Context, req DeleteRequest) error {
 	return nil
 }
 
@@ -38,7 +48,7 @@ func (d *noOpDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, _, _ 
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, _ []DeleteRequest) error {
+func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(ctx context.Context, userID string, requestID string) error {
 	return nil
 }
 
