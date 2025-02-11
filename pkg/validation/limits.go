@@ -230,7 +230,7 @@ type Limits struct {
 	BlockIngestionUntil      dskit_flagext.Time  `yaml:"block_ingestion_until" json:"block_ingestion_until"`
 	BlockIngestionStatusCode int                 `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	EnforcedLabels           []string            `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
-	PolicyEnforcedLabels     map[string][]string `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental"`
+	PolicyEnforcedLabels     map[string][]string `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4"`
 	PolicyStreamMapping      PolicyStreamMapping `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
