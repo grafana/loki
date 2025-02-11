@@ -58,7 +58,7 @@ func TestStreamsReader_AddLabelMatcher(t *testing.T) {
 	require.Equal(t, 1, md.StreamsSections)
 
 	r := dataobj.NewStreamsReader(obj, 0)
-	require.NoError(t, r.AddLabelMatcher(dataobj.LabelMatcher{Name: "app", Value: "bar"}))
+	require.NoError(t, r.SetPredicate(dataobj.LabelMatcherPredicate{Name: "app", Value: "bar"}))
 
 	actual, err := readAllStreams(context.Background(), r)
 	require.NoError(t, err)
@@ -77,9 +77,12 @@ func TestStreamsReader_AddLabelFilter(t *testing.T) {
 	require.Equal(t, 1, md.StreamsSections)
 
 	r := dataobj.NewStreamsReader(obj, 0)
-	err = r.AddLabelFilter("app", func(key string, value string) bool {
-		require.Equal(t, "app", key)
-		return strings.HasPrefix(value, "b")
+	err = r.SetPredicate(dataobj.LabelFilterPredicate{
+		Name: "app",
+		Keep: func(name, value string) bool {
+			require.Equal(t, "app", name)
+			return strings.HasPrefix(value, "b")
+		},
 	})
 	require.NoError(t, err)
 
