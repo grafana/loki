@@ -2,6 +2,7 @@ package syntax
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/log"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 )
 
 var labelBar, _ = ParseLabels("{app=\"bar\"}")
@@ -1156,4 +1158,127 @@ func TestCombineFilters(t *testing.T) {
 			t.Fatalf("left num isn't a correct number")
 		}
 	}
+}
+
+func Test_VariantsExpr_String(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		expr string
+	}{
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`},
+		{
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m])`,
+		},
+		{
+			`variants(count_over_time({baz="qux", foo!="bar"}[5m]),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m])`,
+		},
+		{
+			`variants(sum by (app) (count_over_time({baz="qux", foo!="bar"}[5m])),rate({baz="qux", foo!="bar"}[5m])) of ({baz="qux", foo!="bar"} |= "that" [5m])`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseExpr(tt.expr)
+			require.NoError(t, err)
+
+			expr2, err := ParseExpr(expr.String())
+			require.Nil(t, err)
+
+			AssertExpressions(t, expr, expr2)
+		})
+	}
+}
+
+func Test_VariantsExpr_Pretty(t *testing.T) {
+	tests := []struct {
+		expr   string
+		pretty string
+	}{
+		{`variants(count_over_time({foo="bar"}[5m])) of ({foo="bar"}[5m])`, `
+variants(
+  count_over_time({foo="bar"}[5m])
+) of (
+  {foo="bar"} [5m]
+)`},
+		{
+			`variants(count_over_time({baz="qux", foo=~"bar"}[5m]), bytes_over_time({baz="qux", foo=~"bar"}[5m])) of ({baz="qux", foo=~"bar"} | logfmt | this = "that"[5m])`,
+			`variants(
+  count_over_time({baz="qux", foo=~"bar"}[5m]),
+  bytes_over_time({baz="qux", foo=~"bar"}[5m])
+) of (
+  {baz="qux", foo=~"bar"} | logfmt | this="that" [5m]
+)`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			t.Parallel()
+			expr, err := ParseExpr(tt.expr)
+			require.NoError(t, err)
+
+			require.Equal(t, strings.TrimSpace(tt.pretty), strings.TrimSpace(expr.Pretty(0)))
+		})
+	}
+}
+
+func Test_MultiVariantExpr_Extractors(t *testing.T) {
+	emptyExpr := &MultiVariantExpr{
+		variants: []SampleExpr{},
+		logRange: &LogRangeExpr{},
+	}
+	validAgg := &RangeAggregationExpr{
+		Operation: OpRangeTypeCount,
+		Left: &LogRangeExpr{
+			Interval: time.Second,
+			Left: &MatchersExpr{
+				Mts: []*labels.Matcher{
+					mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+				},
+			},
+		},
+	}
+	errorAgg := &RangeAggregationExpr{
+		err: logqlmodel.NewParseError("test error", 0, 0),
+	}
+	t.Run("should return empty slice for no variants", func(t *testing.T) {
+		extractors, err := emptyExpr.Extractors()
+		require.NoError(t, err)
+		require.Empty(t, extractors)
+	})
+
+	t.Run("should return extractors for all variants", func(t *testing.T) {
+		expr := &MultiVariantExpr{
+			variants: []SampleExpr{validAgg, validAgg}, // Two identical variants for simplicity
+			logRange: &LogRangeExpr{},
+		}
+
+		extractors, err := expr.Extractors()
+		require.NoError(t, err)
+		require.Len(t, extractors, 2)
+	})
+
+	t.Run("should propagate extractor errors", func(t *testing.T) {
+		expr := &MultiVariantExpr{
+			variants: []SampleExpr{errorAgg},
+			logRange: &LogRangeExpr{},
+		}
+
+		extractors, err := expr.Extractors()
+		require.Error(t, err)
+		require.Nil(t, extractors)
+	})
+
+	t.Run("should handle mixed valid and invalid variants", func(t *testing.T) {
+		expr := &MultiVariantExpr{
+			variants: []SampleExpr{validAgg, errorAgg},
+			logRange: &LogRangeExpr{},
+		}
+
+		extractors, err := expr.Extractors()
+		require.Error(t, err)
+		require.Nil(t, extractors)
+	})
 }
