@@ -431,26 +431,30 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	limits.EnforcedLabels = []string{"app", "env"}
+	limits.PolicyEnforcedLabels = map[string][]string{
+		"policy1": {"cluster", "namespace"},
+		"policy2": {"namespace"},
+	}
 
 	distributors, _ := prepare(t, 1, 5, limits, nil)
 
 	// request with all required labels.
-	lbs := labels.FromMap(map[string]string{"app": "foo", "env": "prod"})
-	missing, missingLabels := distributors[0].missingEnforcedLabels(lbs, "test")
+	lbs := labels.FromMap(map[string]string{"app": "foo", "env": "prod", "cluster": "cluster1", "namespace": "ns1"})
+	missing, missingLabels := distributors[0].missingEnforcedLabels(lbs, "test", "policy1")
 	assert.False(t, missing)
 	assert.Empty(t, missingLabels)
 
-	// request missing the `app` label.
-	lbs = labels.FromMap(map[string]string{"env": "prod"})
-	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test")
+	// request missing the `app` label from global enforced labels and `cluster` label from policy enforced labels.
+	lbs = labels.FromMap(map[string]string{"env": "prod", "namespace": "ns1"})
+	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy1")
 	assert.True(t, missing)
-	assert.EqualValues(t, []string{"app"}, missingLabels)
+	assert.EqualValues(t, []string{"app", "cluster"}, missingLabels)
 
 	// request missing all required labels.
 	lbs = labels.FromMap(map[string]string{"pod": "distributor-abc"})
-	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test")
+	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy2")
 	assert.True(t, missing)
-	assert.EqualValues(t, []string{"app", "env"}, missingLabels)
+	assert.EqualValues(t, []string{"app", "env", "namespace"}, missingLabels)
 }
 
 func Test_PushWithEnforcedLabels(t *testing.T) {
