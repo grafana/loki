@@ -1679,11 +1679,11 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 
 func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 	now := time.Now()
+	defaultErrCode := 260
 
 	for _, tc := range []struct {
 		name             string
 		blockUntil       map[string]time.Time
-		blockStatusCode  map[string]int
 		policy           string
 		labels           string
 		expectError      bool
@@ -1700,9 +1700,6 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			blockUntil: map[string]time.Time{
 				"test-policy": now.Add(-1 * time.Hour),
 			},
-			blockStatusCode: map[string]int{
-				"test-policy": 429,
-			},
 			policy:      "test-policy",
 			labels:      `{foo="bar"}`,
 			expectError: false,
@@ -1712,21 +1709,15 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			blockUntil: map[string]time.Time{
 				"test-policy": now.Add(1 * time.Hour),
 			},
-			blockStatusCode: map[string]int{
-				"test-policy": 429,
-			},
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), 429),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 		},
 		{
 			name: "not blocked - different policy",
 			blockUntil: map[string]time.Time{
 				"blocked-policy": now.Add(1 * time.Hour),
-			},
-			blockStatusCode: map[string]int{
-				"blocked-policy": 429,
 			},
 			policy:      "test-policy",
 			labels:      `{foo="bar"}`,
@@ -1737,13 +1728,10 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			blockUntil: map[string]time.Time{
 				"test-policy": now.Add(1 * time.Hour),
 			},
-			blockStatusCode: map[string]int{
-				"test-policy": 456,
-			},
 			policy:           "test-policy",
 			labels:           `{foo="bar"}`,
 			expectError:      true,
-			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), 456),
+			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1766,10 +1754,6 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 				for policy, until := range tc.blockUntil {
 					limits.BlockIngestionPolicyUntil[policy] = dskit_flagext.Time(until)
 				}
-			}
-
-			if tc.blockStatusCode != nil {
-				limits.BlockIngestionPolicyStatusCode = tc.blockStatusCode
 			}
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
