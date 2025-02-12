@@ -1,7 +1,7 @@
 ARG GO_VERSION=1.23
-ARG IMAGE_TAG
-FROM golang:${GO_VERSION} AS build
 
+FROM golang:${GO_VERSION} AS build
+ARG IMAGE_TAG
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} loki
