@@ -17,26 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/logs"
 )
 
-// Predicates for reading logs.
-type (
-	// MetadataMatcher is a predicate for matching metadata in a logs section.
-	// MetadataMatcher predicates assert that a metadata entry named Name exists
-	// and its value is set to Value.
-	//
-	// For equality matches, MetadataMatcher should always be used;
-	// MetadataMatchers can translate into more efficient filter operations than
-	// a [MetadataFilter] can.
-	MetadataMatcher struct{ Name, Value string }
-
-	// MetadataFilter is a predicate for matching metadata in a logs section.
-	// MetadataFilter predicates return a true value when the combination of the
-	// provided metadata entry name and value should be included in the result.
-	//
-	// MetadataFilter predicates should be only used for more complex filtering;
-	// for equality matches, [MetadataMatcher]s are more efficient.
-	MetadataFilter func(name, value string) bool
-)
-
 // A Record is an individual log record in a data object.
 type Record struct {
 	StreamID  int64         // StreamID associated with the log record.
@@ -50,9 +30,8 @@ type LogsReader struct {
 	obj *Object
 	idx int
 
-	matchers map[string]string
-	filters  map[string]MetadataFilter
-	matchIDs map[int64]struct{}
+	matchIDs  map[int64]struct{}
+	predicate LogsPredicate
 
 	next func() (result.Result[logs.Record], bool)
 	stop func()
@@ -87,40 +66,17 @@ func (r *LogsReader) MatchStreams(ids iter.Seq[int64]) error {
 	return nil
 }
 
-// AddMetadataMatcher adds a metadata matcher to the LogsReader.
-// [LogsReader.Read] will only return logs for which the metadata matcher
-// predicate passes.
+// SetPredicate sets the predicate to use for filtering logs. [LogsReader.Read]
+// will only return logs for which the predicate passes.
 //
-// AddMetadataMatcher may only be called before reading begins or after a call
-// to [LogsReader.Reset].
-func (r *LogsReader) AddMetadataMatcher(m MetadataMatcher) error {
+// A predicate may only be set before reading begins or after a call to
+// [LogsReader.Reset].
+func (r *LogsReader) SetPredicate(p LogsPredicate) error {
 	if r.next != nil {
-		return fmt.Errorf("cannot add metadata matcher after reading has started")
+		return fmt.Errorf("cannot change predicate after reading has started")
 	}
 
-	if r.matchers == nil {
-		r.matchers = make(map[string]string)
-	}
-	r.matchers[m.Name] = m.Value
-	return nil
-}
-
-// AddMetadataFilter adds a metadata filter to the LogsReader.
-// [LogsReader.Read] will only return records for which the metadata filter
-// predicate passes. The filter f will be called with the provided key to allow
-// the same function to be reused for multiple keys.
-//
-// AddMetadataFilter may only be called before reading begins or after a call
-// to [LogsReader.Reset].
-func (r *LogsReader) AddMetadataFilter(key string, f MetadataFilter) error {
-	if r.next != nil {
-		return fmt.Errorf("cannot add metadata filter after reading has started")
-	}
-
-	if r.filters == nil {
-		r.filters = make(map[string]MetadataFilter)
-	}
-	r.filters[key] = f
+	r.predicate = p
 	return nil
 }
 
@@ -239,19 +195,36 @@ NextRow:
 		}
 	}
 
-	for key, value := range r.matchers {
-		if getMetadata(record.Metadata, key) != value {
-			goto NextRow
-		}
-	}
-
-	for key, filter := range r.filters {
-		if !filter(key, getMetadata(record.Metadata, key)) {
-			goto NextRow
-		}
+	if !matchLogsPredicate(r.predicate, record) {
+		goto NextRow
 	}
 
 	return res, true
+}
+
+func matchLogsPredicate(p Predicate, record logs.Record) bool {
+	if p == nil {
+		return true
+	}
+
+	switch p := p.(type) {
+	case AndPredicate[LogsPredicate]:
+		return matchLogsPredicate(p.Left, record) && matchLogsPredicate(p.Right, record)
+	case OrPredicate[LogsPredicate]:
+		return matchLogsPredicate(p.Left, record) || matchLogsPredicate(p.Right, record)
+	case NotPredicate[LogsPredicate]:
+		return !matchLogsPredicate(p.Inner, record)
+	case TimeRangePredicate[LogsPredicate]:
+		return matchTimestamp(p, record.Timestamp)
+	case MetadataMatcherPredicate:
+		return getMetadata(record.Metadata, p.Key) == p.Value
+	case MetadataFilterPredicate:
+		return p.Keep(p.Key, getMetadata(record.Metadata, p.Key))
+	default:
+		// Unsupported predicates should already be caught by
+		// [LogsReader.SetPredicate].
+		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
 }
 
 func getMetadata(md push.LabelsAdapter, key string) string {
@@ -276,6 +249,8 @@ func convertMetadata(md push.LabelsAdapter) labels.Labels {
 // Reset resets the LogsReader with a new object and section index to read
 // from. Reset allows reusing a LogsReader without allocating a new one.
 //
+// Any set predicate is cleared when Reset is called.
+//
 // Reset may be called with a nil object and a negative section index to clear
 // the LogsReader without needing a new object.
 func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
@@ -288,7 +263,6 @@ func (r *LogsReader) Reset(obj *Object, sectionIndex int) {
 	r.next = nil
 	r.stop = nil
 
-	clear(r.matchers)
-	clear(r.filters)
 	clear(r.matchIDs)
+	r.predicate = nil
 }
