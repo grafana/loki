@@ -319,82 +319,82 @@ func TestObjectOverlapsRange(t *testing.T) {
 	}{
 		{
 			name:       "object fully within query range",
-			objStart:   time.Unix(11, 0), // 11
-			objEnd:     time.Unix(12, 0), // 12
-			queryStart: time.Unix(10, 0), // 10
-			queryEnd:   time.Unix(13, 0), // 13
+			objStart:   time.Unix(11, 0),
+			objEnd:     time.Unix(12, 0),
+			queryStart: time.Unix(10, 0),
+			queryEnd:   time.Unix(13, 0),
 			wantMatch:  true,
 			desc:       "query: [10,13], obj: [11,12]",
 		},
 		{
 			name:       "object and query equal",
-			objStart:   time.Unix(11, 0),  // 11
-			objEnd:     time.Unix(12, 0),  // 12
-			queryStart: time.Unix(11, 0),  // 10
-			queryEnd:   time.Unix(122, 0), // 13
+			objStart:   time.Unix(11, 0),
+			objEnd:     time.Unix(12, 0),
+			queryStart: time.Unix(11, 0),
+			queryEnd:   time.Unix(122, 0),
 			wantMatch:  true,
 			desc:       "query: [11,12], obj: [11,12]",
 		},
 		{
 			name:       "object fully contains query range",
-			objStart:   time.Unix(10, 0), // 10
-			objEnd:     time.Unix(13, 0), // 13
-			queryStart: time.Unix(11, 0), // 11
-			queryEnd:   time.Unix(12, 0), // 12
+			objStart:   time.Unix(10, 0),
+			objEnd:     time.Unix(13, 0),
+			queryStart: time.Unix(11, 0),
+			queryEnd:   time.Unix(12, 0),
 			wantMatch:  true,
 			desc:       "query: [11,12], obj: [10,13]",
 		},
 		{
 			name:       "object overlaps start of query range",
-			objStart:   time.Unix(9, 0),  // 9
-			objEnd:     time.Unix(11, 0), // 11
-			queryStart: time.Unix(10, 0), // 10
-			queryEnd:   time.Unix(12, 0), // 12
+			objStart:   time.Unix(9, 0),
+			objEnd:     time.Unix(11, 0),
+			queryStart: time.Unix(10, 0),
+			queryEnd:   time.Unix(12, 0),
 			wantMatch:  true,
 			desc:       "query: [10,12], obj: [9,11]",
 		},
 		{
 			name:       "object overlaps end of query range",
-			objStart:   time.Unix(11, 0), // 11
-			objEnd:     time.Unix(13, 0), // 13
-			queryStart: time.Unix(10, 0), // 10
-			queryEnd:   time.Unix(12, 0), // 12
+			objStart:   time.Unix(11, 0),
+			objEnd:     time.Unix(13, 0),
+			queryStart: time.Unix(10, 0),
+			queryEnd:   time.Unix(12, 0),
 			wantMatch:  true,
 			desc:       "query: [10,12], obj: [11,13]",
 		},
 		{
 			name:       "object ends before query range",
-			objStart:   time.Unix(8, 0),  // 8
-			objEnd:     time.Unix(9, 0),  // 9
-			queryStart: time.Unix(10, 0), // 10
-			queryEnd:   time.Unix(11, 0), // 11
+			objStart:   time.Unix(8, 0),
+			objEnd:     time.Unix(9, 0),
+			queryStart: time.Unix(10, 0),
+			queryEnd:   time.Unix(11, 0),
 			wantMatch:  false,
 			desc:       "query: [10,11], obj: [8,9]",
 		},
 		{
 			name:       "object starts after query range",
-			objStart:   time.Unix(12, 0), // 12
-			objEnd:     time.Unix(13, 0), // 13
-			queryStart: time.Unix(10, 0), // 10
-			queryEnd:   time.Unix(11, 0), // 11
+			objStart:   time.Unix(12, 0),
+			objEnd:     time.Unix(13, 0),
+			queryStart: time.Unix(10, 0),
+			queryEnd:   time.Unix(11, 0),
 			wantMatch:  false,
 			desc:       "query: [10,11], obj: [12,13]",
 		},
 		{
 			name:       "object touches start of query range",
-			objStart:   time.Unix(9, 0),  // 9
-			objEnd:     time.Unix(10, 0), // 10
-			queryStart: time.Unix(10, 0), // 10
-			queryEnd:   time.Unix(11, 0), // 11
+			objStart:   time.Unix(9, 0),
+			objEnd:     time.Unix(10, 0),
+			queryStart: time.Unix(10, 0),
+			queryEnd:   time.Unix(11, 0),
 			wantMatch:  true,
 			desc:       "query: [10,11], obj: [9,10]",
 		},
 		{
 			name:       "object touches end of query range",
-			objStart:   time.Unix(11, 0), // 11
-			objEnd:     time.Unix(12, 0), // 12
-			queryStart: time.Unix(10, 0), // 10
-			queryEnd:   time.Unix(11, 0), // 11
+			objStart:   time.Unix(11, 0),
+			objEnd:     time.Unix(12, 0),
+			queryStart: time.Unix(10, 0),
+			queryEnd:   time.Unix(11, 0),
 			wantMatch:  true,
 			desc:       "query: [10,11], obj: [11,12]",
 		},
