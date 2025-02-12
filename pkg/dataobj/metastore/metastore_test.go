@@ -2,10 +2,12 @@ package metastore
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/dskit/backoff"
@@ -301,4 +303,119 @@ func TestDataObjectsPaths(t *testing.T) {
 		require.Contains(t, paths, "path4")
 		require.Contains(t, paths, "path5")
 	})
+}
+
+func TestObjectOverlapsRange(t *testing.T) {
+	testPath := "test/path"
+
+	tests := []struct {
+		name       string
+		objStart   time.Time
+		objEnd     time.Time
+		queryStart time.Time
+		queryEnd   time.Time
+		wantMatch  bool
+		desc       string
+	}{
+		{
+			name:       "object fully within query range",
+			objStart:   time.Unix(11, 0), // 11
+			objEnd:     time.Unix(12, 0), // 12
+			queryStart: time.Unix(10, 0), // 10
+			queryEnd:   time.Unix(13, 0), // 13
+			wantMatch:  true,
+			desc:       "query: [10,13], obj: [11,12]",
+		},
+		{
+			name:       "object and query equal",
+			objStart:   time.Unix(11, 0),  // 11
+			objEnd:     time.Unix(12, 0),  // 12
+			queryStart: time.Unix(11, 0),  // 10
+			queryEnd:   time.Unix(122, 0), // 13
+			wantMatch:  true,
+			desc:       "query: [11,12], obj: [11,12]",
+		},
+		{
+			name:       "object fully contains query range",
+			objStart:   time.Unix(10, 0), // 10
+			objEnd:     time.Unix(13, 0), // 13
+			queryStart: time.Unix(11, 0), // 11
+			queryEnd:   time.Unix(12, 0), // 12
+			wantMatch:  true,
+			desc:       "query: [11,12], obj: [10,13]",
+		},
+		{
+			name:       "object overlaps start of query range",
+			objStart:   time.Unix(9, 0),  // 9
+			objEnd:     time.Unix(11, 0), // 11
+			queryStart: time.Unix(10, 0), // 10
+			queryEnd:   time.Unix(12, 0), // 12
+			wantMatch:  true,
+			desc:       "query: [10,12], obj: [9,11]",
+		},
+		{
+			name:       "object overlaps end of query range",
+			objStart:   time.Unix(11, 0), // 11
+			objEnd:     time.Unix(13, 0), // 13
+			queryStart: time.Unix(10, 0), // 10
+			queryEnd:   time.Unix(12, 0), // 12
+			wantMatch:  true,
+			desc:       "query: [10,12], obj: [11,13]",
+		},
+		{
+			name:       "object ends before query range",
+			objStart:   time.Unix(8, 0),  // 8
+			objEnd:     time.Unix(9, 0),  // 9
+			queryStart: time.Unix(10, 0), // 10
+			queryEnd:   time.Unix(11, 0), // 11
+			wantMatch:  false,
+			desc:       "query: [10,11], obj: [8,9]",
+		},
+		{
+			name:       "object starts after query range",
+			objStart:   time.Unix(12, 0), // 12
+			objEnd:     time.Unix(13, 0), // 13
+			queryStart: time.Unix(10, 0), // 10
+			queryEnd:   time.Unix(11, 0), // 11
+			wantMatch:  false,
+			desc:       "query: [10,11], obj: [12,13]",
+		},
+		{
+			name:       "object touches start of query range",
+			objStart:   time.Unix(9, 0),  // 9
+			objEnd:     time.Unix(10, 0), // 10
+			queryStart: time.Unix(10, 0), // 10
+			queryEnd:   time.Unix(11, 0), // 11
+			wantMatch:  true,
+			desc:       "query: [10,11], obj: [9,10]",
+		},
+		{
+			name:       "object touches end of query range",
+			objStart:   time.Unix(11, 0), // 11
+			objEnd:     time.Unix(12, 0), // 12
+			queryStart: time.Unix(10, 0), // 10
+			queryEnd:   time.Unix(11, 0), // 11
+			wantMatch:  true,
+			desc:       "query: [10,11], obj: [11,12]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create labels with timestamps in nanoseconds
+			lbs := labels.Labels{
+				{Name: "__start__", Value: strconv.FormatInt(tt.objStart.UnixNano(), 10)},
+				{Name: "__end__", Value: strconv.FormatInt(tt.objEnd.UnixNano(), 10)},
+				{Name: "__path__", Value: testPath},
+			}
+
+			gotMatch, gotPath := objectOverlapsRange(lbs, tt.queryStart, tt.queryEnd)
+			require.Equal(t, tt.wantMatch, gotMatch, "overlap match failed for %s", tt.desc)
+			if tt.wantMatch {
+				require.Equal(t, testPath, gotPath, "path should match when ranges overlap")
+			} else {
+				require.Empty(t, gotPath, "path should be empty when ranges don't overlap")
+			}
+		})
+	}
 }
