@@ -9,6 +9,8 @@ weight:  400
 
 # Configuring Promtail for service discovery
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 Promtail currently supports scraping from the following sources:
 
 - [Azure event hubs]({{< relref "#azure-event-hubs" >}})
