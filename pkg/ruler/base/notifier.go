@@ -192,6 +192,12 @@ func amConfigFromURL(cfg *ruler_config.AlertManagerConfig, url *url.URL, apiVers
 		Timeout:                 model.Duration(cfg.NotificationTimeout),
 		ServiceDiscoveryConfigs: sdConfig,
 		HTTPClientConfig: config_util.HTTPClientConfig{
+			ProxyConfig: config_util.ProxyConfig{
+				ProxyURL:             cfg.Notifier.Proxy.ProxyURL,
+				NoProxy:              cfg.Notifier.Proxy.NoProxy,
+				ProxyConnectHeader:   cfg.Notifier.Proxy.ProxyConnectHeader,
+				ProxyFromEnvironment: cfg.Notifier.Proxy.ProxyFromEnvironment,
+			},
 			TLSConfig: config_util.TLSConfig{
 				CAFile:             cfg.Notifier.TLS.CAPath,
 				CertFile:           cfg.Notifier.TLS.CertPath,
