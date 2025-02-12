@@ -124,6 +124,8 @@ spec:
             {{- end }}
           securityContext:
             {{- toYaml $.ctx.Values.memcached.containerSecurityContext | nindent 12 }}
+          readinessProbe:
+            {{- toYaml $.ctx.Values.memcached.readinessProbe | nindent 12 }}
           {{- if or .persistence.enabled .extraVolumeMounts }}
           volumeMounts:
           {{- if .persistence.enabled }}
