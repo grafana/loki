@@ -20,13 +20,13 @@ The following clients are developed and supported (for those customers who have 
 
 - [Grafana Alloy](https://grafana.com/docs/alloy/latest/) - Grafana Alloy is a vendor-neutral distribution of the OpenTelemetry (OTel) Collector. Alloy offers native pipelines for OTel, Prometheus, Pyroscope, Loki, and many other metrics, logs, traces, and profile tools. In addition, you can use Alloy pipelines to do different tasks, such as configure alert rules in Loki and Mimir. Alloy is fully compatible with the OTel Collector, Prometheus Agent, and Promtail. You can use Alloy as an alternative to either of these solutions or combine it into a hybrid system of multiple collectors and agents. You can deploy Alloy anywhere within your IT infrastructure and pair it with your Grafana LGTM stack, a telemetry backend from Grafana Cloud, or any other compatible backend from any other vendor.
  {{< docs/shared source="alloy" lookup="agent-deprecation.md" version="next" >}}
-- [Grafana Agent](/docs/agent/latest/) - The Grafana Agent is a client for the Grafana stack. It can collect telemetry data for metrics, logs, traces, and continuous profiles and is fully compatible with the Prometheus, OpenTelemetry, and Grafana open source ecosystems.
-- [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) - Promtail can be configured to automatically scrape logs from Kubernetes pods running on the same node that Promtail runs on. Promtail and Prometheus running together in Kubernetes enables powerful debugging: if Prometheus and Promtail use the same labels, users can use tools like Grafana to switch between metrics and logs based on the label set. Promtail can be configured to tail logs from all files given a host path. It is the easiest way to send logs to Loki from plain-text files (for example, things that log to `/var/log/*.log`).
-Promtail works well if you want to extract metrics from logs such as counting the occurrences of a particular message.
-{{< admonition type="note" >}}
-Promtail is feature complete. All future feature development will occur in Grafana Alloy.
-{{< /admonition >}}
 - [xk6-loki extension](https://github.com/grafana/xk6-loki) - The k6-loki extension lets you perform [load testing on Loki](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/k6/).
+- [Grafana Agent](/docs/agent/latest/) (DEPRECATED) - The Grafana Agent is a client for the Grafana stack. It can collect telemetry data for metrics, logs, traces, and continuous profiles and is fully compatible with the Prometheus, OpenTelemetry, and Grafana open source ecosystems.
+- [Promtail](https://grafana.com/docs/loki/<LOKI_VERSION>/send-data/promtail/) (DEPRECATED) - Promtail can be configured to automatically scrape logs from Kubernetes pods running on the same node that Promtail runs on. 
+{{< admonition type="caution" >}}
+Promtail is deprecated. If you are currently using Promtail, you should plan your [migration to Alloy](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-alloy/). All future feature development will occur in Grafana Alloy.
+{{< /admonition >}}
+
 
 ## OpenTelemetry Collector
 
