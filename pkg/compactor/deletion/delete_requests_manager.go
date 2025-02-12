@@ -3,9 +3,7 @@ package deletion
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -58,7 +56,7 @@ func NewDeleteRequestsManager(store DeleteRequestsStore, deleteRequestCancelPeri
 
 	go dm.loop()
 
-	if err := dm.mergeShardedRequests(context.Background()); err != nil {
+	if err := dm.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
 	}
 
@@ -89,70 +87,8 @@ func (d *DeleteRequestsManager) Stop() {
 	d.wg.Wait()
 }
 
-// mergeShardedRequests merges the sharded requests back to a single request when we are done with processing all the shards
-func (d *DeleteRequestsManager) mergeShardedRequests(ctx context.Context) error {
-	deleteGroups, err := d.deleteRequestsStore.GetAllDeleteRequests(context.Background())
-	if err != nil {
-		return err
-	}
-
-	slices.SortFunc(deleteGroups, func(a, b DeleteRequest) int {
-		return strings.Compare(a.RequestID, b.RequestID)
-	})
-	deleteRequests := mergeDeletes(deleteGroups)
-	for _, req := range deleteRequests {
-		// do not consider requests which do not have an id. Request ID won't be set in some tests or there is a bug in our code for loading requests.
-		if req.RequestID == "" {
-			level.Error(util_log.Logger).Log("msg", "skipped considering request without an id for merging its shards",
-				"user_id", req.UserID,
-				"start_time", req.StartTime.Unix(),
-				"end_time", req.EndTime.Unix(),
-				"query", req.Query,
-			)
-			continue
-		}
-		// do not do anything if we are not done with processing all the shards or the number of shards is 1
-		if req.Status != StatusProcessed {
-			continue
-		}
-
-		var idxStart, idxEnd int
-		for i := range deleteGroups {
-			if req.RequestID == deleteGroups[i].RequestID {
-				idxStart = i
-				break
-			}
-		}
-
-		for i := len(deleteGroups) - 1; i > 0; i-- {
-			if req.RequestID == deleteGroups[i].RequestID {
-				idxEnd = i
-				break
-			}
-		}
-
-		// do not do anything if the number of shards is 1
-		if idxStart == idxEnd {
-			continue
-		}
-		reqShards := deleteGroups[idxStart : idxEnd+1]
-
-		level.Info(util_log.Logger).Log("msg", "merging sharded request",
-			"request_id", req.RequestID,
-			"num_shards", len(reqShards),
-			"start_time", req.StartTime.Unix(),
-			"end_time", req.EndTime.Unix(),
-		)
-		if err := d.deleteRequestsStore.MergeShardedRequests(ctx, req, reqShards); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (d *DeleteRequestsManager) updateMetrics() error {
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return err
 	}
@@ -267,7 +203,7 @@ func (d *DeleteRequestsManager) loadDeleteRequestsToProcess() error {
 }
 
 func (d *DeleteRequestsManager) filteredSortedDeleteRequests() ([]DeleteRequest, error) {
-	deleteRequests, err := d.deleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusReceived)
+	deleteRequests, err := d.deleteRequestsStore.GetUnprocessedShards(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -418,7 +354,7 @@ func (d *DeleteRequestsManager) MarkPhaseTimedOut() {
 }
 
 func (d *DeleteRequestsManager) markRequestAsProcessed(deleteRequest DeleteRequest) {
-	if err := d.deleteRequestsStore.UpdateStatus(context.Background(), deleteRequest, StatusProcessed); err != nil {
+	if err := d.deleteRequestsStore.MarkShardAsProcessed(context.Background(), deleteRequest); err != nil {
 		level.Error(util_log.Logger).Log(
 			"msg", "failed to mark delete request for user as processed",
 			"delete_request_id", deleteRequest.RequestID,
@@ -462,7 +398,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		d.markRequestAsProcessed(req)
 	}
 
-	if err := d.mergeShardedRequests(context.Background()); err != nil {
+	if err := d.deleteRequestsStore.MergeShardedRequests(context.Background()); err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to merge sharded requests", "err", err)
 	}
 }

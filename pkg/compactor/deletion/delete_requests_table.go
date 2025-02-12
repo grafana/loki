@@ -33,7 +33,10 @@ type deleteRequestsTable struct {
 	wg                sync.WaitGroup
 }
 
-const deleteRequestsIndexFileName = DeleteRequestsTableName + ".gz"
+const (
+	deleteRequestsIndexFileName  = DeleteRequestsTableName + ".gz"
+	deleteRequestsSQLiteFileName = DeleteRequestsTableName + ".sqlite.gz"
+)
 
 func newDeleteRequestsTable(workingDirectory string, indexStorageClient storage.Client) (index.Client, error) {
 	dbPath := filepath.Join(workingDirectory, DeleteRequestsTableName, DeleteRequestsTableName)
