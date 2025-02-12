@@ -1,5 +1,24 @@
 ## Main
 
+## [0.8.0](https://github.com/grafana/loki/compare/operator/v0.7.1...operator/v0.8.0) (2025-02-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **operator:** Add configuration option for dropping OTLP attributes ([#15857](https://github.com/grafana/loki/issues/15857))
+
+### Features
+
+* **operator:** Add configuration option for dropping OTLP attributes ([#15857](https://github.com/grafana/loki/issues/15857)) ([bd1ea23](https://github.com/grafana/loki/commit/bd1ea2313220b9aa187ff5b252f55512434c1865))
+* **operator:** Update Loki operand to v3.3.2 ([#15800](https://github.com/grafana/loki/issues/15800)) ([fdec2c7](https://github.com/grafana/loki/commit/fdec2c78f9dc6509b2fc931b5304d56ae49f7c60))
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/net to v0.33.0 [security] ([#15490](https://github.com/grafana/loki/issues/15490)) ([7057028](https://github.com/grafana/loki/commit/70570285d3c33814a0f5b9196a4a49c8cba65653))
+* **operator:** Fix minimum available ingesters for 1x.pico size ([#16035](https://github.com/grafana/loki/issues/16035)) ([40cf074](https://github.com/grafana/loki/commit/40cf074fba0ed0016a8ca64bed554f3d628e7ec6))
+* **operator:** Update skipRange in OpenShift variant ([#15984](https://github.com/grafana/loki/issues/15984)) ([dfbe00c](https://github.com/grafana/loki/commit/dfbe00c88a2f17da11b726a3461c11324c21fcca))
+
 ## [0.7.1](https://github.com/grafana/loki/compare/operator/v0.7.0...operator/v0.7.1) (2024-11-11)
 
 
