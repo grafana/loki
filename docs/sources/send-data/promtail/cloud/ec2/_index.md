@@ -11,6 +11,8 @@ weight: 100
 
 In this tutorial we're going to setup [Promtail]({{< relref "../../../../send-data/promtail" >}}) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 ## Requirements
 
 Before you start you'll need:

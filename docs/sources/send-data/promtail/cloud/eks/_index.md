@@ -11,6 +11,8 @@ weight: 100
 
 In this tutorial we'll see how to set up Promtail on [EKS][eks]. Amazon Elastic Kubernetes Service (Amazon [EKS][eks]) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs. We'll start by forwarding pods logs then nodes services and finally Kubernetes events.
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 After this tutorial you will able to query all your logs in one place using Grafana.
 
 ## Requirements
