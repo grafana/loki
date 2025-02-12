@@ -1,6 +1,7 @@
 package aws
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -42,6 +43,8 @@ import (
 
 const (
 	SignatureVersionV4 = "v4"
+	maxUploadSize      = int64(5 * 1024 * 1024 * 1024) // 5GB
+	partSize           = int64(512 * 1024 * 1024)      // 512MB per part
 )
 
 var (
@@ -464,22 +467,116 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 		if err != nil {
 			return err
 		}
-		putObjectInput := &s3.PutObjectInput{
-			Body:         readSeeker,
-			Bucket:       aws.String(a.bucketFromKey(objectKey)),
-			Key:          aws.String(objectKey),
-			StorageClass: aws.String(a.cfg.StorageClass),
+
+		size, err := readSeeker.Seek(0, io.SeekEnd)
+		if err != nil {
+			return err
+		}
+		_, err = readSeeker.Seek(0, io.SeekStart)
+		if err != nil {
+			return err
 		}
 
-		if a.sseConfig != nil {
-			putObjectInput.ServerSideEncryption = aws.String(a.sseConfig.ServerSideEncryption)
-			putObjectInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
-			putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
+		bucket := a.bucketFromKey(objectKey)
+
+		if size <= maxUploadSize {
+			putObjectInput := &s3.PutObjectInput{
+				Body:         readSeeker,
+				Bucket:       aws.String(bucket),
+				Key:          aws.String(objectKey),
+				StorageClass: aws.String(a.cfg.StorageClass),
+			}
+
+			if a.sseConfig != nil {
+				putObjectInput.ServerSideEncryption = aws.String(a.sseConfig.ServerSideEncryption)
+				putObjectInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
+				putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
+			}
+
+			_, err = a.S3.PutObjectWithContext(ctx, putObjectInput)
+			return err
 		}
 
-		_, err = a.S3.PutObjectWithContext(ctx, putObjectInput)
-		return err
+		return a.putObjectMultipart(ctx, bucket, objectKey, readSeeker)
 	})
+}
+
+func (a *S3ObjectClient) putObjectMultipart(ctx context.Context, bucket, objectKey string, reader io.ReadSeeker) error {
+	createInput := &s3.CreateMultipartUploadInput{
+		Bucket:       aws.String(bucket),
+		Key:          aws.String(objectKey),
+		StorageClass: aws.String(a.cfg.StorageClass),
+	}
+
+	if a.sseConfig != nil {
+		createInput.ServerSideEncryption = aws.String(a.sseConfig.ServerSideEncryption)
+		createInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
+		createInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
+	}
+
+	createResp, err := a.S3.CreateMultipartUploadWithContext(ctx, createInput)
+	if err != nil {
+		return err
+	}
+
+	var completedParts []*s3.CompletedPart
+	partNumber := int64(1)
+
+	for {
+		if ctx.Err() != nil {
+			_, abortErr := a.S3.AbortMultipartUploadWithContext(ctx, &s3.AbortMultipartUploadInput{
+				Bucket:   aws.String(bucket),
+				Key:      aws.String(objectKey),
+				UploadId: createResp.UploadId,
+			})
+			if abortErr != nil {
+				return errors.Wrap(ctx.Err(), abortErr.Error())
+			}
+			return ctx.Err()
+		}
+
+		partBuffer := make([]byte, partSize)
+		n, err := io.ReadFull(reader, partBuffer)
+		if err == io.EOF {
+			break
+		}
+		if err != nil && err != io.ErrUnexpectedEOF {
+			return err
+		}
+
+		uploadPartInput := &s3.UploadPartInput{
+			Body:          bytes.NewReader(partBuffer[:n]),
+			Bucket:        aws.String(bucket),
+			Key:           aws.String(objectKey),
+			PartNumber:    aws.Int64(partNumber),
+			UploadId:      createResp.UploadId,
+			ContentLength: aws.Int64(int64(n)),
+		}
+
+		uploadResp, err := a.S3.UploadPartWithContext(ctx, uploadPartInput)
+		if err != nil {
+			return err
+		}
+
+		completedParts = append(completedParts, &s3.CompletedPart{
+			ETag:       uploadResp.ETag,
+			PartNumber: aws.Int64(partNumber),
+		})
+
+		partNumber++
+	}
+
+	completeInput := &s3.CompleteMultipartUploadInput{
+		Bucket:   aws.String(bucket),
+		Key:      aws.String(objectKey),
+		UploadId: createResp.UploadId,
+		MultipartUpload: &s3.CompletedMultipartUpload{
+			Parts: completedParts,
+		},
+	}
+
+	_, err = a.S3.CompleteMultipartUploadWithContext(ctx, completeInput)
+	return err
 }
 
 // List implements chunk.ObjectClient.
