@@ -9,6 +9,8 @@ weight:  200
 
 # Configure Promtail
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
 and how to scrape logs from files.

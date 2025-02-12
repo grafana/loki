@@ -9,6 +9,8 @@ weight:  600
 
 # Pipelines
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 A detailed look at how to set up Promtail to process your log lines, including
 extracting metrics and labels.
 
