@@ -39,6 +39,10 @@ tools/lambda-promtail/main
 tools/dev/kafka/data/
 pkg/dataobj/explorer/ui/node_modules/*
 pkg/dataobj/explorer/ui/.vite/*
+dashboards_out/
+grizzly_out/
+production/loki-mixin/alerts.yaml
+production/loki-mixin/rules.yaml
 
 # Submodule added by `act` CLI
 _shared-workflows-dockerhub-login

@@ -103,19 +103,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"((compactor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"((compactor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"((compactor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))\"} / container_spec_cpu_period{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"((compactor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -204,19 +204,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"((compactor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"((compactor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"loki\", pod=~\"(loki.*|enterprise-logs)-read.*\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", namespace=\"$namespace\", pod=~\"((compactor)-([0-9]+|[a-z0-9]{10}-[a-z0-9]{5}))\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -266,7 +266,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-backend\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -356,7 +356,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"} * 1e3",
+                        "expr": "loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"} * 1e3",
                         "format": "time_series",
                         "instant": true,
                         "refId": "A"
@@ -436,7 +436,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "loki_boltdb_shipper_compact_tables_operation_duration_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"}",
+                        "expr": "loki_boltdb_shipper_compact_tables_operation_duration_seconds{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}",
                         "format": "time_series",
                         "legendFormat": "duration",
                         "legendLink": null
@@ -495,7 +495,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum(loki_compactor_locked_table_successive_compaction_skips{cluster=~\"$cluster\", namespace=~\"$namespace\"})",
+                        "expr": "sum(loki_compactor_locked_table_successive_compaction_skips{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "{{table_name}}",
                         "legendLink": null
@@ -542,7 +542,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum by (status)(rate(loki_boltdb_shipper_compact_tables_operation_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum by (status) (\n  rate(\n    loki_boltdb_shipper_compact_tables_operation_total{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n    [$__rate_interval]\n  )\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{success}}",
                         "legendLink": null
@@ -629,7 +629,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "loki_compactor_apply_retention_last_successful_run_timestamp_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"} * 1e3",
+                        "expr": "loki_compactor_apply_retention_last_successful_run_timestamp_seconds{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"} * 1e3",
                         "format": "time_series",
                         "instant": true,
                         "refId": "A"
@@ -709,7 +709,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "loki_compactor_apply_retention_operation_duration_seconds{cluster=~\"$cluster\", namespace=~\"$namespace\"}",
+                        "expr": "loki_compactor_apply_retention_operation_duration_seconds{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}",
                         "format": "time_series",
                         "legendFormat": "duration",
                         "legendLink": null
@@ -756,7 +756,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by (status)(rate(loki_compactor_apply_retention_operation_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum by (status) (\n  rate(\n    loki_compactor_apply_retention_operation_total{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n    [$__rate_interval]\n  )\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{success}}",
                         "legendLink": null
@@ -815,7 +815,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count by(action)(loki_boltdb_shipper_retention_marker_table_processed_total{cluster=~\"$cluster\", namespace=~\"$namespace\"})",
+                        "expr": "count by (action) (\n  loki_boltdb_shipper_retention_marker_table_processed_total{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{action}}",
                         "legendLink": null
@@ -862,7 +862,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "count by(table,action)(loki_boltdb_shipper_retention_marker_table_processed_total{cluster=~\"$cluster\", namespace=~\"$namespace\" , action=~\"modified|deleted\"})",
+                        "expr": "count by (table, action) (\n  loki_boltdb_shipper_retention_marker_table_processed_total{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\", action=~\"modified|deleted\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{table}}-{{action}}",
                         "legendLink": null
@@ -909,7 +909,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by (table)(rate(loki_boltdb_shipper_retention_marker_count_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) >0",
+                        "expr": "sum by (table) (\n  rate(\n    loki_boltdb_shipper_retention_marker_count_total{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n    [$__rate_interval]\n  )\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{table}}",
                         "legendLink": null
@@ -969,7 +969,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum (increase(loki_boltdb_shipper_retention_marker_count_total{cluster=~\"$cluster\", namespace=~\"$namespace\"}[24h]))",
+                        "expr": "sum (\n  increase(\n    loki_boltdb_shipper_retention_marker_count_total{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n    [24h]\n  )\n)\n",
                         "format": "time_series",
                         "instant": true,
                         "refId": "A"
@@ -1018,19 +1018,19 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_bucket{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_sum{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_marker_table_processed_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -1108,7 +1108,7 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "sum (increase(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\"}[24h]))",
+                        "expr": "sum (\n  increase(\n    loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n    [24h]\n  )\n)\n",
                         "format": "time_series",
                         "instant": true,
                         "refId": "A"
@@ -1157,19 +1157,19 @@
                   "span": 6,
                   "targets": [
                      {
-                        "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.99, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "99th Percentile",
                         "refId": "A"
                      },
                      {
-                        "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
+                        "expr": "histogram_quantile(0.50, sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_bucket{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval])) by (le)) * 1e3",
                         "format": "time_series",
                         "legendFormat": "50th Percentile",
                         "refId": "B"
                      },
                      {
-                        "expr": "sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_sum{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_sum{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval])) * 1e3 / sum(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "Average",
                         "refId": "C"
@@ -1246,7 +1246,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "time() - (loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster=~\"$cluster\", namespace=~\"$namespace\"} > 0)",
+                        "expr": "time() - (\n  loki_boltdb_shipper_retention_sweeper_marker_file_processing_current_time{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n  > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "lag",
                         "legendLink": null
@@ -1293,7 +1293,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum(loki_boltdb_shipper_retention_sweeper_marker_files_current{cluster=~\"$cluster\", namespace=~\"$namespace\"})",
+                        "expr": "sum(\n  loki_boltdb_shipper_retention_sweeper_marker_files_current{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "count",
                         "legendLink": null
@@ -1340,7 +1340,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by (status)(rate(loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{cluster=~\"$cluster\", namespace=~\"$namespace\"}[$__rate_interval]))",
+                        "expr": "sum by (status) (\n  rate(\n    loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}\n    [$__rate_interval]\n  )\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{status}}",
                         "legendLink": null
@@ -1367,7 +1367,7 @@
                   "span": 12,
                   "targets": [
                      {
-                        "expr": "{cluster=~\"$cluster\", job=~\"($namespace)/(loki.*|enterprise-logs)-backend\"}",
+                        "expr": "{cluster=\"$cluster\", job=~\"($namespace)/(compactor)\", namespace=\"$namespace\"}",
                         "refId": "A"
                      }
                   ],
@@ -1457,7 +1457,7 @@
                "options": [ ],
                "query": "loki",
                "refresh": 1,
-               "regex": "",
+               "regex": "(?!grafanacloud-.+(alert-state-history|usage-insights)).+",
                "type": "datasource"
             }
          ]

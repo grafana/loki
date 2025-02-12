@@ -23,29 +23,11 @@ local template = import 'grafonnet/template.libsonnet';
     'loki-bloom-build.json':
       raw
       {
-        local replaceClusterMatchers(expr) =
-          // Replace the recording rules cluster label with the per-cluster label
-          std.strReplace(
-            // Replace the cluster label for equality matchers with the per-cluster label
-            std.strReplace(
-              // Replace the cluster label for regex matchers with the per-cluster label
-              std.strReplace(
-                expr,
-                'cluster=~"$cluster"',
-                $._config.per_cluster_label + '=~"$cluster"'
-              ),
-              'cluster="$cluster"',
-              $._config.per_cluster_label + '="$cluster"'
-            ),
-            'cluster_job',
-            $._config.per_cluster_label + '_job'
-          ),
-
         panels: [
           p {
             targets: if std.objectHas(p, 'targets') then [
               e {
-                expr: replaceClusterMatchers(e.expr),
+                expr: $.replaceMatchers(e.expr),
               }
               for e in p.targets
             ] else [],
@@ -53,7 +35,7 @@ local template = import 'grafonnet/template.libsonnet';
               sp {
                 targets: if std.objectHas(sp, 'targets') then [
                   spe {
-                    expr: replaceClusterMatchers(spe.expr),
+                    expr: $.replaceMatchers(spe.expr),
                   }
                   for spe in sp.targets
                 ] else [],
@@ -61,7 +43,7 @@ local template = import 'grafonnet/template.libsonnet';
                   ssp {
                     targets: if std.objectHas(ssp, 'targets') then [
                       sspe {
-                        expr: replaceClusterMatchers(sspe.expr),
+                        expr: $.replaceMatchers(sspe.expr),
                       }
                       for sspe in ssp.targets
                     ] else [],

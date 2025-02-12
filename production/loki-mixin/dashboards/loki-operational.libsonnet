@@ -1,13 +1,29 @@
 local lokiOperational = (import './dashboard-loki-operational.json');
-local utils = import 'mixin-utils/utils.libsonnet';
+local selector = (import '../selectors.libsonnet').new;
+
+local jobSelectors = {
+  cortexGateway: selector().cortexGateway().list(),
+  distributor: selector().distributor().list(),
+  ingester: selector().job(['ingester', 'partition-ingester']).list(),
+  querier: selector().querier().list(),
+  queryFrontend: selector().queryFrontend().list(),
+  backend: selector().label('job').re('backend.*').list(),
+};
+
+local podSelectors = {
+  cortexGateway: selector().pod('cortex-gw').list(),
+  distributor: selector().pod('distributor').list(),
+  ingester: selector().pod(['ingester', 'partition-ingester']).list(),
+  querier: selector().pod('querier').list(),
+  queryFrontend: selector().pod('query-frontend').list(),
+  backend: selector().pod('backend').list(),
+};
 
 (import 'dashboard-utils.libsonnet') {
   grafanaDashboards+: {
     local dashboards = self,
 
     'loki-operational.json': {
-                               local cfg = self,
-
                                showAnnotations:: true,
                                showLinks:: true,
                                showMultiCluster:: true,
@@ -29,37 +45,6 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                hiddenPanels:: if $._config.promtail.enabled then [] else [
                                  'Bad Words',
                                ],
-
-                               jobMatchers:: {
-                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
-                                 distributor: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
-                                 ingester: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
-                                 querier: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
-                                 queryFrontend: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('job', '($namespace)/(query-frontend|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
-                                 backend: [utils.selector.re('job', '($namespace)/%s-backend' % $._config.ssd.pod_prefix_matcher)],
-                               },
-
-                               podMatchers:: {
-                                 cortexgateway: [utils.selector.re('pod', 'cortex-gw')],
-                                 distributor: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('pod', '(distributor|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else 'distributor.*'))],
-                                 ingester: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('pod', '(partition-ingester.*|ingester.*|%s-write|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-write.*' % $._config.ssd.pod_prefix_matcher else '(ingester.*|partition-ingester.*)'))],
-                                 querier: if $._config.meta_monitoring.enabled
-                                 then [utils.selector.re('pod', '(querier|%s-read|loki-single-binary)' % $._config.ssd.pod_prefix_matcher)]
-                                 else [utils.selector.re('pod', '%s' % (if $._config.ssd.enabled then '%s-read.*' % $._config.ssd.pod_prefix_matcher else 'querier.*'))],
-                                 backend: [utils.selector.re('pod', '%s-backend.*' % $._config.ssd.pod_prefix_matcher)],
-                               },
                              }
                              + lokiOperational + {
                                annotations:
@@ -74,12 +59,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
                                local matcherStr(matcherId, matcher='job', sep=',') =
                                  if matcher == 'job' then
-                                   if std.length(dashboards['loki-operational.json'].jobMatchers[matcherId]) > 0 then
-                                     std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in dashboards['loki-operational.json'].jobMatchers[matcherId]]) + sep
+                                   if std.length(jobSelectors[matcherId]) > 0 then
+                                     std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in jobSelectors[matcherId]]) + sep
                                    else error 'no job matchers'
                                  else if matcher == 'pod' then
-                                   if std.length(dashboards['loki-operational.json'].podMatchers[matcherId]) > 0 then
-                                     std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in dashboards['loki-operational.json'].podMatchers[matcherId]]) + sep
+                                   if std.length(podSelectors[matcherId]) > 0 then
+                                     std.join(',', ['%(label)s%(op)s"%(value)s"' % matcher for matcher in podSelectors[matcherId]]) + sep
                                    else error 'no pod matchers'
                                  else error 'matcher must be either job or container',
 
@@ -93,26 +78,26 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                      std.strReplace(
                                        expr,
                                        'cluster=~"$cluster"',
-                                       $._config.per_cluster_label + '=~"$cluster"'
+                                       $._config.labels.cluster + '=~"$cluster"'
                                      ),
                                      'cluster="$cluster"',
-                                     $._config.per_cluster_label + '="$cluster"'
+                                     $._config.labels.cluster + '="$cluster"'
                                    ),
                                    'cluster_job',
-                                   $._config.per_cluster_label + '_job'
+                                   $._config.labels.cluster + '_job'
                                  )
                                  else
                                    std.strReplace(
                                      std.strReplace(
                                        std.strReplace(
                                          expr,
-                                         ', ' + $._config.per_cluster_label + '="$cluster"',
+                                         ', ' + $._config.labels.cluster + '="$cluster"',
                                          ''
                                        ),
-                                       ', ' + $._config.per_cluster_label + '=~"$cluster"',
+                                       ', ' + $._config.labels.cluster + '=~"$cluster"',
                                        ''
                                      ),
-                                     $._config.per_cluster_label + '="$cluster",',
+                                     $._config.labels.cluster + '="$cluster",',
                                      ''
                                    ),
 
@@ -167,13 +152,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                                        matcherStr('distributor', matcher='pod', sep='')
                                                      ),
                                                      'job="$namespace/cortex-gw",',
-                                                     matcherStr('cortexgateway')
+                                                     matcherStr('cortexGateway')
                                                    ),
                                                    'job="$namespace/cortex-gw"',
-                                                   std.rstripChars(matcherStr('cortexgateway'), ',')
+                                                   std.rstripChars(matcherStr('cortexGateway'), ',')
                                                  ),
                                                  'job=~"($namespace)/cortex-gw",',
-                                                 matcherStr('cortexgateway')
+                                                 matcherStr('cortexGateway')
                                                ),
                                                'job="$namespace/distributor",',
                                                matcherStr('distributor')

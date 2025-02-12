@@ -1,4 +1,4 @@
-local utils = import 'mixin-utils/utils.libsonnet';
+local selector = (import '../selectors.libsonnet').new;
 
 (import 'grafana-builder/grafana.libsonnet') {
   // Override the dashboard constructor to add:
@@ -20,7 +20,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
               options: [],
               query: 'loki',
               refresh: 1,
-              regex: '',
+              regex: '(?!grafanacloud-.+(alert-state-history|usage-insights)).+',
               type: 'datasource',
             },
           ],
@@ -29,15 +29,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
       addCluster(multi=false)::
         if multi then
-          self.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
+          self.addMultiTemplate('cluster', 'loki_build_info', $._config.labels.cluster)
         else
-          self.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label),
+          self.addTemplate('cluster', 'loki_build_info', $._config.labels.cluster),
 
       addNamespace(multi=false)::
         if multi then
-          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          self.addMultiTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace')
         else
-          self.addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          self.addTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace'),
 
       addTag()::
         self + {
@@ -74,18 +74,12 @@ local utils = import 'mixin-utils/utils.libsonnet';
         };
 
         if multi then
-          d.addMultiTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace')
+          d.addMultiTemplate('cluster', 'loki_build_info', $._config.labels.cluster)
+          .addMultiTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace')
         else
-          d.addTemplate('cluster', 'loki_build_info', $._config.per_cluster_label)
-          .addTemplate('namespace', 'loki_build_info{' + $._config.per_cluster_label + '=~"$cluster"}', 'namespace'),
+          d.addTemplate('cluster', 'loki_build_info', $._config.labels.cluster)
+          .addTemplate('namespace', 'loki_build_info{' + $._config.labels.cluster + '=~"$cluster"}', 'namespace'),
     },
-
-  jobMatcher(job)::
-    $._config.per_cluster_label + '=~"$cluster", job=~"($namespace)/%s"' % job,
-
-  namespaceMatcher()::
-    $._config.per_cluster_label + '=~"$cluster", namespace=~"$namespace"',
 
   logPanel(title, selector, datasource='$loki_datasource'):: {
     title: title,
@@ -98,7 +92,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
     ],
   },
-  fromNowPanel(title, metric_name)::
+
+  fromNowPanel(title, query)::
     $.panel(title) +
     {
       type: 'stat',
@@ -124,7 +119,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
       targets: [
         {
-          expr: '%s{%s} * 1e3' % [metric_name, $.namespaceMatcher()],
+          expr: '%s * 1e3' % query,
           refId: 'A',
           instant: true,
           format: 'time_series',
@@ -147,12 +142,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
       datasource: '$datasource',
     },
+
   CPUUsagePanel(title, matcher)::
     $.newQueryPanel(title) +
     $.queryPanel([
-      'sum by(pod) (rate(container_cpu_usage_seconds_total{%s, %s}[$__rate_interval]))' % [$.namespaceMatcher(), matcher],
-      'min(kube_pod_container_resource_requests{%s, %s, resource="cpu"} > 0)' % [$.namespaceMatcher(), matcher],
-      'min(container_spec_cpu_quota{%s, %s} / container_spec_cpu_period{%s, %s})' % [$.namespaceMatcher(), matcher, $.namespaceMatcher(), matcher],
+      'sum by(pod) (rate(container_cpu_usage_seconds_total{%s}[$__rate_interval]))' % [matcher],
+      'min(kube_pod_container_resource_requests{%s, resource="cpu"} > 0)' % [matcher],
+      'min(container_spec_cpu_quota{%(matcher)s} / container_spec_cpu_period{%(matcher)s})' % { matcher: matcher },
     ], ['{{pod}}', 'request', 'limit']) +
     {
       tooltip: { sort: 2 },  // Sort descending.
@@ -178,17 +174,27 @@ local utils = import 'mixin-utils/utils.libsonnet';
         ],
       },
     },
-  containerCPUUsagePanel(title, containerName)::
-    self.CPUUsagePanel(title, 'container=~"%s"' % containerName),
 
   memoryWorkingSetPanel(title, matcher)::
     $.newQueryPanel(title, 'bytes') +
     $.queryPanel([
       // We use "max" instead of "sum" otherwise during a rolling update of a statefulset we will end up
       // summing the memory of the old pod (whose metric will be stale for 5m) to the new pod.
-      'max by(pod) (container_memory_working_set_bytes{%s, %s})' % [$.namespaceMatcher(), matcher],
-      'min(kube_pod_container_resource_requests{%s, %s, resource="memory"} > 0)' % [$.namespaceMatcher(), matcher],
-      'min(container_spec_memory_limit_bytes{%s, %s} > 0)' % [$.namespaceMatcher(), matcher],
+      |||
+        max by (pod) (
+          container_memory_working_set_bytes{%s}
+        )
+      ||| % [matcher],
+      |||
+        min(
+          kube_pod_container_resource_requests{%s, resource="memory"} > 0
+        )
+      ||| % [matcher],
+      |||
+        min(
+          container_spec_memory_limit_bytes{%s}
+        ) > 0
+      ||| % [matcher],
     ], ['{{pod}}', 'request', 'limit']) +
     {
       tooltip: { sort: 2 },  // Sort descending.
@@ -214,14 +220,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
         ],
       },
     },
-  containerMemoryWorkingSetPanel(title, containerName)::
-    self.memoryWorkingSetPanel(title, 'container=~"%s"' % containerName),
 
-  goHeapInUsePanel(title, jobName)::
+  goHeapInUsePanel(title, selector)::
     $.newQueryPanel(title, 'bytes') +
     $.queryPanel(
-      'sum by(%s) (go_memstats_heap_inuse_bytes{%s})' % [$._config.per_instance_label, $.jobMatcher(jobName)],
-      '{{%s}}' % $._config.per_instance_label
+      |||
+        sum by(%s) (
+          go_memstats_heap_inuse_bytes{%s}
+        )
+      ||| % [$._config.labels.per_instance, selector],
+      '{{%s}}' % $._config.labels.per_instance
     ) +
     {
       tooltip: { sort: 2 },  // Sort descending.
@@ -229,10 +237,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
   filterNodeDisk(matcher)::
     |||
-      ignoring(%s) group_right() (label_replace(count by(%s, %s, device) (container_fs_writes_bytes_total{%s, %s, device!~".*sda.*"}), "device", "$1", "device", "/dev/(.*)") * 0)
-    ||| % [$._config.per_instance_label, $._config.per_node_label, $._config.per_instance_label, $.namespaceMatcher(), matcher],
-  filterNodeDiskContainer(containerName)::
-    self.filterNodeDisk('container="%s"' % containerName),
+      ignoring(%(per_instance_label)s) group_right() (
+        label_replace(
+          count by (%(per_node_label)s, %(per_instance_label)s, device) (
+            container_fs_writes_bytes_total{%(matcher)s, device!~".*sda.*"}
+          ),
+          "device", "$1", "device", "/dev/(.*)"
+        )
+        * 0
+      )
+    ||| % { per_instance_label: $._config.labels.per_instance, per_node_label: $._config.labels.node, matcher: matcher },
 
   newQueryPanel(title, unit='short')::
     super.timeseriesPanel(title) + {
@@ -322,9 +336,20 @@ local utils = import 'mixin-utils/utils.libsonnet';
       },
     },
 
-  containerDiskSpaceUtilizationPanel(title, containerName)::
+  containerDiskSpaceUtilizationPanel(title, container)::
+    local matcher = selector(false).cluster().namespace().build();
+    local containerMatcher = selector(false).container(container).value();
     $.newQueryPanel(title, 'percentunit') +
-    $.queryPanel('max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{%s, persistentvolumeclaim=~".*%s.*"} / kubelet_volume_stats_capacity_bytes{%s, persistentvolumeclaim=~".*%s.*"})' % [$.namespaceMatcher(), containerName, $.namespaceMatcher(), containerName], '{{persistentvolumeclaim}}'),
+    $.queryPanel(
+      |||
+        max by (persistentvolumeclaim) (
+          kubelet_volume_stats_used_bytes{%(matcher)s, persistentvolumeclaim=~".*%(container)s.*"}
+          /
+          kubelet_volume_stats_capacity_bytes{%(matcher)s, persistentvolumeclaim=~".*%(container)s.*"}
+        )
+      ||| % { matcher: matcher, container: containerMatcher },
+      '{{persistentvolumeclaim}}'
+    ),
 
   local latencyPanelWithExtraGrouping(metricName, selector, multiplier='1e3', extra_grouping='') = {
     nullPointMode: 'null as zero',
@@ -344,4 +369,44 @@ local utils = import 'mixin-utils/utils.libsonnet';
   p99LatencyByPod(metric, selectorStr)::
     $.newQueryPanel('Per Pod Latency (p99)', 'ms') +
     latencyPanelWithExtraGrouping(metric, selectorStr, '1e3', 'pod'),
+
+  replaceMatchers(expr)::
+    $.replaceJobMatchers(
+      $.replaceClusterMatchers(expr)
+    ),
+
+  replaceClusterMatchers(expr)::
+    // Replace the recording rules cluster label with the per-cluster label
+    std.strReplace(
+      // Replace the cluster label for equality matchers with the per-cluster label
+      std.strReplace(
+        // Replace the cluster label for regex matchers with the per-cluster label
+        std.strReplace(
+          expr,
+          'cluster=~"$cluster"',
+          $._config.labels.cluster + '=~"$cluster"'
+        ),
+        'cluster="$cluster"',
+        $._config.labels.cluster + '="$cluster"'
+      ),
+      'cluster_job',
+      $._config.labels.cluster + '_job'
+    ),
+
+  replaceJobMatchers(expr)::
+    // If meta monitoring is enabled, replace the job label with the per-job label and the job prefix
+    if $._config.meta_monitoring.enabled then
+      // Replace the job label for equality matchers with the per-job label
+      std.strReplace(
+        // Replace the job label for regex matchers with the per-job label and the job prefix
+        std.strReplace(
+          expr,
+          'job=~"$namespace/',
+          $._config.labels.job + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
+        ),
+        'job="$namespace/',
+        $._config.labels.job + '=~"$namespace/' + $._config.meta_monitoring.job_prefix
+      )
+    else
+      expr,
 }
