@@ -556,6 +556,16 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
+			if ok, until, statusCode := d.validator.ShouldBlockPolicy(validationContext, policy); ok {
+				err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, tenantID, until.Format(time.RFC3339), statusCode)
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
+				validation.DiscardedSamples.WithLabelValues(validation.BlockedIngestionPolicy, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				validation.DiscardedBytes.WithLabelValues(validation.BlockedIngestionPolicy, tenantID, retentionHours, policy).Add(float64(discardedBytes))
+				continue
+			}
+
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp

@@ -217,6 +217,27 @@ func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (b
 	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
 }
 
+// ShouldBlockPolicy checks if ingestion should be blocked for the given policy.
+// It returns true if ingestion should be blocked, along with the block until time and status code.
+func (v *Validator) ShouldBlockPolicy(ctx validationContext, policy string) (bool, time.Time, int) {
+	// No policy provided, don't block
+	if policy == "" {
+		return false, time.Time{}, 0
+	}
+
+	// Check if this policy is blocked in tenant configs
+	blockUntil := v.Limits.BlockIngestionPolicyUntil(ctx.userID, policy)
+	if blockUntil.IsZero() {
+		return false, time.Time{}, 0
+	}
+
+	if time.Now().Before(blockUntil) {
+		return true, blockUntil, ctx.blockIngestionStatusCode
+	}
+
+	return false, time.Time{}, 0
+}
+
 func updateMetrics(reason, userID string, stream logproto.Stream, retentionHours, policy string) {
 	validation.DiscardedSamples.WithLabelValues(reason, userID, retentionHours, policy).Add(float64(len(stream.Entries)))
 	bytes := util.EntriesTotalSize(stream.Entries)
