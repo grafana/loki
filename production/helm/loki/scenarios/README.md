@@ -8,6 +8,19 @@ We deploy the scenario with the latest release and then we execute a helm diff w
 
 >*NOTE*: the helm diff output file will be available for each scenario inside github action to download for 2 days, after this you may need to re-run the job if you would like to download the output files.
 
+## Add new scenario to the CI
+
+To add a new scenario in the CI, you would just add a new entry to the matrix configuration:
+
+```
+strategy:
+  matrix:
+    scenario:
+      - name: New Scenario
+        values_file: new-scenario-values.yaml
+        use_k3d: true  # or false depending on requirements
+```
+
 ## Run scenarios locally
 
 All this process that we run in the CI can be done locally, the following steps would explain how.

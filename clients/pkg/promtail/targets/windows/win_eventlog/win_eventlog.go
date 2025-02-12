@@ -483,6 +483,39 @@ func (w *EventFetcher) renderEvent(eventHandle EvtHandle, lang uint32) (Event, e
 		return event, nil
 	}
 
+	// Do resolve local messages the usual way, while using built-in information for events forwarded by WEC.
+	// This is a safety measure as the underlying Windows-internal EvtFormatMessage might segfault in cases
+	// where the publisher (i.e. the remote machine which forwared the event) is unavailable e.g. due to
+	// a reboot. See https://github.com/influxdata/telegraf/issues/12328 for the full story.
+	if event.RenderingInfo == nil {
+		return w.renderLocalMessage(event, eventHandle, lang)
+	}
+
+	// We got 'RenderInfo' elements, so try to apply them in the following function
+	return w.renderRemoteMessage(event)
+}
+
+func (w *EventFetcher) renderRemoteMessage(event Event) (Event, error) {
+	// Populating text values from RenderingInfo part of the XML
+	if len(event.RenderingInfo.Keywords) > 0 {
+		event.Keywords = strings.Join(event.RenderingInfo.Keywords, ",")
+	}
+	if event.RenderingInfo.Message != "" {
+		event.Message = event.RenderingInfo.Message
+	}
+	if event.RenderingInfo.Level != "" {
+		event.LevelText = event.RenderingInfo.Level
+	}
+	if event.RenderingInfo.Task != "" {
+		event.TaskText = event.RenderingInfo.Task
+	}
+	if event.RenderingInfo.Opcode != "" {
+		event.OpcodeText = event.RenderingInfo.Opcode
+	}
+	return event, nil
+}
+
+func (w *EventFetcher) renderLocalMessage(event Event, eventHandle EvtHandle, lang uint32) (Event, error) {
 	publisherHandle, err := openPublisherMetadata(0, event.Source.Name, lang)
 	if err != nil {
 		return event, nil
@@ -523,6 +556,11 @@ func formatEventString(
 		0, nil, &bufferUsed)
 	if err != nil && err != ERROR_INSUFFICIENT_BUFFER {
 		return "", err
+	}
+
+	// Handle empty elements
+	if bufferUsed < 1 {
+		return "", nil
 	}
 
 	bufferUsed *= 2

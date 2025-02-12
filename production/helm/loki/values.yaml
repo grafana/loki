@@ -56,7 +56,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.3.2
+    tag: 3.4.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -209,6 +209,11 @@ loki:
     {{ include "loki.rulerConfig" . }}
     {{- end }}
 
+    {{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
+    ruler_storage:
+      {{- include "loki.rulerThanosStorageConfig" . | nindent 2 }}
+    {{- end }}
+
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
       retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
@@ -325,6 +330,7 @@ loki:
     replication_factor: 3
     compactor_address: '{{ include "loki.compactorAddress" . }}'
   # -- Storage config. Providing this will automatically populate all necessary storage configs in the templated config.
+  # -- In case of using thanos storage, enable use_thanos_objstore and the configuration should be done inside the object_store section.
   storage:
     # Loki requires a bucket for chunks and the ruler. GEL requires a third bucket for the admin API.
     # Please provide these values if you are using object storage.
@@ -384,6 +390,36 @@ loki:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
       admin_api_directory: /var/loki/admin
+
+    # Loki now supports using thanos storage clients for connecting to object storage backend.
+    # This will become the default way to configure storage in a future releases.
+    use_thanos_objstore: false
+
+    object_store:
+      # Type of object store. Valid options are: s3, gcs, azure
+      type: s3
+      prefix: null  # Optional prefix for storage keys
+
+      # S3 configuration (when type is "s3")
+      s3:
+        endpoint: null     # S3 endpoint URL
+        region: null       # Optional region
+        access_key_id: null      # Optional access key
+        secret_access_key: null  # Optional secret key
+        insecure: false       # Optional. Enable if using self-signed TLS
+        sse: {}         # Optional server-side encryption configuration
+        http: {}       # Optional HTTP client configuration
+
+      # GCS configuration (when type is "gcs")
+      gcs:
+        bucket_name: null  # Name of the bucket
+        service_account: null  # Optional service account JSON
+
+      # Azure configuration (when type is "azure")
+      azure:
+        account_name: null  # Storage account name
+        account_key: null  # Optional storage account key
+
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
   memcached:
@@ -522,7 +558,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.3.0
+    tag: 3.4.0
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -575,6 +611,8 @@ enterprise:
     enabled: true
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
+    # -- Hook type(s) to customize when the job runs.  defaults to post-install
+    hookType: "post-install"
     # -- Additional tenants to be created. Each tenant will get a read and write policy
     # and associated token. Tenant must have a name and a namespace for the secret containting
     # the token to be created in. For example
@@ -3092,7 +3130,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.34-alpine
+    tag: 1.6.35-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3438,7 +3476,7 @@ sidecar:
     # -- The Docker registry and image for the k8s sidecar
     repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.29.1
+    tag: 1.30.0
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy

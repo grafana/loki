@@ -38,8 +38,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor"
 	compactorclient "github.com/grafana/loki/v3/pkg/compactor/client"
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
-	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -110,8 +110,7 @@ type Config struct {
 	TableManager        index.TableManagerConfig   `yaml:"table_manager,omitempty"`
 	MemberlistKV        memberlist.KVConfig        `yaml:"memberlist"`
 	KafkaConfig         kafka.Config               `yaml:"kafka_config,omitempty" category:"experimental"`
-	DataObjConsumer     consumer.Config            `yaml:"dataobj_consumer,omitempty" category:"experimental"`
-	DataObjExplorer     explorer.Config            `yaml:"dataobj_explorer,omitempty" category:"experimental"`
+	DataObj             dataobjconfig.Config       `yaml:"dataobj,omitempty" category:"experimental"`
 
 	RuntimeConfig     runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	OperationalConfig runtime.Config       `yaml:"operational_config,omitempty"`
@@ -193,8 +192,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.KafkaConfig.RegisterFlags(f)
 	c.BlockBuilder.RegisterFlags(f)
 	c.BlockScheduler.RegisterFlags(f)
-	c.DataObjExplorer.RegisterFlags(f)
-	c.DataObjConsumer.RegisterFlags(f)
+	c.DataObj.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -310,8 +308,8 @@ func (c *Config) Validate() error {
 		if err := c.KafkaConfig.Validate(); err != nil {
 			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid kafka_config config"))
 		}
-		if err := c.DataObjConsumer.Validate(); err != nil {
-			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj_consumer config"))
+		if err := c.DataObj.Validate(); err != nil {
+			errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid dataobj config"))
 		}
 	}
 	if err := c.Distributor.Validate(); err != nil {
@@ -745,7 +743,7 @@ func (t *Loki) setupModuleManager() error {
 		BloomBuilder:             {Server, BloomStore, Analytics, Store},
 		BloomStore:               {IndexGatewayRing, BloomGatewayClient},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
-		PatternIngesterTee:       {Server, MemberlistKV, Analytics, PatternRingClient},
+		PatternIngesterTee:       {Server, Overrides, MemberlistKV, Analytics, PatternRingClient},
 		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides},
 		IngesterQuerier:          {Ring, PartitionRing, Overrides},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
