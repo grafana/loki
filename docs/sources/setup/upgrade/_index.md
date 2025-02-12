@@ -46,7 +46,7 @@ In a future release, this will become the default way of configuring storage and
 
 The new storage configuration deviates from the existing format. Refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
 
-The documentation now also includes a [migration guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-thanos-storage-clients/) and [configuration examples](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/) for using Thanos-based storage clients.
+The documentation now also includes a [migration guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-storage-clients/) and [configuration examples](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/) for using Thanos-based storage clients.
 
 ## 3.3.0
 
