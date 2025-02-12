@@ -14,6 +14,7 @@ var (
 	// LokiActorPathHeader is the name of the header e.g. used to enqueue requests in hierarchical queues.
 	LokiActorPathHeader               = "X-Loki-Actor-Path"
 	LokiDisablePipelineWrappersHeader = "X-Loki-Disable-Pipeline-Wrappers"
+	QueryNoSplitHTTPHeader            = "X-Query-No-Split"
 
 	// LokiActorPathDelimiter is the delimiter used to serialise the hierarchy of the actor.
 	LokiActorPathDelimiter = "|"
@@ -54,4 +55,32 @@ func InjectActorPath(ctx context.Context, value string) context.Context {
 
 func InjectHeader(ctx context.Context, key, value string) context.Context {
 	return context.WithValue(ctx, headerContextKey(key), value)
+}
+
+func ExtractQueryNoSplitMiddleware() middleware.Interface {
+	return middleware.Func(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := req.Context()
+
+			noSplit := ExtractQueryNoSplitFromHTTP(req)
+			ctx = InjectQueryNoSplit(ctx, noSplit)
+			req = req.WithContext(ctx)
+			next.ServeHTTP(w, req)
+		})
+	})
+}
+
+func ExtractQueryNoSplitFromHTTP(req *http.Request) bool {
+	tags := req.Header.Get(QueryNoSplitHTTPHeader)
+	return tags != "" && strings.ToLower(tags) == "true"
+}
+
+func ExtractQueryNoSplitFromContext(ctx context.Context) bool {
+	// if the cast fails then v will be an empty string
+	v, _ := ctx.Value(headerContextKey(QueryNoSplitHTTPHeader)).(bool)
+	return v
+}
+
+func InjectQueryNoSplit(ctx context.Context, noSplit bool) context.Context {
+	return context.WithValue(ctx, headerContextKey(QueryNoSplitHTTPHeader), noSplit)
 }
