@@ -9,6 +9,8 @@ weight:
 
 # labelallow
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The labelallow stage is an action stage that allows only the provided labels 
 to be included in the label set that is sent to Loki with the log entry.
 
