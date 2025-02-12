@@ -617,11 +617,8 @@ loki-image-cross:
 loki-debug-image: ## build the debug loki docker image
 	$(SUDO) $(BUILD_OCI) --build-arg=GO_VERSION=$(GO_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
-# Canary image
-loki-canary-image: ## build the canary docker image
-	$(OCI_BUILD) -t $(CANARY_IMAGE) -f cmd/loki-canary/Dockerfile .
-loki-canary-boringcrypto-image:
-	$(OCI_BUILD) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
+loki-push: loki-image-cross
+	$(call push-image,loki)
 
 # loki-canary
 loki-canary-image: ## build the loki canary docker image
