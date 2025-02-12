@@ -157,8 +157,6 @@ spec:
 
 Setting `disableRecommendedAttributes: true` reduces the set of default attributes to only the "required attributes".
 
-This option is meant for situations when some of the default attributes cause performance issues during ingestion of logs or if the default set causes excessive use of storage.
-
 Because the set of required attributes only contains a subset of the default stream labels, only setting this option will negatively affect query performance. It needs to be combined with a custom attribute configuration that reintroduces attributes that are needed for queries so that the data contained in those attributes is available again.
 
 ## References
