@@ -236,10 +236,7 @@ func listObjectsFromStores(ctx context.Context, bucket objstore.Bucket, storePat
 			objects[i], err = listObjects(ctx, bucket, path, start, end)
 			// If the metastore object is not found, it means it's outside of any existing window
 			// and we can safely ignore it.
-			if bucket.IsObjNotFoundErr(err) {
-				return nil
-			}
-			if err != nil {
+			if err != nil && !bucket.IsObjNotFoundErr(err) {
 				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
 			}
 			return nil
