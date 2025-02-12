@@ -116,11 +116,13 @@ func (b *tableBuffer) StreamID(pageSize int) *dataset.ColumnBuilder {
 	}
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:    pageSize,
-		Value:           datasetmd.VALUE_TYPE_INT64,
-		Encoding:        datasetmd.ENCODING_TYPE_DELTA,
-		Compression:     datasetmd.COMPRESSION_TYPE_NONE,
-		StoreRangeStats: true,
+		PageSizeHint: pageSize,
+		Value:        datasetmd.VALUE_TYPE_INT64,
+		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -140,11 +142,13 @@ func (b *tableBuffer) Timestamp(pageSize int) *dataset.ColumnBuilder {
 	}
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:    pageSize,
-		Value:           datasetmd.VALUE_TYPE_INT64,
-		Encoding:        datasetmd.ENCODING_TYPE_DELTA,
-		Compression:     datasetmd.COMPRESSION_TYPE_NONE,
-		StoreRangeStats: true,
+		PageSizeHint: pageSize,
+		Value:        datasetmd.VALUE_TYPE_INT64,
+		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -177,7 +181,9 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
-		StoreRangeStats:    true,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
@@ -213,7 +219,9 @@ func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionO
 		//
 		// A "min log line" and "max log line" isn't very valuable, and since log
 		// lines can be quite long, it would consume a fair amount of metadata.
-		StoreRangeStats: false,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: false,
+		},
 	})
 	if err != nil {
 		// We control the Value/Encoding tuple so this can't fail; if it does,
