@@ -611,6 +611,8 @@ enterprise:
     enabled: true
     # -- Name of the secret to store provisioned tokens in
     provisionedSecretPrefix: null
+    # -- Hook type(s) to customize when the job runs.  defaults to post-install
+    hookType: "post-install"
     # -- Additional tenants to be created. Each tenant will get a read and write policy
     # and associated token. Tenant must have a name and a namespace for the secret containting
     # the token to be created in. For example

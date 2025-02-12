@@ -3075,6 +3075,7 @@ null
     "enabled": true,
     "env": [],
     "extraVolumeMounts": [],
+    "hookType": "post-install",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
@@ -3263,6 +3264,7 @@ null
   "enabled": true,
   "env": [],
   "extraVolumeMounts": [],
+  "hookType": "post-install",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -3336,6 +3338,15 @@ true
 			<td>Volume mounts to add to the provisioner pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.hookType</td>
+			<td>string</td>
+			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
+			<td><pre lang="json">
+"post-install"
 </pre>
 </td>
 		</tr>
