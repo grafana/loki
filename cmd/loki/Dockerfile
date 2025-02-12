@@ -1,5 +1,4 @@
 ARG GO_VERSION=1.23
-ARG IMAGE_TAG
 
 # UI build stage
 FROM node:20-alpine AS ui-builder
@@ -10,6 +9,7 @@ RUN make -C pkg/dataobj/explorer/ui build
 
 # Go build stage
 FROM golang:${GO_VERSION} AS build
+ARG IMAGE_TAG
 COPY . /src/loki
 COPY --from=ui-builder /src/loki/pkg/dataobj/explorer/dist /src/loki/pkg/dataobj/explorer/dist
 WORKDIR /src/loki
