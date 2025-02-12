@@ -43,6 +43,7 @@ distributor:
   maxUnavailable: 2
 compactor:
   replicas: 1
+  maxUnavailable: 1
 indexGateway:
   replicas: 2
   maxUnavailable: 1
