@@ -20,11 +20,6 @@ export interface ColumnInfo {
   metadata_size: number;
   values_count: number;
   pages: PageInfo[];
-  statistics: Statistics;
-}
-
-export interface Statistics {
-  cardinality_count: number;
 }
 
 export interface SectionMetadata {
