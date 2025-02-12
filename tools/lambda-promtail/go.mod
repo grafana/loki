@@ -16,7 +16,7 @@ require (
 	github.com/grafana/loki/v3 v3.4.0
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/prometheus/common v0.61.0
-	github.com/prometheus/prometheus v1.8.2-0.20200727090838-6f296594a852
+	github.com/prometheus/prometheus v1.99.0
 	github.com/stretchr/testify v1.10.0
 )
 
@@ -52,7 +52,7 @@ require (
 	github.com/dennwc/varint v1.0.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/edsrzf/mmap-go v1.1.0 // indirect
+	github.com/edsrzf/mmap-go v1.2.0 // indirect
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -151,4 +151,4 @@ require (
 
 //replace k8s.io/client-go => k8s.io/client-go v0.21.0
 // Using a fork of Prometheus with Mimir-specific changes.
-replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.53.2-0.20240726125539-d4f098ae80fb
+replace github.com/prometheus/prometheus => github.com/prometheus/prometheus v0.301.0

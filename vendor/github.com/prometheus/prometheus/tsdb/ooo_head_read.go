@@ -112,7 +112,7 @@ func getOOOSeriesChunks(s *memSeries, mint, maxt int64, lastGarbageCollectedMmap
 					return nil
 				}
 				for _, chk := range chks {
-					addChunk(c.minTime, c.maxTime, ref, chk.chunk)
+					addChunk(chk.minTime, chk.maxTime, ref, chk.chunk)
 				}
 			} else {
 				var emptyChunk chunkenc.Chunk
@@ -447,6 +447,10 @@ func (ir *OOOCompactionHeadIndexReader) Postings(_ context.Context, name string,
 }
 
 func (ir *OOOCompactionHeadIndexReader) PostingsForLabelMatching(context.Context, string, func(string) bool) index.Postings {
+	return index.ErrPostings(errors.New("not supported"))
+}
+
+func (ir *OOOCompactionHeadIndexReader) PostingsForAllLabelValues(context.Context, string) index.Postings {
 	return index.ErrPostings(errors.New("not supported"))
 }
 
