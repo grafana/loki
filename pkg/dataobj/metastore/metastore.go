@@ -332,7 +332,7 @@ func objectOverlapsRange(lbs labels.Labels, start, end time.Time) (bool, string)
 	if objStart.IsZero() || objEnd.IsZero() {
 		return false, ""
 	}
-	if objStart.Before(start) || objEnd.After(end) {
+	if objEnd.Before(start) || objStart.After(end) {
 		return false, ""
 	}
 	return true, objPath
