@@ -54,26 +54,9 @@ func NewStreamsReader(obj *Object, sectionIndex int) *StreamsReader {
 //
 // A predicate may only be set before reading begins or after a call to
 // [StreamsReader.Reset].
-func (r *StreamsReader) SetPredicate(p Predicate) error {
+func (r *StreamsReader) SetPredicate(p StreamsPredicate) error {
 	if r.next != nil {
 		return fmt.Errorf("cannot change predicate after reading has started")
-	}
-
-	var err error
-
-	walkPredicate(p, func(p Predicate) bool {
-		switch p := p.(type) {
-		case nil, AndPredicate, OrPredicate, NotPredicate, TimeRangePredicate, LabelMatcherPredicate, LabelFilterPredicate:
-			return true // Supported predicates.
-		case MetadataMatcherPredicate, MetadataFilterPredicate:
-			err = fmt.Errorf("unsupported predicate type %T", p)
-			return false // Unsupported predicates.
-		default:
-			panic(fmt.Sprintf("unrecognized predicate type %T", p))
-		}
-	})
-	if err != nil {
-		return err
 	}
 
 	r.predicate = p
@@ -202,13 +185,13 @@ func matchStreamsPredicate(p Predicate, stream streams.Stream) bool {
 	}
 
 	switch p := p.(type) {
-	case AndPredicate:
+	case AndPredicate[StreamsPredicate]:
 		return matchStreamsPredicate(p.Left, stream) && matchStreamsPredicate(p.Right, stream)
-	case OrPredicate:
+	case OrPredicate[StreamsPredicate]:
 		return matchStreamsPredicate(p.Left, stream) || matchStreamsPredicate(p.Right, stream)
-	case NotPredicate:
+	case NotPredicate[StreamsPredicate]:
 		return !matchStreamsPredicate(p.Inner, stream)
-	case TimeRangePredicate:
+	case TimeRangePredicate[StreamsPredicate]:
 		// A stream is in range if either its min or max timestamp is in the range.
 		return matchTimestamp(p, stream.MinTimestamp) || matchTimestamp(p, stream.MaxTimestamp)
 	case LabelMatcherPredicate:
@@ -222,7 +205,7 @@ func matchStreamsPredicate(p Predicate, stream streams.Stream) bool {
 	}
 }
 
-func matchTimestamp(p TimeRangePredicate, ts time.Time) bool {
+func matchTimestamp[P Predicate](p TimeRangePredicate[P], ts time.Time) bool {
 	switch {
 	case p.IncludeStart && p.IncludeEnd: // start <= ts <= end
 		return (p.StartTime.Before(ts) || p.StartTime.Equal(ts)) && (ts.Before(p.EndTime) || ts.Equal(p.EndTime))

@@ -31,7 +31,7 @@ type LogsReader struct {
 	idx int
 
 	matchIDs  map[int64]struct{}
-	predicate Predicate
+	predicate LogsPredicate
 
 	next func() (result.Result[logs.Record], bool)
 	stop func()
@@ -69,31 +69,11 @@ func (r *LogsReader) MatchStreams(ids iter.Seq[int64]) error {
 // SetPredicate sets the predicate to use for filtering logs. [LogsReader.Read]
 // will only return logs for which the predicate passes.
 //
-// SetPredicate returns an error if the predicate is not supported by
-// LogsReader.
-//
 // A predicate may only be set before reading begins or after a call to
 // [LogsReader.Reset].
-func (r *LogsReader) SetPredicate(p Predicate) error {
+func (r *LogsReader) SetPredicate(p LogsPredicate) error {
 	if r.next != nil {
 		return fmt.Errorf("cannot change predicate after reading has started")
-	}
-
-	var err error
-
-	walkPredicate(p, func(p Predicate) bool {
-		switch p.(type) {
-		case nil, AndPredicate, OrPredicate, NotPredicate, TimeRangePredicate, MetadataMatcherPredicate, MetadataFilterPredicate:
-			return true // Supported predicates.
-		case LabelMatcherPredicate, LabelFilterPredicate:
-			err = fmt.Errorf("unsupported predicate type %T", p)
-			return false // Unsupported predicates.
-		default:
-			panic(fmt.Sprintf("unrecognized predicate type %T", p))
-		}
-	})
-	if err != nil {
-		return err
 	}
 
 	r.predicate = p
@@ -228,13 +208,13 @@ func matchLogsPredicate(p Predicate, record logs.Record) bool {
 	}
 
 	switch p := p.(type) {
-	case AndPredicate:
+	case AndPredicate[LogsPredicate]:
 		return matchLogsPredicate(p.Left, record) && matchLogsPredicate(p.Right, record)
-	case OrPredicate:
+	case OrPredicate[LogsPredicate]:
 		return matchLogsPredicate(p.Left, record) || matchLogsPredicate(p.Right, record)
-	case NotPredicate:
+	case NotPredicate[LogsPredicate]:
 		return !matchLogsPredicate(p.Inner, record)
-	case TimeRangePredicate:
+	case TimeRangePredicate[LogsPredicate]:
 		return matchTimestamp(p, record.Timestamp)
 	case MetadataMatcherPredicate:
 		return getMetadata(record.Metadata, p.Key) == p.Value
