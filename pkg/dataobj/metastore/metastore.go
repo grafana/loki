@@ -234,7 +234,9 @@ func listObjectsFromStores(ctx context.Context, bucket objstore.Bucket, storePat
 		g.Go(func() error {
 			var err error
 			objects[i], err = listObjects(ctx, bucket, path, start, end)
-			if err != nil {
+			// If the metastore object is not found, it means it's outside of any existing window
+			// and we can safely ignore it.
+			if err != nil && !bucket.IsObjNotFoundErr(err) {
 				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
 			}
 			return nil
@@ -252,7 +254,7 @@ func listObjects(ctx context.Context, bucket objstore.Bucket, path string, start
 	var buf bytes.Buffer
 	objectReader, err := bucket.Get(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("getting metastore object: %w", err)
+		return nil, err
 	}
 	n, err := buf.ReadFrom(objectReader)
 	if err != nil {
