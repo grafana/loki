@@ -224,16 +224,16 @@ func matchStreamsPredicate(p Predicate, stream streams.Stream) bool {
 
 func matchTimestamp(p TimeRangePredicate, ts time.Time) bool {
 	switch {
-	case p.IncludeStart && ts.Before(p.StartTime):
-		return false
-	case !p.IncludeStart && ts.Equal(p.StartTime):
-		return false
-	case p.IncludeEnd && ts.After(p.EndTime):
-		return false
-	case !p.IncludeEnd && ts.Equal(p.EndTime):
-		return false
+	case p.IncludeStart && p.IncludeEnd: // start <= ts <= end
+		return (p.StartTime.Before(ts) || p.StartTime.Equal(ts)) && (ts.Before(p.EndTime) || ts.Equal(p.EndTime))
+	case p.IncludeStart && !p.IncludeEnd: // start <= ts < end
+		return (p.StartTime.Before(ts) || p.StartTime.Equal(ts)) && ts.Before(p.EndTime)
+	case !p.IncludeStart && p.IncludeEnd: // start < ts <= end
+		return p.StartTime.Before(ts) && (ts.Before(p.EndTime) || ts.Equal(p.EndTime))
+	case !p.IncludeStart && !p.IncludeEnd: // start < ts < end
+		return p.StartTime.Before(ts) && ts.Before(p.EndTime)
 	default:
-		return true
+		panic("unreachable")
 	}
 }
 
