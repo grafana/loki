@@ -4,7 +4,7 @@ go 1.23.1
 
 replace github.com/grafana/loki/v3 => ../..
 
-require github.com/grafana/loki/v3 v3.3.2
+require github.com/grafana/loki/v3 v3.4.0
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -25,7 +25,7 @@ require (
 	github.com/prometheus/common v0.61.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	google.golang.org/protobuf v1.36.4 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	google.golang.org/protobuf v1.36.5 // indirect
 )
