@@ -2,7 +2,7 @@ local g = import 'grafana-builder/grafana.libsonnet';
 local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
-  local compactor_matcher = 'pod=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher,
+  local compactor_matcher = $._config.per_instance_label + '=~"(compactor|%s-backend.*|loki-single-binary)"' % $._config.ssd.pod_prefix_matcher,
   grafanaDashboards+::
     {
       'loki-deletion.json':
@@ -67,10 +67,10 @@ local utils = import 'mixin-utils/utils.libsonnet';
         ).addRow(
           g.row('List of deletion requests')
           .addPanel(
-            $.logPanel('In progress/finished', '{%s, %s} |~ "Started processing delete request|delete request for user marked as processed" | logfmt | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % [$.namespaceMatcher(), compactor_matcher]),
+            $.logPanel('In progress/finished', '{%s, %s} |~ "Started processing delete request|delete request for user marked as processed" | %s | line_format "{{.ts}} user={{.user}} delete_request_id={{.delete_request_id}} msg={{.msg}}" ' % [$.namespaceMatcher(), compactor_matcher,$._config.log_format]),
           )
           .addPanel(
-            $.logPanel('Requests', '{%s, %s} |~ "delete request for user added" | logfmt | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % [$.namespaceMatcher(), compactor_matcher]),
+            $.logPanel('Requests', '{%s, %s} |~ "delete request for user added" | %s | line_format "{{.ts}} user={{.user}} query=\'{{.query}}\'"' % [$.namespaceMatcher(), compactor_matcher,$._config.log_format]),
           )
         ),
     },
