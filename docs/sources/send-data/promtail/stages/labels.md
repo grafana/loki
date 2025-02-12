@@ -9,6 +9,8 @@ weight:
 
 # labels
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The labels stage is an action stage that takes data from the extracted map and
 modifies the label set that is sent to Loki with the log entry.
 
