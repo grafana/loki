@@ -49,7 +49,7 @@ func NewColumnStatsBuilder(opts StatisticsOptions) (*ColumnStatsBuilder, error) 
 }
 
 func (csb *ColumnStatsBuilder) Append(value Value) {
-	if csb.opts.StoreCardinalityStats {
+	if csb.opts.StoreCardinalityStats && !value.IsNil() && !value.IsZero() {
 		buf, err := value.MarshalBinary()
 		if err != nil {
 			panic(fmt.Sprintf(

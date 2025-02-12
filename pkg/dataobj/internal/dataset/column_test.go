@@ -134,6 +134,56 @@ func TestColumnBuilder_MinMax(t *testing.T) {
 	require.Equal(t, fString, page1Max.String())
 }
 
+func TestColumnBuilder_Cardinality(t *testing.T) {
+	var (
+		// We include the null string in the test to ensure that it's never
+		// considered in min/max ranges.
+		nullString = ""
+
+		aString = strings.Repeat("a", 100)
+		bString = strings.Repeat("b", 100)
+		cString = strings.Repeat("c", 100)
+	)
+
+	// We store nulls and duplicates (should not be counted in cardinality count)
+	in := []string{
+		nullString,
+
+		aString,
+
+		bString,
+		bString,
+		bString,
+
+		cString,
+	}
+
+	opts := BuilderOptions{
+		PageSizeHint: 301, // Slightly larger than the string length of 3 strings per page.
+		Value:        datasetmd.VALUE_TYPE_STRING,
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+
+		Statistics: StatisticsOptions{
+			StoreCardinalityStats: true,
+		},
+	}
+	b, err := NewColumnBuilder("", opts)
+	require.NoError(t, err)
+
+	for i, s := range in {
+		require.NoError(t, b.Append(i, StringValue(s)))
+	}
+
+	col, err := b.Flush()
+	require.NoError(t, err)
+	require.Equal(t, datasetmd.VALUE_TYPE_STRING, col.Info.Type)
+	require.NotNil(t, col.Info.Statistics)
+	// we use sparse hyperloglog reprs until a certain cardinality is reached,
+	// so this should not be approximate at low counts.
+	require.Equal(t, uint64(3), col.Info.Statistics.CardinalityCount)
+}
+
 func getMinMax(t *testing.T, stats *datasetmd.Statistics) (min, max Value) {
 	t.Helper()
 	require.NotNil(t, stats)
