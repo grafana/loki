@@ -49,7 +49,7 @@ Loki splits the configuration for mapping OTLP attributes to stream labels and s
 
 By default, `default_resource_attributes_as_index_labels` provides a set of resource-attributes that are mapped to stream-labels on the Loki side.
 
-As the field in the distributor configuration is limited to resource-level attributes and can only produce stream-labels as an output, the `otlp_config` needs to be used to map resource, scope or log level attributes to structured metadata.
+As the field in the distributor configuration is limited to resource-level attributes and can only produce stream-labels as an output, the `otlp_config` needs to be used to map resource, scope or log level attributes to either be dropped or saved as structured metadata.
 
 The Loki Operator does not use the same approach for configuring the attributes as Loki itself does. The most visible difference is that there is no distinction between the `distributor` and `limits` configuration in the Operator.
 
