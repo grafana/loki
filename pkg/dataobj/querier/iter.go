@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -31,7 +30,6 @@ var (
 func newSampleIterator(ctx context.Context,
 	streams map[int64]dataobj.Stream,
 	extractor syntax.SampleExtractor,
-	start, end time.Time, // todo: use as predicate.
 	reader *dataobj.LogsReader,
 ) (iter.SampleIterator, error) {
 	bufPtr := recordsPool.Get().(*[]dataobj.Record)

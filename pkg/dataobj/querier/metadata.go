@@ -146,53 +146,12 @@ type streamProcessor struct {
 
 // newStreamProcessor creates a new streamProcessor with the given parameters
 func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []*dataobj.Object, shard logql.Shard) *streamProcessor {
-	// Create a time range predicate
-	var predicate dataobj.StreamsPredicate = dataobj.TimeRangePredicate[dataobj.StreamsPredicate]{
-		StartTime:    start,
-		EndTime:      end,
-		IncludeStart: true,
-		IncludeEnd:   true,
-	}
-
-	// If there are any matchers, combine them with an AND predicate
-	if len(matchers) > 0 {
-		predicate = dataobj.AndPredicate[dataobj.StreamsPredicate]{
-			Left:  predicate,
-			Right: matchersToPredicate(matchers),
-		}
-	}
-
 	return &streamProcessor{
-		predicate:  predicate,
+		predicate:  streamPredicate(matchers, start, end),
 		seenSeries: &sync.Map{},
 		objects:    objects,
 		shard:      shard,
 	}
-}
-
-// matchersToPredicate converts a list of matchers to a dataobj.StreamsPredicate
-func matchersToPredicate(matchers []*labels.Matcher) dataobj.StreamsPredicate {
-	var left dataobj.StreamsPredicate
-	for _, matcher := range matchers {
-		var right dataobj.StreamsPredicate
-		switch matcher.Type {
-		case labels.MatchEqual:
-			right = dataobj.LabelMatcherPredicate{Name: matcher.Name, Value: matcher.Value}
-		default:
-			right = dataobj.LabelFilterPredicate{Name: matcher.Name, Keep: func(_, value string) bool {
-				return matcher.Matches(value)
-			}}
-		}
-		if left == nil {
-			left = right
-		} else {
-			left = dataobj.AndPredicate[dataobj.StreamsPredicate]{
-				Left:  left,
-				Right: right,
-			}
-		}
-	}
-	return left
 }
 
 // ProcessParallel processes series from multiple readers in parallel

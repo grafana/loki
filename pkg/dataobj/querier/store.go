@@ -88,18 +88,7 @@ func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	matchers := selector.Matchers()
-
-	shardedLogReaders, err := shardObjects(ctx, objects, shard)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(shardedLogReaders) == 0 {
-		return iter.NoopSampleIterator, nil
-	}
-
-	return selectSamples(ctx, objects, shard, matchers, extractor, req.Start, req.End)
+	return selectSamples(ctx, objects, shard, selector.Matchers(), extractor, req.Start, req.End)
 }
 
 // Stats implements querier.Store
@@ -164,12 +153,21 @@ func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.S
 		return nil, err
 	}
 
+	streamsPredicate := streamPredicate(matchers, start, end)
+	// TODO: support more predicates and combine with log.Pipeline.
+	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+		StartTime:    start,
+		EndTime:      end,
+		IncludeStart: true,
+		IncludeEnd:   false,
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.SampleIterator, len(shardedObjects))
 
 	for i, reader := range shardedObjects {
 		g.Go(func() error {
-			iterators[i], err = reader.selectSamples(ctx, matchers, extractor, start, end)
+			iterators[i], err = reader.selectSamples(ctx, streamsPredicate, logsPredicate, extractor)
 			if err != nil {
 				return err
 			}
@@ -240,18 +238,26 @@ func shardObjects(
 	return shardedReaders, nil
 }
 
-func (s *shardedObject) selectSamples(ctx context.Context, matchers []*labels.Matcher, extractor syntax.SampleExtractor, start, end time.Time) (iter.SampleIterator, error) {
-	// first match streams
-	if err := s.matchStreams(ctx, matchers, start, end); err != nil {
+func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, extractor syntax.SampleExtractor) (iter.SampleIterator, error) {
+	if err := s.streamReader.SetPredicate(streamsPredicate); err != nil {
 		return nil, err
 	}
-	// todo add more predicates.
+	for _, reader := range s.logReaders {
+		if err := reader.SetPredicate(logsPredicate); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := s.matchStreams(ctx); err != nil {
+		return nil, err
+	}
+
 	iterators := make([]iter.SampleIterator, len(s.logReaders))
 	g, ctx := errgroup.WithContext(ctx)
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
-			iter, err := newSampleIterator(ctx, s.streams, extractor, start, end, reader)
+			iter, err := newSampleIterator(ctx, s.streams, extractor, reader)
 			if err != nil {
 				return err
 			}
@@ -267,23 +273,10 @@ func (s *shardedObject) selectSamples(ctx context.Context, matchers []*labels.Ma
 	return iter.NewSortSampleIterator(iterators), nil
 }
 
-func (s *shardedObject) matchStreams(ctx context.Context, matchers []*labels.Matcher, start, end time.Time) error {
+func (s *shardedObject) matchStreams(ctx context.Context) error {
 	streamsPtr := streamsPool.Get().(*[]dataobj.Stream)
 	defer streamsPool.Put(streamsPtr)
 	streams := *streamsPtr
-
-	// todo: switch to predicate
-	for _, matcher := range matchers {
-		if matcher.Type == labels.MatchEqual {
-			err := s.streamReader.AddLabelMatcher(dataobj.LabelMatcher{
-				Name:  matcher.Name,
-				Value: matcher.Value,
-			})
-			if err != nil {
-				return fmt.Errorf("adding label matcher: %w", err)
-			}
-		}
-	}
 
 	for {
 		n, err := s.streamReader.Read(ctx, streams)
@@ -295,21 +288,8 @@ func (s *shardedObject) matchStreams(ctx context.Context, matchers []*labels.Mat
 		}
 
 		for _, stream := range streams[:n] {
-			if stream.MinTime.Before(start) || stream.MaxTime.After(end) {
-				continue
-			}
-			matchesAll := true
-			for _, matcher := range matchers {
-				if !matcher.Matches(stream.Labels.Get(matcher.Name)) {
-					matchesAll = false
-					break
-				}
-			}
-
-			if matchesAll {
-				s.streams[stream.ID] = stream
-				s.streamsIDs = append(s.streamsIDs, stream.ID)
-			}
+			s.streams[stream.ID] = stream
+			s.streamsIDs = append(s.streamsIDs, stream.ID)
 		}
 	}
 	// setup log readers to filter streams
@@ -319,4 +299,48 @@ func (s *shardedObject) matchStreams(ctx context.Context, matchers []*labels.Mat
 		}
 	}
 	return nil
+}
+
+// streamPredicate creates a dataobj.StreamsPredicate from a list of matchers and a time range
+func streamPredicate(matchers []*labels.Matcher, start, end time.Time) dataobj.StreamsPredicate {
+	var predicate dataobj.StreamsPredicate = dataobj.TimeRangePredicate[dataobj.StreamsPredicate]{
+		StartTime:    start,
+		EndTime:      end,
+		IncludeStart: true,
+		IncludeEnd:   true,
+	}
+
+	// If there are any matchers, combine them with an AND predicate
+	if len(matchers) > 0 {
+		predicate = dataobj.AndPredicate[dataobj.StreamsPredicate]{
+			Left:  predicate,
+			Right: matchersToPredicate(matchers),
+		}
+	}
+	return predicate
+}
+
+// matchersToPredicate converts a list of matchers to a dataobj.StreamsPredicate
+func matchersToPredicate(matchers []*labels.Matcher) dataobj.StreamsPredicate {
+	var left dataobj.StreamsPredicate
+	for _, matcher := range matchers {
+		var right dataobj.StreamsPredicate
+		switch matcher.Type {
+		case labels.MatchEqual:
+			right = dataobj.LabelMatcherPredicate{Name: matcher.Name, Value: matcher.Value}
+		default:
+			right = dataobj.LabelFilterPredicate{Name: matcher.Name, Keep: func(_, value string) bool {
+				return matcher.Matches(value)
+			}}
+		}
+		if left == nil {
+			left = right
+		} else {
+			left = dataobj.AndPredicate[dataobj.StreamsPredicate]{
+				Left:  left,
+				Right: right,
+			}
+		}
+	}
+	return left
 }
