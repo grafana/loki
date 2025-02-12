@@ -138,8 +138,7 @@ var streamsPool = sync.Pool{
 
 // streamProcessor handles processing of unique series with custom collection logic
 type streamProcessor struct {
-	start, end time.Time
-	matchers   []*labels.Matcher
+	predicate  dataobj.StreamsPredicate
 	seenSeries *sync.Map
 	objects    []*dataobj.Object
 	shard      logql.Shard
@@ -147,14 +146,53 @@ type streamProcessor struct {
 
 // newStreamProcessor creates a new streamProcessor with the given parameters
 func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []*dataobj.Object, shard logql.Shard) *streamProcessor {
+	// Create a time range predicate
+	var predicate dataobj.StreamsPredicate = dataobj.TimeRangePredicate[dataobj.StreamsPredicate]{
+		StartTime:    start,
+		EndTime:      end,
+		IncludeStart: true,
+		IncludeEnd:   true,
+	}
+
+	// If there are any matchers, combine them with an AND predicate
+	if len(matchers) > 0 {
+		predicate = dataobj.AndPredicate[dataobj.StreamsPredicate]{
+			Left:  predicate,
+			Right: matchersToPredicate(matchers),
+		}
+	}
+
 	return &streamProcessor{
-		start:      start,
-		end:        end,
-		matchers:   matchers,
+		predicate:  predicate,
 		seenSeries: &sync.Map{},
 		objects:    objects,
 		shard:      shard,
 	}
+}
+
+// matchersToPredicate converts a list of matchers to a dataobj.StreamsPredicate
+func matchersToPredicate(matchers []*labels.Matcher) dataobj.StreamsPredicate {
+	var left dataobj.StreamsPredicate
+	for _, matcher := range matchers {
+		var right dataobj.StreamsPredicate
+		switch matcher.Type {
+		case labels.MatchEqual:
+			right = dataobj.LabelMatcherPredicate{Name: matcher.Name, Value: matcher.Value}
+		default:
+			right = dataobj.LabelFilterPredicate{Name: matcher.Name, Keep: func(_, value string) bool {
+				return matcher.Matches(value)
+			}}
+		}
+		if left == nil {
+			left = right
+		} else {
+			left = dataobj.AndPredicate[dataobj.StreamsPredicate]{
+				Left:  left,
+				Right: right,
+			}
+		}
+	}
+	return left
 }
 
 // ProcessParallel processes series from multiple readers in parallel
@@ -164,18 +202,10 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 		return err
 	}
 
-	// set equality matchers on all readers
+	// set predicate on all readers
 	for _, reader := range readers {
-		for _, matcher := range sp.matchers {
-			if matcher.Type == labels.MatchEqual {
-				err := reader.AddLabelMatcher(dataobj.LabelMatcher{
-					Name:  matcher.Name,
-					Value: matcher.Value,
-				})
-				if err != nil {
-					return err
-				}
-			}
+		if err := reader.SetPredicate(sp.predicate); err != nil {
+			return err
 		}
 	}
 
@@ -189,10 +219,14 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 }
 
 func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *dataobj.StreamsReader, onNewStream func(uint64, dataobj.Stream)) error {
-	streamsPtr := streamsPool.Get().(*[]dataobj.Stream)
+	var (
+		streamsPtr = streamsPool.Get().(*[]dataobj.Stream)
+		streams    = *streamsPtr
+		buf        = make([]byte, 0, 1024)
+		h          uint64
+	)
+
 	defer streamsPool.Put(streamsPtr)
-	streams := *streamsPtr
-	buf := make([]byte, 0, 1024)
 
 	for {
 		n, err := reader.Read(ctx, streams)
@@ -203,30 +237,12 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *data
 			break
 		}
 		for _, stream := range streams[:n] {
-			// if the stream is not within the time range, skip it
-			if stream.MinTime.Before(sp.start) || stream.MaxTime.After(sp.end) {
-				continue
-			}
-			var h uint64
 			h, buf = stream.Labels.HashWithoutLabels(buf, []string(nil)...)
 			// Try to claim this hash first
 			if _, seen := sp.seenSeries.LoadOrStore(h, nil); seen {
 				continue
 			}
-
-			// We claimed this hash, now process matchers
-			matchesAll := true
-			for _, matcher := range sp.matchers {
-				if !matcher.Matches(stream.Labels.Get(matcher.Name)) {
-					matchesAll = false
-					break
-				}
-			}
-
-			// If the stream matches all matchers, process it
-			if matchesAll {
-				onNewStream(h, stream)
-			}
+			onNewStream(h, stream)
 		}
 	}
 	return nil
@@ -245,11 +261,8 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 	}
 }
 
-func shardStreamReaders(
-	ctx context.Context,
-	objects []*dataobj.Object,
-	shard logql.Shard,
-) ([]*dataobj.StreamsReader, error) {
+// shardStreamReaders fetches metadata of objects in parallel and shards them into a list of StreamsReaders
+func shardStreamReaders(ctx context.Context, objects []*dataobj.Object, shard logql.Shard) ([]*dataobj.StreamsReader, error) {
 	// fetch all metadata of objects in parallel
 	g, ctx := errgroup.WithContext(ctx)
 	metadatas := make([]dataobj.Metadata, len(objects))
