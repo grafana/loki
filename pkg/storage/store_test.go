@@ -1129,6 +1129,10 @@ func (p *mockStreamExtractor) ReferencedStructuredMetadata() bool {
 	return false
 }
 
+func (p *mockStreamExtractor) Mode() lokilog.ExtractionMode {
+	return lokilog.DefaultMode
+}
+
 func (p *mockStreamExtractor) BaseLabels() lokilog.LabelsResult {
 	return p.wrappedSP.BaseLabels()
 }

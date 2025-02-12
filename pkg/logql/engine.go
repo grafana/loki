@@ -38,10 +38,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-const (
-	DefaultBlockedQueryMessage = "blocked by policy"
-)
-
 var (
 	QueryTime = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "logql",
@@ -66,7 +62,7 @@ type QueryParams interface {
 	GetShards() []string
 }
 
-// SelectParams specifies parameters passed to data selections.
+// SelectLogParams SelectParams specifies parameters passed to data selections.
 type SelectLogParams struct {
 	*logproto.QueryRequest
 }

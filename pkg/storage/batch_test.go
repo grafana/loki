@@ -1415,7 +1415,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+			ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false, log.DefaultMode)
 			require.NoError(t, err)
 
 			it, err := newSampleBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), ex, tt.start, tt.end, nil)

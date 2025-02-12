@@ -638,7 +638,7 @@ func Benchmark_Pipeline(b *testing.B) {
 		}
 	})
 
-	extractor, err := NewLineSampleExtractor(CountExtractor, stages, []string{"cluster", "level"}, false, false)
+	extractor, err := NewLineSampleExtractor(CountExtractor, stages, []string{"cluster", "level"}, false, false, DefaultMode)
 	require.NoError(b, err)
 	ex := extractor.ForStream(lbs)
 	b.Run("line extractor bytes", func(b *testing.B) {

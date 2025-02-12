@@ -594,3 +594,7 @@ type v12Entries struct {
 type v13Entries struct {
 	v12Entries
 }
+
+type v14Entries struct {
+	v13Entries
+}

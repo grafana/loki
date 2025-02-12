@@ -48,8 +48,10 @@ type HeadBlock interface {
 		mint,
 		maxt int64,
 		extractor log.StreamSampleExtractor,
+		_ bool,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
+	CompressedBlock(pool compression.WriterPool) (block, int, error)
 }
 
 type unorderedHeadBlock struct {
@@ -94,6 +96,21 @@ func (hb *unorderedHeadBlock) UncompressedSize() int {
 func (hb *unorderedHeadBlock) Reset() {
 	x := newUnorderedHeadBlock(hb.format, hb.symbolizer)
 	*hb = *x
+}
+
+func (hb *unorderedHeadBlock) CompressedBlock(pool compression.WriterPool) (block, int, error) {
+	b, err := hb.Serialise(pool)
+	if err != nil {
+		return block{}, 0, err
+	}
+	mint, maxt := hb.Bounds()
+	return block{
+		b:                b,
+		numEntries:       hb.Entries(),
+		mint:             mint,
+		maxt:             maxt,
+		uncompressedSize: hb.UncompressedSize(),
+	}, len(b), nil
 }
 
 type nsEntry struct {
@@ -311,6 +328,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 	mint,
 	maxt int64,
 	extractor log.StreamSampleExtractor,
+	_ bool,
 ) iter.SampleIterator {
 	series := map[string]*logproto.Series{}
 	baseHash := extractor.BaseLabels().Hash()
@@ -625,7 +643,7 @@ func HeadFromCheckpoint(b []byte, desiredIfNotUnordered HeadBlockFmt, symbolizer
 		return nil, errors.Wrap(db.err(), "verifying headblock header")
 	}
 	format := HeadBlockFmt(version)
-	if format > UnorderedWithStructuredMetadataHeadBlockFmt {
+	if format > UnorderedWithOrganizedStructuredMetadataHeadBlockFmt {
 		return nil, fmt.Errorf("unexpected head block version: %v", format)
 	}
 

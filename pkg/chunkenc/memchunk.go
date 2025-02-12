@@ -32,6 +32,7 @@ const (
 	ChunkFormatV2
 	ChunkFormatV3
 	ChunkFormatV4
+	ChunkFormatV5 // Support iterating effectively through structured metadata. uses a new block format
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
@@ -45,8 +46,6 @@ const (
 	chunkStructuredMetadataSectionIdx = 2
 )
 
-var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithStructuredMetadataHeadBlockFmt}
-
 type HeadBlockFmt byte
 
 func (f HeadBlockFmt) Byte() byte { return byte(f) }
@@ -59,6 +58,8 @@ func (f HeadBlockFmt) String() string {
 		return "unordered"
 	case f == UnorderedWithStructuredMetadataHeadBlockFmt:
 		return "unordered with structured metadata"
+	case f == UnorderedWithOrganizedStructuredMetadataHeadBlockFmt:
+		return "unordered organized with structured metadata"
 	default:
 		return fmt.Sprintf("unknown: %v", byte(f))
 	}
@@ -68,6 +69,8 @@ func (f HeadBlockFmt) NewBlock(symbolizer *symbolizer) HeadBlock {
 	switch {
 	case f < UnorderedHeadBlockFmt:
 		return &headBlock{}
+	case f == UnorderedWithOrganizedStructuredMetadataHeadBlockFmt:
+		return newOrganisedHeadBlock(f, symbolizer)
 	default:
 		return newUnorderedHeadBlock(f, symbolizer)
 	}
@@ -82,6 +85,7 @@ const (
 	OrderedHeadBlockFmt
 	UnorderedHeadBlockFmt
 	UnorderedWithStructuredMetadataHeadBlockFmt
+	UnorderedWithOrganizedStructuredMetadataHeadBlockFmt
 )
 
 // ChunkHeadFormatFor returns corresponding head block format for the given `chunkfmt`.
@@ -93,9 +97,11 @@ func ChunkHeadFormatFor(chunkfmt byte) HeadBlockFmt {
 	if chunkfmt == ChunkFormatV3 {
 		return UnorderedHeadBlockFmt
 	}
-
-	// return the latest head format for all chunkformat >v3
-	return UnorderedWithStructuredMetadataHeadBlockFmt
+	if chunkfmt == ChunkFormatV4 {
+		return UnorderedWithStructuredMetadataHeadBlockFmt
+	}
+	// return the latest head format for all chunkformat >v4
+	return UnorderedWithOrganizedStructuredMetadataHeadBlockFmt
 }
 
 var magicNumber = uint32(0x12EE56A)
@@ -140,14 +146,16 @@ type MemChunk struct {
 }
 
 type block struct {
-	// This is compressed bytes.
-	b          []byte
 	numEntries int
 
 	mint, maxt int64
 
 	offset           int // The offset of the block in the chunk.
 	uncompressedSize int // Total uncompressed size in bytes when the chunk is cut.
+
+	sm []byte // structured metadata bytes
+	ts []byte // timestamp bytes
+	b  []byte // the compressed block (only log lines if blockfmt == 6)
 }
 
 // This block holds the un-compressed entries. Once it has enough data, this is
@@ -228,6 +236,21 @@ func (hb *headBlock) Serialise(pool compression.WriterPool) ([]byte, error) {
 	return outBuf.Bytes(), nil
 }
 
+func (hb *headBlock) CompressedBlock(pool compression.WriterPool) (block, int, error) {
+	b, err := hb.Serialise(pool)
+	if err != nil {
+		return block{}, 0, err
+	}
+	mint, maxt := hb.Bounds()
+	return block{
+		b:                b,
+		numEntries:       hb.Entries(),
+		mint:             mint,
+		maxt:             maxt,
+		uncompressedSize: hb.UncompressedSize(),
+	}, len(b), nil
+}
+
 // CheckpointBytes serializes a headblock to []byte. This is used by the WAL checkpointing,
 // which does not want to mutate a chunk by cutting it (otherwise risking content address changes), but
 // needs to serialize/deserialize the data to disk to ensure data durability.
@@ -304,9 +327,9 @@ func (hb *headBlock) LoadBytes(b []byte) error {
 		return errors.Wrap(db.err(), "verifying headblock header")
 	}
 	switch version {
-	case ChunkFormatV1, ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
+	case ChunkFormatV1, ChunkFormatV2, ChunkFormatV3, ChunkFormatV4, ChunkFormatV5:
 	default:
-		return errors.Errorf("incompatible headBlock version (%v), only V1,V2,V3 is currently supported", version)
+		return errors.Errorf("incompatible headBlock version (%v), only V1 to V5 is currently supported", version)
 	}
 
 	ln := db.uvarint()
@@ -367,6 +390,9 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 		fmt.Println("received head fmt", head.String())
 		panic("only UnorderedWithStructuredMetadataHeadBlockFmt is supported for V4 chunks")
 	}
+	if chunkFmt == ChunkFormatV5 && head != UnorderedWithOrganizedStructuredMetadataHeadBlockFmt {
+		panic("only UnorderedWithOrganizedStructuredMetadataHeadBlockFmt is supported for V4 chunks")
+	}
 }
 
 // NewMemChunk returns a new in-mem chunk.
@@ -415,7 +441,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	switch version {
 	case ChunkFormatV1:
 		bc.encoding = compression.GZIP
-	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
+	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4, ChunkFormatV5:
 		// format v2+ has a byte for block encoding.
 		enc := compression.Codec(db.byte())
 		if db.err() != nil {
@@ -469,57 +495,118 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	num := db.uvarint()
 	bc.blocks = make([]block, 0, num)
 
-	for i := 0; i < num; i++ {
-		var blk block
-		// Read #entries.
-		blk.numEntries = db.uvarint()
+	if version == ChunkFormatV5 {
+		for i := 0; i < num; i++ {
+			var blk block
 
-		// Read mint, maxt.
-		blk.mint = db.varint64()
-		blk.maxt = db.varint64()
+			blk.numEntries = db.uvarint()
+			blk.mint = db.varint64()
+			blk.maxt = db.varint64()
+			blk.offset = db.uvarint()
 
-		// Read offset and length.
-		blk.offset = db.uvarint()
-		if version >= ChunkFormatV3 {
 			blk.uncompressedSize = db.uvarint()
-		}
-		l := db.uvarint()
 
-		invalidBlockErr := validateBlock(b, blk.offset, l)
-		if invalidBlockErr != nil {
-			level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
-			// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
-			if blk.offset != expectedBlockOffset {
-				_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
-				blk.offset = expectedBlockOffset
-				if err := validateBlock(b, blk.offset, l); err != nil {
-					level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
-				} else {
-					invalidBlockErr = nil
-					level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+			// read lines length
+			linesLen := db.uvarint()
+			tsLen := db.uvarint()
+			smLen := db.uvarint()
+
+			// Validate each section with its own CRC32
+			if invalidBlockErr := validateBlock(b, blk.offset, linesLen); invalidBlockErr != nil {
+				level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
+				// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
+				if blk.offset != expectedBlockOffset {
+					_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
+					blk.offset = expectedBlockOffset
+					if err := validateBlock(b, blk.offset, linesLen); err != nil {
+						level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
+					} else {
+						invalidBlockErr = nil
+						level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+					}
 				}
+
+				// if the block read with expected offset is still invalid, do not continue further
+				if invalidBlockErr != nil {
+					if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
+						expectedBlockOffset += linesLen + 4
+						continue
+					}
+					return nil, invalidBlockErr
+				}
+				return nil, errors.Wrap(invalidBlockErr, "validate lines section")
+			}
+			linesEnd := blk.offset + linesLen + 4 // +4 for CRC32
+
+			if err := validateBlock(b, linesEnd, tsLen); err != nil {
+				return nil, errors.Wrap(err, "validate timestamps section")
+			}
+			tsEnd := linesEnd + tsLen + 4
+
+			if err := validateBlock(b, tsEnd, smLen); err != nil {
+				return nil, errors.Wrap(err, "validate metadata section")
 			}
 
-			// if the block read with expected offset is still invalid, do not continue further
+			// Set sections after validation
+			blk.b = b[blk.offset : blk.offset+linesLen]
+			blk.ts = b[linesEnd : linesEnd+tsLen]
+			blk.sm = b[tsEnd : tsEnd+smLen]
+			bc.blocks = append(bc.blocks, blk)
+			bc.cutBlockSize += len(blk.b) + len(blk.ts) + len(blk.sm) + 12 // +12 for
+		}
+	} else {
+		for i := 0; i < num; i++ {
+			var blk block
+			// Read #entries.
+			blk.numEntries = db.uvarint()
+
+			// Read mint, maxt.
+			blk.mint = db.varint64()
+			blk.maxt = db.varint64()
+
+			// Read offset and length.
+			blk.offset = db.uvarint()
+			if version >= ChunkFormatV3 {
+				blk.uncompressedSize = db.uvarint()
+			}
+			l := db.uvarint()
+
+			invalidBlockErr := validateBlock(b, blk.offset, l)
 			if invalidBlockErr != nil {
-				if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
-					expectedBlockOffset += l + 4
-					continue
+				level.Error(util_log.Logger).Log("msg", "invalid block found", "err", invalidBlockErr)
+				// if block is expected to have different offset than what is encoded, see if we get a valid block using expected offset
+				if blk.offset != expectedBlockOffset {
+					_ = level.Error(util_log.Logger).Log("msg", "block offset does not match expected one, will try reading with expected offset", "actual", blk.offset, "expected", expectedBlockOffset)
+					blk.offset = expectedBlockOffset
+					if err := validateBlock(b, blk.offset, l); err != nil {
+						level.Error(util_log.Logger).Log("msg", "could not find valid block using expected offset", "err", err)
+					} else {
+						invalidBlockErr = nil
+						level.Info(util_log.Logger).Log("msg", "valid block found using expected offset")
+					}
 				}
-				return nil, invalidBlockErr
+
+				// if the block read with expected offset is still invalid, do not continue further
+				if invalidBlockErr != nil {
+					if errors.Is(invalidBlockErr, ErrInvalidChecksum) {
+						expectedBlockOffset += l + 4
+						continue
+					}
+					return nil, invalidBlockErr
+				}
 			}
-		}
 
-		// next block starts at current block start + current block length + checksum
-		expectedBlockOffset = blk.offset + l + 4
-		blk.b = b[blk.offset : blk.offset+l]
-		bc.blocks = append(bc.blocks, blk)
+			// next block starts at current block start + current block length + checksum
+			expectedBlockOffset = blk.offset + l + 4
+			blk.b = b[blk.offset : blk.offset+l]
+			bc.blocks = append(bc.blocks, blk)
 
-		// Update the counter used to track the size of cut blocks.
-		bc.cutBlockSize += len(blk.b)
+			// Update the counter used to track the size of cut blocks.
+			bc.cutBlockSize += len(blk.b)
 
-		if db.err() != nil {
-			return nil, errors.Wrap(db.err(), "decoding block meta")
+			if db.err() != nil {
+				return nil, errors.Wrap(db.err(), "decoding block meta")
+			}
 		}
 	}
 
@@ -684,6 +771,31 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 			return offset, errors.Wrap(err, "write block")
 		}
 		offset += int64(n)
+
+		if c.format == ChunkFormatV5 {
+			crc32Hash.Reset()
+			// write timestamps separately
+			_, err := crc32Hash.Write(b.ts)
+			if err != nil {
+				return offset, errors.Wrap(err, "write timestamp")
+			}
+			n, err := w.Write(crc32Hash.Sum(b.ts))
+			if err != nil {
+				return offset, errors.Wrap(err, "write timestamp")
+			}
+			offset += int64(n)
+			crc32Hash.Reset()
+			// write timestamps separately
+			_, err = crc32Hash.Write(b.sm)
+			if err != nil {
+				return offset, errors.Wrap(err, "write metadata")
+			}
+			n, err = w.Write(crc32Hash.Sum(b.sm))
+			if err != nil {
+				return offset, errors.Wrap(err, "write metadata")
+			}
+			offset += int64(n)
+		}
 	}
 
 	metasOffset := offset
@@ -700,7 +812,13 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 		if c.format >= ChunkFormatV3 {
 			eb.putUvarint(b.uncompressedSize)
 		}
-		eb.putUvarint(len(b.b))
+
+		eb.putUvarint(len(b.b)) // in case of ChunkV5, this is just lines
+		if c.format == ChunkFormatV5 {
+			eb.putUvarint(len(b.ts)) // timestamps
+			eb.putUvarint(len(b.sm)) // metadata
+		}
+
 	}
 	metasLen := len(eb.get())
 	eb.putHash(crc32Hash)
@@ -942,21 +1060,13 @@ func (c *MemChunk) cut() error {
 		return nil
 	}
 
-	b, err := c.head.Serialise(compression.GetWriterPool(c.encoding))
+	bl, blockSize, err := c.head.CompressedBlock(compression.GetWriterPool(c.encoding))
 	if err != nil {
 		return err
 	}
+	c.blocks = append(c.blocks, bl)
 
-	mint, maxt := c.head.Bounds()
-	c.blocks = append(c.blocks, block{
-		b:                b,
-		numEntries:       c.head.Entries(),
-		mint:             mint,
-		maxt:             maxt,
-		uncompressedSize: c.head.UncompressedSize(),
-	})
-
-	c.cutBlockSize += len(b)
+	c.cutBlockSize += blockSize
 
 	c.head.Reset()
 	return nil
@@ -1097,7 +1207,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
+		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor, false))
 	}
 
 	var it iter.SampleIterator
@@ -1183,12 +1293,19 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.b) == 0 {
 		return iter.NoopEntryIterator
 	}
+	if b.format >= ChunkFormatV5 {
+		return newEntryOrganizedBufferedIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer, b.sm, b.ts)
+	}
 	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
+	}
+	if b.format >= ChunkFormatV5 {
+		queryMetricsOnly := extractor.Mode() == log.MetricsOnlyMode
+		return newOrganizedSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer, b.sm, b.ts, queryMetricsOnly)
 	}
 	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
 }
@@ -1275,7 +1392,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	return iter.NewStreamsIterator(streamsResult, direction)
 }
 
-func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor, _ bool) iter.SampleIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopSampleIterator
 	}

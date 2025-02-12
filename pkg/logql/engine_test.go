@@ -137,7 +137,8 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(`rate({app="foo"} | unwrap foo[30s])`),
 					},
-				}},
+				},
+				},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// SUM(n=47, 61, n) = (47+48+...+61) = 810
@@ -162,7 +163,8 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 					Plan: &plan.QueryPlan{
 						AST: syntax.MustParseExpr(`rate_counter({app="foo"} | unwrap foo[30s])`),
 					},
-				}},
+				},
+				},
 			},
 			// there are 15 samples (from 47 to 61) matched from the generated series
 			// (1 - 1) / 30 = 0
