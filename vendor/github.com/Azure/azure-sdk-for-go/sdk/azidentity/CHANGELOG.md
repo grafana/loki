@@ -1,5 +1,52 @@
 # Release History
 
+## 1.8.0 (2024-10-08)
+
+### Other Changes
+* `AzurePipelinesCredential` sets an additional OIDC request header so that it
+  receives a 401 instead of a 302 after presenting an invalid system access token
+* Allow logging of debugging headers for `AzurePipelinesCredential` and include
+  them in error messages
+
+## 1.8.0-beta.3 (2024-09-17)
+
+### Features Added
+* Added `ObjectID` type for `ManagedIdentityCredentialOptions.ID`
+
+### Other Changes
+* Removed redundant content from error messages
+
+## 1.8.0-beta.2 (2024-08-06)
+
+### Breaking Changes
+* `NewManagedIdentityCredential` now returns an error when a user-assigned identity
+  is specified on a platform whose managed identity API doesn't support that.
+  `ManagedIdentityCredential.GetToken()` formerly logged a warning in these cases.
+  Returning an error instead prevents the credential authenticating an unexpected
+  identity, causing a client to act with unexpected privileges. The affected
+  platforms are:
+  * Azure Arc
+  * Azure ML (when a resource ID is specified; client IDs are supported)
+  * Cloud Shell
+  * Service Fabric
+
+### Other Changes
+* If `DefaultAzureCredential` receives a non-JSON response when probing IMDS before
+  attempting to authenticate a managed identity, it continues to the next credential
+  in the chain instead of immediately returning an error.
+
+## 1.8.0-beta.1 (2024-07-17)
+
+### Features Added
+* Restored persistent token caching feature
+
+### Breaking Changes
+> These changes affect only code written against a beta version such as v1.7.0-beta.1
+* Redesigned the persistent caching API. Encryption is now required in all cases
+  and persistent cache construction is separate from credential construction.
+  The `PersistentUserAuthentication` example in the package docs has been updated
+  to demonstrate the new API.
+
 ## 1.7.0 (2024-06-20)
 
 ### Features Added

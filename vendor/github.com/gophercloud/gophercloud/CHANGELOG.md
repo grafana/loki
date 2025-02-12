@@ -1,3 +1,7 @@
+## v1.14.1 (2024-09-18)
+
+* [GH-3162](https://github.com/gophercloud/gophercloud/pull/3162) Fix security group rule "any protocol"
+
 ## v1.14.0 (2024-07-24)
 
 * [GH-3095](https://github.com/gophercloud/gophercloud/pull/3095) [neutron]: introduce Description argument for the portforwarding

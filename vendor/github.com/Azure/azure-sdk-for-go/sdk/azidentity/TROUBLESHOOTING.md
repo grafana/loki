@@ -234,7 +234,7 @@ azd auth token --output json --scope https://management.core.windows.net/.defaul
 |---|---|---|
 | AADSTS900023: Specified tenant identifier 'some tenant ID' is neither a valid DNS name, nor a valid external domain.|The `tenantID` argument to `NewAzurePipelinesCredential` is incorrect| Verify the tenant ID. It must identify the tenant of the user-assigned managed identity or service principal configured for the service connection.|
 | No service connection found with identifier |The `serviceConnectionID` argument to `NewAzurePipelinesCredential` is incorrect| Verify the service connection ID. This parameter refers to the `resourceId` of the Azure Service Connection. It can also be found in the query string of the service connection's configuration in Azure DevOps. [Azure Pipelines documentation](https://learn.microsoft.com/azure/devops/pipelines/library/service-endpoints?view=azure-devops&tabs=yaml) has more information about service connections.|
-|302 (Found) response from OIDC endpoint|The `systemAccessToken` argument to `NewAzurePipelinesCredential` is incorrect|Check pipeline configuration. This value comes from the predefined variable `System.AccessToken` [as described in Azure Pipelines documentation](https://learn.microsoft.com/azure/devops/pipelines/build/variables?view=azure-devops&tabs=yaml#systemaccesstoken).|
+|401 (Unauthorized) response from OIDC endpoint|The `systemAccessToken` argument to `NewAzurePipelinesCredential` is incorrect|Check pipeline configuration. This value comes from the predefined variable `System.AccessToken` [as described in Azure Pipelines documentation](https://learn.microsoft.com/azure/devops/pipelines/build/variables?view=azure-devops&tabs=yaml#systemaccesstoken).|
 
 ## Get additional help
 

@@ -14,7 +14,7 @@ import (
 
 // DefaultUserAgent is the default User-Agent string set in the request header.
 const (
-	DefaultUserAgent         = "gophercloud/v1.14.0"
+	DefaultUserAgent         = "gophercloud/v1.14.1"
 	DefaultMaxBackoffRetries = 60
 )
 
