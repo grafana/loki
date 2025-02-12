@@ -64,6 +64,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -324,6 +325,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -752,6 +754,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1112,6 +1115,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1473,6 +1477,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -1868,6 +1873,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -2205,6 +2211,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -2639,6 +2646,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -2972,6 +2980,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3471,6 +3480,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3734,6 +3744,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -3998,6 +4009,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4263,6 +4275,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4564,6 +4577,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -4863,6 +4877,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5363,6 +5378,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5541,6 +5557,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -5712,6 +5729,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
@@ -6104,6 +6122,7 @@ ingester:
     ring:
       replication_factor: 1
   max_chunk_age: 2h
+  autoforget_unhealthy: true
   wal:
     enabled: true
     dir: /tmp/wal
