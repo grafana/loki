@@ -35,6 +35,19 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ## Main / Unreleased
 
+## 3.4.0
+
+### Loki 3.4.0
+
+#### New Object Storage Clients
+
+Loki release 3.4.0 introduces new object storage clients based on the [Thanos Object Storage Client Go module](https://github.com/thanos-io/objstore), this is an opt-in feature.
+In a future release, this will become the default way of configuring storage and the existing storage clients will be deprecated.
+
+The new storage configuration deviates from the existing format. Refer to the [Thanos storage configuration reference](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#thanos_object_store_config) to view the complete list of supported storage providers and their configuration options.
+
+The documentation now also includes a [migration guide](https://grafana.com/docs/loki/<LOKI_VERSION>/setup/migrate/migrate-to-thanos-storage-clients/) and [configuration examples](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/examples/thanos-storage-configs/) for using Thanos-based storage clients.
+
 ## 3.3.0
 
 ### Loki 3.3.0
