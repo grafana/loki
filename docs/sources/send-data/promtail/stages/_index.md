@@ -9,6 +9,8 @@ weight:  700
 
 # Promtail pipeline stages
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 This section is a collection of all stages Promtail supports in a
 [Pipeline]({{< relref "../pipelines" >}}).
 
