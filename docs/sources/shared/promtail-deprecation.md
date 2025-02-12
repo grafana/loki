@@ -1,4 +1,5 @@
 ---
+description: Deprecation notice for Promtail.
 headless: true
 labels:
   products:
