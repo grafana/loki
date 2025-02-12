@@ -147,10 +147,6 @@ func (b *pageBuilder) accumulateStatistics(value Value) {
 	if b.opts.Statistics.StoreRangeStats {
 		b.updateMinMax(value)
 	}
-
-	if b.opts.Statistics.StoreCardinalityStats {
-		// TODO
-	}
 }
 
 func (b *pageBuilder) updateMinMax(value Value) {
@@ -266,22 +262,11 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 
 func (b *pageBuilder) buildStats() *datasetmd.Statistics {
 	var stats datasetmd.Statistics
-	var found bool
-
 	if b.opts.Statistics.StoreRangeStats {
-		found = true
 		b.buildRangeStats(&stats)
+		return &stats
 	}
-
-	if b.opts.Statistics.StoreCardinalityStats {
-		found = true
-		b.buildCardinalityStats(&stats)
-	}
-
-	if !found {
-		return nil
-	}
-	return &stats
+	return nil
 }
 
 func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
@@ -297,10 +282,6 @@ func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
 
 	dst.MinValue = minValueBytes
 	dst.MaxValue = maxValueBytes
-}
-
-func (b *pageBuilder) buildCardinalityStats(dst *datasetmd.Statistics) {
-	// TODO
 }
 
 // Reset resets the pageBuilder to a fresh state, allowing it to be reused.
