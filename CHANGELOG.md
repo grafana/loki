@@ -6,6 +6,17 @@
 
 * **promtail:** fix parser for azureeventhubs message without time field ([#14218](https://github.com/grafana/loki/pull/14218))
 
+## [3.3.3](https://github.com/grafana/loki/compare/v3.3.2...v3.3.3) (2025-02-12)
+
+
+### Bug Fixes
+
+* **build:** update build info 3 3 x ([#16169](https://github.com/grafana/loki/issues/16169)) ([4672625](https://github.com/grafana/loki/commit/4672625c1013079056e1124df5845733ec5928d8))
+* **ci:** Provide correct build info for release builds ([#15939](https://github.com/grafana/loki/issues/15939)) ([#16214](https://github.com/grafana/loki/issues/16214)) ([e5f80d3](https://github.com/grafana/loki/commit/e5f80d3ee618ec1f36d00f469350b9f61ad01cd0))
+* **ci:** Revert "fixed `Publish Rendered Helm Chart Diff` workflow" ([#15511](https://github.com/grafana/loki/issues/15511)) ([09d1085](https://github.com/grafana/loki/commit/09d1085fe71e479d329e3a454f36c2e589caae24))
+* correct typo in architecture name (amr64 -&gt; arm64) (backport release-3.3.x) ([#15715](https://github.com/grafana/loki/issues/15715)) ([9acdc33](https://github.com/grafana/loki/commit/9acdc336c14b9f25102b7bb214dfe6f85cc46aef))
+* **deps:** CVE updates for Loki 3.3.2 ([#15645](https://github.com/grafana/loki/issues/15645)) ([01a7a0d](https://github.com/grafana/loki/commit/01a7a0d2ac58973b700bb3ec35aa0bb5bc54f4b3))
+
 ## [3.3.2](https://github.com/grafana/loki/compare/v3.3.1...v3.3.2) (2024-12-18)
 
 
