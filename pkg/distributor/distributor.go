@@ -556,8 +556,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if ok, until := d.ShouldBlockPolicy(lbs, tenantID); ok {
-				err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, tenantID, until.Format(time.RFC3339), d.validator.Limits.BlockIngestionPolicyStatusCode(tenantID, policy))
+			if ok, until, statusCode := d.validator.ShouldBlockPolicy(validationContext, policy); ok {
+				err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, tenantID, until.Format(time.RFC3339), statusCode)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.BlockedIngestionPolicy, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
@@ -1302,34 +1302,4 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 // distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
 func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
-}
-
-// ShouldBlockPolicy checks if ingestion should be blocked for the given labels based on their policy.
-// It returns true if ingestion should be blocked.
-func (d *Distributor) ShouldBlockPolicy(lbs labels.Labels, tenantID string) (bool, time.Time) {
-	// Get policy mappings for the tenant
-	mapping := d.validator.Limits.PoliciesStreamMapping(tenantID)
-	if mapping == nil {
-		// No policy mappings defined, don't block
-		return false, time.Time{}
-	}
-
-	// Get the policy for these labels
-	policy := mapping.PolicyFor(lbs)
-	if policy == "" {
-		// No specific policy, don't block
-		return false, time.Time{}
-	}
-
-	// Check if this policy is blocked in tenant configs
-	blockUntil := d.validator.Limits.BlockIngestionPolicyUntil(tenantID, policy)
-	if blockUntil.IsZero() {
-		return false, time.Time{}
-	}
-
-	if time.Now().Before(blockUntil) {
-		return true, blockUntil
-	}
-
-	return false, time.Time{}
 }
