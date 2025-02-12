@@ -165,9 +165,8 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                   Section #{sectionIndex + 1}: {section.type}
                 </h3>
                 <svg
-                  className={`w-5 h-5 transform transition-transform duration-700 ${
-                    expandedSectionIndex === sectionIndex ? "rotate-180" : ""
-                  }`}
+                  className={`w-5 h-5 transform transition-transform duration-700 ${expandedSectionIndex === sectionIndex ? "rotate-180" : ""
+                    }`}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -183,11 +182,10 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
 
               {/* Section Content */}
               <div
-                className={`transition-all duration-700 ease-in-out ${
-                  expandedSectionIndex === sectionIndex
-                    ? "opacity-100"
-                    : "opacity-0 hidden"
-                }`}
+                className={`transition-all duration-700 ease-in-out ${expandedSectionIndex === sectionIndex
+                  ? "opacity-100"
+                  : "opacity-0 hidden"
+                  }`}
               >
                 <div className="p-4 bg-gray-50 dark:bg-gray-800">
                   {/* Section Stats */}
@@ -252,13 +250,12 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                               Compression: {column.compression}
                             </div>
                             <svg
-                              className={`w-4 h-4 transform transition-transform text-gray-400 ${
-                                expandedColumns[
-                                  `${sectionIndex}-${columnIndex}`
-                                ]
-                                  ? "rotate-180"
-                                  : ""
-                              }`}
+                              className={`w-4 h-4 transform transition-transform text-gray-400 ${expandedColumns[
+                                `${sectionIndex}-${columnIndex}`
+                              ]
+                                ? "rotate-180"
+                                : ""
+                                }`}
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -307,6 +304,14 @@ export const FileMetadata: React.FC<FileMetadataProps> = ({
                                 </div>
                                 <div className="font-medium">
                                   {column.values_count.toLocaleString()}
+                                </div>
+                              </div>
+                              <div className="bg-gray-50 dark:bg-gray-600 p-3 rounded-lg">
+                                <div className="text-gray-500 dark:text-gray-400 mb-1">
+                                  Est Cardinality
+                                </div>
+                                <div className="font-medium">
+                                  {column.statistics.cardinality_count.toLocaleString()}
                                 </div>
                               </div>
                               <div className="bg-gray-50 dark:bg-gray-600 p-3 rounded-lg">
