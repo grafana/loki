@@ -234,6 +234,13 @@ outer:
 	), nil
 }
 
+func (q MockQuerier) SelectVariants(
+	_ context.Context,
+	_ SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	panic("TODO(twhitney): SelectVariants not implemented on MockQuerier") // TODO: Implement
+}
+
 type MockDownstreamer struct {
 	*Engine
 }

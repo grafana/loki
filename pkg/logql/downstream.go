@@ -490,6 +490,15 @@ func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter
 	return nil, errors.New("SelectSamples unimplemented: the query-frontend cannot evaluate an expression that selects samples. this is likely a bug in the query engine. please contact your system operator")
 }
 
+func (errorQuerier) SelectVariants(
+	_ context.Context,
+	_ SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	return nil, errors.New(
+		"SelectVariants unimplemented: the query-frontend cannot evaluate a multi-variant expression. this is likely a bug in the query engine. please contact your system operator",
+	)
+}
+
 func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	return &DownstreamEvaluator{
 		Downstreamer:     downstreamer,
@@ -693,6 +702,15 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
+}
+
+func (d *DownstreamEvaluator) NewVariantsStepEvaluator(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+	p Params,
+) (StepEvaluator, error) {
+	// TODO(twhitney): does the downstream evaluator need to handle variants?
+	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")
 }
 
 // NewIterator returns the iter.EntryIterator for a given LogSelectorExpr

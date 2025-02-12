@@ -351,7 +351,8 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 			return nil, logqlmodel.ErrVariantsDisabled
 		}
 
-		return nil, errors.New("variants not yet implemented")
+		value, err := q.evalVariants(ctx, e)
+		return value, err
 	default:
 		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
@@ -639,4 +640,103 @@ type groupedAggregation struct {
 	groupCount  int
 	heap        vectorByValueHeap
 	reverseHeap vectorByReverseValueHeap
+}
+
+func (q *query) evalVariants(
+	ctx context.Context,
+	expr syntax.VariantsExpr,
+) (promql_parser.Value, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(
+		tenantIDs,
+		maxIntervalCapture,
+	)
+	if maxQueryInterval != 0 {
+		for i, v := range expr.Variants() {
+			err = q.checkIntervalLimit(v, maxQueryInterval)
+			if err != nil {
+				return nil, err
+			}
+
+			vExpr, err := optimizeSampleExpr(v)
+			if err != nil {
+				return nil, err
+			}
+
+			expr.SetVariant(i, vExpr)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	stepEvaluator, err := q.evaluator.NewVariantsStepEvaluator(ctx, expr, q.params)
+	if err != nil {
+		return nil, err
+	}
+	defer util.LogErrorWithContext(ctx, "closing VariantsExpr", stepEvaluator.Close)
+
+	next, _, r := stepEvaluator.Next()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	if next && r != nil {
+		switch vec := r.(type) {
+		case SampleVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			// TDOO(twhitney): what is merge first last for?
+			mfl := false
+			// if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
+			// 	mfl = true
+			// }
+			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
+		default:
+			return nil, fmt.Errorf("unsupported result type: %T", r)
+		}
+	}
+	return nil, errors.New("unexpected empty result")
+}
+
+type SelectVariantsParams struct {
+	*logproto.VariantsQueryRequest
+}
+
+func (s SelectVariantsParams) Expr() (syntax.VariantsExpr, error) {
+	if s.Plan != nil && s.Plan.AST != nil {
+		expr, ok := s.Plan.AST.(syntax.VariantsExpr)
+		if !ok {
+			return nil, errors.New("invalid variants expression")
+		}
+		return expr, nil
+	}
+
+	if s.Query == "" {
+		return nil, errors.New("invalid variants expression")
+	}
+
+	expr, err := syntax.ParseExpr(s.Query)
+	if err != nil {
+		return nil, err
+	}
+	switch e := expr.(type) {
+	case syntax.VariantsExpr:
+		return e, nil
+	default:
+		return nil, errors.New("invalid variants expression")
+	}
+}
+
+func (s SelectVariantsParams) LogSelector() (syntax.LogSelectorExpr, error) {
+	expr, err := s.Expr()
+	if err != nil {
+		return nil, err
+	}
+	return expr.LogRange().Left, nil
 }
