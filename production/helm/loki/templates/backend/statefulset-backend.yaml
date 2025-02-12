@@ -207,6 +207,9 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+        {{- with .Values.backend.extraContainers }}
+        {{- toYaml . | nindent 8}}
+        {{- end }}
       {{- with .Values.backend.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
