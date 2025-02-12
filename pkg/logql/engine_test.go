@@ -47,10 +47,12 @@ func TestEngine_checkIntervalLimit(t *testing.T) {
 		{query: `rate({app="foo"} [1m])`, expErr: ""},
 		{query: `rate({app="foo"} [10m])`, expErr: ""},
 		{query: `max(rate({app="foo"} [5m])) - max(rate({app="bar"} [10m]))`, expErr: ""},
+		{query: `variants(rate({app="foo"} [5m])) of ({app="foo" [5m]})`, expErr: ""},
 		{query: `rate({app="foo"} [5m]) - rate({app="bar"} [15m])`, expErr: "[15m] > [10m]"},
 		{query: `rate({app="foo"} [1h])`, expErr: "[1h] > [10m]"},
 		{query: `sum(rate({app="foo"} [1h]))`, expErr: "[1h] > [10m]"},
 		{query: `sum_over_time({app="foo"} |= "foo" | json | unwrap bar [1h])`, expErr: "[1h] > [10m]"},
+		{query: `variants(rate({app="foo"} [1h])) of ({app="foo" [1h]})`, expErr: "[1h] > [10m]"},
 	} {
 		for _, downstream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%v/downstream=%v", tc.query, downstream), func(t *testing.T) {
@@ -73,7 +75,42 @@ func TestEngine_checkIntervalLimit(t *testing.T) {
 				}
 			})
 		}
+	}
+}
 
+func TestEngine_variants_checkIntervalLimit(t *testing.T) {
+	q := &query{}
+	for _, tc := range []struct {
+		query  string
+		expErr string
+	}{
+		{query: `variants(rate({app="foo"} [5m])) of ({app="foo"} [5m])`, expErr: ""},
+		{query: `variants(rate({app="foo"} [1h])) of ({app="foo"} [1h])`, expErr: "[1h] > [10m]"},
+	} {
+		for _, downstream := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%v/downstream=%v", tc.query, downstream), func(t *testing.T) {
+				e := syntax.MustParseExpr(tc.query).(syntax.VariantsExpr)
+				for _, variant := range e.Variants() {
+					expr := variant
+					if downstream {
+						// Simulate downstream expression
+						expr = &ConcatSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
+								shard:      nil,
+								SampleExpr: variant,
+							},
+							next: nil,
+						}
+					}
+					err := q.checkIntervalLimit(expr, 10*time.Minute)
+					if tc.expErr != "" {
+						require.ErrorContains(t, err, tc.expErr)
+					} else {
+						require.NoError(t, err)
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -996,6 +1033,178 @@ func TestEngine_InstantQuery(t *testing.T) {
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
 
 			params, err := NewLiteralParams(test.qs, test.ts, test.ts, 0, 0, test.direction, test.limit, nil, nil)
+			require.NoError(t, err)
+			q := eng.Query(params)
+			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
+			if expectedError, ok := test.expected.(error); ok {
+				assert.Equal(t, expectedError.Error(), err.Error())
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				assert.Equal(t, test.expected, res.Data)
+			}
+		})
+	}
+}
+
+func TestEngine_Variants_InstantQuery(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		qs        string
+		ts        time.Time
+		direction logproto.Direction
+		limit     uint32
+
+		// an array of data per params will be returned by the querier.
+		// This is to cover logql that requires multiple queries.
+		data   interface{}
+		params interface{}
+
+		expected interface{}
+	}{
+		{
+			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+			time.Unix(60, 0),
+			logproto.BACKWARD,
+			0,
+			[][]logproto.Series{
+				{newSeries(testSize, identity, `{app="foo"}`)},
+			},
+			[]SelectVariantsParams{
+				{
+					&logproto.VariantsQueryRequest{
+						Query:    `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						LogRange: `{app="foo"}[1m]`,
+						Variants: []string{
+							`bytes_over_time({app="foo"}[1m])`,
+							`count_over_time({app="foo"}[1m])`,
+						},
+						Start: time.Unix(0, 0),
+						End:   time.Unix(60, 0),
+					},
+				},
+			},
+			promql.Vector{
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "0", "app", "foo")},
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "1", "app", "foo")},
+			},
+		},
+		{
+			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
+			time.Unix(60, 0),
+			logproto.BACKWARD,
+			0,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
+					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
+				},
+			},
+			[]SelectVariantsParams{
+				{
+					&logproto.VariantsQueryRequest{
+						Query:    `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), sum by (app) (count_over_time({app="foo"}[1m]))) of ({app="foo"}[1m])`,
+						LogRange: `{app="foo"}[1m]`,
+						Variants: []string{
+							`bytes_over_time({app="foo"}[1m])`,
+							`count_over_time({app="foo"}[1m])`,
+						},
+						Start: time.Unix(0, 0),
+						End:   time.Unix(60, 0),
+					},
+				},
+			},
+			promql.Vector{
+				promql.Sample{T: 60 * 1000, F: 120, Metric: labels.FromStrings("__variant__", "0", "app", "foo")},
+				promql.Sample{T: 60 * 1000, F: 120, Metric: labels.FromStrings("__variant__", "1", "app", "foo")},
+			},
+		},
+		{
+			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+			time.Unix(60, 0),
+			logproto.BACKWARD,
+			0,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
+					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
+				},
+			},
+			[]SelectVariantsParams{
+				{
+					&logproto.VariantsQueryRequest{
+						Query:    `variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						LogRange: `{app="foo"}[1m]`,
+						Variants: []string{
+							`bytes_over_time({app="foo"}[1m])`,
+							`count_over_time({app="foo"}[1m])`,
+						},
+						Start: time.Unix(0, 0),
+						End:   time.Unix(60, 0),
+					},
+				},
+			},
+			promql.Vector{
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "0", "app", "foo", "foo", "bar")},
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "0", "app", "foo", "foo", "baz")},
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "1", "app", "foo", "foo", "bar")},
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "1", "app", "foo", "foo", "baz")},
+			},
+		},
+		{
+			`variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+			time.Unix(60, 0),
+			logproto.BACKWARD,
+			0,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, identity, `{app="foo", foo="bar"}`),
+					newSeries(testSize, identity, `{app="foo", foo="baz"}`),
+				},
+			},
+			[]SelectVariantsParams{
+				{
+					&logproto.VariantsQueryRequest{
+						Query:    `variants(sum by (app) (bytes_over_time({app="foo"}[1m])), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
+						LogRange: `{app="foo"}[1m]`,
+						Variants: []string{
+							`bytes_over_time({app="foo"}[1m])`,
+							`count_over_time({app="foo"}[1m])`,
+						},
+						Start: time.Unix(0, 0),
+						End:   time.Unix(60, 0),
+					},
+				},
+			},
+			promql.Vector{
+				promql.Sample{T: 60 * 1000, F: 120, Metric: labels.FromStrings("__variant__", "0", "app", "foo")},
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "1", "app", "foo", "foo", "bar")},
+				promql.Sample{T: 60 * 1000, F: 60, Metric: labels.FromStrings("__variant__", "1", "app", "foo", "foo", "baz")},
+			},
+		},
+	} {
+		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
+			eng := NewEngine(
+				EngineOpts{
+					ExperimentalMutiVariantQueries: true,
+				},
+				newQuerierRecorder(t, test.data, test.params),
+				NoLimits,
+				log.NewNopLogger(),
+			)
+
+			params, err := NewLiteralParams(
+				test.qs,
+				test.ts,
+				test.ts,
+				0,
+				0,
+				test.direction,
+				test.limit,
+				nil,
+				nil,
+			)
 			require.NoError(t, err)
 			q := eng.Query(params)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
@@ -2324,6 +2533,15 @@ func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (it
 	return iter.NoopSampleIterator, nil
 }
 
+func (statsQuerier) SelectVariants(
+	ctx context.Context,
+	_ SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	st := stats.FromContext(ctx)
+	st.AddDecompressedBytes(1)
+	return iter.NoopSampleIterator, nil
+}
+
 func TestEngine_Stats(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
@@ -2352,7 +2570,20 @@ func (metaQuerier) SelectLogs(ctx context.Context, _ SelectLogParams) (iter.Entr
 	return iter.NoopEntryIterator, nil
 }
 
-func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
+func (metaQuerier) SelectSamples(
+	ctx context.Context,
+	_ SelectSampleParams,
+) (iter.SampleIterator, error) {
+	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
+		{Name: "Header", Values: []string{"value"}},
+	})
+	return iter.NoopSampleIterator, nil
+}
+
+func (metaQuerier) SelectVariants(
+	ctx context.Context,
+	_ SelectVariantsParams,
+) (iter.SampleIterator, error) {
 	_ = metadata.JoinHeaders(ctx, []*definitions.PrometheusResponseHeader{
 		{Name: "Header", Values: []string{"value"}},
 	})
@@ -2409,6 +2640,13 @@ func (e errorIteratorQuerier) SelectLogs(_ context.Context, p SelectLogParams) (
 }
 
 func (e errorIteratorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
+	return iter.NewSortSampleIterator(e.samples()), nil
+}
+
+func (e *errorIteratorQuerier) SelectVariants(
+	_ context.Context,
+	_ SelectVariantsParams,
+) (iter.SampleIterator, error) {
 	return iter.NewSortSampleIterator(e.samples()), nil
 }
 
@@ -2666,9 +2904,18 @@ func TestHashingStability(t *testing.T) {
 func TestUnexpectedEmptyResults(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
-	mock := &mockEvaluatorFactory{SampleEvaluatorFunc(func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
-		return EmptyEvaluator[SampleVector]{value: nil}, nil
-	})}
+	mock := &mockEvaluatorFactory{
+		SampleEvaluatorFunc(
+			func(context.Context, SampleEvaluatorFactory, syntax.SampleExpr, Params) (StepEvaluator, error) {
+				return EmptyEvaluator[SampleVector]{value: nil}, nil
+			},
+		),
+		VariantsEvaluatorFunc(
+			func(context.Context, syntax.VariantsExpr, Params) (StepEvaluator, error) {
+				return EmptyEvaluator[SampleVector]{value: nil}, nil
+			},
+		),
+	}
 
 	eng := NewEngine(EngineOpts{}, nil, NoLimits, log.NewNopLogger())
 	params, err := NewLiteralParams(`first_over_time({a=~".+"} | logfmt | unwrap value [1s])`, time.Now(), time.Now(), 0, 0, logproto.BACKWARD, 0, nil, nil)
@@ -2682,6 +2929,7 @@ func TestUnexpectedEmptyResults(t *testing.T) {
 
 type mockEvaluatorFactory struct {
 	SampleEvaluatorFactory
+	VariantEvaluatorFactory
 }
 
 func (*mockEvaluatorFactory) NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error) {
@@ -2747,6 +2995,46 @@ func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *que
 				series[paramsID(p)] = seriesIn[i]
 			}
 		}
+
+		if paramsIn, ok2 := params.([]SelectVariantsParams); ok2 {
+			for i, p := range paramsIn {
+				expr, ok := syntax.MustParseExpr(p.Query).(syntax.VariantsExpr)
+				if !ok {
+					return nil
+				}
+
+				p.Plan = &plan.QueryPlan{
+					AST: expr,
+				}
+
+				curSeries := seriesIn[i]
+				variants := expr.Variants()
+				newSeries := make([]logproto.Series, len(curSeries)*len(variants))
+
+				for vi := range variants {
+					for si, s := range curSeries {
+						lbls, err := promql_parser.ParseMetric(s.Labels)
+						if err != nil {
+							return nil
+						}
+
+						// Add variant label
+						lbls = append(
+							lbls,
+							labels.Label{Name: "__variant__", Value: fmt.Sprintf("%d", vi)},
+						)
+
+						// Copy series with new labels
+						idx := vi*len(curSeries) + si
+						newSeries[idx] = logproto.Series{
+							Labels:  lbls.String(),
+							Samples: s.Samples,
+						}
+					}
+				}
+				series[paramsID(p)] = newSeries
+			}
+		}
 	}
 	return &querierRecorder{
 		streams: streams,
@@ -2769,7 +3057,30 @@ func (q *querierRecorder) SelectLogs(_ context.Context, p SelectLogParams) (iter
 	return iter.NewStreamsIterator(streams, p.Direction), nil
 }
 
-func (q *querierRecorder) SelectSamples(_ context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (q *querierRecorder) SelectSamples(
+	_ context.Context,
+	p SelectSampleParams,
+) (iter.SampleIterator, error) {
+	if !q.match {
+		for _, s := range q.series {
+			return iter.NewMultiSeriesIterator(s), nil
+		}
+	}
+	recordID := paramsID(p)
+	if len(q.series) == 0 {
+		return iter.NoopSampleIterator, nil
+	}
+	series, ok := q.series[recordID]
+	if !ok {
+		return nil, fmt.Errorf("no series found for id: %s has: %+v", recordID, q.series)
+	}
+	return iter.NewMultiSeriesIterator(series), nil
+}
+
+func (q *querierRecorder) SelectVariants(
+	_ context.Context,
+	p SelectVariantsParams,
+) (iter.SampleIterator, error) {
 	if !q.match {
 		for _, s := range q.series {
 			return iter.NewMultiSeriesIterator(s), nil
@@ -2790,6 +3101,8 @@ func paramsID(p interface{}) string {
 	switch params := p.(type) {
 	case SelectLogParams:
 	case SelectSampleParams:
+		return fmt.Sprintf("%d", params.Plan.Hash())
+	case SelectVariantsParams:
 		return fmt.Sprintf("%d", params.Plan.Hash())
 	}
 	b, err := json.Marshal(p)
