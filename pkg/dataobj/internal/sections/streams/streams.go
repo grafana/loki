@@ -251,11 +251,13 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 		}
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
-			PageSizeHint:    s.pageSize,
-			Value:           datasetmd.VALUE_TYPE_STRING,
-			Encoding:        datasetmd.ENCODING_TYPE_PLAIN,
-			Compression:     datasetmd.COMPRESSION_TYPE_ZSTD,
-			StoreRangeStats: true,
+			PageSizeHint: s.pageSize,
+			Value:        datasetmd.VALUE_TYPE_STRING,
+			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
+			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+			Statistics: dataset.StatisticsOptions{
+				StoreRangeStats: true,
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("creating label column: %w", err)
@@ -323,11 +325,13 @@ func (s *Streams) EncodeTo(enc *encoding.Encoder) error {
 
 func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:    pageSize,
-		Value:           datasetmd.VALUE_TYPE_INT64,
-		Encoding:        datasetmd.ENCODING_TYPE_DELTA,
-		Compression:     datasetmd.COMPRESSION_TYPE_NONE,
-		StoreRangeStats: true,
+		PageSizeHint: pageSize,
+		Value:        datasetmd.VALUE_TYPE_INT64,
+		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
+		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Statistics: dataset.StatisticsOptions{
+			StoreRangeStats: true,
+		},
 	})
 }
 
