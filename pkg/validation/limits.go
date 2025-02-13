@@ -227,7 +227,7 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental"`
+	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
 	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
 	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	EnforcedLabels            []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
