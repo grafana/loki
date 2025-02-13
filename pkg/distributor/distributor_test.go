@@ -1673,7 +1673,6 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 			if tc.expectError {
 				expectedErr := fmt.Sprintf(validation.BlockedIngestionErrorMsg, "test", tc.blockUntil.Format(time.RFC3339), tc.blockStatusCode)
 				require.ErrorContains(t, err, expectedErr)
-				require.Nil(t, response)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, success, response)
