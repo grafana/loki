@@ -556,13 +556,22 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if ok, until, statusCode := d.validator.ShouldBlockPolicy(validationContext, policy); ok {
-				err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, tenantID, until.Format(time.RFC3339), statusCode)
+			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
+				// TODO(dylan): should we use `trackDiscardedData` here? what about the other places?
+				d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, reason)
 				d.writeFailuresManager.Log(tenantID, err)
+
+				// If the status code is 200, return success.
+				// Note that we still log the error and increment the metrics.
+				if statusCode == http.StatusOK {
+					// do not add error to validationErrors.
+					continue
+				}
+
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.BlockedIngestionPolicy, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
+				validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.BlockedIngestionPolicy, tenantID, retentionHours, policy).Add(float64(discardedBytes))
+				validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(discardedBytes))
 				continue
 			}
 
@@ -647,21 +656,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
 		return &logproto.PushResponse{}, validationErr
-	}
-
-	if block, until, retStatusCode := d.validator.ShouldBlockIngestion(validationContext, now); block {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.BlockedIngestion)
-
-		err = fmt.Errorf(validation.BlockedIngestionErrorMsg, tenantID, until.Format(time.RFC3339), retStatusCode)
-		d.writeFailuresManager.Log(tenantID, err)
-
-		// If the status code is 200, return success.
-		// Note that we still log the error and increment the metrics.
-		if retStatusCode == http.StatusOK {
-			return &logproto.PushResponse{}, nil
-		}
-
-		return nil, httpgrpc.Errorf(retStatusCode, "%s", err.Error())
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {

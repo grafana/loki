@@ -209,17 +209,27 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 }
 
 // ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
-func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (bool, time.Time, int) {
+func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, policy string) (bool, int, string, error) {
 	if ctx.blockIngestionUntil.IsZero() {
-		return false, time.Time{}, 0
+		return false, 0, "", nil
 	}
 
-	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
+	if now.Before(ctx.blockIngestionUntil) {
+		err := fmt.Errorf(validation.BlockedIngestionErrorMsg, ctx.userID, ctx.blockIngestionUntil.Format(time.RFC3339), ctx.blockIngestionStatusCode)
+		return true, ctx.blockIngestionStatusCode, validation.BlockedIngestion, err
+	}
+
+	if block, until, code := v.ShouldBlockPolicy(ctx, policy, now); block {
+		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, until.Format(time.RFC3339), code)
+		return true, code, validation.BlockedIngestionPolicy, err
+	}
+
+	return false, 0, "", nil
 }
 
 // ShouldBlockPolicy checks if ingestion should be blocked for the given policy.
 // It returns true if ingestion should be blocked, along with the block until time and status code.
-func (v *Validator) ShouldBlockPolicy(ctx validationContext, policy string) (bool, time.Time, int) {
+func (v *Validator) ShouldBlockPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
 	// No policy provided, don't block
 	if policy == "" {
 		return false, time.Time{}, 0
@@ -231,7 +241,7 @@ func (v *Validator) ShouldBlockPolicy(ctx validationContext, policy string) (boo
 		return false, time.Time{}, 0
 	}
 
-	if time.Now().Before(blockUntil) {
+	if now.Before(blockUntil) {
 		return true, blockUntil, ctx.blockIngestionStatusCode
 	}
 
