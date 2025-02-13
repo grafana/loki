@@ -582,6 +582,13 @@ func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {
 	return s.schemaCfg.Configs
 }
 
+// TODO(twhitney): implement variants on the store
+func (s *LokiStore) SelectVariants(_ context.Context, _ logql.SelectVariantsParams) (iter.SampleIterator, error) {
+	// This is a placeholder implementation that returns a no-op iterator
+	// TODO: Implement proper variant selection logic
+	return iter.NoopSampleIterator, nil
+}
+
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
 	filtered := make([]chunk.Chunk, 0, len(chunks))
 	for _, chunk := range chunks {

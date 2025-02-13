@@ -64,6 +64,7 @@ type QueryParams interface {
 	GetStart() time.Time
 	GetEnd() time.Time
 	GetShards() []string
+	GetDeletes() []*logproto.Delete
 }
 
 // SelectParams specifies parameters passed to data selections.
@@ -668,8 +669,7 @@ func (q *query) evalVariants(
 				return nil, err
 			}
 
-			expr.SetVariant(i, vExpr)
-			if err != nil {
+			if err = expr.SetVariant(i, vExpr); err != nil {
 				return nil, err
 			}
 		}

@@ -55,7 +55,15 @@ var (
 		}
 		return ex.ForStream(labels.Labels{})
 	}()
-	allPossibleFormats = []struct {
+	bytesExtractor = func() log.StreamSampleExtractor {
+		ex, err := log.NewLineSampleExtractor(log.BytesExtractor, nil, nil, false, false)
+		if err != nil {
+			panic(err)
+		}
+		return ex.ForStream(labels.Labels{})
+	}()
+	singleCountExtractor = []log.StreamSampleExtractor{countExtractor}
+	allPossibleFormats   = []struct {
 		headBlockFmt HeadBlockFmt
 		chunkFormat  byte
 	}{
@@ -110,66 +118,79 @@ func TestBlock(t *testing.T) {
 				t.Parallel()
 				chk := newMemChunkWithFormat(chunkFormat, enc, headBlockFmt, testBlockSize, testTargetSize)
 				cases := []struct {
-					ts  int64
-					str string
-					lbs []logproto.LabelAdapter
-					cut bool
+					ts    int64
+					str   string
+					bytes float64
+					lbs   []logproto.LabelAdapter
+					cut   bool
 				}{
 					{
-						ts:  1,
-						str: "hello, world!",
+						ts:    1,
+						str:   "hello, world!",
+						bytes: float64(len("hello, world!")),
 					},
 					{
-						ts:  2,
-						str: "hello, world2!",
+						ts:    2,
+						str:   "hello, world2!",
+						bytes: float64(len("hello, world2!")),
 						lbs: []logproto.LabelAdapter{
 							{Name: "app", Value: "myapp"},
 						},
 					},
 					{
-						ts:  3,
-						str: "hello, world3!",
+						ts:    3,
+						str:   "hello, world3!",
+						bytes: float64(len("hello, world3!")),
 						lbs: []logproto.LabelAdapter{
 							{Name: "a", Value: "a"},
 							{Name: "b", Value: "b"},
 						},
 					},
 					{
-						ts:  4,
-						str: "hello, world4!",
+						ts:    4,
+						str:   "hello, world4!",
+						bytes: float64(len("hello, world4!")),
 					},
 					{
-						ts:  5,
-						str: "hello, world5!",
+						ts:    5,
+						str:   "hello, world5!",
+						bytes: float64(len("hello, world5!")),
 					},
 					{
-						ts:  6,
-						str: "hello, world6!",
-						cut: true,
+						ts:    6,
+						str:   "hello, world6!",
+						bytes: float64(len("hello, world6!")),
+						cut:   true,
 					},
 					{
-						ts:  7,
-						str: "hello, world7!",
+						ts:    7,
+						str:   "hello, world7!",
+						bytes: float64(len("hello, world7!")),
 					},
 					{
-						ts:  8,
-						str: "hello, worl\nd8!",
+						ts:    8,
+						str:   "hello, worl\nd8!",
+						bytes: float64(len("hello, worl\nd8!")),
 					},
 					{
-						ts:  8,
-						str: "hello, world 8, 2!",
+						ts:    8,
+						str:   "hello, world 8, 2!",
+						bytes: float64(len("hello, world 8, 2!")),
 					},
 					{
-						ts:  8,
-						str: "hello, world 8, 3!",
+						ts:    8,
+						str:   "hello, world 8, 3!",
+						bytes: float64(len("hello, world 8, 3!")),
 					},
 					{
-						ts:  9,
-						str: "",
+						ts:    9,
+						str:   "",
+						bytes: float64(len("")),
 					},
 					{
-						ts:  10,
-						str: "hello, world10!",
+						ts:    10,
+						str:   "hello, world10!",
+						bytes: float64(len("hello, world10!")),
 						lbs: []logproto.LabelAdapter{
 							{Name: "a", Value: "a2"},
 							{Name: "b", Value: "b"},
@@ -214,20 +235,35 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				countExtractor := func() log.StreamSampleExtractor {
-					ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
-					if err != nil {
-						panic(err)
-					}
-					return ex.ForStream(labels.Labels{})
-				}()
-
-				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), singleCountExtractor)
 				idx = 0
 				for sampleIt.Next() {
 					s := sampleIt.At()
 					require.Equal(t, cases[idx].ts, s.Timestamp)
 					require.Equal(t, 1., s.Value)
+					require.NotEmpty(t, s.Hash)
+					idx++
+				}
+
+				require.NoError(t, sampleIt.Err())
+				require.NoError(t, sampleIt.Close())
+				require.Equal(t, len(cases), idx)
+
+				extractors := append(singleCountExtractor, bytesExtractor)
+				sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors)
+				idx = 0
+
+				// 2 extractors, expect 2 samples per original timestamp
+				for sampleIt.Next() {
+					s := sampleIt.At()
+					require.Equal(t, cases[idx].ts, s.Timestamp)
+					require.Equal(t, 1., s.Value)
+					require.NotEmpty(t, s.Hash)
+
+					require.True(t, sampleIt.Next())
+					s = sampleIt.At()
+					require.Equal(t, cases[idx].ts, s.Timestamp)
+					require.Equal(t, cases[idx].bytes, s.Value)
 					require.NotEmpty(t, s.Hash)
 					idx++
 				}
@@ -468,15 +504,16 @@ func TestSerialization(t *testing.T) {
 					}
 					require.NoError(t, it.Err())
 
-					extractor := func() log.StreamSampleExtractor {
+					countExtractor := func() log.StreamSampleExtractor {
 						ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
 						if err != nil {
 							panic(err)
 						}
 						return ex.ForStream(labels.Labels{})
 					}()
+					extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
 
-					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor)
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
@@ -488,6 +525,12 @@ func TestSerialization(t *testing.T) {
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
 						}
+
+						// check that the second extractor is returning samples as well
+						require.True(t, sampleIt.Next())
+						s = sampleIt.At()
+						require.Equal(t, int64(i), s.Timestamp)
+						require.Equal(t, 1., s.Value)
 					}
 					require.NoError(t, sampleIt.Err())
 
@@ -938,7 +981,7 @@ func BenchmarkRead(b *testing.B) {
 				bytesRead := uint64(0)
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
-						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
+						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), singleCountExtractor)
 						for iterator.Next() {
 							_ = iterator.At()
 						}
@@ -1073,6 +1116,38 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 
 				for n := 0; n < b.N; n++ {
 					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
+
+					for iter.Next() {
+						_ = iter.At()
+					}
+					iter.Close()
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkHeadBlockMultiExtractorSampleIterator(b *testing.B) {
+	for _, j := range []int{20000, 10000, 8000, 5000} {
+		for _, withStructuredMetadata := range []bool{false, true} {
+			b.Run(fmt.Sprintf("size=%d structuredMetadata=%v", j, withStructuredMetadata), func(b *testing.B) {
+				h := headBlock{}
+
+				var structuredMetadata labels.Labels
+				if withStructuredMetadata {
+					structuredMetadata = labels.Labels{{Name: "foo", Value: "foo"}}
+				}
+
+				for i := 0; i < j; i++ {
+					if _, err := h.Append(int64(i), "this is the append string", structuredMetadata); err != nil {
+						b.Fatal(err)
+					}
+				}
+
+				b.ResetTimer()
+
+				for n := 0; n < b.N; n++ {
+					iter := h.MultiExtractorSampleIterator(context.Background(), 0, math.MaxInt64, []log.StreamSampleExtractor{countExtractor, bytesExtractor})
 
 					for iter.Next() {
 						_ = iter.At()
@@ -1351,7 +1426,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), ex.ForStream(lbs)))
+						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), []log.StreamSampleExtractor{ex.ForStream(lbs)}))
 					}
 					b.ResetTimer()
 					for n := 0; n < b.N; n++ {
@@ -2025,7 +2100,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
-							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), []log.StreamSampleExtractor{extractor.ForStream(streamLabels)})
 
 							var sumValues int
 							var streams []string

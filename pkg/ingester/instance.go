@@ -228,6 +228,10 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 // Although multiple streams are part of the PushRequest, the returned error only reflects what
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
+const (
+	trueString = "true" // Used for comparing header values
+)
+
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
@@ -489,7 +493,7 @@ func (i *instance) query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	if i.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+	if i.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != trueString {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -575,7 +579,8 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
-			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
+			extractors := []log.StreamSampleExtractor{extractor.ForStream(stream.labels)}
+			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractors)
 			if err != nil {
 				return err
 			}
@@ -587,6 +592,94 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		return nil, err
 	}
 
+	return iter.NewSortSampleIterator(iters), nil
+}
+
+func (i *instance) QueryVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	it, err := i.queryVariants(ctx, req)
+	err = server_util.ClientGrpcStatusAndError(err)
+	return it, err
+}
+
+func (i *instance) queryVariants(
+	ctx context.Context,
+	req logql.SelectVariantsParams,
+) (iter.SampleIterator, error) {
+	expr, err := req.Expr()
+	if err != nil {
+		return nil, err
+	}
+
+	extractors, err := expr.Extractors()
+	if err != nil {
+		return nil, err
+	}
+
+	for j, extractor := range extractors {
+
+		extractor, err = deletion.SetupExtractor(req, extractor)
+		if err != nil {
+			return nil, err
+		}
+
+		if i.extractorWrapper != nil &&
+			httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			extractor = i.extractorWrapper.Wrap(ctx, extractor, req.Plan.String(), userID)
+		}
+
+		extractors[j] = extractor
+	}
+
+	stats := stats.FromContext(ctx)
+	var iters []iter.SampleIterator
+
+	shard, err := parseShardFromRequest(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+	selector, err := req.LogSelector()
+	if err != nil {
+		return nil, err
+	}
+	err = i.forMatchingStreams(
+		ctx,
+		req.Start,
+		selector.Matchers(),
+		shard,
+		func(stream *stream) error {
+			streamSampleExtractors := make([]log.StreamSampleExtractor, 0, len(extractors))
+			for i, e := range extractors {
+				ext := log.NewVariantsStreamSampleExtractorWrapper(
+					i,
+					e.ForStream(stream.labels),
+				)
+				streamSampleExtractors = append(streamSampleExtractors, ext)
+			}
+			iter, err := stream.SampleIterator(
+				ctx,
+				stats,
+				req.Start,
+				req.End,
+				streamSampleExtractors,
+			)
+			if err != nil {
+				return err
+			}
+			iters = append(iters, iter)
+			return nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
 	return iter.NewSortSampleIterator(iters), nil
 }
 
@@ -1123,6 +1216,48 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	metadata := metadata.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
+		if err != nil {
+			return err
+		}
+
+		stats.AddIngesterBatch(int64(size))
+		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
+
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
+			return err
+		}
+
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Series) == 0 {
+			return nil
+		}
+
+		stats.Reset()
+		metadata.Reset()
+
+		if sp != nil {
+			sp.LogKV("event", "sent batch", "size", size)
+		}
+	}
+
+	return nil
+}
+
+func sendVariantsBatches(
+	ctx context.Context,
+	it iter.SampleIterator,
+	queryServer logproto.Querier_QueryVariantsServer,
+) error {
+	sp := opentracing.SpanFromContext(ctx)
+
+	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
+	for !isDone(ctx) {
+		batch, size, err := iter.ReadVariantsBatch(it, queryBatchSampleSize)
 		if err != nil {
 			return err
 		}

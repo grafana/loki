@@ -1065,7 +1065,14 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (c *MemChunk) SampleIterator(
+	ctx context.Context,
+	from, through time.Time,
+	extractors []log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if len(extractors) == 0 {
+		return iter.NoopSampleIterator
+	}
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
@@ -1089,7 +1096,11 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 			ordered = false
 		}
 		lastMax = b.maxt
-		its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractor))
+		if len(extractors) == 1 {
+			its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors[0]))
+		} else {
+			its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.MultiExtractorSampleIterator(ctx, extractors))
+		}
 	}
 
 	if !c.head.IsEmpty() {
@@ -1097,7 +1108,11 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 		if from < lastMax {
 			ordered = false
 		}
-		its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractor))
+		if len(extractors) == 1 {
+			its = append(its, c.head.SampleIterator(ctx, mint, maxt, extractors[0]))
+		} else {
+			its = append(its, c.head.MultiExtractorSampleIterator(ctx, mint, maxt, extractors))
+		}
 	}
 
 	var it iter.SampleIterator
@@ -1190,7 +1205,24 @@ func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSample
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
 	}
-	return newSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractor, b.symbolizer)
+	return newSampleIterator(
+		ctx,
+		compression.GetReaderPool(b.enc),
+		b.b,
+		b.format,
+		extractor,
+		b.symbolizer,
+	)
+}
+
+func (b encBlock) MultiExtractorSampleIterator(
+	ctx context.Context,
+	extractors []log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if len(b.b) == 0 {
+		return iter.NoopSampleIterator
+	}
+	return newMultiExtractorSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractors, b.symbolizer)
 }
 
 func (b block) Offset() int {
@@ -1333,6 +1365,74 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 func unsafeGetBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+}
+
+func (hb *headBlock) MultiExtractorSampleIterator(
+	ctx context.Context,
+	mint, maxt int64,
+	extractors []log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
+		return iter.NoopSampleIterator
+	}
+
+	stats := stats.FromContext(ctx)
+	stats.AddHeadChunkLines(int64(len(hb.entries)))
+	series := map[string]*logproto.Series{}
+
+	setQueryReferencedStructuredMetadata := false
+	for _, e := range hb.entries {
+		for _, extractor := range extractors {
+			stats.AddHeadChunkBytes(int64(len(e.s)))
+			value, lbls, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
+			if !ok {
+				continue
+			}
+			var (
+				found bool
+				s     *logproto.Series
+			)
+
+			lblStr := lbls.String()
+			baseHash := extractor.BaseLabels().Hash()
+			if s, found = series[lblStr]; !found {
+				s = &logproto.Series{
+					Labels:     lblStr,
+					Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
+					StreamHash: baseHash,
+				}
+				series[lblStr] = s
+			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.t,
+				Value:     value,
+				Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
+			})
+
+			if extractor.ReferencedStructuredMetadata() {
+				setQueryReferencedStructuredMetadata = true
+			}
+		}
+		stats.AddPostFilterLines(1)
+	}
+
+	if setQueryReferencedStructuredMetadata {
+		stats.SetQueryReferencedStructuredMetadata()
+	}
+	if len(series) == 0 {
+		return iter.NoopSampleIterator
+	}
+	seriesRes := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		seriesRes = append(seriesRes, *s)
+	}
+	return iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
+		for _, s := range series {
+			SamplesPool.Put(s.Samples)
+		}
+		return nil
+	})
 }
 
 type bufferedIterator struct {

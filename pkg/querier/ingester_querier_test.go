@@ -157,6 +157,16 @@ func TestIngesterQuerier_earlyExitOnQuorum(t *testing.T) {
 			},
 			retVal: newQuerySampleClientMock(),
 		},
+		"select_variants": {
+			method: "QueryVariants",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectVariants(context.Background(), logql.SelectVariantsParams{
+					VariantsQueryRequest: new(logproto.VariantsQueryRequest),
+				})
+				return err
+			},
+			retVal: newQueryVariantsClientMock(),
+		},
 		"tail": {
 			method: "Tail",
 			testFn: func(ingesterQuerier *IngesterQuerier) error {
@@ -291,6 +301,16 @@ func TestIngesterQuerierFetchesResponsesFromPartitionIngesters(t *testing.T) {
 			},
 			retVal: newQuerySampleClientMock(),
 		},
+		"select_variants": {
+			method: "QueryVariants",
+			testFn: func(ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectVariants(ctx, logql.SelectVariantsParams{
+					VariantsQueryRequest: new(logproto.VariantsQueryRequest),
+				})
+				return err
+			},
+			retVal: newQueryVariantsClientMock(),
+		},
 		"select_logs_shuffle_sharded": {
 			method: "Query",
 			testFn: func(ingesterQuerier *IngesterQuerier) error {
@@ -389,6 +409,16 @@ func TestIngesterQuerier_QueriesSameIngestersWithPartitionContext(t *testing.T) 
 				return err
 			},
 			retVal: newQuerySampleClientMock(),
+		},
+		"select_variants": {
+			method: "QueryVariants",
+			testFn: func(ctx context.Context, ingesterQuerier *IngesterQuerier) error {
+				_, err := ingesterQuerier.SelectVariants(ctx, logql.SelectVariantsParams{
+					VariantsQueryRequest: new(logproto.VariantsQueryRequest),
+				})
+				return err
+			},
+			retVal: newQueryVariantsClientMock(),
 		},
 		"select_logs_shuffle_sharded": {
 			method: "Query",

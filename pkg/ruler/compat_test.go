@@ -125,6 +125,10 @@ func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (
 	return iter.NoopSampleIterator, nil
 }
 
+func (q *FakeQuerier) SelectVariants(context.Context, logql.SelectVariantsParams) (iter.SampleIterator, error) {
+	return iter.NoopSampleIterator, nil
+}
+
 type fakeChecker struct{}
 
 func (f fakeChecker) isReady(_ string) bool {

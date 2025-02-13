@@ -1401,7 +1401,7 @@ func (ev *DefaultEvaluator) NewVariantsStepEvaluator(
 }
 
 func (ev *DefaultEvaluator) newVariantsEvaluator(
-	ctx context.Context,
+	_ context.Context,
 	it iter.PeekingSampleIterator,
 	expr *syntax.MultiVariantExpr,
 	q Params,
