@@ -33,7 +33,7 @@ var (
 
 	noShard = logql.Shard{
 		PowerOfTwo: &index.ShardAnnotation{
-			Shard: uint32(1),
+			Shard: uint32(0),
 			Of:    uint32(1),
 		},
 	}
