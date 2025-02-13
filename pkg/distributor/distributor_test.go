@@ -448,12 +448,14 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 	// request missing the `app` label from global enforced labels and `cluster` label from policy enforced labels.
 	lbs = labels.FromMap(map[string]string{"env": "prod", "namespace": "ns1"})
 	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy1")
+	assert.True(t, missing)
+	assert.EqualValues(t, []string{"app", "cluster"}, missingLabels)
 
 	// request missing all required labels.
 	lbs = labels.FromMap(map[string]string{"pod": "distributor-abc"})
-	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test")
+	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy2")
 	assert.True(t, missing)
-	assert.EqualValues(t, []string{"app", "env"}, missingLabels)
+	assert.EqualValues(t, []string{"app", "env", "namespace"}, missingLabels)
 }
 
 func Test_PushWithEnforcedLabels(t *testing.T) {
