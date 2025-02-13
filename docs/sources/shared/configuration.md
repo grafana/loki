@@ -3601,6 +3601,8 @@ otlp_config:
   # drop them altogether
   [log_attributes: <list of attributes_configs>]
 
+[block_ingestion_policy_until: <map of string to Time>]
+
 # Block ingestion until the configured date. The time should be in RFC3339
 # format.
 # CLI flag: -limits.block-ingestion-until
@@ -3611,10 +3613,6 @@ otlp_config:
 # status code (260) is returned to the client along with an error message.
 # CLI flag: -limits.block-ingestion-status-code
 [block_ingestion_status_code: <int> | default = 260]
-
-[block_ingestion_policy_until: <map of string to Time>]
-
-[block_ingestion_policy_status_code: <map of string to int>]
 
 # List of labels that must be present in the stream. If any of the labels are
 # missing, the stream will be discarded. This flag configures it globally for

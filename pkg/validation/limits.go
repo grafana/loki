@@ -227,8 +227,8 @@ type Limits struct {
 	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
-	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until"`
-	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until"`
+	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental"`
+	BlockIngestionUntil       dskit_flagext.Time            `yaml:"block_ingestion_until" json:"block_ingestion_until" category:"experimental"`
 	BlockIngestionStatusCode  int                           `yaml:"block_ingestion_status_code" json:"block_ingestion_status_code"`
 	EnforcedLabels            []string                      `yaml:"enforced_labels" json:"enforced_labels" category:"experimental"`
 	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4"`
