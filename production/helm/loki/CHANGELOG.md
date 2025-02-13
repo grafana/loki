@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Added support for globals: `extraArgs`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` ([#16062](https://github.com/grafana/loki/pull/16062)) relates to ([#12652](https://github.com/grafana/loki/pull/12652))
 - [CHANGE] Changed version of Grafana Loki to 3.4.1
+- [BUGFIX] Fixed simple scalable deployment with Istio sidecar injection.
 
 ## 6.26.0
 
@@ -98,9 +99,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [FIX] Do not create bloom planner, bloom builder, bloom gateway Deployment/Statefulset if their replica count is 0.
 - [FIX] Configure (ephemeral) storage for bloom builder working directory
 - [ENHANCEMENT] Automatically configure bloom planner address for bloom builders and bloom gateway addresses for bloom gateway clients.
-## 6.12.1
-
-- [BUGFIX] Fixed simple scalable deployment with Istio sidecar injection.
 
 ## 6.12.0
 
