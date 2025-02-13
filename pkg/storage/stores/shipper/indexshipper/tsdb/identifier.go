@@ -64,11 +64,11 @@ func (p prefixedIdentifier) Name() string {
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
 type SingleTenantTSDBIdentifier struct {
-	// exportTSInSecs tells whether creation timestamp should be exported in unix seconds instead of nanoseconds.
+	// ExportTSInSecs tells whether creation timestamp should be exported in unix seconds instead of nanoseconds.
 	// timestamp in filename could be a unix second or a unix nanosecond so
 	// helps us to be able to reproduce filename back from parsed identifier.
 	// Should be true ideally for older files with creation timestamp in seconds.
-	exportTSInSecs bool
+	ExportTSInSecs bool
 	TS             time.Time
 	From, Through  model.Time
 	Checksum       uint32
@@ -83,7 +83,7 @@ func (i SingleTenantTSDBIdentifier) Hash(h hash.Hash32) (err error) {
 // str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
 func (i SingleTenantTSDBIdentifier) str() string {
 	ts := int64(0)
-	if i.exportTSInSecs {
+	if i.ExportTSInSecs {
 		ts = i.TS.Unix()
 	} else {
 		ts = i.TS.UnixNano()
@@ -151,7 +151,7 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 		parsedTS = time.Unix(0, ts)
 	}
 	return SingleTenantTSDBIdentifier{
-		exportTSInSecs: len(elems[0]) <= 10,
+		ExportTSInSecs: len(elems[0]) <= 10,
 		TS:             parsedTS,
 		From:           model.Time(from),
 		Through:        model.Time(through),
@@ -161,13 +161,13 @@ func ParseSingleTenantTSDBPath(p string) (id SingleTenantTSDBIdentifier, ok bool
 }
 
 type MultitenantTSDBIdentifier struct {
-	nodeName string
-	ts       time.Time
+	NodeName string
+	Ts       time.Time
 }
 
 // Name builds filename with format <file-creation-ts> + `-` + `<nodeName>
 func (id MultitenantTSDBIdentifier) Name() string {
-	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
+	return fmt.Sprintf("%d-%s.tsdb", id.Ts.Unix(), id.NodeName)
 }
 
 func (id MultitenantTSDBIdentifier) Path() string {
@@ -200,7 +200,7 @@ func parseMultitenantTSDBNameFromBase(name string) (res MultitenantTSDBIdentifie
 	}
 
 	return MultitenantTSDBIdentifier{
-		ts:       time.Unix(int64(ts), 0),
-		nodeName: strings.Join(xs[1:], "-"),
+		Ts:       time.Unix(int64(ts), 0),
+		NodeName: strings.Join(xs[1:], "-"),
 	}, true
 }

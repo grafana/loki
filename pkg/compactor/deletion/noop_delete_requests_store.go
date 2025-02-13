@@ -2,6 +2,9 @@ package deletion
 
 import (
 	"context"
+	"time"
+
+	"github.com/prometheus/common/model"
 )
 
 func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
@@ -10,11 +13,27 @@ func NewNoOpDeleteRequestsStore() DeleteRequestsStore {
 
 type noOpDeleteRequestsStore struct{}
 
-func (d *noOpDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, _ []DeleteRequest) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetDeleteRequest(_ context.Context, _, _ string) (DeleteRequest, error) {
+	return DeleteRequest{}, nil
+}
+
+func (d *noOpDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
+func (d *noOpDeleteRequestsStore) GetAllShards(_ context.Context) ([]DeleteRequest, error) {
+	return nil, nil
+}
+
+func (d *noOpDeleteRequestsStore) MergeShardedRequests(_ context.Context) error {
+	return nil
+}
+
+func (d *noOpDeleteRequestsStore) AddDeleteRequest(_ context.Context, _, _ string, _, _ model.Time, _ time.Duration) (string, error) {
+	return "", nil
+}
+
+func (d *noOpDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {
 	return nil, nil
 }
 
@@ -22,7 +41,7 @@ func (d *noOpDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context,
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) UpdateStatus(_ context.Context, _ DeleteRequest, _ DeleteRequestStatus) error {
+func (d *noOpDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, _ DeleteRequest) error {
 	return nil
 }
 
@@ -30,7 +49,7 @@ func (d *noOpDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, _, _ 
 	return nil, nil
 }
 
-func (d *noOpDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, _ []DeleteRequest) error {
+func (d *noOpDeleteRequestsStore) RemoveDeleteRequest(_ context.Context, _ string, _ string) error {
 	return nil
 }
 

@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -21,7 +23,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
-	"golang.org/x/exp/maps"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -1281,6 +1282,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryrangebase.Response) (*http.Response, error) {
 	if req.Header.Get("Accept") == ProtobufType {
 		return encodeResponseProtobuf(ctx, res)
+	} else if req.Header.Get("Accept") == ParquetType {
+		return encodeResponseParquet(ctx, res)
 	}
 
 	// Default to JSON.
@@ -2194,8 +2197,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		}
 	}
 
-	warnings := maps.Keys(uniqueWarnings)
-	sort.Strings(warnings)
+	warnings := slices.Sorted(maps.Keys(uniqueWarnings))
 
 	if len(warnings) == 0 {
 		// When there are no warnings, keep it nil so it can be compared against

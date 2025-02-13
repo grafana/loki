@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner/plannertest"
@@ -228,7 +229,7 @@ func Test_ChunkSizeStrategy_Plan(t *testing.T) {
 			logger := log.NewNopLogger()
 			//logger := log.NewLogfmtLogger(os.Stdout)
 
-			strategy, err := NewChunkSizeStrategy(tc.limits, logger)
+			strategy, err := NewChunkSizeStrategy(tc.limits, NewChunkSizeStrategyMetrics(prometheus.NewPedanticRegistry()), logger)
 			require.NoError(t, err)
 
 			actual, err := strategy.Plan(context.Background(), plannertest.TestTable, "fake", tc.tsdbs, tc.originalMetas)

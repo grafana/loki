@@ -38,12 +38,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.bloomPlannerSelectorLabels" . | nindent 8 }}
+        {{- include "loki.bloomPlannerLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.bloomPlanner.podLabels }}
+        {{- with merge .Values.loki.podLabels .Values.bloomPlanner.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -161,7 +158,9 @@ spec:
   {{- if .Values.bloomPlanner.persistence.enabled }}
   volumeClaimTemplates:
   {{- range .Values.bloomPlanner.persistence.claims }}
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: {{ .name }}
         {{- with .annotations }}
         annotations:

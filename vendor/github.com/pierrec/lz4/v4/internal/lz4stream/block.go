@@ -246,7 +246,7 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	b.src = src // keep track of the source for content checksum
 
 	if f.Descriptor.Flags.BlockChecksum() {
-		b.Checksum = xxh32.ChecksumZero(src)
+		b.Checksum = xxh32.ChecksumZero(b.Data)
 	}
 	return b
 }
@@ -328,7 +328,7 @@ func (b *FrameDataBlock) Uncompress(f *Frame, dst, dict []byte, sum bool) ([]byt
 		dst = dst[:n]
 	}
 	if f.Descriptor.Flags.BlockChecksum() {
-		if c := xxh32.ChecksumZero(dst); c != b.Checksum {
+		if c := xxh32.ChecksumZero(b.data); c != b.Checksum {
 			err := fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidBlockChecksum, c, b.Checksum)
 			return nil, err
 		}

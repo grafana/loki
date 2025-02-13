@@ -2,51 +2,91 @@ package bucket
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 )
 
 type ObjectClientAdapter struct {
 	bucket, hedgedBucket objstore.Bucket
 	logger               log.Logger
+	supportsUpdatedAt    bool
 	isRetryableErr       func(err error) bool
 }
 
-func NewObjectClientAdapter(bucket, hedgedBucket objstore.Bucket, logger log.Logger, opts ...ClientOptions) *ObjectClientAdapter {
-	if hedgedBucket == nil {
-		hedgedBucket = bucket
+func NewObjectClient(ctx context.Context, backend string, cfg ConfigWithNamedStores, component string, hedgingCfg hedging.Config, disableRetries bool, logger log.Logger) (*ObjectClientAdapter, error) {
+	var (
+		storeType = backend
+		storeCfg  = cfg.Config
+	)
+
+	if st, ok := cfg.NamedStores.LookupStoreType(backend); ok {
+		storeType = st
+		// override config with values from named store config
+		if err := cfg.NamedStores.OverrideConfig(&storeCfg, backend); err != nil {
+			return nil, err
+		}
+	}
+
+	if disableRetries {
+		if err := storeCfg.disableRetries(storeType); err != nil {
+			return nil, fmt.Errorf("create bucket: %w", err)
+		}
+	}
+
+	bucket, err := NewClient(ctx, storeType, storeCfg, component, logger)
+	if err != nil {
+		return nil, fmt.Errorf("create bucket: %w", err)
+	}
+
+	hedgedBucket := bucket
+	if hedgingCfg.At != 0 {
+		hedgedTrasport, err := hedgingCfg.RoundTripperWithRegisterer(nil, prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer))
+		if err != nil {
+			return nil, fmt.Errorf("create hedged transport: %w", err)
+		}
+
+		if err := storeCfg.configureTransport(storeType, hedgedTrasport); err != nil {
+			return nil, fmt.Errorf("create hedged bucket: %w", err)
+		}
+
+		hedgedBucket, err = NewClient(ctx, storeType, storeCfg, component, logger)
+		if err != nil {
+			return nil, fmt.Errorf("create hedged bucket: %w", err)
+		}
 	}
 
 	o := &ObjectClientAdapter{
-		bucket:       bucket,
-		hedgedBucket: hedgedBucket,
-		logger:       log.With(logger, "component", "bucket_to_object_client_adapter"),
+		bucket:            bucket,
+		hedgedBucket:      hedgedBucket,
+		logger:            log.With(logger, "component", "bucket_to_object_client_adapter"),
+		supportsUpdatedAt: slices.Contains(bucket.SupportedIterOptions(), objstore.UpdatedAt),
 		// default to no retryable errors. Override with WithRetryableErrFunc
 		isRetryableErr: func(_ error) bool {
 			return false
 		},
 	}
 
-	for _, opt := range opts {
-		opt(o)
+	switch storeType {
+	case GCS:
+		o.isRetryableErr = gcp.IsRetryableErr
+	case S3:
+		o.isRetryableErr = aws.IsRetryableErr
 	}
 
-	return o
-}
-
-type ClientOptions func(*ObjectClientAdapter)
-
-func WithRetryableErrFunc(f func(err error) bool) ClientOptions {
-	return func(o *ObjectClientAdapter) {
-		o.isRetryableErr = f
-	}
+	return o, nil
 }
 
 func (o *ObjectClientAdapter) Stop() {
@@ -103,26 +143,39 @@ func (o *ObjectClientAdapter) List(ctx context.Context, prefix, delimiter string
 
 	// If delimiter is empty we want to list all files
 	if delimiter == "" {
-		iterParams = append(iterParams, objstore.WithRecursiveIter)
+		iterParams = append(iterParams, objstore.WithRecursiveIter())
 	}
 
-	err := o.bucket.Iter(ctx, prefix, func(objectKey string) error {
+	if o.supportsUpdatedAt {
+		iterParams = append(iterParams, objstore.WithUpdatedAt())
+	}
+
+	err := o.bucket.IterWithAttributes(ctx, prefix, func(attrs objstore.IterObjectAttributes) error {
 		// CommonPrefixes are keys that have the prefix and have the delimiter
 		// as a suffix
+		objectKey := attrs.Name
 		if delimiter != "" && strings.HasSuffix(objectKey, delimiter) {
 			commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(objectKey))
 			return nil
 		}
 
-		// TODO: remove this once thanos support IterWithAttributes
-		attr, err := o.bucket.Attributes(ctx, objectKey)
-		if err != nil {
-			return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
+		lastModified, ok := attrs.LastModified()
+		if o.supportsUpdatedAt && !ok {
+			return errors.Errorf("failed to get lastModified for %s", objectKey)
+		}
+		// Some providers do not support supports UpdatedAt option. For those we need
+		// to make an additional request to get the last modified time.
+		if !o.supportsUpdatedAt {
+			attr, err := o.bucket.Attributes(ctx, objectKey)
+			if err != nil {
+				return errors.Wrapf(err, "failed to get attributes for %s", objectKey)
+			}
+			lastModified = attr.LastModified
 		}
 
 		storageObjects = append(storageObjects, client.StorageObject{
 			Key:        objectKey,
-			ModifiedAt: attr.LastModified,
+			ModifiedAt: lastModified,
 		})
 
 		return nil

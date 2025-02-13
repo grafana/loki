@@ -58,10 +58,6 @@ loki:
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
-    retention_period: 672h # 28 days retention
-  compactor:
-    retention_enabled: true 
-    delete_request_store: s3
   ruler:
     enable_api: true
 
@@ -136,10 +132,6 @@ loki:
   limits_config:
     allow_structured_metadata: true
     volume_enabled: true
-    retention_period: 672h # 28 days retention
-  compactor:
-    retention_enabled: true 
-    delete_request_store: s3
   ruler:
     enable_api: true
 
@@ -197,7 +189,7 @@ In this configuration, we need to make sure to update the `commonConfig.replicat
 1. Deploy Loki using the configuration file `values.yaml`:
 
    ```bash
-    helm install loki grafana/loki-stack -f values.yaml
+    helm install loki grafana/loki -f values.yaml
     ```
 1. Install or upgrade the Loki deployment.
      - To install:
@@ -278,6 +270,8 @@ loki:
 # Disable minio storage
 minio:
   enabled: false
+
+deploymentMode: SingleBinary
 
 singleBinary:
   replicas: 3
@@ -360,6 +354,8 @@ loki:
 # Disable minio storage
 minio:
   enabled: false
+
+deploymentMode: SingleBinary
 
 singleBinary:
   replicas: 3

@@ -480,12 +480,24 @@ func (cl *Client) produce(
 		}()
 
 		drainBuffered := func(err error) {
-			p.mu.Lock()
-			quit = true
+			// The expected case here is that a context was
+			// canceled while we we waiting for space, so we are
+			// exiting and need to kill the goro above.
+			//
+			// However, it is possible that the goro above has
+			// already exited AND the context was canceled, and
+			// `select` chose the context-canceled case.
+			//
+			// So, to avoid a deadlock, we need to wakeup the
+			// goro above in another goroutine.
+			go func() {
+				p.mu.Lock()
+				quit = true
+				p.mu.Unlock()
+				p.c.Broadcast()
+			}()
+			<-wait // we wait for the goroutine to exit, then unlock again (since the goroutine leaves the mutex locked)
 			p.mu.Unlock()
-			p.c.Broadcast() // wake the goroutine above
-			<-wait
-			p.mu.Unlock() // we wait for the goroutine to exit, then unlock again (since the goroutine leaves the mutex locked)
 			p.promiseRecordBeforeBuf(promisedRec{ctx, promise, r}, err)
 		}
 
@@ -537,16 +549,29 @@ func (p *producer) promiseRecordBeforeBuf(pr promisedRec, err error) {
 func (p *producer) finishPromises(b batchPromise) {
 	cl := p.cl
 	var more bool
+	var broadcast bool
+	defer func() {
+		if broadcast {
+			p.c.Broadcast()
+		}
+	}()
 start:
 	p.promisesMu.Lock()
 	for i, pr := range b.recs {
 		pr.LeaderEpoch = 0
-		pr.Offset = b.baseOffset + int64(i)
+		if b.baseOffset == -1 {
+			// if the base offset is invalid/unknown (-1), all record offsets should
+			// be treated as unknown
+			pr.Offset = -1
+		} else {
+			pr.Offset = b.baseOffset + int64(i)
+		}
 		pr.Partition = b.partition
 		pr.ProducerID = b.pid
 		pr.ProducerEpoch = b.epoch
 		pr.Attrs = b.attrs
-		cl.finishRecordPromise(pr, b.err, b.beforeBuf)
+		recBroadcast := cl.finishRecordPromise(pr, b.err, b.beforeBuf)
+		broadcast = broadcast || recBroadcast
 		b.recs[i] = promisedRec{}
 	}
 	p.promisesMu.Unlock()
@@ -560,7 +585,7 @@ start:
 	}
 }
 
-func (cl *Client) finishRecordPromise(pr promisedRec, err error, beforeBuffering bool) {
+func (cl *Client) finishRecordPromise(pr promisedRec, err error, beforeBuffering bool) (broadcast bool) {
 	p := &cl.producer
 
 	if p.hooks != nil && len(p.hooks.unbuffered) > 0 {
@@ -587,12 +612,10 @@ func (cl *Client) finishRecordPromise(pr promisedRec, err error, beforeBuffering
 	p.mu.Lock()
 	p.bufferedBytes -= userSize
 	p.bufferedRecords--
-	broadcast := p.blocked.Load() > 0 || p.bufferedRecords == 0 && p.flushing.Load() > 0
+	broadcast = p.blocked.Load() > 0 || p.bufferedRecords == 0 && p.flushing.Load() > 0
 	p.mu.Unlock()
 
-	if broadcast {
-		p.c.Broadcast()
-	}
+	return broadcast
 }
 
 // partitionRecord loads the partitions for a topic and produce to them. If

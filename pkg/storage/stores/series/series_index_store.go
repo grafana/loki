@@ -374,7 +374,7 @@ func (c *IndexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID
 	return result.Strings(), nil
 }
 
-// LabelValuesForMetricName retrieves all label values for a single label name and metric name.
+// labelValuesForMetricNameWithMatchers retrieves all label values for a single label name and metric name.
 func (c *IndexReaderWriter) labelValuesForMetricNameWithMatchers(ctx context.Context, userID string, from, through model.Time, metricName, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	// Otherwise get series which include other matchers
 	seriesIDs, err := c.lookupSeriesByMetricNameMatchers(ctx, from, through, userID, metricName, matchers)

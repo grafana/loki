@@ -66,6 +66,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 	f.StringVar(&c.CompactorGRPCAddress, "common.compactor-grpc-address", "", "the grpc address of the compactor in the form host:port")
+	f.StringVar(&c.PathPrefix, "common.path-prefix", "", "prefix for the path")
 }
 
 type Storage struct {
@@ -79,7 +80,7 @@ type Storage struct {
 	Hedging           hedging.Config            `yaml:"hedging"`
 	COS               ibmcloud.COSConfig        `yaml:"cos"`
 	CongestionControl congestion.Config         `yaml:"congestion_control,omitempty"`
-	ObjectStore       bucket.Config             `yaml:"object_store"  doc:"hidden"`
+	ObjectStore       bucket.Config             `yaml:"object_store"`
 }
 
 func (s *Storage) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {

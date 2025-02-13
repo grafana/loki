@@ -1,5 +1,5 @@
 ---
-title: Bloom filters (Experimental)
+title: Manage bloom filter building and querying (Experimental)
 menuTitle: Bloom filters
 description: Describes how to enable and configure query acceleration with bloom filters.
 weight:
@@ -9,11 +9,12 @@ keywords:
 aliases:
   - ./query-acceleration-blooms
 ---
-
-# Bloom filters (Experimental)
+# Manage bloom filter building and querying (Experimental)
 
 {{< admonition type="warning" >}}
-This feature is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided.
+In Loki and Grafana Enterprise Logs (GEL), Query acceleration using blooms is an [experimental feature](/docs/release-life-cycle/). Engineering and on-call support is not available. No SLA is provided. Note that this feature is intended for users who are ingesting more than 75TB of logs a month, as it is designed to accelerate queries against large volumes of logs.
+
+In Grafana Cloud, Query acceleration using bloom filters is enabled as a [public preview](/docs/release-life-cycle/) for select large-scale customers that are ingesting more that 75TB of logs a month. Limited support and no SLA are provided.
 {{< /admonition >}}
 
 Loki leverages [bloom filters](https://en.wikipedia.org/wiki/Bloom_filter) to speed up queries by reducing the amount of data Loki needs to load from the store and iterate through.
@@ -36,7 +37,7 @@ To learn how to write queries to use bloom filters, refer to [Query acceleration
 
 {{< admonition type="warning" >}}
 Building and querying bloom filters are by design not supported in single binary deployment.
-It can be used with Single Scalable deployment (SSD), but it is recommended to run bloom components only in fully distributed microservice mode.
+It can be used with Simple Scalable deployment (SSD), but it is recommended to run bloom components only in fully distributed microservice mode.
 The reason is that bloom filters also come with a relatively high cost for both building and querying the bloom filters that only pays off at large scale deployments.
 {{< /admonition >}}
 
@@ -110,7 +111,7 @@ overrides:
               period: 40d
 ```
 
-### Sizing and configuration
+### Planner and Builder sizing and configuration
 
 The single planner instance runs the planning phase for bloom blocks for each tenant in the given interval and puts the created tasks to an internal task queue.
 Builders process tasks sequentially by pulling them from the queue. The amount of builder replicas required to complete all pending tasks before the next planning iteration depends on the value of `-bloom-build.planner.bloom_split_series_keyspace_by`, the number of tenants, and the log volume of the streams.
@@ -131,7 +132,7 @@ The sharding of the data is performed on the client side using DNS discovery of 
 You can find all the configuration options for this component in the Configure section for the [Bloom Gateways][bloom-gateway-cfg].
 Refer to the [Enable bloom filters](#enable-bloom-filters) section above for a configuration snippet enabling this feature.
 
-### Sizing and configuration
+### Gateway sizing and configuration
 
 Bloom Gateways use their local file system as a Least Recently Used (LRU) cache for blooms that are downloaded from object storage.
 The size of the blooms depend on the ingest volume and number of unique structured metadata key-value pairs, as well as on build settings of the blooms, namely false-positive-rate.
@@ -140,7 +141,7 @@ With default settings, bloom filters make up <1% of the raw structured metadata 
 Since reading blooms depends heavily on disk IOPS, Bloom Gateways should make use of multiple, locally attached SSD disks (NVMe) to increase I/O throughput.
 Multiple directories on different disk mounts can be specified using the `-bloom.shipper.working-directory` [setting][storage-config-cfg] when using a comma separated list of mount points, for example:
 
-```
+```yaml
 -bloom.shipper.working-directory="/mnt/data0,/mnt/data1,/mnt/data2,/mnt/data3"
 ```
 
@@ -150,7 +151,7 @@ The product of three settings control the maximum amount of bloom data in memory
 
 Example, assuming 4 CPU cores:
 
-```
+```yaml
 -bloom-gateway.worker-concurrency=4      // 1x NUM_CORES
 -bloom-gateway.block-query-concurrency=8 // 2x NUM_CORES
 -bloom.max-query-page-size=64MiB
@@ -189,7 +190,7 @@ Unfortunately, the amount of data each stream has is often unbalanced with the r
 
 Query acceleration introduces a new sharding strategy: `bounded`, which uses blooms to reduce the chunks to be processed right away during the planning phase in the query frontend, as well as evenly distributes the amount of chunks each sharded query will need to process.
 
-[Query acceleration]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/query-acceleration
+[Query acceleration]: https://grafana.com/docs/loki/<LOKI_VERSION>/query/query_acceleration
 [structured metadata]: https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/structured-metadata
 [tenant-limits]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#limits_config
 [bloom-gateway-cfg]: https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#bloom_gateway

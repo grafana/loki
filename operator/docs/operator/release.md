@@ -45,7 +45,7 @@ The following sub-section contains some notes on the Loki operator release-pleas
 - Use of `draft`;
 - Preventing merging the release-please PR without updating the manifests;
 
-#### Use of `bump-minor-pre-major` and `bump-patch-for-minor-pre-major` 
+#### Use of `bump-minor-pre-major` and `bump-patch-for-minor-pre-major`
 
 Since the operator is still pre `v1.0.0` we are leveraging `bump-minor-pre-major` and `bump-patch-for-minor-pre-major` so that merging "feat", "fix", and "deps" commits will only bump a patch version and merging "feat!" and "fix!" will bump the minor version.
 
@@ -77,4 +77,5 @@ This workflow will then use a workflow `.github/workflows/operator-reusable-hub-
 1. Create a PR to bump the version (i.e [v0.6.1 preparation PR](https://github.com/grafana/loki/pull/13105)), be careful with the commit message;
 2. Re-trigger the action `operator-publish-operator-hub` on the release-please PR;
 3. Merge the release-please PR (i.e [v0.6.1 release PR](https://github.com/grafana/loki/pull/12593) );
-4. Grafana bot will automatically open a PRs to [k8s-operatorhub/community-operators](https://github.com/k8s-operatorhub/community-operators) and [redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod);
+4. Grafana bot will build and push the release images to `grafana/loki-operator` ([docker repo](https://hub.docker.com/r/grafana/loki-operator/tags));
+5. Grafana bot will automatically open a PRs to [k8s-operatorhub/community-operators](https://github.com/k8s-operatorhub/community-operators) and [redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod);

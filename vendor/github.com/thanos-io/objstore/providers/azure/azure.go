@@ -46,6 +46,9 @@ var DefaultConfig = Config{
 
 // Config Azure storage configuration.
 type Config struct {
+	AzTenantID              string             `yaml:"az_tenant_id"`
+	ClientID                string             `yaml:"client_id"`
+	ClientSecret            string             `yaml:"client_secret"`
 	StorageAccountName      string             `yaml:"storage_account"`
 	StorageAccountKey       string             `yaml:"storage_account_key"`
 	StorageConnectionString string             `yaml:"storage_connection_string"`
@@ -82,6 +85,14 @@ func (conf *Config) validate() error {
 
 	if conf.UserAssignedID != "" && conf.StorageConnectionString != "" {
 		errMsg = append(errMsg, "user_assigned_id cannot be set when using storage_connection_string authentication")
+	}
+
+	if conf.UserAssignedID != "" && conf.ClientID != "" {
+		errMsg = append(errMsg, "user_assigned_id cannot be set when using client_id authentication")
+	}
+
+	if (conf.AzTenantID != "" || conf.ClientSecret != "" || conf.ClientID != "") && (conf.AzTenantID == "" || conf.ClientSecret == "" || conf.ClientID == "") {
+		errMsg = append(errMsg, "az_tenant_id, client_id, and client_secret must be set together")
 	}
 
 	if conf.StorageAccountKey != "" && conf.StorageConnectionString != "" {
@@ -193,9 +204,17 @@ func NewBucketWithConfig(logger log.Logger, conf Config, component string, wrapR
 	return bkt, nil
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.AZURE }
+
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	prefix := dir
 	if prefix != "" && !strings.HasSuffix(prefix, DirDelim) {
 		prefix += DirDelim
@@ -211,7 +230,13 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 				return err
 			}
 			for _, blob := range resp.Segment.BlobItems {
-				if err := f(*blob.Name); err != nil {
+				attrs := objstore.IterObjectAttributes{
+					Name: *blob.Name,
+				}
+				if params.LastModified {
+					attrs.SetLastModified(*blob.Properties.LastModified)
+				}
+				if err := f(attrs); err != nil {
 					return err
 				}
 			}
@@ -227,17 +252,40 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 			return err
 		}
 		for _, blobItem := range resp.Segment.BlobItems {
-			if err := f(*blobItem.Name); err != nil {
+			attrs := objstore.IterObjectAttributes{
+				Name: *blobItem.Name,
+			}
+			if params.LastModified {
+				attrs.SetLastModified(*blobItem.Properties.LastModified)
+			}
+			if err := f(attrs); err != nil {
 				return err
 			}
 		}
 		for _, blobPrefix := range resp.Segment.BlobPrefixes {
-			if err := f(*blobPrefix.Name); err != nil {
+			if err := f(objstore.IterObjectAttributes{Name: *blobPrefix.Name}); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
 }
 
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
@@ -380,4 +428,8 @@ func NewTestBucket(t testing.TB, component string) (objstore.Bucket, func(), err
 // Close bucket.
 func (b *Bucket) Close() error {
 	return nil
+}
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	panic("unimplemented: Azure.GetAndReplace")
 }

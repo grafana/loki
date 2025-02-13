@@ -35,15 +35,18 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.distributorSelectorLabels" . | nindent 8 }}
+        {{- include "loki.distributorLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.distributor.podLabels }}
+        {{- with merge .Values.loki.podLabels .Values.distributor.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- with .Values.distributor.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -75,7 +78,7 @@ spec:
             - -distributor.zone-awareness-enabled=true
             {{- end }}
             {{- end }}
-            {{- with .Values.distributor.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.distributor.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -88,11 +91,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.distributor.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.distributor.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.distributor.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.distributor.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -111,7 +114,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.distributor.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.distributor.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -146,7 +149,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.distributor.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.distributor.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end -}}

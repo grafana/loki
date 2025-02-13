@@ -40,6 +40,7 @@ import (
 	sourcecontextpb "google.golang.org/protobuf/types/known/sourcecontextpb"
 	reflect "reflect"
 	sync "sync"
+	unsafe "unsafe"
 )
 
 // The syntax in which a protocol buffer element is defined.
@@ -271,10 +272,7 @@ func (Field_Cardinality) EnumDescriptor() ([]byte, []int) {
 
 // A protocol buffer message type.
 type Type struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// The fully qualified message name.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// The list of fields.
@@ -288,7 +286,9 @@ type Type struct {
 	// The source syntax.
 	Syntax Syntax `protobuf:"varint,6,opt,name=syntax,proto3,enum=google.protobuf.Syntax" json:"syntax,omitempty"`
 	// The source edition string, only valid when syntax is SYNTAX_EDITIONS.
-	Edition string `protobuf:"bytes,7,opt,name=edition,proto3" json:"edition,omitempty"`
+	Edition       string `protobuf:"bytes,7,opt,name=edition,proto3" json:"edition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Type) Reset() {
@@ -372,10 +372,7 @@ func (x *Type) GetEdition() string {
 
 // A single field of a message type.
 type Field struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// The field type.
 	Kind Field_Kind `protobuf:"varint,1,opt,name=kind,proto3,enum=google.protobuf.Field_Kind" json:"kind,omitempty"`
 	// The field cardinality.
@@ -397,7 +394,9 @@ type Field struct {
 	// The field JSON name.
 	JsonName string `protobuf:"bytes,10,opt,name=json_name,json=jsonName,proto3" json:"json_name,omitempty"`
 	// The string value of the default value of this field. Proto2 syntax only.
-	DefaultValue string `protobuf:"bytes,11,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	DefaultValue  string `protobuf:"bytes,11,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Field) Reset() {
@@ -502,10 +501,7 @@ func (x *Field) GetDefaultValue() string {
 
 // Enum type definition.
 type Enum struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// Enum type name.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Enum value definitions.
@@ -517,7 +513,9 @@ type Enum struct {
 	// The source syntax.
 	Syntax Syntax `protobuf:"varint,5,opt,name=syntax,proto3,enum=google.protobuf.Syntax" json:"syntax,omitempty"`
 	// The source edition string, only valid when syntax is SYNTAX_EDITIONS.
-	Edition string `protobuf:"bytes,6,opt,name=edition,proto3" json:"edition,omitempty"`
+	Edition       string `protobuf:"bytes,6,opt,name=edition,proto3" json:"edition,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Enum) Reset() {
@@ -594,16 +592,15 @@ func (x *Enum) GetEdition() string {
 
 // Enum value definition.
 type EnumValue struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// Enum value name.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Enum value number.
 	Number int32 `protobuf:"varint,2,opt,name=number,proto3" json:"number,omitempty"`
 	// Protocol buffer options.
-	Options []*Option `protobuf:"bytes,3,rep,name=options,proto3" json:"options,omitempty"`
+	Options       []*Option `protobuf:"bytes,3,rep,name=options,proto3" json:"options,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EnumValue) Reset() {
@@ -660,10 +657,7 @@ func (x *EnumValue) GetOptions() []*Option {
 // A protocol buffer option, which can be attached to a message, field,
 // enumeration, etc.
 type Option struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
-
+	state protoimpl.MessageState `protogen:"open.v1"`
 	// The option's name. For protobuf built-in options (options defined in
 	// descriptor.proto), this is the short name. For example, `"map_entry"`.
 	// For custom options, it should be the fully-qualified name. For example,
@@ -673,7 +667,9 @@ type Option struct {
 	// the corresponding wrapper type defined in google/protobuf/wrappers.proto
 	// should be used. If the value is an enum, it should be stored as an int32
 	// value using the google.protobuf.Int32Value type.
-	Value *anypb.Any `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	Value         *anypb.Any `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Option) Reset() {
@@ -722,7 +718,7 @@ func (x *Option) GetValue() *anypb.Any {
 
 var File_google_protobuf_type_proto protoreflect.FileDescriptor
 
-var file_google_protobuf_type_proto_rawDesc = []byte{
+var file_google_protobuf_type_proto_rawDesc = string([]byte{
 	0x0a, 0x1a, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75,
 	0x66, 0x2f, 0x74, 0x79, 0x70, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x0f, 0x67, 0x6f,
 	0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x1a, 0x19, 0x67,
@@ -842,16 +838,16 @@ var file_google_protobuf_type_proto_rawDesc = []byte{
 	0x50, 0x42, 0xaa, 0x02, 0x1e, 0x47, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x2e, 0x50, 0x72, 0x6f, 0x74,
 	0x6f, 0x62, 0x75, 0x66, 0x2e, 0x57, 0x65, 0x6c, 0x6c, 0x4b, 0x6e, 0x6f, 0x77, 0x6e, 0x54, 0x79,
 	0x70, 0x65, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
-}
+})
 
 var (
 	file_google_protobuf_type_proto_rawDescOnce sync.Once
-	file_google_protobuf_type_proto_rawDescData = file_google_protobuf_type_proto_rawDesc
+	file_google_protobuf_type_proto_rawDescData []byte
 )
 
 func file_google_protobuf_type_proto_rawDescGZIP() []byte {
 	file_google_protobuf_type_proto_rawDescOnce.Do(func() {
-		file_google_protobuf_type_proto_rawDescData = protoimpl.X.CompressGZIP(file_google_protobuf_type_proto_rawDescData)
+		file_google_protobuf_type_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_google_protobuf_type_proto_rawDesc), len(file_google_protobuf_type_proto_rawDesc)))
 	})
 	return file_google_protobuf_type_proto_rawDescData
 }
@@ -900,7 +896,7 @@ func file_google_protobuf_type_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: file_google_protobuf_type_proto_rawDesc,
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_google_protobuf_type_proto_rawDesc), len(file_google_protobuf_type_proto_rawDesc)),
 			NumEnums:      3,
 			NumMessages:   5,
 			NumExtensions: 0,
@@ -912,7 +908,6 @@ func file_google_protobuf_type_proto_init() {
 		MessageInfos:      file_google_protobuf_type_proto_msgTypes,
 	}.Build()
 	File_google_protobuf_type_proto = out.File
-	file_google_protobuf_type_proto_rawDesc = nil
 	file_google_protobuf_type_proto_goTypes = nil
 	file_google_protobuf_type_proto_depIdxs = nil
 }

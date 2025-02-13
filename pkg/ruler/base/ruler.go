@@ -407,9 +407,9 @@ func grafanaLinkForExpression(expr, datasourceUID string) string {
 	}
 
 	marshaledExpression, _ := json.Marshal(exprStruct)
-	escapedExpression := url.QueryEscape(string(marshaledExpression))
-	str := `/explore?left={"queries":[%s]}`
-	return fmt.Sprintf(str, escapedExpression)
+	params := url.Values{}
+	params.Set("left", fmt.Sprintf(`{"queries":[%s]}`, marshaledExpression))
+	return `/explore?` + params.Encode()
 }
 
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
@@ -783,7 +783,7 @@ func cloneGroupWithRule(g *rulespb.RuleGroupDesc, r *rulespb.RuleDesc) *rulespb.
 }
 
 // the delimiter is prefixed with ";" since that is what Prometheus uses for its group key
-const ruleTokenDelimiter = ";rule-shard-token"
+const ruleTokenDelimiter = ";rule-shard-token" //#nosec G101 -- False positive
 
 // AddRuleTokenToGroupName adds a rule shard token to a given group's name to make it unique.
 // Only relevant when using "by-rule" sharding strategy.

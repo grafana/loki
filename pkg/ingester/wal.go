@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 
@@ -108,7 +109,7 @@ func (w *walWrapper) Log(record *wal.Record) error {
 	}
 	select {
 	case <-w.quit:
-		return nil
+		return errors.New("wal is stopped")
 	default:
 		buf := recordPool.GetBytes()
 		defer func() {

@@ -134,8 +134,8 @@ func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string
 
 	dst := NewPrefixedIdentifier(
 		MultitenantTSDBIdentifier{
-			nodeName: "test",
-			ts:       ts,
+			NodeName: "test",
+			Ts:       ts,
 		},
 		destDir,
 		"",
@@ -239,7 +239,7 @@ func TestCompactor_Compact(t *testing.T) {
 			PeriodicTableConfig: config.PeriodicTableConfig{Period: config.ObjectStorageIndexRequiredPeriod}},
 		Schema: "v12",
 	}
-	indexBkts := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	indexBkts := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 
 	tableName := indexBkts[0]
 	lbls1 := mustParseLabels(`{foo="bar", a="b"}`)
@@ -497,8 +497,8 @@ func TestCompactor_Compact(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					tempDir := t.TempDir()
 					objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-					tablePathInStorage := filepath.Join(objectStoragePath, tableName.prefix)
-					tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName.prefix)
+					tablePathInStorage := filepath.Join(objectStoragePath, tableName.Prefix)
+					tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName.Prefix)
 
 					require.NoError(t, util.EnsureDirectory(objectStoragePath))
 					require.NoError(t, util.EnsureDirectory(tablePathInStorage))
@@ -551,7 +551,7 @@ func TestCompactor_Compact(t *testing.T) {
 					objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 					require.NoError(t, err)
 
-					_, commonPrefixes, err := objectClient.List(context.Background(), tableName.prefix, "/")
+					_, commonPrefixes, err := objectClient.List(context.Background(), tableName.Prefix, "/")
 					require.NoError(t, err)
 
 					initializedIndexSets := map[string]compactor.IndexSet{}
@@ -559,19 +559,19 @@ func TestCompactor_Compact(t *testing.T) {
 					existingUserIndexSets := make(map[string]compactor.IndexSet, len(commonPrefixes))
 					for _, commonPrefix := range commonPrefixes {
 						userID := path.Base(string(commonPrefix))
-						idxSet, err := newMockIndexSet(userID, tableName.prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
+						idxSet, err := newMockIndexSet(userID, tableName.Prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
 						require.NoError(t, err)
 
 						existingUserIndexSets[userID] = idxSet
 						initializedIndexSets[userID] = idxSet
 					}
 
-					commonIndexSet, err := newMockIndexSet("", tableName.prefix, tableWorkingDirectory, objectClient)
+					commonIndexSet, err := newMockIndexSet("", tableName.Prefix, tableWorkingDirectory, objectClient)
 					require.NoError(t, err)
 
 					// build TableCompactor and compact the index
 					tCompactor := newTableCompactor(context.Background(), commonIndexSet, existingUserIndexSets, func(userID string) (compactor.IndexSet, error) {
-						idxSet, err := newMockIndexSet(userID, tableName.prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
+						idxSet, err := newMockIndexSet(userID, tableName.Prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
 						require.NoError(t, err)
 
 						initializedIndexSetsMtx.Lock()
@@ -875,9 +875,9 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{periodConfig},
 	}
-	indexBuckets := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
+	indexBuckets := IndexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 	tableName := indexBuckets[0]
-	tableInterval := retention.ExtractIntervalFromTableName(tableName.prefix)
+	tableInterval := retention.ExtractIntervalFromTableName(tableName.Prefix)
 	// shiftTableStart shift tableInterval.Start by the given amount of milliseconds.
 	// It is used for building chunkmetas relative to start time of the table.
 	shiftTableStart := func(ms int64) int64 {
@@ -900,7 +900,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 
 		builder.FinalizeChunks()
 
-		return newCompactedIndex(context.Background(), tableName.prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
+		return newCompactedIndex(context.Background(), tableName.Prefix, buildUserID(0), t.TempDir(), periodConfig, builder)
 	}
 
 	expectedChunkEntries := map[string][]retention.ChunkEntry{

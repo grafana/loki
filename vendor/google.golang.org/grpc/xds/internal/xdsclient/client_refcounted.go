@@ -19,48 +19,52 @@
 package xdsclient
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/grpc/internal/backoff"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 )
 
-const (
-	defaultWatchExpiryTimeout         = 15 * time.Second
-	defaultIdleAuthorityDeleteTimeout = 5 * time.Minute
-)
+const defaultWatchExpiryTimeout = 15 * time.Second
 
 var (
 	// The following functions are no-ops in the actual code, but can be
 	// overridden in tests to give them visibility into certain events.
 	xdsClientImplCreateHook = func(string) {}
 	xdsClientImplCloseHook  = func(string) {}
+
+	defaultStreamBackoffFunc = backoff.DefaultExponential.Backoff
 )
 
 func clientRefCountedClose(name string) {
 	clientsMu.Lock()
-	defer clientsMu.Unlock()
-
 	client, ok := clients[name]
 	if !ok {
 		logger.Errorf("Attempt to close a non-existent xDS client with name %s", name)
+		clientsMu.Unlock()
 		return
 	}
 	if client.decrRef() != 0 {
+		clientsMu.Unlock()
 		return
 	}
+	delete(clients, name)
+	clientsMu.Unlock()
+
+	// This attempts to close the transport to the management server and could
+	// theoretically call back into the xdsclient package again and deadlock.
+	// Hence, this needs to be called without holding the lock.
 	client.clientImpl.close()
 	xdsClientImplCloseHook(name)
-	delete(clients, name)
 
 }
 
 // newRefCounted creates a new reference counted xDS client implementation for
 // name, if one does not exist already. If an xDS client for the given name
 // exists, it gets a reference to it and returns it.
-func newRefCounted(name string, watchExpiryTimeout, idleAuthorityTimeout time.Duration) (XDSClient, func(), error) {
+func newRefCounted(name string, config *bootstrap.Config, watchExpiryTimeout time.Duration, streamBackoff func(int) time.Duration) (XDSClient, func(), error) {
 	clientsMu.Lock()
 	defer clientsMu.Unlock()
 
@@ -70,11 +74,7 @@ func newRefCounted(name string, watchExpiryTimeout, idleAuthorityTimeout time.Du
 	}
 
 	// Create the new client implementation.
-	config, err := bootstrap.GetConfiguration()
-	if err != nil {
-		return nil, nil, fmt.Errorf("xds: failed to get xDS bootstrap config: %v", err)
-	}
-	c, err := newClientImpl(config, watchExpiryTimeout, idleAuthorityTimeout)
+	c, err := newClientImpl(config, watchExpiryTimeout, streamBackoff)
 	if err != nil {
 		return nil, nil, err
 	}

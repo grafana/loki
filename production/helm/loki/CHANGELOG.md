@@ -13,6 +13,55 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+- [FEATURE] Added support for globals: `extraArgs`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` ([#16062](https://github.com/grafana/loki/pull/16062)) relates to ([#12652](https://github.com/grafana/loki/pull/12652))
+- [CHANGE] Changed version of Grafana Loki to 3.4.1
+
+## 6.26.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.4.0
+
+## 6.25.1
+
+- [BUGFIX] Disable service monitor for nginx service.
+
+## 6.25.0
+
+- [BUGFIX] Removed minio-mc init container from admin-api.
+- [BUGFIX] Fixed admin-api and gateway deployment container args.
+- [FEATURE] Added support for Overrides Exporter
+
+## 6.24.1
+
+- [ENHANCEMENT] Fix Inconsistency between sidecar.securityContext and loki.containerSecurityContext
+
+## 6.24.0
+
+- [BUGFIX] Add conditional to include ruler config only if `ruler.enabled=true`
+- [BUGFIX] Disables the Helm test pod when `test.enabled=false`.
+- [BUGFIX] Fix `enterprise.image.tag` to `3.3.0`
+- [ENHANCEMENT] Bump Loki version to 3.3.2
+
+## 6.23.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.3.1
+- [CHANGE] Changed version of Minio helm chart to 5.3.0 (#14834)
+- [BUGFIX] Add default wal dir to ruler config ([#14920](https://github.com/grafana/loki/pull/14920))
+- [FIX] Fix statefulset templates to not show diffs in ArgoCD
+
+## 6.22.0
+
+## 6.21.0
+
+## 6.20.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.3.0
+
+## 6.19.0-weekly.227
+
+- [ENHANCEMENT] Expose Topology Spread Constraints in Helm chart templates and default values.
+
+## 6.19.0
+
 ## 6.18.0
 
 - [CHANGE] Added automated weekly releases, which created this release.
@@ -87,7 +136,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.7.3
 
 - [BUGFIX] Removed Helm test binary
-  
+
 ## 6.7.2
 
 - [BUGFIX] Fix imagePullSecrets for statefulset-results-cache
@@ -135,7 +184,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.5.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v3.0.1
-
 
 ## 6.4.2
 

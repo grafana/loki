@@ -9,7 +9,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	lru "github.com/hashicorp/golang-lru"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -41,11 +41,15 @@ var encoderPool = sync.Pool{
 // - stream: The logproto.Stream to be encoded
 // - maxSize: The maximum size of each Kafka record
 func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize int) ([]*kgo.Record, error) {
+	return EncodeWithTopic("", partitionID, tenantID, stream, maxSize)
+}
+
+func EncodeWithTopic(topic string, partitionID int32, tenantID string, stream logproto.Stream, maxSize int) ([]*kgo.Record, error) {
 	reqSize := stream.Size()
 
 	// Fast path for small requests
 	if reqSize <= maxSize {
-		rec, err := marshalWriteRequestToRecord(partitionID, tenantID, stream)
+		rec, err := marshalWriteRequestToRecord(topic, partitionID, tenantID, stream)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +83,7 @@ func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize 
 		if currentSize+entrySize > maxSize {
 			// Current stream is full, create a record and start a new stream
 			if len(batch.Entries) > 0 {
-				rec, err := marshalWriteRequestToRecord(partitionID, tenantID, *batch)
+				rec, err := marshalWriteRequestToRecord(topic, partitionID, tenantID, *batch)
 				if err != nil {
 					return nil, err
 				}
@@ -95,7 +99,7 @@ func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize 
 
 	// Handle any remaining entries
 	if len(batch.Entries) > 0 {
-		rec, err := marshalWriteRequestToRecord(partitionID, tenantID, *batch)
+		rec, err := marshalWriteRequestToRecord(topic, partitionID, tenantID, *batch)
 		if err != nil {
 			return nil, err
 		}
@@ -109,13 +113,15 @@ func Encode(partitionID int32, tenantID string, stream logproto.Stream, maxSize 
 	return records, nil
 }
 
-func marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logproto.Stream) (*kgo.Record, error) {
+// topic can be empty in the case the client injects a default.
+func marshalWriteRequestToRecord(topic string, partitionID int32, tenantID string, stream logproto.Stream) (*kgo.Record, error) {
 	data, err := stream.Marshal()
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal stream: %w", err)
 	}
 
 	return &kgo.Record{
+		Topic:     topic,
 		Key:       []byte(tenantID),
 		Value:     data,
 		Partition: partitionID,
@@ -126,11 +132,11 @@ func marshalWriteRequestToRecord(partitionID int32, tenantID string, stream logp
 // It caches parsed labels for efficiency.
 type Decoder struct {
 	stream *logproto.Stream
-	cache  *lru.Cache
+	cache  *lru.Cache[string, labels.Labels]
 }
 
 func NewDecoder() (*Decoder, error) {
-	cache, err := lru.New(5000) // Set LRU size to 5000, adjust as needed
+	cache, err := lru.New[string, labels.Labels](5000)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
@@ -154,7 +160,7 @@ func (d *Decoder) Decode(data []byte) (logproto.Stream, labels.Labels, error) {
 
 	var ls labels.Labels
 	if cachedLabels, ok := d.cache.Get(d.stream.Labels); ok {
-		ls = cachedLabels.(labels.Labels)
+		ls = cachedLabels
 	} else {
 		var err error
 		ls, err = syntax.ParseLabels(d.stream.Labels)

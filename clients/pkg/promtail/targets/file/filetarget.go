@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bmatcuk/doublestar"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/fsnotify/fsnotify"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -246,7 +246,8 @@ func (t *FileTarget) sync() error {
 		matches = []string{t.path}
 	} else {
 		// Gets current list of files to tail.
-		matches, err = doublestar.Glob(t.path)
+		matches, err = doublestar.FilepathGlob(t.path)
+
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 		}
@@ -255,7 +256,8 @@ func (t *FileTarget) sync() error {
 	if fi, err := os.Stat(t.pathExclude); err == nil && !fi.IsDir() {
 		matchesExcluded = []string{t.pathExclude}
 	} else {
-		matchesExcluded, err = doublestar.Glob(t.pathExclude)
+		matchesExcluded, err = doublestar.FilepathGlob(t.pathExclude)
+
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
 		}

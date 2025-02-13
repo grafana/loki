@@ -8,8 +8,9 @@ weight:  800
 ---
 # Troubleshooting Promtail
 
-This document describes known failure modes of Promtail on edge cases and the
-adopted trade-offs.
+This document describes known failure modes of Promtail on edge cases and the adopted trade-offs.
+
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
 
 ## Dry running
 

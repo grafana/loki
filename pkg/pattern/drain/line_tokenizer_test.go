@@ -143,7 +143,7 @@ func TestTokenizer_Tokenize(t *testing.T) {
 	for _, tt := range tests {
 		for _, tc := range testCases {
 			t.Run(tt.name+":"+tc.name, func(t *testing.T) {
-				got, _ := tt.tokenizer.Tokenize(tc.line, nil, nil)
+				got, _ := tt.tokenizer.Tokenize(tc.line, nil, nil, nil)
 				require.Equal(t, tc.want[tt.name], got)
 			})
 		}
@@ -168,7 +168,7 @@ func TestTokenizer_TokenizeAndJoin(t *testing.T) {
 	for _, tt := range tests {
 		for _, tc := range testCases {
 			t.Run(tt.name+":"+tc.name, func(t *testing.T) {
-				got := tt.tokenizer.Join(tt.tokenizer.Tokenize(tc.line, nil, nil))
+				got := tt.tokenizer.Join(tt.tokenizer.Tokenize(tc.line, nil, nil, nil))
 				require.Equal(t, tc.line, got)
 			})
 		}
@@ -184,7 +184,7 @@ func BenchmarkSplittingTokenizer(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				tokenizer.Tokenize(tc.line, nil, nil)
+				tokenizer.Tokenize(tc.line, nil, nil, nil)
 			}
 		})
 	}
@@ -231,7 +231,7 @@ func TestLogFmtTokenizer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, _ := tokenizer.Tokenize(tt.line, nil, nil)
+			got, _ := tokenizer.Tokenize(tt.line, nil, nil, nil)
 			require.Equal(t, tt.want, got)
 		})
 	}
@@ -330,7 +330,7 @@ func TestJsonTokenizer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, state := tokenizer.Tokenize(tt.line, nil, nil)
+			got, state := tokenizer.Tokenize(tt.line, nil, nil, nil)
 			require.Equal(t, tt.want, got)
 			if len(got) == len(tt.want) && len(tt.want) != 0 {
 				pattern := tokenizer.Join(got, state)

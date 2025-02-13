@@ -2,7 +2,9 @@ package log
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -583,16 +585,37 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 		return b.currentResult
 	}
 
-	stream := b.labels(StreamLabel).Copy()
-	structuredMetadata := b.labels(StructuredMetadataLabel).Copy()
-	parsed := b.labels(ParsedLabel).Copy()
-	b.buf = flattenLabels(b.buf, stream, structuredMetadata, parsed)
+	// Get all labels at once and sort them
+	b.buf = b.UnsortedLabels(b.buf)
+	// sort.Sort(b.buf)
+	slices.SortFunc(b.buf, func(a, b labels.Label) int { return strings.Compare(a.Name, b.Name) })
 	hash := b.hasher.Hash(b.buf)
+
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
 
-	result := NewLabelsResult(b.buf.String(), hash, stream, structuredMetadata, parsed)
+	// Now segregate the sorted labels into their categories
+	var stream, meta, parsed []labels.Label
+
+	for _, l := range b.buf {
+		// Skip error labels for stream and meta categories
+		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
+			parsed = append(parsed, l)
+			continue
+		}
+
+		// Check which category this label belongs to
+		if labelsContain(b.add[ParsedLabel], l.Name) {
+			parsed = append(parsed, l)
+		} else if labelsContain(b.add[StructuredMetadataLabel], l.Name) {
+			meta = append(meta, l)
+		} else {
+			stream = append(stream, l)
+		}
+	}
+
+	result := NewLabelsResult(b.buf.String(), hash, labels.New(stream...), labels.New(meta...), labels.New(parsed...))
 	b.resultCache[hash] = result
 
 	return result

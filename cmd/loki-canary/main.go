@@ -208,8 +208,16 @@ func main() {
 	})
 	http.Handle("/metrics", promhttp.Handler())
 	go func() {
-		err := http.ListenAndServe(":"+strconv.Itoa(*port), nil)
-		if err != nil {
+		srv := &http.Server{
+			Addr:              ":" + strconv.Itoa(*port),
+			Handler:           nil, // uses default mux from http.Handle calls above
+			ReadTimeout:       120 * time.Second,
+			WriteTimeout:      120 * time.Second,
+			IdleTimeout:       120 * time.Second,
+			ReadHeaderTimeout: 120 * time.Second,
+		}
+		err := srv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
 			panic(err)
 		}
 	}()

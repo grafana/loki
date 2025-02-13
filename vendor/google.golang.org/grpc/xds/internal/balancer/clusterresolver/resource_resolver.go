@@ -24,6 +24,7 @@ import (
 
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -77,7 +78,7 @@ type endpointsResolver interface {
 // discoveryMechanismKey is {type+resource_name}, it's used as the map key, so
 // that the same resource resolver can be reused (e.g. when there are two
 // mechanisms, both for the same EDS resource, but has different circuit
-// breaking config.
+// breaking config).
 type discoveryMechanismKey struct {
 	typ  DiscoveryMechanismType
 	name string
@@ -294,8 +295,8 @@ func (rr *resourceResolver) generateLocked(onDone xdsresource.OnDoneFunc) {
 		switch uu := u.(type) {
 		case xdsresource.EndpointsUpdate:
 			ret = append(ret, priorityConfig{mechanism: rDM.dm, edsResp: uu, childNameGen: rDM.childNameGen})
-		case []string:
-			ret = append(ret, priorityConfig{mechanism: rDM.dm, addresses: uu, childNameGen: rDM.childNameGen})
+		case []resolver.Endpoint:
+			ret = append(ret, priorityConfig{mechanism: rDM.dm, endpoints: uu, childNameGen: rDM.childNameGen})
 		}
 	}
 	select {

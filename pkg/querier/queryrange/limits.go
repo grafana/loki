@@ -39,7 +39,7 @@ import (
 
 const (
 	limitErrTmpl                             = "maximum of series (%d) reached for a single query"
-	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit (%d > %d)"
+	maxSeriesErrTmpl                         = "max entries limit per query exceeded, limit > max_entries_limit_per_query (%d > %d)"
 	requiredLabelsErrTmpl                    = "stream selector is missing required matchers [%s], labels present in the query were [%s]"
 	requiredNumberLabelsErrTmpl              = "stream selector has less label matchers than required: (present: [%s], number_present: %d, required_number_label_matchers: %d)"
 	limErrQueryTooManyBytesTmpl              = "the query would read too many bytes (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
@@ -48,9 +48,7 @@ const (
 	limErrQuerierTooManyBytesShardableTmpl   = "shard query is too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
 )
 
-var (
-	ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
-)
+var ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
 
 type Limits queryrange_limits.Limits
 
@@ -480,9 +478,7 @@ func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (time.Durati
 }
 
 func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
-	var (
-		ctx, cancel = context.WithCancel(c)
-	)
+	ctx, cancel := context.WithCancel(c)
 	defer func() {
 		cancel()
 	}()
@@ -523,7 +519,6 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 			// Note: It is the responsibility of the caller to run
 			// the handler in parallel.
 			elapsed, err := semWithTiming.Acquire(ctx, int64(1))
-
 			if err != nil {
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}

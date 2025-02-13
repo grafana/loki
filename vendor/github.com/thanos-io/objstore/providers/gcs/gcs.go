@@ -37,6 +37,8 @@ var DefaultConfig = Config{
 	HTTPConfig: exthttp.DefaultHTTPConfig,
 }
 
+var _ objstore.Bucket = &Bucket{}
+
 // Config stores the configuration for gcs bucket.
 type Config struct {
 	Bucket         string `yaml:"bucket"`
@@ -54,6 +56,11 @@ type Config struct {
 	// Used as storage.Writer.ChunkSize of https://pkg.go.dev/google.golang.org/cloud/storage#Writer
 	ChunkSizeBytes int  `yaml:"chunk_size_bytes"`
 	noAuth         bool `yaml:"no_auth"`
+
+	// MaxRetries controls the number of retries for idempotent operations.
+	// Overrides the default gcs storage client behavior if this value is greater than 0.
+	// Set this to 1 to disable retries.
+	MaxRetries int `yaml:"max_retries"`
 }
 
 // Bucket implements the store.Bucket and shipper.Bucket interfaces against GCS.
@@ -173,26 +180,41 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 		name:      gc.Bucket,
 		chunkSize: gc.ChunkSizeBytes,
 	}
+
+	if gc.MaxRetries > 0 {
+		bkt.bkt = bkt.bkt.Retryer(storage.WithMaxAttempts(gc.MaxRetries))
+	}
+
 	return bkt, nil
 }
+
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.GCS }
 
 // Name returns the bucket name for gcs.
 func (b *Bucket) Name() string {
 	return b.name
 }
 
-// Iter calls f for each entry in the given directory. The argument to f is the full
-// object name including the prefix of the inspected directory.
-func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (b *Bucket) SupportedIterOptions() []objstore.IterOptionType {
+	return []objstore.IterOptionType{objstore.Recursive, objstore.UpdatedAt}
+}
+
+func (b *Bucket) IterWithAttributes(ctx context.Context, dir string, f func(attrs objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
+	if err := objstore.ValidateIterOptions(b.SupportedIterOptions(), options...); err != nil {
+		return err
+	}
+
 	// Ensure the object name actually ends with a dir suffix. Otherwise we'll just iterate the
 	// object itself as one prefix item.
 	if dir != "" {
 		dir = strings.TrimSuffix(dir, DirDelim) + DirDelim
 	}
 
+	appliedOpts := objstore.ApplyIterOptions(options...)
+
 	// If recursive iteration is enabled we should pass an empty delimiter.
 	delimiter := DirDelim
-	if objstore.ApplyIterOptions(options...).Recursive {
+	if appliedOpts.Recursive {
 		delimiter = ""
 	}
 
@@ -200,11 +222,15 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		Prefix:    dir,
 		Delimiter: delimiter,
 	}
-	err := query.SetAttrSelection([]string{"Name"})
-	if err != nil {
-		return err
+	if appliedOpts.LastModified {
+		if err := query.SetAttrSelection([]string{"Name", "Updated"}); err != nil {
+			return err
+		}
+	} else {
+		if err := query.SetAttrSelection([]string{"Name"}); err != nil {
+			return err
+		}
 	}
-
 	it := b.bkt.Objects(ctx, query)
 	for {
 		select {
@@ -219,15 +245,37 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		if err != nil {
 			return err
 		}
-		if err := f(attrs.Prefix + attrs.Name); err != nil {
+
+		objAttrs := objstore.IterObjectAttributes{Name: attrs.Prefix + attrs.Name}
+		if appliedOpts.LastModified {
+			objAttrs.SetLastModified(attrs.Updated)
+		}
+		if err := f(objAttrs); err != nil {
 			return err
 		}
 	}
 }
 
+// Iter calls f for each entry in the given directory. The argument to f is the full
+// object name including the prefix of the inspected directory.
+func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opts ...objstore.IterOption) error {
+	// Only include recursive option since attributes are not used in this method.
+	var filteredOpts []objstore.IterOption
+	for _, opt := range opts {
+		if opt.Type == objstore.Recursive {
+			filteredOpts = append(filteredOpts, opt)
+			break
+		}
+	}
+
+	return b.IterWithAttributes(ctx, dir, func(attrs objstore.IterObjectAttributes) error {
+		return f(attrs.Name)
+	}, filteredOpts...)
+}
+
 // Get returns a reader for the given object name.
 func (b *Bucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	r, err := b.bkt.Object(name).NewReader(ctx)
+	r, err := b.get(ctx, name)
 	if err != nil {
 		return r, err
 	}
@@ -238,6 +286,10 @@ func (b *Bucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
 			return r.Attrs.Size, nil
 		},
 	}, nil
+}
+
+func (b *Bucket) get(ctx context.Context, name string) (*storage.Reader, error) {
+	return b.bkt.Object(name).NewReader(ctx)
 }
 
 // GetRange returns a new range reader for the given object name and range.
@@ -287,7 +339,21 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 
 // Upload writes the file specified in src to remote GCS location specified as target.
 func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
-	w := b.bkt.Object(name).NewWriter(ctx)
+	return b.upload(ctx, name, r, 0, false)
+}
+
+// Upload writes the file specified in src to remote GCS location specified as target.
+func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generation int64, requireNewObject bool) error {
+	o := b.bkt.Object(name)
+
+	var w *storage.Writer
+	if generation != 0 {
+		o = o.If(storage.Conditions{GenerationMatch: generation})
+	}
+	if requireNewObject {
+		o = o.If(storage.Conditions{DoesNotExist: true})
+	}
+	w = o.NewWriter(ctx)
 
 	// if `chunkSize` is 0, we don't set any custom value for writer's ChunkSize.
 	// It uses whatever the default value https://pkg.go.dev/google.golang.org/cloud/storage#Writer
@@ -299,6 +365,38 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 		return err
 	}
 	return w.Close()
+}
+
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+	var generation int64
+	var missing bool
+
+	// Get the current object
+	storageReader, err := b.get(ctx, name)
+	if err != nil {
+		if !errors.Is(err, storage.ErrObjectNotExist) {
+			return err
+		}
+		missing = true
+	}
+
+	// redefine the callback reader so a nil originalContent (with concrete type but no value)
+	// doesn't pass nil-checks in the callback
+	var reader io.Reader
+	// If object exists, ensure we close the reader when done
+	if !missing {
+		generation = storageReader.Attrs.Generation
+		reader = storageReader
+		defer storageReader.Close()
+	}
+
+	newContent, err := f(reader)
+	if err != nil {
+		return err
+	}
+
+	// Upload with the previous generation, or mustNotExist for new objects
+	return b.upload(ctx, name, newContent, generation, missing)
 }
 
 // Delete removes the object with the given name.

@@ -29,6 +29,7 @@ import (
 )
 
 const (
+	// PluginName is the name of the PEM file watcher plugin.
 	PluginName             = "file_watcher"
 	defaultRefreshInterval = 10 * time.Minute
 )

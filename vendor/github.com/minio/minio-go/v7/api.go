@@ -92,6 +92,9 @@ type Client struct {
 	// default to Auto.
 	lookup BucketLookupType
 
+	// lookupFn is a custom function to return URL lookup type supported by the server.
+	lookupFn func(u url.URL, bucketName string) BucketLookupType
+
 	// Factory for MD5 hash functions.
 	md5Hasher    func() md5simd.Hasher
 	sha256Hasher func() md5simd.Hasher
@@ -117,6 +120,25 @@ type Options struct {
 	// function to perform region lookups appropriately.
 	CustomRegionViaURL func(u url.URL) string
 
+	// Provide a custom function that returns BucketLookupType based
+	// on the input URL, this is just like s3utils.IsVirtualHostSupported()
+	// function but allows users to provide their own implementation.
+	// Once this is set it overrides all settings for opts.BucketLookup
+	// if this function returns BucketLookupAuto then default detection
+	// via s3utils.IsVirtualHostSupported() is used, otherwise the
+	// function is expected to return appropriate value as expected for
+	// the URL the user wishes to honor.
+	//
+	// BucketName is passed additionally for the caller to ensure
+	// handle situations where `bucketNames` have multiple `.` separators
+	// in such case HTTPs certs will not work properly for *.<domain>
+	// wildcards, so you need to specifically handle these situations
+	// and not return bucket as part of DNS since those requests may fail.
+	//
+	// For better understanding look at s3utils.IsVirtualHostSupported()
+	// implementation.
+	BucketLookupViaURL func(u url.URL, bucketName string) BucketLookupType
+
 	// TrailingHeaders indicates server support of trailing headers.
 	// Only supported for v4 signatures.
 	TrailingHeaders bool
@@ -133,7 +155,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.80"
+	libraryVersion = "v7.0.85"
 )
 
 // User Agent should always following the below style.
@@ -279,6 +301,7 @@ func privateNew(endpoint string, opts *Options) (*Client, error) {
 	// Sets bucket lookup style, whether server accepts DNS or Path lookup. Default is Auto - determined
 	// by the SDK. When Auto is specified, DNS lookup is used for Amazon/Google cloud endpoints and Path for all other endpoints.
 	clnt.lookup = opts.BucketLookup
+	clnt.lookupFn = opts.BucketLookupViaURL
 
 	// healthcheck is not initialized
 	clnt.healthStatus = unknown
@@ -600,9 +623,9 @@ func (c *Client) executeMethod(ctx context.Context, method string, metadata requ
 		return nil, errors.New(c.endpointURL.String() + " is offline.")
 	}
 
-	var retryable bool          // Indicates if request can be retried.
-	var bodySeeker io.Seeker    // Extracted seeker from io.Reader.
-	var reqRetry = c.maxRetries // Indicates how many times we can retry the request
+	var retryable bool       // Indicates if request can be retried.
+	var bodySeeker io.Seeker // Extracted seeker from io.Reader.
+	reqRetry := c.maxRetries // Indicates how many times we can retry the request
 
 	if metadata.contentBody != nil {
 		// Check if body is seekable then it is retryable.
@@ -808,7 +831,7 @@ func (c *Client) newRequest(ctx context.Context, method string, metadata request
 	}
 
 	// Get credentials from the configured credentials provider.
-	value, err := c.credsProvider.Get()
+	value, err := c.credsProvider.GetWithContext(c.CredContext())
 	if err != nil {
 		return nil, err
 	}
@@ -1003,6 +1026,18 @@ func (c *Client) makeTargetURL(bucketName, objectName, bucketLocation string, is
 
 // returns true if virtual hosted style requests are to be used.
 func (c *Client) isVirtualHostStyleRequest(url url.URL, bucketName string) bool {
+	if c.lookupFn != nil {
+		lookup := c.lookupFn(url, bucketName)
+		switch lookup {
+		case BucketLookupDNS:
+			return true
+		case BucketLookupPath:
+			return false
+		}
+		// if its auto then we fallback to default detection.
+		return s3utils.IsVirtualHostSupported(url, bucketName)
+	}
+
 	if bucketName == "" {
 		return false
 	}
@@ -1010,11 +1045,24 @@ func (c *Client) isVirtualHostStyleRequest(url url.URL, bucketName string) bool 
 	if c.lookup == BucketLookupDNS {
 		return true
 	}
+
 	if c.lookup == BucketLookupPath {
 		return false
 	}
 
-	// default to virtual only for Amazon/Google  storage. In all other cases use
+	// default to virtual only for Amazon/Google storage. In all other cases use
 	// path style requests
 	return s3utils.IsVirtualHostSupported(url, bucketName)
+}
+
+// CredContext returns the context for fetching credentials
+func (c *Client) CredContext() *credentials.CredContext {
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	return &credentials.CredContext{
+		Client:   httpClient,
+		Endpoint: c.endpointURL.String(),
+	}
 }

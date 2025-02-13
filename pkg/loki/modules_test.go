@@ -406,6 +406,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	}
 
 	cfg.Common.InstanceAddr = localhost
+	cfg.MemberlistKV.AdvertiseAddr = localhost
 	cfg.Ingester.LifecyclerConfig.Addr = localhost
 	cfg.Distributor.DistributorRing.InstanceAddr = localhost
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode

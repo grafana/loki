@@ -16,10 +16,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/bloomshipper"
 )
 
-func newProcessor(id string, concurrency int, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
+func newProcessor(id string, concurrency int, async bool, store bloomshipper.Store, logger log.Logger, metrics *workerMetrics) *processor {
 	return &processor{
 		id:          id,
 		concurrency: concurrency,
+		async:       async,
 		store:       store,
 		logger:      logger,
 		metrics:     metrics,
@@ -28,7 +29,8 @@ func newProcessor(id string, concurrency int, store bloomshipper.Store, logger l
 
 type processor struct {
 	id          string
-	concurrency int // concurrency at which bloom blocks are processed
+	concurrency int  // concurrency at which bloom blocks are processed
+	async       bool // whether blocks should be downloaded asynchronously
 	store       bloomshipper.Store
 	logger      log.Logger
 	metrics     *workerMetrics
@@ -71,7 +73,7 @@ func (p *processor) processTasksForDay(ctx context.Context, _ string, _ config.D
 	bqs, err := p.store.FetchBlocks(
 		ctx,
 		refs,
-		bloomshipper.WithFetchAsync(true),
+		bloomshipper.WithFetchAsync(p.async),
 		bloomshipper.WithIgnoreNotFound(true),
 		// NB(owen-d): we relinquish bloom pages to a pool
 		// after iteration for performance (alloc reduction).

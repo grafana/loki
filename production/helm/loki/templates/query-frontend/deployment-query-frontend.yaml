@@ -34,15 +34,18 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.queryFrontendSelectorLabels" . | nindent 8 }}
+        {{- include "loki.queryFrontendLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.queryFrontend.podLabels }}
+        {{- with merge .Values.loki.podLabels .Values.queryFrontend.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- with .Values.queryFrontend.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -67,7 +70,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-frontend
-            {{- with .Values.queryFrontend.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.queryFrontend.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -80,11 +83,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.queryFrontend.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.queryFrontend.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.queryFrontend.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.queryFrontend.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -101,7 +104,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.queryFrontend.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.queryFrontend.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -136,7 +139,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.queryFrontend.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.queryFrontend.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end -}}

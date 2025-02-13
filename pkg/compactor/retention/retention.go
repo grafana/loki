@@ -484,7 +484,7 @@ func CopyMarkers(src string, dst string) error {
 			return fmt.Errorf("read marker file: %w", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0o666); err != nil {
+		if err := os.WriteFile(filepath.Join(targetDir, marker.Name()), data, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
 			return fmt.Errorf("write marker file: %w", err)
 		}
 	}

@@ -21,8 +21,8 @@ pr:
       - sdk/storage/azblob
 
 
-stages:
-  - template: /eng/pipelines/templates/jobs/archetype-sdk-client.yml
+extends:
+    template: /eng/pipelines/templates/jobs/archetype-sdk-client.yml
     parameters:
       ServiceDirectory: 'storage/azblob'
       RunLiveTests: true

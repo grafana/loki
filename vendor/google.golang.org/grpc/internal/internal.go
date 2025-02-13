@@ -29,10 +29,12 @@ import (
 )
 
 var (
-	// WithHealthCheckFunc is set by dialoptions.go
-	WithHealthCheckFunc any // func (HealthChecker) DialOption
 	// HealthCheckFunc is used to provide client-side LB channel health checking
 	HealthCheckFunc HealthChecker
+	// RegisterClientHealthCheckListener is used to provide a listener for
+	// updates from the client-side health checking service. It returns a
+	// function that can be called to stop the health producer.
+	RegisterClientHealthCheckListener any // func(ctx context.Context, sc balancer.SubConn, serviceName string, listener func(balancer.SubConnState)) func()
 	// BalancerUnregister is exported by package balancer to unregister a balancer.
 	BalancerUnregister func(name string)
 	// KeepaliveMinPingTime is the minimum ping interval.  This must be 10s by
@@ -149,6 +151,20 @@ var (
 	// other features, including the CSDS service.
 	NewXDSResolverWithConfigForTesting any // func([]byte) (resolver.Builder, error)
 
+	// NewXDSResolverWithClientForTesting creates a new xDS resolver builder
+	// using the provided xDS client instead of creating a new one using the
+	// bootstrap configuration specified by the supported environment variables.
+	// The resolver.Builder is meant to be used in conjunction with the
+	// grpc.WithResolvers DialOption. The resolver.Builder does not take
+	// ownership of the provided xDS client and it is the responsibility of the
+	// caller to close the client when no longer required.
+	//
+	// Testing Only
+	//
+	// This function should ONLY be used for testing and may not work with some
+	// other features, including the CSDS service.
+	NewXDSResolverWithClientForTesting any // func(xdsclient.XDSClient) (resolver.Builder, error)
+
 	// RegisterRLSClusterSpecifierPluginForTesting registers the RLS Cluster
 	// Specifier Plugin for testing purposes, regardless of the XDSRLS environment
 	// variable.
@@ -191,6 +207,8 @@ var (
 	// ExitIdleModeForTesting gets the ClientConn to exit IDLE mode.
 	ExitIdleModeForTesting any // func(*grpc.ClientConn) error
 
+	// ChannelzTurnOffForTesting disables the Channelz service for testing
+	// purposes.
 	ChannelzTurnOffForTesting func()
 
 	// TriggerXDSResourceNotFoundForTesting causes the provided xDS Client to
@@ -204,10 +222,6 @@ var (
 	// UserSetDefaultScheme is set to true if the user has overridden the
 	// default resolver scheme.
 	UserSetDefaultScheme = false
-
-	// ShuffleAddressListForTesting pseudo-randomizes the order of addresses.  n
-	// is the number of elements.  swap swaps the elements with indexes i and j.
-	ShuffleAddressListForTesting any // func(n int, swap func(i, j int))
 
 	// ConnectedAddress returns the connected address for a SubConnState. The
 	// address is only valid if the state is READY.
@@ -235,7 +249,7 @@ var (
 //
 // The implementation is expected to create a health checking RPC stream by
 // calling newStream(), watch for the health status of serviceName, and report
-// it's health back by calling setConnectivityState().
+// its health back by calling setConnectivityState().
 //
 // The health checking protocol is defined at:
 // https://github.com/grpc/grpc/blob/master/doc/health-checking.md
@@ -257,3 +271,9 @@ const (
 // It currently has an experimental suffix which would be removed once
 // end-to-end testing of the policy is completed.
 const RLSLoadBalancingPolicyName = "rls_experimental"
+
+// EnforceSubConnEmbedding is used to enforce proper SubConn implementation
+// embedding.
+type EnforceSubConnEmbedding interface {
+	enforceSubConnEmbedding()
+}

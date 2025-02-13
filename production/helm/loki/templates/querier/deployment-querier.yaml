@@ -35,16 +35,13 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.querierSelectorLabels" . | nindent 8 }}
+        {{- include "loki.querierLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.querier.podLabels }}
+        {{- with merge .Values.loki.podLabels .Values.querier.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.GitVersion }}
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
       {{- with .Values.querier.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -81,7 +78,7 @@ spec:
             - -distributor.zone-awareness-enabled=true
             {{- end }}
             {{- end }}
-            {{- with .Values.querier.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.querier.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -94,11 +91,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.querier.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.querier.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.querier.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.querier.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -119,7 +116,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.querier.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.querier.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           resources:
@@ -160,7 +157,7 @@ spec:
         {{- end }}
         - name: data
           emptyDir: {}
-        {{- with .Values.querier.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.querier.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}

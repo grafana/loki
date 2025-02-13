@@ -32,15 +32,18 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        {{- include "loki.querySchedulerSelectorLabels" . | nindent 8 }}
-        {{- with .Values.loki.podLabels }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
-        {{- with .Values.queryScheduler.podLabels }}
+        {{- include "loki.querySchedulerLabels" . | nindent 8 }}
+        {{- with merge .Values.loki.podLabels .Values.queryScheduler.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         app.kubernetes.io/part-of: memberlist
     spec:
+      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- with .Values.queryScheduler.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -61,7 +64,7 @@ spec:
           args:
             - -config.file=/etc/loki/config/config.yaml
             - -target=query-scheduler
-            {{- with .Values.queryScheduler.extraArgs }}
+            {{- with (concat .Values.global.extraArgs .Values.queryScheduler.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           ports:
@@ -74,11 +77,11 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
-          {{- with .Values.queryScheduler.extraEnv }}
+          {{- with (concat .Values.global.extraEnv .Values.queryScheduler.extraEnv) | uniq }}
           env:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.queryScheduler.extraEnvFrom }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.queryScheduler.extraEnvFrom) | uniq }}
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -97,7 +100,7 @@ spec:
             - name: license
               mountPath: /etc/loki/license
             {{- end }}
-            {{- with .Values.queryScheduler.extraVolumeMounts }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.queryScheduler.extraVolumeMounts) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- with .Values.queryScheduler.resources }}
@@ -134,7 +137,7 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
-        {{- with .Values.queryScheduler.extraVolumes }}
+        {{- with (concat .Values.global.extraVolumes .Values.queryScheduler.extraVolumes) | uniq }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
 {{- end }}
