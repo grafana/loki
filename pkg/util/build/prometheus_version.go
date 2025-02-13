@@ -1,17 +1,11 @@
-// Copyright 2016 The Prometheus Authors
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// This code is copied from the Prometheus project.
+// The original file is licensed under the Apache License 2.0.
+// The prometheus module has dependencies that cause conflicts with Alloy using this version of Loki.
+// The struct & json encoding are in the same package so the behavior is the same,
+// any places where the struct is used will get the same package initialization as previous.
+// https://github.com/prometheus/prometheus/blob/a5ffa83be83be22e2ec9fd1d4765299d8d16119e/web/api/v1/
 
-package v1
+package build
 
 import (
 	"unsafe"
@@ -24,6 +18,15 @@ import (
 	"github.com/prometheus/prometheus/util/jsonutil"
 )
 
+type PrometheusVersion struct {
+	Version   string `json:"version"`
+	Revision  string `json:"revision"`
+	Branch    string `json:"branch"`
+	BuildUser string `json:"buildUser"`
+	BuildDate string `json:"buildDate"`
+	GoVersion string `json:"goVersion"`
+}
+
 func init() {
 	jsoniter.RegisterTypeEncoderFunc("promql.Vector", unsafeMarshalVectorJSON, neverEmpty)
 	jsoniter.RegisterTypeEncoderFunc("promql.Matrix", unsafeMarshalMatrixJSON, neverEmpty)
@@ -32,23 +35,8 @@ func init() {
 	jsoniter.RegisterTypeEncoderFunc("promql.FPoint", unsafeMarshalFPointJSON, neverEmpty)
 	jsoniter.RegisterTypeEncoderFunc("promql.HPoint", unsafeMarshalHPointJSON, neverEmpty)
 	jsoniter.RegisterTypeEncoderFunc("exemplar.Exemplar", marshalExemplarJSON, neverEmpty)
+	// This is overriden in pkg/storage/chunk/json_helpers.go?
 	jsoniter.RegisterTypeEncoderFunc("labels.Labels", unsafeMarshalLabelsJSON, labelsIsEmpty)
-}
-
-// JSONCodec is a Codec that encodes API responses as JSON.
-type JSONCodec struct{}
-
-func (j JSONCodec) ContentType() MIMEType {
-	return MIMEType{Type: "application", SubType: "json"}
-}
-
-func (j JSONCodec) CanEncode(_ *Response) bool {
-	return true
-}
-
-func (j JSONCodec) Encode(resp *Response) ([]byte, error) {
-	json := jsoniter.ConfigCompatibleWithStandardLibrary
-	return json.Marshal(resp)
 }
 
 // marshalSeriesJSON writes something like the following:

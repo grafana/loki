@@ -4,14 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	prom "github.com/prometheus/prometheus/web/api/v1"
-
 	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
 func versionHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		info := prom.PrometheusVersion{
+		info := build.PrometheusVersion{
 			Version:   build.Version,
 			Revision:  build.Revision,
 			Branch:    build.Branch,
