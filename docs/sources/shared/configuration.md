@@ -4052,6 +4052,12 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+  # Enable experimental support for running multiple query variants over the
+  # same underlying data. For example, running both a rate() and
+  # count_over_time() query over the same range selector.
+  # CLI flag: -querier.engine.experimental-multi-variant-queries
+  [experimental_multi_variant_queries: <boolean> | default = false]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
