@@ -22,11 +22,11 @@ import (
 // 95% of estimates will be within  ±2SE of true value (3.25%)
 // 99% of estimates will be within  ±3SE of true value (4.875%)
 // and with 8-bit registers, this is 2^12 = 4KB size.
-func NewHyperLogLog() (*hyperloglog.Sketch, error) {
+func newHyperLogLog() (*hyperloglog.Sketch, error) {
 	return hyperloglog.NewSketch(12, true)
 }
 
-type ColumnStatsBuilder struct {
+type columnStatsBuilder struct {
 	opts StatisticsOptions
 
 	// for cardinality
@@ -34,14 +34,14 @@ type ColumnStatsBuilder struct {
 }
 
 // ColumnStatsBuilder is for column-level statistics
-func NewColumnStatsBuilder(opts StatisticsOptions) (*ColumnStatsBuilder, error) {
-	result := &ColumnStatsBuilder{
+func newColumnStatsBuilder(opts StatisticsOptions) (*columnStatsBuilder, error) {
+	result := &columnStatsBuilder{
 		opts: opts,
 	}
 
 	if opts.StoreCardinalityStats {
 		var err error
-		if result.hll, err = NewHyperLogLog(); err != nil {
+		if result.hll, err = newHyperLogLog(); err != nil {
 			return nil, fmt.Errorf("failed to create hll: %w", err)
 		}
 	}
@@ -49,7 +49,7 @@ func NewColumnStatsBuilder(opts StatisticsOptions) (*ColumnStatsBuilder, error) 
 	return result, nil
 }
 
-func (csb *ColumnStatsBuilder) Append(value Value) {
+func (csb *columnStatsBuilder) Append(value Value) {
 	if csb.opts.StoreCardinalityStats && !value.IsNil() && !value.IsZero() {
 		buf, err := value.MarshalBinary()
 		if err != nil {
@@ -67,7 +67,7 @@ func (csb *ColumnStatsBuilder) Append(value Value) {
 
 // Flush builds the column-level stats both from the given pages and any internal
 // state
-func (csb *ColumnStatsBuilder) Flush(pages []*MemPage) *datasetmd.Statistics {
+func (csb *columnStatsBuilder) Flush(pages []*MemPage) *datasetmd.Statistics {
 	var dst datasetmd.Statistics
 	if csb.opts.StoreCardinalityStats {
 		dst.CardinalityCount = csb.hll.Estimate()
@@ -79,7 +79,7 @@ func (csb *ColumnStatsBuilder) Flush(pages []*MemPage) *datasetmd.Statistics {
 	return &dst
 }
 
-func (csb *ColumnStatsBuilder) buildRangeStats(pages []*MemPage, dst *datasetmd.Statistics) {
+func (csb *columnStatsBuilder) buildRangeStats(pages []*MemPage, dst *datasetmd.Statistics) {
 	var minValue, maxValue Value
 
 	for i, page := range pages {

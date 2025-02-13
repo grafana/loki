@@ -59,7 +59,7 @@ type ColumnBuilder struct {
 	rows int // Total number of rows in the column.
 
 	pages        []*MemPage
-	statsBuilder *ColumnStatsBuilder
+	statsBuilder *columnStatsBuilder
 	pageBuilder  *pageBuilder
 }
 
@@ -72,7 +72,7 @@ func NewColumnBuilder(name string, opts BuilderOptions) (*ColumnBuilder, error) 
 		return nil, fmt.Errorf("creating page builder: %w", err)
 	}
 
-	statsBuilder, err := NewColumnStatsBuilder(opts.Statistics)
+	statsBuilder, err := newColumnStatsBuilder(opts.Statistics)
 	if err != nil {
 		return nil, fmt.Errorf("creating stats builder: %w", err)
 	}
@@ -166,7 +166,9 @@ func (cb *ColumnBuilder) append(row int, value Value) bool {
 
 	success := cb.pageBuilder.Append(value)
 	if success {
-		// only append stats if append was successful
+		// The page builder returns false when full,
+		// so this check ensures we only add the stats once
+		// rather than twice when a new page is cut.
 		cb.statsBuilder.Append(value)
 	}
 	return success
