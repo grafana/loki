@@ -5,7 +5,7 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
-	prom "github.com/prometheus/prometheus/web/api/v1"
+	prom "github.com/prometheus/client_golang/api/prometheus/v1"
 
 	"github.com/grafana/dskit/kv/memberlist"
 )
@@ -13,9 +13,9 @@ import (
 // ClusterSeed is the seed for the usage stats.
 // A unique ID is generated for each cluster.
 type ClusterSeed struct {
-	UID                    string    `json:"UID"`
-	CreatedAt              time.Time `json:"created_at"`
-	prom.PrometheusVersion `json:"version"`
+	UID               string               `json:"UID"`
+	CreatedAt         time.Time            `json:"created_at"`
+	PrometheusVersion prom.BuildinfoResult `json:"version"`
 }
 
 // Merge implements the memberlist.Mergeable interface.

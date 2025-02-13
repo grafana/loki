@@ -18,7 +18,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	jsoniter "github.com/json-iterator/go"
-	prom "github.com/prometheus/prometheus/web/api/v1"
+	prom "github.com/prometheus/client_golang/api/prometheus/v1"
 	"go.uber.org/atomic"
 )
 
@@ -60,16 +60,16 @@ func createOrRetrieveExpvar[K any](check func() (*K, error), create func() *K) *
 
 // Report is the JSON object sent to the stats server
 type Report struct {
-	ClusterID              string    `json:"clusterID"`
-	CreatedAt              time.Time `json:"createdAt"`
-	Interval               time.Time `json:"interval"`
-	IntervalPeriod         float64   `json:"intervalPeriod"`
-	Target                 string    `json:"target"`
-	prom.PrometheusVersion `json:"version"`
-	Os                     string                 `json:"os"`
-	Arch                   string                 `json:"arch"`
-	Edition                string                 `json:"edition"`
-	Metrics                map[string]interface{} `json:"metrics"`
+	ClusterID         string                 `json:"clusterID"`
+	CreatedAt         time.Time              `json:"createdAt"`
+	Interval          time.Time              `json:"interval"`
+	IntervalPeriod    float64                `json:"intervalPeriod"`
+	Target            string                 `json:"target"`
+	PrometheusVersion prom.BuildinfoResult   `json:"version"`
+	Os                string                 `json:"os"`
+	Arch              string                 `json:"arch"`
+	Edition           string                 `json:"edition"`
+	Metrics           map[string]interface{} `json:"metrics"`
 }
 
 // sendReport sends the report to the stats server
