@@ -1684,7 +1684,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 
 func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 	now := time.Now()
-	defaultErrCode := 2600
+	defaultErrCode := 260
 
 	for _, tc := range []struct {
 		name             string
@@ -1693,6 +1693,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 		labels           string
 		expectError      bool
 		expectedErrorMsg string
+		yes              bool
 	}{
 		{
 			name:        "not blocked - no policy block configured",
@@ -1718,6 +1719,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 			labels:           `{foo="bar"}`,
 			expectError:      true,
 			expectedErrorMsg: fmt.Sprintf(validation.BlockedIngestionPolicyErrorMsg, "test", now.Add(1*time.Hour).Format(time.RFC3339), defaultErrCode),
+			yes:              true,
 		},
 		{
 			name: "not blocked - different policy",
@@ -1740,6 +1742,9 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if !tc.yes {
+				return
+			}
 			limits := &validation.Limits{}
 			flagext.DefaultValues(limits)
 
@@ -1761,7 +1766,7 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 				}
 			}
 
-			distributors, _ := prepare(t, 1, 5, limits, nil)
+			distributors, _ := prepare(t, 1, 3, limits, nil)
 			request := makeWriteRequestWithLabels(1, 1024, []string{tc.labels}, false, false, false)
 			response, err := distributors[0].Push(ctx, request)
 

@@ -550,16 +550,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(validation.MissingEnforcedLabels, tenantID, retentionHours, policy).Add(float64(discardedBytes))
+				d.validator.reportDiscardedData(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes)
 				continue
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
-				// TODO(dylan): should we use `trackDiscardedData` here? what about the other places?
-				d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, reason)
 				d.writeFailuresManager.Log(tenantID, err)
+				discardedBytes := util.EntriesTotalSize(stream.Entries)
+				d.validator.reportDiscardedData(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes)
 
 				// If the status code is 200, return success.
 				// Note that we still log the error and increment the metrics.
@@ -569,9 +568,6 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				}
 
 				validationErrors.Add(err)
-				validation.DiscardedSamples.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(len(stream.Entries)))
-				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				validation.DiscardedBytes.WithLabelValues(reason, tenantID, retentionHours, policy).Add(float64(discardedBytes))
 				continue
 			}
 
