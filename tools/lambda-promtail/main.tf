@@ -255,8 +255,9 @@ resource "aws_cloudwatch_log_subscription_filter" "lambdafunction_logfilter" {
   log_group_name  = each.value
   destination_arn = aws_lambda_function.this.arn
 
-  # required but can be empty string
-  filter_pattern = ""
+  # required, can be empty string or the provided filter pattern
+  # where syntax is ref https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/FilterAndPatternSyntax.html
+  filter_pattern = var.cw_filter_pattern
 }
 
 #-------------------------------------------------------------------------------

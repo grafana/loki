@@ -143,3 +143,9 @@ variable "sqs_queue_name_prefix" {
   description = "Name prefix for SQS queues"
   default     = "s3-to-lambda-promtail"
 }
+
+variable "cw_filter_pattern" {
+  type = string
+  description = "CloudWatch subscription filter pattern"
+  default = ""
+}
