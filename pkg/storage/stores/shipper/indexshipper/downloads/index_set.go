@@ -18,9 +18,11 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -46,6 +48,8 @@ type IndexSet interface {
 // indexSet is a collection of multiple files created for a same table by various ingesters.
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type indexSet struct {
+	limits Limits
+
 	openIndexFileFunc index.OpenIndexFileFunc
 	baseIndexSet      storage.IndexSet
 	tableName, userID string
@@ -61,7 +65,7 @@ type indexSet struct {
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
-func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger) (IndexSet, error) {
+func NewIndexSet(tableName, userID, cacheLocation string, limits Limits, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc, logger log.Logger) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -76,6 +80,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 	maxConcurrent := max(runtime.GOMAXPROCS(0)/2, 1)
 
 	is := indexSet{
+		limits:            limits,
 		openIndexFileFunc: openIndexFileFunc,
 		baseIndexSet:      baseIndexSet,
 		tableName:         tableName,
@@ -286,6 +291,32 @@ func (t *indexSet) Sync(ctx context.Context) (err error) {
 	if !t.indexMtx.isReady() {
 		level.Info(t.logger).Log("msg", "skip sync since the index set is not ready")
 		return nil
+	}
+
+	// Check if table is too old based on RejectOldSamples settings
+	var limits *validation.Limits
+	if t.userID != "" {
+		if userLimits, ok := t.limits.AllByUserID()[t.userID]; ok {
+			limits = userLimits
+		}
+	}
+	if limits == nil {
+		limits = t.limits.DefaultLimits()
+	}
+
+	if limits.RejectOldSamples {
+		tableNumber, err := config.ExtractTableNumberFromName(t.tableName)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to extract table number", "table", t.tableName, "err", err)
+			return nil
+		}
+
+		// Convert table number (days since epoch) to a timestamp
+		tableTime := time.Unix(int64(tableNumber)*24*60*60, 0)
+		if time.Since(tableTime) > time.Duration(limits.RejectOldSamplesMaxAge) {
+			level.Info(t.logger).Log("msg", "skipping sync for old table", "table", t.tableName, "age", time.Since(tableTime))
+			return nil
+		}
 	}
 
 	return t.syncWithRetry(ctx, true, false)

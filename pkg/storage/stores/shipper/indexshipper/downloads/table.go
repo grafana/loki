@@ -43,6 +43,7 @@ type Table interface {
 // All the public methods are concurrency safe and take care of mutexes to avoid any data race.
 type table struct {
 	name              string
+	limits            Limits
 	cacheLocation     string
 	storageClient     storage.Client
 	openIndexFileFunc index.OpenIndexFileFunc
@@ -58,10 +59,11 @@ type table struct {
 
 // NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
-func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
+func NewTable(name string, limits Limits, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
 	maxConcurrent := max(runtime.GOMAXPROCS(0)/2, 1)
 	return &table{
 		name:               name,
+		limits:             limits,
 		cacheLocation:      cacheLocation,
 		storageClient:      storageClient,
 		baseUserIndexSet:   storage.NewIndexSet(storageClient, true),
@@ -76,7 +78,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
-func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) (Table, error) {
+func LoadTable(name, cacheLocation string, limits Limits, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) (Table, error) {
 	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
@@ -113,7 +115,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		userID := entry.Name()
 		logger := loggerWithUserID(table.logger, userID)
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, logger)
+			limits, table.baseUserIndexSet, openIndexFileFunc, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +128,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		table.indexSets[userID] = userIndexSet
 	}
 
-	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
+	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, limits, table.baseCommonIndexSet,
 		openIndexFileFunc, table.logger)
 	if err != nil {
 		return nil, err
@@ -327,7 +329,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 	}
 
 	// instantiate the index set, add it to the map
-	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id))
+	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), t.limits, baseIndexSet, t.openIndexFileFunc, loggerWithUserID(t.logger, id))
 	if err != nil {
 		return nil, err
 	}

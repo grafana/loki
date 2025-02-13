@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,6 +26,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
@@ -207,8 +211,27 @@ func (s *GCSObjectClient) PutObject(ctx context.Context, objectKey string, objec
 	return writer.Close()
 }
 
+// formatCallerStack returns a string showing the call stack with -> separators
+func formatCallerStack() string {
+	var stack []string
+	for i := 2; i < 15; i++ {
+		_, file, line, ok := runtime.Caller(i)
+		if ok {
+			stack = append(stack, fmt.Sprintf("%s:%d", file, line))
+		}
+	}
+	return strings.Join(stack, " -> ")
+}
+
 // List implements chunk.ObjectClient.
 func (s *GCSObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+	level.Info(util_log.Logger).Log(
+		"msg", "listing objects from GCS",
+		"prefix", prefix,
+		"delimiter", delimiter,
+		"stack", formatCallerStack(),
+	)
+
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
 	q := &storage.Query{Prefix: prefix, Delimiter: delimiter}
