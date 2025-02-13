@@ -668,8 +668,7 @@ func (q *query) evalVariants(
 				return nil, err
 			}
 
-			expr.SetVariant(i, vExpr)
-			if err != nil {
+			if err = expr.SetVariant(i, vExpr); err != nil {
 				return nil, err
 			}
 		}

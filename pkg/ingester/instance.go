@@ -1170,6 +1170,49 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 	return nil
 }
 
+// TODO(twhitney): Do we still need this?
+func sendVariantsBatches(
+	ctx context.Context,
+	it iter.SampleIterator,
+	queryServer logproto.Querier_QueryVariantsServer,
+) error {
+	sp := opentracing.SpanFromContext(ctx)
+
+	stats := stats.FromContext(ctx)
+	metadata := metadata.FromContext(ctx)
+	for !isDone(ctx) {
+		batch, size, err := iter.ReadVariantsBatch(it, queryBatchSampleSize)
+		if err != nil {
+			return err
+		}
+
+		stats.AddIngesterBatch(int64(size))
+		batch.Stats = stats.Ingester()
+		batch.Warnings = metadata.Warnings()
+
+		if isDone(ctx) {
+			break
+		}
+		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
+			return err
+		}
+
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Series) == 0 {
+			return nil
+		}
+
+		stats.Reset()
+		metadata.Reset()
+
+		if sp != nil {
+			sp.LogKV("event", "sent batch", "size", size)
+		}
+	}
+
+	return nil
+}
+
 func shouldConsiderStream(stream *stream, reqFrom, reqThrough time.Time) bool {
 	from, to := stream.Bounds()
 

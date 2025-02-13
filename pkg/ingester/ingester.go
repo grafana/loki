@@ -1663,3 +1663,63 @@ func (i *Ingester) getDetectedLabels(ctx context.Context, req *logproto.Detected
 	}
 	return &logproto.LabelToValuesResponse{Labels: result}, nil
 }
+
+// QueryVariants queries the ingester for multiple variants of the same log streams
+func (i *Ingester) QueryVariants(req *logproto.VariantsQueryRequest, queryServer logproto.Querier_QueryVariantsServer) error {
+	// initialize stats collection for ingester queries.
+	_, ctx := stats.NewContext(queryServer.Context())
+	_, ctx = metadata.NewContext(ctx)
+	sp := opentracing.SpanFromContext(ctx)
+
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Set profiling tags
+	defer pprof.SetGoroutineLabels(ctx)
+	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "read", "type", "metric"))
+	pprof.SetGoroutineLabels(ctx)
+
+	instance, err := i.GetOrCreateInstance(instanceID)
+	if err != nil {
+		return err
+	}
+
+	it, err := instance.QueryVariants(ctx, logql.SelectVariantsParams{VariantsQueryRequest: req})
+	if err != nil {
+		return err
+	}
+	if sp != nil {
+		sp.LogKV("event", "finished instance query variants",
+			"query", req.GetQuery,
+			"variants", req.Variants,
+			"start", req.Start,
+			"end", req.End)
+	}
+
+	//TODO(twhitney): implement queries from store
+	// if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+	// 	storeReq := logql.SelectVariantsParams{VariantsQueryRequest: &logproto.VariantsQueryRequest{
+	// 		Start:    start,
+	// 		End:      end,
+	// 		Query:    req.Query,
+	// 		LogRange: req.LogRange,
+	// 		Variants: req.Variants,
+	// 		Shards:   req.Shards,
+	// 		// Deletes:  req.Deletes,
+	// 		Plan: req.Plan,
+	// 	}}
+	// 	storeItr, err := i.store.SelectVariants(ctx, storeReq)
+	// 	if err != nil {
+	// 		util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	// 		return err
+	// 	}
+	//
+	// 	it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
+	// }
+
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
+
+	return sendVariantsBatches(ctx, it, queryServer)
+}

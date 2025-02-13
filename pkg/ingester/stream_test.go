@@ -41,6 +41,9 @@ var (
 		}
 		return ex.ForStream(labels.Labels{})
 	}
+	singleCountExtractor = []log.StreamSampleExtractor{
+		countExtractor(),
+	}
 )
 
 func TestMaxReturnedStreamsErrors(t *testing.T) {
@@ -461,7 +464,7 @@ func TestUnorderedPush(t *testing.T) {
 	require.Nil(t, err)
 	iterEq(t, exp, itr)
 
-	sItr, err := s.SampleIterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(12, 0), countExtractor())
+	sItr, err := s.SampleIterator(context.Background(), nil, time.Unix(int64(0), 0), time.Unix(12, 0), singleCountExtractor)
 	require.Nil(t, err)
 	for _, x := range exp {
 		require.Equal(t, true, sItr.Next())

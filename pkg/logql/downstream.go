@@ -704,10 +704,10 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	}
 }
 
-func (d *DownstreamEvaluator) NewVariantsStepEvaluator(
-	ctx context.Context,
-	expr syntax.VariantsExpr,
-	p Params,
+func (ev *DownstreamEvaluator) NewVariantsStepEvaluator(
+	_ context.Context,
+	_ syntax.VariantsExpr,
+	_ Params,
 ) (StepEvaluator, error) {
 	// TODO(twhitney): does the downstream evaluator need to handle variants?
 	return nil, errors.New("NewVariantStepEvaluator hasn't been implemented on DownstreamEvaluator")

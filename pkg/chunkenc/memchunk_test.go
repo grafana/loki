@@ -980,7 +980,7 @@ func BenchmarkRead(b *testing.B) {
 				bytesRead := uint64(0)
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
-						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
+						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), singleCountExtractor)
 						for iterator.Next() {
 							_ = iterator.At()
 						}

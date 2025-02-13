@@ -1717,6 +1717,7 @@ func newSampleIterator(
 	}
 
 	if len(extractors) > 1 {
+		//TODO(twhitney): reorganize args to put extractors last
 		return newMultiExtractorSampleIterator(ctx, pool, b, format, extractors, symbolizer)
 	}
 

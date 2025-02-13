@@ -533,6 +533,23 @@ func (q *IngesterQuerier) DetectedLabel(ctx context.Context, req *logproto.Detec
 	return &logproto.LabelToValuesResponse{Labels: mergedResult}, nil
 }
 
+func (q *IngesterQuerier) SelectVariants(ctx context.Context, req logql.SelectVariantsParams) ([]iter.SampleIterator, error) {
+	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
+		stats.FromContext(ctx).AddIngesterReached(1)
+		return client.QueryVariants(ctx, req.VariantsQueryRequest)
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	iterators := make([]iter.SampleIterator, len(resps))
+	for i := range resps {
+		iterators[i] = iter.NewVariantsQueryClientIterator(resps[i].response.(logproto.Querier_QueryVariantsClient))
+	}
+	return iterators, nil
+}
+
 func convertMatchersToString(matchers []*labels.Matcher) string {
 	out := strings.Builder{}
 	out.WriteRune('{')
