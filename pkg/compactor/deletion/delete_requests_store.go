@@ -97,14 +97,12 @@ func (ds *deleteRequestsStore) AddDeleteRequest(ctx context.Context, userID, que
 		return "", err
 	}
 
-	var results []DeleteRequest
 	for i, req := range reqs {
 		newReq, err := newRequest(req, requestID, createdAt, i)
 		if err != nil {
 			return "", err
 		}
 
-		results = append(results, newReq)
 		ds.writeDeleteRequest(newReq, writeBatch)
 	}
 	ds.updateCacheGen(reqs[0].UserID, writeBatch)
