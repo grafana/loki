@@ -26,6 +26,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 )
 
+type sampleWithLabels struct {
+	Labels  string
+	Samples logproto.Sample
+}
+
 func TestStore_SelectSamples(t *testing.T) {
 	const testTenant = "test-tenant"
 	builder := newTestDataBuilder(t, testTenant)
@@ -174,6 +179,159 @@ func TestStore_SelectSamples(t *testing.T) {
 			require.NoError(t, err)
 			if diff := cmp.Diff(tt.want, samples); diff != "" {
 				t.Errorf("samples mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestStore_SelectLogs(t *testing.T) {
+	const testTenant = "test-tenant"
+	builder := newTestDataBuilder(t, testTenant)
+	defer builder.close()
+
+	// Setup test data
+	now := setupTestData(t, builder)
+	store := NewStore(builder.bucket)
+	ctx := user.InjectOrgID(context.Background(), testTenant)
+
+	tests := []struct {
+		name      string
+		selector  string
+		start     time.Time
+		end       time.Time
+		shards    []string
+		limit     uint32
+		direction logproto.Direction
+		want      []entryWithLabels
+	}{
+		{
+			name:      "select all logs in range",
+			selector:  `{app=~".+"}`,
+			start:     now,
+			end:       now.Add(time.Hour),
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
+			},
+		},
+		{
+			name:      "select with time range filter",
+			selector:  `{app="baz", env="prod", team="a"}`,
+			start:     now.Add(20 * time.Second),
+			end:       now.Add(40 * time.Second),
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
+			},
+		},
+		{
+			name:      "select with label matcher",
+			selector:  `{app="foo"}`,
+			start:     now,
+			end:       now.Add(time.Hour),
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
+			},
+		},
+		{
+			name:      "select first shard",
+			selector:  `{app=~".+"}`,
+			start:     now,
+			end:       now.Add(time.Hour),
+			shards:    []string{"0_of_2"},
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(25 * time.Second), Line: "bar3"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"}},
+				{Labels: `{app="bar", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"}},
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"}},
+				{Labels: `{app="baz", env="prod", team="a"}`, Entry: logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"}},
+			},
+		},
+		{
+			name:      "select second shard",
+			selector:  `{app=~".+"}`,
+			start:     now,
+			end:       now.Add(time.Hour),
+			shards:    []string{"1_of_2"},
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now, Line: "foo1"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"}},
+				{Labels: `{app="foo", env="dev"}`, Entry: logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(45 * time.Second), Line: "foo3"}},
+				{Labels: `{app="foo", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"}},
+			},
+		},
+		{
+			name:      "select with line filter",
+			selector:  `{app=~".+"} |= "bar2"`,
+			start:     now,
+			end:       now.Add(time.Hour),
+			limit:     100,
+			direction: logproto.FORWARD,
+			want: []entryWithLabels{
+				{Labels: `{app="bar", env="prod"}`, Entry: logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			it, err := store.SelectLogs(ctx, logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Start:     tt.start,
+					End:       tt.end,
+					Plan:      planFromString(tt.selector),
+					Selector:  tt.selector,
+					Shards:    tt.shards,
+					Limit:     tt.limit,
+					Direction: tt.direction,
+				},
+			})
+			require.NoError(t, err)
+			entries, err := readAllEntries(it)
+			require.NoError(t, err)
+			if diff := cmp.Diff(tt.want, entries); diff != "" {
+				t.Errorf("entries mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -332,11 +490,6 @@ func (b *testDataBuilder) close() {
 	os.RemoveAll(b.dir)
 }
 
-type sampleWithLabels struct {
-	Labels  string
-	Samples logproto.Sample
-}
-
 // Helper function to read all samples from an iterator
 func readAllSamples(it iter.SampleIterator) ([]sampleWithLabels, error) {
 	var result []sampleWithLabels
@@ -346,6 +499,19 @@ func readAllSamples(it iter.SampleIterator) ([]sampleWithLabels, error) {
 		result = append(result, sampleWithLabels{
 			Labels:  it.Labels(),
 			Samples: sample,
+		})
+	}
+	return result, it.Err()
+}
+
+// Helper function to read all entries from an iterator
+func readAllEntries(it iter.EntryIterator) ([]entryWithLabels, error) {
+	var result []entryWithLabels
+	defer it.Close()
+	for it.Next() {
+		result = append(result, entryWithLabels{
+			Labels: it.Labels(),
+			Entry:  it.At(),
 		})
 	}
 	return result, it.Err()

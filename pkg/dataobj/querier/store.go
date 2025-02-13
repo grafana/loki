@@ -89,9 +89,17 @@ func NewStore(bucket objstore.Bucket) *Store {
 }
 
 // SelectLogs implements querier.Store
-func (s *Store) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter.EntryIterator, error) {
-	// TODO: Implement
-	return iter.NoopEntryIterator, nil
+func (s *Store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End)
+	if err != nil {
+		return nil, err
+	}
+	shard, err := parseShards(req.Shards)
+	if err != nil {
+		return nil, err
+	}
+
+	return selectLogs(ctx, objects, shard, req)
 }
 
 // SelectSamples implements querier.Store
@@ -147,6 +155,49 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 		objects = append(objects, dataobj.FromBucket(s.bucket, path))
 	}
 	return objects, nil
+}
+
+func selectLogs(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	selector, err := req.LogSelector()
+	if err != nil {
+		return nil, err
+	}
+	shardedObjects, err := shardObjects(ctx, objects, shard)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		for _, obj := range shardedObjects {
+			obj.reset()
+			shardedObjectsPool.Put(obj)
+		}
+	}()
+	streamsPredicate := streamPredicate(selector.Matchers(), req.Start, req.End)
+	// TODO: support more predicates and combine with log.Pipeline.
+	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
+		StartTime:    req.Start,
+		EndTime:      req.End,
+		IncludeStart: true,
+		IncludeEnd:   false,
+	}
+	g, ctx := errgroup.WithContext(ctx)
+	iterators := make([]iter.EntryIterator, len(shardedObjects))
+
+	for i, obj := range shardedObjects {
+		g.Go(func() error {
+			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req)
+			if err != nil {
+				return err
+			}
+			iterators[i] = iterator
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
 func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time) (iter.SampleIterator, error) {
@@ -256,6 +307,33 @@ func (s *shardedObject) reset() {
 	s.logReaders = s.logReaders[:0]
 	s.streamsIDs = s.streamsIDs[:0]
 	clear(s.streams)
+}
+
+func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, req logql.SelectLogParams) (iter.EntryIterator, error) {
+	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+		return nil, err
+	}
+
+	if err := s.matchStreams(ctx); err != nil {
+		return nil, err
+	}
+	iterators := make([]iter.EntryIterator, len(s.logReaders))
+	g, ctx := errgroup.WithContext(ctx)
+
+	for i, reader := range s.logReaders {
+		g.Go(func() error {
+			iter, err := newEntryIterator(ctx, s.streams, reader, req)
+			if err != nil {
+				return err
+			}
+			iterators[i] = iter
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
 func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
