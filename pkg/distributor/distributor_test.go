@@ -1679,7 +1679,7 @@ func TestDistributor_PushIngestionBlocked(t *testing.T) {
 
 func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 	now := time.Now()
-	defaultErrCode := 260
+	defaultErrCode := 2600
 
 	for _, tc := range []struct {
 		name             string

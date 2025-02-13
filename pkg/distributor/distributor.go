@@ -546,7 +546,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				continue
 			}
 
-			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID); missing {
+			if missing, lbsMissing := d.missingEnforcedLabels(lbs, tenantID, policy); missing {
 				err := fmt.Errorf(validation.MissingEnforcedLabelsErrorMsg, strings.Join(lbsMissing, ","), tenantID)
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -778,16 +778,27 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
-func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string) (bool, []string) {
-	requiredLbs := d.validator.Limits.EnforcedLabels(tenantID)
+func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, policy string) (bool, []string) {
+	perPolicyEnforcedLabels := d.validator.Limits.PolicyEnforcedLabels(tenantID, policy)
+	globalEnforcedLabels := d.validator.Limits.EnforcedLabels(tenantID)
+
+	requiredLbs := append(globalEnforcedLabels, perPolicyEnforcedLabels...)
 	if len(requiredLbs) == 0 {
 		// no enforced labels configured.
 		return false, []string{}
 	}
 
+	// Use a map to deduplicate the required labels. Duplicates may happen if the same label is configured
+	// in both global and per-policy enforced labels.
+	seen := make(map[string]struct{})
 	missingLbs := []string{}
 
 	for _, lb := range requiredLbs {
+		if _, ok := seen[lb]; ok {
+			continue
+		}
+
+		seen[lb] = struct{}{}
 		if !lbs.Has(lb) {
 			missingLbs = append(missingLbs, lb)
 		}
