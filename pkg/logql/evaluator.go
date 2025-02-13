@@ -14,6 +14,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/prometheus/prometheus/promql/parser"
+
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -21,7 +23,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/cache/resultscache"
 	"github.com/grafana/loki/v3/pkg/util"
-	"github.com/prometheus/prometheus/promql/parser"
 )
 
 type QueryRangeType string
