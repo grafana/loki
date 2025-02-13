@@ -145,7 +145,7 @@ variable "sqs_queue_name_prefix" {
 }
 
 variable "cw_filter_pattern" {
-  type = string
+  type        = string
   description = "CloudWatch subscription filter pattern"
-  default = ""
+  default     = ""
 }
