@@ -981,7 +981,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			mgr.MarkPhaseFinished()
 
-			processedRequests, err := mockDeleteRequestsStore.GetDeleteRequestsByStatus(context.Background(), StatusProcessed)
+			processedRequests, err := mockDeleteRequestsStore.getDeleteRequestsByStatus(StatusProcessed)
 			require.NoError(t, err)
 			require.Len(t, processedRequests, len(tc.expectedRequestsMarkedAsProcessed))
 
@@ -1018,14 +1018,24 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 	}
 }
 
+type storeAddReqDetails struct {
+	userID, query      string
+	startTime, endTime model.Time
+	shardByInterval    time.Duration
+}
+
+type removeReqDetails struct {
+	userID, reqID string
+}
+
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
 	deleteRequests           []DeleteRequest
-	addReqs                  []DeleteRequest
+	addReq                   storeAddReqDetails
 	addErr                   error
 	returnZeroDeleteRequests bool
 
-	removeReqs []DeleteRequest
+	removeReqs removeReqDetails
 	removeErr  error
 
 	getUser   string
@@ -1040,7 +1050,11 @@ type mockDeleteRequestsStore struct {
 	genNumber string
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, status DeleteRequestStatus) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetUnprocessedShards(_ context.Context) ([]DeleteRequest, error) {
+	return m.getDeleteRequestsByStatus(StatusReceived)
+}
+
+func (m *mockDeleteRequestsStore) getDeleteRequestsByStatus(status DeleteRequestStatus) ([]DeleteRequest, error) {
 	reqs := make([]DeleteRequest, 0, len(m.deleteRequests))
 	for i := range m.deleteRequests {
 		if m.deleteRequests[i].Status == status {
@@ -1050,27 +1064,36 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, s
 	return reqs, nil
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequests(_ context.Context) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllRequests(_ context.Context) ([]DeleteRequest, error) {
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
-	m.addReqs = reqs
-	if m.returnZeroDeleteRequests {
-		return []DeleteRequest{}, m.addErr
+func (m *mockDeleteRequestsStore) AddDeleteRequest(_ context.Context, userID, query string, startTime, endTime model.Time, shardByInterval time.Duration) (string, error) {
+	m.addReq = storeAddReqDetails{
+		userID:          userID,
+		query:           query,
+		startTime:       startTime,
+		endTime:         endTime,
+		shardByInterval: shardByInterval,
 	}
-	return m.addReqs, m.addErr
+	return "", m.addErr
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, reqs []DeleteRequest) error {
-	m.removeReqs = reqs
+func (m *mockDeleteRequestsStore) RemoveDeleteRequest(_ context.Context, userID string, requestID string) error {
+	m.removeReqs = removeReqDetails{
+		userID: userID,
+		reqID:  requestID,
+	}
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, userID, requestID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequest(_ context.Context, userID, requestID string) (DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
-	return m.getResult, m.getErr
+	if m.getErr != nil {
+		return DeleteRequest{}, m.getErr
+	}
+	return m.getResult[0], m.getErr
 }
 
 func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
@@ -1082,32 +1105,17 @@ func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ 
 	return m.genNumber, m.getErr
 }
 
-func (m *mockDeleteRequestsStore) UpdateStatus(_ context.Context, req DeleteRequest, newStatus DeleteRequestStatus) error {
+func (m *mockDeleteRequestsStore) MarkShardAsProcessed(_ context.Context, req DeleteRequest) error {
 	for i := range m.deleteRequests {
 		if requestsAreEqual(m.deleteRequests[i], req) {
-			m.deleteRequests[i].Status = newStatus
+			m.deleteRequests[i].Status = StatusProcessed
 		}
 	}
 
 	return nil
 }
 
-func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context, requestToAdd DeleteRequest, requestsToRemove []DeleteRequest) error {
-	n := 0
-	for i := range m.deleteRequests {
-		for j := range requestsToRemove {
-			if requestsAreEqual(m.deleteRequests[i], requestsToRemove[j]) {
-				continue
-			}
-			m.deleteRequests[n] = m.deleteRequests[i]
-			n++
-			break
-		}
-	}
-
-	m.deleteRequests = m.deleteRequests[:n]
-	m.deleteRequests = append(m.deleteRequests, requestToAdd)
-
+func (m *mockDeleteRequestsStore) MergeShardedRequests(_ context.Context) error {
 	return nil
 }
 
@@ -1122,86 +1130,6 @@ func requestsAreEqual(req1, req2 DeleteRequest) bool {
 	}
 
 	return false
-}
-
-func TestDeleteRequestsManager_mergeShardedRequests(t *testing.T) {
-	for _, tc := range []struct {
-		name                   string
-		reqsToAdd              []DeleteRequest
-		shouldMarkProcessed    func(DeleteRequest) bool
-		requestsShouldBeMerged bool
-	}{
-		{
-			name: "no requests in store",
-		},
-		{
-			name:      "none of the requests are processed - should not merge",
-			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-			shouldMarkProcessed: func(_ DeleteRequest) bool {
-				return false
-			},
-		},
-		{
-			name:      "not all requests are processed - should not merge",
-			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-			shouldMarkProcessed: func(request DeleteRequest) bool {
-				return request.SequenceNum%2 == 0
-			},
-		},
-		{
-			name:      "all the requests are processed - should merge",
-			reqsToAdd: buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-			shouldMarkProcessed: func(_ DeleteRequest) bool {
-				return true
-			},
-			requestsShouldBeMerged: true,
-		},
-		{ // build requests for 2 different users and mark all requests as processed for just one of the two
-			name: "merging requests from one user should not touch another users requests",
-			reqsToAdd: append(
-				buildRequests(time.Hour, `{foo="bar"}`, user1, now.Add(-24*time.Hour), now),
-				buildRequests(time.Hour, `{foo="bar"}`, user2, now.Add(-24*time.Hour), now)...,
-			),
-			shouldMarkProcessed: func(request DeleteRequest) bool {
-				return request.UserID == user2
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			mgr := setupManager(t)
-			reqs, err := mgr.deleteRequestsStore.AddDeleteRequestGroup(context.Background(), tc.reqsToAdd)
-			require.NoError(t, err)
-			require.GreaterOrEqual(t, len(reqs), len(tc.reqsToAdd))
-
-			for _, req := range reqs {
-				if !tc.shouldMarkProcessed(req) {
-					continue
-				}
-				require.NoError(t, mgr.deleteRequestsStore.UpdateStatus(context.Background(), req, StatusProcessed))
-			}
-
-			inStoreReqs, err := mgr.deleteRequestsStore.GetAllDeleteRequestsForUser(context.Background(), user1)
-			require.NoError(t, err)
-
-			require.NoError(t, mgr.mergeShardedRequests(context.Background()))
-			inStoreReqsAfterMerging, err := mgr.deleteRequestsStore.GetAllDeleteRequestsForUser(context.Background(), user1)
-			require.NoError(t, err)
-
-			if tc.requestsShouldBeMerged {
-				require.Len(t, inStoreReqsAfterMerging, 1)
-				require.True(t, requestsAreEqual(inStoreReqsAfterMerging[0], DeleteRequest{
-					UserID:    user1,
-					Query:     tc.reqsToAdd[0].Query,
-					StartTime: tc.reqsToAdd[0].StartTime,
-					EndTime:   tc.reqsToAdd[len(tc.reqsToAdd)-1].EndTime,
-					Status:    StatusProcessed,
-				}))
-			} else {
-				require.Len(t, inStoreReqsAfterMerging, len(inStoreReqs))
-				require.Equal(t, inStoreReqs, inStoreReqsAfterMerging)
-			}
-		})
-	}
 }
 
 func setupManager(t *testing.T) *DeleteRequestsManager {

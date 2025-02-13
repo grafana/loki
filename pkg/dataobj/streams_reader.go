@@ -192,8 +192,8 @@ func matchStreamsPredicate(p Predicate, stream streams.Stream) bool {
 	case NotPredicate[StreamsPredicate]:
 		return !matchStreamsPredicate(p.Inner, stream)
 	case TimeRangePredicate[StreamsPredicate]:
-		// A stream is in range if either its min or max timestamp is in the range.
-		return matchTimestamp(p, stream.MinTimestamp) || matchTimestamp(p, stream.MaxTimestamp)
+		// A stream matches if its time range overlaps with the query range
+		return overlapsTimeRange(p, stream.MinTimestamp, stream.MaxTimestamp)
 	case LabelMatcherPredicate:
 		return stream.Labels.Get(p.Name) == p.Value
 	case LabelFilterPredicate:
@@ -205,16 +205,31 @@ func matchStreamsPredicate(p Predicate, stream streams.Stream) bool {
 	}
 }
 
+func overlapsTimeRange[P Predicate](p TimeRangePredicate[P], start, end time.Time) bool {
+	switch {
+	case p.IncludeStart && p.IncludeEnd:
+		return !end.Before(p.StartTime) && !start.After(p.EndTime)
+	case p.IncludeStart && !p.IncludeEnd:
+		return !end.Before(p.StartTime) && start.Before(p.EndTime)
+	case !p.IncludeStart && p.IncludeEnd:
+		return end.After(p.StartTime) && !start.After(p.EndTime)
+	case !p.IncludeStart && !p.IncludeEnd:
+		return end.After(p.StartTime) && start.Before(p.EndTime)
+	default:
+		panic("unreachable")
+	}
+}
+
 func matchTimestamp[P Predicate](p TimeRangePredicate[P], ts time.Time) bool {
 	switch {
-	case p.IncludeStart && p.IncludeEnd: // start <= ts <= end
-		return (p.StartTime.Before(ts) || p.StartTime.Equal(ts)) && (ts.Before(p.EndTime) || ts.Equal(p.EndTime))
-	case p.IncludeStart && !p.IncludeEnd: // start <= ts < end
-		return (p.StartTime.Before(ts) || p.StartTime.Equal(ts)) && ts.Before(p.EndTime)
-	case !p.IncludeStart && p.IncludeEnd: // start < ts <= end
-		return p.StartTime.Before(ts) && (ts.Before(p.EndTime) || ts.Equal(p.EndTime))
-	case !p.IncludeStart && !p.IncludeEnd: // start < ts < end
-		return p.StartTime.Before(ts) && ts.Before(p.EndTime)
+	case p.IncludeStart && p.IncludeEnd:
+		return !ts.Before(p.StartTime) && !ts.After(p.EndTime) // ts >= start && ts <= end
+	case p.IncludeStart && !p.IncludeEnd:
+		return !ts.Before(p.StartTime) && ts.Before(p.EndTime) // ts >= start && ts < end
+	case !p.IncludeStart && p.IncludeEnd:
+		return ts.After(p.StartTime) && !ts.After(p.EndTime) // ts > start && ts <= end
+	case !p.IncludeStart && !p.IncludeEnd:
+		return ts.After(p.StartTime) && ts.Before(p.EndTime) // ts > start && ts < end
 	default:
 		panic("unreachable")
 	}
