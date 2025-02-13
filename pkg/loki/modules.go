@@ -1956,13 +1956,13 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	return t.dataObjConsumer, nil
 }
 
-func (t *Loki) createDataObjBucket(name string) (objstore.Bucket, error) {
+func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
 	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)
 	}
 	var objstoreBucket objstore.Bucket
-	objstoreBucket, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, name, util_log.Logger)
+	objstoreBucket, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, clientName, util_log.Logger)
 	if err != nil {
 		return nil, err
 	}
