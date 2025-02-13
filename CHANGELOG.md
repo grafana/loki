@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.1](https://github.com/grafana/loki/compare/v3.4.0...v3.4.1) (2025-02-12)
+
+
+### Bug Fixes
+
+* build info in docker images ([#16225](https://github.com/grafana/loki/issues/16225)) ([4484080](https://github.com/grafana/loki/commit/4484080c7662817e945c0276ba15d05315e93194))
+
 ## [3.4.0](https://github.com/grafana/loki/compare/v3.3.0...v3.4.0) (2025-02-12)
 
 
