@@ -3149,7 +3149,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.35-alpine
+    tag: 1.6.36-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
