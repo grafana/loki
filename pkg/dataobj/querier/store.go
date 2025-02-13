@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/grafana/dskit/tenant"
@@ -27,7 +28,36 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
 
-var _ querier.Store = &Store{}
+var (
+	_ querier.Store = &Store{}
+
+	noShard = logql.Shard{
+		PowerOfTwo: &index.ShardAnnotation{
+			Shard: uint32(1),
+			Of:    uint32(1),
+		},
+	}
+
+	shardedObjectsPool = sync.Pool{
+		New: func() any {
+			return &shardedObject{
+				streams:    make(map[int64]dataobj.Stream),
+				streamsIDs: make([]int64, 0, 1024),
+				logReaders: make([]*dataobj.LogsReader, 0, 16),
+			}
+		},
+	}
+	logReaderPool = sync.Pool{
+		New: func() any {
+			return &dataobj.LogsReader{}
+		},
+	}
+	streamReaderPool = sync.Pool{
+		New: func() any {
+			return &dataobj.StreamsReader{}
+		},
+	}
+)
 
 type Config struct {
 	Enabled bool                  `yaml:"enabled" doc:"description=Enable the dataobj querier."`
@@ -46,10 +76,12 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// Store implements querier.Store for querying data objects.
 type Store struct {
 	bucket objstore.Bucket
 }
 
+// NewStore creates a new Store.
 func NewStore(bucket objstore.Bucket) *Store {
 	return &Store{
 		bucket: bucket,
@@ -78,17 +110,7 @@ func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	selector, err := expr.Selector()
-	if err != nil {
-		return nil, err
-	}
-
-	extractor, err := expr.Extractor()
-	if err != nil {
-		return nil, err
-	}
-
-	return selectSamples(ctx, objects, shard, selector.Matchers(), extractor, req.Start, req.End)
+	return selectSamples(ctx, objects, shard, expr, req.Start, req.End)
 }
 
 // Stats implements querier.Store
@@ -109,6 +131,7 @@ func (s *Store) GetShards(_ context.Context, _ string, _ model.Time, _ model.Tim
 	return &logproto.ShardsResponse{}, nil
 }
 
+// objectsForTimeRange returns data objects for the given time range.
 func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time) ([]*dataobj.Object, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -126,34 +149,23 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	return objects, nil
 }
 
-var noShard = logql.Shard{
-	PowerOfTwo: &index.ShardAnnotation{
-		Shard: uint32(1),
-		Of:    uint32(1),
-	},
-}
-
-func parseShards(shards []string) (logql.Shard, error) {
-	if len(shards) == 0 {
-		return noShard, nil
-	}
-	parsed, _, err := logql.ParseShards(shards)
-	if err != nil {
-		return noShard, err
-	}
-	if len(parsed) == 0 {
-		return noShard, nil
-	}
-	return parsed[0], nil
-}
-
-func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, matchers []*labels.Matcher, extractor syntax.SampleExtractor, start, end time.Time) (iter.SampleIterator, error) {
-	shardedObjects, err := shardObjects(ctx, objects, shard)
+func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time) (iter.SampleIterator, error) {
+	selector, err := expr.Selector()
 	if err != nil {
 		return nil, err
 	}
 
-	streamsPredicate := streamPredicate(matchers, start, end)
+	shardedObjects, err := shardObjects(ctx, objects, shard)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		for _, obj := range shardedObjects {
+			obj.reset()
+			shardedObjectsPool.Put(obj)
+		}
+	}()
+	streamsPredicate := streamPredicate(selector.Matchers(), start, end)
 	// TODO: support more predicates and combine with log.Pipeline.
 	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
 		StartTime:    start,
@@ -165,12 +177,13 @@ func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.S
 	g, ctx := errgroup.WithContext(ctx)
 	iterators := make([]iter.SampleIterator, len(shardedObjects))
 
-	for i, reader := range shardedObjects {
+	for i, obj := range shardedObjects {
 		g.Go(func() error {
-			iterators[i], err = reader.selectSamples(ctx, streamsPredicate, logsPredicate, extractor)
+			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr)
 			if err != nil {
 				return err
 			}
+			iterators[i] = iterator
 			return nil
 		})
 	}
@@ -194,17 +207,8 @@ func shardObjects(
 	objects []*dataobj.Object,
 	shard logql.Shard,
 ) ([]*shardedObject, error) {
-	// fetch all metadata of objects in parallel
-	g, ctx := errgroup.WithContext(ctx)
-	metadatas := make([]dataobj.Metadata, len(objects))
-	for i, obj := range objects {
-		g.Go(func() error {
-			var err error
-			metadatas[i], err = obj.Metadata(ctx)
-			return err
-		})
-	}
-	if err := g.Wait(); err != nil {
+	metadatas, err := fetchMetadatas(ctx, objects)
+	if err != nil {
 		return nil, err
 	}
 
@@ -213,7 +217,7 @@ func shardObjects(
 	shardedReaders := make([]*shardedObject, 0, len(objects))
 
 	for i, metadata := range metadatas {
-		var reader shardedObject
+		var reader *shardedObject
 
 		for j := 0; j < metadata.LogsSections; j++ {
 			if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
@@ -223,29 +227,40 @@ func shardObjects(
 				}
 			}
 
-			if reader.streamReader == nil {
-				reader.streamReader = dataobj.NewStreamsReader(objects[i], j)
+			if reader == nil {
+				reader = shardedObjectsPool.Get().(*shardedObject)
+				reader.streamReader = streamReaderPool.Get().(*dataobj.StreamsReader)
+				reader.streamReader.Reset(objects[i], j)
 			}
-			reader.logReaders = append(reader.logReaders, dataobj.NewLogsReader(objects[i], j))
+			logReader := logReaderPool.Get().(*dataobj.LogsReader)
+			logReader.Reset(objects[i], j)
+			reader.logReaders = append(reader.logReaders, logReader)
 			sectionIndex++
 		}
-
-		if reader.streamReader != nil {
-			shardedReaders = append(shardedReaders, &reader)
+		// if reader is not nil, it means we have at least one log reader
+		if reader != nil {
+			shardedReaders = append(shardedReaders, reader)
 		}
 	}
 
 	return shardedReaders, nil
 }
 
-func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, extractor syntax.SampleExtractor) (iter.SampleIterator, error) {
-	if err := s.streamReader.SetPredicate(streamsPredicate); err != nil {
-		return nil, err
+func (s *shardedObject) reset() {
+	streamReaderPool.Put(s.streamReader)
+	for i, reader := range s.logReaders {
+		logReaderPool.Put(reader)
+		s.logReaders[i] = nil
 	}
-	for _, reader := range s.logReaders {
-		if err := reader.SetPredicate(logsPredicate); err != nil {
-			return nil, err
-		}
+	s.streamReader = nil
+	s.logReaders = s.logReaders[:0]
+	s.streamsIDs = s.streamsIDs[:0]
+	clear(s.streams)
+}
+
+func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate, expr syntax.SampleExpr) (iter.SampleIterator, error) {
+	if err := s.setPredicate(streamsPredicate, logsPredicate); err != nil {
+		return nil, err
 	}
 
 	if err := s.matchStreams(ctx); err != nil {
@@ -257,6 +272,11 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
+			// extractor is not thread safe, so we need to create a new one for each object
+			extractor, err := expr.Extractor()
+			if err != nil {
+				return err
+			}
 			iter, err := newSampleIterator(ctx, s.streams, extractor, reader)
 			if err != nil {
 				return err
@@ -271,6 +291,18 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 	}
 
 	return iter.NewSortSampleIterator(iterators), nil
+}
+
+func (s *shardedObject) setPredicate(streamsPredicate dataobj.StreamsPredicate, logsPredicate dataobj.LogsPredicate) error {
+	if err := s.streamReader.SetPredicate(streamsPredicate); err != nil {
+		return err
+	}
+	for _, reader := range s.logReaders {
+		if err := reader.SetPredicate(logsPredicate); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *shardedObject) matchStreams(ctx context.Context) error {
@@ -299,6 +331,23 @@ func (s *shardedObject) matchStreams(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// fetchMetadatas fetches metadata of objects in parallel
+func fetchMetadatas(ctx context.Context, objects []*dataobj.Object) ([]dataobj.Metadata, error) {
+	g, ctx := errgroup.WithContext(ctx)
+	metadatas := make([]dataobj.Metadata, len(objects))
+	for i, obj := range objects {
+		g.Go(func() error {
+			var err error
+			metadatas[i], err = obj.Metadata(ctx)
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return metadatas, nil
 }
 
 // streamPredicate creates a dataobj.StreamsPredicate from a list of matchers and a time range
@@ -343,4 +392,18 @@ func matchersToPredicate(matchers []*labels.Matcher) dataobj.StreamsPredicate {
 		}
 	}
 	return left
+}
+
+func parseShards(shards []string) (logql.Shard, error) {
+	if len(shards) == 0 {
+		return noShard, nil
+	}
+	parsed, _, err := logql.ParseShards(shards)
+	if err != nil {
+		return noShard, err
+	}
+	if len(parsed) == 0 {
+		return noShard, nil
+	}
+	return parsed[0], nil
 }

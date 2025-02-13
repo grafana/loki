@@ -15,7 +15,7 @@ import (
 var (
 	recordsPool = sync.Pool{
 		New: func() interface{} {
-			records := make([]dataobj.Record, 0, 1024)
+			records := make([]dataobj.Record, 1024)
 			return &records
 		},
 	}
@@ -49,57 +49,47 @@ func newSampleIterator(ctx context.Context,
 		if err != nil && err != io.EOF {
 			return nil, err
 		}
+
+		// Handle end of stream or empty read
 		if n == 0 {
+			iterators = appendIteratorFromSeries(iterators, series)
 			break
 		}
+
+		// Process records in the current batch
 		for _, record := range buf[:n] {
 			stream, ok := streams[record.StreamID]
 			if !ok {
 				continue
 			}
-			// if stream is different from the previous stream, we need to create a new iterator
-			// since records are sorted by streams first then by timestamp
+
+			// Handle stream transition
 			if prevStreamID != record.StreamID {
-				if len(series) > 0 {
-					// build the iterator and append it.
-					seriesRes := make([]logproto.Series, 0, len(series))
-					for _, s := range series {
-						seriesRes = append(seriesRes, *s)
-					}
-					iterators = append(iterators, iter.SampleIteratorWithClose(iter.NewMultiSeriesIterator(seriesRes), func() error {
-						for _, s := range series {
-							samplesPool.Put(&s.Samples)
-						}
-						return nil
-					}))
-				}
+				iterators = appendIteratorFromSeries(iterators, series)
 				clear(series)
 				streamExtractor = extractor.ForStream(stream.Labels)
 				streamHash = streamExtractor.BaseLabels().Hash()
 				prevStreamID = record.StreamID
 			}
-			ts := record.Timestamp.UnixNano()
-			value, parsedLabels, ok := streamExtractor.ProcessString(ts, record.Line, record.Metadata...)
+
+			// Process the record
+			timestamp := record.Timestamp.UnixNano()
+			value, parsedLabels, ok := streamExtractor.ProcessString(timestamp, record.Line, record.Metadata...)
 			if !ok {
 				continue
 			}
-			var (
-				found bool
-				s     *logproto.Series
-			)
-			lbs := parsedLabels.String()
-			if s, found = series[lbs]; !found {
-				samplesPtr := samplesPool.Get().(*[]logproto.Sample)
-				samples := *samplesPtr
-				s = &logproto.Series{
-					Labels:     lbs,
-					Samples:    samples[:0],
-					StreamHash: streamHash,
-				}
-				series[lbs] = s
+
+			// Get or create series for the parsed labels
+			labelString := parsedLabels.String()
+			s, exists := series[labelString]
+			if !exists {
+				s = createNewSeries(labelString, streamHash)
+				series[labelString] = s
 			}
+
+			// Add sample to the series
 			s.Samples = append(s.Samples, logproto.Sample{
-				Timestamp: ts,
+				Timestamp: timestamp,
 				Value:     value,
 				Hash:      0, // todo write a test to verify that we should not try to dedupe when we don't have a hash
 			})
@@ -111,4 +101,37 @@ func newSampleIterator(ctx context.Context,
 	}
 
 	return iter.NewSortSampleIterator(iterators), nil
+}
+
+// createNewSeries creates a new Series for the given labels and stream hash
+func createNewSeries(labels string, streamHash uint64) *logproto.Series {
+	samplesPtr := samplesPool.Get().(*[]logproto.Sample)
+	samples := *samplesPtr
+	return &logproto.Series{
+		Labels:     labels,
+		Samples:    samples[:0],
+		StreamHash: streamHash,
+	}
+}
+
+// appendIteratorFromSeries appends a new SampleIterator to the given list of iterators
+func appendIteratorFromSeries(iterators []iter.SampleIterator, series map[string]*logproto.Series) []iter.SampleIterator {
+	if len(series) == 0 {
+		return iterators
+	}
+
+	seriesResult := make([]logproto.Series, 0, len(series))
+	for _, s := range series {
+		seriesResult = append(seriesResult, *s)
+	}
+
+	return append(iterators, iter.SampleIteratorWithClose(
+		iter.NewMultiSeriesIterator(seriesResult),
+		func() error {
+			for _, s := range seriesResult {
+				samplesPool.Put(&s.Samples)
+			}
+			return nil
+		},
+	))
 }
