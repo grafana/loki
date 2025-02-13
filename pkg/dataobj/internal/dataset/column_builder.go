@@ -104,6 +104,7 @@ func (cb *ColumnBuilder) Append(row int, value Value) error {
 	for range 2 {
 		if cb.append(row, value) {
 			cb.rows = row + 1
+			cb.statsBuilder.Append(value)
 			return nil
 		}
 
@@ -163,15 +164,7 @@ func (cb *ColumnBuilder) append(row int, value Value) bool {
 	if !cb.backfill(row) {
 		return false
 	}
-
-	success := cb.pageBuilder.Append(value)
-	if success {
-		// The page builder returns false when full,
-		// so this check ensures we only add the stats once
-		// rather than twice when a new page is cut.
-		cb.statsBuilder.Append(value)
-	}
-	return success
+	return cb.pageBuilder.Append(value)
 }
 
 // Flush converts data in cb into a [MemColumn]. Afterwards, cb is reset to a
