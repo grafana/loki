@@ -109,6 +109,42 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configures the server of the launched module(s).
 [server: <server>]
 
+ui:
+  # Name to use for this node in the cluster.
+  # CLI flag: -ui.node-name
+  [node_name: <string> | default = "<hostname>"]
+
+  # IP address to advertise in the cluster.
+  # CLI flag: -ui.advertise-addr
+  [advertise_addr: <string> | default = ""]
+
+  # Name of network interface to read address from.
+  # CLI flag: -ui.interface
+  [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # How frequently to rejoin the cluster to address split brain issues.
+  # CLI flag: -ui.rejoin-interval
+  [rejoin_interval: <duration> | default = 15s]
+
+  # Number of initial peers to join from the discovered set.
+  # CLI flag: -ui.cluster-max-join-peers
+  [cluster_max_join_peers: <int> | default = 3]
+
+  # Name to prevent nodes without this identifier from joining the cluster.
+  # CLI flag: -ui.cluster-name
+  [cluster_name: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -ui.enable-ipv6
+  [enable_ipv6: <boolean> | default = false]
+
+  discovery:
+    # List of peers to join the cluster. Supports multiple values separated by
+    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
+    # and SRV records).
+    # CLI flag: -ui.discovery.join-peers
+    [join_peers: <list of strings> | default = []]
+
 # Configures the distributor.
 [distributor: <distributor>]
 
@@ -820,6 +856,10 @@ dataobj:
     # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
     # CLI flag: -dataobj-querier-from
     [from: <daytime> | default = 1970-01-01]
+
+    # The number of shards to use for the dataobj querier.
+    # CLI flag: -dataobj-querier-shard-factor
+    [shard_factor: <int> | default = 32]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -3617,6 +3657,16 @@ otlp_config:
 # all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
+
+# Map of policies to enforced labels. Example:
+#  policy_enforced_labels: 
+#   policy1: 
+#     - label1 
+#     - label2 
+#   policy2: 
+#     - label3 
+#     - label4
+[policy_enforced_labels: <map of string to list of strings>]
 
 # Map of policies to stream selectors with a priority. Experimental.  Example:
 #  policy_stream_mapping: 

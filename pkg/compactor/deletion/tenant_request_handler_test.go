@@ -23,8 +23,7 @@ func TestDeleteRequestHandlerDeletionMiddleware(t *testing.T) {
 	}
 
 	// Setup handler
-	middle := TenantMiddleware(fl, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
-
+	middle := TenantMiddleware(fl).Wrap(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	// User that has deletion enabled
 	req := httptest.NewRequest(http.MethodGet, "http://www.your-domain.com", nil)
 	req = req.WithContext(user.InjectOrgID(req.Context(), "1"))

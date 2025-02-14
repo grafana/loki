@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,7 +16,9 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -192,8 +196,8 @@ func metastorePath(tenantID string, window time.Time) string {
 }
 
 func Iter(tenantID string, start, end time.Time) iter.Seq[string] {
-	minMetastoreWindow := start.Truncate(metastoreWindowSize)
-	maxMetastoreWindow := end.Truncate(metastoreWindowSize)
+	minMetastoreWindow := start.Truncate(metastoreWindowSize).UTC()
+	maxMetastoreWindow := end.Truncate(metastoreWindowSize).UTC()
 
 	return func(yield func(t string) bool) {
 		for metastoreWindow := minMetastoreWindow; !metastoreWindow.After(maxMetastoreWindow); metastoreWindow = metastoreWindow.Add(metastoreWindowSize) {
@@ -202,4 +206,136 @@ func Iter(tenantID string, start, end time.Time) iter.Seq[string] {
 			}
 		}
 	}
+}
+
+// ListDataObjects returns a list of all dataobj paths for the given tenant and time range.
+func ListDataObjects(ctx context.Context, bucket objstore.Bucket, tenantID string, start, end time.Time) ([]string, error) {
+	// Get all metastore paths for the time range
+	var storePaths []string
+	for path := range Iter(tenantID, start, end) {
+		storePaths = append(storePaths, path)
+	}
+
+	// List objects from all stores concurrently
+	paths, err := listObjectsFromStores(ctx, bucket, storePaths, start, end)
+	if err != nil {
+		return nil, err
+	}
+
+	return paths, nil
+}
+
+// listObjectsFromStores concurrently lists objects from multiple metastore files
+func listObjectsFromStores(ctx context.Context, bucket objstore.Bucket, storePaths []string, start, end time.Time) ([]string, error) {
+	objects := make([][]string, len(storePaths))
+	g, ctx := errgroup.WithContext(ctx)
+
+	for i, path := range storePaths {
+		g.Go(func() error {
+			var err error
+			objects[i], err = listObjects(ctx, bucket, path, start, end)
+			// If the metastore object is not found, it means it's outside of any existing window
+			// and we can safely ignore it.
+			if err != nil && !bucket.IsObjNotFoundErr(err) {
+				return fmt.Errorf("listing objects from metastore %s: %w", path, err)
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return dedupeAndSort(objects), nil
+}
+
+func listObjects(ctx context.Context, bucket objstore.Bucket, path string, start, end time.Time) ([]string, error) {
+	var buf bytes.Buffer
+	objectReader, err := bucket.Get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	n, err := buf.ReadFrom(objectReader)
+	if err != nil {
+		return nil, fmt.Errorf("reading metastore object: %w", err)
+	}
+	object := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), n)
+	si, err := object.Metadata(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("resolving object metadata: %w", err)
+	}
+
+	var objectPaths []string
+	streams := make([]dataobj.Stream, 1024)
+	for i := 0; i < si.StreamsSections; i++ {
+		streamsReader := dataobj.NewStreamsReader(object, i)
+		for {
+			n, err := streamsReader.Read(ctx, streams)
+			if err != nil && err != io.EOF {
+				return nil, fmt.Errorf("reading streams: %w", err)
+			}
+			if n == 0 {
+				break
+			}
+			for _, stream := range streams[:n] {
+				ok, objPath := objectOverlapsRange(stream.Labels, start, end)
+				if ok {
+					objectPaths = append(objectPaths, objPath)
+				}
+			}
+		}
+	}
+	return objectPaths, nil
+}
+
+// dedupeAndSort takes a slice of string slices and returns a sorted slice of unique strings
+func dedupeAndSort(objects [][]string) []string {
+	uniquePaths := make(map[string]struct{})
+	for _, batch := range objects {
+		for _, path := range batch {
+			uniquePaths[path] = struct{}{}
+		}
+	}
+
+	paths := make([]string, 0, len(uniquePaths))
+	for path := range uniquePaths {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// objectOverlapsRange checks if an object's time range overlaps with the query range
+func objectOverlapsRange(lbs labels.Labels, start, end time.Time) (bool, string) {
+	var (
+		objStart, objEnd time.Time
+		objPath          string
+	)
+	for _, lb := range lbs {
+		if lb.Name == "__start__" {
+			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
+			if err != nil {
+				panic(err)
+			}
+			objStart = time.Unix(0, tsNano).UTC()
+		}
+		if lb.Name == "__end__" {
+			tsNano, err := strconv.ParseInt(lb.Value, 10, 64)
+			if err != nil {
+				panic(err)
+			}
+			objEnd = time.Unix(0, tsNano).UTC()
+		}
+		if lb.Name == "__path__" {
+			objPath = lb.Value
+		}
+	}
+	if objStart.IsZero() || objEnd.IsZero() {
+		return false, ""
+	}
+	if objEnd.Before(start) || objStart.After(end) {
+		return false, ""
+	}
+	return true, objPath
 }
