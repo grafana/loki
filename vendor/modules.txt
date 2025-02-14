@@ -1493,6 +1493,7 @@ github.com/prometheus/prometheus/tsdb/wlog
 github.com/prometheus/prometheus/util/almost
 github.com/prometheus/prometheus/util/annotations
 github.com/prometheus/prometheus/util/gate
+github.com/prometheus/prometheus/util/jsonutil
 github.com/prometheus/prometheus/util/logging
 github.com/prometheus/prometheus/util/osutil
 github.com/prometheus/prometheus/util/pool
