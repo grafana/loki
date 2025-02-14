@@ -39,7 +39,6 @@ import (
 	"google.golang.org/grpc/xds/internal/balancer/clustermanager"
 	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/httpfilter"
-	"google.golang.org/grpc/xds/internal/httpfilter/router"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
@@ -54,10 +53,10 @@ type serviceConfig struct {
 	LoadBalancingConfig balancerConfig `json:"loadBalancingConfig"`
 }
 
-type balancerConfig []map[string]interface{}
+type balancerConfig []map[string]any
 
-func newBalancerConfig(name string, config interface{}) balancerConfig {
-	return []map[string]interface{}{{name: config}}
+func newBalancerConfig(name string, config any) balancerConfig {
+	return []map[string]any{{name: config}}
 }
 
 type cdsBalancerConfig struct {
@@ -121,6 +120,7 @@ type routeCluster struct {
 
 type route struct {
 	m                 *xdsresource.CompositeMatcher // converted from route matchers
+	actionType        xdsresource.RouteActionType   // holds route action type
 	clusters          wrr.WRR                       // holds *routeCluster entries
 	maxStreamDuration time.Duration
 	// map from filter name to its config
@@ -142,6 +142,7 @@ type configSelector struct {
 }
 
 var errNoMatchedRouteFound = status.Errorf(codes.Unavailable, "no matched route was found")
+var errUnsupportedClientRouteAction = status.Errorf(codes.Unavailable, "matched route does not have a supported route action type")
 
 func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RPCConfig, error) {
 	if cs == nil {
@@ -155,8 +156,13 @@ func (cs *configSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*iresolver.RP
 			break
 		}
 	}
+
 	if rt == nil || rt.clusters == nil {
 		return nil, errNoMatchedRouteFound
+	}
+
+	if rt.actionType != xdsresource.RouteActionRoute {
+		return nil, errUnsupportedClientRouteAction
 	}
 
 	cluster, ok := rt.clusters.Next().(*routeCluster)
@@ -280,11 +286,6 @@ func (cs *configSelector) newInterceptor(rt *route, cluster *routeCluster) (ires
 	}
 	interceptors := make([]iresolver.ClientInterceptor, 0, len(cs.httpFilterConfig))
 	for _, filter := range cs.httpFilterConfig {
-		if router.IsRouterFilter(filter.Filter) {
-			// Ignore any filters after the router filter.  The router itself
-			// is currently a nop.
-			return &interceptorList{interceptors: interceptors}, nil
-		}
 		override := cluster.httpFilterConfigOverride[filter.Name] // cluster is highest priority
 		if override == nil {
 			override = rt.httpFilterConfigOverride[filter.Name] // route is second priority
@@ -305,7 +306,7 @@ func (cs *configSelector) newInterceptor(rt *route, cluster *routeCluster) (ires
 			interceptors = append(interceptors, i)
 		}
 	}
-	return nil, fmt.Errorf("error in xds config: no router filter present")
+	return &interceptorList{interceptors: interceptors}, nil
 }
 
 // stop decrements refs of all clusters referenced by this config selector.
@@ -381,6 +382,7 @@ func (r *xdsResolver) newConfigSelector(su serviceUpdate) (*configSelector, erro
 		if err != nil {
 			return nil, err
 		}
+		cs.routes[i].actionType = rt.ActionType
 		if rt.MaxStreamDuration == nil {
 			cs.routes[i].maxStreamDuration = su.ldsConfig.maxStreamDuration
 		} else {

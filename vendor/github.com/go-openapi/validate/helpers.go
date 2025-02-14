@@ -157,7 +157,7 @@ func (h *valueHelper) asInt64(val interface{}) int64 {
 	// Number conversion function for int64, without error checking
 	// (implements an implicit type upgrade).
 	v := reflect.ValueOf(val)
-	switch v.Kind() {
+	switch v.Kind() { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return v.Int()
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -174,7 +174,7 @@ func (h *valueHelper) asUint64(val interface{}) uint64 {
 	// Number conversion function for uint64, without error checking
 	// (implements an implicit type upgrade).
 	v := reflect.ValueOf(val)
-	switch v.Kind() {
+	switch v.Kind() { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return uint64(v.Int())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -192,7 +192,7 @@ func (h *valueHelper) asFloat64(val interface{}) float64 {
 	// Number conversion function for float64, without error checking
 	// (implements an implicit type upgrade).
 	v := reflect.ValueOf(val)
-	switch v.Kind() {
+	switch v.Kind() { //nolint:exhaustive
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return float64(v.Int())
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -250,7 +250,7 @@ func (h *paramHelper) resolveParam(path, method, operationID string, param *spec
 
 	}
 	if err != nil { // Safeguard
-		// NOTE: we may enter enter here when the whole parameter is an unresolved $ref
+		// NOTE: we may enter here when the whole parameter is an unresolved $ref
 		refPath := strings.Join([]string{"\"" + path + "\"", method}, ".")
 		errorHelp.addPointerError(res, err, param.Ref.String(), refPath)
 		return nil, res

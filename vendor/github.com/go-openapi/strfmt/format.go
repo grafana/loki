@@ -94,7 +94,7 @@ func NewSeededFormats(seeds []knownFormat, normalizer NameNormalizer) Registry {
 }
 
 // MapStructureHookFunc is a decode hook function for mapstructure
-func (f *defaultFormats) MapStructureHookFunc() mapstructure.DecodeHookFunc { //nolint:gocyclo,cyclop
+func (f *defaultFormats) MapStructureHookFunc() mapstructure.DecodeHookFunc {
 	return func(from reflect.Type, to reflect.Type, obj interface{}) (interface{}, error) {
 		if from.Kind() != reflect.String {
 			return obj, nil
@@ -109,7 +109,7 @@ func (f *defaultFormats) MapStructureHookFunc() mapstructure.DecodeHookFunc { //
 			if to == tpe {
 				switch v.Name {
 				case "date":
-					d, err := time.Parse(RFC3339FullDate, data)
+					d, err := time.ParseInLocation(RFC3339FullDate, data, DefaultTimeLocation)
 					if err != nil {
 						return nil, err
 					}
