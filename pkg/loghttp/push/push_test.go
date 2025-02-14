@@ -476,6 +476,93 @@ func Test_ServiceDetection(t *testing.T) {
 	})
 }
 
+func BenchmarkRetentionPeriodToString(b *testing.B) {
+	testCases := []struct {
+		name            string
+		retentionPeriod time.Duration
+	}{
+		{
+			name:            "744h",
+			retentionPeriod: 744 * time.Hour,
+		},
+		{
+			name:            "840h",
+			retentionPeriod: 840 * time.Hour,
+		},
+		{
+			name:            "2232h",
+			retentionPeriod: 2232 * time.Hour,
+		},
+		{
+			name:            "8784h",
+			retentionPeriod: 8784 * time.Hour,
+		},
+		{
+			name:            "1000h",
+			retentionPeriod: 1000 * time.Hour,
+		},
+		{
+			name:            "zero retention period",
+			retentionPeriod: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for n := 0; n < b.N; n++ {
+				RetentionPeriodToString(tc.retentionPeriod)
+			}
+		})
+	}
+}
+
+func TestRetentionPeriodToString(t *testing.T) {
+	testCases := []struct {
+		name            string
+		retentionPeriod time.Duration
+		expected        string
+	}{
+		{
+			name:            "744h",
+			retentionPeriod: 744 * time.Hour,
+			expected:        "744",
+		},
+		{
+			name:            "840h",
+			retentionPeriod: 840 * time.Hour,
+			expected:        "840",
+		},
+		{
+			name:            "2232h",
+			retentionPeriod: 2232 * time.Hour,
+			expected:        "2232",
+		},
+		{
+			name:            "8784h",
+			retentionPeriod: 8784 * time.Hour,
+			expected:        "8784",
+		},
+		{
+			name:            "1000h",
+			retentionPeriod: 1000 * time.Hour,
+			expected:        "1000",
+		},
+		{
+			name:            "zero retention period",
+			retentionPeriod: 0,
+			expected:        "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := RetentionPeriodToString(tc.retentionPeriod)
+			assert.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
 type fakeLimits struct {
 	enabled         bool
 	labels          []string

@@ -8,6 +8,7 @@ import (
 	"math"
 	"mime"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -346,11 +347,10 @@ func ParseLokiRequest(userID string, r *http.Request, tenantsRetention TenantsRe
 }
 
 func RetentionPeriodToString(retentionPeriod time.Duration) string {
-	var retentionHours string
-	if retentionPeriod > 0 {
-		retentionHours = fmt.Sprintf("%d", int64(math.Floor(retentionPeriod.Hours())))
+	if retentionPeriod <= 0 {
+		return ""
 	}
-	return retentionHours
+	return strconv.FormatInt(int64(retentionPeriod/time.Hour), 10)
 }
 
 // OTLPError writes an OTLP-compliant error response to the given http.ResponseWriter.
