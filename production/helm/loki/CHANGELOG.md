@@ -24,6 +24,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 6.25.1
 
 - [BUGFIX] Disable service monitor for nginx service.
+## 6.26.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.4.2
 
 ## 6.25.0
 
