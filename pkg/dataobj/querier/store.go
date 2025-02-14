@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/querier"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
+	"github.com/grafana/loki/v3/pkg/storage/config"
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -60,13 +61,15 @@ var (
 )
 
 type Config struct {
-	Enabled bool                  `yaml:"enabled" doc:"description=Enable the dataobj querier."`
-	From    storageconfig.DayTime `yaml:"from" doc:"description=The date of the first day of when the dataobj querier should start querying from. In YYYY-MM-DD format, for example: 2018-04-15."`
+	Enabled     bool                  `yaml:"enabled" doc:"description=Enable the dataobj querier."`
+	From        storageconfig.DayTime `yaml:"from" doc:"description=The date of the first day of when the dataobj querier should start querying from. In YYYY-MM-DD format, for example: 2018-04-15."`
+	ShardFactor int                   `yaml:"shard_factor" doc:"description=The number of shards to use for the dataobj querier."`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "dataobj-querier-enabled", false, "Enable the dataobj querier.")
 	f.Var(&c.From, "dataobj-querier-from", "The start time to query from.")
+	f.IntVar(&c.ShardFactor, "dataobj-querier-shard-factor", 32, "The number of shards to use for the dataobj querier.")
 }
 
 func (c *Config) Validate() error {
@@ -74,6 +77,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("from is required when dataobj querier is enabled")
 	}
 	return nil
+}
+
+func (c *Config) PeriodConfig() config.PeriodConfig {
+	return config.PeriodConfig{
+		From:      c.From,
+		RowShards: uint32(c.ShardFactor),
+		Schema:    "v13",
+	}
 }
 
 // Store implements querier.Store for querying data objects.

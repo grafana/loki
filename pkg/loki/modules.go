@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1056,13 +1057,23 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	schemas := t.Cfg.SchemaConfig
+	// Adjust schema config to use constant sharding for the timerange of dataobj querier.
+	if t.Cfg.DataObj.Querier.Enabled {
+		schemas = schemas.Clone()
+		schemas.Configs = append(schemas.Configs, t.Cfg.DataObj.Querier.PeriodConfig())
+		sort.Slice(schemas.Configs, func(i, j int) bool {
+			return schemas.Configs[i].From.UnixNano() < schemas.Configs[j].From.UnixNano()
+		})
+	}
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
-		t.Cfg.SchemaConfig,
+		schemas,
 		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
