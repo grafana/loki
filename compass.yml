@@ -1,0 +1,16 @@
+name: loki
+id: ari:cloud:compass:9233df39-e597-47e6-ab42-e07f4d48709c:component/30d7834e-f829-4e6c-9b1b-cc6d8c1e56c5/b383aa81-d7e5-40e2-950c-caf2f104bd5a
+description: Like Prometheus, but for logs.
+configVersion: 1
+typeId: SERVICE
+fields:
+  tier: 4
+links:
+  - name: null
+    type: REPOSITORY
+    url: https://github.com/fulcrumapp/loki
+relationships:
+  DEPENDS_ON: []
+labels:
+  - source:github
+customFields: null
