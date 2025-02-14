@@ -4,7 +4,6 @@
 package filesystem
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -285,15 +284,24 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reade
 	}
 	defer fileLock.Unlock()
 
-	var r io.ReadCloser
-	r, err = os.Open(file)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	} else if err == nil {
-		defer r.Close()
+	var missing bool
+	openedFile, err := os.Open(file)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+		missing = true
 	}
 
-	newContent, err := f(wrapReader(r))
+	// redefine the callback reader so a nil originalContent (with concrete type but no value)
+	// doesn't pass nil-checks in the callback
+	var reader io.Reader
+	if !missing {
+		reader = openedFile
+		defer openedFile.Close()
+	}
+
+	newContent, err := f(reader)
 	if err != nil {
 		return err
 	}
@@ -304,13 +312,6 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reade
 	}
 
 	return os.WriteFile(file, content, 0600)
-}
-
-func wrapReader(r io.Reader) io.Reader {
-	if r == nil {
-		return bytes.NewReader(nil)
-	}
-	return r
 }
 
 func isDirEmpty(name string) (ok bool, err error) {

@@ -822,38 +822,47 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
-dataobj_consumer:
-  builderconfig:
-    # The size of the target page to use for the data object builder.
-    # CLI flag: -dataobj-consumer.target-page-size
-    [target_page_size: <int> | default = 2MiB]
+dataobj:
+  consumer:
+    builderconfig:
+      # The size of the target page to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-page-size
+      [target_page_size: <int> | default = 2MiB]
 
-    # The size of the target object to use for the data object builder.
-    # CLI flag: -dataobj-consumer.target-object-size
-    [target_object_size: <int> | default = 1GiB]
+      # The size of the target object to use for the data object builder.
+      # CLI flag: -dataobj-consumer.target-object-size
+      [target_object_size: <int> | default = 1GiB]
 
-    # Configures a maximum size for sections, for sections that support it.
-    # CLI flag: -dataobj-consumer.target-section-size
-    [target_section_size: <int> | default = 128MiB]
+      # Configures a maximum size for sections, for sections that support it.
+      # CLI flag: -dataobj-consumer.target-section-size
+      [target_section_size: <int> | default = 128MiB]
 
-    # The size of the buffer to use for sorting logs.
-    # CLI flag: -dataobj-consumer.buffer-size
-    [buffer_size: <int> | default = 16MiB]
+      # The size of the buffer to use for sorting logs.
+      # CLI flag: -dataobj-consumer.buffer-size
+      [buffer_size: <int> | default = 16MiB]
 
-  uploader:
-    # The size of the SHA prefix to use for generating object storage keys for
-    # data objects.
-    # CLI flag: -dataobj-consumer.sha-prefix-size
-    [shaprefixsize: <int> | default = 2]
+    uploader:
+      # The size of the SHA prefix to use for generating object storage keys for
+      # data objects.
+      # CLI flag: -dataobj-consumer.sha-prefix-size
+      [shaprefixsize: <int> | default = 2]
+
+  querier:
+    # Enable the dataobj querier.
+    # CLI flag: -dataobj-querier-enabled
+    [enabled: <boolean> | default = false]
+
+    # The date of the first day of when the dataobj querier should start
+    # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
+    # CLI flag: -dataobj-querier-from
+    [from: <daytime> | default = 1970-01-01]
+
+    # The number of shards to use for the dataobj querier.
+    # CLI flag: -dataobj-querier-shard-factor
+    [shard_factor: <int> | default = 32]
 
   # The prefix to use for the storage bucket.
-  # CLI flag: -dataobj-consumer.storage-bucket-prefix
-  [storage_bucket_prefix: <string> | default = "dataobj/"]
-
-dataobj_explorer:
-  # Prefix to use when exploring the bucket. If set, only objects under this
-  # prefix will be visible.
-  # CLI flag: -dataobj-explorer.storage-bucket-prefix
+  # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
 
 # Configuration for 'runtime config' module, responsible for reloading runtime
@@ -3648,6 +3657,29 @@ otlp_config:
 # all tenants. Experimental.
 # CLI flag: -validation.enforced-labels
 [enforced_labels: <list of strings> | default = []]
+
+# Map of policies to enforced labels. Example:
+#  policy_enforced_labels: 
+#   policy1: 
+#     - label1 
+#     - label2 
+#   policy2: 
+#     - label3 
+#     - label4
+[policy_enforced_labels: <map of string to list of strings>]
+
+# Map of policies to stream selectors with a priority. Experimental.  Example:
+#  policy_stream_mapping: 
+#   finance: 
+#     - selector: '{namespace="prod", container="billing"}' 
+#       priority: 2 
+#   ops: 
+#     - selector: '{namespace="prod", container="ops"}' 
+#       priority: 1 
+#   staging: 
+#     - selector: '{namespace="staging"}' 
+#       priority: 1
+[policy_stream_mapping: <map of string to list of PriorityStreams>]
 
 # The number of partitions a tenant's data should be sharded to when using kafka
 # ingestion. Tenants are sharded across partitions using shuffle-sharding. 0

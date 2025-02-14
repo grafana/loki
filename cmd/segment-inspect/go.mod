@@ -6,7 +6,7 @@ toolchain go1.23.5
 
 require (
 	github.com/dustin/go-humanize v1.0.1
-	github.com/grafana/loki/v3 v3.3.2
+	github.com/grafana/loki/v3 v3.4.1
 )
 
 require (

@@ -201,10 +201,6 @@ func (b *InMemBucket) GetAndReplace(ctx context.Context, name string, f func(io.
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 
-	if reader == nil {
-		reader = io.NopCloser(bytes.NewReader(nil))
-	}
-
 	new, err := f(reader)
 	if err != nil {
 		return err

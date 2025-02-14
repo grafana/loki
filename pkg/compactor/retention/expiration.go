@@ -42,6 +42,7 @@ type Limits interface {
 	StreamRetention(userID string) []validation.StreamRetention
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
+	PoliciesStreamMapping(userID string) validation.PolicyStreamMapping
 }
 
 func NewExpirationChecker(limits Limits) ExpirationChecker {

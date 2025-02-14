@@ -5,7 +5,6 @@
 package gcs
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -369,38 +368,35 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, generatio
 }
 
 func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
-	var mustNotExist bool
 	var generation int64
+	var missing bool
 
 	// Get the current object
 	storageReader, err := b.get(ctx, name)
-	if err != nil && !errors.Is(err, storage.ErrObjectNotExist) {
-		return err
-	} else if errors.Is(err, storage.ErrObjectNotExist) {
-		mustNotExist = true
+	if err != nil {
+		if !errors.Is(err, storage.ErrObjectNotExist) {
+			return err
+		}
+		missing = true
 	}
 
+	// redefine the callback reader so a nil originalContent (with concrete type but no value)
+	// doesn't pass nil-checks in the callback
+	var reader io.Reader
 	// If object exists, ensure we close the reader when done
-	if storageReader != nil {
+	if !missing {
 		generation = storageReader.Attrs.Generation
+		reader = storageReader
 		defer storageReader.Close()
 	}
 
-	newContent, err := f(wrapReader(storageReader))
+	newContent, err := f(reader)
 	if err != nil {
 		return err
 	}
 
 	// Upload with the previous generation, or mustNotExist for new objects
-	return b.upload(ctx, name, newContent, generation, mustNotExist)
-}
-
-func wrapReader(r *storage.Reader) io.Reader {
-	if r == nil {
-		return bytes.NewReader(nil)
-	}
-
-	return r
+	return b.upload(ctx, name, newContent, generation, missing)
 }
 
 // Delete removes the object with the given name.

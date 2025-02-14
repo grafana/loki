@@ -370,6 +370,7 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.R
 	c.DeleteRequestsHandler = deletion.NewDeleteRequestHandler(
 		c.deleteRequestsStore,
 		c.cfg.DeleteMaxInterval,
+		c.cfg.DeleteRequestCancelPeriod,
 		r,
 	)
 

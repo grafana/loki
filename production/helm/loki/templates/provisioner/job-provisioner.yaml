@@ -14,7 +14,7 @@ metadata:
     {{- with .Values.enterprise.provisioner.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    "helm.sh/hook": post-install
+    "helm.sh/hook": {{ .Values.enterprise.provisioner.hookType | default "post-install" | quote }}
     "helm.sh/hook-weight": "15"
 spec:
   backoffLimit: 6

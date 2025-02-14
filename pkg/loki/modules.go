@@ -11,6 +11,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +56,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/generationnumber"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
+	dataobjquerier "github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -401,6 +403,36 @@ func (t *Loki) initCodec() (services.Service, error) {
 	return nil, nil
 }
 
+func (t *Loki) getQuerierStore() (querier.Store, error) {
+	if !t.Cfg.DataObj.Querier.Enabled {
+		return t.Store, nil
+	}
+
+	// verify that there's no schema with a date after the dataobj querier from date
+	for _, schema := range t.Cfg.SchemaConfig.Configs {
+		if schema.From.After(t.Cfg.DataObj.Querier.From) {
+			return nil, fmt.Errorf("dataobj querier From should be after the last schema date")
+		}
+	}
+
+	store, err := t.createDataObjBucket("dataobj-querier")
+	if err != nil {
+		return nil, err
+	}
+
+	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
+		{
+			Store: dataobjquerier.NewStore(store),
+			From:  t.Cfg.DataObj.Querier.From.Time,
+		},
+		{
+			Store: t.Store,
+		},
+	})
+
+	return storeCombiner, nil
+}
+
 func (t *Loki) initQuerier() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "querier")
 	if t.Cfg.Ingester.QueryStoreMaxLookBackPeriod != 0 {
@@ -413,7 +445,12 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	t.Querier, err = querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	querierStore, err := t.getQuerierStore()
+	if err != nil {
+		return nil, err
+	}
+
+	t.Querier, err = querier.New(t.Cfg.Querier, querierStore, t.ingesterQuerier, t.Overrides, deleteStore, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -1025,13 +1062,23 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	schemas := t.Cfg.SchemaConfig
+	// Adjust schema config to use constant sharding for the timerange of dataobj querier.
+	if t.Cfg.DataObj.Querier.Enabled {
+		schemas = schemas.Clone()
+		schemas.Configs = append(schemas.Configs, t.Cfg.DataObj.Querier.PeriodConfig())
+		sort.Slice(schemas.Configs, func(i, j int) bool {
+			return schemas.Configs[i].From.UnixNano() < schemas.Configs[j].From.UnixNano()
+		})
+	}
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
-		t.Cfg.SchemaConfig,
+		schemas,
 		t.cacheGenerationLoader, t.Cfg.CompactorConfig.RetentionEnabled,
 		prometheus.DefaultRegisterer,
 		t.Cfg.MetricsNamespace,
@@ -1888,19 +1935,9 @@ func (t *Loki) initBlockScheduler() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjExplorer() (services.Service, error) {
-	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get schema for now: %w", err)
-	}
-
-	var store objstore.Bucket
-	store, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj-explorer", util_log.Logger)
+	store, err := t.createDataObjBucket("dataobj-explorer")
 	if err != nil {
 		return nil, err
-	}
-
-	if t.Cfg.DataObjExplorer.StorageBucketPrefix != "" {
-		store = objstore.NewPrefixedBucket(store, t.Cfg.DataObjExplorer.StorageBucketPrefix)
 	}
 
 	explorer, err := explorer.New(store, util_log.Logger)
@@ -1926,19 +1963,15 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
 		return nil, nil
 	}
-	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get schema for now: %w", err)
-	}
-
-	store, err := bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, "dataobj", util_log.Logger)
+	store, err := t.createDataObjBucket("dataobj-consumer")
 	if err != nil {
 		return nil, err
 	}
+
 	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
 	t.dataObjConsumer = consumer.New(
 		t.Cfg.KafkaConfig,
-		t.Cfg.DataObjConsumer,
+		t.Cfg.DataObj.Consumer,
 		t.Cfg.Distributor.TenantTopic.TopicPrefix,
 		store,
 		t.Cfg.Ingester.LifecyclerConfig.ID,
@@ -1948,6 +1981,24 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	)
 
 	return t.dataObjConsumer, nil
+}
+
+func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
+	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema for now: %w", err)
+	}
+	var objstoreBucket objstore.Bucket
+	objstoreBucket, err = bucket.NewClient(context.Background(), schema.ObjectType, t.Cfg.StorageConfig.ObjectStore.Config, clientName, util_log.Logger)
+	if err != nil {
+		return nil, err
+	}
+
+	if t.Cfg.DataObj.StorageBucketPrefix != "" {
+		objstoreBucket = objstore.NewPrefixedBucket(objstoreBucket, t.Cfg.DataObj.StorageBucketPrefix)
+	}
+
+	return objstoreBucket, nil
 }
 
 func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLimits) (deletion.DeleteRequestsClient, error) {
@@ -1983,7 +2034,12 @@ func (t *Loki) deleteRequestsClient(clientType string, limits limiter.CombinedLi
 }
 
 func (t *Loki) createRulerQueryEngine(logger log.Logger, deleteStore deletion.DeleteRequestsClient) (eng *logql.Engine, err error) {
-	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, logger)
+	querierStore, err := t.getQuerierStore()
+	if err != nil {
+		return nil, err
+	}
+
+	q, err := querier.New(t.Cfg.Querier, querierStore, t.ingesterQuerier, t.Overrides, deleteStore, logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

@@ -62,7 +62,7 @@ func TestMapSampleExpr(t *testing.T) {
 		{
 			in: &syntax.RangeAggregationExpr{
 				Operation: syntax.OpRangeTypeRate,
-				Left: &syntax.LogRange{
+				Left: &syntax.LogRangeExpr{
 					Left: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 					},
@@ -77,7 +77,7 @@ func TestMapSampleExpr(t *testing.T) {
 					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 							},
@@ -93,7 +93,7 @@ func TestMapSampleExpr(t *testing.T) {
 						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
-							Left: &syntax.LogRange{
+							Left: &syntax.LogRangeExpr{
 								Left: &syntax.MatchersExpr{
 									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 								},
@@ -624,7 +624,7 @@ func TestMapping(t *testing.T) {
 					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeRate,
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 							},
@@ -640,7 +640,7 @@ func TestMapping(t *testing.T) {
 						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
-							Left: &syntax.LogRange{
+							Left: &syntax.LogRangeExpr{
 								Left: &syntax.MatchersExpr{
 									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 								},
@@ -662,7 +662,7 @@ func TestMapping(t *testing.T) {
 					}).Bind(nil),
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeCount,
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 							},
@@ -678,7 +678,7 @@ func TestMapping(t *testing.T) {
 						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeCount,
-							Left: &syntax.LogRange{
+							Left: &syntax.LogRangeExpr{
 								Left: &syntax.MatchersExpr{
 									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 								},
@@ -706,7 +706,7 @@ func TestMapping(t *testing.T) {
 							Operation: syntax.OpTypeSum,
 							Left: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
+								Left: &syntax.LogRangeExpr{
 									Left: &syntax.MatchersExpr{
 										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 									},
@@ -726,7 +726,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -754,7 +754,7 @@ func TestMapping(t *testing.T) {
 						}).Bind(nil),
 						SampleExpr: &syntax.RangeAggregationExpr{
 							Operation: syntax.OpRangeTypeRate,
-							Left: &syntax.LogRange{
+							Left: &syntax.LogRangeExpr{
 								Left: &syntax.MatchersExpr{
 									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 								},
@@ -770,7 +770,7 @@ func TestMapping(t *testing.T) {
 							}).Bind(nil),
 							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
+								Left: &syntax.LogRangeExpr{
 									Left: &syntax.MatchersExpr{
 										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 									},
@@ -800,7 +800,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeCountMinSketch,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -819,7 +819,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeCountMinSketch,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -849,7 +849,7 @@ func TestMapping(t *testing.T) {
 							Operation: syntax.OpTypeCount,
 							Left: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
+								Left: &syntax.LogRangeExpr{
 									Left: &syntax.MatchersExpr{
 										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 									},
@@ -869,7 +869,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeCount,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -901,7 +901,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -921,7 +921,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -948,7 +948,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeCount,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -968,7 +968,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeCount,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1010,7 +1010,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1032,7 +1032,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1070,7 +1070,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1090,7 +1090,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1125,7 +1125,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeCount,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1145,7 +1145,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeCount,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1189,7 +1189,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1211,7 +1211,7 @@ func TestMapping(t *testing.T) {
 										Operation: syntax.OpTypeSum,
 										Left: &syntax.RangeAggregationExpr{
 											Operation: syntax.OpRangeTypeRate,
-											Left: &syntax.LogRange{
+											Left: &syntax.LogRangeExpr{
 												Left: &syntax.MatchersExpr{
 													Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 												},
@@ -1239,7 +1239,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeCount,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1259,7 +1259,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeCount,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1303,7 +1303,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1325,7 +1325,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1352,7 +1352,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeCount,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1372,7 +1372,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeCount,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1409,7 +1409,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeSum,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1434,7 +1434,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeSum,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1468,7 +1468,7 @@ func TestMapping(t *testing.T) {
 								Operation: syntax.OpTypeSum,
 								Left: &syntax.RangeAggregationExpr{
 									Operation: syntax.OpRangeTypeCount,
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 										},
@@ -1490,7 +1490,7 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeSum,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeCount,
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 											},
@@ -1510,7 +1510,7 @@ func TestMapping(t *testing.T) {
 			expr: &syntax.RangeAggregationExpr{
 				Operation: syntax.OpRangeTypeQuantile,
 				Params:    float64p(0.8),
-				Left: &syntax.LogRange{
+				Left: &syntax.LogRangeExpr{
 					Left: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 					},
@@ -1526,7 +1526,7 @@ func TestMapping(t *testing.T) {
 			expr: &syntax.RangeAggregationExpr{
 				Operation: syntax.OpRangeTypeQuantile,
 				Params:    float64p(0.8),
-				Left: &syntax.LogRange{
+				Left: &syntax.LogRangeExpr{
 					Left: &syntax.MatchersExpr{
 						Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
 					},
@@ -1551,7 +1551,7 @@ func TestMapping(t *testing.T) {
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeQuantile,
 						Params:    float64p(0.99),
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
 							},
@@ -1574,7 +1574,7 @@ func TestMapping(t *testing.T) {
 							}).Bind(nil),
 							SampleExpr: &syntax.VectorAggregationExpr{
 								Left: &syntax.RangeAggregationExpr{
-									Left: &syntax.LogRange{
+									Left: &syntax.LogRangeExpr{
 										Left: &syntax.MatchersExpr{
 											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "bar")},
 										},
@@ -1597,7 +1597,7 @@ func TestMapping(t *testing.T) {
 								}).Bind(nil),
 								SampleExpr: &syntax.VectorAggregationExpr{
 									Left: &syntax.RangeAggregationExpr{
-										Left: &syntax.LogRange{
+										Left: &syntax.LogRangeExpr{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "bar")},
 											},
@@ -1634,7 +1634,7 @@ func TestMapping(t *testing.T) {
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeQuantile,
 						Params:    float64p(0.99),
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
 							},
@@ -1668,7 +1668,7 @@ func TestMapping(t *testing.T) {
 					SampleExpr: &syntax.RangeAggregationExpr{
 						Operation: syntax.OpRangeTypeQuantile,
 						Params:    float64p(0.99),
-						Left: &syntax.LogRange{
+						Left: &syntax.LogRangeExpr{
 							Left: &syntax.MatchersExpr{
 								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "a", "foo")},
 							},

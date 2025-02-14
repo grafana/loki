@@ -67,11 +67,20 @@ func (c *Compactor) handleListDeleteRequests(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Retention is not enabled", http.StatusBadRequest)
 		return
 	}
-	requests, err := c.deleteRequestsStore.GetDeleteRequestsByStatus(ctx, deletion.DeleteRequestStatus(status))
+	requests, err := c.deleteRequestsStore.GetAllRequests(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Filter requests by status
+	filtered := requests[:0]
+	for _, req := range requests {
+		if req.Status == deletion.DeleteRequestStatus(status) {
+			filtered = append(filtered, req)
+		}
+	}
+	requests = filtered
 
 	// Sort by creation time descending
 	sort.Slice(requests, func(i, j int) bool {

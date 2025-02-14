@@ -9,6 +9,8 @@ weight:
 
 # logfmt
 
+{{< docs/shared source="loki" lookup="promtail-deprecation.md" version="<LOKI_VERSION>" >}}
+
 The `logfmt` stage is a parsing stage that reads the log line as [logfmt](https://brandur.org/logfmt) and allows extraction of data into labels.
 
 ## Schema

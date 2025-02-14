@@ -109,7 +109,7 @@ func TestLogsReader_AddMetadataMatcher(t *testing.T) {
 	require.Equal(t, 1, md.LogsSections)
 
 	r := dataobj.NewLogsReader(obj, 0)
-	require.NoError(t, r.AddMetadataMatcher(dataobj.MetadataMatcher{"trace_id", "123"}))
+	require.NoError(t, r.SetPredicate(dataobj.MetadataMatcherPredicate{"trace_id", "123"}))
 
 	actual, err := readAllRecords(context.Background(), r)
 	require.NoError(t, err)
@@ -133,9 +133,12 @@ func TestLogsReader_AddMetadataFilter(t *testing.T) {
 	require.Equal(t, 1, md.LogsSections)
 
 	r := dataobj.NewLogsReader(obj, 0)
-	err = r.AddMetadataFilter("user", func(name, value string) bool {
-		require.Equal(t, "user", name)
-		return strings.HasPrefix(value, "1")
+	err = r.SetPredicate(dataobj.MetadataFilterPredicate{
+		Key: "user",
+		Keep: func(key, value string) bool {
+			require.Equal(t, "user", key)
+			return strings.HasPrefix(value, "1")
+		},
 	})
 	require.NoError(t, err)
 

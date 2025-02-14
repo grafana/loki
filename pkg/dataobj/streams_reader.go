@@ -13,26 +13,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/sections/streams"
 )
 
-// Predicates for reading streams.
-type (
-	// LabelMatcher is a predicate for matching labels in a streams section.
-	// LabelMatcher predicates assert that a label named Name exists and its
-	// value is set to Value.
-	//
-	// For equality matches, LabelMatcher should always be used; LabelMatchers
-	// can translate into more efficient filter operations than a [LabelFilter]
-	// can.
-	LabelMatcher struct{ Name, Value string }
-
-	// LabelFilter is a predicate for matching labels in a streams section.
-	// LabelFilter predicates return a true value when the combination of the
-	// provided label name and value should be included in the result.
-	//
-	// LabelFilter predicates should be only used for more complex filtering; for
-	// equality matches, [LabelMatcher]s are more efficient.
-	LabelFilter func(name, value string) bool
-)
-
 // A Stream is an individual stream in a data object.
 type Stream struct {
 	// ID of the stream. Stream IDs are unique across all sections in an object,
@@ -52,8 +32,7 @@ type StreamsReader struct {
 	obj *Object
 	idx int
 
-	matchers map[string]string
-	filters  map[string]LabelFilter
+	predicate Predicate
 
 	next func() (result.Result[streams.Stream], bool)
 	stop func()
@@ -67,40 +46,20 @@ func NewStreamsReader(obj *Object, sectionIndex int) *StreamsReader {
 	return &sr
 }
 
-// AddLabelMatcher adds a label matcher to the StreamsReader.
-// [StreamsReader.Read] will only return streams for which the label matcher
-// predicate passes.
+// SetPredicate sets the predicate to use for filtering logs. [LogsReader.Read]
+// will only return logs for which the predicate passes.
 //
-// AddLabelMatcher may only be called before reading begins or after a call to
-// [StreamsReader.Reset].
-func (r *StreamsReader) AddLabelMatcher(m LabelMatcher) error {
-	if r.next != nil {
-		return fmt.Errorf("cannot add label matcher after reading has started")
-	}
-
-	if r.matchers == nil {
-		r.matchers = make(map[string]string)
-	}
-	r.matchers[m.Name] = m.Value
-	return nil
-}
-
-// AddLabelFilter adds a label filter to the StreamsReader.
-// [StreamsReader.Read] will only return streams for which the label filter
-// predicate passes. The filter f will be called with the provided key to allow
-// the same function to be reused for multiple keys.
+// SetPredicate returns an error if the predicate is not supported by
+// LogsReader.
 //
-// AddLabelFilter may only be called before reading begins or after a call to
+// A predicate may only be set before reading begins or after a call to
 // [StreamsReader.Reset].
-func (r *StreamsReader) AddLabelFilter(key string, f LabelFilter) error {
+func (r *StreamsReader) SetPredicate(p StreamsPredicate) error {
 	if r.next != nil {
-		return fmt.Errorf("cannot add label filter after reading has started")
+		return fmt.Errorf("cannot change predicate after reading has started")
 	}
 
-	if r.filters == nil {
-		r.filters = make(map[string]LabelFilter)
-	}
-	r.filters[key] = f
+	r.predicate = p
 	return nil
 }
 
@@ -213,23 +172,73 @@ NextRow:
 		return res, true
 	}
 
-	for key, value := range r.matchers {
-		if stream.Labels.Get(key) != value {
-			goto NextRow
-		}
-	}
-
-	for key, filter := range r.filters {
-		if !filter(key, stream.Labels.Get(key)) {
-			goto NextRow
-		}
+	if !matchStreamsPredicate(r.predicate, stream) {
+		goto NextRow
 	}
 
 	return res, true
 }
 
+func matchStreamsPredicate(p Predicate, stream streams.Stream) bool {
+	if p == nil {
+		return true
+	}
+
+	switch p := p.(type) {
+	case AndPredicate[StreamsPredicate]:
+		return matchStreamsPredicate(p.Left, stream) && matchStreamsPredicate(p.Right, stream)
+	case OrPredicate[StreamsPredicate]:
+		return matchStreamsPredicate(p.Left, stream) || matchStreamsPredicate(p.Right, stream)
+	case NotPredicate[StreamsPredicate]:
+		return !matchStreamsPredicate(p.Inner, stream)
+	case TimeRangePredicate[StreamsPredicate]:
+		// A stream matches if its time range overlaps with the query range
+		return overlapsTimeRange(p, stream.MinTimestamp, stream.MaxTimestamp)
+	case LabelMatcherPredicate:
+		return stream.Labels.Get(p.Name) == p.Value
+	case LabelFilterPredicate:
+		return p.Keep(p.Name, stream.Labels.Get(p.Name))
+	default:
+		// Unsupported predicates should already be caught by
+		// [StreamsReader.SetPredicate].
+		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
+}
+
+func overlapsTimeRange[P Predicate](p TimeRangePredicate[P], start, end time.Time) bool {
+	switch {
+	case p.IncludeStart && p.IncludeEnd:
+		return !end.Before(p.StartTime) && !start.After(p.EndTime)
+	case p.IncludeStart && !p.IncludeEnd:
+		return !end.Before(p.StartTime) && start.Before(p.EndTime)
+	case !p.IncludeStart && p.IncludeEnd:
+		return end.After(p.StartTime) && !start.After(p.EndTime)
+	case !p.IncludeStart && !p.IncludeEnd:
+		return end.After(p.StartTime) && start.Before(p.EndTime)
+	default:
+		panic("unreachable")
+	}
+}
+
+func matchTimestamp[P Predicate](p TimeRangePredicate[P], ts time.Time) bool {
+	switch {
+	case p.IncludeStart && p.IncludeEnd:
+		return !ts.Before(p.StartTime) && !ts.After(p.EndTime) // ts >= start && ts <= end
+	case p.IncludeStart && !p.IncludeEnd:
+		return !ts.Before(p.StartTime) && ts.Before(p.EndTime) // ts >= start && ts < end
+	case !p.IncludeStart && p.IncludeEnd:
+		return ts.After(p.StartTime) && !ts.After(p.EndTime) // ts > start && ts <= end
+	case !p.IncludeStart && !p.IncludeEnd:
+		return ts.After(p.StartTime) && ts.Before(p.EndTime) // ts > start && ts < end
+	default:
+		panic("unreachable")
+	}
+}
+
 // Reset resets the StreamsReader with a new object and section index to read
 // from. Reset allows reusing a StreamsReader without allocating a new one.
+//
+// Any set predicate is cleared when Reset is called.
 //
 // Reset may be called with a nil object and a negative section index to clear
 // the StreamsReader without needing a new object.
@@ -242,7 +251,5 @@ func (r *StreamsReader) Reset(obj *Object, sectionIndex int) {
 	r.idx = sectionIndex
 	r.next = nil
 	r.stop = nil
-
-	clear(r.matchers)
-	clear(r.filters)
+	r.predicate = nil
 }

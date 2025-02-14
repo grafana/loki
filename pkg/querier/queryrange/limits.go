@@ -48,9 +48,7 @@ const (
 	limErrQuerierTooManyBytesShardableTmpl   = "shard query is too large to execute on a single querier: (query: %s, limit: %s); consider adding more specific stream selectors or reduce the time range of the query"
 )
 
-var (
-	ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
-)
+var ErrMaxQueryParalellism = fmt.Errorf("querying is disabled, please contact your Loki operator")
 
 type Limits queryrange_limits.Limits
 
@@ -480,9 +478,7 @@ func (s *SemaphoreWithTiming) Acquire(ctx context.Context, n int64) (time.Durati
 }
 
 func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
-	var (
-		ctx, cancel = context.WithCancel(c)
-	)
+	ctx, cancel := context.WithCancel(c)
 	defer func() {
 		cancel()
 	}()
@@ -523,7 +519,6 @@ func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Reque
 			// Note: It is the responsibility of the caller to run
 			// the handler in parallel.
 			elapsed, err := semWithTiming.Acquire(ctx, int64(1))
-
 			if err != nil {
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
@@ -654,7 +649,7 @@ func WeightedParallelism(
 	return 0
 }
 
-func minMaxModelTime(a, b model.Time) (min, max model.Time) {
+func minMaxModelTime(a, b model.Time) (model.Time, model.Time) {
 	if a.Before(b) {
 		return a, b
 	}
