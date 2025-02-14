@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	logqllog "github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	base "github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
@@ -449,7 +450,7 @@ func (r roundTripper) Do(ctx context.Context, req base.Request) (base.Response, 
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 
-			matchers := e.LogRange().Left.Matchers()
+			matchers := e.Matchers()
 
 			if err := validateMatchers(ctx, r.limits, matchers); err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
@@ -1303,76 +1304,20 @@ func NewDetectedFieldsTripperware(
 // NewVariantsTripperware creates a new frontend tripperware responsible for handling queries with multiple variants for a single
 // selector.
 func NewVariantsTripperware(
-	cfg Config,
-	engineOpts logql.EngineOpts,
-	log log.Logger,
-	limits Limits,
-	schema config.SchemaConfig,
-	merger base.Merger,
-	iqo util.IngesterQueryOptions,
+	_ Config,
+	_ logql.EngineOpts,
+	_ log.Logger,
+	_ Limits,
+	_ config.SchemaConfig,
+	_ base.Merger,
+	_ util.IngesterQueryOptions,
 	_ cache.Cache,
 	_ base.CacheGenNumberLoader,
 	_ bool,
 	_ base.Extractor,
-	metrics *Metrics,
-	indexStatsTripperware base.Middleware,
-	metricsNamespace string,
+	_ *Metrics,
+	_ base.Middleware,
+	_ string,
 ) (base.Middleware, error) {
-	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		statsHandler := indexStatsTripperware.Wrap(next)
-
-		queryRangeMiddleware := []base.Middleware{
-			QueryMetricsMiddleware(metrics.QueryMetrics),
-			StatsCollectorMiddleware(),
-			NewLimitsMiddleware(limits),
-		}
-
-		if cfg.AlignQueriesWithStep {
-			queryRangeMiddleware = append(
-				queryRangeMiddleware,
-				base.InstrumentMiddleware("step_align", metrics.InstrumentMiddlewareMetrics),
-				base.StepAlignMiddleware,
-			)
-		}
-
-		queryRangeMiddleware = append(
-			queryRangeMiddleware,
-			NewQuerySizeLimiterMiddleware(schema.Configs, engineOpts, log, limits, statsHandler),
-			base.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
-			SplitByIntervalMiddleware(
-				schema.Configs,
-				limits,
-				merger,
-				newMetricQuerySplitter(limits, iqo),
-				metrics.SplitByMetrics,
-			),
-		)
-
-		if cfg.MaxRetries > 0 {
-			queryRangeMiddleware = append(
-				queryRangeMiddleware,
-				base.InstrumentMiddleware("retry", metrics.InstrumentMiddlewareMetrics),
-				base.NewRetryMiddleware(
-					log,
-					cfg.MaxRetries,
-					metrics.RetryMiddlewareMetrics,
-					metricsNamespace,
-				),
-			)
-		}
-
-		// Finally, if the user selected any query range middleware, stitch it in.
-		if len(queryRangeMiddleware) > 0 {
-			rt := NewLimitedRoundTripper(next, limits, schema.Configs, queryRangeMiddleware...)
-			return base.HandlerFunc(
-				func(ctx context.Context, r base.Request) (base.Response, error) {
-					if _, ok := r.(*LokiRequest); !ok {
-						return next.Do(ctx, r)
-					}
-					return rt.Do(ctx, r)
-				},
-			)
-		}
-		return next
-	}), nil
+	return nil, logqlmodel.ErrVariantsDisabled
 }

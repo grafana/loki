@@ -2502,6 +2502,14 @@ func (m *MultiVariantExpr) Shardable(topLevel bool) bool {
 
 func (m *MultiVariantExpr) Walk(f WalkFn) {
 	f(m)
+
+	if m.logRange != nil {
+		m.logRange.Walk(f)
+	}
+
+	for _, v := range m.variants {
+		v.Walk(f)
+	}
 }
 
 func (m *MultiVariantExpr) String() string {

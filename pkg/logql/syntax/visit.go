@@ -70,7 +70,6 @@ type DepthFirstTraversal struct {
 	VisitRangeAggregationFn       func(v RootVisitor, e *RangeAggregationExpr)
 	VisitVectorFn                 func(v RootVisitor, e *VectorExpr)
 	VisitVectorAggregationFn      func(v RootVisitor, e *VectorAggregationExpr)
-	VisiVectorAggregationFn       func(v RootVisitor, e *VectorAggregationExpr)
 	VisitVariantsFn               func(v RootVisitor, e *MultiVariantExpr)
 }
 
@@ -303,6 +302,10 @@ func (v *DepthFirstTraversal) VisitVariants(e *MultiVariantExpr) {
 	if v.VisitVariantsFn != nil {
 		v.VisitVariantsFn(v, e)
 	} else {
-		e.LogRange().Left.Accept(v)
+		e.LogRange().Accept(v)
+		variants := e.Variants()
+		for i := range variants {
+			variants[i].Accept(v)
+		}
 	}
 }

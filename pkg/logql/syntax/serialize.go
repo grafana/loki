@@ -317,20 +317,7 @@ func (v *JSONSerializer) VisitVariants(e *MultiVariantExpr) {
 	v.WriteObjectField(LogSelector)
 
 	// Serialize log range as string.
-	v.WriteObjectStart()
-	v.WriteObjectField(IntervalNanos)
-
-	logRange := e.LogRange()
-	v.WriteInt64(int64(logRange.Interval))
-	v.WriteMore()
-	v.WriteObjectField(OffsetNanos)
-	v.WriteInt64(int64(logRange.Offset))
-
-	// Serialize log selector pipeline as string.
-	v.WriteMore()
-	v.WriteObjectField(LogSelector)
-	encodeLogSelector(v.Stream, logRange.Left)
-	v.WriteObjectEnd()
+	v.VisitLogRange(e.LogRange())
 	v.WriteMore()
 
 	v.WriteObjectField(Variants)

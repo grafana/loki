@@ -24,7 +24,7 @@ import (
 
   matcher *labels.Matcher
   matchers []*labels.Matcher
-  variantsList []SampleExpr
+  metricExprs []SampleExpr
   stage StageExpr
   stages MultiStageExpr
   filterer log.LabelFilterer
@@ -54,12 +54,12 @@ import (
 %type <stage> pipelineStage logfmtParser labelParser jsonExpressionParser logfmtExpressionParser lineFormatExpr decolorizeExpr labelFormatExpr dropLabelsExpr keepLabelsExpr
 %type <stages> pipelineExpr
 %type <lineFilterExpr> lineFilter lineFilters orFilter
-%type <op> rangeOp convOp vectorOp filterOp variantsOp
+%type <op> rangeOp convOp vectorOp filterOp
 %type <filterer> bytesFilter numberFilter durationFilter labelFilter unitFilter ipLabelFilter
 %type <filter> filter
 %type <matcher> matcher
 %type <matchers> matchers selector
-%type <str> vector variantsOf
+%type <str> vector
 %type <strs> labels parserFlags
 %type <binOpts> binOpModifier boolModifier onOrIgnoringModifier
 %type <namedMatcher> namedMatcher
@@ -73,7 +73,7 @@ import (
 %type <labelExtractionExpressionList> labelExtractionExpressionList
 %type <unwrapExpr> unwrapExpr
 %type <offsetExpr> offsetExpr
-%type <variantsList> variantsList
+%type <metricExprs> metricExprs
 
 %token <bytes> BYTES
 %token <str> IDENTIFIER STRING NUMBER FUNCTION_FLAG
@@ -122,7 +122,7 @@ metricExpr:
     ;
 
 variantsExpr:
-      variantsOp OPEN_PARENTHESIS variantsList CLOSE_PARENTHESIS variantsOf OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newVariantsExpr($3, $7) }
+      VARIANTS OPEN_PARENTHESIS metricExprs CLOSE_PARENTHESIS OF OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newVariantsExpr($3, $7) }
     ;
 
 logRangeExpr:
@@ -522,15 +522,8 @@ grouping:
     | WITHOUT OPEN_PARENTHESIS CLOSE_PARENTHESIS          { $$ = &Grouping{ Without: true , Groups: nil } }
     ;
 
-variantsOp:
-      VARIANTS { $$ = OpVariants }
-    ;
-variantsOf:
-      OF { $$ = VariantsOf }
-    ;
-
-variantsList:
+metricExprs:
       metricExpr                         { $$ = []SampleExpr{$1} }
-    | variantsList COMMA metricExpr      { $$ = append($1, $3) }
+    | metricExprs COMMA metricExpr      { $$ = append($1, $3) }
     ;
 %%
