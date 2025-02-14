@@ -17,6 +17,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 )
 
+var streamsPool = sync.Pool{
+	New: func() any {
+		streams := make([]dataobj.Stream, 1024)
+		return &streams
+	},
+}
+
 // SelectSeries implements querier.Store
 func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End)
@@ -129,13 +136,6 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 	return values, nil
 }
 
-var streamsPool = sync.Pool{
-	New: func() any {
-		streams := make([]dataobj.Stream, 1024)
-		return &streams
-	},
-}
-
 // streamProcessor handles processing of unique series with custom collection logic
 type streamProcessor struct {
 	predicate  dataobj.StreamsPredicate
@@ -146,53 +146,12 @@ type streamProcessor struct {
 
 // newStreamProcessor creates a new streamProcessor with the given parameters
 func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []*dataobj.Object, shard logql.Shard) *streamProcessor {
-	// Create a time range predicate
-	var predicate dataobj.StreamsPredicate = dataobj.TimeRangePredicate[dataobj.StreamsPredicate]{
-		StartTime:    start,
-		EndTime:      end,
-		IncludeStart: true,
-		IncludeEnd:   true,
-	}
-
-	// If there are any matchers, combine them with an AND predicate
-	if len(matchers) > 0 {
-		predicate = dataobj.AndPredicate[dataobj.StreamsPredicate]{
-			Left:  predicate,
-			Right: matchersToPredicate(matchers),
-		}
-	}
-
 	return &streamProcessor{
-		predicate:  predicate,
+		predicate:  streamPredicate(matchers, start, end),
 		seenSeries: &sync.Map{},
 		objects:    objects,
 		shard:      shard,
 	}
-}
-
-// matchersToPredicate converts a list of matchers to a dataobj.StreamsPredicate
-func matchersToPredicate(matchers []*labels.Matcher) dataobj.StreamsPredicate {
-	var left dataobj.StreamsPredicate
-	for _, matcher := range matchers {
-		var right dataobj.StreamsPredicate
-		switch matcher.Type {
-		case labels.MatchEqual:
-			right = dataobj.LabelMatcherPredicate{Name: matcher.Name, Value: matcher.Value}
-		default:
-			right = dataobj.LabelFilterPredicate{Name: matcher.Name, Keep: func(_, value string) bool {
-				return matcher.Matches(value)
-			}}
-		}
-		if left == nil {
-			left = right
-		} else {
-			left = dataobj.AndPredicate[dataobj.StreamsPredicate]{
-				Left:  left,
-				Right: right,
-			}
-		}
-	}
-	return left
 }
 
 // ProcessParallel processes series from multiple readers in parallel
@@ -201,6 +160,11 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	if err != nil {
 		return err
 	}
+	defer func() {
+		for _, reader := range readers {
+			streamReaderPool.Put(reader)
+		}
+	}()
 
 	// set predicate on all readers
 	for _, reader := range readers {
@@ -263,17 +227,8 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 
 // shardStreamReaders fetches metadata of objects in parallel and shards them into a list of StreamsReaders
 func shardStreamReaders(ctx context.Context, objects []*dataobj.Object, shard logql.Shard) ([]*dataobj.StreamsReader, error) {
-	// fetch all metadata of objects in parallel
-	g, ctx := errgroup.WithContext(ctx)
-	metadatas := make([]dataobj.Metadata, len(objects))
-	for i, obj := range objects {
-		g.Go(func() error {
-			var err error
-			metadatas[i], err = obj.Metadata(ctx)
-			return err
-		})
-	}
-	if err := g.Wait(); err != nil {
+	metadatas, err := fetchMetadatas(ctx, objects)
+	if err != nil {
 		return nil, err
 	}
 	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
@@ -289,7 +244,8 @@ func shardStreamReaders(ctx context.Context, objects []*dataobj.Object, shard lo
 					continue
 				}
 			}
-			reader := dataobj.NewStreamsReader(objects[i], j)
+			reader := streamReaderPool.Get().(*dataobj.StreamsReader)
+			reader.Reset(objects[i], j)
 			readers = append(readers, reader)
 			sectionIndex++
 		}

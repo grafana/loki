@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Added support for globals: `extraArgs`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` ([#16062](https://github.com/grafana/loki/pull/16062)) relates to ([#12652](https://github.com/grafana/loki/pull/12652))
 - [CHANGE] Changed version of Memcached image to 1.6.36
+- [CHANGE] Changed version of Grafana Loki to 3.4.1
 
 ## 6.26.0
 
