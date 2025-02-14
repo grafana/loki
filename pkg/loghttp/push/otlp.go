@@ -32,6 +32,7 @@ const (
 	gzipContentEncoding = "gzip"
 	attrServiceName     = "service.name"
 	attrSdkLanguage     = "telemetry.sdk.language"
+	unknown             = "unknown"
 
 	OTLPSeverityNumber = "severity_number"
 )
@@ -315,15 +316,15 @@ func recordScopeUsage(stats *Stats, resAttrs pcommon.Map, scope pcommon.Instrume
 	if ok {
 		lang = l.AsString()
 	} else {
-		lang = "unknown"
+		lang = unknown
 	}
 	scopeName := scope.Name()
 	if scopeName == "" {
-		scopeName = "unknown"
+		scopeName = unknown
 	}
 	version := scope.Version()
 	if version == "" {
-		version = "unknown"
+		version = unknown
 	}
 
 	langMap, ok := stats.ScopeUsage[lang]
