@@ -1,5 +1,62 @@
 # Changes
 
+
+## [1.1.5](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.4...iam/v1.1.5) (2023-11-01)
+
+
+### Bug Fixes
+
+* **iam:** Bump google.golang.org/api to v0.149.0 ([8d2ab9f](https://github.com/googleapis/google-cloud-go/commit/8d2ab9f320a86c1c0fab90513fc05861561d0880))
+
+## [1.1.4](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.3...iam/v1.1.4) (2023-10-26)
+
+
+### Bug Fixes
+
+* **iam:** Update grpc-go to v1.59.0 ([81a97b0](https://github.com/googleapis/google-cloud-go/commit/81a97b06cb28b25432e4ece595c55a9857e960b7))
+
+## [1.1.3](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.2...iam/v1.1.3) (2023-10-12)
+
+
+### Bug Fixes
+
+* **iam:** Update golang.org/x/net to v0.17.0 ([174da47](https://github.com/googleapis/google-cloud-go/commit/174da47254fefb12921bbfc65b7829a453af6f5d))
+
+## [1.1.2](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.1...iam/v1.1.2) (2023-08-08)
+
+
+### Documentation
+
+* **iam:** Minor formatting ([b4349cc](https://github.com/googleapis/google-cloud-go/commit/b4349cc507870ff8629bbc07de578b63bb889626))
+
+## [1.1.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.1.0...iam/v1.1.1) (2023-06-20)
+
+
+### Bug Fixes
+
+* **iam:** REST query UpdateMask bug ([df52820](https://github.com/googleapis/google-cloud-go/commit/df52820b0e7721954809a8aa8700b93c5662dc9b))
+
+## [1.1.0](https://github.com/googleapis/google-cloud-go/compare/iam/v1.0.1...iam/v1.1.0) (2023-05-30)
+
+
+### Features
+
+* **iam:** Update all direct dependencies ([b340d03](https://github.com/googleapis/google-cloud-go/commit/b340d030f2b52a4ce48846ce63984b28583abde6))
+
+## [1.0.1](https://github.com/googleapis/google-cloud-go/compare/iam/v1.0.0...iam/v1.0.1) (2023-05-08)
+
+
+### Bug Fixes
+
+* **iam:** Update grpc to v1.55.0 ([1147ce0](https://github.com/googleapis/google-cloud-go/commit/1147ce02a990276ca4f8ab7a1ab65c14da4450ef))
+
+## [1.0.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.13.0...iam/v1.0.0) (2023-04-04)
+
+
+### Features
+
+* **iam:** Promote to GA ([#7627](https://github.com/googleapis/google-cloud-go/issues/7627)) ([b351906](https://github.com/googleapis/google-cloud-go/commit/b351906a10e17a02d7f7e2551bc1585fd9dc3742))
+
 ## [0.13.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.12.0...iam/v0.13.0) (2023-03-15)
 
 
