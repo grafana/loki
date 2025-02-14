@@ -8,6 +8,8 @@ weight: 1000
 ---
 # LogQL Reference
 
+Loki accepts a number of operators and functions within a [LogQL query](https://grafana.com/docs/loki/<LOKI_VERSION>/query).
+
 ## Binary operators
 
 ### Arithmetic operators
