@@ -393,7 +393,7 @@ func (s *shardedObject) matchStreams(ctx context.Context) error {
 		if err != nil && err != io.EOF {
 			return err
 		}
-		if n == 0 {
+		if n == 0 && err == io.EOF {
 			break
 		}
 

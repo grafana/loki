@@ -197,7 +197,7 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *data
 		if err != nil && err != io.EOF {
 			return err
 		}
-		if n == 0 {
+		if n == 0 && err == io.EOF {
 			break
 		}
 		for _, stream := range streams[:n] {
