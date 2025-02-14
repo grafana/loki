@@ -82,8 +82,8 @@ func TestEngine_variants_checkIntervalLimit(t *testing.T) {
 		query  string
 		expErr string
 	}{
-		{query: `variants(rate({app="foo"} [5m])) of ({app="foo"} [5m])`, expErr: ""},
-		{query: `variants(rate({app="foo"} [1h])) of ({app="foo"} [1h])`, expErr: "[1h] > [10m]"},
+		{query: `variants(rate({app="foo"}[5m])) of ({app="foo"}[5m])`, expErr: ""},
+		{query: `variants(rate({app="foo"}[1h])) of ({app="foo"}[1h])`, expErr: "[1h] > [10m]"},
 	} {
 		for _, downstream := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%v/downstream=%v", tc.query, downstream), func(t *testing.T) {
