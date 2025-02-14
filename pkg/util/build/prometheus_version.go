@@ -1,9 +1,11 @@
-// This file is a slightly modified copy of the original file from Prometheus project.
+// This code is copied from the Prometheus project.
 // The original file is licensed under the Apache License 2.0.
 // The prometheus module has dependencies that cause conflicts with Alloy using this version of Loki.
-// https://github.com/prometheus/prometheus/blob/a5ffa83be83be22e2ec9fd1d4765299d8d16119e/web/api/v1/json_codec.go
+// The struct & json encoding are in the same package so the behavior is the same,
+// any places where the struct is used will get the same package initialization as previous.
+// https://github.com/prometheus/prometheus/blob/a5ffa83be83be22e2ec9fd1d4765299d8d16119e/web/api/v1/
 
-package marshal
+package build
 
 import (
 	"unsafe"
@@ -15,6 +17,15 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/jsonutil"
 )
+
+type PrometheusVersion struct {
+	Version   string `json:"version"`
+	Revision  string `json:"revision"`
+	Branch    string `json:"branch"`
+	BuildUser string `json:"buildUser"`
+	BuildDate string `json:"buildDate"`
+	GoVersion string `json:"goVersion"`
+}
 
 func init() {
 	jsoniter.RegisterTypeEncoderFunc("promql.Vector", unsafeMarshalVectorJSON, neverEmpty)

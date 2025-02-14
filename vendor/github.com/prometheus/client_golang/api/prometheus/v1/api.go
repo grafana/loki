@@ -35,12 +35,12 @@ import (
 )
 
 func init() {
-	json.RegisterTypeEncoderFunc("model.SamplePair", marshalSamplePairJSON, marshalJSONIsEmpty)
-	json.RegisterTypeDecoderFunc("model.SamplePair", unmarshalSamplePairJSON)
-	json.RegisterTypeEncoderFunc("model.SampleHistogramPair", marshalSampleHistogramPairJSON, marshalJSONIsEmpty)
-	json.RegisterTypeDecoderFunc("model.SampleHistogramPair", unmarshalSampleHistogramPairJSON)
-	json.RegisterTypeEncoderFunc("model.SampleStream", marshalSampleStreamJSON, marshalJSONIsEmpty) // Only needed for benchmark.
-	json.RegisterTypeDecoderFunc("model.SampleStream", unmarshalSampleStreamJSON)                   // Only needed for benchmark.
+	// json.RegisterTypeEncoderFunc("model.SamplePair", marshalSamplePairJSON, marshalJSONIsEmpty)
+	// json.RegisterTypeDecoderFunc("model.SamplePair", unmarshalSamplePairJSON)
+	// json.RegisterTypeEncoderFunc("model.SampleHistogramPair", marshalSampleHistogramPairJSON, marshalJSONIsEmpty)
+	// json.RegisterTypeDecoderFunc("model.SampleHistogramPair", unmarshalSampleHistogramPairJSON)
+	// json.RegisterTypeEncoderFunc("model.SampleStream", marshalSampleStreamJSON, marshalJSONIsEmpty) // Only needed for benchmark.
+	// json.RegisterTypeDecoderFunc("model.SampleStream", unmarshalSampleStreamJSON)                   // Only needed for benchmark.
 }
 
 func unmarshalSamplePairJSON(ptr unsafe.Pointer, iter *json.Iterator) {

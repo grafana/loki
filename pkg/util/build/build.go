@@ -3,7 +3,6 @@ package build
 import (
 	"runtime"
 
-	prom "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/version"
 )
 
@@ -29,8 +28,8 @@ func init() {
 	version.GoVersion = runtime.Version()
 }
 
-func GetVersion() prom.BuildinfoResult {
-	return prom.BuildinfoResult{
+func GetVersion() PrometheusVersion {
+	return PrometheusVersion{
 		Version:   version.Version,
 		Revision:  version.Revision,
 		Branch:    version.Branch,
