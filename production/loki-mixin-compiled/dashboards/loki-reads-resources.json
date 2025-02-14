@@ -103,19 +103,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-frontend\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", container=~\"(query-frontend)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-frontend\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(query-frontend)\", namespace=\"$namespace\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-frontend\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-frontend\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", container=~\"(query-frontend)\", namespace=\"$namespace\"} / container_spec_cpu_period{cluster=\"$cluster\", container=~\"(query-frontend)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -204,19 +204,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-frontend\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", container=~\"(query-frontend)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-frontend\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(query-frontend)\", namespace=\"$namespace\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-frontend\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", container=~\"(query-frontend)\", namespace=\"$namespace\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -266,7 +266,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/query-frontend\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(query-frontend)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -367,19 +367,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-scheduler\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", container=~\"(query-scheduler)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-scheduler\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(query-scheduler)\", namespace=\"$namespace\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-scheduler\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-scheduler\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", container=~\"(query-scheduler)\", namespace=\"$namespace\"} / container_spec_cpu_period{cluster=\"$cluster\", container=~\"(query-scheduler)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -468,19 +468,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-scheduler\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", container=~\"(query-scheduler)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-scheduler\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(query-scheduler)\", namespace=\"$namespace\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"query-scheduler\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", container=~\"(query-scheduler)\", namespace=\"$namespace\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -530,7 +530,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/query-scheduler\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(query-scheduler)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -631,19 +631,19 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\"} / container_spec_cpu_period{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -732,19 +732,19 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"querier\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -794,7 +794,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/querier\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(querier)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -844,7 +844,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(instance, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"querier\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, device) (\n  rate(node_disk_written_bytes_total[$__rate_interval])\n)\n+\nignoring(pod) group_right() (\n  label_replace(\n    count by (instance, pod, device) (\n      container_fs_writes_bytes_total{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\", device!~\".*sda.*\"}\n    ),\n    \"device\", \"$1\", \"device\", \"/dev/(.*)\"\n  )\n  * 0\n)\n\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -891,7 +891,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(instance,device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"querier\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, device) (\n  rate(node_disk_read_bytes_total[$__rate_interval])\n)\n+\nignoring(pod) group_right() (\n  label_replace(\n    count by (instance, pod, device) (\n      container_fs_writes_bytes_total{cluster=\"$cluster\", container=~\"(querier)\", namespace=\"$namespace\", device!~\".*sda.*\"}\n    ),\n    \"device\", \"$1\", \"device\", \"/dev/(.*)\"\n  )\n  * 0\n)\n\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -938,7 +938,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*querier.*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*querier.*\"})",
+                        "expr": "max by (persistentvolumeclaim) (\n  kubelet_volume_stats_used_bytes{cluster=\"$cluster\", namespace=\"$namespace\", persistentvolumeclaim=~\".*(querier).*\"}\n  /\n  kubelet_volume_stats_capacity_bytes{cluster=\"$cluster\", namespace=\"$namespace\", persistentvolumeclaim=~\".*(querier).*\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{persistentvolumeclaim}}",
                         "legendLink": null
@@ -1036,19 +1036,19 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\"} / container_spec_cpu_period{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -1137,19 +1137,19 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -1199,7 +1199,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/index-gateway\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(index-gateway)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -1249,7 +1249,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(instance, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, device) (\n  rate(node_disk_written_bytes_total[$__rate_interval])\n)\n+\nignoring(pod) group_right() (\n  label_replace(\n    count by (instance, pod, device) (\n      container_fs_writes_bytes_total{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\", device!~\".*sda.*\"}\n    ),\n    \"device\", \"$1\", \"device\", \"/dev/(.*)\"\n  )\n  * 0\n)\n\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -1296,7 +1296,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(instance, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"index-gateway\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, device) (\n  rate(node_disk_read_bytes_total[$__rate_interval])\n)\n+\nignoring(pod) group_right() (\n  label_replace(\n    count by (instance, pod, device) (\n      container_fs_writes_bytes_total{cluster=\"$cluster\", container=~\"(index-gateway)\", namespace=\"$namespace\", device!~\".*sda.*\"}\n    ),\n    \"device\", \"$1\", \"device\", \"/dev/(.*)\"\n  )\n  * 0\n)\n\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -1343,7 +1343,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*index-gateway.*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*index-gateway.*\"})",
+                        "expr": "max by (persistentvolumeclaim) (\n  kubelet_volume_stats_used_bytes{cluster=\"$cluster\", namespace=\"$namespace\", persistentvolumeclaim=~\".*(index-gateway).*\"}\n  /\n  kubelet_volume_stats_capacity_bytes{cluster=\"$cluster\", namespace=\"$namespace\", persistentvolumeclaim=~\".*(index-gateway).*\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{persistentvolumeclaim}}",
                         "legendLink": null
@@ -1441,19 +1441,19 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-gateway\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-gateway\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-gateway\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-gateway\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\"} / container_spec_cpu_period{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -1542,19 +1542,19 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-gateway\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-gateway\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"bloom-gateway\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -1604,7 +1604,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/bloom-gateway\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(bloom-gateway)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -1654,7 +1654,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(instance, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"bloom-gateway\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, device) (\n  rate(node_disk_written_bytes_total[$__rate_interval])\n)\n+\nignoring(pod) group_right() (\n  label_replace(\n    count by (instance, pod, device) (\n      container_fs_writes_bytes_total{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\", device!~\".*sda.*\"}\n    ),\n    \"device\", \"$1\", \"device\", \"/dev/(.*)\"\n  )\n  * 0\n)\n\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -1701,7 +1701,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "sum by(instance, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + ignoring(pod) group_right() (label_replace(count by(instance, pod, device) (container_fs_writes_bytes_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=\"bloom-gateway\", device!~\".*sda.*\"}), \"device\", \"$1\", \"device\", \"/dev/(.*)\") * 0)\n",
+                        "expr": "sum by(instance, device) (\n  rate(node_disk_read_bytes_total[$__rate_interval])\n)\n+\nignoring(pod) group_right() (\n  label_replace(\n    count by (instance, pod, device) (\n      container_fs_writes_bytes_total{cluster=\"$cluster\", container=~\"(bloom-gateway)\", namespace=\"$namespace\", device!~\".*sda.*\"}\n    ),\n    \"device\", \"$1\", \"device\", \"/dev/(.*)\"\n  )\n  * 0\n)\n\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}} - {{device}}",
                         "legendLink": null
@@ -1748,7 +1748,7 @@
                   "span": 2,
                   "targets": [
                      {
-                        "expr": "max by(persistentvolumeclaim) (kubelet_volume_stats_used_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*bloom-gateway.*\"} / kubelet_volume_stats_capacity_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", persistentvolumeclaim=~\".*bloom-gateway.*\"})",
+                        "expr": "max by (persistentvolumeclaim) (\n  kubelet_volume_stats_used_bytes{cluster=\"$cluster\", namespace=\"$namespace\", persistentvolumeclaim=~\".*(bloom-gateway).*\"}\n  /\n  kubelet_volume_stats_capacity_bytes{cluster=\"$cluster\", namespace=\"$namespace\", persistentvolumeclaim=~\".*(bloom-gateway).*\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{persistentvolumeclaim}}",
                         "legendLink": null
@@ -1846,19 +1846,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", container=~\"(ingester.*|partition-ingester.*)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(ingester.*|partition-ingester.*)\", namespace=\"$namespace\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", container=~\"(ingester.*|partition-ingester.*)\", namespace=\"$namespace\"} / container_spec_cpu_period{cluster=\"$cluster\", container=~\"(ingester.*|partition-ingester.*)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -1947,19 +1947,19 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", container=~\"(ingester.*|partition-ingester.*)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(ingester.*|partition-ingester.*)\", namespace=\"$namespace\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ingester|partition-ingester\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", container=~\"(ingester.*|partition-ingester.*)\", namespace=\"$namespace\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -2009,7 +2009,7 @@
                   "span": 4,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/(ingester|partition-ingester).*\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(ingester.*|partition-ingester.*)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -2071,7 +2071,7 @@
                   "span": 3,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (loki_prometheus_rule_group_rules{cluster=~\"$cluster\", job=~\"($namespace)/ruler\"}) or sum by(pod) (cortex_prometheus_rule_group_rules{cluster=~\"$cluster\", job=~\"($namespace)/ruler\"})",
+                        "expr": "sum by(pod) (\n  loki_prometheus_rule_group_rules{cluster=\"$cluster\", job=~\"($namespace)/(ruler)\", namespace=\"$namespace\"}\n)\nor\nsum by(pod) (\n  cortex_prometheus_rule_group_rules{cluster=\"$cluster\", job=~\"($namespace)/(ruler)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
@@ -2157,19 +2157,19 @@
                   "span": 3,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ruler\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=\"$cluster\", container=~\"(ruler)\", namespace=\"$namespace\"}[$__rate_interval]))",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ruler\", resource=\"cpu\"} > 0)",
+                        "expr": "min(kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(ruler)\", namespace=\"$namespace\", resource=\"cpu\"} > 0)",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_cpu_quota{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ruler\"} / container_spec_cpu_period{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ruler\"})",
+                        "expr": "min(container_spec_cpu_quota{cluster=\"$cluster\", container=~\"(ruler)\", namespace=\"$namespace\"} / container_spec_cpu_period{cluster=\"$cluster\", container=~\"(ruler)\", namespace=\"$namespace\"})",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -2258,19 +2258,19 @@
                   "span": 3,
                   "targets": [
                      {
-                        "expr": "max by(pod) (container_memory_working_set_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ruler\"})",
+                        "expr": "max by (pod) (\n  container_memory_working_set_bytes{cluster=\"$cluster\", container=~\"(ruler)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(kube_pod_container_resource_requests{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ruler\", resource=\"memory\"} > 0)",
+                        "expr": "min(\n  kube_pod_container_resource_requests{cluster=\"$cluster\", container=~\"(ruler)\", namespace=\"$namespace\", resource=\"memory\"} > 0\n)\n",
                         "format": "time_series",
                         "legendFormat": "request",
                         "legendLink": null
                      },
                      {
-                        "expr": "min(container_spec_memory_limit_bytes{cluster=~\"$cluster\", namespace=~\"$namespace\", container=~\"ruler\"} > 0)",
+                        "expr": "min(\n  container_spec_memory_limit_bytes{cluster=\"$cluster\", container=~\"(ruler)\", namespace=\"$namespace\"}\n) > 0\n",
                         "format": "time_series",
                         "legendFormat": "limit",
                         "legendLink": null
@@ -2320,7 +2320,7 @@
                   "span": 3,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (go_memstats_heap_inuse_bytes{cluster=~\"$cluster\", job=~\"($namespace)/ruler\"})",
+                        "expr": "sum by(pod) (\n  go_memstats_heap_inuse_bytes{cluster=\"$cluster\", job=~\"($namespace)/(ruler)\", namespace=\"$namespace\"}\n)\n",
                         "format": "time_series",
                         "legendFormat": "{{pod}}",
                         "legendLink": null

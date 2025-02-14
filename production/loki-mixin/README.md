@@ -20,15 +20,28 @@ To install it follow the instructions at: https://grafana.github.io/grizzly/inst
 jb install
 ```
 
-* On your Grafana instance create an API key with role 'Admin' under Configuration > API keys. 
+* On your Grafana instance create an API key with role 'Admin' under Configuration > API keys.
 Copy this key for the next step.
+
+### Building dashboards
+
+To build the mixin locally, in directory `production/loki-mixin` run the command:
+
+```shell
+JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor mixtool generate all mixin.libsonnet
+```
+
+```shell
+JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor grr export --only-spec --output json grr.libsonnet grizzly_output
+```
 
 ### Testing dashboards
 
+To simply test the dashboard layout
 To test the dashboard in your local grafana instance, in directory `production/loki-mixin` run the command:
 
 ```shell
-GRAFANA_URL=http://localhost:3000 GRAFANA_TOKEN=<API_KEY> JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor grr watch ./ dashboards.libsonnet
+GRAFANA_URL=http://localhost:3000 GRAFANA_TOKEN=<API_KEY> JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor grr watch ./ grr.libsonnet
 ```
 
 `grr watch` will detect changes when you save files and try to add/update dashboards:
@@ -42,6 +55,20 @@ Dashboard.writes-resources added
 Dashboard.reads updated
 Dashboard.writes updated
 ...
+```
+
+To test the dashboard and rules, in directory `production/loki-mixin` run the command:
+
+```shell
+GRAFANA_URL=http://localhost:3000 GRAFANA_TOKEN=<API_KEY> \
+  MIMIR_ADDRESS=http://localhost:9090 MIMIR_TENANT_ID=<TENANT_ID> MIMIR_API_KEY=<API_KEY> \
+  JSONNET_PATH=$(pwd)/lib:$(pwd)/vendor grr watch ./ grr.libsonnet
+```
+
+Alternatively, you can setup a [grizzly context](https://grafana.github.io/grizzly/configuration/) for reuse, in which case you can run the command:
+
+```shell
+grr watch ./ grr.libsonnet
 ```
 
 **Disclaimer:** Since these dashboards are used on our own production setup, these contain very specific configurations to our cloud environment which may need to overridden for other setups and use-cases.

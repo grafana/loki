@@ -20,7 +20,7 @@
               summary: 'Loki request error rate is high.',
               description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}% errors.
-              |||, 'cluster', $._config.per_cluster_label),
+              |||, 'cluster', $._config.labels.cluster),
             },
           },
           {
@@ -35,7 +35,7 @@
               summary: 'Loki requests are causing code panics.',
               description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.job }} is experiencing {{ printf "%.2f" $value }}% increase of panics.
-              |||, 'cluster', $._config.per_cluster_label),
+              |||, 'cluster', $._config.labels.cluster),
             },
           },
           {
@@ -51,7 +51,7 @@
               summary: 'Loki request error latency is high.',
               description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.job }} {{ $labels.route }} is experiencing {{ printf "%.2f" $value }}s 99th percentile latency.
-              |||, 'cluster', $._config.per_cluster_label),
+              |||, 'cluster', $._config.labels.cluster),
             },
           },
           {
@@ -67,7 +67,7 @@
               summary: 'Loki deployment is running more than one compactor.',
               description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.namespace }} has had {{ printf "%.0f" $value }} compactors running for more than 5m. Only one compactor should run at a time.
-              |||, 'cluster', $._config.per_cluster_label),
+              |||, 'cluster', $._config.labels.cluster),
             },
           },
           {
@@ -81,7 +81,7 @@
               )
               by (%s, namespace)
               > 60 * 60 * 3
-            ||| % $._config.per_cluster_label,
+            ||| % $._config.labels.cluster,
             'for': '1h',
             labels: {
               severity: 'critical',
@@ -90,7 +90,7 @@
               summary: 'Loki compaction has not run in the last 3 hours since the last compaction.',
               description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 3 hours since the last compaction. This may indicate a problem with the compactor.
-              |||, 'cluster', $._config.per_cluster_label),
+              |||, 'cluster', $._config.labels.cluster),
             },
           },
           {
@@ -105,7 +105,7 @@
                 )
               ) by (%s, namespace)
               == 0
-            ||| % $._config.per_cluster_label,
+            ||| % $._config.labels.cluster,
             'for': '1h',
             labels: {
               severity: 'critical',
@@ -114,7 +114,7 @@
               summary: 'Loki compaction has not run in the last 3h since startup.',
               description: std.strReplace(|||
                 {{ $labels.cluster }} {{ $labels.namespace }} has not run compaction in the last 3h since startup. This may indicate a problem with the compactor.
-              |||, 'cluster', $._config.per_cluster_label),
+              |||, 'cluster', $._config.labels.cluster),
             },
           },
         ],

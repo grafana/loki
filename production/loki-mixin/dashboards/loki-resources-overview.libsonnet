@@ -1,12 +1,18 @@
+local selector = (import '../selectors.libsonnet').new;
+
+local podSelectors = {
+  read: selector().label('container').eq('loki').pod('read').build(),
+  write: selector().label('container').eq('loki').pod('write').build(),
+  backend: selector().label('container').eq('loki').pod('backend').build(),
+};
+
+local jobSelectors = {
+  read: selector().job('read').build(),
+  write: selector().job('write').build(),
+  backend: selector().job('backend').build(),
+};
+
 (import 'dashboard-utils.libsonnet') {
-  local read_pod_matcher = 'container="loki", pod=~"%s-read.*"' % $._config.ssd.pod_prefix_matcher,
-  local read_job_matcher = '%s-read' % $._config.ssd.pod_prefix_matcher,
-
-  local write_pod_matcher = 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher,
-  local write_job_matcher = '%s-write' % $._config.ssd.pod_prefix_matcher,
-
-  local backend_pod_matcher = 'container="loki", pod=~"%s-backend.*"' % $._config.ssd.pod_prefix_matcher,
-  local backend_job_matcher = '%s-backend' % $._config.ssd.pod_prefix_matcher,
 
   // This dashboard is for the single scalable deployment only and it :
   // - replaces the loki-reads-resources dashboards
@@ -22,13 +28,13 @@
         // The read path does not display disk utilization as the index gateway is present in the backend pods.
         $.row('Read path')
         .addPanel(
-          $.CPUUsagePanel('CPU', read_pod_matcher),
+          $.CPUUsagePanel('CPU', podSelectors.read),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', read_pod_matcher),
+          $.memoryWorkingSetPanel('Memory (workingset)', podSelectors.read),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', read_job_matcher),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.read),
         )
       )
       .addRow(
@@ -36,21 +42,25 @@
         .addPanel(
           $.newQueryPanel('In-memory streams') +
           $.queryPanel(
-            'sum by(%s) (loki_write_memory_streams{%s})' % [$._config.per_instance_label, $.jobMatcher(write_job_matcher)],
-            '{{%s}}' % $._config.per_instance_label
+            |||
+              sum by(%s) (
+                loki_write_memory_streams{%s}
+              )
+            ||| % [$._config.labels.per_instance, jobSelectors.write],
+            '{{%s}}' % $._config.labels.per_instance
           ) +
           {
             tooltip: { sort: 2 },  // Sort descending.
           }
         )
         .addPanel(
-          $.CPUUsagePanel('CPU', write_pod_matcher),
+          $.CPUUsagePanel('CPU', podSelectors.write),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', write_pod_matcher),
+          $.memoryWorkingSetPanel('Memory (workingset)', podSelectors.write),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', write_job_matcher),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.write),
         )
       )
       .addRow(
@@ -58,33 +68,45 @@
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(write_pod_matcher)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_written_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.write) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(write_pod_matcher)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_read_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.write) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
         .addPanel(
-          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', write_job_matcher),
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', podSelectors.write),
         )
       )
       .addRow(
         $.row('Backend path')
         .addPanel(
-          $.CPUUsagePanel('CPU', backend_pod_matcher),
+          $.CPUUsagePanel('CPU', podSelectors.backend),
         )
         .addPanel(
-          $.memoryWorkingSetPanel('Memory (workingset)', backend_pod_matcher),
+          $.memoryWorkingSetPanel('Memory (workingset)', podSelectors.backend),
         )
         .addPanel(
-          $.goHeapInUsePanel('Memory (go heap inuse)', backend_job_matcher),
+          $.goHeapInUsePanel('Memory (go heap inuse)', jobSelectors.backend),
         )
       )
       .addRow(
@@ -92,21 +114,33 @@
         .addPanel(
           $.newQueryPanel('Disk Writes', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_written_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(backend_pod_matcher)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_written_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.backend) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
         .addPanel(
           $.newQueryPanel('Disk Reads', 'Bps') +
           $.queryPanel(
-            'sum by(%s, device) (rate(node_disk_read_bytes_total[$__rate_interval])) + %s' % [$._config.per_node_label, $.filterNodeDisk(backend_pod_matcher)],
-            '{{%s}} - {{device}}' % $._config.per_instance_label
+            |||
+              sum by(%(per_node_label)s, device) (
+                rate(node_disk_read_bytes_total[$__rate_interval])
+              )
+              +
+              %(container_disk)s
+            ||| % { per_node_label: $._config.labels.node, container_disk: $.filterNodeDisk(podSelectors.backend) },
+            '{{%s}} - {{device}}' % $._config.labels.per_instance
           ) +
           $.withStacking,
         )
         .addPanel(
-          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', backend_job_matcher),
+          $.containerDiskSpaceUtilizationPanel('Disk Space Utilization', podSelectors.backend),
         )
       ),
   },
