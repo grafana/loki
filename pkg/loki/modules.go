@@ -128,6 +128,7 @@ const (
 	IndexGatewayInterceptors = "index-gateway-interceptors"
 	BloomStore               = "bloom-store"
 	BloomGateway             = "bloom-gateway"
+	BloomGatewayClient       = "bloom-gateway-client"
 	BloomPlanner             = "bloom-planner"
 	BloomBuilder             = "bloom-builder"
 	QueryScheduler           = "query-scheduler"
@@ -1549,16 +1550,12 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 
 	var bloomQuerier indexgateway.BloomQuerier
 	if t.Cfg.BloomGateway.Enabled {
-		bloomGatewayClient, err := bloomgateway.NewClient(t.Cfg.BloomGateway.Client, prometheus.DefaultRegisterer, logger)
-		if err != nil {
-			return nil, err
-		}
 		resolver := bloomgateway.NewBlockResolver(t.BloomStore, logger)
 		querierCfg := bloomgateway.QuerierConfig{
 			BuildTableOffset: t.Cfg.BloomBuild.Planner.MinTableOffset,
 			BuildInterval:    t.Cfg.BloomBuild.Planner.PlanningInterval,
 		}
-		bloomQuerier = bloomgateway.NewQuerier(bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
+		bloomQuerier = bloomgateway.NewQuerier(t.bloomGatewayClient, querierCfg, t.Overrides, resolver, prometheus.DefaultRegisterer, logger)
 	}
 
 	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, t.Overrides, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
@@ -1653,6 +1650,18 @@ func (t *Loki) initBloomPlanner() (services.Service, error) {
 	return p, nil
 }
 
+func (t *Loki) initBloomGatewayClient() (services.Service, error) {
+	var err error
+	if t.Cfg.BloomGateway.Enabled {
+		logger := log.With(util_log.Logger, "component", "bloom-gateway-client")
+		t.bloomGatewayClient, err = bloomgateway.NewClient(t.Cfg.BloomGateway.Client, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
 func (t *Loki) initBloomBuilder() (services.Service, error) {
 	if !t.Cfg.BloomBuild.Enabled {
 		return nil, nil
@@ -1670,15 +1679,6 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		ringManager = t.indexGatewayRingManager
 	}
 
-	var bloomGatewayClient bloomgateway.Client
-	if t.Cfg.BloomGateway.Enabled {
-		var err error
-		bloomGatewayClient, err = bloomgateway.NewClient(t.Cfg.BloomGateway.Client, prometheus.DefaultRegisterer, logger)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return builder.New(
 		t.Cfg.BloomBuild.Builder,
 		t.Overrides,
@@ -1687,7 +1687,7 @@ func (t *Loki) initBloomBuilder() (services.Service, error) {
 		t.ClientMetrics,
 		t.Store,
 		t.BloomStore,
-		bloomGatewayClient,
+		t.bloomGatewayClient,
 		logger,
 		prometheus.DefaultRegisterer,
 		ringManager,
