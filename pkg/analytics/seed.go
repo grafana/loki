@@ -7,6 +7,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/dskit/kv/memberlist"
+
 	"github.com/grafana/loki/v3/pkg/util/build"
 )
 
