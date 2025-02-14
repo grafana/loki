@@ -32,8 +32,6 @@ GOHOSTOS           ?= $(shell go env GOHOSTOS)
 GOARCH             ?= $(shell go env GOARCH)
 GOARM              ?= $(shell go env GOARM)
 GOEXPERIMENT       ?= $(shell go env GOEXPERIMENT)
-CGO_ENABLED        := 0
-GO_ENV             := GOEXPERIMENT=$(GOEXPERIMENT) GOOS=$(GOOS) GOARCH=$(GOARCH) GOARM=$(GOARM) CGO_ENABLED=$(CGO_ENABLED)
 
 GOTEST             ?= go test
 
