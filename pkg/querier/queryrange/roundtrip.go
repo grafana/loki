@@ -1317,5 +1317,15 @@ func NewVariantsTripperware(
 	_ base.Middleware,
 	_ string,
 ) (base.Middleware, error) {
-	return nil, logqlmodel.ErrVariantsDisabled
+	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
+		return base.HandlerFunc(
+			func(ctx context.Context, r base.Request) (base.Response, error) {
+				if _, ok := r.(*LokiRequest); !ok {
+					return next.Do(ctx, r)
+				}
+
+				return nil, logqlmodel.ErrVariantsDisabled
+			},
+		)
+	}), nil
 }
