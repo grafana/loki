@@ -239,7 +239,6 @@ func NewMiddleware(
 
 	detectedFieldsTripperware, err := NewDetectedFieldsTripperware(
 		limits,
-		schema,
 		limitedTripperware,
 		logFilterTripperware,
 	)
@@ -1222,7 +1221,6 @@ func sharedIndexTripperware(
 // NewDetectedFieldsTripperware creates a new frontend tripperware responsible for handling detected field requests, which are basically log filter requests with a bit more processing.
 func NewDetectedFieldsTripperware(
 	limits Limits,
-	_ config.SchemaConfig,
 	limitedTripperware base.Middleware,
 	logTripperware base.Middleware,
 ) (base.Middleware, error) {
