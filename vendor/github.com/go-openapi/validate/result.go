@@ -132,7 +132,6 @@ func (r *Result) RootObjectSchemata() []*spec.Schema {
 }
 
 // FieldSchemata returns the schemata which apply to fields in objects.
-// nolint: dupl
 func (r *Result) FieldSchemata() map[FieldKey][]*spec.Schema {
 	if r.cachedFieldSchemta != nil {
 		return r.cachedFieldSchemta
@@ -152,7 +151,6 @@ func (r *Result) FieldSchemata() map[FieldKey][]*spec.Schema {
 }
 
 // ItemSchemata returns the schemata which apply to items in slices.
-// nolint: dupl
 func (r *Result) ItemSchemata() map[ItemKey][]*spec.Schema {
 	if r.cachedItemSchemata != nil {
 		return r.cachedItemSchemata
@@ -177,7 +175,8 @@ func (r *Result) resetCaches() {
 }
 
 // mergeForField merges other into r, assigning other's root schemata to the given Object and field name.
-// nolint: unparam
+//
+//nolint:unparam
 func (r *Result) mergeForField(obj map[string]interface{}, field string, other *Result) *Result {
 	if other == nil {
 		return r
@@ -199,7 +198,8 @@ func (r *Result) mergeForField(obj map[string]interface{}, field string, other *
 }
 
 // mergeForSlice merges other into r, assigning other's root schemata to the given slice and index.
-// nolint: unparam
+//
+//nolint:unparam
 func (r *Result) mergeForSlice(slice reflect.Value, i int, other *Result) *Result {
 	if other == nil {
 		return r
