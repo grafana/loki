@@ -3117,7 +3117,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.1.1"
+  "version": "3.4.0"
 }
 </pre>
 </td>
@@ -6149,7 +6149,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.4.1"
+"3.4.2"
 </pre>
 </td>
 		</tr>
