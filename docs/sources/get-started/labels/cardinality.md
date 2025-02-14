@@ -19,11 +19,11 @@ Other examples of high cardinality attributes include the following:
 - Customer ID
 - Trace ID
 
-When we talk about _cardinality_ in Loki we are referring to the combination of labels and values and the number of log streams they create.  Loki was not designed or built to support high cardinality label values. In fact, it was built for exactly the opposite. It was built for very long-lived streams and very low cardinality in the labels. In Loki, the fewer labels you use, the better. This is why Loki has a default limit of 15 index labels.
+When we talk about _cardinality_ in Loki we are referring to the combination of labels and values and the number of log streams they create. In Loki, the fewer labels you use, the better. This is why Loki has a default limit of 15 index labels.
 
 High cardinality can result from using labels with a large range of possible values, **or** combining many labels, even if they have a small and finite set of values, such as combining `status_code` and `action`. A typical set of status codes (200, 404, 500)  and actions (GET, POST, PUT, PATCH, DELETE) would create 15 unique streams. But, adding just one more label like `endpoint` (/cart, /products, /customers) would triple this to 45 unique streams.
 
-To see an example of series labels and cardinality, refer to the [LogCLI tutorial] (https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/logcli-tutorial/#checking-series-cardinality).  As you can see, the cardinality for individual labels can be quite high, even before you begin combining labels for a particular log stream, which increases the cardinality even further.
+To see an example of series labels and cardinality, refer to the [LogCLI tutorial](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/logcli-tutorial/#checking-series-cardinality).  As you can see, the cardinality for individual labels can be quite high, even before you begin combining labels for a particular log stream, which increases the cardinality even further.
 
 To view the cardinality of your current labels, you can use [logcli](https://grafana.com/docs/loki/<LOKI_VERSION>/query/logcli/getting-started/).
 
