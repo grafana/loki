@@ -16,7 +16,7 @@ The Tanka installation runs the Loki cluster in microservices mode.
 
 ## Prerequisites
 
-Install the latest version of Tanka (version v0.29.0 or a more recent version) for the `tk env`
+Install the latest version of Tanka (version v0.31.0 or a more recent version) for the `tk env`
 commands. Prebuilt binaries for Tanka can be found at the [Tanka releases
 URL](https://github.com/grafana/tanka/releases).
 

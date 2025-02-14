@@ -15,7 +15,6 @@ common:
       rules_directory: /tmp/loki/rules
   replication_factor: 1
   ring:
-    instance_id: local
     kvstore:
       store: inmemory
 
@@ -57,6 +56,10 @@ pattern_ingester:
   enabled: true
   metric_aggregation:
     loki_address: localhost:3100
+
+compactor:
+  retention_enabled: true
+  delete_request_store: filesystem
 
 ruler:
   alertmanager_url: http://localhost:9093
