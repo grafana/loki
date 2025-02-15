@@ -1,0 +1,14 @@
+{
+  "ignores": [
+    "@types/node",
+    "autoprefixer",
+    "postcss",
+    "tailwindcss",
+    "tailwindcss-animate",
+    "@typescript-eslint/*",
+    "@vitejs/*",
+    "eslint*",
+    "depcheck"
+  ],
+  "ignore-patterns": ["dist", "build", ".next", "coverage"]
+}

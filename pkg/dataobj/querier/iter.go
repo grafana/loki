@@ -77,7 +77,7 @@ func newEntryIterator(ctx context.Context,
 			return nil, err
 		}
 
-		if n == 0 {
+		if n == 0 && err == io.EOF {
 			break
 		}
 
@@ -299,7 +299,7 @@ func newSampleIterator(ctx context.Context,
 		}
 
 		// Handle end of stream or empty read
-		if n == 0 {
+		if n == 0 && err == io.EOF {
 			iterators = appendIteratorFromSeries(iterators, series)
 			break
 		}

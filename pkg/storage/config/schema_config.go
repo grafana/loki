@@ -278,6 +278,13 @@ type SchemaConfig struct {
 	fileName string
 }
 
+func (cfg *SchemaConfig) Clone() SchemaConfig {
+	clone := *cfg
+	clone.Configs = make([]PeriodConfig, len(cfg.Configs))
+	copy(clone.Configs, cfg.Configs)
+	return clone
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file. The schema config is used only when running Cortex with the chunks storage.")
