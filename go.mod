@@ -67,7 +67,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.17.11
 	github.com/klauspost/pgzip v1.2.6
-	github.com/leodido/go-syslog/v4 v4.2.0
+	github.com/leodido/go-syslog/v4 v4.2.1-0.20250210154722-e1d78c258095
 	github.com/mattn/go-ieproxy v0.0.12
 	github.com/minio/minio-go/v7 v7.0.85
 	github.com/mitchellh/go-wordwrap v1.0.1

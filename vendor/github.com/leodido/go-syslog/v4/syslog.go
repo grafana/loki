@@ -9,8 +9,11 @@ import (
 	"github.com/leodido/go-syslog/v4/common"
 )
 
-// BestEfforter is an interface that wraps the HasBestEffort method.
+// BestEfforter is an interface that wraps the WithBestEffort and the HasBestEffort methods.
 type BestEfforter interface {
+	// WithBestEffort enables best effort mode for syslog parsers.
+	//
+	// When passed to a parser it tries to recover as much of the syslog messages as possible.
 	WithBestEffort()
 	HasBestEffort() bool
 }
@@ -33,7 +36,7 @@ type MachineOption func(m Machine) Machine
 type Parser interface {
 	Parse(r io.Reader)
 	WithListener(ParserListener)
-	BestEfforter
+	WithMachineOptions(opts ...MachineOption)
 	MaxMessager
 }
 

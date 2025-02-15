@@ -16,9 +16,9 @@ type parser struct {
 	maxMessageLength int
 	s                Scanner
 	internal         syslog.Machine
+	internalOpts     []syslog.MachineOption
 	last             Token
 	stepback         bool // Wheter to retrieve the last token or not
-	bestEffort       bool // Best effort mode flag
 	emit             syslog.ParserListener
 }
 
@@ -33,12 +33,8 @@ func NewParser(opts ...syslog.ParserOption) syslog.Parser {
 		p = opt(p).(*parser)
 	}
 
-	// Create internal parser depending on options
-	if p.bestEffort {
-		p.internal = rfc5424.NewMachine(rfc5424.WithBestEffort())
-	} else {
-		p.internal = rfc5424.NewMachine()
-	}
+	// Create internal parser with options
+	p.internal = rfc5424.NewMachine(p.internalOpts...)
 
 	return p
 }
@@ -53,30 +49,19 @@ func NewParserRFC3164(opts ...syslog.ParserOption) syslog.Parser {
 		p = opt(p).(*parser)
 	}
 
-	// Create internal parser depending on options
-	if p.bestEffort {
-		p.internal = rfc3164.NewMachine(rfc3164.WithBestEffort())
-	} else {
-		p.internal = rfc3164.NewMachine()
-	}
+	// Create internal parser with machine options
+	p.internal = rfc3164.NewMachine(p.internalOpts...)
 
 	return p
 }
 
+// WithMachineOptions configures options for the underlying parsing machine.
+func (p *parser) WithMachineOptions(opts ...syslog.MachineOption) {
+	p.internalOpts = append(p.internalOpts, opts...)
+}
+
 func (p *parser) WithMaxMessageLength(length int) {
 	p.maxMessageLength = length
-}
-
-// HasBestEffort tells whether the receiving parser has best effort mode on or off.
-func (p *parser) HasBestEffort() bool {
-	return p.bestEffort
-}
-
-// WithBestEffort implements the syslog.BestEfforter interface.
-//
-// The generic options uses it.
-func (p *parser) WithBestEffort() {
-	p.bestEffort = true
 }
 
 // WithListener implements the syslog.Parser interface.
@@ -126,7 +111,7 @@ func (p *parser) run() {
 		if tok = p.scan(); tok.typ != SYSLOGMSG {
 			e := fmt.Errorf(`found %s after "%s", expecting a %s containing %d octets`, tok, tok.lit, SYSLOGMSG, p.s.msglen)
 			// Underflow case
-			if len(tok.lit) < int(p.s.msglen) && p.bestEffort {
+			if len(tok.lit) < int(p.s.msglen) && p.internal.HasBestEffort() {
 				// Though MSGLEN was not respected, we try to parse the existing SYSLOGMSG as a RFC5424 syslog message
 				result := p.parse(tok.lit)
 				if result.Error == nil {
@@ -144,10 +129,10 @@ func (p *parser) run() {
 
 		// Parse the SYSLOGMSG literal pretending it is a RFC5424 syslog message
 		result := p.parse(tok.lit)
-		if p.bestEffort || result.Error == nil {
+		if p.internal.HasBestEffort() || result.Error == nil {
 			p.emit(result)
 		}
-		if !p.bestEffort && result.Error != nil {
+		if !p.internal.HasBestEffort() && result.Error != nil {
 			p.emit(&syslog.Result{Error: result.Error})
 			break
 		}

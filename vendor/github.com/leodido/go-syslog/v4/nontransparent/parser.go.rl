@@ -43,14 +43,14 @@ main :=
 %% write data nofinal;
 
 type machine struct{
-    trailertyp TrailerType // default is 0 thus TrailerType(LF)
-    trailer    byte
-    candidate  []byte
-    bestEffort bool
-    internal   syslog.Machine
-    emit       syslog.ParserListener
-    readError  error
-    lastChunk  []byte // store last candidate message also if it does not ends with a trailer
+    trailertyp   TrailerType // default is 0 thus TrailerType(LF)
+    trailer      byte
+    candidate    []byte
+    internal     syslog.Machine
+    internalOpts []syslog.MachineOption
+    emit         syslog.ParserListener
+    readError    error
+    lastChunk    []byte // store last candidate message also if it does not ends with a trailer
 }
 
 // Exec implements the ragel.Parser interface.
@@ -79,7 +79,7 @@ func (m *machine) OnCompletion() {
     // Try to parse last chunk as a candidate
     if m.readError != nil && len(m.lastChunk) > 0 {
         res, err := m.internal.Parse(m.lastChunk)
-        if err == nil && !m.bestEffort {
+        if err == nil && !m.internal.HasBestEffort() {
             res = nil
             err = m.readError
         }
@@ -105,11 +105,7 @@ func NewParser(options ...syslog.ParserOption) syslog.Parser {
     m.trailer = byte(trailer)
 
     // Create internal parser depending on options
-    if m.bestEffort {
-        m.internal = rfc5424.NewMachine(rfc5424.WithBestEffort())
-    } else {
-        m.internal = rfc5424.NewMachine()
-    }
+    m.internal = rfc5424.NewMachine(m.internalOpts...)
 
     return m
 }
@@ -128,22 +124,13 @@ func NewParserRFC3164(options ...syslog.ParserOption) syslog.Parser {
 	m.trailer = byte(trailer)
 
 	// Create internal parser depending on options
-	if m.bestEffort {
-		m.internal = rfc3164.NewMachine(rfc3164.WithBestEffort())
-	} else {
-		m.internal = rfc3164.NewMachine()
-	}
+	m.internal = rfc3164.NewMachine(m.internalOpts...)
 
 	return m
 }
 
 // WithMaxMessageLength does nothing for this parser.
 func (m *machine) WithMaxMessageLength(length int) {}
-
-// HasBestEffort tells whether the receiving parser has best effort mode on or off.
-func (m *machine) HasBestEffort() bool {
-    return m.bestEffort
-}
 
 // WithTrailer ... todo(leodido)
 func WithTrailer(t TrailerType) syslog.ParserOption {
@@ -156,11 +143,9 @@ func WithTrailer(t TrailerType) syslog.ParserOption {
     }
 }
 
-// WithBestEffort implements the syslog.BestEfforter interface.
-//
-// The generic options uses it.
-func (m *machine) WithBestEffort() {
-    m.bestEffort = true
+// WithMachineOptions configures options for the underlying parsing machine.
+func (m *machine) WithMachineOptions(opts ...syslog.MachineOption) {
+    m.internalOpts = append(m.internalOpts, opts...)
 }
 
 // WithListener implements the syslog.Parser interface.

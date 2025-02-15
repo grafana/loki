@@ -215,6 +215,10 @@ type SyslogTargetConfig struct {
 	// Default is rfc5424.
 	SyslogFormat SyslogFormat `yaml:"syslog_format"`
 
+	// When parsing an RFC3164 message, should the year be defaulted to the current year?
+	// When false, the year will default to 0.
+	DefaultToCurrentYear bool `yaml:"default_to_current_year"`
+
 	// MaxMessageLength sets the maximum limit to the length of syslog messages
 	MaxMessageLength int `yaml:"max_message_length"`
 
