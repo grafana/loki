@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.27.1
 
-- [FEATURE] Added a dedicated serviceAccount for the ruler.
+- [FEATURE] Added a dedicated serviceAccount for the ruler. (#16324)
 
 ## 6.27.0
 
