@@ -194,6 +194,10 @@ func (v Validator) reportDiscardedData(ctx context.Context, reason string, vCtx 
 
 // ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
 func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, policy string) (bool, int, string, error) {
+	if ctx.blockIngestionUntil.IsZero() {
+		return false, 0, "", nil
+	}
+
 	if now.Before(ctx.blockIngestionUntil) {
 		err := fmt.Errorf(validation.BlockedIngestionErrorMsg, ctx.userID, ctx.blockIngestionUntil.Format(time.RFC3339), ctx.blockIngestionStatusCode)
 		return true, ctx.blockIngestionStatusCode, validation.BlockedIngestion, err
