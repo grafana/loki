@@ -204,7 +204,7 @@ func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, po
 		return block, code, reason, err
 	}
 
-	if block, until, code := v.ShouldBlockPolicy(ctx, policy, now); block {
+	if block, until, code := v.shouldBlockPolicy(ctx, policy, now); block {
 		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, until.Format(time.RFC3339), code)
 		return true, code, validation.BlockedIngestionPolicy, err
 	}
@@ -227,7 +227,7 @@ func (v Validator) shouldBlockGlobalPolicy(ctx validationContext, now time.Time)
 
 // ShouldBlockPolicy checks if ingestion should be blocked for the given policy.
 // It returns true if ingestion should be blocked, along with the block until time and status code.
-func (v *Validator) ShouldBlockPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
+func (v *Validator) shouldBlockPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
 	// No policy provided, don't block
 	if policy == "" {
 		return false, time.Time{}, 0
