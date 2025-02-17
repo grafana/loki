@@ -46,7 +46,8 @@ const (
 	// COLUMN_TYPE_ROWS is a column indicating the number of rows for a stream.
 	COLUMN_TYPE_ROWS ColumnType = 5
 	// COLUMN_TYPE_UNCOMPRESSED_SIZE is a column indicating the uncompressed size
-	// of a stream.
+	// of a stream. Size of a stream is the sum of the length of all log lines and
+	// the length of all structured metadata values
 	COLUMN_TYPE_UNCOMPRESSED_SIZE ColumnType = 6
 )
 

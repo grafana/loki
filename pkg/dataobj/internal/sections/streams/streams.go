@@ -92,9 +92,10 @@ func (s *Streams) TimeRange() (time.Time, time.Time) {
 // Record a stream record within the Streams section. The provided timestamp is
 // used to track the minimum and maximum timestamp of a stream. The number of
 // calls to Record is used to track the number of rows for a stream.
+// The recordSize is used to track the uncompressed size of the stream.
 //
 // The stream ID of the recorded stream is returned.
-func (s *Streams) Record(streamLabels labels.Labels, ts time.Time, uncompressedSize int64) int64 {
+func (s *Streams) Record(streamLabels labels.Labels, ts time.Time, recordSize int64) int64 {
 	ts = ts.UTC()
 	s.observeRecord(ts)
 
@@ -106,7 +107,7 @@ func (s *Streams) Record(streamLabels labels.Labels, ts time.Time, uncompressedS
 		stream.MaxTimestamp = ts
 	}
 	stream.Rows++
-	stream.UncompressedSize += uncompressedSize
+	stream.UncompressedSize += recordSize
 
 	return stream.ID
 }
