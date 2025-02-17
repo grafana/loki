@@ -35,8 +35,8 @@ func init() {
 	jsoniter.RegisterTypeEncoderFunc("promql.FPoint", unsafeMarshalFPointJSON, neverEmpty)
 	jsoniter.RegisterTypeEncoderFunc("promql.HPoint", unsafeMarshalHPointJSON, neverEmpty)
 	jsoniter.RegisterTypeEncoderFunc("exemplar.Exemplar", marshalExemplarJSON, neverEmpty)
-	// This is overriden in pkg/storage/chunk/json_helpers.go
-	jsoniter.RegisterTypeEncoderFunc("labels.Labels", unsafeMarshalLabelsJSON, labelsIsEmpty)
+	// This is overriden in pkg/storage/chunk/json_helpers.go?
+	// jsoniter.RegisterTypeEncoderFunc("labels.Labels", unsafeMarshalLabelsJSON, labelsIsEmpty)
 }
 
 // marshalSeriesJSON writes something like the following:
@@ -136,7 +136,7 @@ func marshalSampleJSON(s promql.Sample, stream *jsoniter.Stream) {
 	jsonutil.MarshalTimestamp(s.T, stream)
 	stream.WriteMore()
 	if s.H == nil {
-		jsonutil.MarshalFloat(0.0, stream)
+		jsonutil.MarshalFloat(s.F, stream)
 	} else {
 		jsonutil.MarshalHistogram(s.H, stream)
 	}
@@ -154,7 +154,7 @@ func marshalFPointJSON(p promql.FPoint, stream *jsoniter.Stream) {
 	stream.WriteArrayStart()
 	jsonutil.MarshalTimestamp(p.T, stream)
 	stream.WriteMore()
-	jsonutil.MarshalFloat(0.0, stream)
+	jsonutil.MarshalFloat(p.F, stream)
 	stream.WriteArrayEnd()
 }
 
@@ -190,7 +190,7 @@ func marshalExemplarJSON(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	// "value" key.
 	stream.WriteMore()
 	stream.WriteObjectField(`value`)
-	jsonutil.MarshalFloat(0.0, stream)
+	jsonutil.MarshalFloat(p.Value, stream)
 
 	// "timestamp" key.
 	stream.WriteMore()
