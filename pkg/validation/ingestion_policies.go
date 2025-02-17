@@ -1,6 +1,10 @@
 package validation
 
-import "github.com/prometheus/prometheus/model/labels"
+import (
+	"slices"
+
+	"github.com/prometheus/prometheus/model/labels"
+)
 
 type PriorityStream struct {
 	Priority int               `yaml:"priority" json:"priority" doc:"description=The larger the value, the higher the priority."`
@@ -19,16 +23,21 @@ func (p *PriorityStream) Matches(lbs labels.Labels) bool {
 
 type PolicyStreamMapping map[string][]*PriorityStream
 
-func (p *PolicyStreamMapping) PolicyFor(lbs labels.Labels) string {
+// PolicyFor returns all the policies that matches the given labels with the highest priority.
+// Note that this method will return multiple policies if two different policies match the same labels
+// with the same priority.
+// Returned policies are sorted alphabetically.
+// If no policies match, it returns an empty slice.
+func (p *PolicyStreamMapping) PolicyFor(lbs labels.Labels) []string {
 	var (
-		matchedPolicy     *PriorityStream
-		found             bool
-		matchedPolicyName string
+		found           bool
+		highestPriority int
+		matchedPolicies = make(map[string]int, len(*p))
 	)
 
 	for policyName, policyStreams := range *p {
 		for _, policyStream := range policyStreams {
-			if found && policyStream.Priority <= matchedPolicy.Priority {
+			if found && policyStream.Priority < highestPriority {
 				// Even if a match occurs it won't have a higher priority than the current matched policy.
 				continue
 			}
@@ -38,10 +47,21 @@ func (p *PolicyStreamMapping) PolicyFor(lbs labels.Labels) string {
 			}
 
 			found = true
-			matchedPolicy = policyStream
-			matchedPolicyName = policyName
+			highestPriority = policyStream.Priority
+			matchedPolicies[policyName] = policyStream.Priority
 		}
 	}
 
-	return matchedPolicyName
+	// Stick with only the highest priority policies.
+	policies := make([]string, 0, len(matchedPolicies))
+	for policyName, priority := range matchedPolicies {
+		if priority == highestPriority {
+			policies = append(policies, policyName)
+		}
+	}
+
+	// Sort the policies alphabetically.
+	slices.Sort(policies)
+
+	return policies
 }

@@ -226,7 +226,7 @@ func New(
 
 	policyResolver := push.PolicyResolver(func(userID string, lbs labels.Labels) string {
 		mappings := overrides.PoliciesStreamMapping(userID)
-		return mappings.PolicyFor(lbs)
+		return getPolicy(userID, lbs, mappings, logger)
 	})
 
 	validator, err := NewValidator(overrides, usageTracker)
@@ -1197,7 +1197,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	mapping := d.validator.Limits.PoliciesStreamMapping(vContext.userID)
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
-		policy := mapping.PolicyFor(val.ls)
+		policy := getPolicy(vContext.userID, val.ls, mapping, d.logger)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
@@ -1205,10 +1205,10 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	if err != nil {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, nil)
 		// TODO: check for global policy.
-		return nil, "", 0, retentionHours, mapping.PolicyFor(nil), fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
+		return nil, "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := mapping.PolicyFor(ls)
+	policy := getPolicy(vContext.userID, ls, mapping, d.logger)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
@@ -1303,4 +1303,25 @@ func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger l
 // distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
 func (d *Distributor) HealthyInstancesCount() int {
 	return int(d.healthyInstancesCount.Load())
+}
+
+func getPolicy(userID string, lbs labels.Labels, mapping validation.PolicyStreamMapping, logger log.Logger) string {
+	policies := mapping.PolicyFor(lbs)
+
+	var policy string
+	if len(policies) > 0 {
+		policy = policies[0]
+		if len(policies) > 1 {
+			level.Warn(logger).Log(
+				"msg", "multiple policies matched for the same stream",
+				"org_id", userID,
+				"stream", lbs.String(),
+				"policy", policy,
+				"policies", strings.Join(policies, ","),
+				"insight", "true",
+			)
+		}
+	}
+
+	return policy
 }
