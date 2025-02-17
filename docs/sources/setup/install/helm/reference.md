@@ -6519,6 +6519,20 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.ui</td>
+			<td>object</td>
+			<td>Optional UI configuration</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "gateway": {
+    "enabled": true
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.useTestSchema</td>
 			<td>bool</td>
 			<td>a real Loki install requires a proper schemaConfig defined above this, however for testing or playing around you can enable useTestSchema</td>
