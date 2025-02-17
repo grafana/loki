@@ -445,6 +445,10 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 	assert.False(t, missing)
 	assert.Empty(t, missingLabels)
 
+	// Check metrics are zero since no labels were missing
+	assert.Equal(t, float64(0), testutil.ToFloat64(validation.DiscardedBytes))
+	assert.Equal(t, float64(0), testutil.ToFloat64(validation.DiscardedSamples))
+
 	// request missing the `app` label from global enforced labels and `cluster` label from policy enforced labels.
 	lbs = labels.FromMap(map[string]string{"env": "prod", "namespace": "ns1"})
 	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy1")
@@ -463,25 +467,38 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	flagext.DefaultValues(limits)
 
 	// makeWriteRequest only contains a `{foo="bar"}` label.
-	req := makeWriteRequest(100, 100)
+	req := makeWriteRequest(100, 100) // 100 lines of 100 bytes each
 	limits.EnforcedLabels = []string{"app", "env"}
 	distributors, _ := prepare(t, 1, 3, limits, nil)
+
 	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
 	require.Error(t, err)
 	expectedErr := httpgrpc.Errorf(http.StatusBadRequest, validation.MissingEnforcedLabelsErrorMsg, "app,env", "test")
 	require.EqualError(t, err, expectedErr.Error())
 
+	// Verify metrics for discarded samples due to missing enforced labels
+	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes)) // 100 lines * 100 bytes
+	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples)) // 100 lines
+
 	// enforced labels, but all labels are present.
 	req = makeWriteRequestWithLabels(100, 100, []string{`{app="foo", env="prod"}`}, false, false, false)
 	_, err = distributors[0].Push(ctx, req)
 	require.NoError(t, err)
+
+	// Metrics should not have increased since this push was successful
+	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
+	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
 
 	// no enforced labels, so no errors.
 	limits.EnforcedLabels = []string{}
 	distributors, _ = prepare(t, 1, 3, limits, nil)
 	_, err = distributors[0].Push(ctx, req)
 	require.NoError(t, err)
+
+	// Metrics should remain unchanged
+	assert.Equal(t, float64(10000), testutil.ToFloat64(validation.DiscardedBytes))
+	assert.Equal(t, float64(100), testutil.ToFloat64(validation.DiscardedSamples))
 }
 
 func TestDistributorPushConcurrently(t *testing.T) {

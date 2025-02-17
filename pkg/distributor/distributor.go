@@ -551,14 +551,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes)
+				d.validator.reportDiscardedData(validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 				continue
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(reason, validationContext, lbs, retentionHours, policy, discardedBytes)
+				d.validator.reportDiscardedData(reason, validationContext, lbs, retentionHours, policy, discardedBytes, len(stream.Entries))
 
 				// If the status code is 200, return success.
 				// Note that we still log the error and increment the metrics.
