@@ -423,7 +423,7 @@ loki:
     object_store:
       # Type of object store. Valid options are: s3, gcs, azure
       type: s3
-      prefix: null # Optional prefix for storage keys
+      storage_prefix: null # Optional prefix for storage keys
 
       # S3 configuration (when type is "s3")
       s3:
