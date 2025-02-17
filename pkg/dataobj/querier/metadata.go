@@ -8,8 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -47,7 +50,7 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 
 	uniqueSeries := &sync.Map{}
 
-	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard)
+	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, s.logger)
 
 	err = processor.ProcessParallel(ctx, func(h uint64, stream dataobj.Stream) {
 		uniqueSeries.Store(h, labelsToSeriesIdentifier(stream.Labels))
@@ -76,7 +79,7 @@ func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, thr
 		return nil, err
 	}
 
-	processor := newStreamProcessor(start, end, matchers, objects, noShard)
+	processor := newStreamProcessor(start, end, matchers, objects, noShard, s.logger)
 	uniqueNames := sync.Map{}
 
 	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
@@ -115,7 +118,7 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 		return nil, err
 	}
 
-	processor := newStreamProcessor(start, end, matchers, objects, noShard)
+	processor := newStreamProcessor(start, end, matchers, objects, noShard, s.logger)
 	uniqueValues := sync.Map{}
 
 	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
@@ -142,15 +145,17 @@ type streamProcessor struct {
 	seenSeries *sync.Map
 	objects    []*dataobj.Object
 	shard      logql.Shard
+	logger     log.Logger
 }
 
 // newStreamProcessor creates a new streamProcessor with the given parameters
-func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []*dataobj.Object, shard logql.Shard) *streamProcessor {
+func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []*dataobj.Object, shard logql.Shard, logger log.Logger) *streamProcessor {
 	return &streamProcessor{
 		predicate:  streamPredicate(matchers, start, end),
 		seenSeries: &sync.Map{},
 		objects:    objects,
 		shard:      shard,
+		logger:     logger,
 	}
 }
 
@@ -166,6 +171,9 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 		}
 	}()
 
+	start := time.Now()
+	level.Debug(sp.logger).Log("msg", "processing streams", "total_readers", len(readers))
+
 	// set predicate on all readers
 	for _, reader := range readers {
 		if err := reader.SetPredicate(sp.predicate); err != nil {
@@ -174,20 +182,38 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
+	var processedStreams atomic.Int64
 	for _, reader := range readers {
 		g.Go(func() error {
-			return sp.processSingleReader(ctx, reader, onNewStream)
+			n, err := sp.processSingleReader(ctx, reader, onNewStream)
+			if err != nil {
+				return err
+			}
+			processedStreams.Add(n)
+			return nil
 		})
 	}
-	return g.Wait()
+	err = g.Wait()
+	if err != nil {
+		return err
+	}
+
+	level.Debug(sp.logger).Log("msg", "finished processing streams",
+		"total_readers", len(readers),
+		"total_streams_processed", processedStreams.Load(),
+		"duration", time.Since(start),
+	)
+
+	return nil
 }
 
-func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *dataobj.StreamsReader, onNewStream func(uint64, dataobj.Stream)) error {
+func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *dataobj.StreamsReader, onNewStream func(uint64, dataobj.Stream)) (int64, error) {
 	var (
 		streamsPtr = streamsPool.Get().(*[]dataobj.Stream)
 		streams    = *streamsPtr
 		buf        = make([]byte, 0, 1024)
 		h          uint64
+		processed  int64
 	)
 
 	defer streamsPool.Put(streamsPtr)
@@ -195,7 +221,7 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *data
 	for {
 		n, err := reader.Read(ctx, streams)
 		if err != nil && err != io.EOF {
-			return err
+			return processed, err
 		}
 		if n == 0 && err == io.EOF {
 			break
@@ -207,9 +233,10 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *data
 				continue
 			}
 			onNewStream(h, stream)
+			processed++
 		}
 	}
-	return nil
+	return processed, nil
 }
 
 func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {

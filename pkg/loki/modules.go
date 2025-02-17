@@ -422,7 +422,7 @@ func (t *Loki) getQuerierStore() (querier.Store, error) {
 
 	storeCombiner := querier.NewStoreCombiner([]querier.StoreConfig{
 		{
-			Store: dataobjquerier.NewStore(store),
+			Store: dataobjquerier.NewStore(store, log.With(util_log.Logger, "component", "dataobj-querier")),
 			From:  t.Cfg.DataObj.Querier.From.Time,
 		},
 		{

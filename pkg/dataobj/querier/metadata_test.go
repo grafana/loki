@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -23,7 +24,7 @@ func TestStore_SelectSeries(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 
-	store := NewStore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -166,7 +167,7 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 
-	store := NewStore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -234,7 +235,7 @@ func TestStore_LabelValuesForMetricName(t *testing.T) {
 	// Setup test data
 	now := setupTestData(t, builder)
 
-	store := NewStore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
