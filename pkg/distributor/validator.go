@@ -194,14 +194,26 @@ func (v Validator) reportDiscardedData(ctx context.Context, reason string, vCtx 
 
 // ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
 func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, policy string) (bool, int, string, error) {
-	if now.Before(ctx.blockIngestionUntil) {
-		err := fmt.Errorf(validation.BlockedIngestionErrorMsg, ctx.userID, ctx.blockIngestionUntil.Format(time.RFC3339), ctx.blockIngestionStatusCode)
-		return true, ctx.blockIngestionStatusCode, validation.BlockedIngestion, err
+	if block, code, reason, err := v.shouldBlockGlobalPolicy(ctx, now); block {
+		return block, code, reason, err
 	}
 
 	if block, until, code := v.ShouldBlockPolicy(ctx, policy, now); block {
 		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, until.Format(time.RFC3339), code)
 		return true, code, validation.BlockedIngestionPolicy, err
+	}
+
+	return false, 0, "", nil
+}
+
+func (v Validator) shouldBlockGlobalPolicy(ctx validationContext, now time.Time) (bool, int, string, error) {
+	if ctx.blockIngestionUntil.IsZero() {
+		return false, 0, "", nil
+	}
+
+	if now.Before(ctx.blockIngestionUntil) {
+		err := fmt.Errorf(validation.BlockedIngestionErrorMsg, ctx.userID, ctx.blockIngestionUntil.Format(time.RFC3339), ctx.blockIngestionStatusCode)
+		return true, ctx.blockIngestionStatusCode, validation.BlockedIngestion, err
 	}
 
 	return false, 0, "", nil
