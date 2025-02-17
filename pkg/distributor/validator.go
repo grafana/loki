@@ -104,21 +104,13 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		// Makes time string on the error message formatted consistently.
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		formatedRejectMaxAgeTime := time.Unix(0, vCtx.rejectOldSampleMaxAge).Format(timeFormat)
-		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, vCtx.userID, retentionHours, policy).Inc()
-		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, vCtx.userID, retentionHours, policy).Add(entrySize)
-		if v.usageTracker != nil {
-			v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.GreaterThanMaxSampleAge, labels, entrySize)
-		}
+		v.reportDiscardedDataWithTracker(ctx, validation.GreaterThanMaxSampleAge, vCtx, labels, retentionHours, policy, int(entrySize), 1)
 		return fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
 	if ts > vCtx.creationGracePeriod {
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
-		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, vCtx.userID, retentionHours, policy).Inc()
-		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, vCtx.userID, retentionHours, policy).Add(entrySize)
-		if v.usageTracker != nil {
-			v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.TooFarInFuture, labels, entrySize)
-		}
+		v.reportDiscardedDataWithTracker(ctx, validation.TooFarInFuture, vCtx, labels, retentionHours, policy, int(entrySize), 1)
 		return fmt.Errorf(validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
 	}
 
@@ -127,39 +119,23 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		// an orthogonal concept (we need not use ValidateLabels in this context)
 		// but the upstream cortex_validation pkg uses it, so we keep this
 		// for parity.
-		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, vCtx.userID, retentionHours, policy).Inc()
-		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, vCtx.userID, retentionHours, policy).Add(entrySize)
-		if v.usageTracker != nil {
-			v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.LineTooLong, labels, entrySize)
-		}
+		v.reportDiscardedDataWithTracker(ctx, validation.LineTooLong, vCtx, labels, retentionHours, policy, int(entrySize), 1)
 		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
 	}
 
 	if structuredMetadataCount > 0 {
 		if !vCtx.allowStructuredMetadata {
-			validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, vCtx.userID, retentionHours, policy).Inc()
-			validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, vCtx.userID, retentionHours, policy).Add(entrySize)
-			if v.usageTracker != nil {
-				v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.DisallowedStructuredMetadata, labels, entrySize)
-			}
+			v.reportDiscardedDataWithTracker(ctx, validation.DisallowedStructuredMetadata, vCtx, labels, retentionHours, policy, int(entrySize), 1)
 			return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
 		}
 
 		if maxSize := vCtx.maxStructuredMetadataSize; maxSize != 0 && structuredMetadataSizeBytes > maxSize {
-			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooLarge, vCtx.userID, retentionHours, policy).Inc()
-			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooLarge, vCtx.userID, retentionHours, policy).Add(entrySize)
-			if v.usageTracker != nil {
-				v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.StructuredMetadataTooLarge, labels, entrySize)
-			}
+			v.reportDiscardedDataWithTracker(ctx, validation.StructuredMetadataTooLarge, vCtx, labels, retentionHours, policy, int(entrySize), 1)
 			return fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, labels, structuredMetadataSizeBytes, vCtx.maxStructuredMetadataSize)
 		}
 
 		if maxCount := vCtx.maxStructuredMetadataCount; maxCount != 0 && structuredMetadataCount > maxCount {
-			validation.DiscardedSamples.WithLabelValues(validation.StructuredMetadataTooMany, vCtx.userID, retentionHours, policy).Inc()
-			validation.DiscardedBytes.WithLabelValues(validation.StructuredMetadataTooMany, vCtx.userID, retentionHours, policy).Add(entrySize)
-			if v.usageTracker != nil {
-				v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, validation.StructuredMetadataTooMany, labels, entrySize)
-			}
+			v.reportDiscardedDataWithTracker(ctx, validation.StructuredMetadataTooMany, vCtx, labels, retentionHours, policy, int(entrySize), 1)
 			return fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, labels, structuredMetadataCount, vCtx.maxStructuredMetadataCount)
 		}
 	}
@@ -168,9 +144,10 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 }
 
 // Validate labels returns an error if the labels are invalid
-func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, stream logproto.Stream, retentionHours, policy string) error {
+func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.Stream, retentionHours, policy string) error {
 	if len(ls) == 0 {
-		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID, retentionHours, policy).Inc()
+		// TODO: is this one correct?
+		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, vCtx.userID, retentionHours, policy).Inc()
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 
@@ -186,21 +163,23 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 		numLabelNames--
 	}
 
-	if numLabelNames > ctx.maxLabelNamesPerSeries {
-		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream, retentionHours, policy)
-		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)
+	entriesSize := util.EntriesTotalSize(stream.Entries)
+
+	if numLabelNames > vCtx.maxLabelNamesPerSeries {
+		v.reportDiscardedData(validation.MaxLabelNamesPerSeries, vCtx, retentionHours, policy, entriesSize, len(stream.Entries))
+		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, vCtx.maxLabelNamesPerSeries)
 	}
 
 	lastLabelName := ""
 	for _, l := range ls {
-		if len(l.Name) > ctx.maxLabelNameLength {
-			updateMetrics(validation.LabelNameTooLong, ctx.userID, stream, retentionHours, policy)
+		if len(l.Name) > vCtx.maxLabelNameLength {
+			v.reportDiscardedData(validation.LabelNameTooLong, vCtx, retentionHours, policy, entriesSize, len(stream.Entries))
 			return fmt.Errorf(validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
-		} else if len(l.Value) > ctx.maxLabelValueLength {
-			updateMetrics(validation.LabelValueTooLong, ctx.userID, stream, retentionHours, policy)
+		} else if len(l.Value) > vCtx.maxLabelValueLength {
+			v.reportDiscardedData(validation.LabelValueTooLong, vCtx, retentionHours, policy, entriesSize, len(stream.Entries))
 			return fmt.Errorf(validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
-			updateMetrics(validation.DuplicateLabelNames, ctx.userID, stream, retentionHours, policy)
+			v.reportDiscardedData(validation.DuplicateLabelNames, vCtx, retentionHours, policy, entriesSize, len(stream.Entries))
 			return fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
 		}
 		lastLabelName = l.Name
@@ -208,17 +187,62 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 	return nil
 }
 
+func (v Validator) reportDiscardedData(reason string, vCtx validationContext, retentionHours string, policy string, entrySize, entryCount int) {
+	validation.DiscardedSamples.WithLabelValues(reason, vCtx.userID, retentionHours, policy).Add(float64(entryCount))
+	validation.DiscardedBytes.WithLabelValues(reason, vCtx.userID, retentionHours, policy).Add(float64(entrySize))
+}
+
+func (v Validator) reportDiscardedDataWithTracker(ctx context.Context, reason string, vCtx validationContext, labels labels.Labels, retentionHours string, policy string, entrySize, entryCount int) {
+	v.reportDiscardedData(reason, vCtx, retentionHours, policy, entrySize, entryCount)
+	if v.usageTracker != nil {
+		v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, reason, labels, float64(entrySize))
+	}
+}
+
 // ShouldBlockIngestion returns whether ingestion should be blocked, until when and the status code.
-func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time) (bool, time.Time, int) {
+func (v Validator) ShouldBlockIngestion(ctx validationContext, now time.Time, policy string) (bool, int, string, error) {
+	if block, code, reason, err := v.shouldBlockGlobalPolicy(ctx, now); block {
+		return block, code, reason, err
+	}
+
+	if block, until, code := v.shouldBlockPolicy(ctx, policy, now); block {
+		err := fmt.Errorf(validation.BlockedIngestionPolicyErrorMsg, ctx.userID, until.Format(time.RFC3339), code)
+		return true, code, validation.BlockedIngestionPolicy, err
+	}
+
+	return false, 0, "", nil
+}
+
+func (v Validator) shouldBlockGlobalPolicy(ctx validationContext, now time.Time) (bool, int, string, error) {
 	if ctx.blockIngestionUntil.IsZero() {
+		return false, 0, "", nil
+	}
+
+	if now.Before(ctx.blockIngestionUntil) {
+		err := fmt.Errorf(validation.BlockedIngestionErrorMsg, ctx.userID, ctx.blockIngestionUntil.Format(time.RFC3339), ctx.blockIngestionStatusCode)
+		return true, ctx.blockIngestionStatusCode, validation.BlockedIngestion, err
+	}
+
+	return false, 0, "", nil
+}
+
+// ShouldBlockPolicy checks if ingestion should be blocked for the given policy.
+// It returns true if ingestion should be blocked, along with the block until time and status code.
+func (v *Validator) shouldBlockPolicy(ctx validationContext, policy string, now time.Time) (bool, time.Time, int) {
+	// No policy provided, don't block
+	if policy == "" {
 		return false, time.Time{}, 0
 	}
 
-	return now.Before(ctx.blockIngestionUntil), ctx.blockIngestionUntil, ctx.blockIngestionStatusCode
-}
+	// Check if this policy is blocked in tenant configs
+	blockUntil := v.Limits.BlockIngestionPolicyUntil(ctx.userID, policy)
+	if blockUntil.IsZero() {
+		return false, time.Time{}, 0
+	}
 
-func updateMetrics(reason, userID string, stream logproto.Stream, retentionHours, policy string) {
-	validation.DiscardedSamples.WithLabelValues(reason, userID, retentionHours, policy).Add(float64(len(stream.Entries)))
-	bytes := util.EntriesTotalSize(stream.Entries)
-	validation.DiscardedBytes.WithLabelValues(reason, userID, retentionHours, policy).Add(float64(bytes))
+	if now.Before(blockUntil) {
+		return true, blockUntil, ctx.blockIngestionStatusCode
+	}
+
+	return false, time.Time{}, 0
 }

@@ -71,6 +71,8 @@ const (
 	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it."
 	BlockedIngestion                     = "blocked_ingestion"
 	BlockedIngestionErrorMsg             = "ingestion blocked for user %s until '%s' with status code '%d'"
+	BlockedIngestionPolicy               = "blocked_ingestion_policy"
+	BlockedIngestionPolicyErrorMsg       = "ingestion blocked for user %s until '%s' with status code '%d'"
 	MissingEnforcedLabels                = "missing_enforced_labels"
 	MissingEnforcedLabelsErrorMsg        = "missing required labels %s for user %s"
 )
