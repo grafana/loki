@@ -6400,7 +6400,6 @@ null
       "bucket_name": null,
       "service_account": null
     },
-    "prefix": null,
     "s3": {
       "access_key_id": null,
       "endpoint": null,
@@ -6410,6 +6409,7 @@ null
       "secret_access_key": null,
       "sse": {}
     },
+    "storage_prefix": null,
     "type": "s3"
   },
   "s3": {
