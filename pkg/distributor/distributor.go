@@ -536,7 +536,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -551,14 +551,14 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(ctx, validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes, false)
+				d.validator.reportDiscardedData(validation.MissingEnforcedLabels, validationContext, lbs, retentionHours, policy, discardedBytes)
 				continue
 			}
 
 			if block, statusCode, reason, err := d.validator.ShouldBlockIngestion(validationContext, now, policy); block {
 				d.writeFailuresManager.Log(tenantID, err)
 				discardedBytes := util.EntriesTotalSize(stream.Entries)
-				d.validator.reportDiscardedData(ctx, reason, validationContext, lbs, retentionHours, policy, discardedBytes, false)
+				d.validator.reportDiscardedData(reason, validationContext, lbs, retentionHours, policy, discardedBytes)
 
 				// If the status code is 200, return success.
 				// Note that we still log the error and increment the metrics.
@@ -814,7 +814,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream)
+			lbs, _, _, _, _, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream)
 			if err != nil {
 				continue
 			}
@@ -1193,7 +1193,7 @@ type labelData struct {
 	hash uint64
 }
 
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream) (labels.Labels, string, uint64, string, string, error) {
 	mapping := d.validator.Limits.PoliciesStreamMapping(vContext.userID)
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, val.ls)
@@ -1211,7 +1211,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 	policy := mapping.PolicyFor(ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
-	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy); err != nil {
+	if err := d.validator.ValidateLabels(ctx, vContext, ls, stream, retentionHours, policy); err != nil {
 		return nil, "", 0, retentionHours, policy, err
 	}
 

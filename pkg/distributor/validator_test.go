@@ -232,7 +232,7 @@ func TestValidator_ValidateLabels(t *testing.T) {
 			v, err := NewValidator(o, nil)
 			assert.NoError(t, err)
 
-			err = v.ValidateLabels(v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "")
+			err = v.ValidateLabels(ctx, v.getValidationContextForTime(testTime, tt.userID), mustParseLabels(tt.labels), logproto.Stream{Labels: tt.labels}, retentionHours, "")
 			assert.Equal(t, tt.expected, err)
 		})
 	}
