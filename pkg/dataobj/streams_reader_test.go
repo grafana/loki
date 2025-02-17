@@ -18,15 +18,16 @@ import (
 )
 
 var streamsTestdata = []struct {
-	Labels    labels.Labels
-	Timestamp time.Time
+	Labels           labels.Labels
+	Timestamp        time.Time
+	UncompressedSize int64
 }{
-	{labels.FromStrings("cluster", "test", "app", "foo"), unixTime(10)},
-	{labels.FromStrings("cluster", "test", "app", "foo"), unixTime(15)},
-	{labels.FromStrings("cluster", "test", "app", "bar"), unixTime(5)},
-	{labels.FromStrings("cluster", "test", "app", "bar"), unixTime(20)},
-	{labels.FromStrings("cluster", "test", "app", "baz"), unixTime(25)},
-	{labels.FromStrings("cluster", "test", "app", "baz"), unixTime(30)},
+	{labels.FromStrings("cluster", "test", "app", "foo"), unixTime(10), 15},
+	{labels.FromStrings("cluster", "test", "app", "foo"), unixTime(15), 10},
+	{labels.FromStrings("cluster", "test", "app", "bar"), unixTime(5), 20},
+	{labels.FromStrings("cluster", "test", "app", "bar"), unixTime(20), 25},
+	{labels.FromStrings("cluster", "test", "app", "baz"), unixTime(25), 30},
+	{labels.FromStrings("cluster", "test", "app", "baz"), unixTime(30), 5},
 }
 
 func TestStreamsReader(t *testing.T) {
@@ -100,7 +101,7 @@ func buildStreamsObject(t *testing.T, pageSize int) *dataobj.Object {
 
 	s := streams.New(nil, pageSize)
 	for _, d := range streamsTestdata {
-		s.Record(d.Labels, d.Timestamp)
+		s.Record(d.Labels, d.Timestamp, d.UncompressedSize)
 	}
 
 	var buf bytes.Buffer
