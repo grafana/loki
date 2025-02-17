@@ -285,6 +285,9 @@ func shardObjects(
 	var totalSections int
 	for _, metadata := range metadatas {
 		totalSections += metadata.LogsSections
+		if metadata.StreamsSections > 1 {
+			return nil, fmt.Errorf("unsupported multiple streams sections count: %d", metadata.StreamsSections)
+		}
 	}
 	logger = log.With(logger, "objects", len(objects))
 	logger = log.With(logger, "total_sections", totalSections)
@@ -309,7 +312,7 @@ func shardObjects(
 			if reader == nil {
 				reader = shardedObjectsPool.Get().(*shardedObject)
 				reader.streamReader = streamReaderPool.Get().(*dataobj.StreamsReader)
-				reader.streamReader.Reset(objects[i], j)
+				reader.streamReader.Reset(objects[i], 0)
 			}
 			logReader := logReaderPool.Get().(*dataobj.LogsReader)
 			logReader.Reset(objects[i], j)
@@ -323,9 +326,9 @@ func shardObjects(
 	}
 
 	level.Debug(logger).Log("msg", "sharding sections",
-		"sharded_sections", shardedSections,
-		"sharded_objects", len(shardedReaders),
-		"shard_factor", shard.String())
+		"sharded_total_sections", shardedSections,
+		"sharded_total_objects", len(shardedReaders),
+		"sharded_factor", shard.String())
 
 	return shardedReaders, nil
 }
@@ -515,6 +518,9 @@ func parseShards(shards []string) (logql.Shard, error) {
 	}
 	if len(parsed) == 0 {
 		return noShard, nil
+	}
+	if parsed[0].Variant() != logql.PowerOfTwoVersion {
+		return noShard, fmt.Errorf("unsupported shard variant: %s", parsed[0].Variant())
 	}
 	return parsed[0], nil
 }

@@ -221,7 +221,7 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *data
 	for {
 		n, err := reader.Read(ctx, streams)
 		if err != nil && err != io.EOF {
-			return processed, err
+			return processed, fmt.Errorf("failed to read streams: %w", err)
 		}
 		if n == 0 && err == io.EOF {
 			break
@@ -258,24 +258,27 @@ func shardStreamReaders(ctx context.Context, objects []*dataobj.Object, shard lo
 	if err != nil {
 		return nil, err
 	}
+
 	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
 	var sectionIndex uint64
 	var readers []*dataobj.StreamsReader
 	for i, metadata := range metadatas {
-		for j := 0; j < metadata.StreamsSections; j++ {
-			// For sharded queries (e.g., "1 of 2"), we only read sections that belong to our shard
-			// The section is assigned to a shard based on its global index across all objects
-			if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
-				if sectionIndex%uint64(shard.PowerOfTwo.Of) != uint64(shard.PowerOfTwo.Shard) {
-					sectionIndex++
-					continue
-				}
-			}
-			reader := streamReaderPool.Get().(*dataobj.StreamsReader)
-			reader.Reset(objects[i], j)
-			readers = append(readers, reader)
-			sectionIndex++
+		if metadata.StreamsSections > 1 {
+			return nil, fmt.Errorf("unsupported multiple streams sections count: %d", metadata.StreamsSections)
 		}
+
+		// For sharded queries (e.g., "1 of 2"), we only read sections that belong to our shard
+		// The section is assigned to a shard based on its global index across all objects
+		if shard.PowerOfTwo != nil && shard.PowerOfTwo.Of > 1 {
+			if sectionIndex%uint64(shard.PowerOfTwo.Of) != uint64(shard.PowerOfTwo.Shard) {
+				sectionIndex++
+				continue
+			}
+		}
+		reader := streamReaderPool.Get().(*dataobj.StreamsReader)
+		reader.Reset(objects[i], 0)
+		readers = append(readers, reader)
+		sectionIndex++
 	}
 	return readers, nil
 }
