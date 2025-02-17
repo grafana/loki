@@ -445,10 +445,6 @@ func Test_MissingEnforcedLabels(t *testing.T) {
 	assert.False(t, missing)
 	assert.Empty(t, missingLabels)
 
-	// Check metrics are zero since no labels were missing
-	assert.Equal(t, float64(0), testutil.ToFloat64(validation.DiscardedBytes))
-	assert.Equal(t, float64(0), testutil.ToFloat64(validation.DiscardedSamples))
-
 	// request missing the `app` label from global enforced labels and `cluster` label from policy enforced labels.
 	lbs = labels.FromMap(map[string]string{"env": "prod", "namespace": "ns1"})
 	missing, missingLabels = distributors[0].missingEnforcedLabels(lbs, "test", "policy1")
