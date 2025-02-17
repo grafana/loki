@@ -104,13 +104,13 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		// Makes time string on the error message formatted consistently.
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		formatedRejectMaxAgeTime := time.Unix(0, vCtx.rejectOldSampleMaxAge).Format(timeFormat)
-		v.reportDiscardedData(ctx, validation.GreaterThanMaxSampleAge, vCtx, labels, retentionHours, policy, int(entrySize))
+		v.reportDiscardedData(ctx, validation.GreaterThanMaxSampleAge, vCtx, labels, retentionHours, policy, int(entrySize), true)
 		return fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
 	if ts > vCtx.creationGracePeriod {
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
-		v.reportDiscardedData(ctx, validation.TooFarInFuture, vCtx, labels, retentionHours, policy, int(entrySize))
+		v.reportDiscardedData(ctx, validation.TooFarInFuture, vCtx, labels, retentionHours, policy, int(entrySize), true)
 		return fmt.Errorf(validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
 	}
 
@@ -119,23 +119,23 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 		// an orthogonal concept (we need not use ValidateLabels in this context)
 		// but the upstream cortex_validation pkg uses it, so we keep this
 		// for parity.
-		v.reportDiscardedData(ctx, validation.LineTooLong, vCtx, labels, retentionHours, policy, int(entrySize))
+		v.reportDiscardedData(ctx, validation.LineTooLong, vCtx, labels, retentionHours, policy, int(entrySize), true)
 		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
 	}
 
 	if structuredMetadataCount > 0 {
 		if !vCtx.allowStructuredMetadata {
-			v.reportDiscardedData(ctx, validation.DisallowedStructuredMetadata, vCtx, labels, retentionHours, policy, int(entrySize))
+			v.reportDiscardedData(ctx, validation.DisallowedStructuredMetadata, vCtx, labels, retentionHours, policy, int(entrySize), true)
 			return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
 		}
 
 		if maxSize := vCtx.maxStructuredMetadataSize; maxSize != 0 && structuredMetadataSizeBytes > maxSize {
-			v.reportDiscardedData(ctx, validation.StructuredMetadataTooLarge, vCtx, labels, retentionHours, policy, int(entrySize))
+			v.reportDiscardedData(ctx, validation.StructuredMetadataTooLarge, vCtx, labels, retentionHours, policy, int(entrySize), true)
 			return fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, labels, structuredMetadataSizeBytes, vCtx.maxStructuredMetadataSize)
 		}
 
 		if maxCount := vCtx.maxStructuredMetadataCount; maxCount != 0 && structuredMetadataCount > maxCount {
-			v.reportDiscardedData(ctx, validation.StructuredMetadataTooMany, vCtx, labels, retentionHours, policy, int(entrySize))
+			v.reportDiscardedData(ctx, validation.StructuredMetadataTooMany, vCtx, labels, retentionHours, policy, int(entrySize), true)
 			return fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, labels, structuredMetadataCount, vCtx.maxStructuredMetadataCount)
 		}
 	}
@@ -184,10 +184,10 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 	return nil
 }
 
-func (v Validator) reportDiscardedData(ctx context.Context, reason string, vCtx validationContext, labels labels.Labels, retentionHours string, policy string, entrySize int) {
+func (v Validator) reportDiscardedData(ctx context.Context, reason string, vCtx validationContext, labels labels.Labels, retentionHours string, policy string, entrySize int, withUsageTracker bool) {
 	validation.DiscardedSamples.WithLabelValues(reason, vCtx.userID, retentionHours, policy).Inc()
 	validation.DiscardedBytes.WithLabelValues(reason, vCtx.userID, retentionHours, policy).Add(float64(entrySize))
-	if v.usageTracker != nil {
+	if withUsageTracker && v.usageTracker != nil {
 		v.usageTracker.DiscardedBytesAdd(ctx, vCtx.userID, reason, labels, float64(entrySize))
 	}
 }
