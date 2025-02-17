@@ -325,7 +325,7 @@ func shardObjects(
 	level.Debug(logger).Log("msg", "sharding sections",
 		"sharded_sections", shardedSections,
 		"sharded_objects", len(shardedReaders),
-		"shard_factor", shard.PowerOfTwo.Of)
+		"shard_factor", shard.String())
 
 	return shardedReaders, nil
 }
