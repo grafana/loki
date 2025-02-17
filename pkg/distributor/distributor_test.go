@@ -468,6 +468,10 @@ func Test_PushWithEnforcedLabels(t *testing.T) {
 	limits.EnforcedLabels = []string{"app", "env"}
 	distributors, _ := prepare(t, 1, 3, limits, nil)
 
+	// reset metrics in case they were set from a previous test.
+	validation.DiscardedBytes.Reset()
+	validation.DiscardedSamples.Reset()
+
 	// enforced labels configured, but all labels are missing.
 	_, err := distributors[0].Push(ctx, req)
 	require.Error(t, err)
