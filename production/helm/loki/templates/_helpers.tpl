@@ -1179,6 +1179,6 @@ azure:
   account_key: {{ .account_key }}
   {{- end }}
 {{- end }}
-prefix: {{ .prefix }}
+storage_prefix: {{ .storage_prefix }}
 {{- end }}
 {{- end }}
