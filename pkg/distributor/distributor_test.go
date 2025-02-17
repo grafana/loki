@@ -37,7 +37,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	loghttp_push "github.com/grafana/loki/v3/pkg/loghttp/push"
@@ -51,6 +50,8 @@ import (
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
 	"github.com/grafana/loki/v3/pkg/util/test"
 	"github.com/grafana/loki/v3/pkg/validation"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
