@@ -38,7 +38,7 @@ func TestStore_SelectSamples(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
@@ -191,7 +191,7 @@ func TestStore_SelectLogs(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(t, builder)
-	store := NewStore(builder.bucket)
+	store := NewStore(builder.bucket, log.NewNopLogger())
 	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
