@@ -144,7 +144,7 @@ func (v Validator) ValidateEntry(ctx context.Context, vCtx validationContext, la
 }
 
 // Validate labels returns an error if the labels are invalid
-func (v Validator) ValidateLabels(ctx context.Context, vCtx validationContext, ls labels.Labels, stream logproto.Stream, retentionHours, policy string) error {
+func (v Validator) ValidateLabels(vCtx validationContext, ls labels.Labels, stream logproto.Stream, retentionHours, policy string) error {
 	if len(ls) == 0 {
 		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, vCtx.userID, retentionHours, policy).Inc()
 		return fmt.Errorf(validation.MissingLabelsErrorMsg)
