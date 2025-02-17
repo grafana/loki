@@ -282,6 +282,12 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
+    {{- if .Values.loki.ui.enabled }}
+    ui:
+      discovery:
+        join_peers:
+          - '{{ include "loki.distributorFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
+    {{- end }}
     {{- with .Values.loki.querier }}
     querier:
       {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -417,27 +423,27 @@ loki:
     object_store:
       # Type of object store. Valid options are: s3, gcs, azure
       type: s3
-      prefix: null  # Optional prefix for storage keys
+      prefix: null # Optional prefix for storage keys
 
       # S3 configuration (when type is "s3")
       s3:
-        endpoint: null     # S3 endpoint URL
-        region: null       # Optional region
-        access_key_id: null      # Optional access key
-        secret_access_key: null  # Optional secret key
-        insecure: false       # Optional. Enable if using self-signed TLS
-        sse: {}         # Optional server-side encryption configuration
-        http: {}       # Optional HTTP client configuration
+        endpoint: null # S3 endpoint URL
+        region: null # Optional region
+        access_key_id: null # Optional access key
+        secret_access_key: null # Optional secret key
+        insecure: false # Optional. Enable if using self-signed TLS
+        sse: {} # Optional server-side encryption configuration
+        http: {} # Optional HTTP client configuration
 
       # GCS configuration (when type is "gcs")
       gcs:
-        bucket_name: null  # Name of the bucket
-        service_account: null  # Optional service account JSON
+        bucket_name: null # Name of the bucket
+        service_account: null # Optional service account JSON
 
       # Azure configuration (when type is "azure")
       azure:
-        account_name: null  # Storage account name
-        account_key: null  # Optional storage account key
+        account_name: null # Storage account name
+        account_key: null # Optional storage account key
 
   # -- Configure memcached as an external cache for chunk and results cache. Disabled by default
   # must enable and specify a host for each cache you would like to use.
@@ -497,6 +503,12 @@ loki:
     enabled: false
   # --  Optional analytics configuration
   analytics: {}
+  # --  Optional UI configuration
+  ui:
+    enabled: false
+    gateway:
+      # enable gateway proxying to UI under /ui
+      enabled: true
   # --  Optional querier configuration
   query_range: {}
   # --  Optional querier configuration
