@@ -46,23 +46,23 @@ local common = import 'common.libsonnet';
       true
     ),
 
-  local checkTenantRetention(tenant) =
-    if std.objectHas($._config.overrides[tenant], 'retention_stream') &&
-       std.objectHas($._config.overrides[tenant], 'max_query_lookback') && 
-       std.objectHas($._config.overrides[tenant], 'retention_period')
-       then
-         common.parseDuration($._config.overrides[tenant].retention_period) <= common.parseDuration($._config.overrides[tenant].max_query_lookback) && checkRetentionStreams($._config.overrides[tenant].retention_stream, $._config.overrides[tenant].max_query_lookback)
+  checkTenantRetention(tenant)::
+    local tenantCfg = $._config.overrides[tenant];
+    local retentionStream = tenantCfg.retention_stream;
+    local maxQueryLookback = tenantCfg.max_query_lookback;
+    local retentionPeriod = tenantCfg.retention_period;
+    if std.objectHas(tenantCfg, 'retention_stream') &&
+       std.objectHas(tenantCfg, 'max_query_lookback') && 
+       std.objectHas(tenantCfg, 'retention_period') then
+       common.parseDuration(retentionPeriod) <= common.parseDuration(maxQueryLookback) &&
+        checkRetentionStreams(retentionStream, maxQueryLookback)
     else
       true,  // Skip check if either field is missing
 
   local tenants = std.objectFields($._config.overrides),
 
   local validRetentions = std.foldl(
-    function(acc, tenant)
-      if !checkTenantRetention(tenant) then
-        { valid: false, failedTenant: [tenant] + acc.failedTenant }
-      else
-        acc,
+    function(acc, tenant) if !$.checkTenantRetention(tenant) then { valid: false, failedTenant: [tenant] + acc.failedTenant } else acc,
     tenants,
     { valid: true, failedTenant: [] }
   ),
