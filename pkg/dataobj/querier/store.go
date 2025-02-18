@@ -364,7 +364,7 @@ func shardObjects(
 		"sharded_factor", shard.String(),
 		"total_objects", len(objects),
 		"total_sections", totalSections,
-		"object_sections", objectSections,
+		"object_sections", fmt.Sprintf("%v", objectSections),
 		"sharded_total_objects", len(shardedReaders),
 		"sharded_sections", sectionsString.String())
 
