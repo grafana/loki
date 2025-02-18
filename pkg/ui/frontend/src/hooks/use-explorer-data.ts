@@ -38,9 +38,11 @@ export function useExplorerData(path: string) {
         ...data,
         files: sortFilesByDate(data.files).map((file) => ({
           ...file,
-          downloadUrl: `/api/v1/proxy/${nodeName}/dataobj/api/v1/download?file=${encodeURIComponent(
-            path ? `${path}/${file.name}` : file.name
-          )}`,
+          downloadUrl: absolutePath(
+            `/api/v1/proxy/${nodeName}/dataobj/api/v1/download?file=${encodeURIComponent(
+              path ? `${path}/${file.name}` : file.name
+            )}`
+          ),
         })),
       };
     },
