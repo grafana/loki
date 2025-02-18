@@ -40,8 +40,8 @@ type partitionProcessor struct {
 	bufPool     *sync.Pool
 
 	// Idle stream handling
-	idleFlushTimout time.Duration
-	lastFlush       time.Time
+	idleFlushTimeout time.Duration
+	lastFlush        time.Time
 
 	// Metrics
 	metrics *partitionOffsetMetrics
@@ -113,7 +113,7 @@ func newPartitionProcessor(
 		uploader:         uploader,
 		metastoreManager: metastoreManager,
 		bufPool:          bufPool,
-		idleFlushTimout:  idleFlushTimeout,
+		idleFlushTimeout: idleFlushTimeout,
 		lastFlush:        time.Now(),
 	}
 }
@@ -136,7 +136,7 @@ func (p *partitionProcessor) start() {
 				}
 				p.processRecord(record)
 
-			case <-time.After(p.idleFlushTimout):
+			case <-time.After(p.idleFlushTimeout):
 				p.idleFlush()
 			}
 		}
@@ -294,8 +294,7 @@ func (p *partitionProcessor) idleFlush() {
 		return
 	}
 
-	now := time.Now()
-	if now.Sub(p.lastFlush) < p.idleFlushTimout {
+	if time.Since(p.lastFlush) < p.idleFlushTimeout {
 		return // Avoid checking too frequently
 	}
 
@@ -310,6 +309,6 @@ func (p *partitionProcessor) idleFlush() {
 			return
 		}
 
-		p.lastFlush = now
+		p.lastFlush = time.Now()
 	}()
 }
