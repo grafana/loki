@@ -6521,7 +6521,7 @@ null
 		<tr>
 			<td>loki.ui</td>
 			<td>object</td>
-			<td>Optional UI configuration</td>
+			<td>Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway</td>
 			<td><pre lang="json">
 {
   "enabled": false,

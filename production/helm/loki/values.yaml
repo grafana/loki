@@ -514,8 +514,9 @@ loki:
     enabled: false
   # --  Optional analytics configuration
   analytics: {}
-  # --  Optional UI configuration
+  # --  Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway
   ui:
+    # Disabled by default for backwards compatibility. Enable to use the Loki UI.
     enabled: false
     gateway:
       # enable gateway proxying to UI under /ui
