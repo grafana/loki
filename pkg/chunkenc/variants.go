@@ -22,6 +22,8 @@ func newMultiExtractorSampleIterator(ctx context.Context, pool compression.Reade
 	}
 }
 
+// TODO(twhitney): Once multi-variant queries have been validated,
+// we should merge this into the regular sampledBufferedIterator.
 type multiExtractorSampleBufferedIterator struct {
 	*bufferedIterator
 

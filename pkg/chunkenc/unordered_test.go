@@ -480,7 +480,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 		context.Background(),
 		time.Unix(0, 0),
 		time.Unix(100, 0),
-		singleCountExtractor,
+		countExtractor,
 	)
 
 	for i := 0; i < 100; i++ {
@@ -549,7 +549,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 						context.Background(),
 						time.Unix(0, 0),
 						time.Unix(0, math.MaxInt64),
-						singleCountExtractor,
+						countExtractor,
 					)
 					for iterator.Next() {
 						_ = iterator.At()
@@ -590,7 +590,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 		context.Background(),
 		time.Unix(0, 0),
 		time.Unix(0, math.MaxInt64),
-		singleCountExtractor,
+		countExtractor,
 	)
 	for smpl.Next() {
 		next := smpl.At().Timestamp

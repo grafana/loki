@@ -153,9 +153,9 @@ type EngineOpts struct {
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
 
-	// ExperimentalMutiVariantQueries enables support for running multiple query variants over the same underlying data.
+	// EnableMutiVariantQueries enables support for running multiple query variants over the same underlying data.
 	// For example, running both a rate() and count_over_time() query over the same range selector.
-	ExperimentalMutiVariantQueries bool `yaml:"experimental_multi_variant_queries"`
+	EnableMutiVariantQueries bool `yaml:"enable_multi_variant_queries"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -172,8 +172,8 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 		"The maximum number of labels the heap of a topk query using a count min sketch can track.",
 	)
 	f.BoolVar(
-		&opts.ExperimentalMutiVariantQueries,
-		prefix+".engine.experimental-multi-variant-queries",
+		&opts.EnableMutiVariantQueries,
+		prefix+".engine.enable-multi-variant-queries",
 		false,
 		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
 	)
@@ -218,7 +218,7 @@ func (ng *Engine) Query(params Params) Query {
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,
-		multiVariant: ng.opts.ExperimentalMutiVariantQueries,
+		multiVariant: ng.opts.EnableMutiVariantQueries,
 	}
 }
 

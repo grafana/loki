@@ -228,10 +228,6 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 // Although multiple streams are part of the PushRequest, the returned error only reflects what
 // happened to *the last stream in the request*. Ex: if three streams are part of the PushRequest
 // and all three failed, the returned error only describes what happened to the last processed stream.
-const (
-	trueString = "true" // Used for comparing header values
-)
-
 func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	record := recordPool.GetRecord()
 	record.UserID = i.instanceID
@@ -493,7 +489,7 @@ func (i *instance) query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		return nil, err
 	}
 
-	if i.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != trueString {
+	if i.pipelineWrapper != nil && httpreq.ExtractHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader) != "true" {
 		userID, err := tenant.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -579,8 +575,13 @@ func (i *instance) querySample(ctx context.Context, req logql.SelectSampleParams
 		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
-			extractors := []log.StreamSampleExtractor{extractor.ForStream(stream.labels)}
-			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractors)
+			iter, err := stream.SampleIterator(
+				ctx,
+				stats,
+				req.Start,
+				req.End,
+				extractor.ForStream(stream.labels),
+			)
 			if err != nil {
 				return err
 			}
@@ -668,7 +669,7 @@ func (i *instance) queryVariants(
 				stats,
 				req.Start,
 				req.End,
-				streamSampleExtractors,
+				streamSampleExtractors...,
 			)
 			if err != nil {
 				return err

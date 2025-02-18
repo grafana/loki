@@ -1068,7 +1068,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 func (c *MemChunk) SampleIterator(
 	ctx context.Context,
 	from, through time.Time,
-	extractors []log.StreamSampleExtractor,
+	extractors ...log.StreamSampleExtractor,
 ) iter.SampleIterator {
 	if len(extractors) == 0 {
 		return iter.NoopSampleIterator
@@ -1096,11 +1096,10 @@ func (c *MemChunk) SampleIterator(
 			ordered = false
 		}
 		lastMax = b.maxt
-		if len(extractors) == 1 {
-			its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors[0]))
-		} else {
-			its = append(its, encBlock{c.encoding, c.format, c.symbolizer, b}.MultiExtractorSampleIterator(ctx, extractors))
-		}
+		its = append(
+			its,
+			encBlock{c.encoding, c.format, c.symbolizer, b}.SampleIterator(ctx, extractors...),
+		)
 	}
 
 	if !c.head.IsEmpty() {
@@ -1201,7 +1200,10 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	return newEntryIterator(ctx, compression.GetReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
-func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func (b encBlock) SampleIterator(
+	ctx context.Context,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopSampleIterator
 	}
@@ -1210,19 +1212,9 @@ func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSample
 		compression.GetReaderPool(b.enc),
 		b.b,
 		b.format,
-		extractor,
 		b.symbolizer,
+		extractors...,
 	)
-}
-
-func (b encBlock) MultiExtractorSampleIterator(
-	ctx context.Context,
-	extractors []log.StreamSampleExtractor,
-) iter.SampleIterator {
-	if len(b.b) == 0 {
-		return iter.NoopSampleIterator
-	}
-	return newMultiExtractorSampleIterator(ctx, compression.GetReaderPool(b.enc), b.b, b.format, extractors, b.symbolizer)
 }
 
 func (b block) Offset() int {
@@ -1772,10 +1764,25 @@ func (e *entryBufferedIterator) Close() error {
 	return e.bufferedIterator.Close()
 }
 
-func newSampleIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor, symbolizer *symbolizer) iter.SampleIterator {
+func newSampleIterator(
+	ctx context.Context,
+	pool compression.ReaderPool,
+	b []byte,
+	format byte,
+	symbolizer *symbolizer,
+	extractors ...log.StreamSampleExtractor,
+) iter.SampleIterator {
+	if len(extractors) == 0 {
+		return iter.NoopSampleIterator
+	}
+
+	if len(extractors) > 1 {
+		return newMultiExtractorSampleIterator(ctx, pool, b, format, extractors, symbolizer)
+	}
+
 	return &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
-		extractor:        extractor,
+		extractor:        extractors[0],
 		stats:            stats.FromContext(ctx),
 	}
 }

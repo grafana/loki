@@ -62,8 +62,7 @@ var (
 		}
 		return ex.ForStream(labels.Labels{})
 	}()
-	singleCountExtractor = []log.StreamSampleExtractor{countExtractor}
-	allPossibleFormats   = []struct {
+	allPossibleFormats = []struct {
 		headBlockFmt HeadBlockFmt
 		chunkFormat  byte
 	}{
@@ -235,7 +234,7 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), singleCountExtractor)
+				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
 					s := sampleIt.At()
@@ -249,8 +248,8 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, sampleIt.Close())
 				require.Equal(t, len(cases), idx)
 
-				extractors := append(singleCountExtractor, bytesExtractor)
-				sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors)
+				extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
+				sampleIt = chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
 				idx = 0
 
 				// 2 extractors, expect 2 samples per original timestamp
@@ -513,7 +512,7 @@ func TestSerialization(t *testing.T) {
 					}()
 					extractors := []log.StreamSampleExtractor{countExtractor, countExtractor}
 
-					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors)
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractors...)
 					for i := 0; i < numSamples; i++ {
 						require.True(t, sampleIt.Next(), i)
 
@@ -981,7 +980,7 @@ func BenchmarkRead(b *testing.B) {
 				bytesRead := uint64(0)
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
-						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), singleCountExtractor)
+						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
 						for iterator.Next() {
 							_ = iterator.At()
 						}
@@ -1426,7 +1425,7 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					}
 					var iters []iter.SampleIterator
 					for _, lbs := range labelsSet {
-						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), []log.StreamSampleExtractor{ex.ForStream(lbs)}))
+						iters = append(iters, c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), ex.ForStream(lbs)))
 					}
 					b.ResetTimer()
 					for n := 0; n < b.N; n++ {
@@ -2100,7 +2099,7 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
-							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), []log.StreamSampleExtractor{extractor.ForStream(streamLabels)})
+							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
 
 							var sumValues int
 							var streams []string
