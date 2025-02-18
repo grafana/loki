@@ -30,6 +30,7 @@ deploymentMode: Distributed
 
 ingester:
   replicas: 3
+  maxUnavailable: 2
 querier:
   replicas: 3
   maxUnavailable: 2
