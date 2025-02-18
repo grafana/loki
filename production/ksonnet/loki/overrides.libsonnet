@@ -61,7 +61,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     local lookback = tenantCfg.max_query_lookback;
     if std.objectHas(tenantCfg, 'max_query_lookback') &&
        std.objectHas(tenantCfg, 'retention_stream') then
-       checkRetentionStreams(retentionStream, lookback)
+      checkRetentionStreams(retentionStream, lookback)
     else
       true,
 
@@ -69,7 +69,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     local tenantCfg = $._config.overrides[tenant];
     if $.isLookbackLongerThanRetention(tenantCfg) &&
        $.isLookbackLongerThanStreamRetention(tenantCfg) then
-       true
+      true
     else
       false,
 

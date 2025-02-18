@@ -45,7 +45,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
       container.mixin.readinessProbe.withInitialDelaySeconds(15) +
       container.mixin.readinessProbe.withTimeoutSeconds(1),
 
-
     parseDuration(duration)::
       if std.endsWith(duration, 's') then
         std.parseInt(std.substr(duration, 0, std.length(duration) - 1))
