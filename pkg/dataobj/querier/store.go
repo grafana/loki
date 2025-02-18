@@ -110,6 +110,10 @@ func (s *Store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 	if err != nil {
 		return nil, err
 	}
+	if len(objects) == 0 {
+		return iter.NoopEntryIterator, nil
+	}
+
 	shard, err := parseShards(req.Shards)
 	if err != nil {
 		return nil, err
@@ -123,6 +127,9 @@ func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End)
 	if err != nil {
 		return nil, err
+	}
+	if len(objects) == 0 {
+		return iter.NoopSampleIterator, nil
 	}
 
 	shard, err := parseShards(req.Shards)

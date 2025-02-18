@@ -34,6 +34,10 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 		return nil, err
 	}
 
+	if len(objects) == 0 {
+		return nil, nil
+	}
+
 	shard, err := parseShards(req.Shards)
 	if err != nil {
 		return nil, err
@@ -79,6 +83,10 @@ func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, thr
 		return nil, err
 	}
 
+	if len(objects) == 0 {
+		return nil, nil
+	}
+
 	processor := newStreamProcessor(start, end, matchers, objects, noShard, s.logger)
 	uniqueNames := sync.Map{}
 
@@ -116,6 +124,10 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 	objects, err := s.objectsForTimeRange(ctx, start, end)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(objects) == 0 {
+		return nil, nil
 	}
 
 	processor := newStreamProcessor(start, end, matchers, objects, noShard, s.logger)
