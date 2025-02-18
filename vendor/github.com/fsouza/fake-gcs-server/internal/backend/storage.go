@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package backend proides the backends used by fake-gcs-server.
+// Package backend provides the backends used by fake-gcs-server.
 package backend
 
 type Conditions interface {

@@ -750,8 +750,8 @@ github.com/fluent/fluent-bit-go/output
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
 github.com/fsnotify/fsnotify/internal
-# github.com/fsouza/fake-gcs-server v1.52.1
-## explicit; go 1.22.9
+# github.com/fsouza/fake-gcs-server v1.52.2
+## explicit; go 1.23
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
 github.com/fsouza/fake-gcs-server/internal/checksum
@@ -842,7 +842,7 @@ github.com/go-redsync/redsync/v4/redis/goredis/v9
 # github.com/go-zookeeper/zk v1.0.3
 ## explicit; go 1.13
 github.com/go-zookeeper/zk
-# github.com/goccy/go-json v0.10.4
+# github.com/goccy/go-json v0.10.5
 ## explicit; go 1.19
 github.com/goccy/go-json
 github.com/goccy/go-json/internal/decoder
@@ -1284,10 +1284,13 @@ github.com/mdlayher/vsock
 # github.com/miekg/dns v1.1.62
 ## explicit; go 1.19
 github.com/miekg/dns
+# github.com/minio/crc64nvme v1.0.0
+## explicit; go 1.22
+github.com/minio/crc64nvme
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.85
+# github.com/minio/minio-go/v7 v7.0.86
 ## explicit; go 1.22
 github.com/minio/minio-go/v7
 github.com/minio/minio-go/v7/pkg/cors
