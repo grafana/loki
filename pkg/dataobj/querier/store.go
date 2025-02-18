@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
@@ -30,6 +31,7 @@ import (
 	storageconfig "github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -106,7 +108,9 @@ func NewStore(bucket objstore.Bucket, logger log.Logger) *Store {
 
 // SelectLogs implements querier.Store
 func (s *Store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
-	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End)
+	logger := util_log.WithContext(ctx, s.logger)
+
+	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -119,12 +123,14 @@ func (s *Store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	return selectLogs(ctx, objects, shard, req, s.logger)
+	return selectLogs(ctx, objects, shard, req, logger)
 }
 
 // SelectSamples implements querier.Store
 func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
-	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End)
+	logger := util_log.WithContext(ctx, s.logger)
+
+	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +147,7 @@ func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	return selectSamples(ctx, objects, shard, expr, req.Start, req.End, s.logger)
+	return selectSamples(ctx, objects, shard, expr, req.Start, req.End, logger)
 }
 
 // Stats implements querier.Store
@@ -162,8 +168,19 @@ func (s *Store) GetShards(_ context.Context, _ string, _ model.Time, _ model.Tim
 	return &logproto.ShardsResponse{}, nil
 }
 
+type object struct {
+	*dataobj.Object
+	path string
+}
+
 // objectsForTimeRange returns data objects for the given time range.
-func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time) ([]*dataobj.Object, error) {
+func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time, logger log.Logger) ([]object, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "objectsForTimeRange")
+	defer span.Finish()
+
+	span.SetTag("from", from)
+	span.SetTag("through", through)
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -173,16 +190,28 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 		return nil, err
 	}
 
-	level.Debug(s.logger).Log("msg", "found data objects for time range", "count", len(files), "from", from, "through", through)
+	logParams := []interface{}{
+		"msg", "found data objects for time range",
+		"count", len(files),
+		"from", from,
+		"through", through,
+	}
+	level.Debug(logger).Log(logParams...)
 
-	objects := make([]*dataobj.Object, 0, len(files))
+	span.LogKV(logParams...)
+	span.LogKV("files", files)
+
+	objects := make([]object, 0, len(files))
 	for _, path := range files {
-		objects = append(objects, dataobj.FromBucket(s.bucket, path))
+		objects = append(objects, object{
+			Object: dataobj.FromBucket(s.bucket, path),
+			path:   path,
+		})
 	}
 	return objects, nil
 }
 
-func selectLogs(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, req logql.SelectLogParams, logger log.Logger) (iter.EntryIterator, error) {
+func selectLogs(ctx context.Context, objects []object, shard logql.Shard, req logql.SelectLogParams, logger log.Logger) (iter.EntryIterator, error) {
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -210,6 +239,11 @@ func selectLogs(ctx context.Context, objects []*dataobj.Object, shard logql.Shar
 
 	for i, obj := range shardedObjects {
 		g.Go(func() error {
+			span, ctx := opentracing.StartSpanFromContext(ctx, "object selectLogs")
+			defer span.Finish()
+			span.SetTag("object", obj.object.path)
+			span.SetTag("sections", len(obj.logReaders))
+
 			iterator, err := obj.selectLogs(ctx, streamsPredicate, logsPredicate, req)
 			if err != nil {
 				return err
@@ -225,7 +259,7 @@ func selectLogs(ctx context.Context, objects []*dataobj.Object, shard logql.Shar
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, logger log.Logger) (iter.SampleIterator, error) {
+func selectSamples(ctx context.Context, objects []object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, logger log.Logger) (iter.SampleIterator, error) {
 	shardedObjects, err := shardObjects(ctx, objects, shard, logger)
 	if err != nil {
 		return nil, err
@@ -255,6 +289,11 @@ func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.S
 
 	for i, obj := range shardedObjects {
 		g.Go(func() error {
+			span, ctx := opentracing.StartSpanFromContext(ctx, "object selectSamples")
+			defer span.Finish()
+			span.SetTag("object", obj.object.path)
+			span.SetTag("sections", len(obj.logReaders))
+
 			iterator, err := obj.selectSamples(ctx, streamsPredicate, logsPredicate, expr)
 			if err != nil {
 				return err
@@ -271,6 +310,7 @@ func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.S
 }
 
 type shardedObject struct {
+	object       object
 	streamReader *dataobj.StreamsReader
 	logReaders   []*dataobj.LogsReader
 
@@ -317,10 +357,13 @@ func shardSections(metadatas []dataobj.Metadata, shard logql.Shard) [][]int {
 
 func shardObjects(
 	ctx context.Context,
-	objects []*dataobj.Object,
+	objects []object,
 	shard logql.Shard,
 	logger log.Logger,
 ) ([]*shardedObject, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "shardObjects")
+	defer span.Finish()
+
 	metadatas, err := fetchMetadatas(ctx, objects)
 	if err != nil {
 		return nil, err
@@ -346,11 +389,12 @@ func shardObjects(
 
 		reader := shardedObjectsPool.Get().(*shardedObject)
 		reader.streamReader = streamReaderPool.Get().(*dataobj.StreamsReader)
-		reader.streamReader.Reset(objects[i], 0)
+		reader.object = objects[i]
+		reader.streamReader.Reset(objects[i].Object, 0)
 
 		for _, section := range sections {
 			logReader := logReaderPool.Get().(*dataobj.LogsReader)
-			logReader.Reset(objects[i], section)
+			logReader.Reset(objects[i].Object, section)
 			reader.logReaders = append(reader.logReaders, logReader)
 		}
 		shardedReaders = append(shardedReaders, reader)
@@ -360,13 +404,20 @@ func shardObjects(
 		sectionsString.WriteString(fmt.Sprintf("%v ", sections))
 	}
 
-	level.Debug(logger).Log("msg", "sharding sections",
+	logParams := []interface{}{
+		"msg", "sharding sections",
 		"sharded_factor", shard.String(),
 		"total_objects", len(objects),
 		"total_sections", totalSections,
 		"object_sections", fmt.Sprintf("%v", objectSections),
 		"sharded_total_objects", len(shardedReaders),
-		"sharded_sections", sectionsString.String())
+		"sharded_sections", sectionsString.String(),
+	}
+
+	level.Debug(logger).Log(logParams...)
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(logParams...)
+	}
 
 	return shardedReaders, nil
 }
@@ -380,6 +431,7 @@ func (s *shardedObject) reset() {
 	s.streamReader = nil
 	s.logReaders = s.logReaders[:0]
 	s.streamsIDs = s.streamsIDs[:0]
+	s.object = object{}
 	clear(s.streams)
 }
 
@@ -396,10 +448,15 @@ func (s *shardedObject) selectLogs(ctx context.Context, streamsPredicate dataobj
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				sp.LogKV("msg", "starting selectLogs in section", "index", i)
+				defer sp.LogKV("msg", "selectLogs section done", "index", i)
+			}
 			iter, err := newEntryIterator(ctx, s.streams, reader, req)
 			if err != nil {
 				return err
 			}
+
 			iterators[i] = iter
 			return nil
 		})
@@ -424,6 +481,10 @@ func (s *shardedObject) selectSamples(ctx context.Context, streamsPredicate data
 
 	for i, reader := range s.logReaders {
 		g.Go(func() error {
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				sp.LogKV("msg", "starting selectSamples in section", "index", i)
+				defer sp.LogKV("msg", "selectSamples section done", "index", i)
+			}
 			// extractor is not thread safe, so we need to create a new one for each object
 			extractor, err := expr.Extractor()
 			if err != nil {
@@ -458,6 +519,10 @@ func (s *shardedObject) setPredicate(streamsPredicate dataobj.StreamsPredicate, 
 }
 
 func (s *shardedObject) matchStreams(ctx context.Context) error {
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("msg", "starting matchStreams")
+		defer sp.LogKV("msg", "matchStreams done")
+	}
 	streamsPtr := streamsPool.Get().(*[]dataobj.Stream)
 	defer streamsPool.Put(streamsPtr)
 	streams := *streamsPtr
@@ -486,13 +551,17 @@ func (s *shardedObject) matchStreams(ctx context.Context) error {
 }
 
 // fetchMetadatas fetches metadata of objects in parallel
-func fetchMetadatas(ctx context.Context, objects []*dataobj.Object) ([]dataobj.Metadata, error) {
+func fetchMetadatas(ctx context.Context, objects []object) ([]dataobj.Metadata, error) {
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("msg", "fetching metadata", "objects", len(objects))
+		defer sp.LogKV("msg", "fetched metadata")
+	}
 	g, ctx := errgroup.WithContext(ctx)
 	metadatas := make([]dataobj.Metadata, len(objects))
 	for i, obj := range objects {
 		g.Go(func() error {
 			var err error
-			metadatas[i], err = obj.Metadata(ctx)
+			metadatas[i], err = obj.Object.Metadata(ctx)
 			return err
 		})
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.uber.org/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var streamsPool = sync.Pool{
@@ -29,7 +31,9 @@ var streamsPool = sync.Pool{
 
 // SelectSeries implements querier.Store
 func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
-	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End)
+	logger := util_log.WithContext(ctx, s.logger)
+
+	objects, err := s.objectsForTimeRange(ctx, req.Start, req.End, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +58,7 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 
 	uniqueSeries := &sync.Map{}
 
-	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, s.logger)
+	processor := newStreamProcessor(req.Start, req.End, matchers, objects, shard, logger)
 
 	err = processor.ProcessParallel(ctx, func(h uint64, stream dataobj.Stream) {
 		uniqueSeries.Store(h, labelsToSeriesIdentifier(stream.Labels))
@@ -77,8 +81,9 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 
 // LabelNamesForMetricName implements querier.Store
 func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, _ string, matchers ...*labels.Matcher) ([]string, error) {
+	logger := util_log.WithContext(ctx, s.logger)
 	start, end := from.Time(), through.Time()
-	objects, err := s.objectsForTimeRange(ctx, start, end)
+	objects, err := s.objectsForTimeRange(ctx, start, end, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +92,7 @@ func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, thr
 		return nil, nil
 	}
 
-	processor := newStreamProcessor(start, end, matchers, objects, noShard, s.logger)
+	processor := newStreamProcessor(start, end, matchers, objects, noShard, logger)
 	uniqueNames := sync.Map{}
 
 	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
@@ -112,6 +117,7 @@ func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, thr
 
 // LabelValuesForMetricName implements querier.Store
 func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, through model.Time, _ string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	logger := util_log.WithContext(ctx, s.logger)
 	start, end := from.Time(), through.Time()
 
 	requireLabel, err := labels.NewMatcher(labels.MatchNotEqual, labelName, "")
@@ -121,7 +127,7 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 
 	matchers = append(matchers, requireLabel)
 
-	objects, err := s.objectsForTimeRange(ctx, start, end)
+	objects, err := s.objectsForTimeRange(ctx, start, end, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +136,7 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 		return nil, nil
 	}
 
-	processor := newStreamProcessor(start, end, matchers, objects, noShard, s.logger)
+	processor := newStreamProcessor(start, end, matchers, objects, noShard, logger)
 	uniqueValues := sync.Map{}
 
 	err = processor.ProcessParallel(ctx, func(_ uint64, stream dataobj.Stream) {
@@ -155,13 +161,13 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 type streamProcessor struct {
 	predicate  dataobj.StreamsPredicate
 	seenSeries *sync.Map
-	objects    []*dataobj.Object
+	objects    []object
 	shard      logql.Shard
 	logger     log.Logger
 }
 
 // newStreamProcessor creates a new streamProcessor with the given parameters
-func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []*dataobj.Object, shard logql.Shard, logger log.Logger) *streamProcessor {
+func newStreamProcessor(start, end time.Time, matchers []*labels.Matcher, objects []object, shard logql.Shard, logger log.Logger) *streamProcessor {
 	return &streamProcessor{
 		predicate:  streamPredicate(matchers, start, end),
 		seenSeries: &sync.Map{},
@@ -184,6 +190,10 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	}()
 
 	start := time.Now()
+	span := opentracing.SpanFromContext(ctx)
+	if span != nil {
+		span.LogKV("msg", "processing streams", "total_readers", len(readers))
+	}
 	level.Debug(sp.logger).Log("msg", "processing streams", "total_readers", len(readers))
 
 	// set predicate on all readers
@@ -197,6 +207,8 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 	var processedStreams atomic.Int64
 	for _, reader := range readers {
 		g.Go(func() error {
+			span, ctx := opentracing.StartSpanFromContext(ctx, "streamProcessor.processSingleReader")
+			defer span.Finish()
 			n, err := sp.processSingleReader(ctx, reader, onNewStream)
 			if err != nil {
 				return err
@@ -215,6 +227,9 @@ func (sp *streamProcessor) ProcessParallel(ctx context.Context, onNewStream func
 		"total_streams_processed", processedStreams.Load(),
 		"duration", time.Since(start),
 	)
+	if span != nil {
+		span.LogKV("msg", "streamProcessor.ProcessParallel done", "total_readers", len(readers), "total_streams_processed", processedStreams.Load(), "duration", time.Since(start))
+	}
 
 	return nil
 }
@@ -265,7 +280,12 @@ func labelsToSeriesIdentifier(labels labels.Labels) logproto.SeriesIdentifier {
 }
 
 // shardStreamReaders fetches metadata of objects in parallel and shards them into a list of StreamsReaders
-func shardStreamReaders(ctx context.Context, objects []*dataobj.Object, shard logql.Shard) ([]*dataobj.StreamsReader, error) {
+func shardStreamReaders(ctx context.Context, objects []object, shard logql.Shard) ([]*dataobj.StreamsReader, error) {
+	span, ctx := opentracing.StartSpanFromContext(ctx, "shardStreamReaders")
+	defer span.Finish()
+
+	span.SetTag("objects", len(objects))
+
 	metadatas, err := fetchMetadatas(ctx, objects)
 	if err != nil {
 		return nil, err
@@ -288,9 +308,10 @@ func shardStreamReaders(ctx context.Context, objects []*dataobj.Object, shard lo
 			}
 		}
 		reader := streamReaderPool.Get().(*dataobj.StreamsReader)
-		reader.Reset(objects[i], 0)
+		reader.Reset(objects[i].Object, 0)
 		readers = append(readers, reader)
 		sectionIndex++
 	}
+	span.LogKV("msg", "shardStreamReaders done", "readers", len(readers))
 	return readers, nil
 }
