@@ -30,7 +30,7 @@ Where `<LOKI_HOST>` is the hostname or IP address of the Loki server and `<LOKI_
 
 ## Deployment
 
-Each Loki component now includes the UI service. This needs to be enabled in the Loki configuration. The UI service is disabled by default. To enable the UI service, add the following configuration to the Loki configuration file:
+Each Loki component now includes the UI service. Discoverability of the UI service needs to be enabled in the Loki configuration. To enable the UI discoverability, add the following paramter to the Loki configuration file:
 
 ```yaml
 loki:
