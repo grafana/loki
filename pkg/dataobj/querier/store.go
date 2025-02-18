@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -90,12 +92,14 @@ func (c *Config) PeriodConfig() config.PeriodConfig {
 // Store implements querier.Store for querying data objects.
 type Store struct {
 	bucket objstore.Bucket
+	logger log.Logger
 }
 
 // NewStore creates a new Store.
-func NewStore(bucket objstore.Bucket) *Store {
+func NewStore(bucket objstore.Bucket, logger log.Logger) *Store {
 	return &Store{
 		bucket: bucket,
+		logger: logger,
 	}
 }
 
@@ -110,7 +114,7 @@ func (s *Store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	return selectLogs(ctx, objects, shard, req)
+	return selectLogs(ctx, objects, shard, req, s.logger)
 }
 
 // SelectSamples implements querier.Store
@@ -129,7 +133,7 @@ func (s *Store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	return selectSamples(ctx, objects, shard, expr, req.Start, req.End)
+	return selectSamples(ctx, objects, shard, expr, req.Start, req.End, s.logger)
 }
 
 // Stats implements querier.Store
@@ -161,6 +165,8 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 		return nil, err
 	}
 
+	level.Debug(s.logger).Log("msg", "found data objects for time range", "count", len(files), "from", from, "through", through)
+
 	objects := make([]*dataobj.Object, 0, len(files))
 	for _, path := range files {
 		objects = append(objects, dataobj.FromBucket(s.bucket, path))
@@ -168,12 +174,12 @@ func (s *Store) objectsForTimeRange(ctx context.Context, from, through time.Time
 	return objects, nil
 }
 
-func selectLogs(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func selectLogs(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, req logql.SelectLogParams, logger log.Logger) (iter.EntryIterator, error) {
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err
 	}
-	shardedObjects, err := shardObjects(ctx, objects, shard)
+	shardedObjects, err := shardObjects(ctx, objects, shard, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -211,13 +217,8 @@ func selectLogs(ctx context.Context, objects []*dataobj.Object, shard logql.Shar
 	return iter.NewSortEntryIterator(iterators, req.Direction), nil
 }
 
-func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time) (iter.SampleIterator, error) {
-	selector, err := expr.Selector()
-	if err != nil {
-		return nil, err
-	}
-
-	shardedObjects, err := shardObjects(ctx, objects, shard)
+func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.Shard, expr syntax.SampleExpr, start, end time.Time, logger log.Logger) (iter.SampleIterator, error) {
+	shardedObjects, err := shardObjects(ctx, objects, shard, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -227,6 +228,11 @@ func selectSamples(ctx context.Context, objects []*dataobj.Object, shard logql.S
 			shardedObjectsPool.Put(obj)
 		}
 	}()
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+
 	streamsPredicate := streamPredicate(selector.Matchers(), start, end)
 	// TODO: support more predicates and combine with log.Pipeline.
 	logsPredicate := dataobj.TimeRangePredicate[dataobj.LogsPredicate]{
@@ -268,14 +274,24 @@ func shardObjects(
 	ctx context.Context,
 	objects []*dataobj.Object,
 	shard logql.Shard,
+	logger log.Logger,
 ) ([]*shardedObject, error) {
 	metadatas, err := fetchMetadatas(ctx, objects)
 	if err != nil {
 		return nil, err
 	}
 
+	// Count total sections before sharding
+	var totalSections int
+	for _, metadata := range metadatas {
+		totalSections += metadata.LogsSections
+	}
+	logger = log.With(logger, "objects", len(objects))
+	logger = log.With(logger, "total_sections", totalSections)
+
 	// sectionIndex tracks the global section number across all objects to ensure consistent sharding
 	var sectionIndex uint64
+	var shardedSections int
 	shardedReaders := make([]*shardedObject, 0, len(objects))
 
 	for i, metadata := range metadatas {
@@ -288,6 +304,7 @@ func shardObjects(
 					continue
 				}
 			}
+			shardedSections++
 
 			if reader == nil {
 				reader = shardedObjectsPool.Get().(*shardedObject)
@@ -304,6 +321,11 @@ func shardObjects(
 			shardedReaders = append(shardedReaders, reader)
 		}
 	}
+
+	level.Debug(logger).Log("msg", "sharding sections",
+		"sharded_sections", shardedSections,
+		"sharded_objects", len(shardedReaders),
+		"shard_factor", shard.PowerOfTwo.Of)
 
 	return shardedReaders, nil
 }
