@@ -1,5 +1,5 @@
 local k = import 'ksonnet-util/kausal.libsonnet';
-
+local common = import 'common.libsonnet';
 {
   _config+: {
     overrides: {
@@ -39,4 +39,33 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         + (if std.length($._config.multi_kv_config) > 0 then { multi_kv_config: $._config.multi_kv_config } else {}),
       ),
     }),
+
+  local checkRetentionStreams(retentionStreams, maxQueryLookback) =
+    std.foldl(function(acc, retentionStream) acc && common.parseDuration(retentionStream.period) < common.parseDuration(maxQueryLookback),
+      retentionStreams,
+      true
+    ),
+
+  local checkTenantRetention(tenant) =
+    if std.objectHas($._config.overrides[tenant], 'retention_stream') &&
+       std.objectHas($._config.overrides[tenant], 'max_query_lookback') && 
+       std.objectHas($._config.overrides[tenant], 'retention_period')
+       then
+         common.parseDuration($._config.overrides[tenant].retention_period) <= common.parseDuration($._config.overrides[tenant].max_query_lookback) && checkRetentionStreams($._config.overrides[tenant].retention_stream, $._config.overrides[tenant].max_query_lookback)
+    else
+      true,  // Skip check if either field is missing
+
+  local tenants = std.objectFields($._config.overrides),
+
+  local validRetentions = std.foldl(
+    function(acc, tenant)
+      if !checkTenantRetention(tenant) then
+        { valid: false, failedTenant: [tenant] + acc.failedTenant }
+      else
+        acc,
+    tenants,
+    { valid: true, failedTenant: [] }
+  ),
+
+  assert validRetentions.valid : 'retention_stream period longer than max_query_lookback for tenants %s' % std.join(', ', validRetentions.failedTenant),
 }
