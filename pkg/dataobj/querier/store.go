@@ -106,6 +106,10 @@ func NewStore(bucket objstore.Bucket, logger log.Logger) *Store {
 	}
 }
 
+func (s *Store) String() string {
+	return "dataobj"
+}
+
 // SelectLogs implements querier.Store
 func (s *Store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	logger := util_log.WithContext(ctx, s.logger)

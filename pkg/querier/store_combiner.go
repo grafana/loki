@@ -488,6 +488,10 @@ func (s *instrumentedStore) GetShards(ctx context.Context, userID string, from, 
 	return s.Store.GetShards(ctx, userID, from, through, targetBytesPerShard, predicate)
 }
 
+func (s *instrumentedStore) String() string {
+	return s.name
+}
+
 func stringifyMatchers(matchers []*labels.Matcher) string {
 	var result strings.Builder
 	for i, m := range matchers {
