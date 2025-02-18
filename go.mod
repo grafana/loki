@@ -59,7 +59,7 @@ require (
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
-	github.com/hashicorp/consul/api v1.31.1
+	github.com/hashicorp/consul/api v1.31.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/influxdata/telegraf v1.33.1
 	github.com/jmespath/go-jmespath v0.4.0
