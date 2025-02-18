@@ -1070,6 +1070,9 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 		sort.Slice(schemas.Configs, func(i, j int) bool {
 			return schemas.Configs[i].From.UnixNano() < schemas.Configs[j].From.UnixNano()
 		})
+		for _, cfg := range schemas.Configs {
+			level.Debug(util_log.Logger).Log("msg", "schema config", "from", cfg.From, "row_shards", cfg.RowShards, "index_type", cfg.IndexType, "object_store", cfg.ObjectType, "schema", cfg.Schema)
+		}
 	}
 
 	middleware, stopper, err := queryrange.NewMiddleware(

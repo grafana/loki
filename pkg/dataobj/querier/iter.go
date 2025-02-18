@@ -3,6 +3,7 @@ package querier
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"io"
 	"sort"
 	"sync"
@@ -74,7 +75,7 @@ func newEntryIterator(ctx context.Context,
 	for {
 		n, err := reader.Read(ctx, buf)
 		if err != nil && err != io.EOF {
-			return nil, err
+			return nil, fmt.Errorf("failed to read log records: %w", err)
 		}
 
 		if n == 0 && err == io.EOF {
@@ -295,7 +296,7 @@ func newSampleIterator(ctx context.Context,
 	for {
 		n, err := reader.Read(ctx, buf)
 		if err != nil && err != io.EOF {
-			return nil, err
+			return nil, fmt.Errorf("failed to read log records: %w", err)
 		}
 
 		// Handle end of stream or empty read
