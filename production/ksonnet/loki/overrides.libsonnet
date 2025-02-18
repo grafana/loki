@@ -1,5 +1,5 @@
-local k = import 'ksonnet-util/kausal.libsonnet';
 local common = import 'common.libsonnet';
+local k = import 'ksonnet-util/kausal.libsonnet';
 {
   _config+: {
     overrides: {
@@ -41,7 +41,8 @@ local common = import 'common.libsonnet';
     }),
 
   local checkRetentionStreams(retentionStreams, maxQueryLookback) =
-    std.foldl(function(acc, retentionStream) acc && common.parseDuration(retentionStream.period) < common.parseDuration(maxQueryLookback),
+    std.foldl(
+      function(acc, retentionStream) acc && common.parseDuration(retentionStream.period) < common.parseDuration(maxQueryLookback),
       retentionStreams,
       true
     ),
@@ -52,10 +53,10 @@ local common = import 'common.libsonnet';
     local maxQueryLookback = tenantCfg.max_query_lookback;
     local retentionPeriod = tenantCfg.retention_period;
     if std.objectHas(tenantCfg, 'retention_stream') &&
-       std.objectHas(tenantCfg, 'max_query_lookback') && 
+       std.objectHas(tenantCfg, 'max_query_lookback') &&
        std.objectHas(tenantCfg, 'retention_period') then
-       common.parseDuration(retentionPeriod) <= common.parseDuration(maxQueryLookback) &&
-        checkRetentionStreams(retentionStream, maxQueryLookback)
+      common.parseDuration(retentionPeriod) <= common.parseDuration(maxQueryLookback) &&
+      checkRetentionStreams(retentionStream, maxQueryLookback)
     else
       true,  // Skip check if either field is missing
 
