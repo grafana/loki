@@ -96,10 +96,6 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register metastore manager metrics", "err", err)
 	}
 
-	if idleFlushTimeout <= 0 {
-		idleFlushTimeout = 60 * 60 * time.Second // default to 1 hour
-	}
-
 	return &partitionProcessor{
 		client:           client,
 		logger:           log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
@@ -191,8 +187,6 @@ func (p *partitionProcessor) initBuilder() error {
 }
 
 func (p *partitionProcessor) flushStream(flushBuffer *bytes.Buffer) error {
-	flushBuffer.Reset()
-
 	flushedDataobjStats, err := p.builder.Flush(flushBuffer)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
@@ -250,6 +244,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			flushBuffer := p.bufPool.Get().(*bytes.Buffer)
 			defer p.bufPool.Put(flushBuffer)
 
+			flushBuffer.Reset()
+
 			if err := p.flushStream(flushBuffer); err != nil {
 				level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
 				return
@@ -306,6 +302,8 @@ func (p *partitionProcessor) idleFlush() {
 	func() {
 		flushBuffer := p.bufPool.Get().(*bytes.Buffer)
 		defer p.bufPool.Put(flushBuffer)
+
+		flushBuffer.Reset()
 
 		if err := p.flushStream(flushBuffer); err != nil {
 			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
