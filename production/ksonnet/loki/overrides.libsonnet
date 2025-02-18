@@ -42,31 +42,44 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   local checkRetentionStreams(retentionStreams, maxQueryLookback) =
     std.foldl(
-      function(acc, retentionStream) acc && common.parseDuration(retentionStream.period) < common.parseDuration(maxQueryLookback),
+      function(acc, retentionStream) acc && common.parseDuration(retentionStream.period) <= common.parseDuration(maxQueryLookback),
       retentionStreams,
       true
     ),
 
+  isLookbackLongerThanRetention(tenantCfg)::
+    local retentionPeriod = tenantCfg.retention_period;
+    local lookback = tenantCfg.max_query_lookback;
+    if std.objectHas(tenantCfg, 'max_query_lookback') &&
+       std.objectHas(tenantCfg, 'retention_period') then
+      common.parseDuration(lookback) >= common.parseDuration(retentionPeriod)
+    else
+      true,
+
+  isLookbackLongerThanStreamRetention(tenantCfg)::
+    local retentionStream = tenantCfg.retention_stream;
+    local lookback = tenantCfg.max_query_lookback;
+    if std.objectHas(tenantCfg, 'max_query_lookback') &&
+       std.objectHas(tenantCfg, 'retention_stream') then
+       checkRetentionStreams(retentionStream, lookback)
+    else
+      true,
+
   checkTenantRetention(tenant)::
     local tenantCfg = $._config.overrides[tenant];
-    local retentionStream = tenantCfg.retention_stream;
-    local maxQueryLookback = tenantCfg.max_query_lookback;
-    local retentionPeriod = tenantCfg.retention_period;
-    if std.objectHas(tenantCfg, 'retention_stream') &&
-       std.objectHas(tenantCfg, 'max_query_lookback') &&
-       std.objectHas(tenantCfg, 'retention_period') then
-      common.parseDuration(retentionPeriod) <= common.parseDuration(maxQueryLookback) &&
-      checkRetentionStreams(retentionStream, maxQueryLookback)
+    if $.isLookbackLongerThanRetention(tenantCfg) &&
+       $.isLookbackLongerThanStreamRetention(tenantCfg) then
+       true
     else
-      true,  // Skip check if either field is missing
+      false,
 
   local tenants = std.objectFields($._config.overrides),
 
-  local validRetentions = std.foldl(
+  local validRetentionsCheck = std.foldl(
     function(acc, tenant) if !$.checkTenantRetention(tenant) then { valid: false, failedTenant: [tenant] + acc.failedTenant } else acc,
     tenants,
     { valid: true, failedTenant: [] }
   ),
 
-  assert validRetentions.valid : 'retention_stream period longer than max_query_lookback for tenants %s' % std.join(', ', validRetentions.failedTenant),
+  assert validRetentionsCheck.valid : 'retention period longer than max_query_lookback for tenants %s' % std.join(', ', validRetentionsCheck.failedTenant),
 }
