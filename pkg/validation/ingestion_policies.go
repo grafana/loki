@@ -38,7 +38,7 @@ func (p *PolicyStreamMapping) Validate() error {
 
 		// Sort the mappings by priority. Higher priority mappings come first.
 		slices.SortFunc(policyStreams, func(a, b *PriorityStream) int {
-			return a.Priority - b.Priority
+			return b.Priority - a.Priority
 		})
 	}
 
