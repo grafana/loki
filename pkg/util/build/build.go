@@ -4,7 +4,6 @@ import (
 	"runtime"
 
 	"github.com/prometheus/common/version"
-	prom "github.com/prometheus/prometheus/web/api/v1"
 )
 
 // Version information passed to Prometheus version package.
@@ -29,8 +28,8 @@ func init() {
 	version.GoVersion = runtime.Version()
 }
 
-func GetVersion() prom.PrometheusVersion {
-	return prom.PrometheusVersion{
+func GetVersion() PrometheusVersion {
+	return PrometheusVersion{
 		Version:   version.Version,
 		Revision:  version.Revision,
 		Branch:    version.Branch,
