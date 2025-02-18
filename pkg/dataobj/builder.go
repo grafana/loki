@@ -52,6 +52,10 @@ type BuilderConfig struct {
 	// BufferSize configures the size of the buffer used to accumulate
 	// uncompressed logs in memory prior to sorting.
 	BufferSize flagext.Bytes `yaml:"buffer_size"`
+
+	// TargetIdleSeconds configures the maximum amount of time to wait in seconds
+	// before flushing the buffer to a data object.
+	TargetIdleSeconds time.Duration `yaml:"target_idle_seconds"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -65,6 +69,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
+	f.DurationVar(&cfg.TargetIdleSeconds, prefix+"target-idle-seconds", 60*time.Second, "The maximum amount of time to wait in seconds before flushing the buffer to a data object.")
 }
 
 // Validate validates the BuilderConfig.
@@ -87,6 +92,10 @@ func (cfg *BuilderConfig) Validate() error {
 
 	if cfg.TargetSectionSize <= 0 || cfg.TargetSectionSize > cfg.TargetObjectSize {
 		errs = append(errs, errors.New("SectionSize must be greater than 0 and less than or equal to TargetObjectSize"))
+	}
+
+	if cfg.TargetIdleSeconds <= 0 {
+		errs = append(errs, errors.New("TargetIdlePeriod must be greater than 0"))
 	}
 
 	return errors.Join(errs...)
